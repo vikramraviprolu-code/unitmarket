@@ -1,0 +1,19 @@
+# Dependencies and build output
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Environment files: only the names-only example is tracked. Secrets live in local env files
+# (never committed, never pasted) and in the hosting provider's settings.
+.env
+.env.*
+!.env.example
+
+# Local data directories (PGlite on disk, recordings before redaction, tool output)
+.data/
+.pglite/
+.recordings/
+.sbx-local/
+*.log

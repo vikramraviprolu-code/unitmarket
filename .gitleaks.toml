@@ -1,0 +1,8 @@
+# Extends the default gitleaks rules. Names-only env example and synthetic fixtures are
+# allow-listed; real values are never allow-listed.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "names-only example and labelled negative fixtures"
+paths = ['''\.env\.example$''', '''scripts/__fixtures__/''']

@@ -1,0 +1,41 @@
+{
+  "name": "unitmarket-sandbox",
+  "version": "0.0.0",
+  "private": true,
+  "description": "UnitMarket PayPal sandbox track (SBX). Offline by default. Not connected to any PayPal account.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "packageManager": "pnpm@10.34.7",
+  "engines": {
+    "node": "22.22.0",
+    "pnpm": "10.34.7"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "pnpm -r --if-present typecheck && tsc -p scripts/tsconfig.json",
+    "test": "vitest run --maxWorkers=2 --project unit --project state --project contract --project integration --project adversarial --project golden --passWithNoTests",
+    "test:unit": "vitest run --maxWorkers=2 --project unit --passWithNoTests",
+    "test:state": "vitest run --maxWorkers=2 --project state --passWithNoTests",
+    "test:contract": "vitest run --maxWorkers=2 --project contract --passWithNoTests",
+    "test:integration": "vitest run --maxWorkers=2 --project integration --passWithNoTests",
+    "test:adversarial": "vitest run --maxWorkers=2 --project adversarial --passWithNoTests",
+    "test:golden": "vitest run --maxWorkers=2 --project golden --passWithNoTests",
+    "check:isolation": "node scripts/check-isolation.mjs",
+    "check:no-live-host": "node scripts/check-no-live-host.mjs",
+    "check:secrets-names": "node scripts/check-secrets-names.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "ci": "pnpm install --frozen-lockfile && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:isolation && pnpm check:no-live-host && pnpm check:secrets-names"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "22.20.5",
+    "eslint": "9.39.5",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "4.1.12"
+  }
+}

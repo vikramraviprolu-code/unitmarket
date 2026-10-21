@@ -1,0 +1,6 @@
+# Package layout: architecture.md section 10 (docs/design/architecture.md).
+packages:
+  - apps/*
+  - domain/*
+  - packages/*
+  - tools/*
