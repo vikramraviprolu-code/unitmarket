@@ -1,0 +1,4 @@
+// Origin: {{SIM_REPO}}@a36ddc0:packages/db/src/migrate.ts. Adapted; owned by SBX.
+import { PACKAGE_NAME } from '@umsbx/contracts';
+import { y } from './b';
+export const z = [PACKAGE_NAME, y];

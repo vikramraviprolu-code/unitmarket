@@ -1,0 +1,2 @@
+import { x } from '../../../../outside/thing';
+export const y = x;

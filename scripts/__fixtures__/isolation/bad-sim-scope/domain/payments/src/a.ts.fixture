@@ -1,0 +1,2 @@
+import { x } from '{{SIM_SCOPE}}/paypal';
+export const y = x;

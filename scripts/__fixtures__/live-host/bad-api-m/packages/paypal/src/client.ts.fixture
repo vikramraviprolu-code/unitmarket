@@ -1,0 +1,2 @@
+// synthetic negative fixture
+export const BASE = 'https://{{LIVE_API_M}}/v2/checkout/orders';

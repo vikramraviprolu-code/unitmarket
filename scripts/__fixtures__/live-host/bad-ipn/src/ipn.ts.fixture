@@ -1,0 +1,1 @@
+export const IPN = 'https://{{LIVE_WWW_IPN}}';

@@ -1,0 +1,1 @@
+export const k = process_env_placeholder['{{PUB}}_PAYPAL_CLIENT_ID'];

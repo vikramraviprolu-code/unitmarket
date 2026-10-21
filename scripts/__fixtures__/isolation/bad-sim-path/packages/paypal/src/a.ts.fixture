@@ -1,0 +1,2 @@
+import { x } from '../../../simulation/paypal/src/index';
+export const y = x;

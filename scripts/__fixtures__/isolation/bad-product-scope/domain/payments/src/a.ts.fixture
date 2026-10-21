@@ -1,0 +1,2 @@
+import { x } from '@unitmarket/contracts';
+export const y = x;

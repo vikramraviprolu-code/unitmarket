@@ -1,0 +1,1 @@
+export const SNEAKY = 'https://{{SANDBOX_HOST}}';

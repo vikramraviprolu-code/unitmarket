@@ -1,0 +1,1 @@
+{ "name": "x", "dependencies": { "sim": "link:../{{SIM_REPO}}/packages/core" } }

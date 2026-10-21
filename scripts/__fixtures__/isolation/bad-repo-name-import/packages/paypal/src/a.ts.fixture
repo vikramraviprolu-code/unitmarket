@@ -1,0 +1,2 @@
+import { x } from '../../../../{{SIM_REPO}}/anything';
+export const y = x;

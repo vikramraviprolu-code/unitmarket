@@ -1,0 +1,1 @@
+{ "links": [{ "href": "https://{{LIVE_API_M}}/v2/checkout/orders/ABC", "rel": "self" }] }

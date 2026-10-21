@@ -1,0 +1,1 @@
+{ "name": "@umsbx/db", "dependencies": { "@unitmarket/contracts": "workspace:*" } }

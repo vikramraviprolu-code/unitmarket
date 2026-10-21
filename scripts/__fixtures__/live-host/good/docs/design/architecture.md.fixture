@@ -1,0 +1,2 @@
+Live hosts such as {{LIVE_API_M}} and {{LIVE_API}} must never appear in code.
+The sandbox host is {{SANDBOX_HOST}}.

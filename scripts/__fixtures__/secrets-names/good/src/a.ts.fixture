@@ -1,0 +1,1 @@
+export const label = '{{PUB}}_UMS_ENV_LABEL';
