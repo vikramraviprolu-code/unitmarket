@@ -74,7 +74,7 @@ apps/web (Next.js App Router, Node runtime only)
   pages: /o/[publisher]/[offer]  /discover  /approve/[id]  /checkout/return  /library  /receipts  /help/[case]
          /publisher/*  /ops/* (operator)
   route handlers: /api/*  (all through security wrappers)
-  composition.server.ts  (the one wiring point; reads config; builds ports)
+  src/server/composition.ts  (the one wiring point; reads config; builds ports)
         |
         v
 +--------------------------- domain (pure TS + Database port; no network) -------------------+
@@ -127,7 +127,7 @@ Either way, enforced rules in SBX:
 ### 2.3 Import and runtime rules inside SBX (lint-enforced)
 
 - S1 `domain/*` imports only `@umsbx/contracts` and sibling domain modules' public `index.ts`.
-- S2 Only `packages/transport` may use `fetch`, `node:http`, `node:https`, `node:net`, `node:tls`, `node:dns` or `undici` (`no-restricted-globals` and `no-restricted-imports` everywhere else). Only `packages/paypal` imports `transport`. Only `composition.server.ts` and `packages/jobs` import `paypal`.
+- S2 Only `packages/transport/src/sandbox*.ts` (and the standalone `tools/spike-kit`) may use `fetch`, `node:http`, `node:https`, `node:net`, `node:tls`, `node:dns` or `undici` (`no-restricted-globals` and `no-restricted-imports` everywhere else). Only `packages/paypal` imports `transport`. Only `apps/web/src/server/composition.ts`, `packages/jobs` and `packages/testkit` import `paypal`. Lane 00 implements these rules exactly.
 - S3 Only `packages/config` reads `process.env` (`no-restricted-properties`).
 - S4 `discovery`, `fit` and `model` never import `payments`, `approval` internals, `entitlements`, `paypal`, `safety` or `transport`.
 - S5 Client components import only `@umsbx/contracts` types and `ui/`; server modules carry `import 'server-only'`.
@@ -463,7 +463,7 @@ Copy sources are paths in the simulation repository at `a36ddc0`. "Copy" means c
 | `recovery` | cases | see 9.7 | payments read, access-clock | | all | state tests; never-charge test |
 | `jobs` | reconciler loop, sweeper, health | `startLoop(deps)` | payments, access-clock | harness loop idea in `simulation/harness` | all | fake-clock loop tests |
 | `testkit` | fakes, fixtures, conformance | `describePayPalConformance(subject)` | | `packages/testkit/src/conformance.ts` (C1 to C15), S1 to S6 as scripted fixtures | HTTP-level fake PayPal | runs against dry-run in CI, sandbox by owner |
-| `apps/web` | screens and routes | `composition.server.ts` | all through composition | screen ideas only from `apps/web/app/*`; no code shared | production design system | Playwright offline e2e; route authz tests |
+| `apps/web` | screens and routes | `apps/web/src/server/composition.ts` | all through composition | screen ideas only from `apps/web/app/*`; no code shared | production design system | Playwright offline e2e; route authz tests |
 | `tools/spike-kit` | owner-run checks | CLI | node only | | all | dry-run self-test only |
 
 ## 11. Test strategy for core and money
@@ -535,6 +535,7 @@ Q1, Q3, Q4 and Q6 are decided (D-1, D-2, D-3, D-4). Q5 is researched separately 
 | O-1 (was Q2) | Which sandbox accounts: the existing DE pair, a new US Business payee and US Personal buyer, or both? | Create the US pair for US/USD; keep the DE pair for the EUR comparison step of the spike | MVP-B only; MVP-A builds on fixtures |
 | O-2 | Approve `axe-core` (or `@axe-core/playwright`) for the accessibility scan of nfr.md A11Y-2 and A11Y-3 | Approve at MVP-C; until then manual checks | MVP-C gate |
 | O-3 | Approve the spike (Part R, then Part W separately) and the first `outbound_approvals` scope, with the decision-log row reference | Part R as soon as accounts are chosen | MVP-B |
+| O-4 | Approve `@vitest/coverage-v8` (same version line as `vitest`) so the coverage gate of nfr.md MAINT-6 can run | Approve now; without it the coverage gate is reported manually | MVP-A gate (lane 17) |
 
 ### 14.3 What I would cut, in order
 

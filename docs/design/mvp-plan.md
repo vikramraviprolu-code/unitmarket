@@ -56,7 +56,7 @@ Calendar (owner may move): MVP-A Thu 22 to Mon 26 Oct (offline). Mon 26 Oct: own
 
 **Dependencies and approvals.** Decided: separate repository at `/home/user/unitmarket-sandbox` (D-1) and the dependency list (D-4). No PayPal approval needed; no account is used.
 
-**Lanes** (about 21 lane-days; 7 parallel workers gives about 4 calendar days):
+**Lanes.** The construction specs in `lanes/` (lanes 00 to 18, four waves, see `lanes/README.md`) supersede this summary table; the table below is kept as the effort estimate (about 21 lane-days; 6 to 8 parallel workers gives about 4 calendar days):
 
 | Lane | Content | Days | Verify |
 |---|---|---|---|
