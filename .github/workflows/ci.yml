@@ -1,0 +1,32 @@
+# Offline checks only. This workflow references no secret and never contacts PayPal.
+# Sandbox tests (owner-run, tools/spike-kit and the sandbox conformance run) NEVER run in CI:
+# they need credentials that exist only in the owner's local env file.
+name: ci
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm check:isolation
+      - run: pnpm check:no-live-host
+      - run: pnpm check:secrets-names
