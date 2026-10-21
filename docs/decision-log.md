@@ -1,0 +1,19 @@
+# Decision log
+
+Append-only. Each row is a decision with an owner and a date. Outbound approvals reference a row
+here (`UMS_OUTBOUND_APPROVAL_REF`). Never record a secret or a credential value.
+
+| Id | Date | Decision | Owner | Notes |
+|---|---|---|---|---|
+| D-001 | 2026-10-21 | The sandbox track lives in a separate repository (`unitmarket-sandbox`), not in the simulation repository. | Owner | Total isolation: own history, lockfile, CI, secrets. Copy and adapt with provenance. |
+| D-002 | 2026-10-21 | Corridors in order: US/USD first, then UK, then India. | Owner | Configuration, not code (architecture 12). |
+| D-003 | 2026-10-21 | PGlite first; Supabase provisions are kept ready, not used yet. | Owner | architecture 8. |
+| D-004 | 2026-10-21 | No Payouts API. | Owner | Never on the endpoint allow-list. |
+| D-005 | 2026-10-21 | WordPress integration comes after the first MVP. | Owner | |
+| D-006 | 2026-10-21 | The access clock starts at verified payment plus verified-possible delivery. | Owner | architecture 9.4. |
+| D-007 | 2026-10-21 | The two-publisher route follows the spike; one order per publisher is the default. | Owner | |
+| D-008 | 2026-10-21 | The dependency list is approved: next, react, react-dom, zod, @electric-sql/pglite, vitest, @playwright/test, eslint, typescript, tailwindcss, server-only, plus tooling peers. No PayPal SDK. | Owner | New dependencies need a new row. |
+| D-009 | 2026-10-21 | Hosting is decided later. | Owner | |
+| D-010 | 2026-10-21 | Sandbox accounts are to be decided on 22 Oct 2026. | Owner | Open until then. |
+| D-011 | 2026-10-21 | No connection to any PayPal account without the owner's explicit written approval. | Owner | Enforced by the two-key design: `UMS_PAYPAL_CONNECT` plus an `outbound_approvals` row (architecture 7). |
+| D-012 | 2026-10-21 | Lane 00 scaffold: tooling copied and adapted from the simulation at a36ddc0 (eslint, vitest, tsconfig, prettier styles). | Lane 00 | Provenance headers on adapted files. |
