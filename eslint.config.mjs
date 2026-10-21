@@ -220,7 +220,7 @@ function entry(files, { extra = [], paths = [], ignores = [], allow = {} } = {})
     rules: {
       'sbx/no-package-escape': 'error',
       'no-restricted-imports': ['error', { patterns, paths: [...basePaths, ...paths] }],
-      'no-restricted-globals': ['error', ...(allow.network ? [] : NO_FETCH_GLOBALS)],
+      'no-restricted-globals': allow.network ? 'off' : ['error', ...NO_FETCH_GLOBALS],
       'no-restricted-properties': ['error', ...props],
       'no-restricted-syntax': ['error', ...(allow.time ? [] : [SYNTAX.time]), SYNTAX.publicName],
     },
