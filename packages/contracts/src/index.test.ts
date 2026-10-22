@@ -29,6 +29,32 @@ const EXPECTED_EXPORTS: string[] = [
   'SwitchNameSchema',
   // F1 actor
   'ActorSchema',
+  // F2 transport
+  'PayPalOperationSchema',
+  'OutboundRequestSchema',
+  'BlockReasonSchema',
+  'TransportResultSchema',
+  'GateVerdictSchema',
+  // F2 paypal
+  'ProviderOrderIdSchema',
+  'ProviderOrderStatusSchema',
+  'CaptureStatusSchema',
+  'RefundStatusSchema',
+  'PayPalFailSchema',
+  'CreateOrderUnitSchema',
+  'CreateOrderReqSchema',
+  'CreateOrderResSchema',
+  'CapturedPartSchema',
+  'OrderReadUnitSchema',
+  'OrderReadSchema',
+  'ClaimUnitSchema',
+  'CaptureResSchema',
+  'CaptureReadSchema',
+  'RefundReqSchema',
+  'RefundResSchema',
+  'ProviderEventTypeSchema',
+  'ProviderEventSchema',
+  'WebhookVerdictSchema',
 ];
 
 type Walkable = { _zod: { def: { type: string; catchall?: Walkable; options?: Walkable[] } } };
