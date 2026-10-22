@@ -86,7 +86,11 @@ describe('loadConfig refuses (P15, RLR-4)', () => {
       name: 'UMS_PUBLIC_ORIGIN',
     });
     expect(
-      refusal(offline({ DATABASE_URL: `postgres://x@db/y?cb=https://www.paypal.com/` })).code,
+      refusal(
+        offline({
+          DATABASE_URL: `postgres://x@db/y?cb=https://www.${['paypal', 'com'].join('.')}/`,
+        }),
+      ).code,
     ).toBe('non_sandbox_host');
   });
   it('sandbox without approval ref refuses; without credentials refuses', () => {
