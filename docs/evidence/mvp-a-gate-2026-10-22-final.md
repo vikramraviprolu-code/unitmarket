@@ -5,7 +5,7 @@ This report replaces `mvp-a-gate-2026-10-22.md`, which stays as history and carr
 
 - Gate: MVP-A
 - Date: 2026-10-22
-- Reviewed commit: main 364af49 (Opus gate review). Conditions closed on branch `fix/gate-conditions` (FIX-GATE2); merge pending the coordinator's gate.
+- Reviewed commit: main 364af49 (Opus gate review). Conditions closed by `fix/gate-conditions` (FIX-GATE2) and `test/mutation-payments` (MUT-PAY), both merged into main afterwards.
 - Verdict: **APPROVED WITH CONDITIONS**
 
 ## Verdict
@@ -21,9 +21,8 @@ All earlier open findings are closed: OD-1 and OD-2 (FIX-PAY2, tests now `paymen
 1. **Set `UMS_TRUSTED_PROXIES` before any hosted demo** (`docs/READINESS.md`, D-022). Without it every client shares one login limiter bucket.
 2. **PORT-1 (stock Postgres CI)** needs an owner waiver or a run. All runs so far are PGlite.
 3. **Real-Postgres race tests** before MVP-C.
-4. **Mutation scores pending** for `domain/payments` `reconcile.ts`, `refunds.ts`, `due.ts`, `capture.ts`: the MUT-PAY branch (`test/mutation-payments`) has commits killing survivors but has not reported scores. The earlier sample for `reconcile.ts` was 80.0 on 20 of 76 mutants only.
-5. **Merge `fix/gate-conditions`** (M1, M3, M4, L1 to L4 are fixed there, not on main 364af49).
-6. No PayPal sandbox contact has happened or is approved: D-011 stays in force. Simulation tests prove the modelled cases only, not PayPal compatibility.
+4. Mutation scores for the payments files are measured on `--max 60` samples with narrow test commands (below); `capture.ts` is 81.7 percent, a thin margin. Sibling workers loaded the CPU during the runs, and the script counts a timeout as a kill, so treat the after-scores as at most slightly inflated.
+5. No PayPal sandbox contact has happened or is approved: D-011 stays in force. Simulation tests prove the modelled cases only, not PayPal compatibility.
 
 ## Numbers
 
@@ -41,18 +40,18 @@ All earlier open findings are closed: OD-1 and OD-2 (FIX-PAY2, tests now `paymen
 
 ## Mutation scores
 
-| Target                               | Score             |
-| ------------------------------------ | ----------------- |
-| `packages/paypal/src/map-*.ts`       | 91.7              |
-| `domain/payments/src/match.ts`       | 89.3              |
-| `domain/entitlements/src/table.ts`   | 100.0             |
-| `domain/ledger/src/ledger.ts`        | 86.4              |
-| `domain/access-clock/src/compute.ts` | 89.4              |
-| `packages/paypal/src/money.ts`       | 100.0             |
-| `domain/payments/src/reconcile.ts`   | pending (MUT-PAY) |
-| `domain/payments/src/refunds.ts`     | pending (MUT-PAY) |
-| `domain/payments/src/due.ts`         | pending (MUT-PAY) |
-| `domain/payments/src/capture.ts`     | pending (MUT-PAY) |
+| Target                               | Score                              |
+| ------------------------------------ | ---------------------------------- |
+| `packages/paypal/src/map-*.ts`       | 91.7                               |
+| `domain/payments/src/match.ts`       | 89.3                               |
+| `domain/entitlements/src/table.ts`   | 100.0                              |
+| `domain/ledger/src/ledger.ts`        | 86.4                               |
+| `domain/access-clock/src/compute.ts` | 89.4                               |
+| `packages/paypal/src/money.ts`       | 100.0                              |
+| `domain/payments/src/reconcile.ts`   | 96.7 percent (58/60), sample of 60 |
+| `domain/payments/src/refunds.ts`     | 83.3 percent (50/60), up from 75.0 |
+| `domain/payments/src/due.ts`         | 90.0 percent (54/60), up from 53.3 |
+| `domain/payments/src/capture.ts`     | 81.7 percent (49/60), up from 61.7 |
 
 ## Findings of the Opus gate review and their fixes
 
