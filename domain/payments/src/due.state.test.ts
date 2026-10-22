@@ -11,7 +11,6 @@ import {
   lostResponse,
   makeWorld,
   opOf,
-  ops,
   orderStatus,
   paid,
   place,
