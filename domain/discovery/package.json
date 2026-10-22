@@ -10,10 +10,11 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@umsbx/contracts": "workspace:*",
     "@umsbx/catalogue": "workspace:*",
-    "@umsbx/offer-entry": "workspace:*",
-    "@umsbx/model": "workspace:*"
+    "@umsbx/contracts": "workspace:*",
+    "@umsbx/fit": "workspace:*",
+    "@umsbx/model": "workspace:*",
+    "@umsbx/offer-entry": "workspace:*"
   },
   "devDependencies": {
     "@umsbx/db": "workspace:*",

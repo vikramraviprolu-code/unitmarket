@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-imports -- CHANGE-REQUEST-S1: tests use @umsbx/model (createScriptedModel) and node:fs (test data); lint S1 bars both in domain/*. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BriefSchema, FitCardSchema } from '@umsbx/contracts';
 import type { Actor, AgentDeps, ModelPort, ModelRequest } from '@umsbx/contracts';
@@ -10,16 +11,14 @@ import {
   depsWith,
   recordingModel,
   seededDb,
-  type Recorder,
   type TestDb,
 } from './support';
 import { createScriptedModel } from '@umsbx/model';
 
 let db: TestDb;
 let deps: AgentDeps;
-let recorder: Recorder;
 beforeAll(async () => {
-  ({ db, deps, recorder } = await seededDb());
+  ({ db, deps } = await seededDb());
 });
 afterAll(async () => {
   await db.close();
@@ -193,7 +192,10 @@ describe('discover', () => {
       const budget = it.fit.dimensions.find((d) => d.key === 'budget')!;
       const dollars = (it.quote.price.minor / 100).toFixed(2);
       expect(budget.evidence).toBe(`$${dollars} of your $6.00`);
-      expect(it.fit.dimensions.find((d) => d.key === 'language')!.level).toBe(3);
+      // language is a fit dimension, not a filter: the German article shows level 0, honestly
+      expect(it.fit.dimensions.find((d) => d.key === 'language')!.level).toBe(
+        it.quote.offer_id.endsWith('_c12') ? 0 : 3,
+      );
       expect(it.fit.dimensions.find((d) => d.key === 'access')!.level).toBe(3);
     }
   });
@@ -329,4 +331,3 @@ describe('discover', () => {
     ]);
   });
 });
-void recorder;

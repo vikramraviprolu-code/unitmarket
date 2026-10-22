@@ -14,7 +14,7 @@ export function bandOf(dimensions: FitDimension[]): FitCard['band'] {
   if (levels.length < 2) return null;
   if (levels.length >= 3 && levels.every((l) => l >= 2)) return 'strong';
   // mean >= 1.5 without division: 2 * sum >= 3 * count
-  const sum = levels.reduce((s, l) => s + l, 0);
+  const sum = levels.reduce<number>((s, l) => s + l, 0);
   return 2 * sum >= 3 * levels.length ? 'good' : 'partial';
 }
 

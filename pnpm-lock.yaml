@@ -65,6 +65,9 @@ importers:
       '@umsbx/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@umsbx/fit':
+        specifier: workspace:*
+        version: link:../fit
       '@umsbx/model':
         specifier: workspace:*
         version: link:../../packages/model

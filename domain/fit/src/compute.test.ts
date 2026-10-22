@@ -180,7 +180,7 @@ describe('missing ceiling gives budget null, never a guess', () => {
 describe('band derived only from levels', () => {
   const only = (levels: (0 | 1 | 2 | 3 | null)[]): FitCard => {
     // Build a brief and facts that produce exactly these levels for topic, budget, access, language, recency.
-    const [topic, budget, access, language, recency] = levels;
+    const [topic = null, budget = null, access = null, language = null, recency = null] = levels;
     const terms = ['aa', 'bb', 'cc'];
     const title = { 0: 'zz', 1: 'aa', 2: 'aa bb', 3: 'aa bb cc' }[topic ?? 0];
     const b = brief({

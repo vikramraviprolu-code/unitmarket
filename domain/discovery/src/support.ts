@@ -32,7 +32,7 @@ const article = (
   language,
   topics,
   published_at,
-  text: `${title}.\n`,
+  text: 'Synthetic sandbox body written by the SBX team.\n',
   rights_note: 'Written by the SBX team for the sandbox.',
 });
 const offer = (
@@ -194,9 +194,11 @@ export async function seededDb(
   return { db, deps: depsWith(db, recorder.model), recorder };
 }
 
+let runs = 0;
 export function depsWith(db: TestDb, model: ModelPort): AgentDeps {
   const clock = fakeClock(T0);
-  const ids = seededIds('discovery-run');
+  // A distinct id stream per deps object, so two deps on one database never draw the same id.
+  const ids = seededIds(`discovery-run-${++runs}`);
   // Discovery uses only db, clock, ids and model; the rest of AgentDeps is not touched.
   return { db, clock, ids, model } as unknown as AgentDeps;
 }
