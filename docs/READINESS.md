@@ -23,3 +23,22 @@ Not covered: the full policy set against every table, and stock Postgres (CI job
 
 Discovery must refuse when the `ai_enabled` switch is off, or fall back to a catalogue-only list.
 Lane 15 wires the switch into the discovery route; until then the domain function does not read it.
+
+## Wave 2 review D fixes (FIX-W2D)
+
+### For 05a/05b
+
+All changes below are additive. A caller that ignores them still compiles.
+
+- Contract: `CapturedPart.amount: Money` (capture amount as PayPal reports it) on `OrderReadUnit.capture` and `CaptureRead.capture`. 05a must compare `unit.capture.amount` with `unit.amount` (currency and minor) before it marks a unit `captured_verified`. A 5.00 USD unit with a 500.00 EUR capture maps cleanly and is the payments lane's to refuse. A capture without a readable amount now reads as `unavailable` (malformed).
+- Refunds: take refunded amounts from GET refund (05b). Treat `capture.refunded_minor` as advisory: PayPal may report 0 there for a refunded capture. Every get_order and get_capture call record carries `refunded_advisory=use_get_refund` in its outcome.
+- Capture body id: `captureOrder` now returns `unavailable` when the 201/200/207 body id differs from the requested order id; payments reads back as for any unavailable claim.
+- OAuth: a throwing transport now maps to `timeout` in the token cache.
+- Amount strings: `007.50`, `.5`, `00` are refused (`bad_amount`).
+- Approval: `verifyApproval` check order is now hash and reader, token, owner (404), expiry (410), used (409). A wrong buyer always gets `not_owner`. A row whose `snapshot.reader.buyer_id` differs from `buyer_id` is `snapshot_tampered`. `canonicalJson` throws on a string, boolean or object under a `_minor` key, formats arrays under one, and NFC-normalises strings and keys; do not put free text under a key ending `_minor`.
+- Access clock: `recordDeliveryEvent` returns `WindowState & { inserted: boolean }`. Only `link_issued` is once per link (`inserted: false` on a replay); `download_completed`, `delivery_failed`, `delivery_restored`, `reader_rendered`, `download_aborted` and `reader_beacon` are repeatable, so a caller that retries must not assume a retry is deduplicated. `grantCredit` has a new error code `window_ended` (recovery lane 10 should surface it). Migration `0008_access_events_unique.sql` adds `access_events.seq`; events order by `(at, seq)`.
+- Receipts: debug ids come only from `capture_order` and `refund_capture` provider calls; buyer-sourced events, `reader_beacon` and `link_issued` are excluded from the receipt body. `renderReceiptHtml(r, label?)` derives the label from `r.environment` and throws on a contradicting label.
+- Ledger: a replay of an existing `(capture, kind, refund_id)` key with a different amount or currency throws `LedgerRuleError('conflicting_replay…')`; the same money still returns `duplicate`. 05b must treat the throw as a programmer error and alert.
+- M12 from review 4 (`already_owned` and a locked entitlement with a capture in flight; payee needs `payee_verified_at` and a merchant id) stays with 05a.
+- Concurrency tests (ledger, entitlements, access clock) run on PGlite, which is single-connection: they prove the SQL ordering and constraints, not Postgres lock behaviour. The sweep lock order (entitlement, then window) is asserted from the query log; a real Postgres run belongs to the PORT-1 CI job.
+- Migration 0007 (links.session_id) is added by FIX-W2C; the migration-name test in `packages/db` checks the first six names and `0008` by name so either merge order passes.

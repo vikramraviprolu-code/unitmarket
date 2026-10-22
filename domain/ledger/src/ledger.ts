@@ -113,13 +113,22 @@ export async function appendLedgerEntry(
     }
   }
 
+  // The stored row for this key. A replay must carry the same money: another amount or currency
+  // under the same key is a conflict (a caller bug or a forged id), never a silent duplicate.
   const existing = async (): Promise<Id | null> => {
-    const r = await tx.query<{ id: string }>(
-      `SELECT id FROM ledger_entries
+    const r = await tx.query<{ id: string; amount_minor: number; currency: string }>(
+      `SELECT id, amount_minor, currency FROM ledger_entries
         WHERE capture_id = $1 AND kind = $2 AND refund_id IS NOT DISTINCT FROM $3::text`,
       [input.capture_id, input.kind, input.refund_id],
     );
-    return r.rows[0]?.id ?? null;
+    const row = r.rows[0];
+    if (row === undefined) return null;
+    if (Number(row.amount_minor) !== input.amount.minor || row.currency !== input.amount.currency) {
+      throw new LedgerRuleError(
+        `conflicting_replay: ${input.kind} ${input.refund_id ?? ''} for capture ${input.capture_id} is booked as ${String(row.amount_minor)} ${row.currency}, not ${String(input.amount.minor)} ${input.amount.currency}`,
+      );
+    }
+    return row.id;
   };
   const dup = await existing();
   if (dup !== null) return err({ code: 'duplicate', existing_entry_id: dup });
