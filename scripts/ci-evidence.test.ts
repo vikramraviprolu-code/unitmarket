@@ -135,8 +135,7 @@ describe('mutation_safety', () => {
         { cwd: REPO_ROOT, stdio: 'ignore' },
       );
       const exited = new Promise<void>((res) => child.on('exit', () => res()));
-      const deadline = Date.now() + 20_000;
-      while (Date.now() < deadline) {
+      for (let tries = 0; tries < 400; tries++) {
         if (readFileSync(join(root, 'match.mjs'), 'utf8').includes('SBX-MUTANT')) break;
         await new Promise((r) => setTimeout(r, 50));
       }
