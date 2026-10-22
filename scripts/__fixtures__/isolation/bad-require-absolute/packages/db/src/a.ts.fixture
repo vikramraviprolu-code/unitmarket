@@ -1,0 +1,2 @@
+declare const require: (s: string) => unknown;
+export const x = require('/outside/secret');

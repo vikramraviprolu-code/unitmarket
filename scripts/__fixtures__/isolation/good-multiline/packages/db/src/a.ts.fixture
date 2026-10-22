@@ -1,0 +1,8 @@
+// A comment may mention '@unitmarket/core' and import('@unitmarket/core') freely.
+import {
+  x,
+  y,
+} from '@umsbx/contracts';
+import type { T } from './b';
+export const load = () => import('./b');
+export const z: [typeof x, typeof y, T?] = [x, y];
