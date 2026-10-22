@@ -79,7 +79,30 @@ importers:
 
   domain/delivery: {}
 
-  domain/discovery: {}
+  domain/discovery:
+    dependencies:
+      '@umsbx/catalogue':
+        specifier: workspace:*
+        version: link:../catalogue
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/fit':
+        specifier: workspace:*
+        version: link:../fit
+      '@umsbx/model':
+        specifier: workspace:*
+        version: link:../../packages/model
+      '@umsbx/offer-entry':
+        specifier: workspace:*
+        version: link:../offer-entry
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/entitlements:
     dependencies:
@@ -97,7 +120,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
-  domain/fit: {}
+  domain/fit:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
 
   domain/ledger: {}
 
