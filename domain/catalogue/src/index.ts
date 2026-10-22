@@ -1,2 +1,8 @@
-// Placeholder from lane 00 SCAFFOLD. Domain code arrives in later lanes.
+// @umsbx/catalogue: publishers, articles, offers, corridors (lane 14a). Reads and seed only; no
+// pricing rule, no universal floor, no substitution.
 export const PACKAGE_NAME = '@umsbx/catalogue' as const;
+export { getOffer, listAuthorisedOffers, offerIdFor } from './read';
+export type { OfferView } from './read';
+export { getCorridor, corridorFor } from './corridors';
+export { seedCatalogue } from './seed';
+export { SEED_DATA } from './seed-data';
