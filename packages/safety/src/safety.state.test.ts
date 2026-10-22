@@ -20,6 +20,7 @@ const OPERATOR = {
   mfa: true,
 } as const;
 
+type Op = { kind: 'operator'; operator_id: string; mfa: boolean };
 const opened: Db[] = [];
 afterAll(async () => {
   for (const d of opened) await d.close();
@@ -286,7 +287,7 @@ describe('setSwitch', () => {
     expect((await db.query(`SELECT 1 FROM audit_log`)).rows).toHaveLength(0);
   });
   it('turning paypal_outbound on needs an active matching outbound_approvals row (M10)', async () => {
-    const on = (ref: string | null, by: typeof OPERATOR | { kind: 'system' } = OPERATOR) =>
+    const on = (ref: string | null, by: Op | { kind: 'system' } = OPERATOR) =>
       setSwitch(db, audit(), clock, {
         name: 'paypal_outbound',
         on: true,
@@ -315,7 +316,7 @@ describe('setSwitch', () => {
   });
   it('stopping needs an operator but no approval; a non-operator cannot stop either (M10)', async () => {
     await switchOn();
-    const stop = (by: typeof OPERATOR | { kind: 'system' } | { kind: 'buyer'; buyer_id: string }) =>
+    const stop = (by: Op | { kind: 'system' } | { kind: 'buyer'; buyer_id: string }) =>
       setSwitch(db, audit(), clock, {
         name: 'paypal_outbound',
         on: false,
