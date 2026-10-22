@@ -9,7 +9,14 @@ describe('passcode', () => {
     expect(hash.startsWith('scrypt$')).toBe(true);
     expect(hash).not.toContain('correct horse');
     expect(await verifyPasscode(hash, 'correct horse')).toBe(true);
-    for (const bad of ['', 'correct hors', 'correct horse ', 'CORRECT HORSE', 'x'.repeat(5000), '\u0000']) {
+    for (const bad of [
+      '',
+      'correct hors',
+      'correct horse ',
+      'CORRECT HORSE',
+      'x'.repeat(5000),
+      '\u0000',
+    ]) {
       expect(await verifyPasscode(hash, bad)).toBe(false);
     }
   });
@@ -17,8 +24,19 @@ describe('passcode', () => {
   it('a malformed or tampered stored hash verifies false and never throws', async () => {
     const hash = await hashPasscode('pw', SALT);
     const parts = hash.split('$');
-    const flipped = [...parts.slice(0, -1), (parts.at(-1) ?? '').replace(/.$/, (c) => (c === '0' ? '1' : '0'))].join('$');
-    for (const bad of ['', 'plain', 'scrypt$x$y', 'scrypt$1$1$1$zz$zz', `${hash}$extra`, flipped, 'scrypt$999999999$8$1$00$00']) {
+    const flipped = [
+      ...parts.slice(0, -1),
+      (parts.at(-1) ?? '').replace(/.$/, (c) => (c === '0' ? '1' : '0')),
+    ].join('$');
+    for (const bad of [
+      '',
+      'plain',
+      'scrypt$x$y',
+      'scrypt$1$1$1$zz$zz',
+      `${hash}$extra`,
+      flipped,
+      'scrypt$999999999$8$1$00$00',
+    ]) {
       await expect(verifyPasscode(bad, 'pw')).resolves.toBe(false);
     }
   });

@@ -65,7 +65,11 @@ export function memoryLogger(): Logger & { events: LogEvent[] } {
 type Row = Record<string, unknown>;
 
 export function fakeDb(): Database & {
-  tables: { sessions: Map<string, Row>; rate_buckets: Map<string, Row>; api_idempotency: Map<string, Row> };
+  tables: {
+    sessions: Map<string, Row>;
+    rate_buckets: Map<string, Row>;
+    api_idempotency: Map<string, Row>;
+  };
 } {
   const tables = {
     sessions: new Map<string, Row>(),

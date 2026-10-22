@@ -16,7 +16,10 @@ const meta: RouteMeta = {
   idempotent: false,
   risk: 'low',
 };
-const route = withRoute(meta, z.object({}).strict(), async () => ({ status: 200 as const, body: { ok: true } }));
+const route = withRoute(meta, z.object({}).strict(), async () => ({
+  status: 200 as const,
+  body: { ok: true },
+}));
 
 describe('rate limit', () => {
   it('rate limit returns 429 at limit + 1', async () => {
@@ -56,14 +59,24 @@ describe('rate limit', () => {
     const wrule = { name: 'webhook-invalid', per: 'ip', limit: 2, window_ms: 60_000 } as const;
     let valid = true;
     const hook = withRoute(
-      { path: '/api/webhooks/paypal', method: 'POST', auth: 'webhook', csrf: false, rate: wrule, max_body_bytes: 1024, idempotent: false, risk: 'high' },
+      {
+        path: '/api/webhooks/paypal',
+        method: 'POST',
+        auth: 'webhook',
+        csrf: false,
+        rate: wrule,
+        max_body_bytes: 1024,
+        idempotent: false,
+        risk: 'high',
+      },
       z.object({}).strict(),
       async () =>
         valid
           ? { status: 200 as const, body: { ok: true } }
           : { status: 400 as const, code: 'bad_signature', message: 'bad' },
     );
-    const call = () => hook(deps)(new Request(`${ORIGIN}/api/webhooks/paypal`, { method: 'POST', body: '{}' }));
+    const call = () =>
+      hook(deps)(new Request(`${ORIGIN}/api/webhooks/paypal`, { method: 'POST', body: '{}' }));
     for (let i = 0; i < 10; i++) expect((await call()).status).toBe(200); // valid traffic never limited
     valid = false;
     expect((await call()).status).toBe(400);

@@ -40,7 +40,10 @@ describe('session lifetime', () => {
     expect(await revokeAllSessions(deps, buyer)).toBe(2);
     expect(await resolveSession(deps, cookiePair(a1.cookie))).toBeNull();
     expect(await resolveSession(deps, cookiePair(a2.cookie))).toBeNull();
-    expect(await resolveSession(deps, cookiePair(b.cookie))).toEqual({ kind: 'buyer', buyer_id: 'buy_b' });
+    expect(await resolveSession(deps, cookiePair(b.cookie))).toEqual({
+      kind: 'buyer',
+      buyer_id: 'buy_b',
+    });
     expect(await revokeAllSessions(deps, buyer)).toBe(0);
     expect(audit.some((e) => e.action === 'session.revoke_all')).toBe(true);
   });
@@ -51,7 +54,13 @@ describe('session lifetime', () => {
     const c = cookiePair(s.cookie);
     const forged = c.replace(/.$/, (ch) => (ch === 'A' ? 'B' : 'A'));
     expect(await resolveSession(a.deps, forged)).toBeNull();
-    const other = makeRig({ session_secret: { reveal: () => 'another-secret', toString: () => '[redacted]', toJSON: () => '[redacted]' } });
+    const other = makeRig({
+      session_secret: {
+        reveal: () => 'another-secret',
+        toString: () => '[redacted]',
+        toJSON: () => '[redacted]',
+      },
+    });
     other.db.tables.sessions = a.db.tables.sessions;
     expect(await resolveSession(other.deps, c)).toBeNull();
   });

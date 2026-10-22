@@ -67,7 +67,9 @@ describe('route-inventory', () => {
   });
 
   it('route groups and dynamic segments map to the URL path', () => {
-    const src = GOOD.replace('/api/quotes', '/api/orders/[id]').replace("'POST'", "'GET'").replace('csrf: true', 'csrf: false');
+    const src = GOOD.replace('/api/quotes', '/api/orders/[id]')
+      .replace("'POST'", "'GET'")
+      .replace('csrf: true', 'csrf: false');
     const r = run(repoWith({ '(shop)/api/orders/[id]/route.ts': src }), '--check');
     expect(r.out).toContain('route-inventory: ok');
     expect(r.status).toBe(0);

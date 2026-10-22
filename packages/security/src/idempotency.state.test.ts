@@ -59,12 +59,20 @@ describe('idempotency', () => {
   it('a key belongs to its actor: another buyer with the same key runs afresh', async () => {
     const rig = makeRig();
     let runs = 0;
-    const route = withRoute(meta, z.object({}).strict(), async () => ({ status: 201 as const, body: { runs: ++runs } }));
+    const route = withRoute(meta, z.object({}).strict(), async () => ({
+      status: 201 as const,
+      body: { runs: ++runs },
+    }));
     const mk = async (id: string) => {
       const s = await createSession(rig.deps, { kind: 'buyer', buyer_id: id });
       return new Request(`${ORIGIN}/api/orders`, {
         method: 'POST',
-        headers: { cookie: cookiePair(s.cookie), origin: ORIGIN, 'x-csrf-token': s.csrf_token, 'idempotency-key': 'shared-key-123' },
+        headers: {
+          cookie: cookiePair(s.cookie),
+          origin: ORIGIN,
+          'x-csrf-token': s.csrf_token,
+          'idempotency-key': 'shared-key-123',
+        },
         body: '{}',
       });
     };
@@ -77,14 +85,21 @@ describe('idempotency', () => {
     const rig = makeRig();
     let fail = true;
     const route = withRoute(meta, z.object({}).strict(), async () =>
-      fail ? { status: 409 as const, code: 'busy', message: 'busy' } : { status: 201 as const, body: { ok: true } },
+      fail
+        ? { status: 409 as const, code: 'busy', message: 'busy' }
+        : { status: 201 as const, body: { ok: true } },
     );
     const s = await createSession(rig.deps, { kind: 'buyer', buyer_id: 'buy_a' });
     const call = () =>
       route(rig.deps)(
         new Request(`${ORIGIN}/api/orders`, {
           method: 'POST',
-          headers: { cookie: cookiePair(s.cookie), origin: ORIGIN, 'x-csrf-token': s.csrf_token, 'idempotency-key': 'retry-key-123' },
+          headers: {
+            cookie: cookiePair(s.cookie),
+            origin: ORIGIN,
+            'x-csrf-token': s.csrf_token,
+            'idempotency-key': 'retry-key-123',
+          },
           body: '{}',
         }),
       );
