@@ -26,15 +26,23 @@ describe('A-20 buyer_isolation', () => {
     expect(co.ok).toBe(false);
     if (!co.ok) expect(co.error.code).toBe('not_found');
     // entitlement
-    expect(await getEntitlementForBuyer(w.td.db, { entitlement_id: e.id, buyer_id: 'buy_B' })).toBeNull();
-    expect(await getEntitlementForBuyer(w.td.db, { entitlement_id: e.id, buyer_id: 'buy_A' })).not.toBeNull();
+    expect(
+      await getEntitlementForBuyer(w.td.db, { entitlement_id: e.id, buyer_id: 'buy_B' }),
+    ).toBeNull();
+    expect(
+      await getEntitlementForBuyer(w.td.db, { entitlement_id: e.id, buyer_id: 'buy_A' }),
+    ).not.toBeNull();
     // link
     const link = await issueLink(w.deps, { entitlement_id: e.id, actor: BUYER_B });
     expect(link.ok).toBe(false);
     if (!link.ok) expect(link.error.code).toBe('not_found');
     // receipt
-    expect(await getReceiptForBuyer(w.td.db, { order_id: a.order_id, buyer_id: 'buy_B' })).toBeNull();
-    expect(await getReceiptForBuyer(w.td.db, { order_id: a.order_id, buyer_id: 'buy_A' })).not.toBeNull();
+    expect(
+      await getReceiptForBuyer(w.td.db, { order_id: a.order_id, buyer_id: 'buy_B' }),
+    ).toBeNull();
+    expect(
+      await getReceiptForBuyer(w.td.db, { order_id: a.order_id, buyer_id: 'buy_A' }),
+    ).not.toBeNull();
     // library
     expect(await getLibrary(w.td.db, { buyer_id: 'buy_B', now: w.td.clock.now() })).toEqual([]);
     // case
@@ -99,7 +107,9 @@ describe('A-21 ledger_append_only', () => {
       message = String((error as Error).message);
     }
     // A syntax or column error must not pass for a protection: the trigger's own words are needed.
-    return /append-only|not allowed|truncate|immutable|may not|cannot change|only/i.test(message) ? message : `OTHER: ${message}`;
+    return /append-only|not allowed|truncate|immutable|may not|cannot change|only/i.test(message)
+      ? message
+      : `OTHER: ${message}`;
   };
 
   it('UPDATE and DELETE on ledger, receipts, approvals, access events and audit log raise', async () => {
@@ -118,10 +128,17 @@ describe('A-21 ledger_append_only', () => {
     };
     for (const [table, sql] of Object.entries(updates)) {
       expect(await denied(w, sql), `UPDATE ${table} was allowed`).toMatch(/^(?!OTHER).+/s);
-      expect(await denied(w, `DELETE FROM ${table}`), `DELETE ${table} was allowed`).toMatch(/^(?!OTHER).+/s);
-      expect(await denied(w, `TRUNCATE ${table} CASCADE`), `TRUNCATE ${table} was allowed`).toMatch(/^(?!OTHER).+/s);
+      expect(await denied(w, `DELETE FROM ${table}`), `DELETE ${table} was allowed`).toMatch(
+        /^(?!OTHER).+/s,
+      );
+      expect(await denied(w, `TRUNCATE ${table} CASCADE`), `TRUNCATE ${table} was allowed`).toMatch(
+        /^(?!OTHER).+/s,
+      );
     }
-    const amount = await one<{ s: string | number }>(w, "SELECT sum(amount_minor) AS s FROM ledger_entries WHERE kind = 'sale'");
+    const amount = await one<{ s: string | number }>(
+      w,
+      "SELECT sum(amount_minor) AS s FROM ledger_entries WHERE kind = 'sale'",
+    );
     expect(Number(amount.s)).toBe(40);
   });
 
@@ -131,7 +148,9 @@ describe('A-21 ledger_append_only', () => {
       `INSERT INTO outbound_approvals (id, approval_ref, scope, operations, max_amount_minor, max_calls_per_day, valid_until, approved_by, created_at, updated_at)
        VALUES ('oap_gate1', 'gate-ref-1', 'gate', ARRAY['create_order'], 100, 1, '2026-12-01T00:00:00Z', 'owner', '2026-10-21T10:00:00Z', '2026-10-21T10:00:00Z')`,
     );
-    expect(await denied(w, "UPDATE outbound_approvals SET max_calls_per_day = 99")).toMatch(/^(?!OTHER).+/s);
+    expect(await denied(w, 'UPDATE outbound_approvals SET max_calls_per_day = 99')).toMatch(
+      /^(?!OTHER).+/s,
+    );
     expect(await denied(w, 'DELETE FROM outbound_approvals')).toMatch(/^(?!OTHER).+/s);
   });
 });

@@ -17,12 +17,28 @@ import {
 import type { Transport } from '@umsbx/contracts';
 import { createLogger } from '@umsbx/obs';
 import { createPayPalAdapter } from '@umsbx/paypal';
-import { describeDryRunOnly, describePayPalConformance, dryRunSubject, createReqFor, fakeClock, T0 } from '@umsbx/testkit';
+import {
+  describeDryRunOnly,
+  describePayPalConformance,
+  dryRunSubject,
+  createReqFor,
+  fakeClock,
+  T0,
+} from '@umsbx/testkit';
 import { FixtureFileSchema } from '@umsbx/transport';
 import type { FixtureFile } from '@umsbx/transport';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const SKIP_DIRS = new Set(['node_modules', '.git', '.next', 'dist', 'coverage', '.turbo', 'test-results', 'playwright-report']);
+const SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.next',
+  'dist',
+  'coverage',
+  '.turbo',
+  'test-results',
+  'playwright-report',
+]);
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -81,12 +97,21 @@ describe('A-23 fixtures_map', () => {
             kind: 'response',
             status: fx.response.status,
             headers: { ...fx.response.headers },
-            body: typeof fx.response.body === 'string' ? fx.response.body : JSON.stringify(fx.response.body),
+            body:
+              typeof fx.response.body === 'string'
+                ? fx.response.body
+                : JSON.stringify(fx.response.body),
             duration_ms: 1,
           };
         },
       };
-      const port = createPayPalAdapter({ transport, clock: fakeClock(T0), log, credentials: null, record: async () => undefined });
+      const port = createPayPalAdapter({
+        transport,
+        clock: fakeClock(T0),
+        log,
+        credentials: null,
+        record: async () => undefined,
+      });
       const id = fx.meta.expected_id ?? 'ABC123';
       switch (op) {
         case 'create_order':
@@ -96,14 +121,24 @@ describe('A-23 fixtures_map', () => {
           OrderReadSchema.parse(await port.getOrder(id));
           break;
         case 'capture_order':
-          CaptureResSchema.parse(await port.captureOrder({ provider_order_id: id, request_id: 'umsC-gate-req-0123456789abcdef0123456789' }));
+          CaptureResSchema.parse(
+            await port.captureOrder({
+              provider_order_id: id,
+              request_id: 'umsC-gate-req-0123456789abcdef0123456789',
+            }),
+          );
           break;
         case 'get_capture':
           CaptureReadSchema.parse(await port.getCapture(id));
           break;
         case 'refund_capture':
           RefundResSchema.parse(
-            await port.refundCapture({ capture_id: id, request_id: 'umsR-gate-req-0123456789abcdef0123456789', amount: null, note: 'gate' }),
+            await port.refundCapture({
+              capture_id: id,
+              request_id: 'umsR-gate-req-0123456789abcdef0123456789',
+              amount: null,
+              note: 'gate',
+            }),
           );
           break;
         case 'get_refund':
@@ -119,9 +154,14 @@ describe('A-23 fixtures_map', () => {
       expect(f).toBeTruthy();
     }
     expect(mapped).toBeGreaterThanOrEqual(55);
-    expect(Object.keys(byOp).sort()).toEqual(
-      ['capture_order', 'create_order', 'get_capture', 'get_order', 'get_refund', 'refund_capture'],
-    );
+    expect(Object.keys(byOp).sort()).toEqual([
+      'capture_order',
+      'create_order',
+      'get_capture',
+      'get_order',
+      'get_refund',
+      'refund_capture',
+    ]);
   });
 });
 
@@ -139,10 +179,13 @@ describe('A-24 conformance_dryrun', () => {
 
 // ---------------------------------------------------------------------------------------------
 describe('A-25 no_secret_in_bundle (source side; the build scan is the gate command)', () => {
-  const web = allFiles.filter((f) => rel(f).startsWith('apps/web/') && /\.(tsx?|mjs|js|json)$/.test(f));
+  const web = allFiles.filter(
+    (f) => rel(f).startsWith('apps/web/') && /\.(tsx?|mjs|js|json)$/.test(f),
+  );
   const publicNames = new Set<string>();
   for (const f of web) {
-    for (const m of readFileSync(f, 'utf8').matchAll(/\bNEXT_PUBLIC_[A-Z0-9_]+\b/g)) publicNames.add(m[0]);
+    for (const m of readFileSync(f, 'utf8').matchAll(/\bNEXT_PUBLIC_[A-Z0-9_]+\b/g))
+      publicNames.add(m[0]);
   }
 
   it('the only NEXT_PUBLIC_ name in the app is the environment label', () => {
@@ -150,12 +193,15 @@ describe('A-25 no_secret_in_bundle (source side; the build scan is the gate comm
   });
 
   it('no client component reads process.env or names a secret variable', () => {
-    const SECRET = /\b(PAYPAL_CLIENT_SECRET|PAYPAL_CLIENT_ID|PAYPAL_WEBHOOK_ID|DATABASE_URL|UMS_[A-Z_]*SECRET|UMS_DEMO_PASSCODE_HASH|UMS_OUTBOUND_APPROVAL_REF)\b/;
+    const SECRET =
+      /\b(PAYPAL_CLIENT_SECRET|PAYPAL_CLIENT_ID|PAYPAL_WEBHOOK_ID|DATABASE_URL|UMS_[A-Z_]*SECRET|UMS_DEMO_PASSCODE_HASH|UMS_OUTBOUND_APPROVAL_REF)\b/;
     for (const f of web.filter((x) => /\.tsx?$/.test(x))) {
       const text = readFileSync(f, 'utf8');
       if (!/^\s*['"]use client['"]/m.test(text)) continue;
       expect(SECRET.test(text), `${rel(f)} names a secret in a client component`).toBe(false);
-      expect(/process\.env/.test(text), `${rel(f)} reads process.env in a client component`).toBe(false);
+      expect(/process\.env/.test(text), `${rel(f)} reads process.env in a client component`).toBe(
+        false,
+      );
     }
   });
 
@@ -163,7 +209,10 @@ describe('A-25 no_secret_in_bundle (source side; the build scan is the gate comm
     const text = readFileSync(join(ROOT, '.env.example'), 'utf8');
     for (const line of text.split('\n')) {
       if (line.trim() === '' || line.trim().startsWith('#')) continue;
-      expect(/^[A-Z0-9_]+=$/.test(line.trim()), `value in .env.example: ${line.split('=')[0]}`).toBe(true);
+      expect(
+        /^[A-Z0-9_]+=$/.test(line.trim()),
+        `value in .env.example: ${line.split('=')[0]}`,
+      ).toBe(true);
     }
   });
 });
@@ -197,7 +246,12 @@ describe('A-26 no_live_host_in_tree', () => {
       const text = readFileSync(f, 'utf8');
       for (const m of text.matchAll(HOST)) {
         const host = m[0].toLowerCase();
-        if (ALLOWED_SUB.has(host) || host.endsWith(SANDBOX_SUFFIX) || host === SANDBOX_SUFFIX.slice(1)) continue;
+        if (
+          ALLOWED_SUB.has(host) ||
+          host.endsWith(SANDBOX_SUFFIX) ||
+          host === SANDBOX_SUFFIX.slice(1)
+        )
+          continue;
         bad.push(`${r}: ${host}`);
       }
     }
@@ -207,10 +261,17 @@ describe('A-26 no_live_host_in_tree', () => {
   it('the sandbox base URL is one constant, in the transport package', () => {
     const SBX = ['api-m', 'sandbox', 'paypal', 'com'].join('.');
     const holders = allFiles
-      .filter((f) => /\.(ts|tsx|mjs)$/.test(f) && !rel(f).startsWith('tests/mvp-a/') && !/\.(test|spec)\./.test(f))
+      .filter(
+        (f) =>
+          /\.(ts|tsx|mjs)$/.test(f) &&
+          !rel(f).startsWith('tests/mvp-a/') &&
+          !/\.(test|spec)\./.test(f),
+      )
       .filter((f) => readFileSync(f, 'utf8').includes(SBX))
       .map(rel);
-    expect(holders.filter((h) => !h.startsWith('scripts/'))).toEqual(['packages/transport/src/endpoints.ts']);
+    expect(holders.filter((h) => !h.startsWith('scripts/'))).toEqual([
+      'packages/transport/src/endpoints.ts',
+    ]);
   });
 });
 
@@ -233,9 +294,14 @@ describe('A-27 isolation_from_simulation', () => {
   it('no import specifier names the simulation scopes or repository', () => {
     const bad: string[] = [];
     for (const f of allFiles) {
-      if (lstatSync(f).isSymbolicLink() || !CODE.test(f) || rel(f).startsWith('tests/mvp-a/')) continue;
+      if (lstatSync(f).isSymbolicLink() || !CODE.test(f) || rel(f).startsWith('tests/mvp-a/'))
+        continue;
       for (const s of specifiers(readFileSync(f, 'utf8'))) {
-        if (/^@unitmarket(-sim)?\//.test(s) || s.includes(SIM_REPO) || /(^|\/)simulation(\/|$)/.test(s)) {
+        if (
+          /^@unitmarket(-sim)?\//.test(s) ||
+          s.includes(SIM_REPO) ||
+          /(^|\/)simulation(\/|$)/.test(s)
+        ) {
           bad.push(`${rel(f)}: ${s}`);
         }
       }
@@ -247,7 +313,12 @@ describe('A-27 isolation_from_simulation', () => {
     const bad: string[] = [];
     for (const f of allFiles) {
       // scripts/*.test.ts write import lines into temporary files as test data; they are not imports.
-      if (lstatSync(f).isSymbolicLink() || !CODE.test(f) || /^scripts\/[^/]+\.test\.ts$/.test(rel(f))) continue;
+      if (
+        lstatSync(f).isSymbolicLink() ||
+        !CODE.test(f) ||
+        /^scripts\/[^/]+\.test\.ts$/.test(rel(f))
+      )
+        continue;
       for (const s of specifiers(readFileSync(f, 'utf8'))) {
         if (!s.startsWith('.')) continue;
         const target = resolve(dirname(f), s);
@@ -260,10 +331,13 @@ describe('A-27 isolation_from_simulation', () => {
   it('no package.json or tsconfig names the simulation scopes, and no dependency is a path or git link', () => {
     const bad: string[] = [];
     for (const f of allFiles) {
-      if (lstatSync(f).isSymbolicLink() || !/(^|\/)(package\.json|tsconfig[^/]*\.json)$/.test(f)) continue;
+      if (lstatSync(f).isSymbolicLink() || !/(^|\/)(package\.json|tsconfig[^/]*\.json)$/.test(f))
+        continue;
       const text = readFileSync(f, 'utf8');
-      if (/"@unitmarket(-sim)?\//.test(text) || text.includes(SIM_REPO)) bad.push(`${rel(f)}: scope`);
-      if (/"(?:link|file|portal|git\+[a-z]+|github):/.test(text)) bad.push(`${rel(f)}: path or git dependency`);
+      if (/"@unitmarket(-sim)?\//.test(text) || text.includes(SIM_REPO))
+        bad.push(`${rel(f)}: scope`);
+      if (/"(?:link|file|portal|git\+[a-z]+|github):/.test(text))
+        bad.push(`${rel(f)}: path or git dependency`);
     }
     expect(bad).toEqual([]);
   });

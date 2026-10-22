@@ -8,18 +8,28 @@ import type { World } from './world';
 
 const n = async (w: World, sql: string) => Number((await one<{ c: string | number }>(w, sql)).c);
 const ent = (w: World) =>
-  one<{ money_state: string; access_state: string }>(w, 'SELECT money_state, access_state FROM entitlements LIMIT 1');
+  one<{ money_state: string; access_state: string }>(
+    w,
+    'SELECT money_state, access_state FROM entitlements LIMIT 1',
+  );
 
 describe('adversarial: capture and read-back', () => {
   it('replaying the return after payment changes nothing: one capture, one sale, same window', async () => {
     const w = await makeWorld();
     const first = await buy(w, BUYER_A, 'tide-tables');
-    const win = await one<{ started_at: Date; ends_at: Date }>(w, 'SELECT started_at, ends_at FROM access_windows LIMIT 1');
+    const win = await one<{ started_at: Date; ends_at: Date }>(
+      w,
+      'SELECT started_at, ends_at FROM access_windows LIMIT 1',
+    );
     w.td.clock.advance(3_600_000);
-    for (let i = 0; i < 5; i += 1) await onBuyerReturn(w.deps, { order_ref: first.order_ref, actor: BUYER_A });
+    for (let i = 0; i < 5; i += 1)
+      await onBuyerReturn(w.deps, { order_ref: first.order_ref, actor: BUYER_A });
     expect(w.paypal.count('capture')).toBe(1);
     expect(await n(w, "SELECT count(*) AS c FROM ledger_entries WHERE kind = 'sale'")).toBe(1);
-    const after = await one<{ started_at: Date; ends_at: Date }>(w, 'SELECT started_at, ends_at FROM access_windows LIMIT 1');
+    const after = await one<{ started_at: Date; ends_at: Date }>(
+      w,
+      'SELECT started_at, ends_at FROM access_windows LIMIT 1',
+    );
     expect(new Date(after.started_at).toISOString()).toBe(new Date(win.started_at).toISOString());
     expect(new Date(after.ends_at).toISOString()).toBe(new Date(win.ends_at).toISOString());
   });
@@ -40,7 +50,9 @@ describe('adversarial: capture and read-back', () => {
     await buy(w, BUYER_A, 'tide-tables');
     expect((await ent(w)).access_state).toBe('locked');
     expect(await n(w, 'SELECT count(*) AS c FROM ledger_entries')).toBe(0);
-    expect(await n(w, 'SELECT count(*) AS c FROM access_windows WHERE started_at IS NOT NULL')).toBe(0);
+    expect(
+      await n(w, 'SELECT count(*) AS c FROM access_windows WHERE started_at IS NOT NULL'),
+    ).toBe(0);
   });
 
   it('a 202 claim with no capture status never unlocks', async () => {
@@ -56,7 +68,11 @@ describe('adversarial: capture and read-back', () => {
     const w = await makeWorld();
     const order = await placeAndCheckout(w, BUYER_A, 'tide-tables');
     w.paypal.approve(order.order_ref);
-    await Promise.all(Array.from({ length: 10 }, () => onBuyerReturn(w.deps, { order_ref: order.order_ref, actor: BUYER_B })));
+    await Promise.all(
+      Array.from({ length: 10 }, () =>
+        onBuyerReturn(w.deps, { order_ref: order.order_ref, actor: BUYER_B }),
+      ),
+    );
     expect(w.paypal.count('capture')).toBe(0);
     expect((await ent(w)).access_state).toBe('locked');
   });

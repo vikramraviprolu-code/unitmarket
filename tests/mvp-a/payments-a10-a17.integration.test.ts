@@ -15,7 +15,10 @@ const ent = (w: World) =>
     'SELECT id, money_state, access_state FROM entitlements ORDER BY created_at LIMIT 1',
   );
 const orderRow = (w: World) =>
-  one<{ id: string; status: string }>(w, 'SELECT id, status FROM orders ORDER BY created_at LIMIT 1');
+  one<{ id: string; status: string }>(
+    w,
+    'SELECT id, status FROM orders ORDER BY created_at LIMIT 1',
+  );
 const count = async (w: World, sql: string): Promise<number> =>
   Number((await one<{ c: string | number }>(w, sql)).c);
 const outboundOn = (w: World) =>
@@ -27,7 +30,10 @@ describe('A-10 order_before_charge', () => {
     const seen: Record<string, number> = {};
     w.paypal.onCreate = async () => {
       seen.orders = await count(w, 'SELECT count(*) AS c FROM orders');
-      seen.units = await count(w, "SELECT count(*) AS c FROM order_units WHERE status = 'expected'");
+      seen.units = await count(
+        w,
+        "SELECT count(*) AS c FROM order_units WHERE status = 'expected'",
+      );
       seen.pending = await count(
         w,
         "SELECT count(*) AS c FROM entitlements WHERE money_state = 'pending' AND access_state = 'locked'",
@@ -121,7 +127,9 @@ describe('A-13 mismatch_freezes', () => {
       expect((await ent(w)).access_state).toBe('locked');
       expect(await count(w, 'SELECT count(*) AS c FROM alerts')).toBeGreaterThanOrEqual(1);
       await applyAutomaticRules(w.td, { max_items: 20 });
-      expect(await count(w, "SELECT count(*) AS c FROM recovery_cases WHERE kind = 'frozen_order'")).toBe(1);
+      expect(
+        await count(w, "SELECT count(*) AS c FROM recovery_cases WHERE kind = 'frozen_order'"),
+      ).toBe(1);
       expect(await count(w, 'SELECT count(*) AS c FROM ledger_entries')).toBe(0);
     });
   }
@@ -142,7 +150,9 @@ describe('A-14 lost_response_one_capture', () => {
     const captures = w.paypal.calls.filter((c) => c.op === 'capture');
     expect(captures.length).toBeLessThanOrEqual(2);
     expect(new Set(captures.map((c) => c.request_id)).size).toBe(1);
-    expect(await count(w, "SELECT count(*) AS c FROM order_units WHERE capture_id IS NOT NULL")).toBe(1);
+    expect(
+      await count(w, 'SELECT count(*) AS c FROM order_units WHERE capture_id IS NOT NULL'),
+    ).toBe(1);
     expect(await count(w, "SELECT count(*) AS c FROM ledger_entries WHERE kind = 'sale'")).toBe(1);
     const e = await ent(w);
     expect(e.access_state).toBe('available');
@@ -160,9 +170,7 @@ describe('A-14 lost_response_one_capture', () => {
     const before = w.paypal.count('capture');
     w.td.clock.advance(5 * 3_600_000 + 60_000);
     await runDue(w.deps, { max_items: 10 });
-    const keys = new Set(
-      w.paypal.calls.filter((c) => c.op === 'capture').map((c) => c.request_id),
-    );
+    const keys = new Set(w.paypal.calls.filter((c) => c.op === 'capture').map((c) => c.request_id));
     // Never a second capture with a key PayPal may have forgotten; at most the same key once more
     // before 5 h, and no resend of any kind after it.
     expect(w.paypal.count('capture')).toBe(before);

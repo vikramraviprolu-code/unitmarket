@@ -43,9 +43,7 @@ describe('A-05 offer_quote_within_ceiling', () => {
       expect(r.value).toEqual({ kind: 'no_match', reason: 'above_ceiling' });
     }
     // No substitution: nothing else was quoted for this buyer.
-    expect(
-      Number((await one<{ c: string }>(w, 'SELECT count(*) AS c FROM quotes')).c),
-    ).toBe(0);
+    expect(Number((await one<{ c: string }>(w, 'SELECT count(*) AS c FROM quotes')).c)).toBe(0);
   });
 });
 
@@ -136,7 +134,10 @@ describe('A-08 snapshot_frozen', () => {
       actor: BUYER_A,
     });
     expect(placed.ok).toBe(true);
-    const o = await one<{ total_minor: string | number }>(w, 'SELECT total_minor FROM orders LIMIT 1');
+    const o = await one<{ total_minor: string | number }>(
+      w,
+      'SELECT total_minor FROM orders LIMIT 1',
+    );
     expect(Number(o.total_minor)).toBe(40);
   });
 
@@ -160,7 +161,11 @@ describe('A-08 snapshot_frozen', () => {
     );
     expect(new Date(row.expires_at).getTime() - new Date(row.created_at).getTime()).toBe(MIN15);
     w.td.clock.advance(MIN15 + 1000);
-    const r = await placeOrder(w.deps, { approval_id: g.approval_id, token: g.token, actor: BUYER_A });
+    const r = await placeOrder(w.deps, {
+      approval_id: g.approval_id,
+      token: g.token,
+      actor: BUYER_A,
+    });
     expect(r.ok).toBe(false);
     if (!r.ok && r.error.code === 'approval') expect(r.error.error.http).toBe(410);
     else throw new Error(`unexpected ${JSON.stringify(r)}`);
@@ -169,9 +174,17 @@ describe('A-08 snapshot_frozen', () => {
   it('reusing an approval is 409', async () => {
     const w = await makeWorld();
     const g = await approvalFor(w, BUYER_A, 'tide-tables');
-    const first = await placeOrder(w.deps, { approval_id: g.approval_id, token: g.token, actor: BUYER_A });
+    const first = await placeOrder(w.deps, {
+      approval_id: g.approval_id,
+      token: g.token,
+      actor: BUYER_A,
+    });
     expect(first.ok).toBe(true);
-    const again = await placeOrder(w.deps, { approval_id: g.approval_id, token: g.token, actor: BUYER_A });
+    const again = await placeOrder(w.deps, {
+      approval_id: g.approval_id,
+      token: g.token,
+      actor: BUYER_A,
+    });
     expect(again.ok).toBe(false);
     if (!again.ok) {
       const http = again.error.code === 'approval' ? again.error.error.http : again.error.http;
@@ -182,7 +195,11 @@ describe('A-08 snapshot_frozen', () => {
   it("buyer B cannot place buyer A's approval (404)", async () => {
     const w = await makeWorld();
     const g = await approvalFor(w, BUYER_A, 'tide-tables');
-    const r = await placeOrder(w.deps, { approval_id: g.approval_id, token: g.token, actor: BUYER_B });
+    const r = await placeOrder(w.deps, {
+      approval_id: g.approval_id,
+      token: g.token,
+      actor: BUYER_B,
+    });
     expect(r.ok).toBe(false);
     if (!r.ok && r.error.code === 'approval') expect(r.error.error.http).toBe(404);
     else throw new Error(`unexpected ${JSON.stringify(r)}`);
@@ -214,15 +231,29 @@ describe('A-09 mixed_currency_rejected', () => {
        VALUES ('prp_mix', 'brf_mix', 'buy_A', $1::jsonb, '[]'::jsonb, $2, $2)`,
       [
         JSON.stringify([
-          { quote: { quote_id: usd.quote_id, offer_id: usd.offer_id }, fit: null, title: 't', publisher: 'p' },
-          { quote: { quote_id: 'quo_gbp', offer_id: gbpOffer.id }, fit: null, title: 't', publisher: 'p' },
+          {
+            quote: { quote_id: usd.quote_id, offer_id: usd.offer_id },
+            fit: null,
+            title: 't',
+            publisher: 'p',
+          },
+          {
+            quote: { quote_id: 'quo_gbp', offer_id: gbpOffer.id },
+            fit: null,
+            title: 't',
+            publisher: 'p',
+          },
         ]),
         now,
       ],
     );
     const r = await requestApproval(w.deps, {
       actor: BUYER_A,
-      selection: { kind: 'proposal', proposal_id: 'prp_mix', offer_ids: [usd.offer_id, gbpOffer.id] },
+      selection: {
+        kind: 'proposal',
+        proposal_id: 'prp_mix',
+        offer_ids: [usd.offer_id, gbpOffer.id],
+      },
       consent: CONSENT,
     });
     expect(r.ok).toBe(false);

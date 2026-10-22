@@ -238,7 +238,11 @@ export async function quoteFor(
   w: World,
   buyer: Actor,
   code: string,
-  extra: { option?: 'keep_retrieve' | 'online_read'; ceiling_minor?: number; proposed_minor?: number } = {},
+  extra: {
+    option?: 'keep_retrieve' | 'online_read';
+    ceiling_minor?: number;
+    proposed_minor?: number;
+  } = {},
 ): Promise<Quote> {
   const r = await startFromOffer(w.deps, {
     offer: offerRef(HARBOUR, code),
@@ -266,9 +270,18 @@ export async function approvalFor(w: World, buyer: Actor, code: string, option =
 }
 
 /** Quote, approval, order, checkout (create call). Stops before the buyer approves at PayPal. */
-export async function placeAndCheckout(w: World, buyer: Actor, code: string, option = 'keep_retrieve') {
+export async function placeAndCheckout(
+  w: World,
+  buyer: Actor,
+  code: string,
+  option = 'keep_retrieve',
+) {
   const g = await approvalFor(w, buyer, code, option);
-  const placed = await placeOrder(w.deps, { approval_id: g.approval_id, token: g.token, actor: buyer });
+  const placed = await placeOrder(w.deps, {
+    approval_id: g.approval_id,
+    token: g.token,
+    actor: buyer,
+  });
   if (!placed.ok) throw new Error(`place: ${JSON.stringify(placed.error)}`);
   const co = await beginCheckout(w.deps, { order_id: placed.value.order_id, actor: buyer });
   if (!co.ok) throw new Error(`checkout: ${co.error.code}`);

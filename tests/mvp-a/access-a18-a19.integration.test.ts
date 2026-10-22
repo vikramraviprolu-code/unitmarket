@@ -110,7 +110,10 @@ describe('A-22 labels_from_data (receipts and library)', () => {
   it('every receipt and library item shows the label derived from the stored environment', async () => {
     const w = await makeWorld();
     await buy(w, BUYER_A, 'tide-tables');
-    const o = await one<{ id: string; environment: string }>(w, 'SELECT id, environment FROM orders LIMIT 1');
+    const o = await one<{ id: string; environment: string }>(
+      w,
+      'SELECT id, environment FROM orders LIMIT 1',
+    );
     expect(o.environment).toBe('dryrun');
     const receipt = await getReceiptForBuyer(w.td.db, { order_id: o.id, buyer_id: 'buy_A' });
     expect(receipt?.environment).toBe('dryrun');
