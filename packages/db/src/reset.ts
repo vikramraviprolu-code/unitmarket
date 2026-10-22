@@ -4,7 +4,7 @@ import type { Database } from '@umsbx/contracts';
 import type { DbTarget } from './driver';
 
 export interface ResetOptions {
-  /** Needed (with env UMS_TEST_RESET=1) to reset a target that is not in memory. */
+  /** The explicit test flag a disposable disk database needs; an in-memory target needs none. */
   confirm?: 'RESET_TEST_DATABASE';
 }
 
@@ -17,17 +17,17 @@ export interface ResetOptions {
 //
 // For tests only: it is exported from `@umsbx/db` testing entry (src/testing.ts), not from the
 // production entry. It refuses unless the driver reports an in-memory target, or the caller passes
-// confirm: 'RESET_TEST_DATABASE' and the environment sets UMS_TEST_RESET=1 (a disposable disk test
-// database). A driver that does not report its target is treated as not in memory.
+// confirm: 'RESET_TEST_DATABASE' (a disposable disk test database). A driver that does not report
+// its target is treated as not in memory and needs the same flag. Nothing here reads process.env (S3).
 export async function resetDatabase(
   db: Database & { readonly target?: DbTarget['kind'] },
   options: ResetOptions = {},
 ): Promise<void> {
   const inMemory = db.target === 'pglite-memory';
-  const flagged = options.confirm === 'RESET_TEST_DATABASE' && process.env.UMS_TEST_RESET === '1';
+  const flagged = options.confirm === 'RESET_TEST_DATABASE';
   if (!inMemory && !flagged) {
     throw new Error(
-      'resetDatabase refused: the target is not an in-memory test database (disk targets need confirm and UMS_TEST_RESET=1)',
+      "resetDatabase refused: the target is not an in-memory test database (pass confirm: 'RESET_TEST_DATABASE' for a disposable disk database)",
     );
   }
   const tables = await db.query<{ tablename: string }>(

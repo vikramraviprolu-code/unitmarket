@@ -1258,11 +1258,6 @@ describe('review A: ids reject bidi and invisible characters (L2)', () => {
 });
 
 describe('review A: reset guard (M4)', () => {
-  const OLD = process.env.UMS_TEST_RESET;
-  afterAll(() => {
-    if (OLD === undefined) delete process.env.UMS_TEST_RESET;
-    else process.env.UMS_TEST_RESET = OLD;
-  });
   async function disk() {
     const dir = mkdtempSync(join(tmpdir(), 'ums-reset-'));
     const d = await openDatabase({ kind: 'pglite-disk', dir });
@@ -1279,14 +1274,8 @@ describe('review A: reset guard (M4)', () => {
       d.exec("SELECT set_config('ums.allow_reset', 'on', false); TRUNCATE ledger_entries"),
     ).rejects.toThrow(/not allowed/i);
   });
-  it('M4: resetDatabase refuses a disk target unless the test flag and the confirmation are both given', async () => {
+  it('M4: resetDatabase refuses a disk target unless the explicit test flag is given', async () => {
     const d = await disk();
-    delete process.env.UMS_TEST_RESET;
-    await expect(resetDatabase(d)).rejects.toThrow(/memory|refus/i);
-    await expect(resetDatabase(d, { confirm: 'RESET_TEST_DATABASE' })).rejects.toThrow(
-      /memory|refus/i,
-    );
-    process.env.UMS_TEST_RESET = '1';
     await expect(resetDatabase(d)).rejects.toThrow(/memory|refus/i);
     await resetDatabase(d, { confirm: 'RESET_TEST_DATABASE' });
   });
