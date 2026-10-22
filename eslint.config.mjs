@@ -866,6 +866,29 @@ export const NAMED_EXEMPTIONS = [
       'MVP-A gate (lane 18, FIX-GATE2): the web composition and route handlers are reachable only by relative path (@umsbx/web exports no composition); needed for the HTTP-level A-20, A-22 and PERF-2 checks, the dry-run kill switch (M1) and the refused-boot check (A-01)',
     off: ['sbx/no-package-escape'],
   },
+  {
+    files: ['tools/spike-kit/src/spike.ts'],
+    reason:
+      'B-L6 spike kit: the owner-run entry reads process.env, the real clock and passes the global fetch to the guarded wire; --dry-run never builds that wire (tests spy on every network entry point)',
+    off: [
+      'no-restricted-properties',
+      'no-restricted-globals',
+      'no-restricted-syntax',
+      'sbx/no-global-alias',
+    ],
+  },
+  {
+    files: ['tools/spike-kit/src/spike.test.ts'],
+    reason:
+      'B-L6: the test imports node:net, tls, http, https and dns only to spy on them and prove zero network use',
+    off: ['no-restricted-imports', 'sbx/no-restricted-dynamic-import'],
+  },
+  {
+    files: ['tools/spike-kit/src/spike-cli.integration.test.ts'],
+    reason:
+      'B-L6: runs the kit as a child process under a network-blocking preload and passes it a minimal environment',
+    off: ['no-restricted-imports', 'no-restricted-properties', 'sbx/no-global-alias'],
+  },
 ];
 const namedExemptions = NAMED_EXEMPTIONS.map((e) => ({
   files: e.files,

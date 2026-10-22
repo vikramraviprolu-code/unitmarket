@@ -19,6 +19,9 @@ const ROOT = resolveRoot(process.argv, import.meta.url);
 const ALLOWED_DOCS_DIR = 'docs/design/';
 const MARKER = '.allow-live-hostnames';
 const SANDBOX_CONSTANT_MODULE = 'packages/transport/src/endpoints.ts';
+// B-L6: the owner-run spike kit is one dependency-free file that keeps its own copy of the host
+// (mvp-plan, Spike kit design); it never imports product packages.
+const SANDBOX_CONSTANT_COPIES = new Set([SANDBOX_CONSTANT_MODULE, 'tools/spike-kit/src/spike.ts']);
 
 // Built from parts so this file does not contain the strings it forbids.
 const P = 'paypal' + '.com';
@@ -237,7 +240,7 @@ const LIVE_MESSAGE = `live PayPal hostname (forbidden; only docs under ${ALLOWED
 for (const file of listFiles(ROOT)) {
   const inDocsAllow =
     docsAllowed && file.rel.startsWith(ALLOWED_DOCS_DIR) && file.rel.endsWith('.md');
-  const isConstant = file.rel === SANDBOX_CONSTANT_MODULE;
+  const isConstant = SANDBOX_CONSTANT_COPIES.has(file.rel);
   const text = read(file);
   const check = (line, views) => {
     if (inDocsAllow) return;
