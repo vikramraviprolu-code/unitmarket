@@ -382,8 +382,8 @@ interface ApprovalRow {
 
 const verifyError = (error: VerifyError): { ok: false; error: VerifyError } => err(error);
 
-// Order of checks: unknown, stored snapshot against its hash, token, expiry (now >= expires_at is
-// 410), single use, owner. Reads the stored row only; nothing is taken from live offers.
+// Order of checks: unknown, stored snapshot against its hash and its reader, token, owner (404),
+// expiry (now >= expires_at is 410), single use. Reads the stored row only; nothing is taken from live offers.
 export async function verifyApproval(
   tx: SqlExecutor,
   d: CoreDeps,
@@ -406,6 +406,10 @@ export async function verifyApproval(
     return verifyError({ code: 'snapshot_tampered', http: 403 });
   }
   if (recomputed !== row.content_hash) return verifyError({ code: 'snapshot_tampered', http: 403 });
+  // The buyer the snapshot was frozen for must be the buyer who owns the row.
+  if (snapshot.data.reader.buyer_id !== row.buyer_id) {
+    return verifyError({ code: 'snapshot_tampered', http: 403 });
+  }
 
   const expires_at = iso(row.expires_at);
   const ok_token = tokenMatches(
@@ -415,13 +419,14 @@ export async function verifyApproval(
   );
   if (!ok_token) return verifyError({ code: 'bad_token', http: 403 });
 
+  // Owner before expiry and use: another buyer must not learn the state of this approval.
+  if (i.actor.kind !== 'buyer' || i.actor.buyer_id !== row.buyer_id) {
+    return verifyError({ code: 'not_owner', http: 404 });
+  }
   if (d.clock.now().getTime() >= Date.parse(expires_at)) {
     return verifyError({ code: 'expired', http: 410 });
   }
   if (row.used_at !== null) return verifyError({ code: 'already_used', http: 409 });
-  if (i.actor.kind !== 'buyer' || i.actor.buyer_id !== row.buyer_id) {
-    return verifyError({ code: 'not_owner', http: 404 });
-  }
 
   const approval = ApprovalSchema.safeParse({
     approval_id: row.id,
