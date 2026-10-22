@@ -402,3 +402,38 @@ describe('match: unit level, P5 order payee, amount, capture, claim, status', ()
     expect(single(r)).toMatchObject({ result: 'mismatch', field: 'amount' });
   });
 });
+
+describe('match: the shape of a unit-level result (FIX-05A M4)', () => {
+  it('a clean read is ok: true at unit level (callers test `ok`)', () => {
+    const m = run(read());
+    expect(m.level).toBe('units');
+    expect(m.ok).toBe(true);
+  });
+  it('a unit-level result with a mismatch is still ok: true (the failure is in the unit)', () => {
+    const m = run(
+      read({}, [unitRead('unt_1', 'MERCH1', 401, null), unitRead('unt_2', 'MERCH2', 250, null)]),
+    );
+    expect(m).toMatchObject({ level: 'units', ok: true });
+  });
+  it('units come back in reference_id order whatever the order of the expected list', () => {
+    const exp = expected({
+      total_minor: 900,
+      units: [
+        { reference_id: 'unt_3', publisher_id: 'p3', payee_merchant_id: 'M3', amount_minor: 250 },
+        { reference_id: 'unt_1', publisher_id: 'p1', payee_merchant_id: 'M1', amount_minor: 400 },
+        { reference_id: 'unt_2', publisher_id: 'p2', payee_merchant_id: 'M2', amount_minor: 250 },
+      ],
+    });
+    const r = read({}, [
+      unitRead('unt_2', 'M2', 250, null),
+      unitRead('unt_3', 'M3', 250, null),
+      unitRead('unt_1', 'M1', 400, null),
+    ]);
+    const m = run(r, { exp });
+    expect(m.level === 'units' && m.units.map((u) => u.reference_id)).toEqual([
+      'unt_1',
+      'unt_2',
+      'unt_3',
+    ]);
+  });
+});
