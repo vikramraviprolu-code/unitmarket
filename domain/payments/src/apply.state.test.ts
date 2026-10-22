@@ -414,3 +414,112 @@ describe('several publishers in one order', () => {
     expect(await count(w, 'ledger_entries')).toBe(0);
   });
 });
+
+// FIX-05A M4: tests added for the mutants of lib/mutation-checks that survived on apply.ts.
+describe('M4: operations, refusals and declined units', () => {
+  const op = async (order_id: string, kind: string) =>
+    (
+      await w.rows<Record<string, unknown>>(
+        'SELECT * FROM operations WHERE order_id = $1 AND kind = $2',
+        [order_id, kind],
+      )
+    )[0];
+
+  it('an unknown order is refused with an error, never skipped', async () => {
+    w = await makeWorld();
+    const a = await sentCapture();
+    const read = await readOf(a);
+    await expect(apply('ord_NOPE' as Id, read, null)).rejects.toThrow(/unknown order/);
+  });
+
+  it('a declined unit that later shows a COMPLETED capture raises one unexpected_capture alert and stays denied', async () => {
+    w = await makeWorld();
+    const a = await sentCapture();
+    const base = await readOf(a);
+    await apply(a.order_id, setCapture(base, 0, { id: 'CAPD', status: 'DECLINED', fee: null }));
+    expect(await count(w, 'alerts', "kind = 'unexpected_capture'")).toBe(0);
+    const later = await apply(a.order_id, setCapture(base, 0, { id: 'CAPD', status: 'COMPLETED' }));
+    expect(later.alerts).toContain('unexpected_capture');
+    expect(await count(w, 'alerts', "kind = 'unexpected_capture'")).toBe(1);
+    expect((await unit(a.order_id)).status).toBe('declined');
+  });
+
+  it('a unit in mismatch is skipped by a later clean read: no alert, no unlock, it stays mismatch', async () => {
+    w = await makeWorld();
+    const a = await sentCapture();
+    const base = await readOf(a);
+    await apply(a.order_id, setCapture(base, 0, { id: 'CAPR', status: 'REFUNDED' }));
+    expect((await unit(a.order_id)).status).toBe('mismatch');
+    const clean = await apply(a.order_id, setCapture(base, 0, { id: 'CAPR', status: 'COMPLETED' }));
+    expect(clean.unlocked).toEqual([]);
+    expect(clean.alerts).not.toContain('unexpected_capture');
+    expect(await count(w, 'alerts', "kind = 'unexpected_capture'")).toBe(0);
+    expect((await unit(a.order_id)).status).toBe('mismatch');
+    expect(await count(w, 'ledger_entries')).toBe(0);
+  });
+
+  it('a refused capture and a read with no capture: the report names the declined units and the order fails', async () => {
+    w = await makeWorld();
+    const a = await sentCapture();
+    await w.db.query(
+      "UPDATE operations SET state = 'failed', failure_reason = 'rejected' WHERE order_id = $1 AND kind = 'capture'",
+      [a.order_id],
+    );
+    const report = await apply(a.order_id, setCapture(await readOf(a), 0, null));
+    expect(report.order_status).toBe('failed');
+    expect(report.declined).toHaveLength(1);
+    expect(report.declined[0]).toBe((await unit(a.order_id)).id);
+    expect((await unit(a.order_id)).status).toBe('declined');
+  });
+
+  it('a refused capture where the read shows a pending capture is not closed as not charged', async () => {
+    w = await makeWorld();
+    const a = await sentCapture();
+    await w.db.query(
+      "UPDATE operations SET state = 'failed', failure_reason = 'rejected' WHERE order_id = $1 AND kind = 'capture'",
+      [a.order_id],
+    );
+    const report = await apply(
+      a.order_id,
+      setCapture(await readOf(a), 0, { id: 'CAPP', status: 'PENDING', reason: 'PENDING_REVIEW' }),
+    );
+    expect(report.order_status).toBe('unresolved');
+    expect(report.declined).toEqual([]);
+    expect((await unit(a.order_id)).status).not.toBe('declined');
+  });
+
+  it('a read that shows the capture confirms the unknown capture operation and the read-back operation', async () => {
+    w = await makeWorld();
+    const a = await sentCapture();
+    const base = await readOf(a);
+    await w.db.query(
+      "UPDATE operations SET state = 'unknown', lease_until = NULL, reconcile_until = now() + interval '1 day' WHERE order_id = $1 AND kind = 'capture'",
+      [a.order_id],
+    );
+    await apply(a.order_id, setCapture(base, 0, null));
+    expect((await op(a.order_id, 'readback'))?.['state']).toBe('unknown');
+    expect((await op(a.order_id, 'capture'))?.['state']).toBe('unknown');
+    await apply(a.order_id, base);
+    expect((await op(a.order_id, 'capture'))?.['state']).toBe('confirmed');
+    expect((await op(a.order_id, 'readback'))?.['state']).toBe('confirmed');
+  });
+
+  it('an unresolved order re-arms a read-back operation that had ended, and keeps exactly one', async () => {
+    w = await makeWorld();
+    const a = await sentCapture();
+    const none = setCapture(await readOf(a), 0, null);
+    await apply(a.order_id, none);
+    await w.db.query(
+      "UPDATE operations SET state = 'failed', failure_reason = 'rejected' WHERE order_id = $1 AND kind = 'readback'",
+      [a.order_id],
+    );
+    await apply(a.order_id, none);
+    const rows = await w.rows<Record<string, unknown>>(
+      "SELECT * FROM operations WHERE order_id = $1 AND kind = 'readback'",
+      [a.order_id],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!['state']).toBe('unknown');
+    expect(rows[0]!['failure_reason']).toBeNull();
+  });
+});
