@@ -11,6 +11,9 @@ describe('next build leaves the tree stable (L4)', () => {
     const raw = read('apps/web/tsconfig.json');
     expect(raw).toBe(`${JSON.stringify(JSON.parse(raw), null, 2)}\n`);
     expect(JSON.parse(raw).include).toContain('.next/types/**/*.ts');
+    // The generated route types reject the withRoute handler shape under plain tsc, so a build must
+    // not make `typecheck` fail: they stay out of the program.
+    expect(JSON.parse(raw).exclude).toContain('.next/types');
   });
   it('next-env.d.ts carries the routes reference the build adds', () => {
     expect(read('apps/web/next-env.d.ts')).toContain('.next/types/routes.d.ts');
