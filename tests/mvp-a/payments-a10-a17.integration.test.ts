@@ -7,7 +7,7 @@ import { getLibrary } from '@umsbx/library';
 import { onBuyerReturn, runDue } from '@umsbx/payments';
 import { describe, expect, it } from 'vitest';
 import { BUYER_A, DAY, HARBOUR, buy, makeWorld, one, placeAndCheckout, rows } from './world';
-import type { World } from './world';
+import type { Tamper, World } from './world';
 
 const ent = (w: World) =>
   one<{ id: string; money_state: string; access_state: string }>(
@@ -89,33 +89,29 @@ describe('A-12 readback_match_unlocks_and_starts_clock', () => {
     w.td.clock.advance(2 * 3_600_000);
     w.paypal.readsUnavailableAfterCapture = false;
     await outboundOn(w);
-    const o = await orderRow(w);
-    // The return is repeated after the provider can be read: the read-back now verifies.
-    await onBuyerReturn(w.deps, { order_ref, actor: BUYER_A });
+    // Read-back is possible again two hours later; the periodic reconcile (not the buyer) verifies.
+    w.td.clock.advance(60_000);
     await runDue(w.deps, { max_items: 10 });
+    await onBuyerReturn(w.deps, { order_ref, actor: BUYER_A });
     const e = await ent(w);
-    if (e.access_state === 'available') {
-      const win = await one<{ started_at: Date }>(
-        w,
-        'SELECT started_at FROM access_windows WHERE entitlement_id = $1',
-        [e.id],
-      );
-      expect(new Date(win.started_at).toISOString()).toBe(w.td.clock.now().toISOString());
-    }
-    expect(o.id).toBeTruthy();
+    expect(e.access_state).toBe('available');
+    const win = await one<{ started_at: Date; ends_at: Date }>(
+      w,
+      'SELECT started_at, ends_at FROM access_windows WHERE entitlement_id = $1',
+      [e.id],
+    );
+    expect(new Date(win.started_at).toISOString()).toBe(w.td.clock.now().toISOString());
+    expect(new Date(win.ends_at).getTime() - new Date(win.started_at).getTime()).toBe(5 * DAY);
   });
 });
 
 describe('A-13 mismatch_freezes', () => {
-  const cases: [string, Parameters<typeof tamperOf>[0]][] = [
+  const cases: [string, Tamper][] = [
     ['amount plus one cent', { amount_delta: 1 }],
     ['another payee', { payee: 'OTHERPAYEE1' }],
     ['EUR instead of USD', { currency: 'EUR' }],
     ['another custom_id', { custom_id: 'ord_someone_else' }],
   ];
-  function tamperOf(t: { amount_delta?: number; payee?: string; currency?: string; custom_id?: string }) {
-    return t;
-  }
   for (const [name, tamper] of cases) {
     it(`${name}: order frozen, item locked, alert and recovery case, no ledger sale`, async () => {
       const w = await makeWorld();
