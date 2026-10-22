@@ -30,7 +30,19 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
     scenario: a.environment === 'dryrun' ? (input.scenario ?? null) : null,
   });
   if (r.ok) return { status: 200, body: { approve_url: r.value.approve_url } };
-  return r.error.code === 'payments_not_wired'
-    ? { status: 503, code: 'payments_not_wired', message: 'Checkout is not available yet.' }
+  if (r.error.code === 'not_found')
+    return { status: 404, code: 'not_found', message: 'We could not find that order.' };
+  if (r.error.code === 'payments_paused')
+    return {
+      status: 503,
+      code: 'checkout_off',
+      message: 'Checkout is paused. Nothing was charged.',
+    };
+  return r.error.code === 'create_failed'
+    ? {
+        status: 503,
+        code: 'create_failed',
+        message: 'We could not start the payment. Nothing was charged.',
+      }
     : { status: 409, code: r.error.code, message: 'This order cannot go to checkout now.' };
 })(securityDeps);

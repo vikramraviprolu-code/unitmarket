@@ -31,11 +31,7 @@ export function ApproveClient({ view, idemKey }: { view: ApprovalView; idemKey: 
     );
     if (!order.ok) {
       setBusy(false);
-      setError(
-        order.code === 'payments_not_wired'
-          ? 'Checkout is not available in this build yet. Nothing was charged.'
-          : order.message,
-      );
+      setError(order.message);
       return;
     }
     const co = await postJson<{ approve_url: string }>(

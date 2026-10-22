@@ -1,0 +1,343 @@
+// The dry-run PayPal order model for the web app (lane 15b). Adapted from the testkit order model
+// (packages/testkit/src/stack.ts, SBX lane 16) with the scenario behaviour of the lane 03 fixture
+// scenarios added. It is needed because a fixture answers with its own fixed amounts and ids,
+// while the web app builds orders with the catalogue price and a generated reference: the model
+// echoes what was created, so the real order, adapter and match logic run over it.
+//
+// Dry-run only. It opens no socket, reads no environment and no clock of its own (the clock is
+// injected), and its answers are synthetic: they are not PayPal evidence. Only type imports.
+import type { Clock, OutboundRequest, TransportResult } from '@umsbx/contracts';
+
+/** Scenario ids a tester can pick on the dry-run checkout page. All are lane 03 fixture scenarios. */
+export const DRYRUN_SCENARIOS: readonly { id: string; label: string }[] = [
+  { id: 'happy', label: 'Payment goes through' },
+  { id: 'capture_202', label: 'PayPal answers "accepted" (claim only)' },
+  { id: 'pending_receiving_pref', label: 'Payment pending at PayPal' },
+  { id: 'pending_then_completed', label: 'Pending, then completed' },
+  { id: 'lost_capture_response', label: 'Response lost, we read it back' },
+  { id: 'declined', label: 'Payment declined' },
+  { id: 'mismatch_amount', label: 'Amount does not match (frozen)' },
+  { id: 'mismatch_payee', label: 'Payee does not match (frozen)' },
+];
+
+const SCENARIO_SHAPE = /^[a-z0-9_]{1,60}$/;
+export const isScenarioId = (v: unknown): v is string =>
+  typeof v === 'string' && SCENARIO_SHAPE.test(v);
+
+type Json = Record<string, unknown>;
+const isRec = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+interface ModelCapture {
+  id: string;
+  status: 'COMPLETED' | 'PENDING' | 'DECLINED';
+  reason: string | null;
+}
+interface ModelUnit {
+  reference_id: string;
+  custom_id: string;
+  amount: { currency_code: string; value: string };
+  payee: { merchant_id: string } | null;
+  capture: ModelCapture | null;
+}
+interface ModelOrder {
+  id: string;
+  status: 'CREATED' | 'APPROVED' | 'COMPLETED';
+  scenario: string | null;
+  units: ModelUnit[];
+  created: string;
+  updated: string;
+  readsSinceCapture: number;
+}
+interface Stored {
+  status: number;
+  body: unknown;
+}
+
+const headerOf = (h: Record<string, string>, name: string): string | null => {
+  for (const [k, v] of Object.entries(h)) if (k.toLowerCase() === name) return v;
+  return null;
+};
+
+// Decimal string to minor units and back, two decimals (the corridor is USD).
+const toMinor = (v: string): number => {
+  const [w = '0', f = ''] = v.split('.');
+  return Number(w) * 100 + Number(`${f}00`.slice(0, 2));
+};
+const fromMinor = (m: number): string =>
+  `${Math.floor(m / 100)}.${String(m % 100).padStart(2, '0')}`;
+
+const ERR_LINK = [
+  { href: '/api/rest/reference/orders/v2/errors/', rel: 'information_link', method: 'GET' },
+];
+
+export interface DryRunModel {
+  /** The buyer approves at the pretend PayPal page, with the scenario they chose. */
+  approve(provider_order_id: string, scenario: string | null): boolean;
+  send(r: OutboundRequest): TransportResult;
+}
+
+export function createDryRunModel(clock: Clock): DryRunModel {
+  const orders = new Map<string, ModelOrder>();
+  const replays = new Map<string, Stored>();
+  let n = 0;
+  let debug = 0;
+
+  const stamp = (): string =>
+    clock
+      .now()
+      .toISOString()
+      .replace(/\.\d{3}Z$/, 'Z');
+  const res = (status: number, body: unknown): TransportResult => {
+    debug += 1;
+    return {
+      kind: 'response',
+      status,
+      headers: {
+        'content-type': 'application/json',
+        'paypal-debug-id': `sbxmodel${String(debug).padStart(4, '0')}`,
+      },
+      body: JSON.stringify(body),
+      duration_ms: 1,
+    };
+  };
+  const fail = (status: number, name: string, issue: string, description: string) =>
+    res(status, {
+      name,
+      message: 'Synthetic model answer, not PayPal evidence.',
+      debug_id: `sbxmodel${String(debug + 1).padStart(4, '0')}`,
+      details: [{ issue, description }],
+      links: ERR_LINK,
+    });
+  const notFound = (): TransportResult =>
+    fail(
+      404,
+      'RESOURCE_NOT_FOUND',
+      'INVALID_RESOURCE_ID',
+      'Specified resource ID does not exist. Please check the resource ID and try again.',
+    );
+
+  const scenarioOf = (o: ModelOrder, r: OutboundRequest): string =>
+    r.scenario ?? o.scenario ?? 'happy';
+
+  const captureBody = (c: ModelCapture, u: ModelUnit, o: ModelOrder): Json => ({
+    id: c.id,
+    status: c.status,
+    amount: u.amount,
+    final_capture: true,
+    create_time: o.updated,
+    update_time: o.updated,
+    ...(c.reason === null ? {} : { status_details: { reason: c.reason } }),
+    ...(c.status === 'COMPLETED'
+      ? {
+          seller_receivable_breakdown: {
+            gross_amount: u.amount,
+            paypal_fee: {
+              currency_code: u.amount.currency_code,
+              value: fromMinor(Math.floor(toMinor(u.amount.value) / 10)),
+            },
+          },
+        }
+      : {}),
+  });
+
+  // What a read shows. The mismatch scenarios change one field of what PayPal reports; the order
+  // that was created is never touched.
+  const orderBody = (o: ModelOrder, scenario: string): Json => ({
+    id: o.id,
+    status: o.status,
+    intent: 'CAPTURE',
+    purchase_units: o.units.map((u) => {
+      const amount =
+        scenario === 'mismatch_amount'
+          ? { ...u.amount, value: fromMinor(Math.max(0, toMinor(u.amount.value) - 1)) }
+          : u.amount;
+      const payee =
+        scenario === 'mismatch_payee' ? { merchant_id: 'SBXMERCHANT99' } : (u.payee ?? undefined);
+      return {
+        reference_id: u.reference_id,
+        custom_id: u.custom_id,
+        amount,
+        ...(payee === undefined ? {} : { payee }),
+        ...(u.capture === null ? {} : { payments: { captures: [captureBody(u.capture, u, o)] } }),
+      };
+    }),
+    create_time: o.created,
+    update_time: o.updated,
+    links: [{ href: `/v2/checkout/orders/${o.id}`, rel: 'self', method: 'GET' }],
+  });
+
+  // pending_then_completed: PENDING for the first two reads after the capture, then COMPLETED.
+  // pending_then_declined: PENDING for one read, then DECLINED. The capture id never changes.
+  const settle = (o: ModelOrder, scenario: string): void => {
+    if (o.status !== 'COMPLETED') return;
+    const after = (status: ModelCapture['status'], reads: number): void => {
+      if (o.readsSinceCapture < reads) return;
+      for (const u of o.units) {
+        if (u.capture !== null) {
+          u.capture.status = status;
+          u.capture.reason = null;
+        }
+      }
+    };
+    if (scenario === 'pending_then_completed') after('COMPLETED', 2);
+    if (scenario === 'pending_then_declined') after('DECLINED', 1);
+    o.readsSinceCapture += 1;
+  };
+
+  const create = (r: OutboundRequest, body: unknown, rid: string | null): TransportResult => {
+    const key = `create|${rid ?? ''}`;
+    const prior = rid === null ? undefined : replays.get(key);
+    if (prior !== undefined) return res(prior.status, prior.body);
+    const units = isRec(body) && Array.isArray(body.purchase_units) ? body.purchase_units : [];
+    if (units.length === 0) {
+      return fail(400, 'INVALID_REQUEST', 'MISSING_REQUIRED_PARAMETER', 'purchase_units');
+    }
+    n += 1;
+    const id = `SBXMODELORD${String(n).padStart(6, '0')}`;
+    const now = stamp();
+    const order: ModelOrder = {
+      id,
+      status: 'CREATED',
+      scenario: r.scenario,
+      created: now,
+      updated: now,
+      readsSinceCapture: 0,
+      units: units.filter(isRec).map((u) => {
+        const amount = isRec(u.amount) ? u.amount : {};
+        const payee = isRec(u.payee) && typeof u.payee.merchant_id === 'string' ? u.payee : null;
+        return {
+          reference_id: typeof u.reference_id === 'string' ? u.reference_id : 'default',
+          custom_id: typeof u.custom_id === 'string' ? u.custom_id : '',
+          amount: {
+            currency_code: String(amount.currency_code ?? ''),
+            value: String(amount.value ?? ''),
+          },
+          payee: payee === null ? null : { merchant_id: String(payee.merchant_id) },
+          capture: null,
+        };
+      }),
+    };
+    orders.set(id, order);
+    const answer = {
+      id,
+      status: 'CREATED',
+      links: [
+        { href: `/v2/checkout/orders/${id}`, rel: 'self', method: 'GET' },
+        {
+          href: `https://www.sandbox.paypal.com/checkoutnow?token=${id}`,
+          rel: 'approve',
+          method: 'GET',
+        },
+        { href: `/v2/checkout/orders/${id}/capture`, rel: 'capture', method: 'POST' },
+      ],
+    };
+    if (rid !== null) replays.set(key, { status: 201, body: answer });
+    return res(201, answer);
+  };
+
+  const get = (id: string, r: OutboundRequest): TransportResult => {
+    const o = orders.get(id);
+    if (o === undefined) return notFound();
+    const sc = scenarioOf(o, r);
+    settle(o, sc);
+    return res(200, orderBody(o, sc));
+  };
+
+  const capture = (id: string, r: OutboundRequest, rid: string | null): TransportResult => {
+    const o = orders.get(id);
+    if (o === undefined) return notFound();
+    const sc = scenarioOf(o, r);
+    const key = `capture|${id}|${rid ?? ''}`;
+    const prior = rid === null ? undefined : replays.get(key);
+    if (prior !== undefined) return res(200, prior.body);
+    if (o.status === 'COMPLETED') {
+      return fail(
+        422,
+        'UNPROCESSABLE_ENTITY',
+        'ORDER_ALREADY_CAPTURED',
+        'Order already captured. If intent=CAPTURE only one capture per order is allowed.',
+      );
+    }
+    if (o.status !== 'APPROVED') {
+      return fail(
+        422,
+        'UNPROCESSABLE_ENTITY',
+        'ORDER_NOT_APPROVED',
+        'Payer has not yet approved the Order for payment. Please redirect the payer to the approve url returned as part of the response.',
+      );
+    }
+    o.status = 'COMPLETED';
+    o.updated = stamp();
+    const outcome: Pick<ModelCapture, 'status' | 'reason'> =
+      sc === 'declined'
+        ? { status: 'DECLINED', reason: null }
+        : sc === 'pending_receiving_pref'
+          ? { status: 'PENDING', reason: 'RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION' }
+          : sc === 'pending_then_completed' || sc === 'pending_then_declined'
+            ? { status: 'PENDING', reason: 'PENDING_REVIEW' }
+            : { status: 'COMPLETED', reason: null };
+    o.units.forEach((u, i) => {
+      u.capture = { id: `${o.id}CAP${i + 1}`, ...outcome };
+    });
+    // capture_202: PayPal accepted the request; the answer carries no capture data.
+    if (sc === 'capture_202') {
+      const accepted = { id: o.id, status: 'APPROVED', links: [] };
+      if (rid !== null) replays.set(key, { status: 202, body: accepted });
+      return res(202, accepted);
+    }
+    const answer = orderBody(o, 'happy');
+    if (rid !== null) replays.set(key, { status: 201, body: answer });
+    // lost_capture_response: the capture happened; the answer never arrived. The same request id
+    // later replays the stored answer.
+    if (sc === 'lost_capture_response') return { kind: 'timeout' };
+    return res(201, answer);
+  };
+
+  const getCapture = (id: string, r: OutboundRequest): TransportResult => {
+    for (const o of orders.values()) {
+      for (const u of o.units) {
+        if (u.capture?.id === id) {
+          const sc = scenarioOf(o, r);
+          settle(o, sc);
+          return res(200, captureBody(u.capture, u, o));
+        }
+      }
+    }
+    return notFound();
+  };
+
+  return {
+    approve(id, scenario) {
+      const o = orders.get(id);
+      if (o === undefined || o.status !== 'CREATED') return false;
+      o.status = 'APPROVED';
+      o.scenario = scenario ?? o.scenario;
+      o.updated = stamp();
+      return true;
+    },
+    send(r) {
+      const path = r.path.replace(/^https?:\/\/[^/]+/, '');
+      const parts = path.split('/').filter((p) => p.length > 0);
+      const rid = headerOf(r.headers, 'paypal-request-id');
+      let body: unknown = null;
+      try {
+        body = r.body === null ? null : JSON.parse(r.body);
+      } catch {
+        body = null;
+      }
+      switch (r.operation) {
+        case 'create_order':
+          return create(r, body, rid);
+        case 'get_order':
+          return get(parts[3] ?? '', r);
+        case 'capture_order':
+          return capture(parts[3] ?? '', r, rid);
+        case 'get_capture':
+          return getCapture(parts[3] ?? '', r);
+        default:
+          // Refunds and webhooks are not modelled here; the fixtures cover them in tests.
+          return { kind: 'blocked', by: 'dry_run_miss' };
+      }
+    },
+  };
+}

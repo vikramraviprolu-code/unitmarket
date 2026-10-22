@@ -38,6 +38,31 @@ export default async function Ops() {
         </tbody>
       </table>
 
+      <h2>Kill switch</h2>
+      <dl data-testid="ops-kill-switch">
+        <dt>Outbound PayPal calls (paypal_outbound)</dt>
+        <dd>
+          {snap.kill_switch.outbound_on ? 'On' : 'Off'}. Last changed by{' '}
+          {snap.kill_switch.changed_by}
+          {snap.kill_switch.changed_at
+            ? `, ${formatDateTime(snap.kill_switch.changed_at)}`
+            : ''}. {snap.kill_switch.reason}
+        </dd>
+        <dt>Calls left today under the active approval</dt>
+        <dd>
+          {snap.kill_switch.budget === null
+            ? 'No active approval.'
+            : `${snap.kill_switch.budget.remaining_today} of ${snap.kill_switch.budget.max_calls_per_day}, valid until ${formatDateTime(snap.kill_switch.budget.valid_until)}`}
+        </dd>
+        <dt>Job loop</dt>
+        <dd>
+          {snap.jobs.last_pass_at === null
+            ? 'No pass finished yet.'
+            : `Last pass ${formatDateTime(snap.jobs.last_pass_at)}.`}{' '}
+          {snap.jobs.due} due.
+        </dd>
+      </dl>
+
       <h2>Outbound approval gate</h2>
       <dl>
         <dt>Mode</dt>
@@ -96,6 +121,11 @@ export default async function Ops() {
       )}
 
       <h2>Invariants</h2>
+      <p data-testid="ops-invariants-summary">
+        {snap.invariants.every((v) => v.ok)
+          ? 'All hold.'
+          : `${snap.invariants.filter((v) => !v.ok).length} failing.`}
+      </p>
       <ul>
         {snap.invariants.map((v) => (
           <li key={v.id}>

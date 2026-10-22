@@ -43,8 +43,8 @@ import { migrate, openDatabase } from '@umsbx/db';
 import type { SqlDriver } from '@umsbx/db';
 import { cryptoIds, systemClock } from '@umsbx/runtime';
 import { createAuditSink, createLogger } from '@umsbx/obs';
-import { createOutboundGate, createSwitchReader } from '@umsbx/safety';
-import { createDryRunTransport, createSandboxTransport, loadFixtures } from '@umsbx/transport';
+import { createOutboundGate, createSwitchReader, readSafetyStatus } from '@umsbx/safety';
+import { createSandboxTransport, guard } from '@umsbx/transport';
 import { createPayPalAdapter } from '@umsbx/paypal';
 import { createScriptedModel } from '@umsbx/model';
 import { SEED_DATA, getOffer, seedCatalogue } from '@umsbx/catalogue';
@@ -56,10 +56,26 @@ import { createPgContentStore, issueLink, planServe } from '@umsbx/delivery';
 import type { ServePlan } from '@umsbx/delivery';
 import { getReceiptForBuyer, receiptLabel, renderReceiptHtml } from '@umsbx/receipts';
 import { sweepWindows } from '@umsbx/access-clock';
-import { applyAutomaticRules, openCase as openRecoveryCase } from '@umsbx/recovery';
+import {
+  applyAutomaticRules,
+  listCasesForBuyer,
+  openCase as openRecoveryCase,
+  resolve as resolveRecoveryCase,
+} from '@umsbx/recovery';
+import type { ResolveAction, ResolveDeps } from '@umsbx/recovery';
+import {
+  beginCheckout as beginPaymentsCheckout,
+  checkInvariants,
+  onBuyerReturn as onPaymentsReturn,
+  placeOrder as placePaymentsOrder,
+  recoverOnStartup,
+  requestRefund,
+} from '@umsbx/payments';
+import { health as jobsHealth, startLoop } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
 import { resolveSession, createSession, verifyPasscode } from '@umsbx/security';
 import type { SecurityDeps } from '@umsbx/security';
+import { DRYRUN_SCENARIOS, createDryRunModel, isScenarioId } from './src/server/dryrun-model';
 
 type Env = Record<string, string | undefined>;
 export interface AppOptions {
@@ -83,16 +99,20 @@ export const envLabel = (c: Config): EnvironmentLabel =>
   c.mode === 'sandbox' ? 'sandbox' : 'dryrun';
 
 // ---------------------------------------------------------------------------------------------
-// TEMP-until-05a: the payments seam. Same names and argument shapes as docs/design/lanes/
-// 05a-payments-order-capture.md, so the swap is one import. This stub moves no money, writes no
-// order and calls no provider; it answers `payments_not_wired`.
+// The payments seam (lane 05a). The facade binds the payments functions to their dependencies and
+// turns their results into plain data for the routes: the approval error becomes an HTTP status.
 // ---------------------------------------------------------------------------------------------
 export type PlaceError =
-  | { code: 'payments_not_wired' }
   | { code: 'approval'; http: 403 | 404 | 409 | 410 }
   | { code: 'order_open'; http: 409 }
   | { code: 'checkout_off'; http: 503 };
-export type CheckoutError = { code: 'payments_not_wired' | 'not_found' | 'wrong_state' };
+export type CheckoutError = {
+  code: 'not_found' | 'wrong_state' | 'create_failed' | 'payments_paused';
+};
+export type ReturnError = {
+  code:
+    'not_found' | 'not_approved' | 'frozen' | 'not_charged_content_unavailable' | 'payments_paused';
+};
 export interface OrderView {
   order_id: Id;
   order_ref: Id;
@@ -100,6 +120,8 @@ export interface OrderView {
   buyer_message: string;
   items: { article_id: Id; title: string; access: string }[];
   environment: EnvironmentLabel;
+  /** The case opened for this order, if any (recovery rules or the buyer). */
+  open_case: { case_id: Id; state: string; buyer_message: string } | null;
 }
 export interface PaymentsFacade {
   placeOrder(i: {
@@ -116,17 +138,7 @@ export interface PaymentsFacade {
     order_ref: Id;
     actor: Actor;
     scenario?: string | null;
-  }): Promise<Result<OrderView, CheckoutError>>;
-}
-function paymentsStub(): PaymentsFacade {
-  // TEMP-until-05a
-  const notWired = <T>(): Promise<Result<T, { code: 'payments_not_wired' }>> =>
-    Promise.resolve(err({ code: 'payments_not_wired' as const }));
-  return {
-    placeOrder: () => notWired(),
-    beginCheckout: () => notWired(),
-    onBuyerReturn: () => notWired(),
-  };
+  }): Promise<Result<{ order_ref: Id; status: string }, ReturnError>>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -194,6 +206,16 @@ export interface OpsSnapshot {
   operations: { state: string; count: number }[];
   alerts: { kind: string; created_at: string }[];
   invariants: { id: string; ok: boolean; detail: string }[];
+  /** The paypal_outbound switch (the kill switch) and the budget left under the active approval. */
+  kill_switch: {
+    outbound_on: boolean;
+    changed_by: string;
+    changed_at: string;
+    reason: string;
+    budget: { remaining_today: number; max_calls_per_day: number; valid_until: string } | null;
+  };
+  /** The job loop: when it last finished a pass and how much recovery work is due. */
+  jobs: { last_pass_at: string | null; due: number };
 }
 
 const SWITCHES: SwitchName[] = [
@@ -234,6 +256,11 @@ export interface App {
   readonly environment: EnvironmentLabel;
   /** Resolves after the database is open, migrated and seeded. */
   ready(): Promise<void>;
+  /**
+   * Starts the job loop (lane 05b): recover what was in flight when the process last stopped, then
+   * run due payments work and end access windows. The returned handle stops the loop.
+   */
+  startJobs(): Promise<{ stop(): Promise<void> }>;
   readonly db: Database;
   readonly engine: Engine;
   readonly security: SecurityDeps;
@@ -267,6 +294,13 @@ export interface Engine {
   approvalView(i: { approval_id: Id; actor: Actor }): Promise<ApprovalView | null>;
   payments: PaymentsFacade;
   orderView(i: { order_ref: Id; actor: Actor }): Promise<OrderView | null>;
+  /** The pretend-PayPal outcomes a tester can pick on the dry-run page. Empty outside dry run. */
+  dryRunScenarios(): readonly { id: string; label: string }[];
+  /**
+   * The buyer pressing "Approve payment (dry run)": marks the order approved at the pretend
+   * PayPal with the chosen scenario. False when it is not this buyer's order or not dry run.
+   */
+  dryRunApprove(i: { order_ref: Id; actor: Actor; scenario: string | null }): Promise<boolean>;
   library(i: { actor: Actor }): Promise<LibraryEntry[]>;
   libraryItem(i: { entitlement_id: Id; actor: Actor }): Promise<LibraryEntry | null>;
   issueLink(i: { entitlement_id: Id; actor: Actor }): ReturnType<typeof issueLink>;
@@ -287,11 +321,24 @@ export interface Engine {
     note?: string;
   }): Promise<Result<{ case_id: Id }, { code: 'not_found' | 'duplicate_open' }>>;
   opsSnapshot(actor: Actor): Promise<OpsSnapshot | null>;
-  health(): Promise<{ ok: boolean; environment: EnvironmentLabel; db: boolean }>;
+  health(): Promise<{
+    ok: boolean;
+    environment: EnvironmentLabel;
+    db: boolean;
+    last_pass_at: string | null;
+    due: number;
+  }>;
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
-  /** TEMP-until-05b: window sweep and recovery rules for the in-process loop (lane 05b owns the full job loop). */
+  /** One pass of the access-window sweep and the automatic recovery rules (the job loop's sweep). */
   sweep(): Promise<{ ended: number }>;
+  /** Operator only: resolve a case; offering a refund goes through the payments refund path. */
+  resolveCase(i: {
+    actor: Actor;
+    case_id: Id;
+    action: ResolveAction;
+    reason: string;
+  }): ReturnType<typeof resolveRecoveryCase>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -398,21 +445,36 @@ function buildApp(config: Config, opts: AppOptions): App {
   const gate = createOutboundGate({ db, clock, switches, config });
 
   // --- transport and adapter (dry-run only; the sandbox transport is the sealed MVP-A stub) ---
+  // Dry run: the order model answers (see src/server/dryrun-model.ts). Like the fixture transport it
+  // passes the egress guard and asks the outbound gate once per request; it opens no socket.
+  const dryModel = createDryRunModel(clock);
   let transport: Transport | null = null;
   const getTransport = async (): Promise<Transport> => {
     if (transport !== null) return transport;
     if (config.mode === 'sandbox') {
       transport = createSandboxTransport();
     } else {
-      const dir = findUp(join('fixtures', 'paypal'), process.cwd());
-      const fixtures = dir === null ? [] : await loadFixtures(dir);
-      transport = createDryRunTransport({
-        fixtures,
-        gate,
-        clock,
-        default_scenario: 'happy',
-        log,
-      });
+      transport = {
+        kind: 'dryrun',
+        async send(r) {
+          const checked = guard(r, 'dryrun');
+          if (!checked.ok) return { kind: 'blocked', by: 'egress' };
+          const verdict = await gate.check({
+            operation: r.operation,
+            amount_minor: r.amount_minor,
+          });
+          // The dry-run transport never connects, so a connect_off verdict does not apply to it.
+          if (!verdict.allowed && verdict.by !== 'connect_off')
+            return { kind: 'blocked', by: verdict.by };
+          const out = dryModel.send(r);
+          log.log({
+            msg: 'dryrun.send',
+            level: 'info',
+            fields: { operation: r.operation, scenario: r.scenario ?? null, outcome: out.kind },
+          });
+          return out;
+        },
+      };
     }
     return transport;
   };
@@ -457,9 +519,21 @@ function buildApp(config: Config, opts: AppOptions): App {
     environment,
   };
   const agent: AgentDeps = { ...core, model: createScriptedModel() };
-  // Built so the 05a swap is one line; not used by the TEMP stub.
   const paymentsDeps: PaymentsDeps = { ...core, paypal, content };
-  void paymentsDeps;
+  // Lane 10 resolves cases; offering a refund goes through lane 05b's requestRefund (ASM-10-2).
+  const recoveryDeps: ResolveDeps = {
+    ...core,
+    content,
+    requestRefund: (i) => requestRefund(paymentsDeps, i),
+  };
+  // One pass of the loop's sweep: end access windows, then turn alerts into cases.
+  const sweepAll = async (x: { max_items: number }): Promise<{ ended: number }> => {
+    const swept = await sweepWindows(core, x);
+    await applyAutomaticRules(core, x);
+    return swept;
+  };
+
+  let loop: { stop(): Promise<void> } | null = null;
 
   const security: SecurityDeps = {
     db,
@@ -662,7 +736,34 @@ function buildApp(config: Config, opts: AppOptions): App {
       };
     },
 
-    payments: paymentsStub(),
+    payments: {
+      async placeOrder(i) {
+        const r = await placePaymentsOrder(paymentsDeps, i);
+        if (r.ok) return ok(r.value);
+        const e = r.error;
+        return err(e.code === 'approval' ? { code: 'approval', http: e.error.http } : e);
+      },
+      beginCheckout: (i) => beginPaymentsCheckout(paymentsDeps, i),
+      async onBuyerReturn(i) {
+        const r = await onPaymentsReturn(paymentsDeps, i);
+        return r.ok ? ok({ order_ref: r.value.order_ref, status: r.value.status }) : err(r.error);
+      },
+    },
+
+    dryRunScenarios: () => (environment === 'dryrun' ? DRYRUN_SCENARIOS : []),
+
+    async dryRunApprove({ order_ref, actor, scenario }) {
+      const buyer = buyerOf(actor);
+      if (buyer === null || environment !== 'dryrun') return false;
+      if (scenario !== null && !isScenarioId(scenario)) return false;
+      const row = await db.query<{ provider_order_id: string | null }>(
+        `SELECT p.provider_order_id FROM provider_orders p JOIN orders o ON o.id = p.order_id
+          WHERE o.order_ref = $1 AND o.buyer_id = $2 AND o.status = 'awaiting_buyer'`,
+        [order_ref, buyer],
+      );
+      const id = row.rows[0]?.provider_order_id;
+      return id === undefined || id === null ? false : dryModel.approve(id, scenario);
+    },
 
     async orderView({ order_ref, actor }) {
       const buyer = buyerOf(actor);
@@ -689,10 +790,18 @@ function buildApp(config: Config, opts: AppOptions): App {
           WHERE u.order_id = $1 AND e.buyer_id = $2 ORDER BY e.id`,
         [o.id, buyer],
       );
+      // Newest first; the buyer sees the latest case for this order, whatever its state.
+      const open = (await listCasesForBuyer(db, { buyer_id: buyer })).find(
+        (c) => c.order_id === o.id,
+      );
       return {
         order_id: o.id,
         order_ref: o.order_ref,
         status: o.status,
+        open_case:
+          open === undefined
+            ? null
+            : { case_id: open.case_id, state: open.state, buyer_message: open.buyer_message },
         buyer_message: orderMessage(
           o.status,
           units.rows.map((u) => u.status),
@@ -793,6 +902,9 @@ function buildApp(config: Config, opts: AppOptions): App {
       const alerts = await db.query<{ kind: string; created_at: unknown }>(
         'SELECT kind, created_at FROM alerts ORDER BY created_at DESC, id LIMIT 20',
       );
+      const safety = await readSafetyStatus(db, clock.now(), config.outbound_approval_ref);
+      const outbound = safety.switches.find((x) => x.name === 'paypal_outbound');
+      const jobs = await jobsHealth(core);
       return {
         environment,
         switches: sw,
@@ -810,27 +922,51 @@ function buildApp(config: Config, opts: AppOptions): App {
         })),
         operations: ops.rows.map((o) => ({ state: o.state, count: Number(o.c) })),
         alerts: alerts.rows.map((a) => ({ kind: a.kind, created_at: iso(a.created_at) })),
-        // TEMP-until-05b: checkInvariants (INV1 to INV4) is lane 05b's export.
-        invariants: [{ id: 'INV', ok: true, detail: 'not wired until lane 05b' }],
+        invariants: (await checkInvariants(db)).map((v) => ({
+          id: v.id,
+          ok: v.ok,
+          detail: v.detail,
+        })),
+        kill_switch: {
+          outbound_on: outbound?.on === true,
+          changed_by: outbound?.changed_by ?? 'unknown',
+          changed_at: outbound?.changed_at ?? '',
+          reason: outbound?.reason ?? 'no switch row (counts as off)',
+          budget:
+            safety.budget === null
+              ? null
+              : {
+                  remaining_today: safety.budget.remaining_today,
+                  max_calls_per_day: safety.budget.max_calls_per_day,
+                  valid_until: safety.budget.valid_until,
+                },
+        },
+        jobs: { last_pass_at: jobs.last_pass_at, due: jobs.due },
       };
     },
 
     newKey: () => ids.nonce(),
 
-    async sweep() {
-      const swept = await sweepWindows(core, { max_items: 100 });
-      // Lane 10: turn new alerts and delivery failures into cases; close restored ones.
-      await applyAutomaticRules(core, { max_items: 100 });
-      return swept;
-    },
+    // Lane 10: turn new alerts and delivery failures into cases; close restored ones.
+    sweep: () => sweepAll({ max_items: 100 }),
+
+    resolveCase: (i) =>
+      resolveRecoveryCase(recoveryDeps, {
+        case_id: i.case_id,
+        action: i.action,
+        by: i.actor,
+        reason: i.reason,
+      }),
 
     async health() {
-      try {
-        await db.query('SELECT 1');
-        return { ok: true, environment, db: true };
-      } catch {
-        return { ok: false, environment, db: false };
-      }
+      const h = await jobsHealth(core);
+      return {
+        ok: h.db,
+        environment,
+        db: h.db,
+        last_pass_at: h.last_pass_at,
+        due: h.due,
+      };
     },
   };
 
@@ -843,7 +979,26 @@ function buildApp(config: Config, opts: AppOptions): App {
     db,
     engine,
     security,
+    startJobs: async () => {
+      if (loop !== null) return loop;
+      await open();
+      // Recovery first, and awaited: a boot that returns has already read what was in flight. The
+      // loop then runs due payments work and the sweep, and recovers once more (idempotent).
+      await recoverOnStartup(paymentsDeps);
+      const running = startLoop(
+        { ...paymentsDeps, sweepWindows: sweepAll },
+        { max_sleep_ms: config.node_env === 'test' ? 200 : 5_000, max_items: 100 },
+      );
+      loop = {
+        stop: async () => {
+          loop = null;
+          await running.stop();
+        },
+      };
+      return loop;
+    },
     close: async () => {
+      await loop?.stop();
       if (driver !== null) await (await driver).close();
       driver = null;
     },

@@ -12,74 +12,62 @@ vi.mock('server-only', () => ({}));
 
 let app: App;
 let sessionRoute: typeof import('./app/api/session/route');
-let quotes: typeof import('./app/api/quotes/route');
-let approvals: typeof import('./app/api/approvals/route');
 let orders: typeof import('./app/api/orders/route');
 let checkoutRoute: typeof import('./app/api/orders/[ref]/checkout/route');
 let A: Session;
+let B: Session;
 let actor: Actor;
-let n = 0;
+let actorB: Actor;
 
 beforeAll(async () => {
   app = await bootTestApp();
   sessionRoute = await import('./app/api/session/route');
-  quotes = await import('./app/api/quotes/route');
-  approvals = await import('./app/api/approvals/route');
   orders = await import('./app/api/orders/route');
   checkoutRoute = await import('./app/api/orders/[ref]/checkout/route');
   A = (await signIn(sessionRoute.POST, 'buyer-a'))!;
+  B = (await signIn(sessionRoute.POST, 'buyer-b'))!;
   const row = await app.db.query<{ id: string }>(
     `SELECT id FROM buyers WHERE auth_subject = 'persona:buyer-a'`,
   );
   actor = { kind: 'buyer', buyer_id: row.rows[0]!.id };
+  const rowB = await app.db.query<{ id: string }>(
+    `SELECT id FROM buyers WHERE auth_subject = 'persona:buyer-b'`,
+  );
+  actorB = { kind: 'buyer', buyer_id: rowB.rows[0]!.id };
 });
 afterAll(async () => {
   await app.close();
 });
 
-async function approval(offer: string): Promise<{ approval_id: string; token: string }> {
+async function approval(
+  offer: string,
+  who: Actor = actor,
+): Promise<{ approval_id: string; token: string }> {
   const page = await app.engine.offerPage({ publisher: 'harbour-ledger', offer });
-  const option = page!.options[0]!.option;
-  const q = (await (
-    await call(quotes.POST, {
-      url: '/api/quotes',
-      method: 'POST',
-      session: A,
-      body: { publisher: 'harbour-ledger', offer, option },
-    })
-  ).json()) as { quote_id: string };
-  const res = await call(approvals.POST, {
-    url: '/api/approvals',
-    method: 'POST',
-    session: A,
-    body: { quote_id: q.quote_id, consent: { terms: true, identity_share: false } },
+  const q = await app.engine.quote({
+    offer: { publisher_slug: 'harbour-ledger', offer_code: offer },
+    actor: who,
+    source: 'direct',
+    option: page!.options[0]!.option,
   });
-  expect(res.status).toBe(201);
-  return (await res.json()) as { approval_id: string; token: string };
+  if (!q.ok || q.value.kind !== 'quote') throw new Error(`no quote for ${offer}`);
+  const g = await app.engine.requestApproval({
+    actor: who,
+    selection: { kind: 'quote', quote_id: q.value.quote_id },
+    consent: { terms: true, identity_share: false },
+  });
+  if (!g.ok) throw new Error(`no approval for ${offer}: ${g.error.code}`);
+  return { approval_id: g.value.approval_id, token: g.value.token };
 }
 
-/** Quote, approve, place the order, create it at the pretend PayPal. Returns the order reference. */
+/** Approve, place the order and create it at the pretend PayPal, through the engine facade. */
 async function placeAndCheckout(offer: string): Promise<{ order_ref: string; order_id: string }> {
   const a = await approval(offer);
-  n += 1;
-  const placed = await call(orders.POST, {
-    url: '/api/orders',
-    method: 'POST',
-    session: A,
-    headers: { 'idempotency-key': `pay-test-key-${String(n).padStart(4, '0')}` },
-    body: a,
-  });
-  expect(placed.status).toBe(201);
-  const order = (await placed.json()) as { order_ref: string; order_id: string };
-  const co = await call(checkoutRoute.POST, {
-    url: `/api/orders/${order.order_ref}/checkout`,
-    method: 'POST',
-    session: A,
-    params: { ref: order.order_ref },
-    body: {},
-  });
-  expect(co.status).toBe(200);
-  return order;
+  const placed = await app.engine.payments.placeOrder({ ...a, actor });
+  if (!placed.ok) throw new Error(`place: ${JSON.stringify(placed.error)}`);
+  const co = await app.engine.payments.beginCheckout({ order_id: placed.value.order_id, actor });
+  if (!co.ok) throw new Error(`checkout: ${co.error.code}`);
+  return placed.value;
 }
 
 async function payWith(
@@ -151,15 +139,38 @@ describe('the real payments engine behind the facade', () => {
     expect(after?.open_case?.case_id).toMatch(/^cas_/);
   });
 
+  it('the browser path: POST /api/orders then POST checkout gives an order and a PayPal link', async () => {
+    const a = await approval((await offers())[0]!, actorB);
+    const placed = await call(orders.POST, {
+      url: '/api/orders',
+      method: 'POST',
+      session: B,
+      headers: { 'idempotency-key': 'pay-test-key-9001' },
+      body: a,
+    });
+    expect(placed.status).toBe(201);
+    const order = (await placed.json()) as { order_ref: string };
+    const co = await call(checkoutRoute.POST, {
+      url: `/api/orders/${order.order_ref}/checkout`,
+      method: 'POST',
+      session: B,
+      params: { ref: order.order_ref },
+      body: {},
+    });
+    expect(co.status).toBe(200);
+    expect(((await co.json()) as { approve_url: string }).approve_url).toContain(
+      'sandbox.paypal.com/checkoutnow',
+    );
+  });
+
   it('a bad approval token is refused with 403 and writes no order', async () => {
-    const a = await approval((await offers())[0]!);
+    const a = await approval((await offers())[0]!, actorB);
     const before = await app.db.query<{ c: string }>('SELECT count(*) AS c FROM orders');
-    n += 1;
     const res = await call(orders.POST, {
       url: '/api/orders',
       method: 'POST',
-      session: A,
-      headers: { 'idempotency-key': `pay-test-key-${String(n).padStart(4, '0')}` },
+      session: B,
+      headers: { 'idempotency-key': 'pay-test-key-9002' },
       body: { approval_id: a.approval_id, token: 'x'.repeat(40) },
     });
     expect(res.status).toBe(403);

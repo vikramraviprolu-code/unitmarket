@@ -25,22 +25,26 @@ export default async function CheckoutReturn({
   const a = await app();
   const sc = one(q['scenario']);
   const scenario = a.environment === 'dryrun' && sc !== undefined && SCENARIO.test(sc) ? sc : null;
+  // Dry run only: this page stands in for PayPal's own approval step, so reaching it with a chosen
+  // scenario is the pretend approval. In sandbox mode PayPal does that, and a scenario is ignored.
+  if (scenario !== null) await a.engine.dryRunApprove({ order_ref: ref, actor, scenario });
   const r = await a.engine.payments.onBuyerReturn({ order_ref: ref, actor, scenario });
   if (r.ok) redirect(`/orders/${encodeURIComponent(ref)}`);
   if (r.error.code === 'not_found') notFound();
-  if (r.error.code === 'payments_not_wired')
+  if (r.error.code === 'payments_paused')
     return (
       <>
-        <h1>Checkout is not available yet</h1>
+        <h1>Checkout is paused</h1>
         <ErrorState title="Nothing was charged">
-          This build has no payment step wired in. Go back to your library or the offer.
+          Payments are switched off for now. Your order is kept; try again later.
         </ErrorState>
         <p>
-          <Link className="btn" href="/library">
-            My library
+          <Link className="btn" href={`/orders/${encodeURIComponent(ref)}`}>
+            Back to your order
           </Link>
         </p>
       </>
     );
+  // Frozen, not approved, content unavailable: the order page says where the order stands.
   redirect(`/orders/${encodeURIComponent(ref)}`);
 }

@@ -22,9 +22,6 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
   const r = await (await app()).engine.payments.placeOrder({ ...input, actor });
   if (r.ok) return { status: 201, body: r.value };
   const e = r.error;
-  if (e.code === 'payments_not_wired')
-    // TEMP-until-05a: remove with the stub.
-    return { status: 503, code: 'payments_not_wired', message: 'Checkout is not available yet.' };
   if (e.code === 'order_open')
     return { status: 409, code: 'order_open', message: 'You already have an open order for this.' };
   if (e.code === 'checkout_off')
