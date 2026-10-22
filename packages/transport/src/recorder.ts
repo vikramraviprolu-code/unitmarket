@@ -115,7 +115,8 @@ const compact = (k: string): string =>
     .join('')
     .toLowerCase();
 
-type KeyClass = 'credential' | 'payer id' | 'email' | 'person name' | 'address' | 'phone';
+type KeyClass =
+  'credential' | 'payer id' | 'email' | 'person name' | 'address' | 'phone' | 'free text';
 const CREDENTIAL =
   /secret|password|passwd|passcode|assertion|credential|apikey|privatekey|token$|nonce|signature|^sig$|transmissionsig|sessionid|^authorization$|proxyauthorization|^cookie$|setcookie|^clientid$|^appid$/;
 function classOf(rawKey: string): KeyClass | null {
@@ -123,8 +124,13 @@ function classOf(rawKey: string): KeyClass | null {
   if (CREDENTIAL.test(k)) return 'credential';
   if (k === 'payerid' || k === 'accountid') return 'payer id';
   if (/email/.test(k)) return 'email';
-  if (/^(givenname|surname|fullname|familyname|firstname|lastname|middlename|nickname)$/.test(k))
+  if (
+    /^(givenname|surname|fullname|familyname|firstname|lastname|middlename|nickname|displayname|businessname|recipientname|cardholdername|accountholdername)$/.test(
+      k,
+    )
+  )
     return 'person name';
+  if (/^(notetopayer|notetorecipient|customernote|customermessage)$/.test(k)) return 'free text';
   if (/^address|addressline|adminarea|postalcode|^zip|street/.test(k)) return 'address';
   if (/phone|nationalnumber|mobile/.test(k)) return 'phone';
   return null;
@@ -137,6 +143,7 @@ const NAME_CONTEXT = new Set([
   'billing',
   'recipient',
   'cardholder',
+  'payee',
   'paypal',
   'card',
   'venmo',
@@ -161,9 +168,14 @@ class Tally {
 // ---------------------------------------------------------------------------------------------
 // Pattern scrub for one string.
 // ---------------------------------------------------------------------------------------------
-const EMAIL_G = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
-const EMAIL = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/;
-const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>\\)]+|\/v\d\/[^\s"'<>\\)]*/gi;
+// L2: letters and digits of any script, so a Unicode domain (jo@exämple.de) is an email too.
+const EMAIL_G = /[\p{L}\p{N}._%+'-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
+const EMAIL = /[\p{L}\p{N}._%+'-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/u;
+// Absolute urls, /v1/... api paths, and any relative reference with a ?name= query (L2).
+const URL_RE =
+  /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>\\)]+|\/v\d\/[^\s"'<>\\)]*|[A-Za-z0-9_.~%/-]*\?[A-Za-z0-9_.-]+=[^\s"'<>\\)]*/gi;
+// A phone number written in prose: a leading + or 00 and at least nine digits (ids and dates have neither).
+const PHONE_TEXT = /(?:\+|\b00)\d[\d\s().-]{7,}\d/g;
 const AUTH_VALUE = /\b(Bearer|Basic|Digest)\s+[A-Za-z0-9._~+/=-]{6,}/gi;
 const JWT_A = /\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}(?:\.[A-Za-z0-9_-]*)?/g;
 const JWT_B = /[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{8,}/g;
@@ -171,6 +183,8 @@ const LONG_A = /[A-Za-z0-9+_=-]{40,}/g;
 const LONG_B = /[A-Za-z0-9+/=]{40,}/g;
 const HEX32 = /\b[0-9a-f]{32,}\b/gi;
 const ID_SHAPE = /^[A-Z0-9]{5,36}$/;
+const PERSONAL_QUERY_KEY =
+  /payer|account|merchant|email|name|phone|nonce|sig|secret|key|auth|session|customer/;
 
 /** Folds the common disguises of "@" and "." so an encoded email is still seen. */
 function unmask(s: string): string {
@@ -238,7 +252,8 @@ function scrubUrl(raw: string, st: Tally): string {
   const keep: [string, string][] = [];
   if (!isCert) {
     for (const [k, v] of url.searchParams) {
-      if (ID_SHAPE.test(v)) keep.push([k, v]);
+      // Only an order-id-shaped value under a neutral name is kept; PayerID and friends are not.
+      if (ID_SHAPE.test(v) && !PERSONAL_QUERY_KEY.test(compact(k))) keep.push([k, v]);
       else st.add('url query value', 1);
     }
   } else if (url.search.length > 1) {
@@ -269,6 +284,10 @@ function scrubText(input: string, st: Tally): string {
     return `\uE000${stash.length - 1}\uE001`;
   };
   s = s.replace(URL_RE, (u) => hold(scrubUrl(u, st)));
+  s = s.replace(PHONE_TEXT, () => {
+    st.add('phone number pattern', 1);
+    return 'phone-redacted';
+  });
   s = s.replace(EMAIL_G, () => {
     st.add('email address pattern', 1);
     return 'email-redacted';

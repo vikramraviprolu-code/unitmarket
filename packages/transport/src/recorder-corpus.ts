@@ -15,6 +15,11 @@ const b64 = (label: string, len: number): string =>
 export interface Canaries {
   email: string;
   email2: string;
+  uniEmail: string;
+  relToken: string;
+  displayName: string;
+  phoneText: string;
+  noteText: string;
   token: string;
   jwt: string;
   clientId: string;
@@ -34,6 +39,13 @@ export function makeCanaries(): Canaries {
   const mailHost = ['canary-mail', 'example', 'org'].join('.');
   const email = `${b64('email', 9).toLowerCase()}.buyer@${mailHost}`;
   const email2 = `${b64('email2', 8).toLowerCase()}+tag@${mailHost}`;
+  // FIX-BPREP L2: survivors found in review. A Unicode domain, a relative link with a query token,
+  // a business display name, a phone number in prose and a free-text note naming a person.
+  const uniEmail = `${b64('uemail', 7).toLowerCase()}@ex\u00e4mple.${b64('udom', 4).toLowerCase()}`;
+  const relToken = `rt${b64('reltoken', 18)}`;
+  const displayName = `Shop${b64('display', 6).toLowerCase()} Ltd`;
+  const phoneText = `+49 151 ${String(Math.abs(b64('phone', 8).length * 1234567)).padStart(7, '1')}`;
+  const noteText = `Dear ${b64('note', 6).toLowerCase()}zorg`;
   const jwt = [
     `eyJ${b64('jwt-h', 20)}`,
     `eyJ${b64('jwt-p', 30)}`,
@@ -44,6 +56,11 @@ export function makeCanaries(): Canaries {
   const c = {
     email,
     email2,
+    uniEmail,
+    relToken,
+    displayName,
+    phoneText,
+    noteText,
     token: `A21AA${b64('token', 70)}`,
     jwt,
     clientId,
@@ -168,6 +185,12 @@ export function hostileExchange(c: Canaries): Obj {
         ],
         cert_url: `https://${host.sandboxCert}/v1/notifications/certs/CERT-360caa42-fca2a594-1d93a270?sig=${c.sig}&k=${c.plain}`,
         arr: [[[{ deep: c.email }]]],
+        payee: { display_name: c.displayName, merchant_id: 'YXZY75W2GKDQE', name: c.displayName },
+        unicode_mail: `write to ${c.uniEmail} please`,
+        relative_link: `/checkoutnow?token=${c.relToken}&PayerID=${c.payerId}`,
+        bare_relative_link: `checkoutnow?token=${c.relToken}`,
+        prose_phone: `call ${c.phoneText} after five`,
+        note_to_payer: c.noteText,
       },
     },
   });

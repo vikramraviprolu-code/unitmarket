@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildRecordings, formatSummary, writeRecordings } from './recorder';
+import { buildRecordings, formatSummary, residueRule, writeRecordings } from './recorder';
 import { recorderSelfTest } from './recorder-selftest';
 import type { BuildResult } from './recorder';
 import { FixtureFileSchema } from './fixture-schema';
@@ -224,6 +224,29 @@ describe('redaction by key and by pattern', () => {
       expect(t.toLowerCase(), name).not.toContain(name);
     }
     expect((t.match(/"authorization"/g) ?? []).length).toBe(1);
+  });
+
+  it('FIX-BPREP L2: a Unicode-domain email, a relative link with a query token, a display name, a phone in prose and a free-text note do not survive', async () => {
+    const c = makeCanaries();
+    const t = textOf(await buildRecordings([hostileExchange(c)], OPTS));
+    for (const [name, v] of Object.entries({
+      uniEmail: c.uniEmail,
+      uniLocal: c.uniEmail.split('@')[0]!,
+      relToken: c.relToken,
+      displayName: c.displayName,
+      phone: c.phoneText.replace(/\s/g, ''),
+      phoneSpaced: c.phoneText,
+      note: c.noteText,
+    }))
+      expect(t.toLowerCase(), name).not.toContain(v.toLowerCase());
+    expect(t).not.toMatch(/@\S*\.[a-z]{2,}/i);
+  });
+
+  it('FIX-BPREP L2: the residue check itself refuses a Unicode-domain email and a relative token link', () => {
+    const wrap = (memo: string) =>
+      JSON.stringify({ meta: { source: 'sandbox-recording' }, response: { body: { memo } } });
+    expect(residueRule(wrap('jo@ex\u00e4mple.de'), [])).toBe('email');
+    expect(residueRule(wrap('jo\uFF20ex\u00e4mple.de'), [])).toBe('email');
   });
 
   it('lists redaction categories in meta.redactions without values', async () => {
