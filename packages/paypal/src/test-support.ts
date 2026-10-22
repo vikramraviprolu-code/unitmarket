@@ -104,7 +104,10 @@ export interface Harness {
 }
 export function harness(
   transport: Transport,
-  o: { credentials?: { client_id: Secret; client_secret: Secret } | null; clock?: MutableClock } = {},
+  o: {
+    credentials?: { client_id: Secret; client_secret: Secret } | null;
+    clock?: MutableClock;
+  } = {},
 ): Harness {
   const records: ProviderCallRecord[] = [];
   const clock = o.clock ?? mutableClock();

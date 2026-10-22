@@ -39,9 +39,15 @@ describe('oauth token cache', () => {
       path: '/v1/oauth2/token',
       body: 'grant_type=client_credentials',
     });
-    const auth = Object.entries(sent?.headers ?? {}).find(([k]) => k.toLowerCase() === 'authorization');
-    expect(auth?.[1]).toBe(`Basic ${Buffer.from('test-client-id:test-client-secret').toString('base64')}`);
-    const ct = Object.entries(sent?.headers ?? {}).find(([k]) => k.toLowerCase() === 'content-type');
+    const auth = Object.entries(sent?.headers ?? {}).find(
+      ([k]) => k.toLowerCase() === 'authorization',
+    );
+    expect(auth?.[1]).toBe(
+      `Basic ${Buffer.from('test-client-id:test-client-secret').toString('base64')}`,
+    );
+    const ct = Object.entries(sent?.headers ?? {}).find(
+      ([k]) => k.toLowerCase() === 'content-type',
+    );
     expect(ct?.[1]).toBe('application/x-www-form-urlencoded');
   });
 
@@ -81,10 +87,16 @@ describe('oauth token cache', () => {
         ? resp(401, { error: 'invalid_client', error_description: 'Client Authentication failed' })
         : resp(200, tokenBody('tok-ok')),
     );
-    const cache = createTokenCache({ transport, clock, credentials: creds, record: async () => {} });
+    const cache = createTokenCache({
+      transport,
+      clock,
+      credentials: creds,
+      record: async () => {},
+    });
     const bad = await Promise.all(Array.from({ length: 5 }, () => cache.get()));
     expect(transport.sent).toHaveLength(1);
-    for (const r of bad) expect(r).toEqual({ ok: false, error: { kind: 'unavailable', retry_after_ms: null } });
+    for (const r of bad)
+      expect(r).toEqual({ ok: false, error: { kind: 'unavailable', retry_after_ms: null } });
     expect(await cache.get()).toEqual({ ok: true, value: 'tok-ok' });
     expect(transport.sent).toHaveLength(2);
   });
@@ -93,7 +105,10 @@ describe('oauth token cache', () => {
     const clock = mutableClock();
     const cases = [
       [{ kind: 'timeout' as const }, { kind: 'timeout' }],
-      [{ kind: 'blocked' as const, by: 'egress' as const }, { kind: 'blocked', by: 'egress' }],
+      [
+        { kind: 'blocked' as const, by: 'egress' as const },
+        { kind: 'blocked', by: 'egress' },
+      ],
       [resp(200, { token_type: 'Bearer' }), { kind: 'unavailable', retry_after_ms: null }],
       [resp(200, 'not json'), { kind: 'unavailable', retry_after_ms: null }],
       [resp(200, tokenBody('t', 0)), { kind: 'unavailable', retry_after_ms: null }],

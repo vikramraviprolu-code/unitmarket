@@ -55,7 +55,8 @@ describe('adversarial', () => {
           nonce: 'nonce-value',
         });
       }
-      if (r.operation === 'get_capture') return resp(404, { name: 'RESOURCE_NOT_FOUND', debug_id: `d-${EMAIL}` });
+      if (r.operation === 'get_capture')
+        return resp(404, { name: 'RESOURCE_NOT_FOUND', debug_id: `d-${EMAIL}` });
       return resp(201, orderWithPii, { 'paypal-debug-id': 'dbg-1' });
     });
     const { adapter, records, log } = harness(t, {
@@ -65,7 +66,12 @@ describe('adversarial', () => {
     await adapter.getOrder('SBXORD00001');
     await adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'umsK-1' });
     await adapter.getCapture('SBXCAP00001');
-    await adapter.refundCapture({ capture_id: 'SBXCAP00001', request_id: 'umsR-1', amount: null, note: 'n' });
+    await adapter.refundCapture({
+      capture_id: 'SBXCAP00001',
+      request_id: 'umsR-1',
+      amount: null,
+      note: 'n',
+    });
 
     expect(records.length).toBeGreaterThanOrEqual(6); // oauth + 5 calls
     const text = JSON.stringify(records) + JSON.stringify(log.events);
@@ -125,7 +131,9 @@ describe('adversarial', () => {
       expect(Number.isInteger(r.units[0]?.amount.minor)).toBe(true);
       expect(JSON.stringify(r)).not.toContain('0.1');
     }
-    const cap = await harness(scriptedTransport(() => resp(200, body.purchase_units[0]?.payments.captures[0]))).adapter.getCapture('SBXCAP00001');
+    const cap = await harness(
+      scriptedTransport(() => resp(200, body.purchase_units[0]?.payments.captures[0])),
+    ).adapter.getCapture('SBXCAP00001');
     expect(cap).toMatchObject({ kind: 'capture', amount: { currency: 'USD', minor: 10 } });
   });
 
@@ -143,14 +151,23 @@ describe('adversarial', () => {
       issue: 'NEVER_SEEN_BEFORE',
       debug_id: 'd',
     });
-    expect(mapError(400, body('NEVER_SEEN_BEFORE'), {})).toMatchObject({ kind: 'rejected', http: 400 });
-    expect(mapError(403, body('NEVER_SEEN_BEFORE'), {})).toMatchObject({ kind: 'rejected', http: 403 });
+    expect(mapError(400, body('NEVER_SEEN_BEFORE'), {})).toMatchObject({
+      kind: 'rejected',
+      http: 400,
+    });
+    expect(mapError(403, body('NEVER_SEEN_BEFORE'), {})).toMatchObject({
+      kind: 'rejected',
+      http: 403,
+    });
     expect(mapError(404, body('NEVER_SEEN_BEFORE'), {})).toMatchObject({ kind: 'not_found' });
     expect(mapError(409, body('NEVER_SEEN_BEFORE'), {})).toMatchObject({ kind: 'in_progress' });
     expect(mapError(429, body('NEVER_SEEN_BEFORE'), {})).toMatchObject({ kind: 'unavailable' });
     expect(mapError(599, body('NEVER_SEEN_BEFORE'), {})).toMatchObject({ kind: 'unavailable' });
     // other 4xx classes: a client error, kept as rejected 400 with the real name
-    expect(mapError(415, body('NEVER_SEEN_BEFORE'), {})).toMatchObject({ kind: 'rejected', http: 400 });
+    expect(mapError(415, body('NEVER_SEEN_BEFORE'), {})).toMatchObject({
+      kind: 'rejected',
+      http: 400,
+    });
     // an unexpected non-error status is outcome-unknown, never success
     expect(mapError(302, {}, {})).toMatchObject({ kind: 'unavailable' });
   });
@@ -165,9 +182,14 @@ describe('adversarial', () => {
       {},
       { name: 5, details: 'x', links: 'y' },
       { name: 'N'.repeat(10_000), details: [null, 1, { issue: {} }] },
-      { details: [{ issue: 'ORDER_NOT_APPROVED' }], links: [null, { rel: 'payer-action', href: 5 }] },
+      {
+        details: [{ issue: 'ORDER_NOT_APPROVED' }],
+        links: [null, { rel: 'payer-action', href: 5 }],
+      },
     ];
-    for (const status of [0, 99, 200, 302, 400, 401, 403, 404, 408, 409, 418, 422, 429, 500, 599, 700]) {
+    for (const status of [
+      0, 99, 200, 302, 400, 401, 403, 404, 408, 409, 418, 422, 429, 500, 599, 700,
+    ]) {
       for (const b of bodies) {
         const r = mapError(status, b, {});
         expect(typeof r.kind).toBe('string');

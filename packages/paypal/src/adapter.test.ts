@@ -13,7 +13,10 @@ describe('request rules', () => {
     const { adapter } = harness(t);
     const res = await adapter.createOrder(createReq({ request_id: 'k'.repeat(109) }));
     expect(res).toMatchObject({ kind: 'rejected', http: 400, name: 'REQUEST_ID_INVALID' });
-    const cap = await adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'k'.repeat(109) });
+    const cap = await adapter.captureOrder({
+      provider_order_id: 'SBXORD00001',
+      request_id: 'k'.repeat(109),
+    });
     expect(cap).toMatchObject({ kind: 'rejected', http: 400, name: 'REQUEST_ID_INVALID' });
     const ref = await adapter.refundCapture({
       capture_id: 'SBXCAP00001',
@@ -26,13 +29,20 @@ describe('request rules', () => {
   });
 
   it('a request id of exactly 108 chars is sent; an empty or non-printable one is refused', async () => {
-    const t = scriptedTransport(() => resp(201, createdBody([link(`https://${APPROVE_HOST}/c?token=A`, 'approve')])));
+    const t = scriptedTransport(() =>
+      resp(201, createdBody([link(`https://${APPROVE_HOST}/c?token=A`, 'approve')])),
+    );
     const { adapter } = harness(t);
-    expect((await adapter.createOrder(createReq({ request_id: 'k'.repeat(108) }))).kind).toBe('created');
+    expect((await adapter.createOrder(createReq({ request_id: 'k'.repeat(108) }))).kind).toBe(
+      'created',
+    );
     expect(t.sent).toHaveLength(1);
     for (const bad of ['', 'has space', 'new\nline', 'café']) {
       const r = await adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: bad });
-      expect(r, JSON.stringify(bad)).toMatchObject({ kind: 'rejected', name: 'REQUEST_ID_INVALID' });
+      expect(r, JSON.stringify(bad)).toMatchObject({
+        kind: 'rejected',
+        name: 'REQUEST_ID_INVALID',
+      });
     }
     expect(t.sent).toHaveLength(1);
   });
@@ -45,7 +55,9 @@ describe('request rules', () => {
           ? resp(201, createdBody([link(`https://${APPROVE_HOST}/c?token=A`, 'approve')]))
           : resp(201, { id: 'SBXORD00001', status: 'COMPLETED', purchase_units: [] }),
     );
-    const { adapter } = harness(t, { credentials: { client_id: secret('id'), client_secret: secret('sec') } });
+    const { adapter } = harness(t, {
+      credentials: { client_id: secret('id'), client_secret: secret('sec') },
+    });
     await adapter.createOrder(createReq());
     await adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'umsK-abc' });
     const posts = t.sent.filter((r) => r.operation !== 'oauth_token');
@@ -79,13 +91,18 @@ describe('request rules', () => {
   it('without credentials a sandbox transport is not called', async () => {
     const t = scriptedTransport(() => resp(200, {}), 'sandbox');
     const { adapter } = harness(t, { credentials: null });
-    expect(await adapter.getOrder('SBXORD00001')).toEqual({ kind: 'unavailable', retry_after_ms: null });
+    expect(await adapter.getOrder('SBXORD00001')).toEqual({
+      kind: 'unavailable',
+      retry_after_ms: null,
+    });
     expect(t.sent).toHaveLength(0);
     expect(adapter.environment).toBe('sandbox');
   });
 
   it('environment follows the transport kind', () => {
-    expect(harness(scriptedTransport(() => resp(200, {}), 'dryrun')).adapter.environment).toBe('dryrun');
+    expect(harness(scriptedTransport(() => resp(200, {}), 'dryrun')).adapter.environment).toBe(
+      'dryrun',
+    );
   });
 });
 
@@ -100,7 +117,10 @@ describe('approve link', () => {
       link(`https://${APPROVE_HOST}/approve?token=A`, 'approve'),
       link(`https://${APPROVE_HOST}/payer?token=A`, 'payer-action'),
     ]);
-    expect(r).toMatchObject({ kind: 'created', approve_url: `https://${APPROVE_HOST}/payer?token=A` });
+    expect(r).toMatchObject({
+      kind: 'created',
+      approve_url: `https://${APPROVE_HOST}/payer?token=A`,
+    });
   });
 
   it('approve link with other host refused', async () => {
@@ -145,14 +165,20 @@ describe('token handling in calls', () => {
     let tokens = 0;
     const t = scriptedTransport((r) => {
       if (r.operation === 'oauth_token') {
-        return resp(200, { access_token: `tok-${++tokens}`, expires_in: 3600, token_type: 'Bearer' });
+        return resp(200, {
+          access_token: `tok-${++tokens}`,
+          expires_in: 3600,
+          token_type: 'Bearer',
+        });
       }
       gets += 1;
       return gets === 1
         ? resp(401, { name: 'AUTHENTICATION_FAILURE' })
         : resp(404, { name: 'RESOURCE_NOT_FOUND', debug_id: 'd' });
     });
-    const { adapter } = harness(t, { credentials: { client_id: secret('i'), client_secret: secret('s') } });
+    const { adapter } = harness(t, {
+      credentials: { client_id: secret('i'), client_secret: secret('s') },
+    });
     expect(await adapter.getOrder('SBXORD00001')).toEqual({ kind: 'not_found', debug_id: 'd' });
     const gs = t.sent.filter((r) => r.operation === 'get_order');
     expect(gs).toHaveLength(2);
@@ -166,8 +192,13 @@ describe('token handling in calls', () => {
         ? resp(200, { access_token: 'tok', expires_in: 3600, token_type: 'Bearer' })
         : resp(401, { name: 'AUTHENTICATION_FAILURE' }),
     );
-    const { adapter } = harness(t, { credentials: { client_id: secret('i'), client_secret: secret('s') } });
-    expect(await adapter.getOrder('SBXORD00001')).toEqual({ kind: 'unavailable', retry_after_ms: null });
+    const { adapter } = harness(t, {
+      credentials: { client_id: secret('i'), client_secret: secret('s') },
+    });
+    expect(await adapter.getOrder('SBXORD00001')).toEqual({
+      kind: 'unavailable',
+      retry_after_ms: null,
+    });
     expect(t.sent.filter((r) => r.operation === 'get_order')).toHaveLength(2);
   });
 
@@ -178,17 +209,28 @@ describe('token handling in calls', () => {
           ? resp(200, { access_token: 'tok', expires_in: 3600, token_type: 'Bearer' })
           : resp(status, { name: 'X' }),
       );
-      const { adapter } = harness(t, { credentials: { client_id: secret('i'), client_secret: secret('s') } });
-      const r = await adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'umsK-1' });
+      const { adapter } = harness(t, {
+        credentials: { client_id: secret('i'), client_secret: secret('s') },
+      });
+      const r = await adapter.captureOrder({
+        provider_order_id: 'SBXORD00001',
+        request_id: 'umsK-1',
+      });
       expect(r.kind, String(status)).toBe('unavailable');
-      expect(t.sent.filter((x) => x.operation === 'capture_order'), String(status)).toHaveLength(1);
+      expect(
+        t.sent.filter((x) => x.operation === 'capture_order'),
+        String(status),
+      ).toHaveLength(1);
     }
   });
 
   it('a GET 5xx or 429 is not retried either (backoff belongs to the caller)', async () => {
     const t = scriptedTransport(() => resp(429, {}, { 'retry-after': '4' }));
     const { adapter } = harness(t);
-    expect(await adapter.getOrder('SBXORD00001')).toEqual({ kind: 'unavailable', retry_after_ms: 4000 });
+    expect(await adapter.getOrder('SBXORD00001')).toEqual({
+      kind: 'unavailable',
+      retry_after_ms: 4000,
+    });
     expect(t.sent).toHaveLength(1);
   });
 });
@@ -198,13 +240,21 @@ describe('transport outcomes', () => {
     const outcomes = [
       [{ kind: 'timeout' as const }, { kind: 'timeout' }],
       [{ kind: 'network_error' as const, code: 'ECONNRESET' }, { kind: 'timeout' }],
-      [{ kind: 'blocked' as const, by: 'dry_run_miss' as const }, { kind: 'blocked', by: 'dry_run_miss' }],
-      [{ kind: 'blocked' as const, by: 'kill_switch' as const }, { kind: 'blocked', by: 'kill_switch' }],
+      [
+        { kind: 'blocked' as const, by: 'dry_run_miss' as const },
+        { kind: 'blocked', by: 'dry_run_miss' },
+      ],
+      [
+        { kind: 'blocked' as const, by: 'kill_switch' as const },
+        { kind: 'blocked', by: 'kill_switch' },
+      ],
     ] as const;
     for (const [tr, expected] of outcomes) {
       const { adapter, records } = harness(scriptedTransport(() => tr));
       expect(await adapter.getOrder('SBXORD00001')).toEqual(expected);
-      expect(await adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'k' })).toEqual(expected);
+      expect(
+        await adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'k' }),
+      ).toEqual(expected);
       expect(records).toHaveLength(2);
       expect(records[0]?.http_status).toBeNull();
     }
@@ -247,6 +297,8 @@ describe('transport outcomes', () => {
 describe('webhook verification (MVP-A)', () => {
   it('returns unverifiable until MVP-C', async () => {
     const { adapter } = harness(scriptedTransport(() => resp(200, {})));
-    expect(await adapter.verifyWebhook({ headers: {}, raw_body: '{}' })).toEqual({ kind: 'unverifiable' });
+    expect(await adapter.verifyWebhook({ headers: {}, raw_body: '{}' })).toEqual({
+      kind: 'unverifiable',
+    });
   });
 });

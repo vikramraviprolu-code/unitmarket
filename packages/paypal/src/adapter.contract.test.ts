@@ -28,7 +28,9 @@ const toTransport = (fx: FixtureFile): TransportResult =>
         status: fx.response.status,
         headers: fx.response.headers,
         body:
-          typeof fx.response.body === 'string' ? fx.response.body : JSON.stringify(fx.response.body),
+          typeof fx.response.body === 'string'
+            ? fx.response.body
+            : JSON.stringify(fx.response.body),
         duration_ms: 1,
       };
 
@@ -44,30 +46,46 @@ describe('fixtures', () => {
       const id = 'SBXORD00001';
       switch (fx.meta.operation) {
         case 'create_order':
-          expect(CreateOrderResSchema.safeParse(await adapter.createOrder(createReq())).success, label).toBe(true);
+          expect(
+            CreateOrderResSchema.safeParse(await adapter.createOrder(createReq())).success,
+            label,
+          ).toBe(true);
           break;
         case 'get_order':
           expect(OrderReadSchema.safeParse(await adapter.getOrder(id)).success, label).toBe(true);
           break;
         case 'capture_order':
           expect(
-            CaptureResSchema.safeParse(await adapter.captureOrder({ provider_order_id: id, request_id: 'k1' })).success,
+            CaptureResSchema.safeParse(
+              await adapter.captureOrder({ provider_order_id: id, request_id: 'k1' }),
+            ).success,
             label,
           ).toBe(true);
           break;
         case 'get_capture':
-          expect(CaptureReadSchema.safeParse(await adapter.getCapture('SBXCAP00001')).success, label).toBe(true);
+          expect(
+            CaptureReadSchema.safeParse(await adapter.getCapture('SBXCAP00001')).success,
+            label,
+          ).toBe(true);
           break;
         case 'refund_capture':
           expect(
             RefundResSchema.safeParse(
-              await adapter.refundCapture({ capture_id: 'SBXCAP00001', request_id: 'k1', amount: null, note: 'n' }),
+              await adapter.refundCapture({
+                capture_id: 'SBXCAP00001',
+                request_id: 'k1',
+                amount: null,
+                note: 'n',
+              }),
             ).success,
             label,
           ).toBe(true);
           break;
         case 'get_refund':
-          expect(RefundResSchema.safeParse(await adapter.getRefund('SBXREF00001')).success, label).toBe(true);
+          expect(
+            RefundResSchema.safeParse(await adapter.getRefund('SBXREF00001')).success,
+            label,
+          ).toBe(true);
           break;
         case 'oauth_token': {
           const cache = createTokenCache({
@@ -122,28 +140,44 @@ describe('create', () => {
       debug_id: 'sbxdebug0054',
     });
     const rl = harness(await dryRunTransport('rate_limited_429'));
-    expect(await rl.adapter.createOrder(createReq())).toEqual({ kind: 'unavailable', retry_after_ms: 2000 });
+    expect(await rl.adapter.createOrder(createReq())).toEqual({
+      kind: 'unavailable',
+      retry_after_ms: 2000,
+    });
     expect((await rl.adapter.createOrder(createReq())).kind).toBe('created');
     const s5 = harness(await dryRunTransport('server_500'));
-    expect(await s5.adapter.createOrder(createReq())).toEqual({ kind: 'unavailable', retry_after_ms: null });
+    expect(await s5.adapter.createOrder(createReq())).toEqual({
+      kind: 'unavailable',
+      retry_after_ms: null,
+    });
   });
 });
 
 describe('capture', () => {
   it('docs-example capture 201 maps to claim with COMPLETED units and capture ids', async () => {
     const { adapter } = harness(await dryRunTransport('docs_capture_201'));
-    expect(await adapter.captureOrder({ provider_order_id: '5O190127TN364715T', request_id: 'umsK-1' })).toEqual({
+    expect(
+      await adapter.captureOrder({ provider_order_id: '5O190127TN364715T', request_id: 'umsK-1' }),
+    ).toEqual({
       kind: 'claim',
       http: 201,
       provider_order_id: '5O190127TN364715T',
-      units: [{ reference_id: 'd9f80740-38f0-11e8-b467-0ed5f89f718b', capture_id: '3C679366HH908993F', status: 'COMPLETED' }],
+      units: [
+        {
+          reference_id: 'd9f80740-38f0-11e8-b467-0ed5f89f718b',
+          capture_id: '3C679366HH908993F',
+          status: 'COMPLETED',
+        },
+      ],
       debug_id: null,
     });
   });
 
   it('207 maps per unit', async () => {
     const { adapter } = harness(await dryRunTransport('partial_207'));
-    expect(await adapter.captureOrder({ provider_order_id: 'SBXPART207ORD0001', request_id: 'umsK-1' })).toEqual({
+    expect(
+      await adapter.captureOrder({ provider_order_id: 'SBXPART207ORD0001', request_id: 'umsK-1' }),
+    ).toEqual({
       kind: 'claim',
       http: 207,
       provider_order_id: 'SBXPART207ORD0001',
@@ -157,7 +191,9 @@ describe('capture', () => {
 
   it('202 maps to claim with no final units', async () => {
     const { adapter } = harness(await dryRunTransport('capture_202'));
-    expect(await adapter.captureOrder({ provider_order_id: 'SBXCAP202ORD00001', request_id: 'umsK-1' })).toEqual({
+    expect(
+      await adapter.captureOrder({ provider_order_id: 'SBXCAP202ORD00001', request_id: 'umsK-1' }),
+    ).toEqual({
       kind: 'claim',
       http: 202,
       provider_order_id: 'SBXCAP202ORD00001',
@@ -168,7 +204,9 @@ describe('capture', () => {
 
   it('a pending capture keeps its status', async () => {
     const { adapter } = harness(await dryRunTransport('pending_receiving_pref'));
-    expect(await adapter.captureOrder({ provider_order_id: 'SBXPENDRPORD00001', request_id: 'k' })).toMatchObject({
+    expect(
+      await adapter.captureOrder({ provider_order_id: 'SBXPENDRPORD00001', request_id: 'k' }),
+    ).toMatchObject({
       kind: 'claim',
       http: 201,
       units: [{ reference_id: 'unit-1', capture_id: 'SBXPENDRPCAP00001', status: 'PENDING' }],
@@ -177,8 +215,12 @@ describe('capture', () => {
 
   it('a lost response is a timeout, and the replay is a 200 claim', async () => {
     const { adapter } = harness(await dryRunTransport('lost_capture_response'));
-    expect(await adapter.captureOrder({ provider_order_id: 'SBXLOSTORD00001', request_id: 'k' })).toEqual({ kind: 'timeout' });
-    expect(await adapter.captureOrder({ provider_order_id: 'SBXLOSTORD00001', request_id: 'k' })).toMatchObject({
+    expect(
+      await adapter.captureOrder({ provider_order_id: 'SBXLOSTORD00001', request_id: 'k' }),
+    ).toEqual({ kind: 'timeout' });
+    expect(
+      await adapter.captureOrder({ provider_order_id: 'SBXLOSTORD00001', request_id: 'k' }),
+    ).toMatchObject({
       kind: 'claim',
       http: 200,
       units: [{ status: 'COMPLETED' }],
@@ -187,7 +229,9 @@ describe('capture', () => {
 
   it('409 maps to in_progress', async () => {
     const { adapter } = harness(await dryRunTransport('docs_capture_409_in_progress'));
-    expect(await adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'k' })).toEqual({
+    expect(
+      await adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'k' }),
+    ).toEqual({
       kind: 'in_progress',
       debug_id: 'sbxdebug0409a',
     });
@@ -195,13 +239,17 @@ describe('capture', () => {
 
   it('422 ORDER_NOT_APPROVED and ORDER_ALREADY_CAPTURED map to rejected', async () => {
     const a = harness(await dryRunTransport('docs_capture_422_order_not_approved'));
-    expect(await a.adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'k' })).toMatchObject({
+    expect(
+      await a.adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'k' }),
+    ).toMatchObject({
       kind: 'rejected',
       http: 422,
       issue: 'ORDER_NOT_APPROVED',
     });
     const b = harness(await dryRunTransport('docs_capture_422_order_already_captured'));
-    expect(await b.adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'k' })).toMatchObject({
+    expect(
+      await b.adapter.captureOrder({ provider_order_id: 'SBXORD00001', request_id: 'k' }),
+    ).toMatchObject({
       kind: 'rejected',
       http: 422,
       issue: 'ORDER_ALREADY_CAPTURED',
@@ -253,7 +301,10 @@ describe('read', () => {
 
   it('get order 404 maps to not_found', async () => {
     const { adapter } = harness(await dryRunTransport('docs_get_order_404'));
-    expect(await adapter.getOrder('SBXORD00001')).toEqual({ kind: 'not_found', debug_id: 'sbxdebug0404a' });
+    expect(await adapter.getOrder('SBXORD00001')).toEqual({
+      kind: 'not_found',
+      debug_id: 'sbxdebug0404a',
+    });
   });
 
   it('mismatches are reported as read, never corrected', async () => {
@@ -286,7 +337,11 @@ describe('read', () => {
     const p = harness(await dryRunTransport('pending_receiving_pref'));
     expect(await p.adapter.getCapture('SBXPENDRPCAP00001')).toMatchObject({
       kind: 'capture',
-      capture: { status: 'PENDING', status_reason: 'RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION', paypal_fee_minor: null },
+      capture: {
+        status: 'PENDING',
+        status_reason: 'RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION',
+        paypal_fee_minor: null,
+      },
     });
   });
 
@@ -323,16 +378,28 @@ describe('read', () => {
       return r.kind === 'order' ? r.units[0]?.capture?.capture_id : r.kind;
     };
     expect(
-      await run([cap('CAPA', 'DECLINED', '2026-01-01T10:00:00Z'), cap('CAPB', 'COMPLETED', '2026-01-01T11:00:00Z')]),
+      await run([
+        cap('CAPA', 'DECLINED', '2026-01-01T10:00:00Z'),
+        cap('CAPB', 'COMPLETED', '2026-01-01T11:00:00Z'),
+      ]),
     ).toBe('CAPB');
     expect(
-      await run([cap('CAPB', 'COMPLETED', '2026-01-01T11:00:00Z'), cap('CAPA', 'DECLINED', '2026-01-01T10:00:00Z')]),
+      await run([
+        cap('CAPB', 'COMPLETED', '2026-01-01T11:00:00Z'),
+        cap('CAPA', 'DECLINED', '2026-01-01T10:00:00Z'),
+      ]),
     ).toBe('CAPB');
     expect(
-      await run([cap('CAPA', 'DECLINED', '2026-01-01T10:00:00Z'), cap('CAPB', 'COMPLETED', '2026-01-01T10:00:00Z')]),
+      await run([
+        cap('CAPA', 'DECLINED', '2026-01-01T10:00:00Z'),
+        cap('CAPB', 'COMPLETED', '2026-01-01T10:00:00Z'),
+      ]),
     ).toBe('CAPB');
     expect(
-      await run([cap('CAPB', 'DECLINED', '2026-01-01T10:00:00Z'), cap('CAPA', 'COMPLETED', '2026-01-01T10:00:00Z')]),
+      await run([
+        cap('CAPB', 'DECLINED', '2026-01-01T10:00:00Z'),
+        cap('CAPA', 'COMPLETED', '2026-01-01T10:00:00Z'),
+      ]),
     ).toBe('CAPB');
   });
 
@@ -363,10 +430,18 @@ describe('read', () => {
       ],
     };
     const { adapter, records } = harness(
-      scriptedTransport(() => ({ kind: 'response', status: 200, headers: {}, body: JSON.stringify(body), duration_ms: 1 })),
+      scriptedTransport(() => ({
+        kind: 'response',
+        status: 200,
+        headers: {},
+        body: JSON.stringify(body),
+        duration_ms: 1,
+      })),
     );
     expect(await adapter.getOrder('SBXORD00001')).toMatchObject({
-      units: [{ capture: { status: 'PARTIALLY_REFUNDED', paypal_fee_minor: 45, refunded_minor: 125 } }],
+      units: [
+        { capture: { status: 'PARTIALLY_REFUNDED', paypal_fee_minor: 45, refunded_minor: 125 } },
+      ],
     });
     expect(records[0]?.outcome).toContain('refunded_source=seller_receivable_breakdown');
   });
@@ -378,8 +453,16 @@ describe('read', () => {
       'null',
       { id: 'lowercase', status: 'COMPLETED', purchase_units: [] },
       { id: 'SBXORD00001', status: 'WEIRD', purchase_units: [] },
-      { id: 'SBXORD00001', status: 'COMPLETED', purchase_units: [{ reference_id: 'u', amount: { currency_code: 'USD', value: '1e2' } }] },
-      { id: 'SBXORD00001', status: 'COMPLETED', purchase_units: [{ reference_id: 'u', amount: { currency_code: 'USD', value: '1.005' } }] },
+      {
+        id: 'SBXORD00001',
+        status: 'COMPLETED',
+        purchase_units: [{ reference_id: 'u', amount: { currency_code: 'USD', value: '1e2' } }],
+      },
+      {
+        id: 'SBXORD00001',
+        status: 'COMPLETED',
+        purchase_units: [{ reference_id: 'u', amount: { currency_code: 'USD', value: '1.005' } }],
+      },
     ];
     for (const b of bad) {
       const { adapter } = harness(
@@ -403,7 +486,12 @@ describe('refund', () => {
   it('docs-example refund 201 maps to a refund result', async () => {
     const { adapter } = harness(await dryRunTransport('docs_refund_201'));
     expect(
-      await adapter.refundCapture({ capture_id: '7TK53561YB803214S', request_id: 'umsR-1', amount: null, note: 'test' }),
+      await adapter.refundCapture({
+        capture_id: '7TK53561YB803214S',
+        request_id: 'umsR-1',
+        amount: null,
+        note: 'test',
+      }),
     ).toEqual({
       kind: 'refund',
       refund_id: '58K15806CS993444T',
@@ -419,7 +507,11 @@ describe('refund', () => {
       kind: 'response',
       status: 201,
       headers: {},
-      body: JSON.stringify({ id: 'REF1', status: 'PENDING', amount: { currency_code: 'USD', value: '1.25' } }),
+      body: JSON.stringify({
+        id: 'REF1',
+        status: 'PENDING',
+        amount: { currency_code: 'USD', value: '1.25' },
+      }),
       duration_ms: 1,
     }));
     const { adapter } = harness(t);
@@ -429,7 +521,12 @@ describe('refund', () => {
       amount: { currency: 'USD', minor: 125 },
       note: 'goodwill',
     });
-    expect(r).toMatchObject({ kind: 'refund', status: 'PENDING', amount: { currency: 'USD', minor: 125 }, capture_id: null });
+    expect(r).toMatchObject({
+      kind: 'refund',
+      status: 'PENDING',
+      amount: { currency: 'USD', minor: 125 },
+      capture_id: null,
+    });
     expect(t.sent[0]?.path).toBe('/v2/payments/captures/SBXCAP00001/refund');
     expect(JSON.parse(t.sent[0]?.body ?? 'null')).toEqual({
       amount: { currency_code: 'USD', value: '1.25' },

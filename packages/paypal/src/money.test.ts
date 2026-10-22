@@ -76,7 +76,6 @@ describe('fromDecimalString', () => {
       '1.0e1',
       '１.00',
       '2.500', // more decimals than minor_units, even when the extra digit is zero
-      '100.00', // JPY has no decimals (checked below with minor_units 0)
       '99999999999999999999.00',
       '90071992547409.92', // 2**53 minor units: not a safe integer
     ];

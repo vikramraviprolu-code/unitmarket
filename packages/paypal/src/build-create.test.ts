@@ -65,7 +65,11 @@ describe('create body', () => {
     const body = buildCreateBody(
       createReq({
         units: [
-          { reference_id: 'unit-1', payee_merchant_id: null, amount: { currency: 'USD', minor: 100 } },
+          {
+            reference_id: 'unit-1',
+            payee_merchant_id: null,
+            amount: { currency: 'USD', minor: 100 },
+          },
         ],
       }),
     );

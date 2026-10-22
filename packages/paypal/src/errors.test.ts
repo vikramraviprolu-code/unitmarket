@@ -21,9 +21,9 @@ const rejected = (http: 400 | 403 | 422, name: string, issue: string | null) => 
 // Expected values are copied from the architecture 9.1 table, not computed from the code.
 describe('error map: one test per row of architecture 9.1', () => {
   it('400 INVALID_REQUEST MALFORMED_REQUEST_JSON -> rejected', () => {
-    expect(
-      mapError(400, err('INVALID_REQUEST', 'MALFORMED_REQUEST_JSON'), {}),
-    ).toEqual(rejected(400, 'INVALID_REQUEST', 'MALFORMED_REQUEST_JSON'));
+    expect(mapError(400, err('INVALID_REQUEST', 'MALFORMED_REQUEST_JSON'), {})).toEqual(
+      rejected(400, 'INVALID_REQUEST', 'MALFORMED_REQUEST_JSON'),
+    );
   });
   it('400 INVALID_REQUEST INVALID_PARAMETER_VALUE -> rejected', () => {
     expect(mapError(400, err('INVALID_REQUEST', 'INVALID_PARAMETER_VALUE'), {})).toEqual(
@@ -145,7 +145,12 @@ describe('error map: one test per row of architecture 9.1', () => {
     });
   });
   it('429 without a usable Retry-After -> null', () => {
-    for (const h of [{}, { 'retry-after': 'soon' }, { 'retry-after': '-5' }, { 'retry-after': '1.5' }]) {
+    for (const h of [
+      {},
+      { 'retry-after': 'soon' },
+      { 'retry-after': '-5' },
+      { 'retry-after': '1.5' },
+    ]) {
       expect(mapError(429, {}, h)).toEqual({ kind: 'unavailable', retry_after_ms: null });
     }
   });
