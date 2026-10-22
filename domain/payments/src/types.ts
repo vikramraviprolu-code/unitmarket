@@ -15,6 +15,8 @@ export interface OrderView {
   status: OrderStatus;
   /** Plain words for the buyer; never internals. */
   buyer_message: string;
+  /** Operator-only detail (F-4): the PayPal reason code of a pending unit. Never shown to a buyer. */
+  operator_note: string | null;
   items: { article_id: Id; access: AccessState; window: WindowState }[];
   environment: EnvironmentLabel;
   /** Set when the buyer must go back to PayPal (payer action required, or the order awaits approval). */

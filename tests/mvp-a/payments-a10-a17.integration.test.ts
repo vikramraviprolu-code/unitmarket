@@ -211,7 +211,7 @@ describe('A-16 pending_never_unlocks', () => {
     const { ret } = await buy(w, BUYER_A, 'tide-tables');
     expect((await ent(w)).access_state).toBe('locked');
     expect(await count(w, 'SELECT count(*) AS c FROM ledger_entries')).toBe(0);
-    if (ret.ok) expect(ret.value.buyer_message).toMatch(/^Payment pending at PayPal/);
+    if (ret.ok) expect(ret.value.buyer_message).toBe('Payment pending at PayPal');
     const lib = await getLibrary(w.td.db, { buyer_id: 'buy_A', now: w.td.clock.now() });
     expect(lib[0]?.status_text).toBe('Payment pending at PayPal');
     expect(lib[0]?.can_open).toBe(false);

@@ -192,7 +192,8 @@ describe('pending, declined, mismatch', () => {
     });
     expect(await ents()).toMatchObject([{ money_state: 'pending', access_state: 'locked' }]);
     const view = await loadOrderView(w.db, a.order_id);
-    expect(view.buyer_message).toContain('ECHECK');
+    expect(view.buyer_message).not.toContain('ECHECK');
+    expect(view.operator_note).toBe('ECHECK');
 
     w.clock.advance(120_000);
     const done = await apply(a.order_id, setCapture(base, 0, { id: 'CAPP', status: 'COMPLETED' }));

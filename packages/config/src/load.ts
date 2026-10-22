@@ -73,6 +73,27 @@ const isWeakSecret = (v: string): boolean => {
 };
 const MODE_WORD = /(?:^|[^a-z0-9])(?:live|production)(?:$|[^a-z0-9])/i;
 
+// F-1 (A-01): a variable whose NAME looks PayPal-related or live-related and is not on the known list
+// is refused, so a deployer who sets PAYPAL_ENV=live or UMS_LIVE=1 gets a loud stop, not a silent ignore.
+const KNOWN_PAYPAL_OR_MODE_NAMES: ReadonlySet<string> = new Set([
+  'UMS_MODE',
+  'UMS_OUTBOUND_APPROVAL_REF',
+  'UMS_PAYPAL_CONNECT',
+  'PAYPAL_CLIENT_ID',
+  'PAYPAL_CLIENT_SECRET',
+  'PAYPAL_WEBHOOK_ID',
+  'NEXT_PUBLIC_UMS_ENV_LABEL',
+]);
+// Known names whose value is checked word-wise (the client secret is random text: never inspected).
+const MODE_VALUE_NAMES: readonly string[] = [
+  'UMS_OUTBOUND_APPROVAL_REF',
+  'PAYPAL_CLIENT_ID',
+  'PAYPAL_WEBHOOK_ID',
+];
+const SUSPICIOUS_NAME = /paypal|(?:^|[^a-z0-9])(?:live|production)(?:$|[^a-z0-9])/i;
+const suspiciousUnknownName = (name: string): boolean =>
+  !KNOWN_PAYPAL_OR_MODE_NAMES.has(name) && SUSPICIOUS_NAME.test(name);
+
 const refuse = (code: BootRefusal['code'], name: string) => err<BootRefusal>({ code, name });
 const val = (env: Env, name: string): string | undefined => {
   const v = env[name];
@@ -97,6 +118,16 @@ export function loadConfig(env: Env): Result<Config, BootRefusal> {
   // 2. any PayPal hostname in any environment variable value (D-013)
   for (const [name, v] of Object.entries(env)) {
     if (v !== undefined && carriesPayPalHost(v)) return refuse('non_sandbox_host', name);
+  }
+
+  // 1b. F-1: unknown PayPal- or live-looking names, and live/production words in known identifiers
+  for (const [name, v] of Object.entries(env)) {
+    if (v === undefined || v.trim() === '') continue;
+    if (suspiciousUnknownName(name)) return refuse('live_not_available', name);
+  }
+  for (const name of MODE_VALUE_NAMES) {
+    const v = val(env, name);
+    if (v !== undefined && MODE_WORD.test(v)) return refuse('live_not_available', name);
   }
 
   // 3. connect flag
