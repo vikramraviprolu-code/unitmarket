@@ -20,7 +20,7 @@
     "test:integration": "vitest run --maxWorkers=2 --project integration --passWithNoTests",
     "test:adversarial": "vitest run --maxWorkers=2 --project adversarial --passWithNoTests",
     "test:golden": "vitest run --maxWorkers=2 --project golden --passWithNoTests",
-    "test:e2e": "node -e \"console.log('test:e2e: placeholder until lane 15 adds the Playwright suite (offline). Nothing was run.')\"",
+    "test:e2e": "pnpm --filter @umsbx/web test:e2e",
     "check:isolation": "node scripts/check-isolation.mjs",
     "check:no-live-host": "node scripts/check-no-live-host.mjs",
     "check:secrets-names": "node scripts/check-secrets-names.mjs",

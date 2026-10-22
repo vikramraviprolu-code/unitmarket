@@ -1,0 +1,108 @@
+import { redirect } from 'next/navigation';
+import type { Metadata } from 'next';
+import { app } from '../../server/access';
+import { currentActor } from '../../server/session';
+import { EnvLabel } from '../../ui/EnvLabel';
+import { formatMinor, formatDateTime } from '../../lib/format';
+
+export const metadata: Metadata = { title: 'Operations' };
+
+export default async function Ops() {
+  const actor = await currentActor();
+  if (actor?.kind !== 'operator') redirect('/signin?next=/ops');
+  const snap = await (await app()).engine.opsSnapshot(actor);
+  if (snap === null) redirect('/signin?next=/ops');
+  return (
+    <>
+      <h1>
+        Operations <EnvLabel environment={snap.environment} />
+      </h1>
+      <p className="muted">Read only. Changes are made with the operator command line.</p>
+
+      <h2>Switches</h2>
+      <table>
+        <caption className="visually-hidden">Safety switches</caption>
+        <thead>
+          <tr>
+            <th scope="col">Switch</th>
+            <th scope="col">State</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(snap.switches).map(([name, on]) => (
+            <tr key={name}>
+              <td className="mono">{name}</td>
+              <td>{on ? 'On' : 'Off'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <h2>Outbound approval gate</h2>
+      <dl>
+        <dt>Mode</dt>
+        <dd>{snap.gate.mode}</dd>
+        <dt>Connect</dt>
+        <dd>{snap.gate.connect ? 'on' : 'off'}</dd>
+        <dt>Approval reference set</dt>
+        <dd>{snap.gate.approval_ref_set ? 'yes' : 'no'}</dd>
+        <dt>Transport</dt>
+        <dd>{snap.gate.transport}</dd>
+      </dl>
+
+      <h2>Orders</h2>
+      {snap.orders.length === 0 ? (
+        <p className="muted">No orders yet.</p>
+      ) : (
+        <table>
+          <caption className="visually-hidden">Latest orders</caption>
+          <thead>
+            <tr>
+              <th scope="col">Reference</th>
+              <th scope="col">Status</th>
+              <th scope="col">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {snap.orders.map((o) => (
+              <tr key={o.order_ref}>
+                <td className="mono">{o.order_ref}</td>
+                <td>{o.status}</td>
+                <td>{formatMinor(o.total_minor, o.currency)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <h2>Operations by state</h2>
+      <p>
+        {snap.operations.length === 0
+          ? 'None.'
+          : snap.operations.map((o) => `${o.state}: ${o.count}`).join(', ')}
+      </p>
+
+      <h2>Alerts</h2>
+      {snap.alerts.length === 0 ? (
+        <p className="muted">No alerts.</p>
+      ) : (
+        <ul>
+          {snap.alerts.map((a, i) => (
+            <li key={i}>
+              {a.kind}, {formatDateTime(a.created_at)}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h2>Invariants</h2>
+      <ul>
+        {snap.invariants.map((v) => (
+          <li key={v.id}>
+            {v.id}: {v.ok ? 'ok' : 'FAILED'}. {v.detail}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}

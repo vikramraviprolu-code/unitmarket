@@ -1,0 +1,14 @@
+// The one door from pages and route handlers to the engine (architecture 2.3 Z1). Re-exports the
+// lazy accessors of the composition root; marks the module server-only for the bundler.
+import 'server-only';
+export { app, securityDeps } from '../../composition.server';
+export type {
+  App,
+  ApprovalView,
+  Engine,
+  LibraryEntry,
+  OfferPage,
+  OpsSnapshot,
+  OrderView,
+} from '../../composition.server';
+export { orderMessage } from '../../composition.server';
