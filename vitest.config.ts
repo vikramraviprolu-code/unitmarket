@@ -5,7 +5,7 @@ import { configDefaults, defineConfig } from 'vitest/config';
 // state (*.state.test.ts), contract (*.contract.test.ts), integration (*.integration.test.ts),
 // adversarial (*.adversarial.test.ts) and golden (*.golden.test.ts). Each runs as its own project.
 const exclude = [...configDefaults.exclude, '**/.next/**', '**/dist/**', 'scripts/__fixtures__/**'];
-const roots = ['apps/**', 'domain/**', 'packages/**', 'tools/**', 'scripts'];
+const roots = ['apps/**', 'domain/**', 'packages/**', 'tools/**', 'tests/**', 'scripts'];
 
 const forms = (suffix: string) =>
   roots.flatMap((r) => [`${r}/*${suffix}.test.ts`, `${r}/*${suffix}.test.tsx`]);

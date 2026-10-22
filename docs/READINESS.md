@@ -83,15 +83,51 @@ Branch `fix/05a-review`. Decisions: D-014 in `docs/decision-log.md`.
 - **M1 done**: `matchReadback` compares the captured amount and currency with the unit (mismatch, field `amount`; the contract has no separate `capture_amount` field, a change request if wanted) and `apply.ts` books the sale from the captured amount.
 - **For owners**: a `PARTIALLY_REFUNDED` verified unit can still start a not-started window after the unlock switch is turned back on (kept: the buyer paid and keeps what was not refunded; the refund path in 05b revokes access when the refund covers the whole unit).
 
+## MVP-A gate (lane 18)
+
+Branch `feat/mvp-a-gate`. Verdict and evidence: `docs/evidence/mvp-a-gate-2026-10-22.md`. The state of a lane below is what the gate observed through public entry points, not a claim that nothing else is needed.
+
+| Lane                            | Gate state                                                              | Acceptance ids exercised    |
+| ------------------------------- | ----------------------------------------------------------------------- | --------------------------- |
+| 02 config and safety            | ready, one low finding (F-1: A-01 wording is wider than the boot check) | A-01, A-03                  |
+| 03 transport and fixtures       | ready                                                                   | A-02, A-04, A-23            |
+| 04 PayPal adapter               | ready                                                                   | A-23, A-24                  |
+| 06 approval                     | ready                                                                   | A-05, A-08, A-09            |
+| 07 entitlements and clock       | ready                                                                   | A-12, A-18, A-19            |
+| 08 ledger and receipts          | ready                                                                   | A-12, A-13, A-21, A-22      |
+| 09 delivery                     | ready                                                                   | A-17, A-18                  |
+| 10 recovery and library         | ready                                                                   | A-11, A-13, A-16, A-19      |
+| 11 security                     | ready                                                                   | A-20 (HTTP)                 |
+| 12 runtime, obs, db             | ready                                                                   | A-21                        |
+| 14a catalogue and offer entry   | ready                                                                   | A-05, A-06, A-07            |
+| 05a payments order and capture  | ready                                                                   | A-10 to A-17                |
+| 05b payments reconcile and jobs | ready                                                                   | A-14                        |
+| 15, 15b web                     | ready                                                                   | A-20, A-22, A-25 and PERF-2 |
+| 16 testkit                      | ready                                                                   | A-24                        |
+
+Known deviations the gate carries (each is stated elsewhere in this file; none is closed by the gate):
+
+- No `remote_addr`: every client shares one `no-address` ip bucket and `trusted_proxies` is 0 (lane 15b note).
+- Refund calls are not modelled in the dry-run order model (`blocked: dry_run_miss`); refunds are exercised by the payments lane tests only.
+- The dry-run model keeps its state in the process; an order from an earlier run on a `pglite-disk` database reads as unknown.
+- Concurrency tests run on PGlite (one connection): they prove SQL ordering and constraints, not Postgres lock behaviour (PORT-1 CI job).
+- The RLS spike covers a subset of tables and runs on PGlite only.
+- The contract has no separate `capture_amount` mismatch field (change request if wanted).
+- A `PARTIALLY_REFUNDED` verified unit can still start a not-started window after the unlock switch is turned back on.
+- No sandbox recording exists: every fixture is `docs-example` or `synthetic`.
+- `@vitest/coverage-v8` is not on the approved list, so MAINT-6 (branch coverage on money modules) is unmeasured.
+- A-10 says the create operation is `prepared` when the provider call starts; the engine has moved it to `sent` by then (lease taken). The gate accepts either state.
+- `pnpm audit --prod` reports two high and two moderate postcss advisories through `next` (finding F-2 in the gate report).
+
 ## Payments second-pass fixes (FIX-PAY2)
 
-Branch `fix/payments-pass2`. Decisions: D-017, D-018, D-019 in `docs/decision-log.md`. Findings: Opus second-pass review at main 7345ad4.
+Branch `fix/payments-pass2`. Decisions: D-018, D-019, D-020 in `docs/decision-log.md`. Findings: Opus second-pass review at main 7345ad4.
 
 - **H-1 capture claim.** The claim transaction stores the read-back operation (`ensureReadbackOp`) together with `capture_claimed`. A process that dies between the claim and the post-capture read is finished by the poll. New invariant INV5: every order in `capture_requested`, `capture_claimed` or `unresolved` has an operation that is `sent` or `unknown` (or gave up with `failed`, `window_expired` after the 24 h window, which raised an alert).
 - **H-2, M-1 refunds.** `refund_readback` (`umsRB-<request id>`) is created in the transaction that stores `pending`. Refund operations are looked up by their own request id, never per order. New invariant INV6: every open refund request (`sent`, `unknown`, `pending`) has an operation that is `sent` or `unknown`. A refund operation no longer switches off the 7 day re-read of a paid order.
 - **M-2 `refunded_minor`.** Booking needs GET refund `COMPLETED` and the capture status `PARTIALLY_REFUNDED` or `REFUNDED`; the reported total is used only when it is above 0. `observeReadback` acts on the capture status first. A request that cannot be proven not refunded ends `unresolved` (reservation kept, alert), not `failed`. The test world reports `refunded_minor` 0 by default (`reportRefunded`). **Not done:** the refunded AMOUNT of a dashboard refund is not booked, because the PayPal port has no call that lists the refunds of a capture (`packages/paypal` and `packages/contracts` are outside this task). The unit ends `refunded` and access is revoked for a full refund; a partial dashboard refund raises `refund_unbooked` for a human. A change request for a `listRefunds(capture_id)` adapter method with fixtures is the next step.
 - **M-3 lock order.** Documented below, applied to every money path, pinned by `lockorder.state.test.ts` (a spy on the SqlExecutor asserts the order of the locks of each transaction). `withSerializationRetry` (`packages/db/src/retry.ts`) retries 40P01 and 40001 up to 3 times; it is in the path of the PGlite driver and will be for the pg adapter.
-- **LOW.** Startup recovery skips operations whose lease is still running and runs once per process (`startLoop` option `recover_on_start`, composition passes `false`); `nextDueAt` wakes the loop when a `sent` lease runs out. Capture re-send refusals close the capture as failed (D-017). The D-014 cap counts keys. Event ordering uses `seq` (INV4, recovery cases). `GET /checkout/return` starts the capture only for a page navigation (`Sec-Fetch-Dest: document`, `Sec-Fetch-Mode: navigate`); anything else gets a confirm button. A cross-site top-level navigation (which is also how PayPal returns the buyer) cannot be told from a hostile link by headers; it is harmless because the return only captures an order the buyer already approved at PayPal and the order reference is not guessable. The confirm button is a GET form (a page navigation), because server actions are barred by `check:routes`; a client that sends no Sec-Fetch headers at all cannot pass. `observeReadback` and `suspectReversal` lock the unit row before changing it.
+- **LOW.** Startup recovery skips operations whose lease is still running and runs once per process (`startLoop` option `recover_on_start`, composition passes `false`); `nextDueAt` wakes the loop when a `sent` lease runs out. Capture re-send refusals close the capture as failed (D-018). The D-014 cap counts keys. Event ordering uses `seq` (INV4, recovery cases). `GET /checkout/return` starts the capture only for a page navigation (`Sec-Fetch-Dest: document`, `Sec-Fetch-Mode: navigate`); anything else gets a confirm button. A cross-site top-level navigation (which is also how PayPal returns the buyer) cannot be told from a hostile link by headers; it is harmless because the return only captures an order the buyer already approved at PayPal and the order reference is not guessable. The confirm button is a GET form (a page navigation), because server actions are barred by `check:routes`; a client that sends no Sec-Fetch headers at all cannot pass. `observeReadback` and `suspectReversal` lock the unit row before changing it.
 
 ### Lock order
 
