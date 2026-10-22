@@ -10,7 +10,6 @@ export { buildIndex, loadFixtures } from './fixture-store';
 export type { FixtureIndex, FixtureIndexEntry } from './fixture-store';
 export { createDryRunTransport } from './dryrun';
 export type { DryRunCall, DryRunTransport } from './dryrun';
-export { createSandboxTransport } from './sandbox';
 export { buildRecordings, formatSummary, writeRecordings } from './recorder';
 export type {
   BuildResult,
@@ -21,3 +20,13 @@ export type {
   WriteResult,
 } from './recorder';
 export { validateFolderLabels } from './fixture-store';
+export {
+  MAX_REQUEST_BODY_BYTES,
+  REQUEST_TIMEOUT_MS,
+  SandboxSealedError,
+  createApprovedSandboxTransport,
+  createSandboxTransport,
+} from './sandbox';
+export type { ApprovedSandboxOptions, SandboxCall, SandboxTransport } from './sandbox';
+export type { ScopedGate, Wire, WireErrorKind, WireRequest, WireResult } from './wire';
+export { MAX_RESPONSE_BYTES } from './wire-map';

@@ -18,11 +18,13 @@ import { createScriptedModel } from '@umsbx/model';
 import { createPayPalAdapter } from '@umsbx/paypal';
 import { createSwitchReader } from '@umsbx/safety';
 import {
+  createApprovedSandboxTransport,
   createSandboxTransport,
   createDryRunTransport,
   guard,
   loadFixtures,
 } from '@umsbx/transport';
+import type { ScopedGate, Wire } from '@umsbx/transport';
 import { loadConfigFromProcess, makeSecret } from '@umsbx/config';
 import { DomainConfigSchema } from '@umsbx/contracts';
 import type {
@@ -439,7 +441,14 @@ export function dryRunSubject(): ConformanceSubject {
  * a sealed stub until lane B-L1. Buyer approval is done by the owner in the browser; the hook waits
  * for the order to read APPROVED.
  */
-export function sandboxSubject(): ConformanceSubject {
+export function sandboxSubject(
+  /**
+   * B-L1: the approved transport pieces. Omitted (as composition does in this branch), the subject
+   * keeps the sealed transport and every call is blocked. Tests pass a fake Wire here; the real
+   * Wire is only ever built inside the transport factory, and only the owner's approval row opens it.
+   */
+  approved?: { gate: ScopedGate; scope: string; wire?: Wire },
+): ConformanceSubject {
   let n = 0;
   return {
     name: 'sandbox',
@@ -459,7 +468,16 @@ export function sandboxSubject(): ConformanceSubject {
       }
       const clock: Clock = { now: () => new Date(Date.parse(T0)) };
       const urls: string[] = [];
-      const inner = createSandboxTransport();
+      const inner: Transport =
+        approved === undefined
+          ? createSandboxTransport()
+          : await createApprovedSandboxTransport({
+              gate: approved.gate,
+              scope: approved.scope,
+              clock,
+              log: quietLog,
+              ...(approved.wire === undefined ? {} : { wire: approved.wire }),
+            });
       const transport: Transport = {
         kind: inner.kind,
         send: async (r) => {
