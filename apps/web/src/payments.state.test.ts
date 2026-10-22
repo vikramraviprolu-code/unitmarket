@@ -137,6 +137,22 @@ describe('the real payments engine behind the facade', () => {
     expect(after?.open_case?.case_id).toMatch(/^cas_/);
   });
 
+  // Runs before the browser-path test: that test buys this offer for the same buyer.
+  it('a bad approval token is refused with 403 and writes no order', async () => {
+    const a = await approval((await offers())[0]!, actorB);
+    const before = await app.db.query<{ c: string }>('SELECT count(*) AS c FROM orders');
+    const res = await call(orders.POST, {
+      url: '/api/orders',
+      method: 'POST',
+      session: B,
+      headers: { 'idempotency-key': 'pay-test-key-9002' },
+      body: { approval_id: a.approval_id, token: 'x'.repeat(40) },
+    });
+    expect(res.status).toBe(403);
+    const after = await app.db.query<{ c: string }>('SELECT count(*) AS c FROM orders');
+    expect(after.rows[0]?.c).toBe(before.rows[0]?.c);
+  });
+
   it('the browser path: POST /api/orders then POST checkout gives an order and a PayPal link', async () => {
     const a = await approval((await offers())[0]!, actorB);
     const placed = await call(orders.POST, {
@@ -159,24 +175,6 @@ describe('the real payments engine behind the facade', () => {
     expect(((await co.json()) as { approve_url: string }).approve_url).toMatch(
       /^https:\/\/[^/]+\/checkoutnow\?token=SBXMODELORD/,
     );
-  });
-
-  it('a bad approval token is refused with 403 and writes no order', async () => {
-    const a = await approval(
-      ((await offers())[4] ?? (await offers())[5] ?? (await offers())[0])!,
-      actorB,
-    );
-    const before = await app.db.query<{ c: string }>('SELECT count(*) AS c FROM orders');
-    const res = await call(orders.POST, {
-      url: '/api/orders',
-      method: 'POST',
-      session: B,
-      headers: { 'idempotency-key': 'pay-test-key-9002' },
-      body: { approval_id: a.approval_id, token: 'x'.repeat(40) },
-    });
-    expect(res.status).toBe(403);
-    const after = await app.db.query<{ c: string }>('SELECT count(*) AS c FROM orders');
-    expect(after.rows[0]?.c).toBe(before.rows[0]?.c);
   });
 
   it('the dry-run approval is refused for another buyer and for an unknown order', async () => {
