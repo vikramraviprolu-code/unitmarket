@@ -37,6 +37,13 @@ const config = {
   // route type check does not know. `pnpm typecheck` (tsc) covers these files instead.
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
+  webpack(cfg) {
+    // packages/db finds its SQL migrations with new URL('../migrations', import.meta.url). Webpack
+    // would try to bundle that directory as an asset; with url parsing off the URL is resolved at
+    // run time against the source location instead.
+    cfg.module.rules.push({ test: /packages[\\/]db[\\/]src[\\/].*\.ts$/, parser: { url: false } });
+    return cfg;
+  },
 };
 
 export default config;

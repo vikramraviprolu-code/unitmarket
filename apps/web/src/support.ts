@@ -7,12 +7,15 @@ import type { App } from '../composition.server';
 export const PASSCODE = 'sandbox passcode for tests';
 const SALT = '00112233445566778899aabbccddeeff';
 
+// Low-entropy placeholders, built at runtime: 40 repeated characters, distinct per secret.
+const dummy = (c: string): string => c.repeat(40);
+
 export async function testEnv(over: Record<string, string> = {}): Promise<Record<string, string>> {
   return {
     UMS_MODE: 'offline',
-    UMS_SESSION_SECRET: 'test-session-secret-0123456789abcdefABCDEF',
-    UMS_APPROVAL_SECRET: 'test-approval-secret-0123456789abcdefABCDEF',
-    UMS_LINK_SECRET: 'test-link-secret-0123456789abcdefABCDEFGH',
+    UMS_SESSION_SECRET: dummy('s'),
+    UMS_APPROVAL_SECRET: dummy('a'),
+    UMS_LINK_SECRET: dummy('l'),
     UMS_DEMO_PASSCODE_HASH: await hashPasscode(PASSCODE, SALT),
     UMS_PUBLIC_ORIGIN: 'http://localhost:3000',
     NODE_ENV: 'test',

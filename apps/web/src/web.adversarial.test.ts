@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { checkEntry, pathFromFile } from '@umsbx/security';
+import { checkEntry, pathFromFile, securityHeaders } from '@umsbx/security';
 import { pageHeaders } from './lib/page-headers';
 
 const WEB = fileURLToPath(new URL('..', import.meta.url));
@@ -97,6 +97,11 @@ describe('security headers on pages (SOP 10)', () => {
     expect(h['X-Content-Type-Options']).toBe('nosniff');
     expect(h['Strict-Transport-Security']).toBeDefined();
     expect(h['Cache-Control']).toContain('no-store');
+  });
+  it('pageHeaders agree with securityHeaders of the route wrapper for the same nonce', () => {
+    const n = 'abcdef0123456789abcdef0123456789';
+    const page = pageHeaders(n);
+    for (const [k, v] of Object.entries(securityHeaders(n))) expect(page[k]).toBe(v);
   });
   it('the middleware applies pageHeaders to every page and is not the only authorisation', () => {
     const mw = read(join(SRC, 'middleware.ts'));
