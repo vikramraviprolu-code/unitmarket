@@ -1,6 +1,14 @@
 # Offline checks only. This workflow references no secret and never contacts PayPal.
 # Sandbox tests (owner-run, tools/spike-kit and the sandbox conformance run) NEVER run in CI:
 # they need credentials that exist only in the owner's local env file.
+#
+# Lane 17 shape: lint-type, tests and checks run on every pull request; mutation and bundle are
+# manual (workflow_dispatch) because they are slow. Nothing here ships or uploads anything.
+#
+# TODO (dependency request, lane 17): branch coverage gate on money modules (MAINT-6, 90 percent)
+# needs @vitest/coverage-v8, which is not on the D-4 list. Add a `coverage` step once approved.
+# TODO (SUP-6): gitleaks on full history. Run `gitleaks git --no-banner --redact` locally and paste
+# the output into the PR until a pinned, reviewed install step is approved for CI.
 name: ci
 
 on:
@@ -11,7 +19,7 @@ permissions:
   contents: read
 
 jobs:
-  offline-checks:
+  lint-type:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -26,7 +34,64 @@ jobs:
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck
+
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
       - run: pnpm test
+
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
       - run: pnpm check:isolation
       - run: pnpm check:no-live-host
       - run: pnpm check:secrets-names
+      - run: pnpm check:fixtures
+      # SUP-2: zero high or critical in production dependencies, or a dated waiver in the gate report.
+      - run: pnpm audit --prod
+
+  mutation:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm mutation
+
+  bundle:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      # Synthetic canary values (no real secret) become the build environment; the scan then proves
+      # none of them reached a client or server chunk (A-25).
+      - run: node scripts/check-bundle-secrets.mjs --print-env >> "$GITHUB_ENV"
+      - run: pnpm --filter @umsbx/web --if-present build
+      - run: pnpm check:bundle

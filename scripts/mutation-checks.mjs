@@ -12,7 +12,7 @@
 // and SURVIVED when it exits 0. Exit 0 when the score is at least the threshold, 1 when below it,
 // 2 when the baseline suite is red or the arguments are wrong. A target that does not exist yet is
 // reported as SKIP; with no target at all the gate passes with a warning.
-// Offline: no network, no credential. The test command is run with SBX_MUTATION=1.
+// Offline: no network, no credential. The test command inherits this process's environment as is.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -54,7 +54,8 @@ export function maskLine(line, state) {
     if (c === '"' || c === "'" || c === '`') {
       let j = i + 1;
       while (j < line.length && line[j] !== c) j += line[j] === '\\' ? 2 : 1;
-      out += c + ' '.repeat(Math.max(0, Math.min(j, line.length) - i - 1)) + (j < line.length ? c : '');
+      out +=
+        c + ' '.repeat(Math.max(0, Math.min(j, line.length) - i - 1)) + (j < line.length ? c : '');
       i = j + 1;
       continue;
     }
@@ -64,7 +65,8 @@ export function maskLine(line, state) {
   return out;
 }
 
-const SKIP_LINE = /^\s*(import\b|export\s+type\b|export\s+interface\b|type\b|interface\b|declare\b)/;
+const SKIP_LINE =
+  /^\s*(import\b|export\s+type\b|export\s+interface\b|type\b|interface\b|declare\b)/;
 const REL_FLIP = { '===': '!==', '!==': '===', '<=': '>', '>=': '<', '<': '>=', '>': '<=' };
 
 /** Every mutant of one file's text: { kind, line, start, end, replacement, text }. */
@@ -135,7 +137,8 @@ export function expandTargets(root, patterns) {
       ? readdirSync(dir).filter((n) => re.test(n) && !/\.test\./.test(n))
       : [];
     if (hits.length === 0) missing.push(p);
-    for (const h of hits.sort()) found.push(p.includes('/') ? `${p.slice(0, p.lastIndexOf('/'))}/${h}` : h);
+    for (const h of hits.sort())
+      found.push(p.includes('/') ? `${p.slice(0, p.lastIndexOf('/'))}/${h}` : h);
   }
   return { found, missing };
 }
@@ -157,7 +160,6 @@ function runCommand(cmd, root, timeoutMs) {
     shell: true,
     encoding: 'utf8',
     timeout: timeoutMs,
-    env: { ...process.env, SBX_MUTATION: '1', NO_COLOR: '1', FORCE_COLOR: '0', CI: '1' },
   });
   return { code: r.status ?? 1, timedOut: r.error?.code === 'ETIMEDOUT' };
 }
@@ -181,7 +183,11 @@ function parseArgs(argv) {
 function main(argv) {
   const opt = parseArgs(argv);
   const root = resolve(opt.root ?? join(dirname(fileURLToPath(import.meta.url)), '..'));
-  if (!Number.isFinite(opt.threshold) || !Number.isFinite(opt.max) || !Number.isFinite(opt.timeout)) {
+  if (
+    !Number.isFinite(opt.threshold) ||
+    !Number.isFinite(opt.max) ||
+    !Number.isFinite(opt.timeout)
+  ) {
     console.error('mutation-checks: --threshold, --max and --timeout must be numbers');
     return 2;
   }
@@ -192,7 +198,7 @@ function main(argv) {
     console.log('mutation-checks: no target present; nothing to mutate (pass with warning)');
     return 0;
   }
-  const pnpm = process.env.MUT_PNPM ?? 'corepack pnpm';
+  const pnpm = 'corepack pnpm';
   const cmdFor = (rel) =>
     (opt.testCmd ?? `${pnpm} exec vitest run --maxWorkers=2 --bail 1 {pkg}`).replace(
       '{pkg}',
@@ -233,7 +239,9 @@ function main(argv) {
         baselined.add(cmd);
         const base = runCommand(cmd, root, timeoutMs);
         if (base.code !== 0) {
-          console.error(`mutation-checks: baseline suite is red for ${t.rel} (${cmd}); fix it first`);
+          console.error(
+            `mutation-checks: baseline suite is red for ${t.rel} (${cmd}); fix it first`,
+          );
           return 2;
         }
       }

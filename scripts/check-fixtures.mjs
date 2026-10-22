@@ -36,7 +36,9 @@ const REDACTED = new Set(['', '[REDACTED]', 'REDACTED', '***']);
 
 const i = process.argv.indexOf('--root');
 const ROOT = resolve(
-  i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fileURLToPath(new URL('..', import.meta.url)),
+  i >= 0 && process.argv[i + 1]
+    ? process.argv[i + 1]
+    : fileURLToPath(new URL('..', import.meta.url)),
 );
 const FIXTURES = join(ROOT, 'fixtures');
 const INDEX = join(FIXTURES, 'INDEX.json');
@@ -132,14 +134,17 @@ function main() {
       else if (byPath.get(e.path) !== e.sha256) problems.push(`${e.path}: index hash is stale`);
     }
     for (const p of byPath.keys())
-      if (!entries.some((e) => e.path === p)) problems.push(`${p}: listed in the index but missing`);
+      if (!entries.some((e) => e.path === p))
+        problems.push(`${p}: listed in the index but missing`);
   }
   if (problems.length === 0) {
     console.log(`${NAME}: ok`);
     return 0;
   }
   for (const p of problems) console.error(`${NAME}: ${p}`);
-  console.error(`${NAME}: FAILED with ${problems.length} violation(s); index: run --write-index after review`);
+  console.error(
+    `${NAME}: FAILED with ${problems.length} violation(s); index: run --write-index after review`,
+  );
   return 1;
 }
 

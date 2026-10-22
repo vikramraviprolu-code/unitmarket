@@ -45,9 +45,7 @@ function main(argv) {
   }
   const i = argv.indexOf('--root');
   const appDir = resolve(
-    i >= 0 && argv[i + 1]
-      ? argv[i + 1]
-      : fileURLToPath(new URL('../apps/web', import.meta.url)),
+    i >= 0 && argv[i + 1] ? argv[i + 1] : fileURLToPath(new URL('../apps/web', import.meta.url)),
   );
   const next = join(appDir, '.next');
   if (!existsSync(next)) {
@@ -63,7 +61,9 @@ function main(argv) {
         violations.push(`${rel}: value of ${n} is present in the build output`);
     for (const m of new Set([...text.matchAll(CLIENT_NAME)].map((x) => x[1])))
       if (!ALLOWED_PUBLIC.has(m))
-        violations.push(`${rel}: client-exposed name ${m}; only NEXT_PUBLIC_UMS_ENV_LABEL may be public`);
+        violations.push(
+          `${rel}: client-exposed name ${m}; only NEXT_PUBLIC_UMS_ENV_LABEL may be public`,
+        );
   }
   if (violations.length === 0) {
     console.log('check-bundle-secrets: ok');

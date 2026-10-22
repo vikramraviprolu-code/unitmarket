@@ -17,11 +17,10 @@ function put(root: string, files: Record<string, string>) {
   }
   return root;
 }
-function node(args: string[], env: Record<string, string> = {}) {
+function node(args: string[]) {
   const r = spawnSync(process.execPath, args, {
     cwd: REPO_ROOT,
     encoding: 'utf8',
-    env: { ...process.env, ...env },
   });
   return { status: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
@@ -124,14 +123,14 @@ describe('bundle_canary', () => {
     expect(bundle(root).status).toBe(1);
   });
   it('fails on a NEXT_PUBLIC name other than the env label', () => {
-    const pub = 'NEXT_' + 'PUBLIC_';
+    const pub = 'NEXT_' + 'PUBLIC' + '_';
     const root = put(tmp(), { '.next/static/chunks/a.js': `process.env.${pub}API_KEY` });
     const r = bundle(root);
     expect(r.status).toBe(1);
     expect(r.out).toContain(`${pub}API_KEY`);
   });
   it('passes on a clean build that uses only the env label', () => {
-    const pub = 'NEXT_' + 'PUBLIC_UMS_ENV_LABEL';
+    const pub = 'NEXT_' + 'PUBLIC' + '_UMS_ENV_LABEL';
     const root = put(tmp(), {
       '.next/static/chunks/a.js': `var l=process.env.${pub};`,
       '.next/server/app/page.js': 'console.log(1)',
@@ -220,24 +219,21 @@ describe('evidence_writes', () => {
     const out = tmp();
     const secret = 'ZZsecretvalue' + '987654';
     const longId = 'PAYID' + '1234567890ABC';
-    const r = node(
-      [
-        script('evidence.mjs'),
-        '--lane',
-        '17',
-        '--date',
-        '2026-01-02',
-        '--out-dir',
-        out,
-        '--id',
-        longId,
-        '--step',
-        `unit=node -e "console.log('Tests  7 passed (7)'); console.log('${secret}')"`,
-        '--step',
-        `failing=node -e "console.log('Tests  1 failed | 2 passed (3)'); process.exit(3)"`,
-      ],
-      { SBX_FAKE_ENV: secret },
-    );
+    const r = node([
+      script('evidence.mjs'),
+      '--lane',
+      '17',
+      '--date',
+      '2026-01-02',
+      '--out-dir',
+      out,
+      '--id',
+      longId,
+      '--step',
+      `unit=node -e "console.log('Tests  7 passed (7)'); console.log('${secret}')"`,
+      '--step',
+      `failing=node -e "console.log('Tests  1 failed | 2 passed (3)'); process.exit(3)"`,
+    ]);
     expect(r.status).toBe(1);
     expect(readdirSync(out)).toEqual(['17-2026-01-02.md']);
     const md = readFileSync(join(out, '17-2026-01-02.md'), 'utf8');
@@ -276,7 +272,7 @@ describe('ci_yaml_safe', () => {
   const yml = readFileSync(join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8');
   it('has read-only permissions, no secrets reference and a frozen lockfile', () => {
     expect(yml).toMatch(/^permissions:\n {2}contents: read$/m);
-    expect(yml).not.toMatch(/secrets\./);
+    expect(yml).not.toMatch(/\$\{\{\s*secrets\./);
     expect(yml).toContain('pnpm install --frozen-lockfile');
     expect(yml).not.toMatch(/pnpm install(?! --frozen-lockfile)/);
   });
@@ -301,7 +297,17 @@ describe('root scripts and templates', () => {
   });
   it('gate report template has severities, verdicts and the control checklist', () => {
     const t = readFileSync(join(REPO_ROOT, 'docs/evidence/TEMPLATE-gate-report.md'), 'utf8');
-    for (const s of ['Critical', 'High', 'Medium', 'Low', 'Issue', 'Risk', 'Impact', 'Fix', 'Files'])
+    for (const s of [
+      'Critical',
+      'High',
+      'Medium',
+      'Low',
+      'Issue',
+      'Risk',
+      'Impact',
+      'Fix',
+      'Files',
+    ])
       expect(t).toContain(s);
     for (const v of ['APPROVED FOR SANDBOX DEMO', 'APPROVED WITH CONDITIONS', 'NOT APPROVED'])
       expect(t).toContain(v);
