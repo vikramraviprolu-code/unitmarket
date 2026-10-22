@@ -1,2 +1,7 @@
-// Placeholder from lane 00 SCAFFOLD. Domain code arrives in later lanes.
+// @umsbx/config: the only reader of process.env; refuses unsafe boots (architecture 6, nfr P15).
 export const PACKAGE_NAME = '@umsbx/config' as const;
+export type { Config, Mode } from './schema';
+export type { BootRefusal } from './refusal';
+export { BOOT_REFUSAL_EXIT_CODE } from './refusal';
+export { bootOrExit, loadConfig, loadConfigFromProcess } from './load';
+export { makeSecret } from './secret';

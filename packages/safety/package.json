@@ -8,5 +8,14 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@umsbx/contracts": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@umsbx/db": "workspace:*",
+    "@umsbx/obs": "workspace:*",
+    "@umsbx/runtime": "workspace:*"
   }
 }
