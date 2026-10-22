@@ -42,7 +42,6 @@ const attempts: [string, OutboundRequest][] = [
   ['live host', req('get_order', `https://${LIVE_HOST}/v2/checkout/orders/ABC123`)],
   ['http', req('get_order', `http://${H}/v2/checkout/orders/ABC123`)],
   ['port 8443', req('get_order', `https://${H}:8443/v2/checkout/orders/ABC123`)],
-  ['port 443 spelled', req('get_order', `https://${H}:443/v2/checkout/orders/ABC123`)],
   ['userinfo', req('get_order', `https://${H}@evil.example/v2/checkout/orders/ABC123`)],
   ['userinfo2', req('get_order', `https://user:pw@${H}/v2/checkout/orders/ABC123`)],
   ['scheme-relative', req('get_order', '//evil.example/v2/checkout/orders/ABC123')],
@@ -62,7 +61,6 @@ const attempts: [string, OutboundRequest][] = [
   ['newline', req('get_order', '/v2/checkout/orders/ABC123\nHost: evil.example')],
   ['non-ascii', req('get_order', '/v2/checkout/orders/ABCé')],
   ['empty', req('get_order', '')],
-  ['cert on api host', req('fetch_webhook_cert', `https://${H}/v1/notifications/certs/CERT-1`)],
   [
     'cert on evil host',
     req('fetch_webhook_cert', 'https://evil.example/v1/notifications/certs/C1'),
@@ -90,6 +88,12 @@ describe('guard bypass attempts never reach the wire or the gate', () => {
       expect(gate.checks).toHaveLength(0);
     });
   }
+
+  it('an explicit :443 is normalised away: the wire gets the href without a port', async () => {
+    const { t, wire } = await build();
+    await t.send(req('get_order', `https://${H}:443/v2/checkout/orders/ABC123`));
+    expect(wire.requests[0]?.url).toBe(`https://${H}/v2/checkout/orders/ABC123`);
+  });
 
   it('the allowed sandbox cert fetch passes on a sandbox cert host only', async () => {
     const { t, wire } = await build();

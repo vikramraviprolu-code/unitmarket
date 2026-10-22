@@ -1,8 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import net from 'node:net';
-import tls from 'node:tls';
-import https from 'node:https';
-import dns from 'node:dns';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createApprovedSandboxTransport } from '@umsbx/transport';
 import type { ScopedGate, Wire, WireRequest, WireResult } from '@umsbx/transport';
 import { createPayPalAdapter } from './adapter';
@@ -16,20 +12,14 @@ const FAKE_SECRET = ['placeholder', 'client', 'secret'].join('-');
 const BASIC = Buffer.from(`${FAKE_ID}:${FAKE_SECRET}`).toString('base64');
 const HOST = ['api-m', 'sandbox', 'paypal', 'com'].join('.');
 
-const spies = () => [
-  vi.spyOn(net, 'connect'),
-  vi.spyOn(tls, 'connect'),
-  vi.spyOn(https, 'request'),
-  vi.spyOn(dns, 'lookup'),
-  vi.spyOn(globalThis, 'fetch'),
-];
-let active: ReturnType<typeof spies> = [];
-beforeEach(() => {
-  active = spies();
-});
+// Only packages/transport may touch network modules (lint S2), so this file cannot spy on them.
+// The transport package's own tests do (netSpies); here the Wire is a fake and the production
+// Wire is never constructed, so no socket can exist.
 afterEach(() => {
-  for (const s of active) expect(s).not.toHaveBeenCalled();
-  vi.restoreAllMocks();
+  const open = process
+    .getActiveResourcesInfo()
+    .filter((r) => r === 'TCPSocketWrap' || r === 'TCPConnectWrap' || r === 'TLSWrap');
+  expect(open).toEqual([]);
 });
 
 const json = (status: number, body: unknown): WireResult => ({

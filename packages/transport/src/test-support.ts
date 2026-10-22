@@ -102,7 +102,7 @@ export function scopedGate(
     activeApproval: async () => (scope === null ? null : { scope, approval_ref: 'appr-test' }),
     check: async (c) => {
       checks.push({ operation: c.operation, amount_minor: c.amount_minor });
-      return (o.verdict?.() ?? { allowed: true, approval_ref: 'appr-test' }) as Awaited<
+      return (o.verdict ? o.verdict() : { allowed: true, approval_ref: 'appr-test' }) as Awaited<
         ReturnType<OutboundGate['check']>
       >;
     },

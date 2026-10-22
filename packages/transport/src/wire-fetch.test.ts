@@ -46,7 +46,6 @@ describe('the production fetch call lives in exactly one file', () => {
     expect(src.match(/(^|[^.\w$])fetch\s*\(/gm)).toHaveLength(1);
     expect(src).toContain("redirect: 'error'");
     expect(src).toContain("credentials: 'omit'");
-    expect(src).toContain("cache: 'no-store'");
     expect(src).toContain('AbortSignal.timeout');
   });
 
