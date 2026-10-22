@@ -15,6 +15,13 @@ export interface FixtureFile {
     recorded_at: IsoUtc | null;
     origin: string;
     redactions: string[];
+    /**
+     * Optional pin: the dry-run transport answers this fixture only when the request path has this
+     * whole segment (an order, capture or refund id). A wrong id is a dry_run_miss (M6).
+     */
+    expected_id?: string;
+    /** Optional pin: the request path must equal this exact path. */
+    expected_path?: string;
   };
   request: {
     method: 'GET' | 'POST';
@@ -37,6 +44,14 @@ const Meta = z
     recorded_at: z.string().regex(ISO_UTC).nullable(),
     origin: z.string().min(1),
     redactions: z.array(z.string()),
+    expected_id: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{1,64}$/)
+      .optional(),
+    expected_path: z
+      .string()
+      .regex(/^\/[\x21-\x7e]*$/)
+      .optional(),
   })
   .strict();
 

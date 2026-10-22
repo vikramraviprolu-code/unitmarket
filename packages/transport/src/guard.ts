@@ -3,11 +3,16 @@ import type { OutboundRequest } from '@umsbx/contracts';
 
 // Egress guard shared by the dry-run and the sandbox transport (architecture 7 point 6, nfr.md
 // P1 and SOP 18). Pure: no I/O. A refusal carries no detail so nothing about the rule leaks.
+//
+// Contract for callers: send to the returned `url.href`, never to `r.path`. The guard validates
+// the parsed URL; `r.path` is only the caller's spelling of it. A sandbox transport must also drop
+// any Host and X-HTTP-Method-Override request header (see docs/design/lanes/03-transport-fixtures.md).
 
 const SANDBOX_HOST = new URL(SANDBOX_API).hostname;
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const CERT_HOST_RE = new RegExp(`^[a-z0-9-]+(\\.[a-z0-9-]+)*${escapeRe(CERT_HOST_SUFFIX)}$`);
-const CERT_PATH_RE = new RegExp(`^${escapeRe(CERT_PATH_PREFIX)}[A-Za-z0-9._-]+$`);
+// The file name starts with a letter or digit, so '.', '..', '...' and dot-files are refused.
+const CERT_PATH_RE = new RegExp(`^${escapeRe(CERT_PATH_PREFIX)}[A-Za-z0-9][A-Za-z0-9._-]*$`);
 
 const PATH_RES = Object.fromEntries(
   Object.entries(PATHS).map(([op, spec]) => [
@@ -21,8 +26,10 @@ const refuse = (): GuardResult => ({ ok: false, by: 'egress' });
 
 export function guard(r: OutboundRequest, kind: 'dryrun' | 'sandbox'): GuardResult {
   void kind; // both transports apply the identical rules
+  // Own properties only: '__proto__', 'constructor' and 'toString' are not operations (L1).
+  if (typeof r.operation !== 'string' || !Object.hasOwn(PATHS, r.operation)) return refuse();
   const spec = PATHS[r.operation];
-  if (!spec || r.method !== spec.method) return refuse();
+  if (r.method !== spec.method) return refuse();
 
   const raw = r.path;
   // printable ASCII only; no query, fragment, percent-encoding or backslash anywhere
@@ -56,7 +63,7 @@ export function guard(r: OutboundRequest, kind: 'dryrun' | 'sandbox'): GuardResu
   }
 
   if (url.hostname !== SANDBOX_HOST) return refuse();
-  const re = PATH_RES[r.operation];
+  const re = Object.hasOwn(PATH_RES, r.operation) ? PATH_RES[r.operation] : undefined;
   if (!re || !re.test(url.pathname)) return refuse();
   return { ok: true, url };
 }
