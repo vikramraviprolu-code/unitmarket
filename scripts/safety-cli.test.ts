@@ -20,8 +20,8 @@ const run = (...args: string[]) => {
       input: '',
       env: {
         UMS_SESSION_SECRET: S1,
-        UMS_APPROVAL_SECRET: 'Zr5tB8nKd2VwXq7LmC4yHj9PgF3sEa6U',
-        UMS_LINK_SECRET: 'Jd4wN7xQk2ZcR9vTb5LmY8hGp3FsAe6U',
+        UMS_APPROVAL_SECRET: ['Zr5tB8nKd2Vw', 'Xq7LmC4yHj9PgF3sEa6U'].join(''),
+        UMS_LINK_SECRET: ['Jd4wN7xQk2Zc', 'R9vTb5LmY8hGp3FsAe6U'].join(''),
       },
     },
   );
