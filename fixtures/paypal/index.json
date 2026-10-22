@@ -1,0 +1,581 @@
+{
+  "format": 1,
+  "files": [
+    {
+      "file": "docs-examples/docs_capture_201__capture_order__1.json",
+      "sha256": "628d505cc56bc3a55ee908935bb651122405acf91ca8a232778be7fb8d1dda2d",
+      "source": "docs-example",
+      "scenario": "docs_capture_201",
+      "operation": "capture_order",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_capture_409_in_progress__capture_order__1.json",
+      "sha256": "d59fd37b4ed17d4889a2c595461a15820874978dd360640c6a974dd83c9f7586",
+      "source": "docs-example",
+      "scenario": "docs_capture_409_in_progress",
+      "operation": "capture_order",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_capture_422_order_already_captured__capture_order__1.json",
+      "sha256": "298b004c20ea712cc0208e5fb80ed11bd7232443f80699d847df372ff0b80e89",
+      "source": "docs-example",
+      "scenario": "docs_capture_422_order_already_captured",
+      "operation": "capture_order",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_capture_422_order_not_approved__capture_order__1.json",
+      "sha256": "3d5c6470e1e6f36a0546698de7119bc3249a233a9347d47261013d73247a05e3",
+      "source": "docs-example",
+      "scenario": "docs_capture_422_order_not_approved",
+      "operation": "capture_order",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_create_201_minimal__create_order__1.json",
+      "sha256": "fdfcf7559db53b08e3022a1fedd4166d218d2f3ca8dafc73ab7740a66fcf9701",
+      "source": "docs-example",
+      "scenario": "docs_create_201_minimal",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_create_201_payer_action__create_order__1.json",
+      "sha256": "73e60595f832a1c7325dc18ad044ef4bb36491659b707d2ef48152b13bc468eb",
+      "source": "docs-example",
+      "scenario": "docs_create_201_payer_action",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_get_capture__get_capture__1.json",
+      "sha256": "7c0efd0ff48b91d7761c7caaf4135f14363e5551e7b2236965b641a12b61b262",
+      "source": "docs-example",
+      "scenario": "docs_get_capture",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_get_order_404__get_order__1.json",
+      "sha256": "35b81d8b2c2ecbcfa357f4f6447c432e3fcb090d16bda124f849cf02faddba27",
+      "source": "docs-example",
+      "scenario": "docs_get_order_404",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_get_order_approved__get_order__1.json",
+      "sha256": "ce580e0540e555b18d5c430ea3699279e70a3ab7dd01b4ea4664d002b3dc95d9",
+      "source": "docs-example",
+      "scenario": "docs_get_order_approved",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_get_order_completed__get_order__1.json",
+      "sha256": "5a8081cc2e88db9c63523ef2fd9190583930c45ecee4b0cd0f566cb60170481c",
+      "source": "docs-example",
+      "scenario": "docs_get_order_completed",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_get_order_created__get_order__1.json",
+      "sha256": "28a7768006598bf796fa71a6e8c5ac2537667c21452ff5b7474007a49560bfa9",
+      "source": "docs-example",
+      "scenario": "docs_get_order_created",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_get_refund__get_refund__1.json",
+      "sha256": "ead0ec38cf4ff38b6d4dd237cd398e9d1c2c164be1aa478ee689ead33a1cdb37",
+      "source": "docs-example",
+      "scenario": "docs_get_refund",
+      "operation": "get_refund",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_oauth_401__oauth_token__1.json",
+      "sha256": "8b00c2fa80db5129eb17db147a1e88a95982b9df654e4121ad4eac4d0a31656d",
+      "source": "docs-example",
+      "scenario": "docs_oauth_401",
+      "operation": "oauth_token",
+      "step": 1
+    },
+    {
+      "file": "docs-examples/docs_refund_201__refund_capture__1.json",
+      "sha256": "915209064610eb37998b20712e2d9e075fccb6ca818ff84d4df02ec68eae8b77",
+      "source": "docs-example",
+      "scenario": "docs_refund_201",
+      "operation": "refund_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/capture_202__capture_order__1.json",
+      "sha256": "9af85ab40f460dd61a015686e173cac0527ca5b80b99401fc10be7942d7f85c4",
+      "source": "synthetic",
+      "scenario": "capture_202",
+      "operation": "capture_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/capture_202__create_order__1.json",
+      "sha256": "f39902533a5666b8cf4412289be20bf97f7fb678aa59951ce93553a5c0626a36",
+      "source": "synthetic",
+      "scenario": "capture_202",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/capture_202__get_capture__1.json",
+      "sha256": "76db2620ed76754313d1c435db2e198ff81c6c33f36faa09a43f4860d9580bc5",
+      "source": "synthetic",
+      "scenario": "capture_202",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/capture_202__get_order__1.json",
+      "sha256": "adc34cc92033139e2caf6f23b88c0d43fb78bb9c252ffd779cccaca8417dd3b3",
+      "source": "synthetic",
+      "scenario": "capture_202",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/capture_202__get_order__2.json",
+      "sha256": "d5f88f927a3d6b27dcd02089d080f100b839b277fb58f109e5261262138deb68",
+      "source": "synthetic",
+      "scenario": "capture_202",
+      "operation": "get_order",
+      "step": 2
+    },
+    {
+      "file": "synthetic/declined__capture_order__1.json",
+      "sha256": "50bc461fe764657c48be0fe190ea88a0add0c0a15333a4181ce040c008346d37",
+      "source": "synthetic",
+      "scenario": "declined",
+      "operation": "capture_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/declined__create_order__1.json",
+      "sha256": "9354547cecc6bd3ecf8454131b3fc8c26a2d0109e077e74dce185857bc11e20b",
+      "source": "synthetic",
+      "scenario": "declined",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/declined__get_capture__1.json",
+      "sha256": "d4446da05805471a92197822a9a86deed80c93f664330d7266b88b89cf419552",
+      "source": "synthetic",
+      "scenario": "declined",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/declined__get_order__1.json",
+      "sha256": "1f3d9e19ad67e7914eeeb9024647f6fe030db1fe19aa3fabccb6140d88c0798f",
+      "source": "synthetic",
+      "scenario": "declined",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/declined__get_order__2.json",
+      "sha256": "03f1c2ca112caa70495de36bea14a1799f5ebe8de6e595cd8e5a8165aed99b5b",
+      "source": "synthetic",
+      "scenario": "declined",
+      "operation": "get_order",
+      "step": 2
+    },
+    {
+      "file": "synthetic/duplicate_invoice__create_order__1.json",
+      "sha256": "9412ecabd1d5b49bfea3ecc33060e3cd5e9a80802e239a19709d5bb6cb44b3e3",
+      "source": "synthetic",
+      "scenario": "duplicate_invoice",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/happy__capture_order__1.json",
+      "sha256": "2badd2788702343cdfd83d5782bf52a8cae3381282b4b37210c2da949a58517d",
+      "source": "synthetic",
+      "scenario": "happy",
+      "operation": "capture_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/happy__create_order__1.json",
+      "sha256": "6b58a81635e41b065cb5b01d1442a93ae37f46044f4484c0d34bc63a214847b7",
+      "source": "synthetic",
+      "scenario": "happy",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/happy__get_capture__1.json",
+      "sha256": "81a5859c60d8f85118c44a7080bbbc00de851663f3a26d77b4d6805443cf4f03",
+      "source": "synthetic",
+      "scenario": "happy",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/happy__get_order__1.json",
+      "sha256": "370832969a7cd08b59a5ae5106a85914bdda6a8208caf053e80dec77dc72ca50",
+      "source": "synthetic",
+      "scenario": "happy",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/happy__get_order__2.json",
+      "sha256": "eae52b1929d1686a5a4233442e44271eec8a7ee995293cdd75a4307b519a90d1",
+      "source": "synthetic",
+      "scenario": "happy",
+      "operation": "get_order",
+      "step": 2
+    },
+    {
+      "file": "synthetic/happy__get_refund__1.json",
+      "sha256": "9ae1e6e0b1969be5778850e01b1f350d027648f41298d8cc181855a605ca9e54",
+      "source": "synthetic",
+      "scenario": "happy",
+      "operation": "get_refund",
+      "step": 1
+    },
+    {
+      "file": "synthetic/happy__refund_capture__1.json",
+      "sha256": "78ebbb787e87e480f2baad3b281c4cfeaa0bcb3be685f1fb36ed651dcb7ea841",
+      "source": "synthetic",
+      "scenario": "happy",
+      "operation": "refund_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/lost_capture_response__capture_order__1.json",
+      "sha256": "1beaad44b1c796bfa489154489991692f81bd8b8ca6f8defc7bd0faa7f84ec26",
+      "source": "synthetic",
+      "scenario": "lost_capture_response",
+      "operation": "capture_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/lost_capture_response__capture_order__2.json",
+      "sha256": "de6ffc8c10c7d4210d69ce1f15125b310f1419dc2ebeb58854e628b56e757386",
+      "source": "synthetic",
+      "scenario": "lost_capture_response",
+      "operation": "capture_order",
+      "step": 2
+    },
+    {
+      "file": "synthetic/lost_capture_response__create_order__1.json",
+      "sha256": "84a4fc3d10b78d52fb85bd0df172b10a7993874f2141bdcb5aaa626e5919a3c1",
+      "source": "synthetic",
+      "scenario": "lost_capture_response",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/lost_capture_response__get_capture__1.json",
+      "sha256": "de17edcd1f1d7e565e26dbf1244e210a909e21ee5f081c39072254bfa5d0e8a3",
+      "source": "synthetic",
+      "scenario": "lost_capture_response",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/lost_capture_response__get_order__1.json",
+      "sha256": "cbd4721ae40d20c5f9d925fcee5b2dd0891566ff3551f181905dfb555915e2a4",
+      "source": "synthetic",
+      "scenario": "lost_capture_response",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/lost_capture_response__get_order__2.json",
+      "sha256": "70b67c1d1dbf78f0d4ed023c37465674c6384a62531f68ecd987c824e7a8036f",
+      "source": "synthetic",
+      "scenario": "lost_capture_response",
+      "operation": "get_order",
+      "step": 2
+    },
+    {
+      "file": "synthetic/mismatch_amount__create_order__1.json",
+      "sha256": "38ca497a7cbf57764a1c4031f121ef5f275bcf911730114f3390c61f083ad645",
+      "source": "synthetic",
+      "scenario": "mismatch_amount",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/mismatch_amount__get_capture__1.json",
+      "sha256": "a5f9de5d2e204cbf2c1dfcdeeef077544c22d09d7476d90c0663d1d8b6ae9c0e",
+      "source": "synthetic",
+      "scenario": "mismatch_amount",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/mismatch_amount__get_order__1.json",
+      "sha256": "c20582974d57377bc5742ab42b4fa8413f7f03ca932442aef3cae242dc5e5cfe",
+      "source": "synthetic",
+      "scenario": "mismatch_amount",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/mismatch_currency__create_order__1.json",
+      "sha256": "5b2fcf89838fb092030e14f92d50c0cc6e2a86fbd5d4923eee4430e06bc2415e",
+      "source": "synthetic",
+      "scenario": "mismatch_currency",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/mismatch_currency__get_capture__1.json",
+      "sha256": "03e3b2b4051b19121b30358623a847253ac85aee3932bcd67b075d0fae23d3ee",
+      "source": "synthetic",
+      "scenario": "mismatch_currency",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/mismatch_currency__get_order__1.json",
+      "sha256": "2a823f27026935825178613ada714a7d2415b4b7b6ba232217c93d2573256eac",
+      "source": "synthetic",
+      "scenario": "mismatch_currency",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/mismatch_custom_id__create_order__1.json",
+      "sha256": "643074f35ecb82bd9aa43918441c00444a042982fa72e344007539ddb7525b6c",
+      "source": "synthetic",
+      "scenario": "mismatch_custom_id",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/mismatch_custom_id__get_capture__1.json",
+      "sha256": "fe9d651b49734e5da2dba9cac11854fc6282e94d1f1188176c662f4c33dacf54",
+      "source": "synthetic",
+      "scenario": "mismatch_custom_id",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/mismatch_custom_id__get_order__1.json",
+      "sha256": "6dfac8dc6cfbdd79a0a72a199473a7de49f5a1292d1def29419d8162eb127801",
+      "source": "synthetic",
+      "scenario": "mismatch_custom_id",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/mismatch_payee__create_order__1.json",
+      "sha256": "a0b768faa3365871f43d71545855446bab6f57c6c71a022a80b946a8ae023a5b",
+      "source": "synthetic",
+      "scenario": "mismatch_payee",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/mismatch_payee__get_capture__1.json",
+      "sha256": "273885ce7b73841a4cc257be11d4312701b7923e912c99187bb4cbfb82328580",
+      "source": "synthetic",
+      "scenario": "mismatch_payee",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/mismatch_payee__get_order__1.json",
+      "sha256": "bfaee5c4e8f9cf2895e771cd684c3b91af33c658a113e70db2fb6cd9154cebdb",
+      "source": "synthetic",
+      "scenario": "mismatch_payee",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/partial_207__capture_order__1.json",
+      "sha256": "eb2577de62e34804748b78c8e1faea06870558205bde19a9306eaf850e032b61",
+      "source": "synthetic",
+      "scenario": "partial_207",
+      "operation": "capture_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/partial_207__create_order__1.json",
+      "sha256": "e9567a2543ddcb765979b0683d158a224c6e5eaa4ab213283ee204d55c043a0e",
+      "source": "synthetic",
+      "scenario": "partial_207",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/partial_207__get_capture__1.json",
+      "sha256": "84a7d160df83613a35cdf3996b24b93130990f4e95b8cdd72b62f21a05bf1b08",
+      "source": "synthetic",
+      "scenario": "partial_207",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/partial_207__get_capture__2.json",
+      "sha256": "0a0d17f85bf8e74defd3d4bea4dbb78fa56f26c28de60dfc319fc11dbef381ef",
+      "source": "synthetic",
+      "scenario": "partial_207",
+      "operation": "get_capture",
+      "step": 2
+    },
+    {
+      "file": "synthetic/partial_207__get_order__1.json",
+      "sha256": "052c6621b893f6260d8c2ffe5073a2c435f4869bae7005242e677c6b8ba215a5",
+      "source": "synthetic",
+      "scenario": "partial_207",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/partial_207__get_order__2.json",
+      "sha256": "b12a68b2cc59fb9ae6f67a97b85b1b2bff21b45589c8657bf671bfe8e02d7d83",
+      "source": "synthetic",
+      "scenario": "partial_207",
+      "operation": "get_order",
+      "step": 2
+    },
+    {
+      "file": "synthetic/pending_receiving_pref__capture_order__1.json",
+      "sha256": "0d0f7bf09f8ae41fe720094034fc18659e990a16e23335457547c6bf892860e5",
+      "source": "synthetic",
+      "scenario": "pending_receiving_pref",
+      "operation": "capture_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/pending_receiving_pref__create_order__1.json",
+      "sha256": "2c6bb4e401e9fdb688b351931e46751d7eae58e075c366b29d8c15e5c18431f9",
+      "source": "synthetic",
+      "scenario": "pending_receiving_pref",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/pending_receiving_pref__get_capture__1.json",
+      "sha256": "083c387e2fe9cd86f5548bd71a3ca8bc49147b2333e878f59801af6bf4ac4e40",
+      "source": "synthetic",
+      "scenario": "pending_receiving_pref",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/pending_receiving_pref__get_order__1.json",
+      "sha256": "9374ad67a7dfb58688d33a360d5d1d261ee9611c23ce44a25c3d5f9467fe8133",
+      "source": "synthetic",
+      "scenario": "pending_receiving_pref",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/pending_receiving_pref__get_order__2.json",
+      "sha256": "30846eceafa8636bbe4417995a3abc95740e2f6e95a99fbf6fd548ebf5c1a738",
+      "source": "synthetic",
+      "scenario": "pending_receiving_pref",
+      "operation": "get_order",
+      "step": 2
+    },
+    {
+      "file": "synthetic/pending_then_completed__capture_order__1.json",
+      "sha256": "995cd5f6fbbf5217d4b9d52a4635b26d3fcf6ef83240f4b0083a25c1bdd8863c",
+      "source": "synthetic",
+      "scenario": "pending_then_completed",
+      "operation": "capture_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/pending_then_completed__create_order__1.json",
+      "sha256": "d8cb6e5402fb3452b71bc45ae7e7a2aa43671c9f90f8835d6494003f40272cbe",
+      "source": "synthetic",
+      "scenario": "pending_then_completed",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/pending_then_completed__get_capture__1.json",
+      "sha256": "198bd6eea28870cdec36df6535a0d91b71cf036b70e2057e8af59d01d8d64a78",
+      "source": "synthetic",
+      "scenario": "pending_then_completed",
+      "operation": "get_capture",
+      "step": 1
+    },
+    {
+      "file": "synthetic/pending_then_completed__get_capture__2.json",
+      "sha256": "07b22a77c3052292adb190c832ab9701f0f9575455889793f5cb4efd404de016",
+      "source": "synthetic",
+      "scenario": "pending_then_completed",
+      "operation": "get_capture",
+      "step": 2
+    },
+    {
+      "file": "synthetic/pending_then_completed__get_order__1.json",
+      "sha256": "f8a16c07b97d2f412065e52ffdbfc5416fdf5a24fa84e3e0b0783788cb08e906",
+      "source": "synthetic",
+      "scenario": "pending_then_completed",
+      "operation": "get_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/pending_then_completed__get_order__2.json",
+      "sha256": "c3f5f564dd05f7a42be3af83237723923da8f1df280e83688e3bfc243fb00fe3",
+      "source": "synthetic",
+      "scenario": "pending_then_completed",
+      "operation": "get_order",
+      "step": 2
+    },
+    {
+      "file": "synthetic/pending_then_completed__get_order__3.json",
+      "sha256": "3f009f8c49fbd1cb8923560fefbd40ae62de4bfb899ff3bec920d2d0ba21532f",
+      "source": "synthetic",
+      "scenario": "pending_then_completed",
+      "operation": "get_order",
+      "step": 3
+    },
+    {
+      "file": "synthetic/rate_limited_429__create_order__1.json",
+      "sha256": "ccd9b5e017d7f6b83910efc250edf6f4bd79e0d585d14a7e068f69f3fd3abc98",
+      "source": "synthetic",
+      "scenario": "rate_limited_429",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/rate_limited_429__create_order__2.json",
+      "sha256": "321958c3d3643edbb890d0f5167b654bb524284feb043ab5c9ca49415eecbd12",
+      "source": "synthetic",
+      "scenario": "rate_limited_429",
+      "operation": "create_order",
+      "step": 2
+    },
+    {
+      "file": "synthetic/server_500__create_order__1.json",
+      "sha256": "31e55bd850c528742a5de1a8956e5e030b4b5a93b1e62437592ed2c7f4ec1e5f",
+      "source": "synthetic",
+      "scenario": "server_500",
+      "operation": "create_order",
+      "step": 1
+    },
+    {
+      "file": "synthetic/server_500__create_order__2.json",
+      "sha256": "d0707a4251a3208f85b7a37ee442fe4336560f6032c1b47894e3d65e8ec0bb13",
+      "source": "synthetic",
+      "scenario": "server_500",
+      "operation": "create_order",
+      "step": 2
+    }
+  ]
+}

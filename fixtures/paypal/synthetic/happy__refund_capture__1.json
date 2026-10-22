@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "scenario": "happy",
+    "operation": "refund_capture",
+    "step": 1,
+    "recorded_at": null,
+    "origin": "synthetic: hand-written from simulation scenarios (packages/testkit/src/conformance.ts S1 to S6, docs/specs/payment-readback.md) at a36ddc03fd0b962000f686291c145b50ee337f90; not PayPal evidence",
+    "redactions": []
+  },
+  "request": {
+    "method": "POST",
+    "path_template": "/v2/payments/captures/{id}/refund",
+    "headers": {
+      "content-type": "application/json",
+      "authorization": "[redacted]"
+    },
+    "body": {
+      "amount": {
+        "currency_code": "USD",
+        "value": "5.00"
+      },
+      "note_to_payer": "sandbox refund"
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "content-type": "application/json",
+      "paypal-debug-id": "sbxdebug0006"
+    },
+    "body": {
+      "id": "SBXHAPPYREF00001",
+      "status": "COMPLETED",
+      "amount": {
+        "currency_code": "USD",
+        "value": "5.00"
+      },
+      "links": [
+        {
+          "href": "/v2/payments/refunds/SBXHAPPYREF00001",
+          "rel": "self",
+          "method": "GET"
+        },
+        {
+          "href": "/v2/payments/captures/SBXHAPPYCAP00001",
+          "rel": "up",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+}

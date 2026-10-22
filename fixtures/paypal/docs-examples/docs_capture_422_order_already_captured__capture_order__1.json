@@ -1,0 +1,44 @@
+{
+  "meta": {
+    "source": "docs-example",
+    "scenario": "docs_capture_422_order_already_captured",
+    "operation": "capture_order",
+    "step": 1,
+    "recorded_at": null,
+    "origin": "github.com/paypal/paypal-rest-api-specifications checkout_orders_v2.json; capture 422 ORDER_ALREADY_CAPTURED: shape from the OpenAPI error schema, name and issue from orders-errors.md (error tables), debug_id synthetic",
+    "redactions": ["link hosts removed (path kept)"]
+  },
+  "request": {
+    "method": "POST",
+    "path_template": "/v2/checkout/orders/{id}/capture",
+    "headers": {
+      "content-type": "application/json",
+      "authorization": "[redacted]"
+    },
+    "body": {}
+  },
+  "response": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "name": "UNPROCESSABLE_ENTITY",
+      "message": "The requested action could not be performed, semantically incorrect, or failed business validation.",
+      "debug_id": "sbxdebug0422b",
+      "details": [
+        {
+          "issue": "ORDER_ALREADY_CAPTURED",
+          "description": "Order already captured. If intent=CAPTURE only one capture per order is allowed."
+        }
+      ],
+      "links": [
+        {
+          "href": "/api/rest/reference/orders/v2/errors/",
+          "rel": "information_link",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+}

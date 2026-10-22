@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "source": "docs-example",
+    "scenario": "docs_refund_201",
+    "operation": "refund_capture",
+    "step": 1,
+    "recorded_at": null,
+    "origin": "github.com/paypal/paypal-rest-api-specifications payments_payment_v2.json; POST /v2/payments/captures/{capture_id}/refund 201 example captures_refund_empty_request",
+    "redactions": ["link hosts removed (path kept)"]
+  },
+  "request": {
+    "method": "POST",
+    "path_template": "/v2/payments/captures/{id}/refund",
+    "headers": {
+      "content-type": "application/json",
+      "authorization": "[redacted]"
+    },
+    "body": {}
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "58K15806CS993444T",
+      "amount": {
+        "currency_code": "USD",
+        "value": "89.00"
+      },
+      "seller_payable_breakdown": {
+        "gross_amount": {
+          "currency_code": "USD",
+          "value": "89.00"
+        },
+        "paypal_fee": {
+          "currency_code": "USD",
+          "value": "0.00"
+        },
+        "net_amount": {
+          "currency_code": "USD",
+          "value": "89.00"
+        },
+        "total_refunded_amount": {
+          "currency_code": "USD",
+          "value": "100.00"
+        }
+      },
+      "invoice_id": "OrderInvoice-10_10_2024_12_58_20_pm",
+      "status": "COMPLETED",
+      "create_time": "2024-10-14T15:03:29-07:00",
+      "update_time": "2024-10-14T15:03:29-07:00",
+      "links": [
+        {
+          "href": "/v2/payments/refunds/58K15806CS993444T",
+          "rel": "self",
+          "method": "GET"
+        },
+        {
+          "href": "/v2/payments/captures/7TK53561YB803214S",
+          "rel": "up",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+}
