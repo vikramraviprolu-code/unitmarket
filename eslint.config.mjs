@@ -11,9 +11,19 @@ import globals from 'globals';
 import path from 'node:path';
 import fs from 'node:fs';
 
-const CODE = ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts', '**/*.mjs', '**/*.js', '**/*.cjs'];
+// FIX-MVPB-SEAL2 L: .jsx too, otherwise ESLint ignores such a file and no rule sees it.
+const CODE = [
+  '**/*.ts',
+  '**/*.tsx',
+  '**/*.mts',
+  '**/*.cts',
+  '**/*.mjs',
+  '**/*.js',
+  '**/*.cjs',
+  '**/*.jsx',
+];
 const TESTS = ['**/*.test.ts', '**/*.test.tsx'];
-const at = (dir) => [`${dir}/**/*.{ts,tsx,mts,cts,mjs,js,cjs}`];
+const at = (dir) => [`${dir}/**/*.{ts,tsx,mts,cts,mjs,js,cjs,jsx}`];
 const inDir = (dir) => at(dir);
 
 // ---------------------------------------------------------------------------------------------
@@ -1070,6 +1080,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files: CODE, languageOptions: { globals: { ...globals.node } } },
+  { files: ['**/*.jsx'], languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } } },
   {
     files: ['apps/web/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },

@@ -631,6 +631,26 @@ describe('sealed transport imports (SEAL2 H1)', () => {
     for (const f of outsiders) expect((await sealed(f, code)).length, f).toBeGreaterThan(0);
   });
 
+  it.each([
+    ['evil.ts', "import * as T from '@umsbx/transport';\nexport const f = T;\n"],
+    ['evil.tsx', "import * as T from '@umsbx/transport';\nexport const f = <b>{String(T)}</b>;\n"],
+    ['evil.mts', "import * as T from '@umsbx/transport';\nexport const f = T;\n"],
+    ['evil.cts', "import T = require('@umsbx/transport');\nexport const f = T;\n"],
+    ['evil.js', "import * as T from '@umsbx/transport';\nexport const f = T;\n"],
+    ['evil.mjs', "import * as T from '@umsbx/transport';\nexport const f = T;\n"],
+    ['evil.cjs', "module.exports = require('@umsbx/transport');\n"],
+    ['evil.jsx', "import * as T from '@umsbx/transport';\nexport const f = <b>{String(T)}</b>;\n"],
+  ])('lints every source extension, not only .ts: %s', async (name, code) => {
+    for (const dir of ['packages/paypal/src', 'apps/web/src', 'scripts', '.']) {
+      const file = dir === '.' ? name : `${dir}/${name}`;
+      const m = await lint(file, code);
+      expect(
+        m.map((x) => x.ruleId),
+        file,
+      ).toContain(SEALED);
+    }
+  });
+
   it('allows the ordinary imports the other packages need, type imports included', async () => {
     const ok = [
       "import { guard, PATHS, SANDBOX_API, createSandboxTransport, createDryRunTransport } from '@umsbx/transport';",
