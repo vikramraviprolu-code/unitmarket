@@ -95,12 +95,10 @@ CREATE POLICY ums_buyer_self ON buyers FOR SELECT TO ums_app
   USING (current_setting('ums.actor_kind', true) = 'buyer' AND id = current_setting('ums.actor_id', true));
 CREATE POLICY ums_buyer_orders ON orders FOR SELECT TO ums_app
   USING (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true));
-CREATE POLICY ums_buyer_orders_insert ON orders FOR INSERT TO ums_app
-  WITH CHECK (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true));
+-- Orders and approvals are written by the system actor only (ums_system_all): the approval carries
+-- a snapshot and a hash that the platform computes, so a buyer session never inserts either.
 CREATE POLICY ums_buyer_approvals ON approvals FOR SELECT TO ums_app
   USING (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true));
-CREATE POLICY ums_buyer_approvals_insert ON approvals FOR INSERT TO ums_app
-  WITH CHECK (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true));
 CREATE POLICY ums_buyer_entitlements ON entitlements FOR SELECT TO ums_app
   USING (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true));
 CREATE POLICY ums_buyer_links ON links FOR SELECT TO ums_app
@@ -112,9 +110,16 @@ CREATE POLICY ums_buyer_consents ON consents FOR ALL TO ums_app
   WITH CHECK (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true));
 CREATE POLICY ums_buyer_identity ON identity_links FOR SELECT TO ums_app
   USING (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true));
-CREATE POLICY ums_buyer_quotes ON quotes FOR ALL TO ums_app
-  USING (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true))
-  WITH CHECK (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true));
+-- Quotes: a buyer reads own quotes and inserts a quote for itself on an authorised offer in that
+-- offer's currency. No UPDATE or DELETE policy exists, so a buyer cannot rewrite price_minor.
+CREATE POLICY ums_buyer_quotes ON quotes FOR SELECT TO ums_app
+  USING (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true));
+CREATE POLICY ums_buyer_quotes_insert ON quotes FOR INSERT TO ums_app
+  WITH CHECK (current_setting('ums.actor_kind', true) = 'buyer'
+    AND buyer_id = current_setting('ums.actor_id', true)
+    AND EXISTS (SELECT 1 FROM offers o
+                WHERE o.id = quotes.offer_id AND o.version = quotes.offer_version
+                  AND o.status = 'authorised' AND o.currency = quotes.currency));
 CREATE POLICY ums_buyer_briefs ON briefs FOR ALL TO ums_app
   USING (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true))
   WITH CHECK (current_setting('ums.actor_kind', true) = 'buyer' AND buyer_id = current_setting('ums.actor_id', true));
@@ -154,22 +159,34 @@ CREATE POLICY ums_buyer_catalogue_offers ON offers FOR SELECT TO ums_app
   USING (current_setting('ums.actor_kind', true) = 'buyer' AND status = 'authorised');
 
 -- 8. Publisher-scoped tables: ums.actor_id is the publisher id for kind publisher.
-CREATE POLICY ums_publisher_self ON publishers FOR ALL TO ums_app
-  USING (current_setting('ums.actor_kind', true) = 'publisher' AND id = current_setting('ums.actor_id', true))
-  WITH CHECK (current_setting('ums.actor_kind', true) = 'publisher' AND id = current_setting('ums.actor_id', true));
+-- A publisher only reads its own row. paypal_merchant_id and payee_verified_at decide where money
+-- goes, so they change only through the system actor or an operator (the app writes an audit row).
+CREATE POLICY ums_publisher_self ON publishers FOR SELECT TO ums_app
+  USING (current_setting('ums.actor_kind', true) = 'publisher' AND id = current_setting('ums.actor_id', true));
+CREATE POLICY ums_operator_publishers ON publishers FOR UPDATE TO ums_app
+  USING (current_setting('ums.actor_kind', true) = 'operator')
+  WITH CHECK (current_setting('ums.actor_kind', true) = 'operator');
 CREATE POLICY ums_publisher_articles ON articles FOR ALL TO ums_app
   USING (current_setting('ums.actor_kind', true) = 'publisher' AND publisher_id = current_setting('ums.actor_id', true))
   WITH CHECK (current_setting('ums.actor_kind', true) = 'publisher' AND publisher_id = current_setting('ums.actor_id', true));
 CREATE POLICY ums_publisher_offers ON offers FOR ALL TO ums_app
   USING (current_setting('ums.actor_kind', true) = 'publisher' AND publisher_id = current_setting('ums.actor_id', true))
   WITH CHECK (current_setting('ums.actor_kind', true) = 'publisher' AND publisher_id = current_setting('ums.actor_id', true));
-CREATE POLICY ums_publisher_authorisations ON publisher_authorisations FOR ALL TO ums_app
-  USING (current_setting('ums.actor_kind', true) = 'publisher' AND authorised_by = current_setting('ums.actor_id', true))
-  WITH CHECK (current_setting('ums.actor_kind', true) = 'publisher' AND authorised_by = current_setting('ums.actor_id', true));
+CREATE POLICY ums_publisher_authorisations ON publisher_authorisations FOR SELECT TO ums_app
+  USING (current_setting('ums.actor_kind', true) = 'publisher' AND authorised_by = current_setting('ums.actor_id', true));
+-- An authorisation names an offer version of the acting publisher and nobody else's.
+CREATE POLICY ums_publisher_authorisations_insert ON publisher_authorisations FOR INSERT TO ums_app
+  WITH CHECK (current_setting('ums.actor_kind', true) = 'publisher'
+    AND authorised_by = current_setting('ums.actor_id', true)
+    AND EXISTS (SELECT 1 FROM offers o
+                WHERE o.id = publisher_authorisations.offer_id
+                  AND o.version = publisher_authorisations.offer_version
+                  AND o.publisher_id = current_setting('ums.actor_id', true)));
 CREATE POLICY ums_publisher_blobs ON content_blobs FOR ALL TO ums_app
   USING (current_setting('ums.actor_kind', true) = 'publisher'
     AND EXISTS (SELECT 1 FROM articles a WHERE a.content_key = content_blobs.content_key AND a.publisher_id = current_setting('ums.actor_id', true)))
-  WITH CHECK (current_setting('ums.actor_kind', true) = 'publisher');
+  WITH CHECK (current_setting('ums.actor_kind', true) = 'publisher'
+    AND EXISTS (SELECT 1 FROM articles a WHERE a.content_key = content_blobs.content_key AND a.publisher_id = current_setting('ums.actor_id', true)));
 CREATE POLICY ums_publisher_units ON order_units FOR SELECT TO ums_app
   USING (current_setting('ums.actor_kind', true) = 'publisher' AND publisher_id = current_setting('ums.actor_id', true));
 CREATE POLICY ums_publisher_ledger ON ledger_entries FOR SELECT TO ums_app
