@@ -1,3 +1,10 @@
+import net from 'node:net';
+import tls from 'node:tls';
+import http from 'node:http';
+import https from 'node:https';
+import dns from 'node:dns';
+import { vi } from 'vitest';
+import type { ScopedGate, Wire, WireRequest, WireResult } from './wire';
 import type {
   Clock,
   LogEvent,
@@ -53,5 +60,80 @@ export function req(
     amount_minor: null,
     scenario: null,
     ...over,
+  };
+}
+
+// ---- B-L1: fake Wire, scoped gate and network spies (no real network anywhere) ----
+
+export interface FakeWire extends Wire {
+  readonly requests: WireRequest[];
+}
+export function fakeWire(
+  handler: (r: WireRequest, n: number) => WireResult | Promise<WireResult> = () => ({
+    kind: 'response',
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  }),
+): FakeWire {
+  const requests: WireRequest[] = [];
+  return {
+    requests,
+    async request(r) {
+      requests.push(structuredClone(r));
+      return handler(r, requests.length);
+    },
+  };
+}
+
+export interface FakeGate extends ScopedGate {
+  readonly checks: { operation: PayPalOperation; amount_minor: number | null }[];
+}
+export function scopedGate(
+  o: {
+    scope?: string | null;
+    verdict?: () => unknown;
+  } = {},
+): FakeGate {
+  const checks: FakeGate['checks'] = [];
+  const scope = o.scope === undefined ? 'mvp_b_polling' : o.scope;
+  return {
+    checks,
+    activeApproval: async () => (scope === null ? null : { scope, approval_ref: 'appr-test' }),
+    check: async (c) => {
+      checks.push({ operation: c.operation, amount_minor: c.amount_minor });
+      return (o.verdict?.() ?? { allowed: true, approval_ref: 'appr-test' }) as Awaited<
+        ReturnType<OutboundGate['check']>
+      >;
+    },
+  };
+}
+
+/** Spies on every way Node can open a connection or resolve a name. Call `assertZero()` last. */
+export function netSpies() {
+  const spies = {
+    'net.connect': vi.spyOn(net, 'connect'),
+    'net.createConnection': vi.spyOn(net, 'createConnection'),
+    'net.Socket.connect': vi.spyOn(net.Socket.prototype, 'connect'),
+    'tls.connect': vi.spyOn(tls, 'connect'),
+    'http.request': vi.spyOn(http, 'request'),
+    'http.get': vi.spyOn(http, 'get'),
+    'https.request': vi.spyOn(https, 'request'),
+    'https.get': vi.spyOn(https, 'get'),
+    'dns.lookup': vi.spyOn(dns, 'lookup'),
+    'dns.resolve': vi.spyOn(dns, 'resolve'),
+    'dns.promises.lookup': vi.spyOn(dns.promises, 'lookup'),
+    'global fetch': vi.spyOn(globalThis, 'fetch'),
+  };
+  return {
+    spies,
+    counts: () =>
+      Object.fromEntries(Object.entries(spies).map(([k, s]) => [k, s.mock.calls.length])),
+    assertZero(): void {
+      const bad = Object.entries(spies)
+        .filter(([, s]) => s.mock.calls.length > 0)
+        .map(([k]) => k);
+      if (bad.length > 0) throw new Error(`network use detected: ${bad.join(', ')}`);
+    },
   };
 }
