@@ -3,7 +3,17 @@
 // real PGlite database and a scripted PayPal that, like PayPal, replays the stored answer for a
 // PayPal-Request-Id within 6 hours. Money-critical: none of these may be weakened.
 import { afterEach, describe, expect, it } from 'vitest';
-import { applyReadback, onBuyerReturn, placeOrder, raiseAlert, readApplyGates } from './index';
+import {
+  applyReadback,
+  beginCheckout,
+  onBuyerReturn,
+  placeOrder,
+  raiseAlert,
+  readApplyGates,
+  reconcileOrder,
+} from './index';
+import { resendCreate, retryCapture } from './reconcile';
+import { loadOperation, loadOrder } from './store';
 import {
   BUYER_A,
   RETENTION_MS,
@@ -24,6 +34,7 @@ afterEach(async () => {
 });
 
 const ret = (ref: string) => onBuyerReturn(w.deps, { order_ref: ref, actor: BUYER_A });
+const order_ = async (id: string) => order(id);
 const order = async (id: string) =>
   (
     await w.rows<{ status: string; mismatch: boolean }>(
@@ -667,5 +678,109 @@ describe('alert kinds of lane 05b are part of AlertKind (no cast)', () => {
     );
     expect(raised).toBe(kind);
     expect(await alertKinds()).toEqual([kind]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// M4: reconcile.ts money paths (mutation gate).
+describe('M4: reconcile.ts', () => {
+  const lostThenRetry = async (): Promise<{
+    a: Awaited<ReturnType<typeof approved>>;
+    order: NonNullable<Awaited<ReturnType<typeof loadOrder>>>;
+    op: NonNullable<Awaited<ReturnType<typeof loadOperation>>>;
+  }> => {
+    const a = await approved(w);
+    w.paypal.queue.capture.push({ kind: 'timeout' });
+    const r = await ret(a.order_ref);
+    expect(r.ok && r.value.status).toBe('unresolved');
+    const order = (await loadOrder(w.db, a.order_id))!;
+    const op = (await loadOperation(w.db, a.order_id, 'capture'))!;
+    expect(op.state).toBe('unknown');
+    return { a, order, op };
+  };
+
+  it('reconcileOrder on an unknown order id throws', async () => {
+    w = await makeWorld();
+    await expect(reconcileOrder(w.deps, { order_id: 'ord_NOPE', trigger: 'poll' })).rejects.toThrow(
+      /unknown order/,
+    );
+  });
+
+  it('a retry whose order was frozen while the call was open closes the operation as failed/mismatch and leaves the order frozen', async () => {
+    w = await makeWorld();
+    const { a, order, op } = await lostThenRetry();
+    const release = holdCapture();
+    const p = retryCapture(w.deps, order, op, a.provider_order_id);
+    await until(() => w.paypal.count('capture') === 2);
+    await w.db.query("UPDATE orders SET status = 'frozen', mismatch = true WHERE id = $1", [
+      a.order_id,
+    ]);
+    w.paypal.queue.capture.push({ kind: 'timeout' });
+    release();
+    await p;
+    expect((await order_(a.order_id)).status).toBe('frozen');
+    expect(await cop(a.order_id)).toMatchObject({ state: 'failed', failure_reason: 'mismatch' });
+  });
+
+  it('a retry whose order was verified paid while the call was open closes the operation confirmed and leaves the order paid', async () => {
+    w = await makeWorld();
+    const { a, order, op } = await lostThenRetry();
+    const release = holdCapture();
+    const p = retryCapture(w.deps, order, op, a.provider_order_id);
+    await until(() => w.paypal.count('capture') === 2);
+    await w.db.query("UPDATE orders SET status = 'paid' WHERE id = $1", [a.order_id]);
+    w.paypal.queue.capture.push({ kind: 'timeout' });
+    release();
+    await p;
+    expect((await order_(a.order_id)).status).toBe('paid');
+    expect((await cop(a.order_id)).state).toBe('confirmed');
+  });
+
+  it('a retry whose order is neither live, frozen nor paid leaves the operation as it was claimed', async () => {
+    w = await makeWorld();
+    const { a, order, op } = await lostThenRetry();
+    const release = holdCapture();
+    const p = retryCapture(w.deps, order, op, a.provider_order_id);
+    await until(() => w.paypal.count('capture') === 2);
+    await w.db.query("UPDATE orders SET status = 'abandoned' WHERE id = $1", [a.order_id]);
+    w.paypal.queue.capture.push({ kind: 'timeout' });
+    release();
+    await p;
+    expect((await order_(a.order_id)).status).toBe('abandoned');
+    expect((await cop(a.order_id)).state).toBe('sent');
+  });
+
+  it('a retry stopped by the kill switch spends no attempt', async () => {
+    w = await makeWorld();
+    const { a, order, op } = await lostThenRetry();
+    w.paypal.queue.capture.push({ kind: 'blocked', by: 'budget' });
+    const r = await retryCapture(w.deps, order, op, a.provider_order_id);
+    expect(r).toBe('unknown');
+    expect((await cop(a.order_id)).attempt).toBe(op.attempt);
+    expect((await order_(a.order_id)).status).toBe('unresolved');
+  });
+
+  it('resendCreate: DUPLICATE_INVOICE_ID freezes the order for a human, nothing is declined', async () => {
+    w = await makeWorld();
+    const p = await place(w);
+    w.paypal.queue.create.push({ kind: 'timeout' });
+    await beginCheckout(w.deps, { order_id: p.order_id, actor: BUYER_A });
+    const o = (await loadOrder(w.db, p.order_id))!;
+    const op = (await loadOperation(w.db, p.order_id, 'create'))!;
+    w.paypal.queue.create.push({
+      kind: 'rejected',
+      http: 422,
+      name: 'UNPROCESSABLE_ENTITY',
+      issue: 'DUPLICATE_INVOICE_ID',
+      debug_id: 'D',
+    });
+    expect(await resendCreate(w.deps, o, op)).toBe('failed');
+    expect((await order_(p.order_id)).status).toBe('frozen');
+    expect((await order_(p.order_id)).mismatch).toBe(true);
+    expect(await cop(p.order_id, 'create')).toMatchObject({
+      state: 'failed',
+      failure_reason: 'rejected',
+    });
+    expect(await alertKinds()).toContain('frozen_order');
   });
 });
