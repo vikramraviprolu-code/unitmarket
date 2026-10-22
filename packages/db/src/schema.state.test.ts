@@ -1296,3 +1296,41 @@ describe('review A: reset guard (M4)', () => {
     await expect(resetDatabase(d)).resolves.toBeUndefined();
   });
 });
+
+describe('review A: approval immutability (L3)', () => {
+  it('L3: used_at cannot be set in the same UPDATE as any other frozen column', async () => {
+    await base();
+    await ins('buyers', { id: 'buy_2', display_name: 'B2', auth_subject: 'sub2', country: 'US' });
+    const other: [string, unknown][] = [
+      ['nonce', 'zzz'],
+      ['content_hash', HASH2],
+      ['snapshot', '{"v":2}'],
+      ['buyer_id', 'buy_2'],
+      ['environment', 'sandbox'],
+      ['created_at', T2],
+      ['expires_at', T2],
+    ];
+    for (const [i, [column, value]] of other.entries()) {
+      // a fresh approval per column; created_at/expires_at keep the +15 minute rule where needed
+      await approval(100 + i);
+      const change =
+        column === 'created_at'
+          ? ["created_at = $2, expires_at = $2::timestamptz + interval '15 minutes'", value]
+          : [`${column} = $2`, value];
+      await expect(
+        db.query(`UPDATE approvals SET used_at = $1, ${change[0]} WHERE id = 'apr_${100 + i}'`, [
+          T15,
+          change[1],
+        ]),
+        column,
+      ).rejects.toThrow();
+      const row = await db.query<{ used_at: string | null }>(
+        `SELECT used_at FROM approvals WHERE id = 'apr_${100 + i}'`,
+      );
+      expect(row.rows[0]?.used_at, column).toBeNull();
+    }
+    // the allowed form still works
+    await approval(200);
+    await db.query(`UPDATE approvals SET used_at = $1 WHERE id = 'apr_200'`, [T15]);
+  });
+});
