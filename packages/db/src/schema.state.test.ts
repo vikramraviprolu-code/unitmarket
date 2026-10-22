@@ -1294,7 +1294,12 @@ describe('review A: reset guard (M4)', () => {
     const d = await openDatabase({ kind: 'pglite-memory' });
     toClose.push(d);
     await migrate(d, clock);
-    const anonymous = { query: d.query, exec: d.exec, transaction: d.transaction };
+    const anonymous = {
+      dialect: d.dialect,
+      query: d.query,
+      exec: d.exec,
+      transaction: d.transaction,
+    };
     await expect(resetDatabase(anonymous)).rejects.toThrow(/memory|refus/i);
   });
   it('M4: a memory target still resets without any flag', async () => {

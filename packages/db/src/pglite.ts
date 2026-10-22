@@ -18,9 +18,13 @@ function executor(q: Pick<PGlite, 'query' | 'exec'>): SqlExecutor {
 export async function openDatabase(t: DbTarget): Promise<SqlDriver> {
   const pg = t.kind === 'pglite-memory' ? new PGlite() : new PGlite(t.dir);
   await pg.waitReady;
+  // Marks the in-memory target for the TRUNCATE guard (migration 0001); disk targets never get it.
+  if (t.kind === 'pglite-memory')
+    await pg.query("SELECT set_config('ums.db_target', 'memory', false)");
   const base = executor(pg);
   return {
     dialect: 'pglite',
+    target: t.kind,
     query: base.query,
     exec: base.exec,
     transaction: <T>(fn: (tx: SqlExecutor) => Promise<T>) =>

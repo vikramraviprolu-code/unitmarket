@@ -28,11 +28,16 @@ END;
 $$;
 
 -- TRUNCATE does not fire row-level triggers, so every guarded table also gets a statement-level
--- BEFORE TRUNCATE trigger that refuses unless the session setting ums.allow_reset is 'on'.
--- resetDatabase (packages/db/src/reset.ts) is the only code that sets it, per transaction.
+-- BEFORE TRUNCATE trigger. It refuses unless the session setting ums.allow_reset is 'on' AND
+-- ums.db_target is 'memory' or 'test'. openDatabase sets ums.db_target = 'memory' only for the
+-- in-memory target, and resetDatabase (packages/db/src/testing.ts, tests only) sets 'test' only
+-- after its own checks, so a plain ums.allow_reset setting alone never opens the guard. This is a
+-- speed bump against accidents, not a defence against a session that can run arbitrary SQL: the
+-- app roles hold no TRUNCATE privilege (supabase/0001_roles_rls.sql).
 CREATE FUNCTION ums_deny_truncate() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF coalesce(current_setting('ums.allow_reset', true), '') <> 'on' THEN
+  IF coalesce(current_setting('ums.allow_reset', true), '') <> 'on'
+     OR coalesce(current_setting('ums.db_target', true), '') NOT IN ('memory', 'test') THEN
     RAISE EXCEPTION 'TRUNCATE on % is not allowed: the table is append-only', TG_TABLE_NAME;
   END IF;
   RETURN NULL;
