@@ -40,7 +40,18 @@ importers:
 
   domain/access-clock: {}
 
-  domain/approval: {}
+  domain/approval:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/catalogue: {}
 
