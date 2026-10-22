@@ -118,6 +118,11 @@ describe('request binding in the gate', () => {
       allowed: false,
       by: 'no_approval',
     });
+    // The ref alone is not enough: a request without its scope is blocked.
+    expect(await g.check(create({ approval_ref: REF }))).toEqual({
+      allowed: false,
+      by: 'no_approval',
+    });
     expect(await g.check(create({ scope: 'mvp_b_polling', approval_ref: REF }))).toEqual({
       allowed: true,
       approval_ref: REF,
