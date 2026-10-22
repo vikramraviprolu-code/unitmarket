@@ -3,7 +3,9 @@
 import { z } from 'zod';
 
 // Identifier: 1..200 chars, no leading or trailing whitespace (so ' x' and 'x' are never two keys),
-// no control characters and no zero-width characters.
+// no C0 or C1 control characters, no zero-width characters (U+200B-U+200D, U+2060, U+FEFF) and no
+// bidirectional controls (U+202A-U+202E, U+2066-U+2069). The database domain ums_id
+// (packages/db/migrations/common/0001_core.sql) refuses exactly the same set.
 export const IdSchema = z
   .string()
   .max(200)
@@ -13,10 +15,16 @@ export const IdSchema = z
       ![...value].some((ch) => {
         const code = ch.codePointAt(0) ?? 0;
         return (
-          code <= 0x1f || code === 0x7f || (code >= 0x200b && code <= 0x200d) || code === 0xfeff
+          code <= 0x1f ||
+          (code >= 0x7f && code <= 0x9f) ||
+          (code >= 0x200b && code <= 0x200d) ||
+          (code >= 0x202a && code <= 0x202e) ||
+          code === 0x2060 ||
+          (code >= 0x2066 && code <= 0x2069) ||
+          code === 0xfeff
         );
       }),
-    { message: 'must not contain control or zero-width characters' },
+    { message: 'must not contain control, zero-width or bidirectional characters' },
   );
 export type Id = z.infer<typeof IdSchema>;
 

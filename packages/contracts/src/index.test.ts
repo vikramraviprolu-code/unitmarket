@@ -183,8 +183,8 @@ describe('index', () => {
         list: z.array(mk()).optional(),
         pipe: z
           .string()
-          .transform(() => ({ b: 1 }))
-          .pipe(mk().nullable()),
+          .transform(() => ({ a: 'x' }))
+          .pipe(mk()),
         either: z.union([strict, mk()]),
         map: z.record(z.string(), mk()),
         deep: z.object({ inner: mk() }).strict(),
