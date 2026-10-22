@@ -2,13 +2,8 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import {
-  applyMigrations,
-  migrate,
-  openDatabase,
-  resetDatabase,
-  tablesInDependencyOrder,
-} from './index';
+import { applyMigrations, migrate, openDatabase, tablesInDependencyOrder } from './index';
+import { resetDatabase } from './testing';
 import type { Database } from '@umsbx/contracts';
 
 const T = '2026-10-21T10:00:00Z';
@@ -1259,5 +1254,51 @@ describe('review A: ids reject bidi and invisible characters (L2)', () => {
       ins('buyers', { id: 'x　', display_name: 'B', auth_subject: 'n2', country: 'US' }),
     ).rejects.toThrow();
     await ins('buyers', { id: 'ok id é', display_name: 'B', auth_subject: 'ok1', country: 'US' });
+  });
+});
+
+describe('review A: reset guard (M4)', () => {
+  const OLD = process.env.UMS_TEST_RESET;
+  afterAll(() => {
+    if (OLD === undefined) delete process.env.UMS_TEST_RESET;
+    else process.env.UMS_TEST_RESET = OLD;
+  });
+  async function disk() {
+    const dir = mkdtempSync(join(tmpdir(), 'ums-reset-'));
+    const d = await openDatabase({ kind: 'pglite-disk', dir });
+    toClose.push(d);
+    await migrate(d, clock);
+    return d;
+  }
+  it('M4: a plain ums.allow_reset setting does not satisfy the TRUNCATE guard on a disk target', async () => {
+    const d = await disk();
+    await expect(
+      d.exec("SELECT set_config('ums.allow_reset', 'on', true); TRUNCATE ledger_entries"),
+    ).rejects.toThrow(/not allowed/i);
+    await expect(
+      d.exec("SELECT set_config('ums.allow_reset', 'on', false); TRUNCATE ledger_entries"),
+    ).rejects.toThrow(/not allowed/i);
+  });
+  it('M4: resetDatabase refuses a disk target unless the test flag and the confirmation are both given', async () => {
+    const d = await disk();
+    delete process.env.UMS_TEST_RESET;
+    await expect(resetDatabase(d)).rejects.toThrow(/memory|refus/i);
+    await expect(resetDatabase(d, { confirm: 'RESET_TEST_DATABASE' })).rejects.toThrow(
+      /memory|refus/i,
+    );
+    process.env.UMS_TEST_RESET = '1';
+    await expect(resetDatabase(d)).rejects.toThrow(/memory|refus/i);
+    await resetDatabase(d, { confirm: 'RESET_TEST_DATABASE' });
+  });
+  it('M4: resetDatabase refuses a driver that does not say where it runs', async () => {
+    const d = await openDatabase({ kind: 'pglite-memory' });
+    toClose.push(d);
+    await migrate(d, clock);
+    const anonymous = { query: d.query, exec: d.exec, transaction: d.transaction };
+    await expect(resetDatabase(anonymous)).rejects.toThrow(/memory|refus/i);
+  });
+  it('M4: a memory target still resets without any flag', async () => {
+    const d = await fresh();
+    await expect(resetDatabase(d)).resolves.toBeUndefined();
   });
 });
