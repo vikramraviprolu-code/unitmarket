@@ -166,3 +166,90 @@ describe('check-isolation (review 4 M4)', () => {
     expect(r.status, r.out).toBe(0);
   });
 });
+
+describe('check-no-live-host (review 4 M5)', () => {
+  const PAY = ['pay', 'pal'].join('');
+  const COM = 'com';
+  const host = (sub: string) => `${sub}.${PAY}.${COM}`;
+  const b64 = (t: string) => Buffer.from(t).toString('base64');
+  const bad: [string, string, string][] = [
+    ['literal soft hyphen', 'src/a.ts', `export const u = 'https://api-m.pay­pal.${COM}';\n`],
+    ['literal zero-width space', 'src/a.ts', `export const u = 'https://api-m.pay​pal.${COM}';\n`],
+    ['literal U+034F', 'src/a.ts', `export const u = 'https://api-m.pay͏pal.${COM}';\n`],
+    [
+      'concatenated strings',
+      'src/a.ts',
+      `export const u = 'https://api-m.' + '${PAY}' + '.${COM}';\n`,
+    ],
+    [
+      'concatenation inside one argument split in the middle of the name',
+      'src/a.ts',
+      `export const u = 'api-m.pay' + 'pal.${COM}';\n`,
+    ],
+    [
+      'template pieces',
+      'src/a.ts',
+      "export const u = `https://${'api-m'}.${'pay' + 'pal'}.${'com'}`;\n",
+    ],
+    ['array join', 'src/a.ts', `export const u = ['api-m', '${PAY}', '${COM}'].join('.');\n`],
+    [
+      'constants joined',
+      'src/a.ts',
+      `const a = 'api-m.';\nconst b = '${PAY}.${COM}';\nexport const u = a + b;\n`,
+    ],
+    ['bare host object', 'src/a.ts', `export const c = { host: '${PAY}.${COM}' };\n`],
+    ['notify host', 'src/a.ts', `export const u = '${host('notify')}';\n`],
+    [
+      'paypalobjects host',
+      'src/a.ts',
+      `export const u = 'https://www.${PAY}objects.${COM}/x.js';\n`,
+    ],
+    ['upper case', 'src/a.ts', `export const u = '${host('API-M').toUpperCase()}';\n`],
+    [
+      'base64 token',
+      'src/a.ts',
+      `export const u = Buffer.from('${b64(host('api-m'))}', 'base64').toString();\n`,
+    ],
+    [
+      'backslash line continuation',
+      'src/a.ts',
+      `export const u = 'https://api-m.pay\\\npal.${COM}';\n`,
+    ],
+    [
+      'SANDBOX_API.replace',
+      'src/other.ts',
+      "import { SANDBOX_API } from '@umsbx/transport';\nexport const u = SANDBOX_API.replace('.sandbox', '');\n",
+    ],
+    [
+      'lower-case alias and slice',
+      'src/other.ts',
+      "import { SANDBOX_API as sandbox_api } from '@umsbx/transport';\nexport const u = sandbox_api.slice(0, 5);\n",
+    ],
+    [
+      'SANDBOX_API.split',
+      'src/other.ts',
+      "import { SANDBOX_API } from '@umsbx/transport';\nexport const u = SANDBOX_API.split('.');\n",
+    ],
+    ['mjs file', 'scripts/a.mjs', `export const u = ['api-m', '${PAY}', '${COM}'].join('.');\n`],
+    ['markdown outside docs/design', 'docs/notes.md', `see ${host('api-m')}\n`],
+    ['yaml', 'ci/a.yml', `url: https://${host('api-m')}/v1\n`],
+  ];
+  it.each(bad)('fails on %s', (_n, rel, text) => {
+    const r = runGuard('check-no-live-host.mjs', tree({ [rel]: text }));
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain(rel);
+  });
+
+  it('passes on sandbox pages that are not API hosts, and on the one constant module', () => {
+    const r = runGuard(
+      'check-no-live-host.mjs',
+      tree({
+        'src/a.ts': `export const approve = 'https://www.sandbox.${PAY}.${COM}/checkoutnow?token=T';\n`,
+        'packages/transport/src/endpoints.ts': `export const SANDBOX_API = 'https://api-m.sandbox.${PAY}.${COM}' as const;\nexport const CERT_HOST_SUFFIX = '.sandbox.${PAY}.${COM}' as const;\n`,
+        'src/b.ts':
+          "import { SANDBOX_API } from '@umsbx/transport';\nexport const u = new URL('/v1/x', SANDBOX_API);\n",
+      }),
+    );
+    expect(r.status, r.out).toBe(0);
+  });
+});
