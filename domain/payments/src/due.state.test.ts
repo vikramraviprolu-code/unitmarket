@@ -111,7 +111,8 @@ describe('abandoned checkouts (P17)', () => {
     const a = await awaiting(w);
     w.tick(DAY + 1000);
     w.paypal.queue.get.push({ kind: 'timeout' });
-    expect((await runDue(w.deps, { max_items: 10 })).abandoned).toBe(0);
+    const skipped = await runDue(w.deps, { max_items: 10 });
+    expect([skipped.abandoned, skipped.processed]).toEqual([0, 0]);
     expect(await orderStatus(w, a.order_id)).toBe('awaiting_buyer');
     expect((await runDue(w.deps, { max_items: 10 })).abandoned).toBe(1);
   });

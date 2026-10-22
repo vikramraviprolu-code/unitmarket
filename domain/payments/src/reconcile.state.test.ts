@@ -122,6 +122,8 @@ describe('capture retry (P3): only after a read shows no capture, same key, insi
     await runDue(w.deps, { max_items: 10 });
     expect(w.paypal.count('capture')).toBe(2);
     expect((await opOf(w, a.order_id, 'capture')).attempt).toBe(2);
+    // A retry that was lost is not followed by a read in the same pass.
+    expect(w.paypal.calls.at(-1)!.op).toBe('capture');
     for (let k = 0; k < 6; k += 1) {
       w.tick(20 * 60_000);
       await runDue(w.deps, { max_items: 10 });
