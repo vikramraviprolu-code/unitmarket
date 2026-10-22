@@ -58,6 +58,7 @@ const unitRead = (
           capture_id: capture.id,
           status: capture.status,
           status_reason: capture.reason ?? null,
+          amount: { currency, minor },
           paypal_fee_minor: capture.fee ?? null,
           refunded_minor: 0,
         },

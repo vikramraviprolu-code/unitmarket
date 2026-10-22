@@ -39,9 +39,11 @@ describe('append', () => {
     expect(sale.id).toMatch(/^led_/);
     const again = await append(w.input(k, { amount: { currency: 'USD', minor: 500 } }));
     expect(again).toEqual({ ok: false, error: { code: 'duplicate', existing_entry_id: sale.id } });
-    // A sale with a different amount for the same capture is still a duplicate; nothing is overwritten.
-    const other = await append(w.input(k, { amount: { currency: 'USD', minor: 100 } }));
-    expect(other).toEqual({ ok: false, error: { code: 'duplicate', existing_entry_id: sale.id } });
+    // A sale with a different amount for the same capture is a conflicting replay (FIX-W2D M5,
+    // was a silent duplicate); nothing is overwritten.
+    await expect(append(w.input(k, { amount: { currency: 'USD', minor: 100 } }))).rejects.toThrow(
+      /conflicting_replay/,
+    );
     const rows = await listLedger(w.db, { capture_id: `CAP${k}` });
     expect(rows).toHaveLength(1);
     expect(rows[0]!.amount.minor).toBe(500);
@@ -69,9 +71,9 @@ describe('append', () => {
       ok: false,
       error: { code: 'duplicate', existing_entry_id: first.id },
     });
-    // A replay is not double counted, and a replay with a larger amount does not rewrite history.
-    const third = await append(refund(k, 'RF1', 400));
-    expect(third).toEqual({ ok: false, error: { code: 'duplicate', existing_entry_id: first.id } });
+    // A replay is not double counted, and a replay with a larger amount does not rewrite history:
+    // it is refused as a conflicting replay (FIX-W2D M5, was a silent duplicate).
+    await expect(append(refund(k, 'RF1', 400))).rejects.toThrow(/conflicting_replay/);
     expect(unitBalance(await listLedger(w.db, { unit_id: `unt_${k}` })).refunded_minor).toBe(100);
   });
 

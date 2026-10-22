@@ -125,13 +125,18 @@ describe('re-issued links (A-18)', () => {
     expect(await kinds(id)).toEqual(['access_ready', 'link_issued', 'link_issued']);
   });
 
-  it('the same delivery event for the same link twice is recorded once', async () => {
+  it('link_issued for the same link twice is recorded once; downloads are repeatable', async () => {
+    // Changed by FIX-W2D H1: download_completed is no longer deduplicated per link, because a
+    // second download after an outage must be able to resume a paused window.
     const id = await w.rawEntitlement(1);
     await w.rawLink('lnk_1', id);
     await ready(id);
+    await delivery(id, 'link_issued', 'lnk_1');
+    await delivery(id, 'link_issued', 'lnk_1');
     await delivery(id, 'download_completed', 'lnk_1');
     await delivery(id, 'download_completed', 'lnk_1');
-    expect((await kinds(id)).filter((k) => k === 'download_completed')).toHaveLength(1);
+    expect((await kinds(id)).filter((k) => k === 'link_issued')).toHaveLength(1);
+    expect((await kinds(id)).filter((k) => k === 'download_completed')).toHaveLength(2);
   });
 });
 

@@ -32,6 +32,7 @@ const part = {
   capture_id: 'CAP1',
   status: 'COMPLETED',
   status_reason: null,
+  amount: { currency: 'USD', minor: 500 },
   paypal_fee_minor: 30,
   refunded_minor: 0,
 };

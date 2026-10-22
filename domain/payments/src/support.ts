@@ -146,6 +146,10 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
               capture_id: t.capture_id ?? captureIdOf(o, k),
               status: o.capture.status,
               status_reason: o.capture.reason,
+              amount: {
+                currency: t.currency ?? u.amount.currency,
+                minor: u.amount.minor + (t.amount_delta ?? 0),
+              },
               paypal_fee_minor: o.capture.fee,
               refunded_minor: 0,
             },

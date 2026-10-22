@@ -1,7 +1,14 @@
 // OAuth client-credentials token cache: in memory only, single-flight, refreshed 300 s before
 // expiry. The token is never logged or recorded (nfr.md P7).
 import { err, ok } from '@umsbx/contracts';
-import type { Clock, PayPalFail, Result, Secret, Transport } from '@umsbx/contracts';
+import type {
+  Clock,
+  PayPalFail,
+  Result,
+  Secret,
+  Transport,
+  TransportResult,
+} from '@umsbx/contracts';
 import { PATHS } from '@umsbx/transport';
 import { mapError } from './errors';
 import { debugIdOf, isRecord } from './headers';
@@ -36,16 +43,19 @@ export function createTokenCache(o: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Accept: 'application/json',
     };
-    const result = await o.transport.send({
-      operation: 'oauth_token',
-      method: 'POST',
-      path: spec.template,
-      headers,
-      body: 'grant_type=client_credentials',
-      order_ref: null,
-      amount_minor: null,
-      scenario: null,
-    });
+    // A transport that throws must not escape as a rejected promise: it reads as a timeout.
+    const result: TransportResult = await o.transport
+      .send({
+        operation: 'oauth_token',
+        method: 'POST',
+        path: spec.template,
+        headers,
+        body: 'grant_type=client_credentials',
+        order_ref: null,
+        amount_minor: null,
+        scenario: null,
+      })
+      .catch((): TransportResult => ({ kind: 'timeout' }));
 
     let fail: PayPalFail | null = null;
     let token: string | null = null;

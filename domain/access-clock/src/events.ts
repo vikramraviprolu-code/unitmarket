@@ -22,16 +22,24 @@ export interface EntitlementHead {
   policy: AccessPolicy;
 }
 
-/** Locks the entitlement row for the rest of the transaction. Null when it does not exist. */
-export async function lockEntitlement(tx: SqlExecutor, id: Id): Promise<EntitlementHead | null> {
+/**
+ * Locks the entitlement row for the rest of the transaction. Null when it does not exist, or, with
+ * skipLocked, when another transaction holds it.
+ */
+export async function lockEntitlement(
+  tx: SqlExecutor,
+  id: Id,
+  o: { skipLocked?: boolean } = {},
+): Promise<EntitlementHead | null> {
   const found = await tx.query<{
     id: string;
     money_state: MoneyState;
     access_state: AccessState;
     policy: unknown;
-  }>('SELECT id, money_state, access_state, policy FROM entitlements WHERE id = $1 FOR UPDATE', [
-    id,
-  ]);
+  }>(
+    `SELECT id, money_state, access_state, policy FROM entitlements WHERE id = $1 FOR UPDATE${o.skipLocked === true ? ' SKIP LOCKED' : ''}`,
+    [id],
+  );
   const r = found.rows[0];
   if (r === undefined) return null;
   return {
@@ -43,15 +51,14 @@ export async function lockEntitlement(tx: SqlExecutor, id: Id): Promise<Entitlem
 }
 
 export async function loadEvents(tx: SqlExecutor, id: Id): Promise<AccessEvent[]> {
-  // Insertion order breaks ties between events at the same instant. The table is append-only
-  // (triggers refuse UPDATE and DELETE), so the physical position follows insertion order.
+  // Insertion order (the identity column seq) breaks ties between events at the same instant.
   const rows = await tx.query<{
     kind: AccessEventKind;
     at: Date | string;
     source: AccessEvent['source'];
     evidence: AccessEvent['evidence'];
   }>(
-    'SELECT kind, at, source, evidence FROM access_events WHERE entitlement_id = $1 ORDER BY at, ctid',
+    'SELECT kind, at, source, evidence FROM access_events WHERE entitlement_id = $1 ORDER BY at, seq',
     [id],
   );
   return rows.rows.map((r) => ({
@@ -63,7 +70,7 @@ export async function loadEvents(tx: SqlExecutor, id: Id): Promise<AccessEvent[]
   }));
 }
 
-/** Appends one event. False when the (link, kind) unique index already holds it. */
+/** Appends one event. False when the link_issued-once-per-link index already holds it. */
 export async function insertEvent(
   tx: SqlExecutor,
   d: CoreDeps,
@@ -158,6 +165,7 @@ type DeliveryKind = Exclude<
 /**
  * Records a delivery fact (link issued, download, render, failure, restoration, beacon) and
  * re-materialises the window. A buyer-sourced event is stored but never moves the window.
+ * `inserted` is false when the event was a replay of link_issued for the same link.
  */
 export async function recordDeliveryEvent(
   d: CoreDeps,
@@ -168,17 +176,17 @@ export async function recordDeliveryEvent(
     source: 'system' | 'buyer';
     evidence: AccessEvent['evidence'];
   },
-): Promise<WindowState> {
+): Promise<WindowState & { inserted: boolean }> {
   return d.db.transaction(async (tx) => {
     const head = await requireEntitlement(tx, i.entitlement_id);
-    await insertEvent(tx, d, {
+    const inserted = await insertEvent(tx, d, {
       entitlement_id: i.entitlement_id,
       kind: i.kind,
       link_id: i.link_id,
       source: i.source,
       evidence: i.evidence,
     });
-    return materialise(tx, d, head);
+    return { ...(await materialise(tx, d, head)), inserted };
   });
 }
 

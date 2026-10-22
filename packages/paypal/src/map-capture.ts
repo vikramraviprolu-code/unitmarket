@@ -41,7 +41,12 @@ export function mapCapture(h: Http, requestedId: string): Mapped<CaptureRes> {
   }
   const body = h.body;
   const idParsed = isRecord(body) ? ProviderOrderIdSchema.safeParse(body.id) : null;
-  const provider_order_id = idParsed?.success ? idParsed.data : status === 202 ? requestedId : null;
+  // A body id that is not the requested id is not evidence about the requested order. A 202 may
+  // carry no body id, then the requested one stands.
+  let provider_order_id: string | null = null;
+  if (idParsed?.success) provider_order_id = idParsed.data === requestedId ? idParsed.data : null;
+  else if (status === 202 && !(isRecord(body) && body.id !== undefined))
+    provider_order_id = requestedId;
   const mapped = claimUnits(body);
   if (provider_order_id === null || (mapped === null && status !== 202)) {
     return { result: unreadable, notes: ['malformed_response'] };

@@ -41,7 +41,16 @@ const DELIVERY_TEXT: Record<string, string> = {
   revoked: 'Access revoked',
 };
 
-export function renderReceiptHtml(r: Receipt, label: 'Dry run' | 'Sandbox'): string {
+/**
+ * The label is derived from the receipt's own environment. A caller may pass one; a label that
+ * contradicts the environment is refused, so a dry run can never read "Sandbox" or the reverse.
+ */
+export function renderReceiptHtml(r: Receipt, label?: 'Dry run' | 'Sandbox'): string {
+  const derived = receiptLabel(r.environment);
+  if (label !== undefined && label !== derived) {
+    throw new Error(`receipt label "${label}" contradicts environment ${r.environment}`);
+  }
+  label = derived;
   const cur = r.snapshot.currency;
   const lines = r.lines
     .map((l) => {
