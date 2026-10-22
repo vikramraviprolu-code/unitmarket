@@ -68,6 +68,8 @@ export interface SecurityDeps {
   session_secret: Secret;
   passcode_hash: string | null;
   public_origin: string;
+  /** How many reverse proxies sit in front (0 = none: X-Forwarded-For is never trusted). */
+  trusted_proxies?: number;
 }
 
 export type HttpResult<O> =
@@ -118,16 +120,27 @@ const json = (status: number, body: unknown, headers: Headers): Response => {
   return new Response(JSON.stringify(body), { status, headers });
 };
 
-function clientIp(req: Request): string {
-  // One trusted proxy in front: its entry is the right-most one.
-  const xff = req.headers.get('x-forwarded-for');
-  const last = xff?.split(',').at(-1)?.trim();
-  if (last !== undefined && last.length > 0 && last.length <= 64) return last;
-  // L3: no usable address. A single shared 'unknown' bucket would let one client lock every other
-  // client without an address, so split by a coarse client fingerprint. This is a limiter key
-  // only, never an identity; an attacker who rotates it gains attempts, bounded by the per-target
-  // rule (rate_target) and the scrypt cost of the passcode check.
-  return `unknown:${req.headers.get('user-agent')?.slice(0, 200) ?? ''}`;
+// Review 4 M7. The client address for the ip limiter:
+//  - trusted_proxies = N > 0: the entry N places from the right of X-Forwarded-For (the one the
+//    outermost trusted proxy appended); earlier entries are the client's to forge and are ignored;
+//  - otherwise the socket address the composition passes in RouteCallContext.remote_addr;
+//  - otherwise one shared 'no-address' bucket. The User-Agent is never used: it is rotated freely.
+// A shared bucket can be filled by one client, but the per-target key (rate_target) and the scrypt
+// cost bound what that gains an attacker, and it never opens extra attempts.
+function clientIp(req: Request, deps: SecurityDeps, call?: RouteCallContext): string {
+  const n = deps.trusted_proxies ?? 0;
+  if (n > 0) {
+    const parts =
+      req.headers
+        .get('x-forwarded-for')
+        ?.split(',')
+        .map((p) => p.trim()) ?? [];
+    const entry = parts.length >= n ? parts[parts.length - n] : undefined;
+    if (entry !== undefined && entry.length > 0 && entry.length <= 64) return entry;
+  }
+  const remote = call?.remote_addr;
+  if (remote !== undefined && remote.length > 0 && remote.length <= 64) return remote;
+  return 'no-address';
 }
 
 type StrictCapable<I> = ZodType<I> & { strict?: () => ZodType<I> };
@@ -143,6 +156,8 @@ function strictParser<I>(meta: RouteMeta, schema: ZodType<I>): ZodType<I> {
 export interface RouteCallContext {
   /** Next.js dynamic route params (a promise in Next 15). Merged into the input; they win. */
   params?: Record<string, string> | Promise<Record<string, string>>;
+  /** The socket address of the peer, from the server runtime. The composition must pass it. */
+  remote_addr?: string;
 }
 
 async function readBody(req: Request, max: number): Promise<string | 'too_large' | 'bad_encoding'> {
@@ -210,7 +225,7 @@ export function withRoute<I, O>(
         return fail(413, 'too_large', 'The request is too large.');
 
       const ip_hash = createHmac('sha256', deps.session_secret.reveal())
-        .update(`ip:${clientIp(req)}`)
+        .update(`ip:${clientIp(req, deps, call)}`)
         .digest('hex')
         .slice(0, 32);
       const tooMany = (retry_ms: number): Response =>
@@ -277,8 +292,10 @@ export function withRoute<I, O>(
       } else {
         raw = Object.fromEntries(new URL(req.url).searchParams);
       }
+      let paramsText = '';
       if (call?.params !== undefined) {
         const params = await call.params;
+        paramsText = JSON.stringify(Object.entries(params).sort(([a], [b]) => (a < b ? -1 : 1)));
         if (typeof raw === 'object' && raw !== null && !Array.isArray(raw))
           raw = { ...(raw as Record<string, unknown>), ...params };
       }
@@ -319,7 +336,12 @@ export function withRoute<I, O>(
           deps,
           scope,
           meta.path,
-          requestHash(meta.path, meta.method, rawBody),
+          requestHash(
+            meta.path,
+            meta.method,
+            rawBody,
+            `${new URL(req.url).pathname}|${paramsText}`,
+          ),
         );
         if (start.kind === 'key_reused')
           return fail(

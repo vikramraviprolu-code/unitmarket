@@ -98,7 +98,9 @@ describe('idempotency hash covers the path and params (M8)', () => {
     expect(a.status).toBe(201);
     const b = await call('B');
     expect(b.status).toBe(422);
-    expect(((await b.json()) as { code: string }).code).toBe('idempotency_key_reused');
+    expect(((await b.json()) as { error: { code: string } }).error.code).toBe(
+      'idempotency_key_reused',
+    );
     expect(runs).toBe(1);
     const again = await call('A');
     expect(again.headers.get('idempotent-replay')).toBe('true');
