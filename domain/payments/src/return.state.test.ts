@@ -502,7 +502,8 @@ describe('switches', () => {
     expect(v.items[0]).toMatchObject({ access: 'available' });
     expect(Date.parse(v.items[0]!.window.started_at!)).toBe(w.clock.now().getTime());
     expect(await count(w, 'ledger_entries', "kind = 'sale'")).toBe(1);
-    expect(await count(w, 'receipts')).toBe(1);
+    // Receipt v1 was issued at verification (access paused); v2 shows the window that started later.
+    expect(await count(w, 'receipts')).toBe(2);
   });
 });
 

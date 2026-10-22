@@ -104,6 +104,10 @@ export interface FakePayPal extends PayPalPort {
   hold: Promise<void> | null;
 }
 
+// PayPal gives each purchase unit its own capture: the first keeps the base id.
+const captureIdOf = (o: { capture: { capture_id: string } | null }, k: number): string =>
+  `${o.capture?.capture_id ?? ''}${k === 0 ? '' : `U${k}`}`;
+
 export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): FakePayPal {
   const calls: FakeCall[] = [];
   const violations: string[] = [];
@@ -117,7 +121,7 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
   };
 
   const read = (o: FakeOrder, t: Tamper): OrderRead => {
-    const units = o.req.units.map((u) => ({
+    const units = o.req.units.map((u, k) => ({
       reference_id: t.reference_id ?? u.reference_id,
       payee_merchant_id: t.payee ?? u.payee_merchant_id,
       amount: {
@@ -128,7 +132,7 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
         o.capture === null
           ? null
           : {
-              capture_id: t.capture_id ?? o.capture.capture_id,
+              capture_id: t.capture_id ?? captureIdOf(o, k),
               status: o.capture.status,
               status_reason: o.capture.reason,
               paypal_fee_minor: o.capture.fee,
@@ -267,9 +271,9 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
       kind: 'claim',
       http,
       provider_order_id: o.id,
-      units: o.req.units.map((u) => ({
+      units: o.req.units.map((u, k) => ({
         reference_id: u.reference_id,
-        capture_id: o.capture?.capture_id ?? null,
+        capture_id: o.capture === null ? null : captureIdOf(o, k),
         status: o.capture?.status ?? null,
       })),
       debug_id: 'DBGCAP',
