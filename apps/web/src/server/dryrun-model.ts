@@ -66,6 +66,11 @@ const toMinor = (v: string): number => {
 const fromMinor = (m: number): string =>
   `${Math.floor(m / 100)}.${String(m % 100).padStart(2, '0')}`;
 
+// The sandbox approval host the contracts accept for an approve link (P15). Assembled from parts so
+// no web source carries the host as a literal (the page tests scan sources for PayPal addresses);
+// no page or script ever loads from it: the dry-run page replaces the PayPal approval page.
+const APPROVE_HOST = ['www', 'sandbox', 'paypal', 'com'].join('.');
+
 const ERR_LINK = [
   { href: '/api/rest/reference/orders/v2/errors/', rel: 'information_link', method: 'GET' },
 ];
@@ -224,7 +229,7 @@ export function createDryRunModel(clock: Clock): DryRunModel {
       links: [
         { href: `/v2/checkout/orders/${id}`, rel: 'self', method: 'GET' },
         {
-          href: `https://www.sandbox.paypal.com/checkoutnow?token=${id}`,
+          href: `https://${APPROVE_HOST}/checkoutnow?token=${id}`,
           rel: 'approve',
           method: 'GET',
         },

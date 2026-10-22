@@ -10,8 +10,6 @@
 import { getSingleton, setSingleton } from './src/server/singleton';
 import 'server-only';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
 import type {
   Actor,
   AgentDeps,
@@ -73,7 +71,7 @@ import {
 } from '@umsbx/payments';
 import { health as jobsHealth, startLoop } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
-import { resolveSession, createSession, verifyPasscode } from '@umsbx/security';
+import { SESSION_COOKIE, resolveSession, createSession, verifyPasscode } from '@umsbx/security';
 import type { SecurityDeps } from '@umsbx/security';
 import { DRYRUN_SCENARIOS, createDryRunModel, isScenarioId } from './src/server/dryrun-model';
 
@@ -274,6 +272,11 @@ export interface Engine {
     passcode: string;
   }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
   actorFromCookie(cookie: string | null): Promise<Actor | null>;
+  /**
+   * The id of the live session behind a cookie header, for the actor that session belongs to.
+   * Links are bound to it (delivery lane): a link issued in one session is not found in another.
+   */
+  sessionIdOf(cookie: string | null, actor: Actor): Promise<Id | null>;
   offerPage(i: { publisher: string; offer: string }): Promise<OfferPage | null>;
   listOffers(): Promise<OfferPage[]>;
   quote: typeof startFromOffer extends (d: never, i: infer I) => infer R ? (i: I) => R : never;
@@ -303,11 +306,12 @@ export interface Engine {
   dryRunApprove(i: { order_ref: Id; actor: Actor; scenario: string | null }): Promise<boolean>;
   library(i: { actor: Actor }): Promise<LibraryEntry[]>;
   libraryItem(i: { entitlement_id: Id; actor: Actor }): Promise<LibraryEntry | null>;
-  issueLink(i: { entitlement_id: Id; actor: Actor }): ReturnType<typeof issueLink>;
+  issueLink(i: { entitlement_id: Id; actor: Actor; session_id?: Id }): ReturnType<typeof issueLink>;
   serve(i: {
     token: string;
     actor: Actor;
     mode: 'download' | 'read';
+    session_id?: Id;
   }): Promise<
     | { ok: true; headers: Record<string, string>; stream: ReadableStream<Uint8Array> }
     | { ok: false; code: string }
@@ -339,21 +343,6 @@ export interface Engine {
     action: ResolveAction;
     reason: string;
   }): ReturnType<typeof resolveRecoveryCase>;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Fixtures and migrations are located from the working directory (the bundle moves import.meta).
-// ---------------------------------------------------------------------------------------------
-function findUp(rel: string, from: string): string | null {
-  let dir = resolve(from);
-  for (let i = 0; i < 8; i += 1) {
-    const p = join(dir, rel);
-    if (existsSync(p)) return p;
-    const up = resolve(dir, '..');
-    if (up === dir) break;
-    dir = up;
-  }
-  return null;
 }
 
 const DOMAIN_CONFIG = (c: Config): DomainConfig => ({
@@ -544,6 +533,11 @@ function buildApp(config: Config, opts: AppOptions): App {
     session_secret: config.session_secret,
     passcode_hash: config.passcode_hash,
     public_origin: config.public_origin,
+    // No reverse proxy is trusted: X-Forwarded-For is never read, so a client cannot choose its own
+    // limiter bucket. Next.js route handlers receive no socket address (RouteCallContext.remote_addr
+    // has no source here), so every client shares one 'no-address' ip bucket until the host config
+    // can name the proxy count (needs a packages/config value; reported in docs/READINESS.md).
+    trusted_proxies: 0,
   };
 
   // --- engine --------------------------------------------------------------------------------
@@ -640,6 +634,15 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
 
     actorFromCookie: (cookie) => resolveSession(security, cookie),
+
+    async sessionIdOf(cookie, actor) {
+      // resolveSession checks the signature, expiry and revocation; only then is the id read.
+      const live = await resolveSession(security, cookie);
+      if (live === null || cookie === null) return null;
+      if (JSON.stringify(live) !== JSON.stringify(actor)) return null;
+      const m = new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=(ses_[0-9a-z]{26})\\.`).exec(cookie);
+      return m?.[1] ?? null;
+    },
 
     async offerPage({ publisher, offer }) {
       const v = await getOffer(db, { publisher_slug: publisher, offer_code: offer });
@@ -1056,6 +1059,9 @@ export const securityDeps: SecurityDeps = {
   },
   get public_origin() {
     return getApp().security.public_origin;
+  },
+  get trusted_proxies() {
+    return getApp().security.trusted_proxies ?? 0;
   },
 };
 

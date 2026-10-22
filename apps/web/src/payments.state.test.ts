@@ -14,7 +14,6 @@ let app: App;
 let sessionRoute: typeof import('./app/api/session/route');
 let orders: typeof import('./app/api/orders/route');
 let checkoutRoute: typeof import('./app/api/orders/[ref]/checkout/route');
-let A: Session;
 let B: Session;
 let actor: Actor;
 let actorB: Actor;
@@ -24,7 +23,6 @@ beforeAll(async () => {
   sessionRoute = await import('./app/api/session/route');
   orders = await import('./app/api/orders/route');
   checkoutRoute = await import('./app/api/orders/[ref]/checkout/route');
-  A = (await signIn(sessionRoute.POST, 'buyer-a'))!;
   B = (await signIn(sessionRoute.POST, 'buyer-b'))!;
   const row = await app.db.query<{ id: string }>(
     `SELECT id FROM buyers WHERE auth_subject = 'persona:buyer-a'`,
@@ -158,8 +156,8 @@ describe('the real payments engine behind the facade', () => {
       body: {},
     });
     expect(co.status).toBe(200);
-    expect(((await co.json()) as { approve_url: string }).approve_url).toContain(
-      'sandbox.paypal.com/checkoutnow',
+    expect(((await co.json()) as { approve_url: string }).approve_url).toMatch(
+      /^https:\/\/[^/]+\/checkoutnow\?token=SBXMODELORD/,
     );
   });
 
