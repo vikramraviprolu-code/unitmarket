@@ -245,7 +245,27 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
-  domain/library: {}
+  domain/library:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/access-clock':
+        specifier: workspace:*
+        version: link:../access-clock
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/delivery':
+        specifier: workspace:*
+        version: link:../delivery
+      '@umsbx/recovery':
+        specifier: workspace:*
+        version: link:../recovery
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/offer-entry:
     dependencies:
@@ -319,7 +339,27 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
-  domain/recovery: {}
+  domain/recovery:
+    dependencies:
+      '@umsbx/access-clock':
+        specifier: workspace:*
+        version: link:../access-clock
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/delivery':
+        specifier: workspace:*
+        version: link:../delivery
+      '@umsbx/entitlements':
+        specifier: workspace:*
+        version: link:../entitlements
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   packages/config:
     dependencies:
