@@ -32,7 +32,7 @@ describe('status text follows window and money state', () => {
     expect(await textOf(x.entitlement_id)).toBe('Ready, 1 day 3 hours left');
     w.clock.advance(DAY + 2 * HOUR);
     expect(await textOf(x.entitlement_id)).toBe('Ready, 1 hour left');
-    w.clock.advance(HOUR - 60_000 * 5);
+    w.clock.advance(HOUR + 60_000 * 10); // 49 minutes left
     expect(await textOf(x.entitlement_id)).toBe('Ready, less than 1 hour left');
   });
 
