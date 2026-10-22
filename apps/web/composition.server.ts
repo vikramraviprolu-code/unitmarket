@@ -410,6 +410,16 @@ function buildApp(config: Config, opts: AppOptions): App {
           WHERE paypal_merchant_id IS NULL`,
         [now],
       );
+      // Dry run only: the migration seeds paypal_outbound off (fail closed). A dry run opens no
+      // socket, and recovery and reconcile pause while the switch is off, so the offline seed turns it
+      // on. Only the untouched migration row is changed: an operator stop survives a restart.
+      // Sandbox mode never takes this path and keeps the switch off until the owner approves.
+      await d.query(
+        `UPDATE safety_switches SET "on" = true, changed_by = 'seed:dryrun', changed_at = $1,
+                reason = 'seed: dry run opens no socket', updated_at = $1
+          WHERE name = 'paypal_outbound' AND changed_by = 'seed'`,
+        [now],
+      );
     }
     for (const [persona, id] of Object.entries(BUYER_IDS)) {
       await d.query(
@@ -450,6 +460,10 @@ function buildApp(config: Config, opts: AppOptions): App {
         async send(r) {
           const checked = guard(r, 'dryrun');
           if (!checked.ok) return { kind: 'blocked', by: 'egress' };
+          // The stop blocks every call, reads included (architecture 7.4). The gate answers
+          // connect_off first in dry run, so the kill switch is read here, before it.
+          if (!(await switches.isOn('paypal_outbound')))
+            return { kind: 'blocked', by: 'kill_switch' };
           const verdict = await gate.check({
             operation: r.operation,
             amount_minor: r.amount_minor,
