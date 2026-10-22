@@ -38,8 +38,18 @@ export async function takeToken(
   const interval = rule.window_ms / rule.limit;
   return deps.db.transaction(async (tx) => {
     const now = deps.clock.now().getTime();
+    const stamp = new Date(now).toISOString();
+    if (mode === 'take') {
+      // M1: make sure the row exists, then read it under a row lock so concurrent attempts
+      // queue up instead of all reading the same token count.
+      await tx.query(
+        `INSERT INTO rate_buckets (bucket_key, tokens, refilled_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $3, $3) ON CONFLICT (bucket_key) DO NOTHING`,
+        [key, rule.limit, stamp],
+      );
+    }
     const res = await tx.query<{ tokens: number | string; refilled_at: unknown }>(
-      'SELECT tokens, refilled_at FROM rate_buckets WHERE bucket_key = $1',
+      `SELECT tokens, refilled_at FROM rate_buckets WHERE bucket_key = $1${mode === 'take' ? ' FOR UPDATE' : ''}`,
       [key],
     );
     const row = res.rows[0];
@@ -56,12 +66,9 @@ export async function takeToken(
       return { allowed: false, retry_after_ms: Math.max(1, Math.ceil(refilled + interval - now)) };
     }
     if (mode === 'peek') return { allowed: true, retry_after_ms: 0 };
-    const iso = new Date(refilled).toISOString();
     await tx.query(
-      `INSERT INTO rate_buckets (id, bucket_key, tokens, refilled_at, created_at, updated_at)
-       VALUES ($1, $1, $2, $3, $4, $4)
-       ON CONFLICT (bucket_key) DO UPDATE SET tokens = $2, refilled_at = $3, updated_at = $4`,
-      [key, tokens - 1, iso, new Date(now).toISOString()],
+      'UPDATE rate_buckets SET tokens = $2, refilled_at = $3, updated_at = $4 WHERE bucket_key = $1',
+      [key, tokens - 1, new Date(refilled).toISOString(), stamp],
     );
     return { allowed: true, retry_after_ms: 0 };
   });

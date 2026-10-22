@@ -2,6 +2,8 @@
 export const PACKAGE_NAME = '@umsbx/security' as const;
 
 export { withRoute, notFoundUnlessOwner, MAX_BODY_CEILING } from './route';
+export type { RouteCallContext } from './route';
+export { IDEMPOTENCY_PENDING_TTL_MS } from './idempotency';
 export type {
   AuthRule,
   HttpResult,

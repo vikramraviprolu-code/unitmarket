@@ -3,15 +3,7 @@
 // database migrated with the lane 12 schema (review H1: no fake database).
 import { createHash } from 'node:crypto';
 import { afterAll } from 'vitest';
-import type {
-  AuditEntry,
-  Clock,
-  IdPrefix,
-  Ids,
-  LogEvent,
-  Logger,
-  Secret,
-} from '@umsbx/contracts';
+import type { AuditEntry, Clock, IdPrefix, Ids, LogEvent, Logger, Secret } from '@umsbx/contracts';
 import { migrate, openDatabase, type SqlDriver } from '@umsbx/db';
 import type { SecurityDeps } from './route';
 

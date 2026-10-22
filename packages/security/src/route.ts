@@ -15,7 +15,7 @@ import type {
   Secret,
 } from '@umsbx/contracts';
 import { err, ok } from '@umsbx/contracts';
-import { csrfTokenMatches, originMatches } from './csrf';
+import { csrfTokenMatches, originMatches, sha256Hex } from './csrf';
 import { GENERIC_MESSAGE, errorBody, fieldNames, supportCode } from './errors';
 import { securityHeaders } from './headers';
 import {
@@ -41,6 +41,11 @@ export interface RouteMeta {
   auth: AuthRule;
   csrf: boolean;
   rate: RateRule | null;
+  /**
+   * Name of an input field. With an `ip` rate, the bucket key becomes ip + hash(field value), so
+   * failed attempts on one target (a passcode persona, an account) never lock other targets.
+   */
+  rate_target?: string;
   max_body_bytes: number;
   idempotent: boolean;
   risk: 'low' | 'medium' | 'high';
@@ -104,6 +109,8 @@ function validateMeta(meta: RouteMeta): void {
   )
     bad('idempotent needs a POST with a session');
   if (meta.rate !== null && !(meta.rate.limit >= 1 && meta.rate.window_ms >= 1)) bad('rate');
+  if (meta.rate_target !== undefined && (meta.rate === null || meta.rate.per !== 'ip'))
+    bad('rate_target needs an ip rate');
 }
 
 const json = (status: number, body: unknown, headers: Headers): Response => {
@@ -115,7 +122,27 @@ function clientIp(req: Request): string {
   // One trusted proxy in front: its entry is the right-most one.
   const xff = req.headers.get('x-forwarded-for');
   const last = xff?.split(',').at(-1)?.trim();
-  return last !== undefined && last.length > 0 && last.length <= 64 ? last : 'unknown';
+  if (last !== undefined && last.length > 0 && last.length <= 64) return last;
+  // L3: no usable address. A single shared 'unknown' bucket would let one client lock every other
+  // client without an address, so split by a coarse client fingerprint. This is a limiter key
+  // only, never an identity; an attacker who rotates it gains attempts, bounded by the per-target
+  // rule (rate_target) and the scrypt cost of the passcode check.
+  return `unknown:${req.headers.get('user-agent')?.slice(0, 200) ?? ''}`;
+}
+
+type StrictCapable<I> = ZodType<I> & { strict?: () => ZodType<I> };
+function strictParser<I>(meta: RouteMeta, schema: ZodType<I>): ZodType<I> {
+  const s = schema as StrictCapable<I>;
+  if (typeof s.strict !== 'function')
+    throw new Error(
+      `withRoute: schema for ${meta.path} cannot be made strict; use z.object(...).strict() (L2)`,
+    );
+  return s.strict();
+}
+
+export interface RouteCallContext {
+  /** Next.js dynamic route params (a promise in Next 15). Merged into the input; they win. */
+  params?: Record<string, string> | Promise<Record<string, string>>;
 }
 
 async function readBody(req: Request, max: number): Promise<string | 'too_large' | 'bad_encoding'> {
@@ -151,12 +178,11 @@ export function withRoute<I, O>(
   meta: RouteMeta,
   schema: ZodType<I>,
   handler: (ctx: RouteContext<I>) => Promise<HttpResult<O>>,
-): (deps: SecurityDeps) => (req: Request) => Promise<Response> {
+): (deps: SecurityDeps) => (req: Request, call?: RouteCallContext) => Promise<Response> {
   validateMeta(meta);
-  const strict = schema as ZodType<I> & { strict?: () => ZodType<I> };
-  const parser: ZodType<I> = typeof strict.strict === 'function' ? strict.strict() : schema;
+  const parser = strictParser(meta, schema);
 
-  return (deps) => async (req) => {
+  return (deps) => async (req, call) => {
     const req_id = deps.ids.nonce();
     const log = deps.log.child({ req_id, route: meta.path });
     const headers = new Headers({
@@ -192,7 +218,7 @@ export function withRoute<I, O>(
           'retry-after': String(Math.max(1, Math.ceil(retry_ms / 1000))),
         });
 
-      if (meta.rate?.per === 'ip' && meta.auth !== 'webhook') {
+      if (meta.rate?.per === 'ip' && meta.auth !== 'webhook' && meta.rate_target === undefined) {
         const v = await takeToken(deps, meta.rate, ip_hash);
         if (!v.allowed) return tooMany(v.retry_after_ms);
       }
@@ -251,6 +277,11 @@ export function withRoute<I, O>(
       } else {
         raw = Object.fromEntries(new URL(req.url).searchParams);
       }
+      if (call?.params !== undefined) {
+        const params = await call.params;
+        if (typeof raw === 'object' && raw !== null && !Array.isArray(raw))
+          raw = { ...(raw as Record<string, unknown>), ...params };
+      }
       const parsed = parser.safeParse(raw);
       if (!parsed.success)
         return fail(
@@ -259,6 +290,19 @@ export function withRoute<I, O>(
           'The request did not match the expected shape.',
           fieldNames(parsed.error.issues),
         );
+
+      if (meta.rate?.per === 'ip' && meta.auth !== 'webhook' && meta.rate_target !== undefined) {
+        const target = (raw as Record<string, unknown> | null)?.[meta.rate_target];
+        const subject = `${ip_hash}:${sha256Hex(String(target ?? '')).slice(0, 32)}`;
+        const v = await takeToken(deps, meta.rate, subject);
+        if (!v.allowed) return tooMany(v.retry_after_ms);
+      }
+
+      // Webhook limiter (M2): refuse an exhausted source before the handler (signature check) runs.
+      if (meta.auth === 'webhook' && meta.rate !== null) {
+        const v = await takeToken(deps, meta.rate, ip_hash, 'peek');
+        if (!v.allowed) return tooMany(v.retry_after_ms);
+      }
 
       // Idempotency.
       if (meta.idempotent) {
@@ -321,13 +365,8 @@ export function withRoute<I, O>(
       }
       return res;
     } catch (e) {
-      if (idem !== null) {
-        try {
-          await abandonIdempotent(deps, idem);
-        } catch {
-          /* the reservation stays pending; a retry gets 409 until it is cleaned up */
-        }
-      }
+      // M3: a throw keeps the reservation. Side effects may have happened; a retry gets 409 until
+      // the pending row passes IDEMPOTENCY_PENDING_TTL_MS and is reclaimed.
       log.log({
         msg: 'route_error',
         level: 'error',
