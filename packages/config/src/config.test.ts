@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { bootOrExit, loadConfig, makeSecret } from './index';
 
-const S1 = 'a'.repeat(32);
-const S2 = 'b'.repeat(32);
-const S3 = 'c'.repeat(32);
+// Review 4 L8: a secret of one repeated character is refused, so the fixtures use mixed text.
+const S1 = 'Qm7vK2pLx9RbT4zWc8NdYh3JfG6sAe1U';
+const S2 = 'Zr5tB8nKd2VwXq7LmC4yHj9PgF3sEa6U';
+const S3 = 'Jd4wN7xQk2ZcR9vTb5LmY8hGp3FsAe6U';
 // Built at runtime so no live hostname literal sits in the tree (S7).
 const LIVE_HOST = ['api-m', 'paypal', 'com'].join('.');
 const SANDBOX_HOST = ['api-m', 'sandbox', 'paypal', 'com'].join('.');
@@ -117,10 +118,10 @@ describe('loadConfig refuses (P15, RLR-4)', () => {
       code: 'weak_secret',
       name: 'UMS_LINK_SECRET',
     });
-    expect(loadConfig(offline({ UMS_LINK_SECRET: 'x'.repeat(32) })).ok).toBe(true);
+    expect(loadConfig(offline({ UMS_LINK_SECRET: 'xY'.repeat(16) })).ok).toBe(true);
   });
   it('multi-byte characters count as bytes', () => {
-    expect(loadConfig(offline({ UMS_LINK_SECRET: 'é'.repeat(16) })).ok).toBe(true);
+    expect(loadConfig(offline({ UMS_LINK_SECRET: 'éa'.repeat(16) })).ok).toBe(true);
   });
   it('missing secret refuses missing_value', () => {
     expect(refusal(offline({ UMS_SESSION_SECRET: undefined }))).toEqual({
@@ -176,6 +177,92 @@ describe('loadConfig refuses (P15, RLR-4)', () => {
         expect(text).not.toContain(v);
       }
     }
+  });
+});
+
+// Opus review 4 M1, M2, M3, L8.
+describe('boot refusal bypasses (review 4)', () => {
+  const PP = ['paypal', 'com'].join('.');
+  const host = (sep: string, label = 'api-m') => `https://${label}${sep}${PP.replace('.', sep)}`;
+  it('M1: characters URL parsing removes or maps still carry the host', () => {
+    const variants = [
+      `https://api-m.paypal\u3002com`.replace('\\u3002', '\u3002'),
+      `https://api-m.pay\u00adpal.com`,
+      `https://api-m.pay\u034fpal.com`,
+      `https://api-m.pay\u200bpal.com`,
+      `https://api-m.pay\u2060pal.com`,
+      `https://api-m.pay\ufeffpal.com`,
+      `https://api-m.pay\u180bpal.com`,
+      `https://api-m.pay\ufe0fpal.com`,
+      `https://api-m.\uff50\uff41\uff59\uff50\uff41\uff4c.com`,
+      `https://api-m.paypal\uff0ecom`,
+      `https://api-m.paypal\uff61com`,
+      `https://api-m.paypa\u2113.com`.replace('\\u2113', 'l'),
+      `https://api-m.paypal%E3%80%82com`,
+      `https://api-m.pay%C2%ADpal.com`,
+      `https://www.paypalobjects.com/x`,
+      `https://api-m.paypa\u200dl.com`,
+    ];
+    for (const v of variants) {
+      expect(refusal(offline({ UMS_PUBLIC_ORIGIN: v })).code, JSON.stringify(v)).toBe(
+        'non_sandbox_host',
+      );
+    }
+    expect(host('.').length).toBeGreaterThan(0);
+  });
+  it('M1: an ordinary origin is not refused', () => {
+    expect(loadConfig(offline({ UMS_PUBLIC_ORIGIN: 'https://um.example.org' })).ok).toBe(true);
+  });
+  it('M2: NODE_ENV in another casing counts as that value; unknown values refuse', () => {
+    const env = offline({ UMS_PUBLIC_ORIGIN: 'https://um.example.org' });
+    for (const v of ['Production', 'PRODUCTION', ' production ']) {
+      expect(refusal({ ...env, NODE_ENV: v })).toEqual({
+        code: 'missing_value',
+        name: 'UMS_DEMO_PASSCODE_HASH',
+      });
+    }
+    expect(refusal({ ...env, NODE_ENV: 'prod' })).toEqual({
+      code: 'missing_value',
+      name: 'NODE_ENV',
+    });
+    expect(refusal({ ...env, NODE_ENV: 'staging' }).name).toBe('NODE_ENV');
+    const t = loadConfig({ ...env, NODE_ENV: 'TEST' });
+    expect(t.ok && t.value.node_env).toBe('test');
+    const d = loadConfig({ ...env, NODE_ENV: 'development' });
+    expect(d.ok && d.value.node_env).toBe('development');
+    const none = loadConfig(env);
+    expect(none.ok && none.value.node_env).toBe('development');
+  });
+  it('M3: a public origin must be exactly an origin', () => {
+    for (const v of [
+      'https://evil.com@localhost',
+      'https://x?y',
+      'https://x#y',
+      'https://x/path',
+      'https://x/',
+      'https://user:pw@um.example.org',
+      'https://um.example.org:99999',
+      'http://localhost:3000/x',
+      'http://localhost@evil.test',
+      'https://exa mple.org',
+      'https://um.example.org\\@evil.test',
+    ]) {
+      expect(refusal(offline({ UMS_PUBLIC_ORIGIN: v })).code, v).toBe('insecure_origin');
+    }
+    for (const v of ['https://um.example.org', 'https://um.example.org:8443', 'http://localhost:3000'])
+      expect(loadConfig(offline({ UMS_PUBLIC_ORIGIN: v })).ok, v).toBe(true);
+  });
+  it('L8: repeated-character and blank secrets are weak; client id equal to secret is refused', () => {
+    for (const v of ['a'.repeat(32), 'é'.repeat(16), ' '.repeat(40), '\t'.repeat(40), '0'.repeat(64)])
+      expect(refusal(offline({ UMS_LINK_SECRET: v })), JSON.stringify(v)).toEqual({
+        code: 'weak_secret',
+        name: 'UMS_LINK_SECRET',
+      });
+    expect(
+      refusal(
+        sandbox({ PAYPAL_CLIENT_ID: 'same-value-for-both', PAYPAL_CLIENT_SECRET: 'same-value-for-both' }),
+      ).code,
+    ).toBe('equal_secrets');
   });
 });
 
