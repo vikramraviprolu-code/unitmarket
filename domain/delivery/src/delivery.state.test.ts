@@ -183,10 +183,9 @@ describe('delivery of an available item', () => {
       ...store,
       open: () =>
         Promise.resolve({
-          // eslint-disable-next-line require-yield
-          async *[Symbol.asyncIterator]() {
-            throw new Error('disk gone');
-          },
+          [Symbol.asyncIterator]: () => ({
+            next: () => Promise.reject(new Error('disk gone')),
+          }),
         }),
     };
     const plan = await planServe(

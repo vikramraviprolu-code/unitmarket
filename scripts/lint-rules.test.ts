@@ -525,3 +525,32 @@ describe('bypass attempts (review 4 H1)', () => {
     ).toEqual([]);
   });
 });
+
+describe('delivery hash-only files (replace the former eslint-disable comments)', () => {
+  const hash = "import { createHash } from 'node:crypto';\nexport const h = createHash;\n";
+  it('link-token.ts, store-pg.ts and world.ts may hash, nothing else in node:*', async () => {
+    for (const f of ['link-token.ts', 'store-pg.ts', 'world.ts'])
+      expect(await lint(`domain/delivery/src/${f}`, hash), f).toEqual([]);
+    expect((await lint('domain/delivery/src/serve.ts', hash)).length).toBeGreaterThan(0);
+    for (const f of ['link-token.ts', 'store-pg.ts', 'world.ts']) {
+      expect(
+        (
+          await lint(
+            `domain/delivery/src/${f}`,
+            "import { randomBytes } from 'node:crypto';\nexport const r = randomBytes;\n",
+          )
+        ).length,
+        f,
+      ).toBeGreaterThan(0);
+      expect(
+        (
+          await lint(
+            `domain/delivery/src/${f}`,
+            "import { readFileSync } from 'node:fs';\nexport const r = readFileSync;\n",
+          )
+        ).length,
+        f,
+      ).toBeGreaterThan(0);
+    }
+  });
+});

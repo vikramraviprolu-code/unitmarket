@@ -1,6 +1,6 @@
 // ContentStore over the Postgres content_blobs table (bytea). Read-only: there is no write or
 // upload function in this package (SOP 16, no uploads in MVP-A); seed code writes blobs elsewhere.
-// eslint-disable-next-line no-restricted-imports -- hashing and HMAC are deterministic (no randomness); S1 bars node:* in domain packages (change request in the lane 09 hand-off)
+// node:crypto (hashing only) is allowed for this file by name in eslint.config.mjs.
 import { createHash } from 'node:crypto';
 import type { ContentHead, ContentStore, Database, Sha256Hex } from '@umsbx/contracts';
 
