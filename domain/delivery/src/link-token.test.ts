@@ -57,7 +57,7 @@ describe('download filename', () => {
     for (const title of bad) {
       const f = sanitiseFilename(title, 'text/plain');
       expect(f).toMatch(/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,120}\.txt$/);
-      expect(f).not.toMatch(/[\r\n"/\;]|\.\./);
+      expect(f).not.toMatch(/[\r\n";/\\]|\.\./);
     }
     expect(sanitiseFilename('Good Title', 'application/pdf')).toBe('Good Title.pdf');
     expect(sanitiseFilename('t', 'application/x-weird')).toBe('t.bin');

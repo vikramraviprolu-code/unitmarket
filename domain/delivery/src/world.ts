@@ -226,7 +226,13 @@ export async function makeWorld(seed = 'w'): Promise<World> {
         'UPDATE articles SET sha256 = $2, bytes = $3, mime = $4, title = $5 WHERE id = $1',
         [`art_${n}`, sha256, body.length, mime, o.title ?? `Title ${n}`],
       );
-      await insert('content_blobs', { content_key: `k${n}`, sha256, mime, bytes: body.length, data: body });
+      await insert('content_blobs', {
+        content_key: `k${n}`,
+        sha256,
+        mime,
+        bytes: body.length,
+        data: body,
+      });
       if (o.ready ?? true) {
         await db.transaction((tx) =>
           markAccessReady(tx, deps, {

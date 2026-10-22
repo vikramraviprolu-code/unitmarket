@@ -1,7 +1,7 @@
+// eslint-disable-next-line no-restricted-imports -- hashing and HMAC are deterministic (no randomness); S1 bars node:* in domain packages (change request in the lane 09 hand-off)
 import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ContentStore } from '@umsbx/contracts';
-import { grantCredit } from '@umsbx/access-clock';
 import {
   checkReadiness,
   createPgContentStore,
@@ -142,9 +142,9 @@ describe('delivery of an available item', () => {
 
   it('store failure records delivery_failed and pauses the window (A-18)', async () => {
     const it1 = await w.deliverable(1);
+    w.clock.advance(60 * 60 * 1000);
     const issued = await issueLink(deps(), { entitlement_id: it1.entitlement_id, actor: buyer1 });
     if (!issued.ok) throw new Error('issue failed');
-    w.clock.advance(60 * 60 * 1000);
     flaky.fail = true;
     const plan = await planServe(deps(), {
       token: tokenOf(issued.value.url),
@@ -227,11 +227,16 @@ describe('delivery of an available item', () => {
     if (!issued.ok) throw new Error('issue failed');
     w.clock.advance(601_000);
     expect(
-      await planServe(deps(), { token: tokenOf(issued.value.url), actor: buyer1, mode: 'download' }),
+      await planServe(deps(), {
+        token: tokenOf(issued.value.url),
+        actor: buyer1,
+        mode: 'download',
+      }),
     ).toEqual({ ok: false, error: { code: 'expired' } });
-    expect(
-      await planServe(deps(), { token: 'garbage', actor: buyer1, mode: 'download' }),
-    ).toEqual({ ok: false, error: { code: 'bad_token' } });
+    expect(await planServe(deps(), { token: 'garbage', actor: buyer1, mode: 'download' })).toEqual({
+      ok: false,
+      error: { code: 'bad_token' },
+    });
     w.clock.advance(5 * 24 * 3_600_000);
     expect(await issueLink(deps(), { entitlement_id: it1.entitlement_id, actor: buyer1 })).toEqual({
       ok: false,
@@ -319,5 +324,3 @@ describe('pg content store', () => {
     expect(await s.health()).toBe(true);
   });
 });
-
-void grantCredit;
