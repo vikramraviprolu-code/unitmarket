@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "source": "docs-example",
+    "scenario": "docs_oauth_401",
+    "operation": "oauth_token",
+    "step": 1,
+    "recorded_at": null,
+    "origin": "OAuth 2.0 token endpoint invalid_client error (RFC 6749 section 5.2 shape as PayPal documents it); composed, no credential content",
+    "redactions": []
+  },
+  "request": {
+    "method": "POST",
+    "path_template": "/v1/oauth2/token",
+    "headers": {
+      "content-type": "application/x-www-form-urlencoded",
+      "authorization": "[redacted]"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "error": "invalid_client",
+      "error_description": "Client Authentication failed"
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "scenario": "capture_202",
+    "operation": "capture_order",
+    "step": 1,
+    "recorded_at": null,
+    "origin": "synthetic: hand-written from simulation scenarios (packages/testkit/src/conformance.ts S1 to S6, docs/specs/payment-readback.md) at a36ddc03fd0b962000f686291c145b50ee337f90; not PayPal evidence",
+    "redactions": []
+  },
+  "request": {
+    "method": "POST",
+    "path_template": "/v2/checkout/orders/{id}/capture",
+    "headers": {
+      "content-type": "application/json",
+      "authorization": "[redacted]"
+    },
+    "body": {}
+  },
+  "response": {
+    "status": 202,
+    "headers": {
+      "content-type": "application/json",
+      "paypal-debug-id": "sbxdebug0033"
+    },
+    "body": {
+      "id": "SBXCAP202ORDER01",
+      "status": "APPROVED",
+      "links": [
+        {
+          "href": "/v2/checkout/orders/SBXCAP202ORDER01",
+          "rel": "self",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "meta": {
+    "source": "docs-example",
+    "scenario": "docs_create_201_payer_action",
+    "operation": "create_order",
+    "step": 1,
+    "recorded_at": null,
+    "origin": "github.com/paypal/paypal-rest-api-specifications checkout_orders_v2.json; POST /v2/checkout/orders 200 example 00_orders_create (payer-action link); status code set to 201 and status/purchase_units added to show the return=representation shape",
+    "redactions": [
+      "approve link host set to the sandbox approval host",
+      "link hosts removed (path kept)",
+      "status code 200 shown as 201, status and purchase_units added (adapted, not verbatim)"
+    ]
+  },
+  "request": {
+    "method": "POST",
+    "path_template": "/v2/checkout/orders",
+    "headers": {
+      "content-type": "application/json",
+      "authorization": "[redacted]"
+    },
+    "body": {
+      "intent": "CAPTURE",
+      "purchase_units": [
+        {
+          "reference_id": "d9f80740-38f0-11e8-b467-0ed5f89f718b",
+          "amount": {
+            "currency_code": "USD",
+            "value": "100.00"
+          }
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "5O190127TN364715T",
+      "payment_source": {
+        "paypal": {}
+      },
+      "links": [
+        {
+          "href": "/v2/checkout/orders/5O190127TN364715T",
+          "rel": "self",
+          "method": "GET"
+        },
+        {
+          "href": "https://www.sandbox.paypal.com/checkoutnow?token=5O190127TN364715T",
+          "rel": "payer-action",
+          "method": "GET"
+        }
+      ],
+      "status": "PAYER_ACTION_REQUIRED",
+      "purchase_units": [
+        {
+          "reference_id": "d9f80740-38f0-11e8-b467-0ed5f89f718b",
+          "amount": {
+            "currency_code": "USD",
+            "value": "100.00"
+          }
+        }
+      ]
+    }
+  }
+}

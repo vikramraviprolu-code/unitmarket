@@ -1,0 +1,111 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "scenario": "partial_207",
+    "operation": "get_order",
+    "step": 2,
+    "recorded_at": null,
+    "origin": "synthetic: hand-written from simulation scenarios (packages/testkit/src/conformance.ts S1 to S6, docs/specs/payment-readback.md) at a36ddc03fd0b962000f686291c145b50ee337f90; not PayPal evidence",
+    "redactions": []
+  },
+  "request": {
+    "method": "GET",
+    "path_template": "/v2/checkout/orders/{id}",
+    "headers": {
+      "authorization": "[redacted]"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "paypal-debug-id": "sbxdebug0039"
+    },
+    "body": {
+      "id": "SBXPART207ORDER1",
+      "status": "COMPLETED",
+      "intent": "CAPTURE",
+      "purchase_units": [
+        {
+          "reference_id": "unit-1",
+          "custom_id": "ord_SBX0001",
+          "amount": {
+            "currency_code": "USD",
+            "value": "3.00"
+          },
+          "payee": {
+            "merchant_id": "SBXMERCHANT01"
+          },
+          "payments": {
+            "captures": [
+              {
+                "id": "SBXPART207CAP001",
+                "status": "COMPLETED",
+                "amount": {
+                  "currency_code": "USD",
+                  "value": "3.00"
+                },
+                "final_capture": true,
+                "create_time": "2026-01-01T10:00:00Z",
+                "update_time": "2026-01-01T10:00:00Z",
+                "seller_receivable_breakdown": {
+                  "gross_amount": {
+                    "currency_code": "USD",
+                    "value": "3.00"
+                  },
+                  "paypal_fee": {
+                    "currency_code": "USD",
+                    "value": "0.45"
+                  },
+                  "net_amount": {
+                    "currency_code": "USD",
+                    "value": "2.55"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "reference_id": "unit-2",
+          "custom_id": "ord_SBX0001",
+          "amount": {
+            "currency_code": "USD",
+            "value": "2.00"
+          },
+          "payee": {
+            "merchant_id": "SBXMERCHANT02"
+          },
+          "payments": {
+            "captures": [
+              {
+                "id": "SBXPART207CAP002",
+                "status": "DECLINED",
+                "amount": {
+                  "currency_code": "USD",
+                  "value": "2.00"
+                },
+                "final_capture": true,
+                "create_time": "2026-01-01T10:00:00Z",
+                "update_time": "2026-01-01T10:00:00Z"
+              }
+            ]
+          }
+        }
+      ],
+      "payer": {
+        "payer_id": "SBXPAYER00001"
+      },
+      "create_time": "2026-01-01T09:59:00Z",
+      "update_time": "2026-01-01T10:00:00Z",
+      "links": [
+        {
+          "href": "/v2/checkout/orders/SBXPART207ORDER1",
+          "rel": "self",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+}

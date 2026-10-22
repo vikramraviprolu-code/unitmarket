@@ -1,0 +1,44 @@
+{
+  "meta": {
+    "source": "docs-example",
+    "scenario": "docs_capture_409_in_progress",
+    "operation": "capture_order",
+    "step": 1,
+    "recorded_at": null,
+    "origin": "github.com/paypal/paypal-rest-api-specifications checkout_orders_v2.json; 409 PREVIOUS_REQUEST_IN_PROGRESS: shape from the OpenAPI error schema, name and issue from orders-errors.md (error tables), debug_id synthetic",
+    "redactions": ["link hosts removed (path kept)"]
+  },
+  "request": {
+    "method": "POST",
+    "path_template": "/v2/checkout/orders/{id}/capture",
+    "headers": {
+      "content-type": "application/json",
+      "authorization": "[redacted]"
+    },
+    "body": {}
+  },
+  "response": {
+    "status": 409,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "name": "RESOURCE_CONFLICT",
+      "message": "The server has detected a conflict while processing this request.",
+      "debug_id": "sbxdebug0409a",
+      "details": [
+        {
+          "issue": "PREVIOUS_REQUEST_IN_PROGRESS",
+          "description": "A previous request on this resource is currently in progress. Please wait for some time and try again."
+        }
+      ],
+      "links": [
+        {
+          "href": "/api/rest/reference/orders/v2/errors/",
+          "rel": "information_link",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+}

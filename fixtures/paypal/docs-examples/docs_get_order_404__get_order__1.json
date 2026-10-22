@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "source": "docs-example",
+    "scenario": "docs_get_order_404",
+    "operation": "get_order",
+    "step": 1,
+    "recorded_at": null,
+    "origin": "github.com/paypal/paypal-rest-api-specifications checkout_orders_v2.json; GET order 404 RESOURCE_NOT_FOUND: shape from the OpenAPI error schema, name and issue from orders-errors.md (error tables), debug_id synthetic",
+    "redactions": ["link hosts removed (path kept)"]
+  },
+  "request": {
+    "method": "GET",
+    "path_template": "/v2/checkout/orders/{id}",
+    "headers": {
+      "authorization": "[redacted]"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "name": "RESOURCE_NOT_FOUND",
+      "message": "The specified resource does not exist.",
+      "debug_id": "sbxdebug0404a",
+      "details": [
+        {
+          "issue": "INVALID_RESOURCE_ID",
+          "description": "Specified resource ID does not exist. Please check the resource ID and try again."
+        }
+      ],
+      "links": [
+        {
+          "href": "/api/rest/reference/orders/v2/errors/",
+          "rel": "information_link",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "scenario": "capture_202",
+    "operation": "get_order",
+    "step": 1,
+    "recorded_at": null,
+    "origin": "synthetic: hand-written from simulation scenarios (packages/testkit/src/conformance.ts S1 to S6, docs/specs/payment-readback.md) at a36ddc03fd0b962000f686291c145b50ee337f90; not PayPal evidence",
+    "redactions": []
+  },
+  "request": {
+    "method": "GET",
+    "path_template": "/v2/checkout/orders/{id}",
+    "headers": {
+      "authorization": "[redacted]"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "paypal-debug-id": "sbxdebug0032"
+    },
+    "body": {
+      "id": "SBXCAP202ORDER01",
+      "status": "APPROVED",
+      "intent": "CAPTURE",
+      "purchase_units": [
+        {
+          "reference_id": "unit-1",
+          "custom_id": "ord_SBX0001",
+          "amount": {
+            "currency_code": "USD",
+            "value": "5.00"
+          },
+          "payee": {
+            "merchant_id": "SBXMERCHANT01"
+          }
+        }
+      ],
+      "payer": {
+        "payer_id": "SBXPAYER00001"
+      },
+      "create_time": "2026-01-01T09:59:00Z",
+      "update_time": "2026-01-01T10:00:00Z",
+      "links": [
+        {
+          "href": "/v2/checkout/orders/SBXCAP202ORDER01",
+          "rel": "self",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+}

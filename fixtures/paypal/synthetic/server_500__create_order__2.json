@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "scenario": "server_500",
+    "operation": "create_order",
+    "step": 2,
+    "recorded_at": null,
+    "origin": "synthetic: hand-written from simulation scenarios (packages/testkit/src/conformance.ts S1 to S6, docs/specs/payment-readback.md) at a36ddc03fd0b962000f686291c145b50ee337f90; not PayPal evidence",
+    "redactions": ["approve link host set to the sandbox approval host"]
+  },
+  "request": {
+    "method": "POST",
+    "path_template": "/v2/checkout/orders",
+    "headers": {
+      "content-type": "application/json",
+      "authorization": "[redacted]"
+    },
+    "body": {
+      "intent": "CAPTURE",
+      "purchase_units": [
+        {
+          "reference_id": "unit-1",
+          "custom_id": "ord_SBX0001",
+          "amount": {
+            "currency_code": "USD",
+            "value": "5.00"
+          },
+          "payee": {
+            "merchant_id": "SBXMERCHANT01"
+          }
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "content-type": "application/json",
+      "paypal-debug-id": "sbxdebug0058"
+    },
+    "body": {
+      "id": "SBXSERV500ORDER1",
+      "status": "CREATED",
+      "links": [
+        {
+          "href": "/v2/checkout/orders/SBXSERV500ORDER1",
+          "rel": "self",
+          "method": "GET"
+        },
+        {
+          "href": "https://www.sandbox.paypal.com/checkoutnow?token=SBXSERV500ORDER1",
+          "rel": "approve",
+          "method": "GET"
+        },
+        {
+          "href": "/v2/checkout/orders/SBXSERV500ORDER1/capture",
+          "rel": "capture",
+          "method": "POST"
+        }
+      ]
+    }
+  }
+}

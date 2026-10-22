@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "scenario": "pending_receiving_pref",
+    "operation": "get_capture",
+    "step": 1,
+    "recorded_at": null,
+    "origin": "synthetic: hand-written from simulation scenarios (packages/testkit/src/conformance.ts S1 to S6, docs/specs/payment-readback.md) at a36ddc03fd0b962000f686291c145b50ee337f90; not PayPal evidence",
+    "redactions": []
+  },
+  "request": {
+    "method": "GET",
+    "path_template": "/v2/payments/captures/{id}",
+    "headers": {
+      "authorization": "[redacted]"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "paypal-debug-id": "sbxdebug0012"
+    },
+    "body": {
+      "id": "SBXPENDRPCAP00001",
+      "status": "PENDING",
+      "amount": {
+        "currency_code": "USD",
+        "value": "5.00"
+      },
+      "final_capture": true,
+      "create_time": "2026-01-01T10:00:00Z",
+      "update_time": "2026-01-01T10:00:00Z",
+      "status_details": {
+        "reason": "RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION"
+      }
+    }
+  }
+}
