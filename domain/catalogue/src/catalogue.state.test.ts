@@ -87,6 +87,28 @@ describe('catalogue reads', () => {
     expect(byId?.offer).toEqual(r!.offer);
   });
 
+  it('getOffer orders versions numerically: v10 is newer than v9 (review 4 L6)', async () => {
+    const base = await getOffer(db, {
+      publisher_slug: 'harbour-ledger',
+      offer_code: 'tide-tables',
+    });
+    const id = base!.offer.id;
+    const copy = async (v: string) =>
+      db.query(
+        `INSERT INTO offers (id, version, publisher_id, article_id, status, currency, options, affordability, terms_version, rights, valid_from, valid_until, superseded_by, created_at, updated_at)
+         SELECT id, $2, publisher_id, article_id, status, currency, options, affordability, terms_version, rights, valid_from, valid_until, NULL, created_at, updated_at
+           FROM offers WHERE id = $1 ORDER BY version LIMIT 1`,
+        [id, v],
+      );
+    await copy('v9');
+    await copy('v10');
+    try {
+      expect((await getOffer(db, { offer_id: id }))?.offer.version).toBe('v10');
+    } finally {
+      await db.query("DELETE FROM offers WHERE id = $1 AND version IN ('v9', 'v10')", [id]);
+    }
+  });
+
   it('getOffer returns null for unknown, wrong publisher, or odd input', async () => {
     expect(await getOffer(db, { publisher_slug: 'harbour-ledger', offer_code: 'nope' })).toBeNull();
     expect(

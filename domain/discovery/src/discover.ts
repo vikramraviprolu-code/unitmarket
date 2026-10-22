@@ -31,7 +31,9 @@ export type DiscoveryResult =
       items: { quote: Quote; fit: FitCard; title: string; publisher: string }[];
     }
   | { kind: 'no_match'; reasons: NoMatch['reason'][] };
-export type DiscoverError = { code: 'unknown_brief' | 'not_owner' };
+// One code for a missing brief and for someone else's brief, so the answer reveals nothing (L1).
+// 'unknown_brief' and 'not_owner' stay in the type for older callers and are no longer returned.
+export type DiscoverError = { code: 'not_found' | 'unknown_brief' | 'not_owner' };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -84,9 +86,9 @@ export async function discover(
   i: { actor: Actor; brief_id: Id },
 ): Promise<Result<DiscoveryResult, DiscoverError>> {
   const brief = await loadBrief(d, i.brief_id);
-  if (!brief) return err({ code: 'unknown_brief' });
+  if (!brief) return err({ code: 'not_found' });
   if (i.actor.kind !== 'buyer' || i.actor.buyer_id !== brief.buyer_id) {
-    return err({ code: 'not_owner' });
+    return err({ code: 'not_found' });
   }
 
   const views = await candidatesFor(d, brief);

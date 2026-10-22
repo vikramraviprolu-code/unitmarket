@@ -88,7 +88,9 @@ export async function getOffer(
   db: SqlExecutor,
   i: { offer_id: Id } | { publisher_slug: string; offer_code: string },
 ): Promise<OfferView | null> {
-  const order = 'ORDER BY o.created_at DESC, o.version DESC LIMIT 1';
+  // Versions are text like v9 and v10: compare the number, then the text (review 4 L6).
+  const order =
+    "ORDER BY o.created_at DESC, NULLIF(regexp_replace(o.version, '[^0-9]', '', 'g'), '')::numeric DESC NULLS LAST, o.version DESC LIMIT 1";
   const { rows } =
     'offer_id' in i
       ? await db.query<Row>(`${SELECT} WHERE o.id = $1 ${order}`, [i.offer_id])
