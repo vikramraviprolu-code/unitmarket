@@ -1,8 +1,9 @@
 // Lane 17 acceptance tests: mutation_detects, bundle_canary, fixtures_check, evidence_writes,
 // ci_yaml_safe. Every temporary tree is built inline; nothing here contains a live value.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { REPO_ROOT } from './test-helpers';
@@ -89,6 +90,63 @@ describe('mutation_detects', () => {
     expect(r.status).toBe(0);
     expect(r.out).toContain('SKIP');
   });
+});
+
+// Review L5: a gate that mutated nothing must say so loudly, and a killed run must not leave a mutant.
+describe('mutation_safety', () => {
+  const run = (root: string, extra: string[] = []) =>
+    node([script('mutation-checks.mjs'), '--root', root, ...extra]);
+  it('with no target present prints a loud SKIPPED banner and still passes', () => {
+    const r = run(put(tmp(), { 'x.txt': 'x' }), ['--targets', 'nope.ts']);
+    expect(r.status).toBe(0);
+    expect(r.out).toContain('SKIPPED');
+    expect(r.out).toContain('NOTHING WAS MUTATED');
+  });
+  it('with --require-targets and no target present it fails', () => {
+    const r = run(put(tmp(), { 'x.txt': 'x' }), ['--targets', 'nope.ts', '--require-targets']);
+    expect(r.status).toBe(3);
+    expect(r.out).toContain('NOTHING WAS MUTATED');
+  });
+  it('refuses to run when a target already carries a mutant marker', () => {
+    const left = MATCH_SRC.replace("'mismatch'", "'mismatch' /*SBX-MUTANT*/");
+    const root = put(tmp(), { 'match.mjs': left, 'match.test.mjs': STRONG_TEST });
+    const r = run(root, ['--targets', 'match.mjs', '--test-cmd', 'node --test']);
+    expect(r.status).toBe(2);
+    expect(r.out).toContain('match.mjs');
+    expect(r.out).toMatch(/leftover mutant/i);
+    expect(readFileSync(join(root, 'match.mjs'), 'utf8')).toBe(left);
+  });
+  it.each(['SIGTERM', 'SIGINT'] as const)(
+    'restores the source when killed with %s mid-run',
+    async (sig) => {
+      const root = put(tmp(), { 'match.mjs': MATCH_SRC, 'match.test.mjs': STRONG_TEST });
+      const slow = `node -e "if(require('fs').readFileSync('match.mjs','utf8').includes('SBX-MUTANT'))setTimeout(()=>{},15000)"`;
+      const child = spawn(
+        process.execPath,
+        [
+          script('mutation-checks.mjs'),
+          '--root',
+          root,
+          '--targets',
+          'match.mjs',
+          '--test-cmd',
+          slow,
+        ],
+        { cwd: REPO_ROOT, stdio: 'ignore' },
+      );
+      const exited = new Promise<void>((res) => child.on('exit', () => res()));
+      const deadline = Date.now() + 20_000;
+      while (Date.now() < deadline) {
+        if (readFileSync(join(root, 'match.mjs'), 'utf8').includes('SBX-MUTANT')) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(readFileSync(join(root, 'match.mjs'), 'utf8')).toContain('SBX-MUTANT');
+      child.kill(sig);
+      await exited;
+      expect(readFileSync(join(root, 'match.mjs'), 'utf8')).toBe(MATCH_SRC);
+    },
+    30_000,
+  );
 });
 
 // ---------------------------------------------------------------- bundle_canary
@@ -312,6 +370,57 @@ describe('evidence_writes', () => {
     expect(md).toContain(longId.slice(0, 4));
     expect(r.out).not.toContain(secret);
   });
+  // Review M5: redaction covers NAME=value, URL userinfo and short ids, and no command is recorded.
+  it('redacts env assignments, URL credentials and ids of 7 or more characters', async () => {
+    const mod = (await import(pathToFileURL(script('evidence.mjs')).href)) as {
+      redact: (t: string) => string;
+    };
+    const cases: [string, string][] = [
+      ['DATABASE_URL=postgres://u:hunter2pass@db.x/y', 'hunter2pass'],
+      ['UMS_SESSION_SECRET=Ab+/Cd9=xyZ+12/kk', 'Ab+/Cd9'],
+      ['run postgres://admin:s3cretpw@host/db now', 's3cretpw'],
+      ['order id PAYID42', 'PAYID42'],
+      ['id 1234567', '1234567'],
+      ['tok_a1b2c3d4e5', 'a1b2c3d4e5'],
+      ['key=abc', 'abc'],
+    ];
+    for (const [input, leak] of cases) {
+      const out = mod.redact(input);
+      expect(out, input).not.toContain(leak);
+    }
+    for (const keep of [
+      'lint',
+      'format:check',
+      'check:no-live-host',
+      'typecheck',
+      'abcdefghij',
+      'a1b2',
+    ]) {
+      expect(mod.redact(keep)).toBe(keep);
+    }
+  });
+  it('records step names (redacted) and exit codes, never the command text', () => {
+    const out = tmp();
+    const r = node([
+      script('evidence.mjs'),
+      '--lane',
+      '17',
+      '--date',
+      '2026-01-02',
+      '--out-dir',
+      out,
+      '--step',
+      `DATABASE_URL step=node -e "console.log('Tests  1 passed (1)')" postgres://u:hunter2pass@db.x/y UMS_SESSION_SECRET=Ab+/Cd9=xyZ+12/kk`,
+      '--step',
+      'step PAYID1234=node -e "0"',
+    ]);
+    expect(r.status).toBe(0);
+    const md = readFileSync(join(out, '17-2026-01-02.md'), 'utf8');
+    for (const leak of ['hunter2pass', 'Ab+/Cd9', 'PAYID1234', 'postgres://', 'console.log'])
+      expect(md + r.out).not.toContain(leak);
+    expect(md).toContain('exit 0');
+    expect(md).not.toMatch(/\| Command \|/);
+  });
   it('exits 0 and marks PASS when every step passes', () => {
     const out = tmp();
     const r = node([
@@ -349,6 +458,19 @@ describe('ci_yaml_safe', () => {
     expect(yml).toMatch(/bundle:[\s\S]*?if: github\.event_name == 'workflow_dispatch'/);
     expect(yml).toContain('pnpm audit --prod');
   });
+  // Review M6
+  it('checkouts do not persist credentials, and the checks job runs routes and provenance', () => {
+    const checkouts = yml.match(/uses: actions\/checkout@[^\n]*\n(?: {8,}[^\n]*\n)*/g) ?? [];
+    expect(checkouts.length).toBeGreaterThanOrEqual(5);
+    for (const c of checkouts) expect(c).toMatch(/persist-credentials: false/);
+    const checks = /\n {2}checks:[\s\S]*?(?=\n {2}\w+:\n)/.exec(yml)?.[0] ?? '';
+    for (const s of ['check:routes', 'check:provenance', 'check:isolation', 'check:fixtures'])
+      expect(checks).toContain(`pnpm ${s}`);
+  });
+  it('action pins: tags stay, with a TODO that names the SHA verification step', () => {
+    expect(yml).toMatch(/TODO\(pin\)/);
+    expect(yml).toMatch(/git ls-remote https:\/\/github\.com\/actions\/checkout/);
+  });
   it('deploys nothing and pushes nothing', () => {
     expect(yml).not.toMatch(/deploy|git push|--publish/i);
   });
@@ -357,9 +479,19 @@ describe('ci_yaml_safe', () => {
 describe('root scripts and templates', () => {
   const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'));
   it('exposes the lane scripts', () => {
-    for (const s of ['mutation', 'check:bundle', 'check:fixtures', 'evidence'])
+    for (const s of [
+      'mutation',
+      'check:bundle',
+      'check:fixtures',
+      'check:routes',
+      'check:provenance',
+      'test:e2e',
+      'evidence',
+    ])
       expect(pkg.scripts[s]).toBeTruthy();
-    expect(pkg.scripts.ci).toContain('check:fixtures');
+    for (const s of ['check:fixtures', 'check:routes', 'check:provenance'])
+      expect(pkg.scripts.ci).toContain(s);
+    expect(pkg.scripts.ci).not.toContain('test:e2e');
   });
   it('gate report template has severities, verdicts and the control checklist', () => {
     const t = readFileSync(join(REPO_ROOT, 'docs/evidence/TEMPLATE-gate-report.md'), 'utf8');
