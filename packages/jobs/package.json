@@ -8,5 +8,12 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@umsbx/contracts": "workspace:*",
+    "@umsbx/payments": "workspace:*"
+  },
+  "devDependencies": {
+    "@umsbx/runtime": "workspace:*"
   }
 }

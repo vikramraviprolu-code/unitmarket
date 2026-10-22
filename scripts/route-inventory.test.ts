@@ -201,3 +201,54 @@ describe('route-inventory', () => {
     expect(wf).toContain('pnpm check:routes');
   });
 });
+
+// Opus review 4 M6: the initializer must be exactly withRoute(routeMeta, ...); server actions are
+// not inventoried, so a 'use server' file is refused.
+describe('route-inventory AST rules (review 4 M6)', () => {
+  const withHandler = (line: string) => GOOD.replace(/export const POST = .*\n/, `${line}\n`);
+  it.each([
+    ['conditional', 'export const POST = cond ? raw : withRoute(routeMeta, schema, handler);'],
+    ['logical and', 'export const POST = withRoute(routeMeta, schema, handler) && raw;'],
+    ['nullish', 'export const POST = raw ?? withRoute(routeMeta, schema, handler);'],
+    ['wrapped call', 'export const POST = wrap(withRoute(routeMeta, schema, handler));'],
+    ['other meta', 'export const POST = withRoute(otherMeta, schema, handler);'],
+    ['sequence', 'export const POST = (0, raw, withRoute(routeMeta, schema, handler));'],
+    ['member call', 'export const POST = lib.withRoute(routeMeta, schema, handler);'],
+    ['no call', 'export const POST = withRoute;'],
+    [
+      'stream wrapper outside the allowed file',
+      'export const POST = withStream(withRoute(routeMeta, schema, handler));',
+    ],
+    ['other deps binding', 'export const POST = withRoute(routeMeta, schema, handler)(evil);'],
+    [
+      'two arguments bound',
+      'export const POST = withRoute(routeMeta, schema, handler)(securityDeps, 1);',
+    ],
+  ])('refuses %s', (_n, line) => {
+    const r = run(repoWith({ 'api/quotes/route.ts': withHandler(line) }), '--check');
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain('api/quotes/route.ts');
+  });
+  it('accepts parentheses, satisfies and a type assertion around the exact call', () => {
+    for (const line of [
+      'export const POST = (withRoute(routeMeta, schema, handler));',
+      'export const POST = withRoute(routeMeta, schema, handler) as unknown as Handler;',
+      'export const POST: Handler = withRoute(routeMeta, schema, handler);',
+      'export const POST = withRoute(routeMeta, schema, handler)(securityDeps);',
+    ])
+      expect(run(repoWith({ 'api/quotes/route.ts': withHandler(line) }), '--check').status).toBe(0);
+  });
+  it.each([
+    ['file level', "'use server';\nexport async function act() { return 1; }\n"],
+    ['function level', "export async function act() {\n  'use server';\n  return 1;\n}\n"],
+    ['double quotes', '"use server";\nexport const a = 1;\n'],
+  ])('refuses a use-server action (%s) anywhere under apps/web', (_n, src) => {
+    const r = run(
+      repoWith({ 'api/quotes/route.ts': GOOD, 'apps/web/src/lib/actions.ts': src }),
+      '--check',
+    );
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain('apps/web/src/lib/actions.ts');
+    expect(r.out).toMatch(/use server/);
+  });
+});

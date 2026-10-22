@@ -45,21 +45,29 @@ type ServeError = LinkError | { code: 'bad_token' | 'expired' };
 
 export async function planServe(
   d: CoreDeps & { content: ContentStore },
-  i: { token: string; actor: Actor; mode: 'download' | 'read' },
+  i: { token: string; actor: Actor; mode: 'download' | 'read'; session_id?: Id },
 ): Promise<Result<ServePlan, ServeError>> {
   const read = readLinkToken(d.config.link_secret, i.token, d.clock.now());
   if (!read.ok) return err({ code: read.error });
   const row = (
-    await d.db.query<{ entitlement_id: Id; buyer_id: Id; token_hash: string }>(
-      'SELECT entitlement_id, buyer_id, token_hash FROM links WHERE id = $1',
-      [read.value.link_id],
-    )
+    await d.db.query<{
+      entitlement_id: Id;
+      buyer_id: Id;
+      token_hash: string;
+      session_id: Id | null;
+    }>('SELECT entitlement_id, buyer_id, token_hash, session_id FROM links WHERE id = $1', [
+      read.value.link_id,
+    ])
   ).rows[0];
   if (row === undefined || row.token_hash !== hashToken(i.token)) {
     return err({ code: 'bad_token' });
   }
-  // The token is bound to the buyer in the row: any other session sees a missing link (P13, A-20).
+  // The token is bound to the buyer in the row, and to the session it was issued in when the row
+  // names one: any other buyer or session sees a missing link (P13, A-20, architecture 9.6).
   if (i.actor.kind !== 'buyer' || i.actor.buyer_id !== row.buyer_id) {
+    return err({ code: 'not_found' });
+  }
+  if (row.session_id !== null && row.session_id !== i.session_id) {
     return err({ code: 'not_found' });
   }
   const gate = await gateEntitlement(d, { entitlement_id: row.entitlement_id, actor: i.actor });
@@ -88,6 +96,25 @@ export async function planServe(
   }
   if (article === null || head === null || stream === null) {
     await failed('store_unavailable');
+    return err({ code: 'store_unavailable' });
+  }
+  // Review 4 H2: the bytes must be the ones bought. The hash recorded when access became ready
+  // (append-only evidence) and the article's catalogue hash both have to equal the head's hash.
+  const expected = (
+    await d.db.query<{ article_sha: string; ready_sha: string | null }>(
+      `SELECT a.sha256 AS article_sha,
+              (SELECT e.evidence ->> 'content_sha256' FROM access_events e
+                WHERE e.entitlement_id = $2 AND e.kind = 'access_ready' LIMIT 1) AS ready_sha
+         FROM articles a WHERE a.id = $1`,
+      [view.article_id, view.entitlement_id],
+    )
+  ).rows[0];
+  if (
+    expected === undefined ||
+    head.sha256 !== expected.article_sha ||
+    (expected.ready_sha !== null && head.sha256 !== expected.ready_sha)
+  ) {
+    await failed('content_hash_mismatch');
     return err({ code: 'store_unavailable' });
   }
   const source = stream;

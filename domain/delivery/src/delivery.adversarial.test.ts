@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createPgContentStore, issueLink, planServe } from './index';
 import { makeWorld } from './world';
@@ -115,5 +116,125 @@ describe('delivery access control', () => {
   it('no upload path exists (SOP 16)', async () => {
     const api = await import('./index');
     expect(Object.keys(api).filter((k) => /upload|put|write|save/i.test(k))).toEqual([]);
+  });
+});
+
+// Opus review 4: H2 (content swapped after the charge), M9 (link bound to the session), L7.
+describe('delivery integrity and session binding (review 4)', () => {
+  const swapBlob = async (n: number, body: string, alsoHash: boolean) => {
+    const bytes = new TextEncoder().encode(body);
+    const sha = createHash('sha256').update(bytes).digest('hex');
+    await w.db.query(
+      alsoHash
+        ? 'UPDATE content_blobs SET data = $2, bytes = $3, sha256 = $4 WHERE content_key = $1'
+        : 'UPDATE content_blobs SET data = $2, bytes = $3 WHERE content_key = $1',
+      alsoHash ? [`k${n}`, bytes, bytes.length, sha] : [`k${n}`, bytes, bytes.length],
+    );
+  };
+  const kindsOf = async (id: string) =>
+    (
+      await w.db.query<{ kind: string }>(
+        'SELECT kind FROM access_events WHERE entitlement_id = $1',
+        [id],
+      )
+    ).rows.map((r) => r.kind);
+
+  it('H2: a blob replaced after the charge (hash column rewritten too) is refused and recorded', async () => {
+    const it1 = await w.deliverable(1);
+    const issued = await issueLink(deps(), { entitlement_id: it1.entitlement_id, actor: buyer1 });
+    if (!issued.ok) throw new Error('issue failed');
+    await swapBlob(1, 'a different article that was never bought', true);
+    const plan = await planServe(deps(), {
+      token: tokenOf(issued.value.url),
+      actor: buyer1,
+      mode: 'download',
+    });
+    expect(plan).toEqual({ ok: false, error: { code: 'store_unavailable' } });
+    const kinds = await kindsOf(it1.entitlement_id);
+    expect(kinds).toContain('delivery_failed');
+    expect(kinds).not.toContain('download_completed');
+  });
+
+  it('H2: bytes altered under an unchanged hash column are refused by the store', async () => {
+    const it1 = await w.deliverable(1);
+    const issued = await issueLink(deps(), { entitlement_id: it1.entitlement_id, actor: buyer1 });
+    if (!issued.ok) throw new Error('issue failed');
+    await swapBlob(1, 'altered bytes, old stored hash', false);
+    const plan = await planServe(deps(), {
+      token: tokenOf(issued.value.url),
+      actor: buyer1,
+      mode: 'download',
+    });
+    expect(plan.ok).toBe(false);
+    expect(await kindsOf(it1.entitlement_id)).not.toContain('download_completed');
+  });
+
+  it('H2: the store refuses to open bytes that disagree with the stored hash column', async () => {
+    const it1 = await w.deliverable(1);
+    await swapBlob(1, 'altered bytes, old stored hash', false);
+    const store = createPgContentStore(w.db);
+    const head = await store.head('k1');
+    expect(head?.sha256).not.toBe(it1.sha256);
+    await expect(store.open('k1')).rejects.toThrow(/integrity/);
+  });
+
+  it('M9: a link issued for one session is not_found in another session', async () => {
+    const it1 = await w.deliverable(1);
+    const issued = await issueLink(deps(), {
+      entitlement_id: it1.entitlement_id,
+      actor: buyer1,
+      session_id: 'ses_a',
+    });
+    if (!issued.ok) throw new Error('issue failed');
+    const token = tokenOf(issued.value.url);
+    const other = await planServe(deps(), {
+      token,
+      actor: buyer1,
+      mode: 'download',
+      session_id: 'ses_b',
+    });
+    expect(other).toEqual({ ok: false, error: { code: 'not_found' } });
+    const none = await planServe(deps(), { token, actor: buyer1, mode: 'download' });
+    expect(none).toEqual({ ok: false, error: { code: 'not_found' } });
+    const same = await planServe(deps(), {
+      token,
+      actor: buyer1,
+      mode: 'download',
+      session_id: 'ses_a',
+    });
+    expect(same.ok).toBe(true);
+  });
+
+  it('M9: a link issued without a session still works in any session of the buyer', async () => {
+    const it1 = await w.deliverable(1);
+    const issued = await issueLink(deps(), { entitlement_id: it1.entitlement_id, actor: buyer1 });
+    if (!issued.ok) throw new Error('issue failed');
+    const plan = await planServe(deps(), {
+      token: tokenOf(issued.value.url),
+      actor: buyer1,
+      mode: 'read',
+      session_id: 'ses_x',
+    });
+    expect(plan.ok).toBe(true);
+  });
+
+  it('L7: an unexpired token whose access window ended before serve time gets window_ended', async () => {
+    const it1 = await w.deliverable(1);
+    const issued = await issueLink(deps(), { entitlement_id: it1.entitlement_id, actor: buyer1 });
+    if (!issued.ok) throw new Error('issue failed');
+    const endsAt = new Date(w.clock.now().getTime() + 60_000).toISOString();
+    await w.db.query('UPDATE access_windows SET ends_at = $2 WHERE entitlement_id = $1', [
+      it1.entitlement_id,
+      endsAt,
+    ]);
+    w.clock.set(new Date(w.clock.now().getTime() + 120_000).toISOString() as never);
+    expect(Date.parse(issued.value.expires_at)).toBeGreaterThan(w.clock.now().getTime());
+    const plan = await planServe(deps(), {
+      token: tokenOf(issued.value.url),
+      actor: buyer1,
+      mode: 'download',
+    });
+    expect(plan).toEqual({ ok: false, error: { code: 'window_ended' } });
+    expect(await kindsOf(it1.entitlement_id)).not.toContain('download_completed');
   });
 });

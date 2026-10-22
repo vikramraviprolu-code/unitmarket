@@ -3,7 +3,6 @@
 // main this registers only the access window sweep. TEMP-until-05b.
 export async function register(): Promise<void> {
   // NEXT_RUNTIME is a framework flag, not configuration (S3 concerns application settings).
-  // eslint-disable-next-line no-restricted-properties
   if (process.env['NEXT_RUNTIME'] !== 'nodejs') return;
   const { app } = await import('./server/access');
   const a = await app();

@@ -57,7 +57,26 @@ const NETWORK_MODULES = [
   'ky',
   'superagent',
   'ws',
+  // Review 4 H1: Node internals that open sockets (require('_http_client')).
+  '_http_*',
+  '_tls_*',
 ];
+// Review 4 H1: modules that load code or spawn processes (createRequire(...)('node:https'),
+// execSync('curl ...'), workers, vm). Only the guard scripts and their tests may use them.
+const PROC_MODULES = [
+  'module',
+  'node:module',
+  'child_process',
+  'node:child_process',
+  'worker_threads',
+  'node:worker_threads',
+  'vm',
+  'node:vm',
+  'cluster',
+  'node:cluster',
+];
+const MSG_PROC =
+  'S2: node:module, node:child_process, node:worker_threads and node:vm can load or run code outside the lint rules; only the guard scripts use them.';
 const MSG_NET =
   'S2: only packages/transport may use network clients (fetch, node:http, node:https, node:net, node:tls, node:dns, undici).';
 
@@ -97,7 +116,12 @@ const pkg = (names) => names.map((n) => `@umsbx/${n}`);
 const DEEP = { group: ['@umsbx/*/*'], message: 'Only a package root export is public (S1).' };
 
 const pat = (group, message) => ({ group, message });
-const BASE_PATTERNS = [pat(SIM, MSG_SIM), pat(NETWORK_MODULES, MSG_NET), DEEP];
+const BASE_PATTERNS = [
+  pat(SIM, MSG_SIM),
+  pat(NETWORK_MODULES, MSG_NET),
+  pat(PROC_MODULES, MSG_PROC),
+  DEEP,
+];
 
 // Every randomness entry point of node:crypto. Hashing and HMAC (createHash, createHmac,
 // timingSafeEqual) stay available to the two approval files that are allowed to import it.
@@ -111,22 +135,50 @@ const RANDOM_FNS = [
   'webcrypto',
   'subtle',
 ];
+// Review 4 H1: default and namespace imports hand over the whole module (proc.env, cr.randomUUID),
+// so they are barred together with the named bad members.
+const PROCESS_BAD = [
+  'env',
+  'hrtime',
+  'getBuiltinModule',
+  'binding',
+  'dlopen',
+  'mainModule',
+  'default',
+  '*',
+];
 const BASE_PATHS = [
   {
     name: 'node:process',
-    importNames: ['env'],
-    message: 'S3: only packages/config reads process.env.',
+    importNames: PROCESS_BAD,
+    message: 'S3: only packages/config reads process.env (no default or namespace import either).',
   },
-  { name: 'process', importNames: ['env'], message: 'S3: only packages/config reads process.env.' },
+  {
+    name: 'process',
+    importNames: PROCESS_BAD,
+    message: 'S3: only packages/config reads process.env (no default or namespace import either).',
+  },
   {
     name: 'node:crypto',
-    importNames: RANDOM_FNS,
-    message: 'S6: randomness and ids only in packages/runtime (inject Ids or an Rng).',
+    importNames: [...RANDOM_FNS, 'default', '*'],
+    message:
+      'S6: randomness and ids only in packages/runtime (inject Ids or an Rng); import createHash and friends by name.',
   },
   {
     name: 'crypto',
-    importNames: RANDOM_FNS,
-    message: 'S6: randomness and ids only in packages/runtime (inject Ids or an Rng).',
+    importNames: [...RANDOM_FNS, 'default', '*'],
+    message:
+      'S6: randomness and ids only in packages/runtime (inject Ids or an Rng); import createHash and friends by name.',
+  },
+  {
+    name: 'node:perf_hooks',
+    importNames: ['performance', 'default', '*'],
+    message: 'S6: use the injected Clock.',
+  },
+  {
+    name: 'perf_hooks',
+    importNames: ['performance', 'default', '*'],
+    message: 'S6: use the injected Clock.',
   },
 ];
 
@@ -150,6 +202,7 @@ const TIME_PROPS = [
   { object: 'process', property: 'env', message: 'S3: only packages/config reads process.env.' },
 ];
 const GLOBAL_OBJ = '/^(globalThis|self|window|global)$/';
+const GLOBAL_THIS = 'globalThis';
 const NET_GLOBAL = '/^(fetch|WebSocket|XMLHttpRequest|EventSource)$/';
 const SYNTAX = {
   // Review H2: every spelling of "read the clock" that the plain Date.now rule misses.
@@ -172,6 +225,23 @@ const SYNTAX = {
       selector: `MemberExpression[object.property.name='Date'][property.name='now']`,
       message: 'S6: use the injected Clock.',
     },
+    {
+      selector: `MemberExpression[object.name=${GLOBAL_OBJ}][property.name=/^(crypto|performance)$/], MemberExpression[object.name=${GLOBAL_OBJ}][computed=true][property.value=/^(crypto|performance)$/]`,
+      message: 'S6: crypto and performance through the global object read randomness or time.',
+    },
+    {
+      selector: `MemberExpression[object.name=${GLOBAL_OBJ}][property.name='Date']:not(NewExpression > .callee)`,
+      message: 'S6: do not take Date from the global object; use the injected Clock.',
+    },
+    {
+      selector:
+        "MemberExpression[object.object.name='crypto'][object.property.name='subtle']:not([property.name='digest'])",
+      message: 'S6: only crypto.subtle.digest is allowed; key generation is random.',
+    },
+    {
+      selector: 'NewExpression[callee.type=/^TS/]',
+      message: 'S6: a type assertion on the constructor hides new Date(); use the injected Clock.',
+    },
   ],
   // Review H2: network globals reached through globalThis/self/window, by name or computed.
   network: [
@@ -188,8 +258,39 @@ const SYNTAX = {
       message: 'S2: a computed lookup on the global object can reach fetch; name the property.',
     },
     {
-      selector: `VariableDeclarator[init.name=${GLOBAL_OBJ}][id.type='ObjectPattern']`,
-      message: 'S2: do not destructure the global object; it can pull in fetch.',
+      selector: `VariableDeclarator[init.name=${GLOBAL_THIS}], AssignmentExpression[right.name=${GLOBAL_THIS}], CallExpression > Identifier.arguments[name=${GLOBAL_THIS}], NewExpression > Identifier.arguments[name=${GLOBAL_THIS}], ReturnStatement > Identifier.argument[name=${GLOBAL_THIS}], Property > Identifier.value[name=${GLOBAL_THIS}], ArrayExpression > Identifier[name=${GLOBAL_THIS}], SpreadElement > Identifier[name=${GLOBAL_THIS}], TSAsExpression > Identifier.expression[name=${GLOBAL_THIS}], ConditionalExpression > Identifier[name=${GLOBAL_THIS}], LogicalExpression > Identifier[name=${GLOBAL_THIS}], SequenceExpression > Identifier[name=${GLOBAL_THIS}]`,
+      message:
+        'S2: do not alias, pass or destructure the global object; Reflect.get(globalThis, ...) and const g = globalThis reach fetch.',
+    },
+    {
+      selector: "MemberExpression[object.type='SequenceExpression']",
+      message: 'S2: (0, globalThis).fetch style access is barred.',
+    },
+    {
+      selector:
+        "MemberExpression[property.name='getBuiltinModule'], MemberExpression[computed=true][property.value='getBuiltinModule']",
+      message:
+        'S2: process.getBuiltinModule loads node:https and friends outside the import rules.',
+    },
+    {
+      selector:
+        "MemberExpression[property.name='require'], MemberExpression[computed=true][property.value='require'], Identifier[name='createRequire']",
+      message: 'S2: module.require and createRequire load modules outside the import rules.',
+    },
+  ],
+  // Review 4 H1: reading the environment through the global object.
+  env: [
+    {
+      selector: `MemberExpression[object.name=${GLOBAL_OBJ}][property.name='process'], MemberExpression[object.name=${GLOBAL_OBJ}][computed=true][property.value='process']`,
+      message: 'S3: globalThis.process reaches process.env; only packages/config reads it.',
+    },
+  ],
+  // Review 4 H1: building code from a string or from a function constructor (all packages).
+  dynamicCode: [
+    {
+      selector:
+        "NewExpression[callee.name='Function'], CallExpression[callee.name='Function'], CallExpression[callee.property.name='constructor'], CallExpression[callee.property.name='Function']",
+      message: 'S2: no Function constructor; it compiles code outside every lint rule.',
     },
   ],
   // Name-based: client-exposed prefixes may never carry a secret. Only the label is allowed.
@@ -269,7 +370,11 @@ const noRestrictedDynamicImport = {
   meta: {
     type: 'problem',
     schema: [{ type: 'object' }],
-    messages: { barred: '{{msg}}', dynamic: 'Dynamic import needs a string literal specifier.' },
+    messages: {
+      barred: '{{msg}}',
+      dynamic: 'Dynamic import needs a string literal specifier.',
+      dynamicRequire: 'require() needs a string literal specifier.',
+    },
   },
   create(context) {
     const opts = context.options[0] ?? {};
@@ -278,7 +383,9 @@ const noRestrictedDynamicImport = {
       not: p.group.filter((g) => g.startsWith('!')).map((g) => globToRegExp(g.slice(1))),
       message: p.message,
     }));
-    const paths = (opts.paths ?? []).filter((p) => p.importNames === undefined);
+    // A dynamic import or require hands over the whole module, so a path barred by importNames is
+    // barred outright here (await import('node:crypto')).randomUUID()).
+    const paths = opts.paths ?? [];
     const staticSpec = (n) => {
       if (n?.type === 'Literal' && typeof n.value === 'string') return n.value;
       if (n?.type === 'TemplateLiteral' && n.expressions.length === 0)
@@ -288,7 +395,7 @@ const noRestrictedDynamicImport = {
     const check = (node, arg, isRequire) => {
       const spec = staticSpec(arg);
       if (spec === null) {
-        if (!isRequire) context.report({ node, messageId: 'dynamic' });
+        context.report({ node, messageId: isRequire ? 'dynamicRequire' : 'dynamic' });
         return;
       }
       const hit =
@@ -305,9 +412,87 @@ const noRestrictedDynamicImport = {
     };
   },
 };
+
+// Review 4 H1: the global objects whose members read time, randomness or the environment may not be
+// aliased, passed around or looked up with a computed key (const D = Date; new D()). `names` maps a
+// global to the members that stay usable (`safe`) or the members that are barred (`deny`).
+const noGlobalAlias = {
+  meta: {
+    type: 'problem',
+    schema: [{ type: 'object' }],
+    messages: {
+      alias: '{{name}}: do not alias or pass this global; use the injected Clock, Rng or Ids.',
+      member: '{{name}}.{{prop}}: not available here; use the injected Clock, Rng or Ids.',
+    },
+  },
+  create(context) {
+    const names = context.options[0] ?? {};
+    const isLocal = (node) => {
+      for (let sc = context.sourceCode.getScope(node); sc; sc = sc.upper) {
+        const v = sc.set.get(node.name);
+        if (v && v.defs.length > 0) return true;
+      }
+      return false;
+    };
+    const TS_VALUE = new Set([
+      'TSAsExpression',
+      'TSNonNullExpression',
+      'TSSatisfiesExpression',
+      'TSTypeAssertion',
+      'TSInstantiationExpression',
+    ]);
+    return {
+      Identifier(node) {
+        const cfg = Object.hasOwn(names, node.name) ? names[node.name] : undefined;
+        if (!cfg || isLocal(node)) return;
+        const parent = node.parent;
+        const t = parent.type;
+        if (t === 'MemberExpression' && parent.property === node && !parent.computed) return;
+        if (
+          (t === 'Property' || t === 'PropertyDefinition' || t === 'MethodDefinition') &&
+          parent.key === node &&
+          !parent.computed &&
+          !(t === 'Property' && parent.shorthand)
+        )
+          return;
+        if (
+          /^(Import|Export)/.test(t) ||
+          t === 'LabeledStatement' ||
+          t === 'BreakStatement' ||
+          t === 'ContinueStatement'
+        )
+          return;
+        if (t.startsWith('TS') && !TS_VALUE.has(t)) return;
+        if (t === 'UnaryExpression' && parent.operator === 'typeof') return;
+        if (t === 'BinaryExpression' && parent.operator === 'instanceof') return;
+        if (t === 'NewExpression' && parent.callee === node) return;
+        if (t === 'MemberExpression' && parent.object === node) {
+          let prop = null;
+          if (!parent.computed) prop = parent.property.name;
+          else if (parent.property.type === 'Literal' && typeof parent.property.value === 'string')
+            prop = parent.property.value;
+          if (prop === null) {
+            context.report({
+              node,
+              messageId: 'member',
+              data: { name: node.name, prop: '[computed]' },
+            });
+            return;
+          }
+          const ok = cfg.safe ? cfg.safe.includes(prop) : !(cfg.deny ?? []).includes(prop);
+          if (!ok) context.report({ node, messageId: 'member', data: { name: node.name, prop } });
+          return;
+        }
+        context.report({ node, messageId: 'alias', data: { name: node.name } });
+      },
+    };
+  },
+};
+
 const sbx = {
   rules: {
     'no-package-escape': noPackageEscape,
+    'no-global-alias': noGlobalAlias,
     'no-restricted-dynamic-import': noRestrictedDynamicImport,
   },
 };
@@ -326,14 +511,42 @@ function entry(files, { extra = [], paths = [], ignores = [], allow = {} } = {})
       ),
   );
   // allow.dbTesting: test files and test helpers may import the db test entry (resetDatabase).
-  const patterns = BASE_PATTERNS.filter((p) => !(allow.network && p.message === MSG_NET))
+  const patterns = BASE_PATTERNS.filter(
+    (p) =>
+      !(allow.network && (p.message === MSG_NET || p.message === MSG_PROC)) &&
+      !(allow.proc && p.message === MSG_PROC),
+  )
     .map((p) =>
       allow.dbTesting && p === DEEP ? { ...DEEP, group: [...DEEP.group, '!@umsbx/db/testing'] } : p,
     )
     .concat(extra);
   const basePaths = BASE_PATHS.filter(
-    (p) => !(allow.time && p.name.endsWith('crypto')) && !(allow.env && p.name.endsWith('process')),
+    (p) =>
+      !(allow.time && (p.name.endsWith('crypto') || p.name.endsWith('perf_hooks'))) &&
+      !(allow.env && p.name.endsWith('process')),
   );
+  const processDeny = [
+    ...(allow.env ? [] : ['env']),
+    ...(allow.time ? [] : ['hrtime']),
+    ...(allow.network ? [] : ['getBuiltinModule', 'binding', 'dlopen', 'mainModule']),
+  ];
+  const aliasNames = {
+    ...(allow.time
+      ? {}
+      : {
+          Date: { safe: ['UTC', 'parse'] },
+          Math: { deny: ['random'] },
+          performance: { safe: [] },
+          crypto: { safe: ['subtle'] },
+        }),
+    ...(processDeny.length ? { process: { deny: processDeny } } : {}),
+    // Scope-aware: a local variable named window or self is fine; the real global is not aliased.
+    ...(allow.network
+      ? {}
+      : Object.fromEntries(
+          ['globalThis', 'self', 'window', 'global'].map((n) => [n, { deny: [] }]),
+        )),
+  };
   return {
     files,
     ...(ignores.length ? { ignores } : {}),
@@ -343,6 +556,10 @@ function entry(files, { extra = [], paths = [], ignores = [], allow = {} } = {})
       'no-restricted-imports': ['error', { patterns, paths: [...basePaths, ...paths] }],
       'no-restricted-globals': allow.network ? 'off' : ['error', ...NO_FETCH_GLOBALS],
       'no-restricted-properties': ['error', ...props],
+      'sbx/no-global-alias': ['error', aliasNames],
+      'no-eval': 'error',
+      'no-new-func': 'error',
+      'no-implied-eval': 'off',
       'sbx/no-restricted-dynamic-import': [
         'error',
         { patterns, paths: [...basePaths, ...paths], allowNetwork: Boolean(allow.network) },
@@ -351,6 +568,8 @@ function entry(files, { extra = [], paths = [], ignores = [], allow = {} } = {})
         'error',
         ...(allow.time ? [] : SYNTAX.time),
         ...(allow.network ? [] : SYNTAX.network),
+        ...(allow.env ? [] : SYNTAX.env),
+        ...SYNTAX.dynamicCode,
         SYNTAX.publicName,
       ],
     },
@@ -400,6 +619,8 @@ const FRAMEWORK = ['next', 'next/*', 'react', 'react/*', 'react-dom', 'react-dom
 const DRIVERS = ['pg', 'pg/*', '@electric-sql/*', 'zod', 'zod/*', 'node:*'];
 
 const HELPERS = ['test-fixtures.ts', 'world.ts', 'support.ts'];
+const HASH_ONLY = { delivery: ['link-token.ts', 'store-pg.ts'] };
+const HASH_HELPERS = { delivery: ['world.ts'] };
 const packageEntries = [
   // Z2/Z3 domain: pure TypeScript. Contracts and sibling domain modules only (S1).
   // Tests and test helpers (test-fixtures.ts, world.ts, support.ts) may also use the database,
@@ -429,12 +650,42 @@ const packageEntries = [
         : []),
     ];
     const helpers = HELPERS.map((h) => `${dir}/**/${h}`);
+    // Files that hash with node:crypto by name (createHash, createHmac, timingSafeEqual); the
+    // random functions stay barred by RANDOM_FNS. world.ts is the delivery test helper.
+    const hashOnly = HASH_ONLY[name] ?? [];
+    const cryptoOk = (list) =>
+      list.map((p) =>
+        p.group === DRIVERS || p.group.includes('node:*')
+          ? pat(p.group.filter((d) => d !== 'node:*').concat(['node:*', '!node:crypto']), S1_MSG)
+          : p,
+      );
     return [
       entry(inDir(dir), {
         extra: [...prodExtra, pat(pkg(['testkit']), 'testkit is for tests only.')],
         ignores: [...TESTS.map((t) => `${dir}/${t}`), ...helpers],
       }),
       entry(helpers, { extra: harnessExtra(false), allow: { dbTesting: true } }),
+      ...(hashOnly.length
+        ? [
+            entry(
+              hashOnly.map((f) => `${dir}/src/${f}`),
+              {
+                extra: [
+                  ...cryptoOk(prodExtra),
+                  pat(pkg(['testkit']), 'testkit is for tests only.'),
+                ],
+              },
+            ),
+          ]
+        : []),
+      ...((HASH_HELPERS[name] ?? []).length
+        ? [
+            entry(
+              HASH_HELPERS[name].map((f) => `${dir}/src/${f}`),
+              { extra: cryptoOk(harnessExtra(false)), allow: { dbTesting: true } },
+            ),
+          ]
+        : []),
       entry(
         TESTS.map((t) => `${dir}/${t}`),
         { extra: harnessExtra(true), allow: { dbTesting: true } },
@@ -571,6 +822,46 @@ const webEntries = [
   ),
 ];
 
+// Named exemptions (review 4 H1: no inline disables). Each entry is one file, one reason, and the list
+// is pinned by scripts/lint-rules.test.ts so it cannot grow unnoticed. Decision D-015.
+export const NAMED_EXEMPTIONS = [
+  {
+    files: ['apps/web/src/server/singleton.ts'],
+    reason: 'process-wide app holder shared by route bundles and instrumentation (globalThis key)',
+    off: ['sbx/no-global-alias', 'no-restricted-syntax'],
+  },
+  {
+    files: ['apps/web/src/instrumentation.ts'],
+    reason: 'reads the framework flag NEXT_RUNTIME, which is not application configuration',
+    off: ['no-restricted-properties', 'sbx/no-global-alias'],
+  },
+  {
+    files: ['apps/web/src/lib/client-api.ts'],
+    reason: 'browser same-origin fetch to this app JSON API; S2 targets payment network clients',
+    off: ['no-restricted-globals'],
+  },
+  {
+    files: ['packages/paypal/src/paypal.sandbox.contract.test.ts'],
+    reason: 'test spies on globalThis.fetch to prove the sandbox subject opens no socket',
+    off: ['sbx/no-global-alias', 'no-restricted-syntax'],
+  },
+  {
+    files: ['domain/library/src/world.ts', 'domain/recovery/src/world.ts'],
+    reason: 'test world hashes seeded article bytes with node:crypto (hash only, no randomness)',
+    off: ['no-restricted-imports', 'sbx/no-restricted-dynamic-import'],
+  },
+  {
+    files: ['domain/payments/src/support.ts', 'domain/payments/src/payments.integration.test.ts'],
+    reason:
+      'payments test helpers: node:async_hooks (provider-call spy), node:crypto hashing, real adapter over the dry-run transport',
+    off: ['no-restricted-imports', 'sbx/no-restricted-dynamic-import'],
+  },
+];
+const namedExemptions = NAMED_EXEMPTIONS.map((e) => ({
+  files: e.files,
+  rules: Object.fromEntries(e.off.map((r) => [r, 'off'])),
+}));
+
 export default tseslint.config(
   {
     ignores: [
@@ -584,6 +875,9 @@ export default tseslint.config(
       'docs/design/**',
     ],
   },
+  // Review 4 H1: an inline eslint-disable comment would switch off any guard above, so none is
+  // honoured anywhere. Exemptions live in this file, named by path.
+  { linterOptions: { noInlineConfig: true, reportUnusedDisableDirectives: 'off' } },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files: CODE, languageOptions: { globals: { ...globals.node } } },
@@ -595,8 +889,11 @@ export default tseslint.config(
   entry(CODE),
   // The ESLint config itself and the guard scripts name forbidden patterns as data.
   { files: ['eslint.config.mjs'], rules: { 'no-restricted-syntax': 'off' } },
+  // The guard scripts and their tests spawn processes (node:child_process) to run each other.
+  entry(['scripts/**/*.{ts,mjs,js}'], { allow: { proc: true } }),
   // Per-package entries come last so their clause lists win.
   ...packageEntries,
   ...webEntries,
+  ...namedExemptions,
   prettier,
 );

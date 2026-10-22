@@ -6,3 +6,8 @@ export type { GateConfig } from './gate';
 export { checkOperatorTerminal, runApprove } from './cli-approve';
 export type { ApprovalInput, ApproveError } from './cli-approve';
 export { runStop } from './cli-stop';
+export { aiEnabled, readSafetyStatus } from './status';
+export type { SafetyStatus } from './status';
+export { reservedToday } from './budget';
+export type { SetSwitchError } from './switches';
+export { MAX_APPROVAL_VALIDITY_MS } from './cli-approve';

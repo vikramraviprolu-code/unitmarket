@@ -34,9 +34,9 @@ export default defineConfig({
     timeout: 60_000,
     env: {
       UMS_MODE: 'offline',
-      UMS_SESSION_SECRET: 's'.repeat(40),
-      UMS_APPROVAL_SECRET: 'a'.repeat(40),
-      UMS_LINK_SECRET: 'l'.repeat(40),
+      UMS_SESSION_SECRET: 's-synthetic-test-value-not-a-credential-s',
+      UMS_APPROVAL_SECRET: 'a-synthetic-test-value-not-a-credential-a',
+      UMS_LINK_SECRET: 'l-synthetic-test-value-not-a-credential-l',
       UMS_DEMO_PASSCODE_HASH: `scrypt$16384$8$1$${SALT.toString('hex')}$${hash}`,
       UMS_PUBLIC_ORIGIN: `http://localhost:${PORT}`,
       NODE_ENV: 'production',

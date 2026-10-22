@@ -7,8 +7,8 @@ import type { App } from '../composition.server';
 export const PASSCODE = 'sandbox passcode for tests';
 const SALT = '00112233445566778899aabbccddeeff';
 
-// Low-entropy placeholders, built at runtime: 40 repeated characters, distinct per secret.
-const dummy = (c: string): string => c.repeat(40);
+// Low-entropy placeholders, built at runtime: a plain sentence that is not repeated characters (config rejects those), distinct per secret.
+const dummy = (c: string): string => `${c}-synthetic-test-value-not-a-credential-${c}`;
 
 export async function testEnv(over: Record<string, string> = {}): Promise<Record<string, string>> {
   return {

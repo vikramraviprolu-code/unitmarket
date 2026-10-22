@@ -74,6 +74,9 @@ importers:
       '@umsbx/ledger':
         specifier: workspace:*
         version: link:../../domain/ledger
+      '@umsbx/library':
+        specifier: workspace:*
+        version: link:../../domain/library
       '@umsbx/model':
         specifier: workspace:*
         version: link:../../packages/model
@@ -89,6 +92,9 @@ importers:
       '@umsbx/receipts':
         specifier: workspace:*
         version: link:../../domain/receipts
+      '@umsbx/recovery':
+        specifier: workspace:*
+        version: link:../../domain/recovery
       '@umsbx/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -245,7 +251,27 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
-  domain/library: {}
+  domain/library:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/access-clock':
+        specifier: workspace:*
+        version: link:../access-clock
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/delivery':
+        specifier: workspace:*
+        version: link:../delivery
+      '@umsbx/recovery':
+        specifier: workspace:*
+        version: link:../recovery
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/offer-entry:
     dependencies:
@@ -263,7 +289,42 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
-  domain/payments: {}
+  domain/payments:
+    dependencies:
+      '@umsbx/access-clock':
+        specifier: workspace:*
+        version: link:../access-clock
+      '@umsbx/approval':
+        specifier: workspace:*
+        version: link:../approval
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/delivery':
+        specifier: workspace:*
+        version: link:../delivery
+      '@umsbx/entitlements':
+        specifier: workspace:*
+        version: link:../entitlements
+      '@umsbx/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@umsbx/receipts':
+        specifier: workspace:*
+        version: link:../receipts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/paypal':
+        specifier: workspace:*
+        version: link:../../packages/paypal
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@umsbx/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
 
   domain/receipts:
     dependencies:
@@ -284,7 +345,27 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
-  domain/recovery: {}
+  domain/recovery:
+    dependencies:
+      '@umsbx/access-clock':
+        specifier: workspace:*
+        version: link:../access-clock
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/delivery':
+        specifier: workspace:*
+        version: link:../delivery
+      '@umsbx/entitlements':
+        specifier: workspace:*
+        version: link:../entitlements
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   packages/config:
     dependencies:
@@ -310,7 +391,18 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/jobs: {}
+  packages/jobs:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@umsbx/payments':
+        specifier: workspace:*
+        version: link:../../domain/payments
+    devDependencies:
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../runtime
 
   packages/model:
     dependencies:

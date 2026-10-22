@@ -8,5 +8,15 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@umsbx/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@umsbx/access-clock": "workspace:*",
+    "@umsbx/db": "workspace:*",
+    "@umsbx/delivery": "workspace:*",
+    "@umsbx/recovery": "workspace:*",
+    "@umsbx/runtime": "workspace:*"
   }
 }

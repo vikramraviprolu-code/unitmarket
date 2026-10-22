@@ -3,7 +3,13 @@ import { migrate, openDatabase } from '@umsbx/db';
 import { createAuditSink } from '@umsbx/obs';
 import { fakeClock, seededIds } from '@umsbx/runtime';
 import type { Database } from '@umsbx/contracts';
-import { createOutboundGate, createSwitchReader, setSwitch } from './index';
+import {
+  aiEnabled,
+  createOutboundGate,
+  createSwitchReader,
+  readSafetyStatus,
+  setSwitch,
+} from './index';
 
 type Db = Database & { close(): Promise<void> };
 const T0 = '2026-10-22T10:00:00Z';
@@ -14,6 +20,7 @@ const OPERATOR = {
   mfa: true,
 } as const;
 
+type Op = { kind: 'operator'; operator_id: string; mfa: boolean };
 const opened: Db[] = [];
 afterAll(async () => {
   for (const d of opened) await d.close();
@@ -77,6 +84,15 @@ const gate = (
     },
   });
 const create = { operation: 'create_order', amount_minor: 1500 } as const;
+const reserved = async (ref = REF) =>
+  Number(
+    (
+      await db.query<{ n: number | string }>(
+        `SELECT count(*) AS n FROM audit_log WHERE action = 'gate.reserve' AND target = $1`,
+        [ref],
+      )
+    ).rows[0]?.n ?? 0,
+  );
 
 describe('outbound gate order (A-03)', () => {
   it('offline mode gives connect_off, and connect false gives connect_off', async () => {
@@ -124,15 +140,18 @@ describe('outbound gate order (A-03)', () => {
     expect((await gate().check({ operation: 'create_order', amount_minor: 2000 })).allowed).toBe(
       true,
     );
-    await addCalls(2);
+    // The 2000-minor check above reserved call 1 of 3; two more fit, the fourth does not.
     expect((await gate().check(create)).allowed).toBe(true);
-    await addCalls(1, '2026-10-22T09:00:00Z');
+    expect((await gate().check(create)).allowed).toBe(true);
     expect(await gate().check(create)).toEqual({ allowed: false, by: 'budget' });
   });
-  it('calls before UTC midnight do not count', async () => {
+  it('reservations before UTC midnight do not count', async () => {
     await switchOn();
-    await addApproval({ calls: 1 });
-    await addCalls(5, '2026-10-21T23:59:59Z');
+    await addApproval({ calls: 1, until: '2026-10-25T00:00:00Z' });
+    clock.set('2026-10-22T23:59:59Z');
+    expect((await gate().check(create)).allowed).toBe(true);
+    expect(await gate().check(create)).toEqual({ allowed: false, by: 'budget' });
+    clock.set('2026-10-23T00:00:01Z');
     expect((await gate().check(create)).allowed).toBe(true);
   });
   it('null amount skips the amount cap', async () => {
@@ -151,6 +170,59 @@ describe('outbound gate order (A-03)', () => {
       by: 'connect_off',
     });
     expect(await gate().check(create)).toEqual({ allowed: false, by: 'kill_switch' });
+  });
+});
+
+// Opus review 4 H3: the budget is reserved inside the gate, per approval, under a row lock.
+describe('budget reservation (review 4 H3)', () => {
+  it('N concurrent checks at the cap let exactly max_calls_per_day through', async () => {
+    await switchOn();
+    await addApproval({ calls: 3 });
+    const g = gate();
+    const verdicts = await Promise.all(Array.from({ length: 12 }, () => g.check(create)));
+    expect(verdicts.filter((v) => v.allowed)).toHaveLength(3);
+    expect(verdicts.filter((v) => !v.allowed && v.by === 'budget')).toHaveLength(9);
+    expect(await reserved()).toBe(3);
+  });
+  it('concurrent checks from separate gates share the same budget', async () => {
+    await switchOn();
+    await addApproval({ calls: 2 });
+    const verdicts = await Promise.all(Array.from({ length: 6 }, () => gate().check(create)));
+    expect(verdicts.filter((v) => v.allowed)).toHaveLength(2);
+  });
+  it('the budget counts per approval_ref', async () => {
+    await switchOn();
+    await addApproval({ ref: 'REF-A', calls: 1 });
+    await addApproval({ ref: 'REF-B', calls: 1 });
+    expect((await gate({ ref: 'REF-A' }).check(create)).allowed).toBe(true);
+    expect(await gate({ ref: 'REF-A' }).check(create)).toEqual({ allowed: false, by: 'budget' });
+    expect((await gate({ ref: 'REF-B' }).check(create)).allowed).toBe(true);
+    expect(await reserved('REF-A')).toBe(1);
+    expect(await reserved('REF-B')).toBe(1);
+  });
+  it('a refused check reserves nothing', async () => {
+    await addApproval({ calls: 2 });
+    expect((await gate().check(create)).allowed).toBe(false); // switch off
+    await switchOn();
+    expect((await gate().check({ operation: 'refund_capture', amount_minor: 1 })).allowed).toBe(
+      false,
+    ); // operation not covered
+    expect((await gate().check({ operation: 'create_order', amount_minor: 99_999 })).allowed).toBe(
+      false,
+    ); // over the per-order cap
+    expect(await reserved()).toBe(0);
+  });
+  it('unrelated provider_calls rows do not consume an approval budget', async () => {
+    await switchOn();
+    await addApproval({ calls: 1 });
+    await addCalls(5);
+    expect((await gate().check(create)).allowed).toBe(true);
+  });
+  it('a failed read blocks and reserves nothing', async () => {
+    await switchOn();
+    await addApproval({ calls: 2 });
+    await db.exec('ALTER TABLE audit_log RENAME TO audit_log_gone');
+    expect((await gate().check(create)).allowed).toBe(false);
   });
 });
 
@@ -214,7 +286,53 @@ describe('setSwitch', () => {
     expect(sw.rows[0]?.on).toBe(false);
     expect((await db.query(`SELECT 1 FROM audit_log`)).rows).toHaveLength(0);
   });
+  it('turning paypal_outbound on needs an active matching outbound_approvals row (M10)', async () => {
+    const on = (ref: string | null, by: Op | { kind: 'system' } = OPERATOR) =>
+      setSwitch(db, audit(), clock, {
+        name: 'paypal_outbound',
+        on: true,
+        by,
+        reason: 'go',
+        approval_ref: ref,
+      });
+    // no row at all
+    expect(await on('NO-SUCH-REF')).toEqual({ ok: false, error: 'approval_not_active' });
+    // expired row
+    await addApproval({ ref: 'OLD', until: '2026-10-22T09:59:59Z' });
+    expect(await on('OLD')).toEqual({ ok: false, error: 'approval_not_active' });
+    // an active row, but a non-operator actor, or an operator without MFA
+    await addApproval();
+    expect(await on(REF, { kind: 'system' })).toEqual({ ok: false, error: 'operator_required' });
+    expect(await on(REF, { ...OPERATOR, mfa: false })).toEqual({
+      ok: false,
+      error: 'operator_required',
+    });
+    const sw = await db.query<{ on: boolean }>(
+      `SELECT "on" FROM safety_switches WHERE name='paypal_outbound'`,
+    );
+    expect(sw.rows[0]?.on).toBe(false);
+    expect((await db.query(`SELECT 1 FROM audit_log`)).rows).toHaveLength(0);
+    expect((await on(REF)).ok).toBe(true);
+  });
+  it('stopping needs an operator but no approval; a non-operator cannot stop either (M10)', async () => {
+    await switchOn();
+    const stop = (by: Op | { kind: 'system' } | { kind: 'buyer'; buyer_id: string }) =>
+      setSwitch(db, audit(), clock, {
+        name: 'paypal_outbound',
+        on: false,
+        by,
+        reason: 'stop',
+        approval_ref: null,
+      });
+    expect(await stop({ kind: 'buyer', buyer_id: 'buy_1' })).toEqual({
+      ok: false,
+      error: 'operator_required',
+    });
+    expect(await stop({ kind: 'system' })).toEqual({ ok: false, error: 'operator_required' });
+    expect((await stop({ ...OPERATOR, mfa: false })).ok).toBe(true);
+  });
   it('turning paypal_outbound on with approval_ref works and records the ref', async () => {
+    await addApproval();
     const r = await setSwitch(db, audit(), clock, {
       name: 'paypal_outbound',
       on: true,
@@ -226,7 +344,7 @@ describe('setSwitch', () => {
     const a = await db.query<{ detail: Record<string, unknown> }>(`SELECT detail FROM audit_log`);
     expect(JSON.stringify(a.rows[0]?.detail)).toContain(REF);
   });
-  it('stopping paypal_outbound needs only a reason', async () => {
+  it('stopping paypal_outbound needs only a reason and an operator', async () => {
     await switchOn();
     expect(
       (
@@ -250,5 +368,35 @@ describe('setSwitch', () => {
         approval_ref: null,
       }),
     ).toEqual({ ok: false, error: 'reason_required' });
+  });
+});
+
+describe('status and the ai_enabled reader (review 4 M11)', () => {
+  it('aiEnabled follows the ai_enabled switch and fails closed', async () => {
+    const r = createSwitchReader(db, clock, 0);
+    expect(await aiEnabled(r)).toBe(true);
+    await db.query(`UPDATE safety_switches SET "on" = false WHERE name = 'ai_enabled'`);
+    expect(await aiEnabled(r)).toBe(false);
+    await db.exec('ALTER TABLE safety_switches RENAME TO safety_switches_gone');
+    await db.query('SELECT 1');
+    expect(await aiEnabled(createSwitchReader(db, clock, 0))).toBe(false);
+  });
+  it('readSafetyStatus lists the switches and the budget left, without secrets', async () => {
+    await switchOn();
+    await addApproval({ calls: 5 });
+    await gate().check(create);
+    await gate().check(create);
+    const s = await readSafetyStatus(db, clock.now(), REF);
+    expect(s.switches.map((x) => x.name)).toContain('paypal_outbound');
+    expect(s.switches.find((x) => x.name === 'paypal_outbound')?.on).toBe(true);
+    expect(s.budget).toMatchObject({
+      approval_ref: REF,
+      max_calls_per_day: 5,
+      reserved_today: 2,
+      remaining_today: 3,
+    });
+    expect(JSON.stringify(s)).not.toMatch(/secret|password|token/i);
+    expect((await readSafetyStatus(db, clock.now(), null)).budget).toBeNull();
+    expect((await readSafetyStatus(db, clock.now(), 'GONE')).budget).toBeNull();
   });
 });

@@ -53,7 +53,10 @@ export default async function LibraryItem({
             View receipt
           </Link>
         ) : null}
-        <Link className="btn" href="/help/delivery">
+        <Link
+          className="btn"
+          href={`/help/delivery?item=${encodeURIComponent(item.entitlement_id)}`}
+        >
           Problem with this item?
         </Link>
       </div>

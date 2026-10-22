@@ -168,13 +168,14 @@ describe('migrations', () => {
     toClose.push(d);
     const first = await migrate(d, clock);
     // Later migrations (0007 from another lane, 0008) are checked by name, not by count.
-    expect(first.slice(0, 6)).toEqual([
+    expect(first.slice(0, 7)).toEqual([
       '0001_core',
       '0002_buyers',
       '0003_entry',
       '0004_money',
       '0005_access',
       '0006_platform',
+      '0007_links_session',
     ]);
     expect(first).toContain('0008_access_events_unique');
     expect(await migrate(d, clock)).toEqual([]);

@@ -47,7 +47,8 @@ const isSecretKey = (k) => {
   const lk = k.trim().toLowerCase();
   return SECRET_KEYS.has(lk) || SECRET_KEY_SHAPE.test(lk);
 };
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/;
+// `.invalid` is reserved (RFC 2606): such an address cannot be real, so injection samples may use it.
+const EMAIL = /[A-Za-z0-9._%+-]+@(?![A-Za-z0-9.-]*\.invalid\b)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/;
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/i;
 // Case-insensitive markers; lane 03 fixtures write "[redacted]" and "email-redacted".
 const REDACTED = new Set(['', '[redacted]', 'redacted', 'email-redacted', '***']);
@@ -67,11 +68,13 @@ function walk(dir, out = []) {
   for (const name of readdirSync(dir).sort()) {
     const abs = join(dir, name);
     if (statSync(abs).isDirectory()) walk(abs, out);
-    else if (abs !== INDEX && name.toLowerCase() !== 'index.json' && !/^readme(\.md)?$/i.test(name))
-      out.push(abs);
+    else if (abs !== INDEX && !GENERATED.has(abs) && !/^readme(\.md)?$/i.test(name)) out.push(abs);
   }
   return out;
 }
+// Review 4 L5: only these generated index files are exempt from the fixture rules (their text is
+// still scanned below), not every file called index.json.
+const GENERATED = new Set([join(FIXTURES, 'paypal', 'index.json')]);
 const relFix = (abs) => relative(FIXTURES, abs).split(sep).join('/');
 const sha = (text) => createHash('sha256').update(text).digest('hex');
 
@@ -143,14 +146,39 @@ function codeFixtures() {
   return out;
 }
 
-function main() {
-  if (!existsSync(FIXTURES)) {
-    console.log(`${NAME}: ok (no fixtures directory)`);
-    return 0;
+// Review 4 L5: data kept next to domain code (domain/*/test-data) and any plain data file under
+// scripts/__fixtures__ (the guard fixtures there end in .fixture and stay inert).
+function extraFixtures() {
+  const out = [];
+  const visit = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir).sort()) {
+      if (name === 'node_modules') continue;
+      const abs = join(dir, name);
+      if (statSync(abs).isDirectory()) visit(abs);
+      else out.push(abs);
+    }
+  };
+  const dom = join(ROOT, 'domain');
+  if (existsSync(dom)) for (const d of readdirSync(dom)) visit(join(dom, d, 'test-data'));
+  const sf = join(ROOT, 'scripts', '__fixtures__');
+  if (existsSync(sf)) {
+    const walkSf = (dir) => {
+      for (const name of readdirSync(dir).sort()) {
+        const abs = join(dir, name);
+        if (statSync(abs).isDirectory()) walkSf(abs);
+        else if (!name.endsWith('.fixture')) out.push(abs);
+      }
+    };
+    walkSf(sf);
   }
+  return out;
+}
+
+function main() {
   const entries = [];
   const problems = [];
-  for (const abs of walk(FIXTURES)) {
+  for (const abs of existsSync(FIXTURES) ? walk(FIXTURES) : []) {
     const rel = relFix(abs);
     const text = readFileSync(abs, 'utf8');
     entries.push({ path: rel, sha256: sha(text) });
@@ -181,7 +209,10 @@ function main() {
     scanValues(doc, '$', found, source === 'docs-example');
     for (const f of found) problems.push(`${rel}: ${f}`);
   }
-  for (const abs of codeFixtures()) {
+  for (const abs of [...GENERATED].filter((g) => existsSync(g))) {
+    scanText(relative(ROOT, abs).split(sep).join('/'), readFileSync(abs, 'utf8'), problems);
+  }
+  for (const abs of [...codeFixtures(), ...extraFixtures()]) {
     const rel = relative(ROOT, abs).split(sep).join('/');
     const text = readFileSync(abs, 'utf8');
     scanText(rel, text, problems);
