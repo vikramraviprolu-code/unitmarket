@@ -389,8 +389,23 @@ export function redactionSelfTest(make: () => Redactor): string[] {
 // ---- wires ----------------------------------------------------------------------------------------
 /** The real wire. It checks scheme, host, port, userinfo and path before any fetch, never follows a
  * redirect, times out, caps the response, and never retries. Built only after every refusal check. */
-export function createSpikeFetchWire(fetchImpl: FetchLike): Wire {
+export function createSpikeFetchWire(
+  fetchImpl: FetchLike,
+  /** Says which override is present right now, or null. Asked before every request (SEAL2 M3). */
+  recheck: () => string | null,
+): Wire {
   return async (req) => {
+    let overridden: string | null;
+    try {
+      overridden = recheck();
+    } catch {
+      overridden = 'the override check';
+    }
+    if (overridden !== null)
+      throw new SpikeError(
+        'transport_env_override',
+        `${overridden} is set; the run stops before this request`,
+      );
     const u = new URL(req.url);
     if (
       u.protocol !== 'https:' ||
@@ -521,6 +536,9 @@ const CI_MARKERS = [
 // LOW (SEAL2): sessions of an AI coding agent or a cloud IDE. A real run refuses them; --dry-run
 // is allowed anywhere.
 const AI_MARKERS = ['CLAUDECODE', 'CLAUDE_CODE_REMOTE'];
+// Anything that changes where a connection goes, which certificates it trusts, or which code runs
+// inside the process. The same list guards boot (packages/config) and every request of the wires
+// (FIX-MVPB-SEAL2 M3); keep the three copies in step (each has a test for each entry).
 const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   'NODE_USE_ENV_PROXY',
   'NODE_TLS_REJECT_UNAUTHORIZED',
@@ -529,8 +547,27 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   'HTTP_PROXY',
   'HTTPS_PROXY',
   'ALL_PROXY',
+  'NODE_USE_SYSTEM_CA',
+  'OPENSSL_CONF',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
 ]);
-const OVERRIDE_FLAG = /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait)?)(?:=|$)/;
+const OVERRIDE_FLAG =
+  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config)(?:=|$)/;
+/**
+ * The name of the first environment variable, or `execArgv` for a Node flag, that overrides the
+ * network path or the trust store; null when none does. Names only, never values.
+ */
+export function networkOverride(
+  env: Record<string, string | undefined>,
+  execArgv: readonly string[],
+): string | null {
+  for (const [name, v] of Object.entries(env)) {
+    if (OVERRIDE_NAMES.has(name.toUpperCase()) && v !== undefined && v.trim() !== '')
+      return name.toUpperCase();
+  }
+  return execArgv.some((a) => OVERRIDE_FLAG.test(a)) ? 'execArgv' : null;
+}
 const HOSTISH = /(?:https?:\/\/[^\s/"']+|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|dev)\b)/gi;
 
 /**
@@ -708,17 +745,16 @@ export function preflight(deps: Deps): Preflight {
       return refuse('ci_set', `${name} is set; the kit never runs in CI`);
   }
   // M1: nothing may sit between this process and the sandbox host, and the CA store stays default.
-  for (const [name, v] of Object.entries(env)) {
-    if (OVERRIDE_NAMES.has(name.toUpperCase()) && v !== undefined && v.trim() !== '')
-      return refuse(
-        'transport_env_override',
-        `${name.toUpperCase()} is set; run on your own machine, off VPN, not in a container`,
-      );
-  }
-  if ((deps.execArgv ?? []).some((a) => OVERRIDE_FLAG.test(a)))
+  const overridden = networkOverride(env, deps.execArgv ?? []);
+  if (overridden === 'execArgv')
     return refuse(
       'transport_env_override',
       'a Node flag that changes networking or loads code is set',
+    );
+  if (overridden !== null)
+    return refuse(
+      'transport_env_override',
+      `${overridden} is set; run on your own machine, off VPN, not in a container`,
     );
   for (const name of AI_MARKERS) {
     const v = env[name];
@@ -2017,7 +2053,10 @@ export async function main(deps: Deps): Promise<number> {
   const cfg = pre.cfg;
   let wire: Wire;
   if (cfg.dryRun) wire = createReplayWire(deps.fixtureDir, deps.readText);
-  else if (deps.fetchImpl) wire = createSpikeFetchWire(deps.fetchImpl);
+  else if (deps.fetchImpl)
+    wire = createSpikeFetchWire(deps.fetchImpl, () =>
+      networkOverride(deps.env, deps.execArgv ?? []),
+    );
   else {
     deps.err('REFUSED no_transport: no fetch function available');
     return 2;

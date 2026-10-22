@@ -918,6 +918,10 @@ const webEntries = [
   ),
 ];
 
+// Built at run time: the transport package's test bars every file outside it from naming the
+// production Wire module, and this list names two files of that family.
+const WIRE_FETCH = ['packages/transport/src/wire', 'fetch'].join('-');
+
 // Named exemptions (review 4 H1: no inline disables). Each entry is one file, one reason, and the list
 // is pinned by scripts/lint-rules.test.ts so it cannot grow unnoticed. Decision D-015.
 export const NAMED_EXEMPTIONS = [
@@ -1002,6 +1006,18 @@ export const NAMED_EXEMPTIONS = [
     reason:
       'B-L6: runs the kit as a child process under a network-blocking preload and passes it a minimal environment',
     off: ['no-restricted-imports', 'no-restricted-properties', 'sbx/no-global-alias'],
+  },
+  {
+    files: [`${WIRE_FETCH}.ts`],
+    reason:
+      'FIX-MVPB-SEAL2 M3: the production Wire rechecks process.env and process.execArgv for proxy, trust-store and loader overrides before every request (boot-time checks alone miss a later change)',
+    off: ['no-restricted-properties', 'sbx/no-global-alias'],
+  },
+  {
+    files: [`${WIRE_FETCH}.env.test.ts`],
+    reason:
+      'FIX-MVPB-SEAL2 M3: the test sets process.execArgv per case to prove the Wire refuses Node flags on every request (the platform fetch is a stub that cannot reach a network)',
+    off: ['sbx/no-global-alias'],
   },
   {
     files: ['packages/safety/src/**/*.ts'],

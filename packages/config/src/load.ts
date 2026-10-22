@@ -110,8 +110,17 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   'HTTP_PROXY',
   'HTTPS_PROXY',
   'ALL_PROXY',
+  // FIX-MVPB-SEAL2 M3: more ways to change which certificates or OpenSSL settings a connection uses.
+  'NODE_USE_SYSTEM_CA',
+  'OPENSSL_CONF',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
 ]);
-const OVERRIDE_FLAG = /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait)?)(?:=|$)/;
+// Node flags that redirect or intercept the connection, replace the trust store or load code before
+// the application (module hooks, loaders, preloads). Kept in step with the production Wire in
+// packages/transport and the spike kit, which check the same list again on every request.
+const OVERRIDE_FLAG =
+  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config)(?:=|$)/;
 function transportOverride(env: Env, execArgv: readonly string[]): string | null {
   for (const [name, v] of Object.entries(env)) {
     const up = name.toUpperCase();

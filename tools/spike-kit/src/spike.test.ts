@@ -22,6 +22,7 @@ import {
   createRedactor,
   createReplayWire,
   main,
+  networkOverride,
   parseSpikeGo,
   preflight,
   redactionSelfTest,
@@ -956,7 +957,7 @@ describe('fetch wire guards', () => {
     }));
   it('sends only to the sandbox host, https, no redirects, with a timeout signal', async () => {
     const f = fetchOk();
-    const wire = createSpikeFetchWire(f as never);
+    const wire = createSpikeFetchWire(f as never, () => null);
     await wire(
       { method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null },
       'x',
@@ -974,7 +975,7 @@ describe('fetch wire guards', () => {
     `${SANDBOX_API}/v1/payments/payouts`,
   ])('refuses %s before calling fetch', async (url) => {
     const f = fetchOk();
-    const wire = createSpikeFetchWire(f as never);
+    const wire = createSpikeFetchWire(f as never, () => null);
     await expect(wire({ method: 'GET', url, headers: {}, body: null }, 'x')).rejects.toThrow();
     expect(f).not.toHaveBeenCalled();
   });
@@ -984,7 +985,7 @@ describe('fetch wire guards', () => {
       headers: new Headers(),
       arrayBuffer: async () => new Uint8Array(1_048_577).buffer,
     }));
-    const wire = createSpikeFetchWire(big as never);
+    const wire = createSpikeFetchWire(big as never, () => null);
     await expect(
       wire(
         { method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null },
@@ -1004,6 +1005,11 @@ describe('M1: proxy, certificate and Node-option overrides are refused in real m
     'HTTP_PROXY',
     'HTTPS_PROXY',
     'ALL_PROXY',
+    // FIX-MVPB-SEAL2 M3
+    'NODE_USE_SYSTEM_CA',
+    'OPENSSL_CONF',
+    'SSL_CERT_FILE',
+    'SSL_CERT_DIR',
   ];
   const real = () => harness({ env: realEnv(), stdinIsTTY: true });
   it.each(names.flatMap((n) => [n, n.toLowerCase()]))('refuses %s with its name', (name) => {
@@ -1024,6 +1030,15 @@ describe('M1: proxy, certificate and Node-option overrides are refused in real m
     '--import',
     '--inspect',
     '--inspect=0.0.0.0:9229',
+    '--loader',
+    '--loader=./x.mjs',
+    '--experimental-loader',
+    '--experimental-loader=./x.mjs',
+    '--use-system-ca',
+    '--use-openssl-ca',
+    '--openssl-config',
+    '--openssl-config=/tmp/x.cnf',
+    '--openssl-shared-config',
   ])('refuses execArgv %s', (flag) => {
     const h = real();
     h.deps.execArgv = ['--max-old-space-size=512', flag];
@@ -1056,6 +1071,77 @@ describe('M1: proxy, certificate and Node-option overrides are refused in real m
     expect(text).toMatch(/REFUSED transport_env_override/);
     expect(text).not.toContain('pw-canary');
     expect(fs.existsSync(path.join(tmp, 'out'))).toBe(false);
+  });
+});
+
+describe('M3 (SEAL2): the override check runs again on every request', () => {
+  const url = `${SANDBOX_API}/v2/checkout/orders/ABC`;
+  const call = { method: 'GET', url, headers: {}, body: null } as const;
+  const ok = () =>
+    vi.fn(async () => ({
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      arrayBuffer: async () => new TextEncoder().encode('{}').buffer,
+    }));
+  it('asks the check before each request and never reaches fetch when it reports an override', async () => {
+    const f = ok();
+    let reason: string | null = null;
+    const wire = createSpikeFetchWire(f as never, () => reason);
+    await wire(call, 'x');
+    expect(f).toHaveBeenCalledTimes(1);
+    reason = 'NODE_TLS_REJECT_UNAUTHORIZED';
+    await expect(wire(call, 'x')).rejects.toThrow(
+      /transport_env_override.*NODE_TLS_REJECT_UNAUTHORIZED/,
+    );
+    expect(f).toHaveBeenCalledTimes(1);
+    reason = null;
+    await wire(call, 'x');
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+  it('a throwing check refuses the request (fail closed)', async () => {
+    const f = ok();
+    const wire = createSpikeFetchWire(f as never, () => {
+      throw new Error('boom');
+    });
+    await expect(wire(call, 'x')).rejects.toThrow();
+    expect(f).not.toHaveBeenCalled();
+  });
+  it('networkOverride reports the first override in env or Node flags, by name and never by value', () => {
+    expect(networkOverride({}, [])).toBeNull();
+    expect(networkOverride({ HTTPS_PROXY: '' }, ['--max-old-space-size=1'])).toBeNull();
+    expect(networkOverride({ NODE_TLS_REJECT_UNAUTHORIZED: '0' }, [])).toBe(
+      'NODE_TLS_REJECT_UNAUTHORIZED',
+    );
+    expect(networkOverride({ https_proxy: 'http://u:pw-canary@h:1' }, [])).toBe('HTTPS_PROXY');
+    expect(networkOverride({}, ['--loader=./x'])).toBe('execArgv');
+  });
+  it('main: an override that appears after boot stops the run at the next request, before fetch', async () => {
+    const h = harness({
+      env: realEnv(),
+      stdinIsTTY: true,
+      argv: ['--out', path.join(tmp, 'out')],
+    });
+    const token = JSON.stringify({ access_token: FAKE_TOKEN, token_type: 'Bearer', expires_in: 1 });
+    const f = vi.fn(async () => {
+      // Something flips the TLS check off while the run is in progress.
+      h.deps.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+      return {
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        arrayBuffer: async () => new TextEncoder().encode(token).buffer,
+      };
+    });
+    h.deps.fetchImpl = f as never;
+    expect(await main(h.deps)).toBe(4);
+    expect(f).toHaveBeenCalledTimes(1);
+    const text = [...h.outLines, ...h.errLines].join('\n');
+    expect(text).toMatch(/Stopped:.*transport/i);
+    expect(text).not.toContain(FAKE_SECRET);
+    expect(text).not.toContain(FAKE_TOKEN);
+    // The summary names the override, by name only.
+    const summary = fs.readFileSync(path.join(tmp, 'out', 'summary.md'), 'utf8');
+    expect(summary).toContain('NODE_TLS_REJECT_UNAUTHORIZED');
+    expect(summary).not.toContain(FAKE_SECRET);
   });
 });
 
@@ -1106,7 +1192,10 @@ describe('L5: every common CI marker is refused; the response is capped while st
   });
   it('stops reading and cancels as soon as the cap is passed', async () => {
     const cancelled = { n: 0 };
-    const wire = createSpikeFetchWire((async () => streaming(1000, 500_000, cancelled)) as never);
+    const wire = createSpikeFetchWire(
+      (async () => streaming(1000, 500_000, cancelled)) as never,
+      () => null,
+    );
     await expect(wire({ method: 'GET', url, headers: {}, body: null }, 'x')).rejects.toThrow(
       /too large/i,
     );
@@ -1118,13 +1207,13 @@ describe('L5: every common CI marker is refused; the response is capped while st
       ...streaming(1, 10, cancelled),
       headers: new Headers({ 'content-length': '5000000' }),
     };
-    const wire = createSpikeFetchWire((async () => res) as never);
+    const wire = createSpikeFetchWire((async () => res) as never, () => null);
     await expect(wire({ method: 'GET', url, headers: {}, body: null }, 'x')).rejects.toThrow(
       /too large/i,
     );
   });
   it('reads a small streamed body in full', async () => {
-    const wire = createSpikeFetchWire((async () => streaming(3, 4, { n: 0 })) as never);
+    const wire = createSpikeFetchWire((async () => streaming(3, 4, { n: 0 })) as never, () => null);
     const r = await wire({ method: 'GET', url, headers: {}, body: null }, 'x');
     expect(r.text.length).toBe(12);
   });

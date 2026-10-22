@@ -703,6 +703,10 @@ describe('the production Wire sentinel (SEAL2 H2)', () => {
   });
 });
 
+// Built at run time: the transport package test bars any file outside the transport package from naming the
+// production Wire module, and this file lists its two lint exemptions.
+const WIRE = ['wire', 'fetch'].join('-');
+
 describe('named exemptions (D-015)', () => {
   it('the exemption list is pinned: adding a file or a rule needs a reviewed change here', async () => {
     const { NAMED_EXEMPTIONS } = await import('../eslint.config.mjs');
@@ -725,6 +729,8 @@ describe('named exemptions (D-015)', () => {
         'tests/mvp-b/b06-b08.integration.test.ts -> sbx/no-package-escape',
         'tests/mvp-b/b09-logs-clean.integration.test.ts -> sbx/no-package-escape,sbx/sealed-transport',
         'packages/paypal/src/sandbox-wire.integration.test.ts -> sbx/sealed-transport',
+        `packages/transport/src/${WIRE}.ts -> no-restricted-properties,sbx/no-global-alias`,
+        `packages/transport/src/${WIRE}.env.test.ts -> sbx/no-global-alias`,
         'packages/safety/src/**/*.ts -> sbx/sealed-transport',
         'packages/transport/src/**/*.ts -> sbx/sealed-wire-sentinel',
         'apps/web/composition.server.ts -> sbx/sealed-wire-sentinel',

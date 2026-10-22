@@ -13,9 +13,41 @@ const fail = (error: Extract<WireResult, { kind: 'error' }>['error']): WireResul
   error,
 });
 
+// FIX-MVPB-SEAL2 M3. A proxy, a replaced trust store or a Node flag that loads code can see the
+// client secret. packages/config refuses them at boot; this Wire asks again before EVERY request,
+// because process.env can change after boot and Node reads NODE_TLS_REJECT_UNAUTHORIZED at each
+// connection. This file is a named lint exemption (it reads process.env and process.execArgv);
+// the list is the same as packages/config load.ts and tools/spike-kit spike.ts.
+const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
+  'NODE_USE_ENV_PROXY',
+  'NODE_TLS_REJECT_UNAUTHORIZED',
+  'NODE_EXTRA_CA_CERTS',
+  'NODE_OPTIONS',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'NODE_USE_SYSTEM_CA',
+  'OPENSSL_CONF',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+]);
+const OVERRIDE_FLAG =
+  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config)(?:=|$)/;
+function networkOverridden(): boolean {
+  try {
+    for (const [name, v] of Object.entries(process.env)) {
+      if (OVERRIDE_NAMES.has(name.toUpperCase()) && v !== undefined && v.trim() !== '') return true;
+    }
+    return process.execArgv.some((a) => OVERRIDE_FLAG.test(a));
+  } catch {
+    return true; // cannot tell: refuse
+  }
+}
+
 export function createFetchWire(): Wire {
   return {
     async request(r: WireRequest): Promise<WireResult> {
+      if (networkOverridden()) return fail('other');
       let url: URL;
       try {
         url = new URL(r.url);

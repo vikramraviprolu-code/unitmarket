@@ -413,6 +413,11 @@ describe('transport environment overrides (M1)', () => {
     'HTTP_PROXY',
     'HTTPS_PROXY',
     'ALL_PROXY',
+    // FIX-MVPB-SEAL2 M3: more ways to change which certificates or OpenSSL settings a connection uses.
+    'NODE_USE_SYSTEM_CA',
+    'OPENSSL_CONF',
+    'SSL_CERT_FILE',
+    'SSL_CERT_DIR',
   ];
   const variants = names.flatMap((n) => [n, n.toLowerCase()]);
   it.each(variants)('sandbox mode refuses %s', (name) => {
@@ -429,20 +434,48 @@ describe('transport environment overrides (M1)', () => {
   it('an empty value is not an override', () => {
     expect(loadConfig(sandbox({ HTTPS_PROXY: '', NODE_OPTIONS: '  ' })).ok).toBe(true);
   });
-  it.each(['--use-env-proxy', '--require', '-r', '--import', '--inspect', '--inspect-brk'])(
-    'sandbox mode refuses execArgv %s',
-    (flag) => {
-      const r = loadConfig(sandbox(), { execArgv: ['--max-old-space-size=512', flag] });
-      expect(!r.ok && r.error).toEqual({ code: 'transport_env_override', name: 'execArgv' });
-    },
-  );
-  it.each(['--require=./x.js', '--import=./x.mjs', '--inspect=0.0.0.0:9229'])(
-    'sandbox mode refuses execArgv %s',
-    (flag) => {
-      const r = loadConfig(sandbox(), { execArgv: [flag] });
-      expect(!r.ok && r.error.code).toBe('transport_env_override');
-    },
-  );
+  it.each([
+    '--use-env-proxy',
+    '--require',
+    '-r',
+    '--import',
+    '--inspect',
+    '--inspect-brk',
+    '--loader',
+    '--experimental-loader',
+    '--use-system-ca',
+    '--use-openssl-ca',
+    '--openssl-config',
+    '--openssl-shared-config',
+  ])('sandbox mode refuses execArgv %s', (flag) => {
+    const r = loadConfig(sandbox(), { execArgv: ['--max-old-space-size=512', flag] });
+    expect(!r.ok && r.error).toEqual({ code: 'transport_env_override', name: 'execArgv' });
+  });
+  it.each([
+    '--require=./x.js',
+    '--import=./x.mjs',
+    '--inspect=0.0.0.0:9229',
+    '--loader=./x.mjs',
+    '--experimental-loader=./x.mjs',
+    '--openssl-config=/tmp/x.cnf',
+    '--openssl-shared-config=x',
+  ])('sandbox mode refuses execArgv %s', (flag) => {
+    const r = loadConfig(sandbox(), { execArgv: [flag] });
+    expect(!r.ok && r.error.code).toBe('transport_env_override');
+  });
+  it('the system and OpenSSL certificate stores are refused together with their files', () => {
+    const r = loadConfig(sandbox({ SSL_CERT_FILE: '/tmp/ca.pem' }), {
+      execArgv: ['--use-openssl-ca'],
+    });
+    expect(!r.ok && r.error.code).toBe('transport_env_override');
+    const r2 = loadConfig(sandbox(), { execArgv: ['--use-openssl-ca'] });
+    expect(!r2.ok && r2.error).toEqual({ code: 'transport_env_override', name: 'execArgv' });
+  });
+  it('a flag that merely starts like a refused one is not refused', () => {
+    expect(loadConfig(sandbox(), { execArgv: ['--loaders-are-fine', '--use-bundled-ca'] }).ok).toBe(
+      true,
+    );
+  });
   it('sandbox mode accepts harmless execArgv', () => {
     expect(loadConfig(sandbox(), { execArgv: ['--max-old-space-size=512'] }).ok).toBe(true);
   });
