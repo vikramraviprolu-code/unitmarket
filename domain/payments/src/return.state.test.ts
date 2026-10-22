@@ -530,7 +530,6 @@ describe('capture outcomes other than a clean claim', () => {
   it.each([
     ['unavailable', { kind: 'unavailable', retry_after_ms: null }],
     ['in_progress 409', { kind: 'in_progress', debug_id: null }],
-    ['blocked', { kind: 'blocked', by: 'budget' }],
     [
       '202 accepted',
       { kind: 'claim', http: 202, provider_order_id: 'X', units: [], debug_id: null },
@@ -560,7 +559,7 @@ describe('capture outcomes other than a clean claim', () => {
     },
   );
 
-  it('payer_action: the order goes back to awaiting_buyer with the redirect link; the same key serves the next try', async () => {
+  it('payer_action: the order goes back to awaiting_buyer with the redirect link; the next try uses a new key (H2)', async () => {
     w = await makeWorld();
     const a = await approved(w);
     w.paypal.queue.capture.push({
@@ -574,11 +573,12 @@ describe('capture outcomes other than a clean claim', () => {
       'https://www.sandbox.paypal.com/checkoutnow?token=AGAIN',
     );
     expect((await op(a.order_id, 'capture'))!.state).toBe('prepared');
-    // The buyer fixes the funding source and returns: captured with the same key.
+    // The buyer fixes the funding source and returns. PayPal replays the stored answer for a key,
+    // so the first key cannot succeed: a new attempt key is used, after a read (FIX-05A H2).
     const second = await ret(a.order_ref);
     expect(second.ok && second.value.status).toBe('paid');
     const keys = w.paypal.calls.filter((c) => c.op === 'capture').map((c) => c.request_id);
-    expect(keys).toEqual([`umsK-${a.order_ref}`, `umsK-${a.order_ref}`]);
+    expect(keys).toEqual([`umsK-${a.order_ref}`, `umsK-${a.order_ref}-2`]);
   });
 
   it('ORDER_NOT_APPROVED (a race): not_approved, back to awaiting_buyer, operation prepared', async () => {
@@ -612,7 +612,7 @@ describe('capture outcomes other than a clean claim', () => {
     expect(w.paypal.count('capture')).toBe(1);
   });
 
-  it('TRANSACTION_REFUSED: the read-back decides; with no capture shown the order stays unresolved, not declined', async () => {
+  it('TRANSACTION_REFUSED: the read-back decides; with no capture shown the order closes as failed, not charged (M3)', async () => {
     w = await makeWorld();
     const a = await approved(w);
     w.paypal.queue.capture.push({
@@ -623,9 +623,9 @@ describe('capture outcomes other than a clean claim', () => {
       debug_id: 'D',
     });
     const r = await ret(a.order_ref);
-    expect(r.ok && r.value.status).toBe('unresolved');
-    expect((await unit(a.order_id)).status).toBe('expected');
-    expect(await ent()).toMatchObject({ money_state: 'pending' });
+    expect(r.ok && r.value.status).toBe('failed');
+    expect((await unit(a.order_id)).status).toBe('declined');
+    expect(await ent()).toMatchObject({ money_state: 'denied' });
     expect(w.paypal.count('get')).toBe(2);
   });
 

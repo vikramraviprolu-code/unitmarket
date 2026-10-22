@@ -192,7 +192,7 @@ describe('no-match reasons and decision order', () => {
     }
   });
 
-  it('an ended or still-pending entitlement does not count as owned', async () => {
+  it('an ended entitlement does not count as owned', async () => {
     const actor = await buyer();
     const id = actor.kind === 'buyer' ? actor.buyer_id : '';
     const o = await getOffer(db, by('tide-tables'));
@@ -202,6 +202,47 @@ describe('no-match reasons and decision order', () => {
       publisher_id: o!.publisher.id,
       access_state: 'ended',
       window: 'ended',
+    });
+    const r = await startFromOffer(deps, { offer: by('tide-tables'), actor, source: 'direct' });
+    expect(r.ok && r.value.kind).toBe('quote');
+  });
+
+  // FIX-05A H3: an entitlement whose money is pending, unknown or captured and whose access is not
+  // ended or revoked is held, even when it is locked (probes D and E: no second charge).
+  it.each([
+    ['pending', 'locked'],
+    ['unknown', 'locked'],
+    ['captured', 'locked'],
+  ])('money %s with access %s counts as owned', async (money_state, access_state) => {
+    const actor = await buyer();
+    const o = await getOffer(db, by('tide-tables'));
+    await giveEntitlement(db, {
+      buyer_id: actor.kind === 'buyer' ? actor.buyer_id : '',
+      article_id: o!.article.id,
+      publisher_id: o!.publisher.id,
+      access_state,
+      window: 'not_started',
+      money_state,
+    });
+    const r = await startFromOffer(deps, { offer: by('tide-tables'), actor, source: 'direct' });
+    expect(r.ok && r.value).toEqual({ kind: 'no_match', reason: 'already_owned' });
+  });
+
+  it.each([
+    ['denied', 'locked'],
+    ['refunded', 'revoked'],
+    ['captured', 'revoked'],
+    ['captured', 'ended'],
+  ])('money %s with access %s does not count as owned', async (money_state, access_state) => {
+    const actor = await buyer();
+    const o = await getOffer(db, by('tide-tables'));
+    await giveEntitlement(db, {
+      buyer_id: actor.kind === 'buyer' ? actor.buyer_id : '',
+      article_id: o!.article.id,
+      publisher_id: o!.publisher.id,
+      access_state,
+      window: null,
+      money_state,
     });
     const r = await startFromOffer(deps, { offer: by('tide-tables'), actor, source: 'direct' });
     expect(r.ok && r.value.kind).toBe('quote');
