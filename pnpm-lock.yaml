@@ -74,6 +74,9 @@ importers:
       '@umsbx/ledger':
         specifier: workspace:*
         version: link:../../domain/ledger
+      '@umsbx/library':
+        specifier: workspace:*
+        version: link:../../domain/library
       '@umsbx/model':
         specifier: workspace:*
         version: link:../../packages/model
@@ -89,6 +92,9 @@ importers:
       '@umsbx/receipts':
         specifier: workspace:*
         version: link:../../domain/receipts
+      '@umsbx/recovery':
+        specifier: workspace:*
+        version: link:../../domain/recovery
       '@umsbx/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
