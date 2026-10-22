@@ -295,6 +295,18 @@ describe('narrow test and crypto exemptions', () => {
     ])
       expect(await lint(f, dbImport), f).toEqual([]);
   });
+  it('only domain tests and helpers may import @umsbx/db/testing', async () => {
+    const t =
+      "import { resetDatabase } from '@umsbx/db/testing';\nexport const x = resetDatabase;\n";
+    for (const f of ['domain/ledger/src/a.state.test.ts', 'domain/ledger/src/world.ts'])
+      expect(await lint(f, t), f).toEqual([]);
+    for (const f of [
+      'domain/ledger/src/service.ts',
+      'packages/paypal/src/x.ts',
+      'apps/web/src/x.ts',
+    ])
+      expect((await lint(f, t)).length, f).toBeGreaterThan(0);
+  });
   it('domain production files still cannot import @umsbx/db or @umsbx/runtime', async () => {
     expect((await lint('domain/ledger/src/service.ts', dbImport)).length).toBeGreaterThan(0);
   });

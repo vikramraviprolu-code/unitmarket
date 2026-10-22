@@ -325,9 +325,12 @@ function entry(files, { extra = [], paths = [], ignores = [], allow = {} } = {})
         (allow.env && p.object === 'process')
       ),
   );
-  const patterns = BASE_PATTERNS.filter((p) => !(allow.network && p.message === MSG_NET)).concat(
-    extra,
-  );
+  // allow.dbTesting: test files and test helpers may import the db test entry (resetDatabase).
+  const patterns = BASE_PATTERNS.filter((p) => !(allow.network && p.message === MSG_NET))
+    .map((p) =>
+      allow.dbTesting && p === DEEP ? { ...DEEP, group: [...DEEP.group, '!@umsbx/db/testing'] } : p,
+    )
+    .concat(extra);
   const basePaths = BASE_PATHS.filter(
     (p) => !(allow.time && p.name.endsWith('crypto')) && !(allow.env && p.name.endsWith('process')),
   );
@@ -431,10 +434,10 @@ const packageEntries = [
         extra: [...prodExtra, pat(pkg(['testkit']), 'testkit is for tests only.')],
         ignores: [...TESTS.map((t) => `${dir}/${t}`), ...helpers],
       }),
-      entry(helpers, { extra: harnessExtra(false) }),
+      entry(helpers, { extra: harnessExtra(false), allow: { dbTesting: true } }),
       entry(
         TESTS.map((t) => `${dir}/${t}`),
-        { extra: harnessExtra(true) },
+        { extra: harnessExtra(true), allow: { dbTesting: true } },
       ),
     ];
   }),

@@ -267,17 +267,17 @@ describe('fixtures_check', () => {
     const failing = (files: Record<string, string>) => {
       const r = fx(indexed(files));
       expect(r.status).toBe(1);
-      expect(r.out).not.toContain('abcdefghijkl1234');
+      expect(r.out).not.toContain('not-a-real-value');
       return r.out;
     };
     const recPath = 'fixtures/paypal/sandbox-recording/a.json';
 
     it('a JSON string body holding an access_token fails', () => {
-      failing({ [recPath]: rec({ body: JSON.stringify({ access_token: 'abcdefghijkl1234' }) }) });
+      failing({ [recPath]: rec({ body: JSON.stringify({ access_token: 'not-a-real-value' }) }) });
     });
     it('a doubly encoded JSON string body fails', () => {
       const inner = JSON.stringify({
-        nested: JSON.stringify({ refresh_token: 'abcdefghijkl1234' }),
+        nested: JSON.stringify({ refresh_token: 'not-a-real-value' }),
       });
       failing({ [recPath]: rec({ body: inner }) });
     });
@@ -293,7 +293,7 @@ describe('fixtures_check', () => {
       'client_secret_value',
       'webhook_secret',
     ])('the key %j with a real-looking value fails', (key) => {
-      failing({ [recPath]: rec({ [key]: 'abcdefghijkl1234' }) });
+      failing({ [recPath]: rec({ [key]: 'not-a-real-value' }) });
     });
     it('the same keys pass when redacted, and token_type is not a secret', () => {
       const ok = indexed({
@@ -307,7 +307,7 @@ describe('fixtures_check', () => {
     });
     it('other text fixtures under fixtures/ are scanned', () => {
       for (const ext of ['txt', 'md', 'http', 'har', 'yaml']) {
-        const body = `Authorization: Bearer ${'abcdefghijkl1234'}\n`;
+        const body = `Authorization: Bearer ${'not-a-real-value'}\n`;
         failing({
           'fixtures/paypal/synthetic/a.json': good(),
           [`fixtures/paypal/sandbox-recording/raw.${ext}`]: body,
@@ -321,7 +321,7 @@ describe('fixtures_check', () => {
     it('fixture files kept under packages/*/src/**/fixtures are scanned too', () => {
       failing({
         'fixtures/paypal/synthetic/a.json': good(),
-        'packages/transport/src/fixtures/rec.json': rec({ access_token: 'abcdefghijkl1234' }),
+        'packages/transport/src/fixtures/rec.json': rec({ access_token: 'not-a-real-value' }),
       });
     });
   });

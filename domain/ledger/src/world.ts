@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports -- test-only helper (imported by *.test.ts only): opens a migrated PGlite database from @umsbx/db and the fake clock from @umsbx/runtime, as the lane 06 and 07 test harnesses do (TEMP-until-lane-16 testkit). */
 // Test-only world for the ledger state tests. Synthetic rows only. No resetDatabase: every test
 // takes a fresh order number n, so one database serves the whole file.
 import type { CoreDeps, Database, LedgerEntryInput } from '@umsbx/contracts';

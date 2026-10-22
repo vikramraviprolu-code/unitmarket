@@ -1,4 +1,3 @@
-// eslint-disable-next-line no-restricted-imports -- hashing and HMAC are deterministic (no randomness); S1 bars node:* in domain packages (change request in the lane 09 hand-off)
 import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ContentStore } from '@umsbx/contracts';

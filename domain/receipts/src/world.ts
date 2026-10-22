@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports -- test-only helper (imported by *.test.ts only): opens a migrated PGlite database from @umsbx/db and the fake clock from @umsbx/runtime, as the lane 06 and 07 test harnesses do (TEMP-until-lane-16 testkit). */
 // Test-only world for the receipt tests. Synthetic rows only; no real merchant or payer data.
 import { contentHash } from '@umsbx/approval';
 import type {
