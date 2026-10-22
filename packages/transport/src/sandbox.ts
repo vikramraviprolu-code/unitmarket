@@ -8,7 +8,7 @@ import type {
   Transport,
   TransportResult,
 } from '@umsbx/contracts';
-import { AMOUNT_BOUND, bodyAmountMinor } from './amount-binding';
+import { AMOUNT_BOUND, canonicalMoneyBody } from './amount-binding';
 import { isApprovalCapability } from './approval';
 import type { ApprovalCapability } from './approval';
 import { guard } from './guard';
@@ -278,11 +278,16 @@ export async function createApprovedSandboxTransport(
       if (r.operation === 'fetch_webhook_cert') delete headers['authorization'];
       const seen = { ...base, url, headers: redactHeaders(headers) };
 
-      // M4: the amount the gate caps is the amount the body asks for.
+      // M4: the amount the gate caps is the amount the body asks for. SEAL2 M2: and the bytes sent
+      // are the re-serialisation of exactly the value that was checked, never the caller's text.
+      let sendBody = r.body;
       if (AMOUNT_BOUND.has(r.operation)) {
-        const inBody = bodyAmountMinor(r.operation, r.body);
-        if (r.amount_minor === null || inBody === null || inBody !== r.amount_minor)
+        const checkedBody = canonicalMoneyBody(r.operation, r.body);
+        if (r.amount_minor === null || checkedBody === null || checkedBody.minor !== r.amount_minor)
           return finish(seen, refuse(), ex('amount_unbound'));
+        if (Buffer.byteLength(checkedBody.body) > MAX_REQUEST_BODY_BYTES)
+          return finish(seen, refuse(), ex('shape'));
+        sendBody = checkedBody.body;
       }
 
       let verdict;
@@ -310,7 +315,7 @@ export async function createApprovedSandboxTransport(
         method: r.method,
         url,
         headers,
-        body: r.body,
+        body: sendBody,
         timeout_ms: REQUEST_TIMEOUT_MS,
       };
       const started = clock.now().getTime();
