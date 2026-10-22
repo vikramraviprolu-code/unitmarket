@@ -15,7 +15,12 @@ describe('parseBrief', () => {
 
   it('maps currency words, view words and fractions with integer arithmetic', () => {
     const r = parseBrief('Need solar power basics, max 2.50 euros, read online, German');
-    expect(r).toMatchObject({ ceiling_minor: 250, currency: 'EUR', option: 'online_read', language: 'de' });
+    expect(r).toMatchObject({
+      ceiling_minor: 250,
+      currency: 'EUR',
+      option: 'online_read',
+      language: 'de',
+    });
     expect(r.terms).toEqual(['solar', 'power', 'basics']);
     expect(parseBrief('need tax guide, 4.5 pounds, view').currency).toBe('GBP');
     expect(parseBrief('need tax guide, view').option).toBe('online_read');
@@ -36,6 +41,8 @@ describe('parseBrief', () => {
   });
 
   it('strips control and zero-width characters', () => {
-    expect(parseBrief('need a\u0000b​c guide').need).not.toMatch(/[\u0000​]/);
+    const need = parseBrief('need a\u0000b\u200bc guide').need;
+    expect(need.includes('\u0000')).toBe(false);
+    expect(need.includes('\u200b')).toBe(false);
   });
 });
