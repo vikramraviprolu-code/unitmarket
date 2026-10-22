@@ -94,7 +94,10 @@ export function stripNonCode(src: string): string {
     const c = src[i] as string;
     const n = src[i + 1];
     if (c === '/' && n === '/') {
-      while (i < src.length && src[i] !== '\n') ((out += ' '), i++);
+      while (i < src.length && src[i] !== '\n') {
+        out += ' ';
+        i++;
+      }
     } else if (c === '/' && n === '*') {
       const end = src.indexOf('*/', i + 2);
       const stop = end < 0 ? src.length : end + 2;
@@ -104,7 +107,10 @@ export function stripNonCode(src: string): string {
       out += c;
       i++;
       while (i < src.length && src[i] !== c) {
-        if (src[i] === '\\') ((out += ' '), i++);
+        if (src[i] === '\\') {
+          out += ' ';
+          i++;
+        }
         out += src[i] === '\n' ? '\n' : ' ';
         i++;
       }
