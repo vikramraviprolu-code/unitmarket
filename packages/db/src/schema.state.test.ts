@@ -1,7 +1,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMigrations, migrate, openDatabase, resetDatabase, tablesInDependencyOrder } from './index';
 import type { Database } from './temp-contracts-f1';
 
@@ -79,8 +79,17 @@ async function entitlement(n: number, over: Record<string, unknown> = {}) {
   });
 }
 
-beforeEach(async () => {
+// One PGlite per file keeps the suite fast: every test starts from an emptied schema plus the
+// us-usd corridor (the one seed row the money tests need). Seed-row tests use their own database.
+beforeAll(async () => {
   db = await fresh();
+});
+beforeEach(async () => {
+  await resetDatabase(db);
+  await ins('corridors', {
+    id: 'us-usd', currency: 'USD', minor_units: 2, buyer_countries: ['US'], payee_countries: ['US'],
+    domestic_supported: true, min_charge_minor: null, enabled: true,
+  });
 });
 
 describe('migrations', () => {
@@ -123,6 +132,7 @@ describe('migrations', () => {
     }
   });
   it('seeds the safety switches, the us-usd corridor and the two access policies', async () => {
+    const db = await fresh();
     const sw = await db.query<{ name: string; on: boolean }>('SELECT name, "on" FROM safety_switches ORDER BY name');
     expect(sw.rows.map((r) => r.name)).toEqual([
       'ai_enabled', 'checkout_enabled', 'paypal_outbound', 'refunds_enabled', 'unlock_enabled', 'webhook_enabled',
@@ -487,9 +497,13 @@ describe('platform constraints', () => {
     await expect(ins('publisher_authorisations', { id: 'pau_2', offer_id: 'ofr_1', offer_version: '9', authorised_by: 'pub_1', at: T })).rejects.toThrow();
     await expect(db.query("UPDATE publisher_authorisations SET authorised_by = 'x'")).rejects.toThrow(/append-only/);
     await expect(db.query('DELETE FROM publisher_authorisations')).rejects.toThrow(/append-only/);
-    await expect(
-      ins('access_policies', { id: 'keep_retrieve', version: '1', option: 'keep_retrieve', window_ms: 1, start_rule: 'payment_verified_and_delivery_ready' }),
-    ).rejects.toThrow();
+    const pol = (over: Record<string, unknown> = {}) =>
+      ins('access_policies', { id: 'keep_retrieve', version: '1', option: 'keep_retrieve', window_ms: 1, start_rule: 'payment_verified_and_delivery_ready', ...over });
+    await pol();
+    await expect(pol()).rejects.toThrow();
+    await pol({ version: '2' });
+    await expect(pol({ version: '3', window_ms: 0 })).rejects.toThrow();
+    await expect(pol({ version: '4', start_rule: 'now' })).rejects.toThrow();
   });
   it('quotes reference an offer version and a corridor', async () => {
     await base();
@@ -507,7 +521,10 @@ describe('platform constraints', () => {
   it('rate bucket and safety switch use their natural key', async () => {
     await ins('rate_buckets', { bucket_key: 'ip:1', tokens: 5, refilled_at: T });
     await expect(ins('rate_buckets', { bucket_key: 'ip:1', tokens: 5, refilled_at: T })).rejects.toThrow();
-    await expect(ins('safety_switches', { name: 'paypal_outbound', on: false, changed_by: 'x', changed_at: T, reason: 'r' })).rejects.toThrow();
+    const sw = (name: string) => ins('safety_switches', { name, on: false, changed_by: 'x', changed_at: T, reason: 'r' });
+    await sw('paypal_outbound');
+    await expect(sw('paypal_outbound')).rejects.toThrow();
+    await expect(sw('made_up_switch')).rejects.toThrow();
   });
 });
 
