@@ -19,7 +19,10 @@ export function listMigrations(dir: string, prefix = ''): Migration[] {
   return readdirSync(dir)
     .filter((file) => /^\d{4}_.+\.sql$/.test(file))
     .sort()
-    .map((file) => ({ version: prefix + file.replace(/\.sql$/, ''), sql: readFileSync(join(dir, file), 'utf8') }));
+    .map((file) => ({
+      version: prefix + file.replace(/\.sql$/, ''),
+      sql: readFileSync(join(dir, file), 'utf8'),
+    }));
 }
 
 // Lower level: apply a directory of migrations. Versions are recorded as prefix + file name.
@@ -50,7 +53,11 @@ export async function applyMigrations(
 }
 
 // 'common' runs on PGlite and Postgres. 'supabase' (roles, grants, RLS) runs only on Supabase.
-export function migrate(db: Database, clock: Clock, set: MigrationSet = 'common'): Promise<string[]> {
+export function migrate(
+  db: Database,
+  clock: Clock,
+  set: MigrationSet = 'common',
+): Promise<string[]> {
   return applyMigrations(
     db,
     clock,

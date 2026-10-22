@@ -7,9 +7,32 @@ export interface Clock {
   now(): Date;
 }
 export type IdPrefix =
-  | 'ord' | 'unt' | 'pvo' | 'opr' | 'ent' | 'apr' | 'quo' | 'lnk' | 'aev' | 'led' | 'rct' | 'cas'
-  | 'cac' | 'rfr' | 'brf' | 'prp' | 'pub' | 'art' | 'ofr' | 'buy' | 'ses' | 'alr' | 'pcl' | 'whk'
-  | 'aud' | 'oap';
+  | 'ord'
+  | 'unt'
+  | 'pvo'
+  | 'opr'
+  | 'ent'
+  | 'apr'
+  | 'quo'
+  | 'lnk'
+  | 'aev'
+  | 'led'
+  | 'rct'
+  | 'cas'
+  | 'cac'
+  | 'rfr'
+  | 'brf'
+  | 'prp'
+  | 'pub'
+  | 'art'
+  | 'ofr'
+  | 'buy'
+  | 'ses'
+  | 'alr'
+  | 'pcl'
+  | 'whk'
+  | 'aud'
+  | 'oap';
 export interface Ids {
   next(prefix: IdPrefix): Id;
   nonce(): string;

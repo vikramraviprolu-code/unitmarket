@@ -4,9 +4,26 @@ import { createAuditSink, createLogger, redact } from './index';
 import type { SqlExecutor } from './temp-contracts-f1';
 
 const KEYS = [
-  'authorization', 'access_token', 'refresh_token', 'client_secret', 'client_id', 'secret',
-  'password', 'passcode', 'cookie', 'set-cookie', 'payer', 'email_address', 'email', 'name',
-  'given_name', 'surname', 'address', 'phone', 'payer_id', 'paypal-transmission-sig',
+  'authorization',
+  'access_token',
+  'refresh_token',
+  'client_secret',
+  'client_id',
+  'secret',
+  'password',
+  'passcode',
+  'cookie',
+  'set-cookie',
+  'payer',
+  'email_address',
+  'email',
+  'name',
+  'given_name',
+  'surname',
+  'address',
+  'phone',
+  'payer_id',
+  'paypal-transmission-sig',
 ];
 const TOKEN = 'A21AAKtestcanarytokenvalue0123456789abcdefXYZ';
 const BEARER = 'Bearer abcDEF123.ghi-jkl_mno~pqr+stu/vwx=';
@@ -19,7 +36,9 @@ function canary(): Record<string, unknown> {
     ...o,
     order_ref: 'ord_keepme',
     amount_minor: 1250,
-    nested: { deep: { ...o, upper: 'x', Authorization: 'CANARY-upper-auth', PAYER: { n: 'CANARY-obj' } } },
+    nested: {
+      deep: { ...o, upper: 'x', Authorization: 'CANARY-upper-auth', PAYER: { n: 'CANARY-obj' } },
+    },
     list: [{ email: 'CANARY-list-email' }, 'plain', 42, null],
     free: `calling with ${BEARER} and ${TOKEN} by ${EMAIL} done`,
   };
@@ -94,16 +113,27 @@ describe('logger', () => {
   it('emits one JSON line per event with level, msg, base, child and event fields', () => {
     const lines: string[] = [];
     const root = createLogger((l) => lines.push(l), { env_label: 'sandbox' });
-    root.child({ req_id: 'r9' }).log({ msg: 'hello', level: 'error', fields: { op: 'create_order', duration_ms: 12 } });
+    root
+      .child({ req_id: 'r9' })
+      .log({ msg: 'hello', level: 'error', fields: { op: 'create_order', duration_ms: 12 } });
     const line = lines[0]!;
     expect(line.includes('\n')).toBe(false);
     expect(JSON.parse(line)).toEqual({
-      level: 'error', msg: 'hello', env_label: 'sandbox', req_id: 'r9', op: 'create_order', duration_ms: 12,
+      level: 'error',
+      msg: 'hello',
+      env_label: 'sandbox',
+      req_id: 'r9',
+      op: 'create_order',
+      duration_ms: 12,
     });
   });
   it('event fields cannot overwrite level or msg', () => {
     const lines: string[] = [];
-    createLogger((l) => lines.push(l), {}).log({ msg: 'real', level: 'info', fields: { level: 'fake', msg: 'fake' } });
+    createLogger((l) => lines.push(l), {}).log({
+      msg: 'real',
+      level: 'info',
+      fields: { level: 'fake', msg: 'fake' },
+    });
     const parsed = JSON.parse(lines[0]!);
     expect(parsed.level).toBe('info');
     expect(parsed.msg).toBe('real');
@@ -135,7 +165,10 @@ describe('audit sink', () => {
     const { tx, calls } = fakeTx();
     await createAuditSink(ids as never, clock).record(tx, {
       actor: { kind: 'operator', operator_id: 'op_1', mfa: true },
-      action: 'kill_switch.set', target: 'sw_1', reason: 'drill', detail: { to: false },
+      action: 'kill_switch.set',
+      target: 'sw_1',
+      reason: 'drill',
+      detail: { to: false },
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.sql).toMatch(/^\s*INSERT INTO audit_log/i);
@@ -149,7 +182,10 @@ describe('audit sink', () => {
   it('redacts the detail before it is stored', async () => {
     const { tx, calls } = fakeTx();
     await createAuditSink(ids as never, clock).record(tx, {
-      actor: { kind: 'system' }, action: 'x', target: null, reason: null,
+      actor: { kind: 'system' },
+      action: 'x',
+      target: null,
+      reason: null,
       detail: { access_token: TOKEN, note: EMAIL },
     });
     const flat = JSON.stringify(calls[0]!.params);

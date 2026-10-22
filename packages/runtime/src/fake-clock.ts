@@ -9,7 +9,9 @@ function parse(iso: IsoUtc): number {
 }
 
 // A clock that moves only when the test tells it to. now() returns a fresh Date each call.
-export function fakeClock(startIso: IsoUtc): Clock & { advance(ms: number): void; set(iso: IsoUtc): void } {
+export function fakeClock(
+  startIso: IsoUtc,
+): Clock & { advance(ms: number): void; set(iso: IsoUtc): void } {
   let t = parse(startIso);
   return {
     now: () => new Date(t),

@@ -1,7 +1,11 @@
 import { redact, redactString } from './redact';
 import type { Actor, AuditEntry, AuditSink, Clock, Ids } from './temp-contracts-f1';
 
-function actorColumns(actor: Actor): { kind: string; id: string | null; extra: Record<string, boolean> } {
+function actorColumns(actor: Actor): {
+  kind: string;
+  id: string | null;
+  extra: Record<string, boolean>;
+} {
   switch (actor.kind) {
     case 'buyer':
       return { kind: 'buyer', id: actor.buyer_id, extra: {} };

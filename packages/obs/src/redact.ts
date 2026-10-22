@@ -6,9 +6,26 @@ import { createHash } from 'node:crypto';
 export const REDACTED = '[redacted]';
 
 const SENSITIVE_KEYS: ReadonlySet<string> = new Set([
-  'authorization', 'access_token', 'refresh_token', 'client_secret', 'client_id', 'secret',
-  'password', 'passcode', 'cookie', 'set-cookie', 'payer', 'email_address', 'email', 'name',
-  'given_name', 'surname', 'address', 'phone', 'payer_id', 'paypal-transmission-sig',
+  'authorization',
+  'access_token',
+  'refresh_token',
+  'client_secret',
+  'client_id',
+  'secret',
+  'password',
+  'passcode',
+  'cookie',
+  'set-cookie',
+  'payer',
+  'email_address',
+  'email',
+  'name',
+  'given_name',
+  'surname',
+  'address',
+  'phone',
+  'payer_id',
+  'paypal-transmission-sig',
 ]);
 
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi;
