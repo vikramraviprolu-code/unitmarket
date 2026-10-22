@@ -99,7 +99,18 @@ importers:
 
   domain/fit: {}
 
-  domain/ledger: {}
+  domain/ledger:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/library: {}
 
@@ -121,7 +132,24 @@ importers:
 
   domain/payments: {}
 
-  domain/receipts: {}
+  domain/receipts:
+    dependencies:
+      '@umsbx/approval':
+        specifier: workspace:*
+        version: link:../approval
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/recovery: {}
 
