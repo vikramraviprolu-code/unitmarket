@@ -5,12 +5,16 @@
 -- every timestamp from the Clock port. Runs unchanged on PGlite and stock Postgres 15+.
 
 -- Domains mirror the contract primitives (Id, MinorUnits, CurrencyCode, Sha256Hex).
+-- ums_id and the contract IdSchema (packages/contracts/src/primitives.ts) refuse the same set:
+-- 1..200 chars; no leading or trailing whitespace (ASCII and Unicode); no C0 or C1 control
+-- characters; no zero-width characters (U+200B-U+200D, U+2060, U+FEFF); no bidirectional
+-- controls (U+202A-U+202E, U+2066-U+2069).
 CREATE DOMAIN ums_id AS text
   CHECK (
     length(VALUE) BETWEEN 1 AND 200
-    AND VALUE ~ '^\S(.*\S)?$'
-    AND VALUE !~ '[[:cntrl:]]'
-    AND VALUE !~ '[​-‍⁠﻿]'
+    AND VALUE !~ E'^[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]'
+    AND VALUE !~ E'[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]$'
+    AND VALUE !~ E'[\\u0001-\\u001f\\u007f-\\u009f\\u200b-\\u200d\\u2060\\u202a-\\u202e\\u2066-\\u2069\\ufeff]'
   );
 CREATE DOMAIN ums_minor AS integer CHECK (VALUE >= 0);
 CREATE DOMAIN ums_currency AS text CHECK (VALUE ~ '^[A-Z]{3}$');
@@ -24,11 +28,16 @@ END;
 $$;
 
 -- TRUNCATE does not fire row-level triggers, so every guarded table also gets a statement-level
--- BEFORE TRUNCATE trigger that refuses unless the session setting ums.allow_reset is 'on'.
--- resetDatabase (packages/db/src/reset.ts) is the only code that sets it, per transaction.
+-- BEFORE TRUNCATE trigger. It refuses unless the session setting ums.allow_reset is 'on' AND
+-- ums.db_target is 'memory' or 'test'. openDatabase sets ums.db_target = 'memory' only for the
+-- in-memory target, and resetDatabase (packages/db/src/testing.ts, tests only) sets 'test' only
+-- after its own checks, so a plain ums.allow_reset setting alone never opens the guard. This is a
+-- speed bump against accidents, not a defence against a session that can run arbitrary SQL: the
+-- app roles hold no TRUNCATE privilege (supabase/0001_roles_rls.sql).
 CREATE FUNCTION ums_deny_truncate() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF coalesce(current_setting('ums.allow_reset', true), '') <> 'on' THEN
+  IF coalesce(current_setting('ums.allow_reset', true), '') <> 'on'
+     OR coalesce(current_setting('ums.db_target', true), '') NOT IN ('memory', 'test') THEN
     RAISE EXCEPTION 'TRUNCATE on % is not allowed: the table is append-only', TG_TABLE_NAME;
   END IF;
   RETURN NULL;

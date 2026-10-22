@@ -30,6 +30,17 @@ describe('IdSchema', () => {
     rejects(IdSchema, 'ord﻿1');
     rejects(IdSchema, 5);
   });
+  it('L2: id rejects bidi controls, word joiner, C1 controls and unicode edge whitespace', () => {
+    for (const cp of [
+      0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069, 0x2060, 0x0085,
+      0x009f, 0x200b, 0xfeff,
+    ]) {
+      rejects(IdSchema, `a${String.fromCodePoint(cp)}b`);
+    }
+    rejects(IdSchema, '\u00a0x');
+    rejects(IdSchema, 'x\u3000');
+    accepts(IdSchema, 'é ü');
+  });
   it('allows inner whitespace', () => {
     accepts(IdSchema, 'a b');
   });

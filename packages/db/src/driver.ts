@@ -4,4 +4,5 @@ import type { Database } from '@umsbx/contracts';
 
 export type DbTarget = { kind: 'pglite-memory' } | { kind: 'pglite-disk'; dir: string };
 
-export type SqlDriver = Database & { close(): Promise<void> };
+// `target` says where the driver runs; resetDatabase (tests only) reads it.
+export type SqlDriver = Database & { close(): Promise<void>; readonly target: DbTarget['kind'] };

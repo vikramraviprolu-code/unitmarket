@@ -36,6 +36,11 @@ export function createSandboxTransport(): Transport; // MVP-A stub: every send r
 ```
 Dry-run selection: by `scenario` (request value, else `default_scenario`), `operation`, and step order (nth call of that operation within the scenario). No match: `{ kind: 'blocked', by: 'dry_run_miss' }`. Bodies: POST bodies are parsed and kept for assertions (`dryrun.calls()` test helper). The gate is consulted on every call even in dry-run, so gate behaviour is testable offline; `connect_off` from the gate is ignored by the dry-run transport only.
 
+Dry-run additions (wave 1 review A): `DryRunCall.url` is the guard-normalised `url.href` (null when the guard refused). A fixture may pin `meta.expected_id` (a whole path segment) or `meta.expected_path` (exact path); a request that does not match a pinned fixture is `dry_run_miss` and does not consume the step. Two fixtures for one (scenario, operation, step) make `createDryRunTransport` throw.
+
+### Requirement for the sandbox transport (lane B-L1)
+The guard validates the parsed URL, so the real client must send to the `url.href` the guard returns and never to `r.path`. It must also drop any `Host` and `X-HTTP-Method-Override` request header and set its own `Host` from that URL. A request spelled with an inherited name (`__proto__`, `constructor`) is refused by the guard before any lookup.
+
 ## Acceptance tests
 - `corepack pnpm vitest run --project unit packages/transport`: `guard refuses live host, http, port 8443, redirect target, unknown path, lowercase order id, query string, wrong method` (A-04); `cert host rule allows a sandbox cert path and refuses others` (P1); `dry-run answers by scenario and step`; `unmatched request is dry_run_miss`; `gate verdicts kill_switch, no_approval, budget are returned as blocked`; `sandbox transport stub always blocked connect_off`.
 - `corepack pnpm vitest run --project contract packages/transport`: `every fixture file validates and is listed in index.json`; `every fixture has a source label`; `no fixture contains an email, a bearer token, a client id, or a live hostname` (MAINT-5, A-23 first half).

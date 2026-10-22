@@ -23,7 +23,21 @@ const SOURCE_DIR = {
   'sandbox-recordings': 'sandbox-recording',
 } as const;
 
+// Only a sandbox recording carries a recording time; the other two sets never do (L3).
+function assertRecordedAt(folder: keyof typeof SOURCE_DIR, recordedAt: string | null, rel: string) {
+  if (folder === 'sandbox-recordings') expect(recordedAt, rel).not.toBeNull();
+  else expect(recordedAt, rel).toBeNull();
+}
+
 describe('fixture contract (MAINT-5, A-23 first half)', () => {
+  it('L3: the recorded_at rule follows the folder, so a real recording does not trip it', () => {
+    assertRecordedAt('sandbox-recordings', '2026-10-21T10:00:00Z', 'rec.json');
+    assertRecordedAt('synthetic', null, 'syn.json');
+    assertRecordedAt('docs-examples', null, 'doc.json');
+    expect(() => assertRecordedAt('sandbox-recordings', null, 'rec.json')).toThrow();
+    expect(() => assertRecordedAt('synthetic', '2026-10-21T10:00:00Z', 'syn.json')).toThrow();
+  });
+
   it('every fixture file validates and is listed in index.json', async () => {
     const fixtures = await loadFixtures(ROOT);
     const files = jsonFiles();
@@ -56,8 +70,7 @@ describe('fixture contract (MAINT-5, A-23 first half)', () => {
       expect(f, rel).toBeDefined();
       expect(f?.meta.source, rel).toBe(SOURCE_DIR[folder]);
       expect(f?.meta.origin.length, rel).toBeGreaterThan(10);
-      // only a sandbox recording may carry a recording time; the first two sets never do
-      expect(f?.meta.recorded_at, rel).toBeNull();
+      assertRecordedAt(folder, f?.meta.recorded_at ?? null, rel);
     }
   });
 

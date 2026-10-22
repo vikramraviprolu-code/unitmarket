@@ -30,6 +30,37 @@ export const RefundStatusSchema = z.enum(['CANCELLED', 'FAILED', 'PENDING', 'COM
 export type RefundStatus = z.infer<typeof RefundStatusSchema>;
 
 const debugId = z.string().nullable();
+
+// The buyer's browser is sent to this address, so only the sandbox approval host is accepted (P15).
+// The host is a different one from the API base URL, which lives in packages/transport/src/endpoints.ts.
+const APPROVE_URL_PATTERN = /^https:\/\/www\.sandbox\.paypal\.com\/[!-~]*$/;
+const ApproveUrlSchema = z.string().regex(APPROVE_URL_PATTERN);
+
+// Return and cancel addresses: https, or http://localhost for offline runs; no userinfo, no fragment.
+// Whether they sit under the configured public_origin is checked with isUrlUnderOrigin.
+const PayerReturnUrlSchema = z.url().refine((value) => {
+  try {
+    const parsed = new URL(value);
+    if (parsed.username !== '' || parsed.password !== '' || parsed.hash !== '') return false;
+    return (
+      parsed.protocol === 'https:' ||
+      (parsed.protocol === 'http:' && parsed.hostname === 'localhost')
+    );
+  } catch {
+    return false;
+  }
+}, 'must be https (or http://localhost) with no userinfo or fragment');
+
+/** True when `url` has exactly the origin of `origin` (scheme, host and port) and no userinfo. */
+export function isUrlUnderOrigin(url: string, origin: string): boolean {
+  try {
+    const target = new URL(url);
+    const base = new URL(origin);
+    return target.origin === base.origin && target.username === '' && target.password === '';
+  } catch {
+    return false;
+  }
+}
 export const PayPalFailSchema = z.discriminatedUnion('kind', [
   z
     .object({
@@ -45,7 +76,7 @@ export const PayPalFailSchema = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('payer_action'),
-      redirect_url: z.string().nullable(),
+      redirect_url: ApproveUrlSchema.nullable(),
       debug_id: debugId,
     })
     .strict(),
@@ -71,8 +102,8 @@ export const CreateOrderReqSchema = z
     order_ref: IdSchema,
     /** 1..10 units, one currency */
     units: z.array(CreateOrderUnitSchema).min(1).max(10),
-    return_url: z.url(),
-    cancel_url: z.url(),
+    return_url: PayerReturnUrlSchema,
+    cancel_url: PayerReturnUrlSchema,
     scenario: z.string().nullable(),
   })
   .strict()
@@ -101,7 +132,7 @@ export const CreateOrderResSchema = z.union([
       kind: z.literal('created'),
       provider_order_id: ProviderOrderIdSchema,
       status: ProviderOrderStatusSchema,
-      approve_url: z.string(),
+      approve_url: ApproveUrlSchema,
       debug_id: debugId,
     })
     .strict(),

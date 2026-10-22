@@ -4,5 +4,4 @@ export type { DbTarget, SqlDriver } from './driver';
 export { openDatabase } from './pglite';
 export { migrate, applyMigrations, listMigrations, MIGRATIONS_ROOT } from './migrate';
 export type { MigrationSet } from './migrate';
-export { resetDatabase } from './reset';
 export { tablesInDependencyOrder } from './export-sql';

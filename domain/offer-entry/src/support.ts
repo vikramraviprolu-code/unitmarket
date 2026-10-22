@@ -121,7 +121,16 @@ export async function giveEntitlement(
   const h = 'a'.repeat(63) + String(k % 10);
   await db.query(
     'INSERT INTO approvals (id, buyer_id, snapshot, content_hash, nonce, expires_at, environment, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)',
-    [`apr_t${k}`, i.buyer_id, '{}', h, `nonce${k}`, T0, 'dryrun', T0],
+    [
+      `apr_t${k}`,
+      i.buyer_id,
+      '{}',
+      h,
+      `nonce${k}`,
+      new Date(Date.parse(T0) + 900_000).toISOString(), // created_at + 15 minutes (FIX-W1A M7)
+      'dryrun',
+      T0,
+    ],
   );
   await db.query(
     'INSERT INTO orders (id, approval_id, buyer_id, content_hash, order_ref, expected, status, mismatch, corridor_id, currency, total_minor, environment, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$10,$11,$12,$12)',
@@ -141,8 +150,17 @@ export async function giveEntitlement(
     ],
   );
   await db.query(
-    'INSERT INTO order_units (id, order_id, publisher_id, reference_id, payee_merchant_id, amount_minor, platform_fee_minor, status, refunded_minor, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,40,0,$6,0,$7,$7)',
-    [`unt_t${k}`, `ord_t${k}`, i.publisher_id, `u${k}`, 'SBXMERCHANT', 'captured_verified', T0],
+    'INSERT INTO order_units (id, order_id, publisher_id, reference_id, payee_merchant_id, amount_minor, platform_fee_minor, status, refunded_minor, capture_id, captured_verified_at, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,40,0,$6,0,$8,$7,$7,$7)',
+    [
+      `unt_t${k}`,
+      `ord_t${k}`,
+      i.publisher_id,
+      `u${k}`,
+      'SBXMERCHANT',
+      'captured_verified',
+      T0,
+      `CAPT${k}`, // a captured unit carries its capture id (FIX-W1A M1)
+    ],
   );
   const available = i.access_state === 'available' || i.access_state === 'ended';
   await db.query(

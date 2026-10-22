@@ -98,11 +98,26 @@ CREATE TABLE safety_switches (
   updated_at timestamptz NOT NULL
 );
 
+-- A switch row is never deleted: a missing row would read as an absent decision. The reader
+-- treats a missing row as OFF (see docs/READINESS.md, lane 02), and this trigger keeps rows in place.
+CREATE FUNCTION ums_deny_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'DELETE on % is not allowed: rows are switched off, not removed', TG_TABLE_NAME;
+END;
+$$;
+CREATE TRIGGER safety_switches_no_delete BEFORE DELETE ON safety_switches
+  FOR EACH ROW EXECUTE FUNCTION ums_deny_delete();
+CREATE TRIGGER safety_switches_no_truncate BEFORE TRUNCATE ON safety_switches
+  FOR EACH STATEMENT EXECUTE FUNCTION ums_deny_truncate();
+
 CREATE TABLE outbound_approvals (
   id ums_id PRIMARY KEY,
   approval_ref text NOT NULL UNIQUE,
   scope text NOT NULL,
-  operations text[] NOT NULL,
+  operations text[] NOT NULL CHECK (operations <@ ARRAY[
+    'oauth_token', 'create_order', 'get_order', 'capture_order', 'get_capture',
+    'refund_capture', 'get_refund', 'verify_webhook_postback', 'fetch_webhook_cert'
+  ]::text[]),
   max_amount_minor ums_minor NOT NULL,
   max_calls_per_day integer NOT NULL CHECK (max_calls_per_day >= 0),
   valid_until timestamptz NOT NULL,

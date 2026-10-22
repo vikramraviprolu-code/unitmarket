@@ -152,4 +152,28 @@ describe('guard', () => {
     refused(req('get_order', `https://${CERT_HOST}/v2/checkout/orders/ABC123`));
     refused(req('get_order', `https://${CERT_HOST}/v1/notifications/certs/CERT-1`));
   });
+
+  // Review A (L1)
+  it('L1: inherited property names as an operation are refused, not thrown on', () => {
+    for (const op of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf']) {
+      // method left undefined too: undefined === PATHS[op].method for an inherited name
+      const r = {
+        ...req('get_order', '/v2/checkout/orders/ABC123'),
+        operation: op,
+        method: undefined,
+      };
+      expect(() => guard(r as never, 'dryrun'), op).not.toThrow();
+      refused(r as never);
+      refused(r as never, 'sandbox');
+    }
+  });
+  it('L1: a certificate file name made only of dots is refused', () => {
+    const cert = (u: string) => req('fetch_webhook_cert', u, { method: 'GET', body: null });
+    for (const name of ['...', '..', '.', '....', '.hidden', '-x', '_x']) {
+      refused(cert(`https://${CERT_HOST}/v1/notifications/certs/${name}`));
+    }
+    expect(guard(cert(`https://${CERT_HOST}/v1/notifications/certs/CERT-1.pem`), 'dryrun').ok).toBe(
+      true,
+    );
+  });
 });

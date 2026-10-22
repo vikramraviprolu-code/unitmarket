@@ -129,6 +129,20 @@ export const ApprovalSchema = z
         path: ['expires_at'],
       });
     }
+    if (a.buyer_id !== a.snapshot.reader.buyer_id) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'buyer_id must equal snapshot.reader.buyer_id',
+        path: ['buyer_id'],
+      });
+    }
+    if (a.used_at !== null && Date.parse(a.used_at) > Date.parse(a.expires_at)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'used_at must not be later than expires_at',
+        path: ['used_at'],
+      });
+    }
   });
 export type Approval = z.infer<typeof ApprovalSchema>;
 
@@ -149,9 +163,30 @@ export const ExpectedTransactionSchema = z
     content_hash: Sha256HexSchema,
     currency: CurrencyCodeSchema,
     total_minor: MinorUnitsSchema,
-    units: z.array(ExpectedUnitSchema),
+    units: z.array(ExpectedUnitSchema).min(1),
     created_at: IsoUtcSchema,
     environment: EnvironmentLabelSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((e, ctx) => {
+    const refs = new Set<string>();
+    e.units.forEach((unit, index) => {
+      if (refs.has(unit.reference_id)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'duplicate reference_id',
+          path: ['units', index, 'reference_id'],
+        });
+      }
+      refs.add(unit.reference_id);
+    });
+    const sum = e.units.reduce((total, unit) => total + unit.amount_minor, 0);
+    if (sum !== e.total_minor) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'total_minor must equal the sum of unit amounts',
+        path: ['total_minor'],
+      });
+    }
+  });
 export type ExpectedTransaction = z.infer<typeof ExpectedTransactionSchema>;

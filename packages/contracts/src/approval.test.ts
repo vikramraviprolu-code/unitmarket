@@ -137,6 +137,20 @@ describe('Approval', () => {
       false,
     );
   });
+  it('M7: refuses an approval whose buyer_id differs from the snapshot reader', () => {
+    expect(ApprovalSchema.safeParse({ ...base, buyer_id: 'buy_2' }).success).toBe(false);
+    const otherReader = snapshot();
+    otherReader.reader.buyer_id = 'buy_9';
+    expect(ApprovalSchema.safeParse({ ...base, snapshot: otherReader }).success).toBe(false);
+  });
+  it('M7: used_at may not be later than expires_at', () => {
+    expect(ApprovalSchema.safeParse({ ...base, used_at: '2026-10-21T10:15:00Z' }).success).toBe(
+      true,
+    );
+    expect(ApprovalSchema.safeParse({ ...base, used_at: '2026-10-21T10:15:01Z' }).success).toBe(
+      false,
+    );
+  });
   it('refuses live environment, short nonce, extras', () => {
     expect(ApprovalSchema.safeParse({ ...base, environment: 'live' }).success).toBe(false);
     expect(ApprovalSchema.safeParse({ ...base, nonce: 'abc' }).success).toBe(false);
@@ -167,5 +181,31 @@ describe('ExpectedTransaction', () => {
     expect(
       ExpectedTransactionSchema.safeParse({ ...e, units: [{ ...e.units[0], extra: 1 }] }).success,
     ).toBe(false);
+  });
+  const expected = () => ({
+    order_ref: 'ord_1',
+    buyer_id: 'buy_1',
+    content_hash: 'b'.repeat(64),
+    currency: 'USD',
+    total_minor: 600,
+    units: [
+      { reference_id: 'unt_1', publisher_id: 'pub_1', payee_merchant_id: 'M1', amount_minor: 500 },
+      { reference_id: 'unt_2', publisher_id: 'pub_2', payee_merchant_id: 'M2', amount_minor: 100 },
+    ],
+    created_at: '2026-10-21T10:00:00Z',
+    environment: 'sandbox',
+  });
+  it('M7: refuses empty units, repeated reference_ids and a total that differs from the unit sum', () => {
+    expect(ExpectedTransactionSchema.safeParse(expected()).success).toBe(true);
+    expect(ExpectedTransactionSchema.safeParse({ ...expected(), units: [] }).success).toBe(false);
+    const dup = expected();
+    dup.units[1]!.reference_id = 'unt_1';
+    expect(ExpectedTransactionSchema.safeParse(dup).success).toBe(false);
+    expect(ExpectedTransactionSchema.safeParse({ ...expected(), total_minor: 601 }).success).toBe(
+      false,
+    );
+    expect(ExpectedTransactionSchema.safeParse({ ...expected(), total_minor: 0 }).success).toBe(
+      false,
+    );
   });
 });

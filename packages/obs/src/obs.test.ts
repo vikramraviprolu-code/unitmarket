@@ -93,6 +93,69 @@ describe('redact', () => {
   });
 });
 
+describe('redact gaps (M5)', () => {
+  const B64 = 'Y2xpZW50OnNlY3JldFZBTFVF';
+  it('M5: Basic credentials in strings are redacted, plain words after "basic" are not', () => {
+    expect(redact(`Authorization: Basic ${B64}==`)).not.toContain('Y2xpZW50');
+    expect(redact(`header Basic ${B64}== end`)).toBe('header [redacted] end');
+    expect(redact('authorization=Basic abcdefgh')).not.toContain('abcdefgh');
+    expect(redact('a basic information page')).toBe('a basic information page');
+    expect(redact('Basic')).toBe('Basic');
+  });
+  it('M5: key names are normalised (case, dash, underscore) and matched by substring', () => {
+    const input: Record<string, unknown> = {
+      clientSecret: 'CANARY1',
+      PAYPAL_CLIENT_SECRET: 'CANARY2',
+      approval_secret: 'CANARY3',
+      token: 'CANARY4',
+      id_token: 'CANARY5',
+      'PayPal-Auth-Assertion': 'CANARY6',
+      full_name: 'CANARY7',
+      phone_number: 'CANARY8',
+      accessToken: 'CANARY9',
+      'X-Api-Token': 'CANARY10',
+      LINK_SECRET: 'CANARY11',
+      db_password: 'CANARY12',
+      address_line_1: 'CANARY13',
+      postal_code: 'CANARY14',
+      shipping: { x: 'CANARY15' },
+      Set_Cookie: 'CANARY16',
+      order_ref: 'ord_keepme',
+      amount_minor: 5,
+      display_name: 'Shown',
+    };
+    const out = redact(input) as Record<string, unknown>;
+    expect(JSON.stringify(out)).not.toContain('CANARY');
+    expect(out.order_ref).toBe('ord_keepme');
+    expect(out.amount_minor).toBe(5);
+    expect(out.display_name).toBe('Shown');
+  });
+  it('M5: JSON-encoded strings are parsed and redacted by key, at any depth', () => {
+    const body = JSON.stringify({
+      order_ref: 'ord_1',
+      payer: { name: { given_name: 'JaneCANARY', surname: 'DoeCANARY' }, email_address: 'a@b.co' },
+      purchase_units: [{ shipping: { address: { address_line_1: '1 MainCANARY St' } } }],
+      note: JSON.stringify({ client_secret: 'INNERCANARY', keep: 'yes' }),
+    });
+    const out = redact({ request: body, list: [body] }) as { request: string; list: string[] };
+    for (const text of [out.request, out.list[0]!]) {
+      expect(text).not.toContain('CANARY');
+      expect(text).not.toContain('a@b.co');
+      expect(JSON.parse(text).order_ref).toBe('ord_1');
+    }
+    expect(redact(body)).not.toContain('CANARY');
+    expect(JSON.parse(out.request).note).toContain('yes');
+  });
+  it('M5: invalid JSON, big strings and non-object JSON are left to the pattern pass', () => {
+    expect(redact('{not json')).toBe('{not json');
+    expect(redact('42')).toBe('42');
+    expect(redact('"just a string"')).toBe('"just a string"');
+    expect(redact('client_secret=SECRETCANARY&grant_type=client_credentials')).not.toContain(
+      'SECRETCANARY',
+    );
+  });
+});
+
 describe('logger', () => {
   it('logger output for a seeded token and email contains neither', () => {
     const lines: string[] = [];

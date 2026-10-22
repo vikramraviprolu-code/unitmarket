@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createDryRunTransport } from './dryrun';
 import type { FixtureFile } from './fixture-schema';
 import type { OutboundGate, TransportResult } from '@umsbx/contracts';
-import { fixedClock, memoryLogger, openGate, req } from './test-support';
+import { SANDBOX_HOST, fixedClock, memoryLogger, openGate, req } from './test-support';
 
 const fx = (
   scenario: string,
@@ -223,5 +223,83 @@ describe('dry-run transport', () => {
     expect(text).not.toContain('secret-value');
     expect(text).not.toContain('body-marker');
     expect(log.events[0]?.fields).toMatchObject({ operation: 'create_order', scenario: 'a' });
+  });
+
+  // Review A (M6, L5)
+  it('M6: calls() records the guard-normalised URL, null when the guard refused', async () => {
+    const { t } = make();
+    await t.send(get());
+    await t.send(req('get_order', '/v2/checkout/orders/ABC123?x=1'));
+    const calls = t.calls();
+    expect(calls[0]?.url).toBe(`https://${SANDBOX_HOST}/v2/checkout/orders/ABC123`);
+    expect(calls[1]?.url).toBeNull();
+    expect(calls[1]?.outcome).toBe('blocked:egress');
+  });
+
+  describe('pinned fixtures', () => {
+    const pinned = (pin: { expected_id?: string; expected_path?: string }): FixtureFile[] => [
+      {
+        ...fx('p', 'get_order', 1, ok('P1')),
+        meta: { ...fx('p', 'get_order', 1, ok('P1')).meta, ...pin },
+      },
+      fx('p', 'get_order', 2, ok('P2')),
+    ];
+    const makePinned = (pin: { expected_id?: string; expected_path?: string }) =>
+      createDryRunTransport({
+        fixtures: pinned(pin),
+        gate: openGate(),
+        clock: fixedClock(),
+        default_scenario: 'p',
+        log: memoryLogger(),
+      });
+
+    it('M6: expected_id must be a whole path segment of the request, else dry_run_miss', async () => {
+      const t = makePinned({ expected_id: 'ORDER9' });
+      expect(await t.send(req('get_order', '/v2/checkout/orders/WRONG1'))).toEqual({
+        kind: 'blocked',
+        by: 'dry_run_miss',
+      });
+      expect(await t.send(req('get_order', '/v2/checkout/orders/ORDER99'))).toEqual({
+        kind: 'blocked',
+        by: 'dry_run_miss',
+      });
+      // a refused pin does not consume the step, and the wrong ids stay visible in calls()
+      expect(bodyOf(await t.send(req('get_order', '/v2/checkout/orders/ORDER9')))).toEqual({
+        id: 'P1',
+      });
+      expect(t.calls().map((c) => [c.url?.split('/').pop(), c.outcome])).toEqual([
+        ['WRONG1', 'blocked:dry_run_miss'],
+        ['ORDER99', 'blocked:dry_run_miss'],
+        ['ORDER9', 'response'],
+      ]);
+    });
+    it('M6: expected_path must equal the request path exactly', async () => {
+      const t = makePinned({ expected_path: '/v2/checkout/orders/ORDER9' });
+      expect(await t.send(req('get_order', '/v2/checkout/orders/ORDER8'))).toEqual({
+        kind: 'blocked',
+        by: 'dry_run_miss',
+      });
+      expect(bodyOf(await t.send(req('get_order', '/v2/checkout/orders/ORDER9')))).toEqual({
+        id: 'P1',
+      });
+    });
+    it('M6: an unpinned fixture still matches any id', async () => {
+      const t = makePinned({});
+      expect(bodyOf(await t.send(req('get_order', '/v2/checkout/orders/ANYTHING')))).toEqual({
+        id: 'P1',
+      });
+    });
+  });
+
+  it('L5: two fixtures for one (scenario, operation, step) throw at construction', () => {
+    expect(() =>
+      createDryRunTransport({
+        fixtures: [fx('a', 'get_order', 1, ok('X')), fx('a', 'get_order', 1, ok('Y'))],
+        gate: openGate(),
+        clock: fixedClock(),
+        default_scenario: 'a',
+        log: memoryLogger(),
+      }),
+    ).toThrow(/duplicate/i);
   });
 });

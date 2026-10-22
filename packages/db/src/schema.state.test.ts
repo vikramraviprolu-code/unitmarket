@@ -2,17 +2,13 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import {
-  applyMigrations,
-  migrate,
-  openDatabase,
-  resetDatabase,
-  tablesInDependencyOrder,
-} from './index';
+import { applyMigrations, migrate, openDatabase, tablesInDependencyOrder } from './index';
+import { resetDatabase } from './testing';
 import type { Database } from '@umsbx/contracts';
 
 const T = '2026-10-21T10:00:00Z';
 const T2 = '2026-10-21T11:00:00Z';
+const T15 = '2026-10-21T10:15:00Z'; // approval expires_at = created_at + 15 minutes
 const clock = { now: () => new Date(T) };
 const HASH = 'a'.repeat(64);
 const HASH2 = 'b'.repeat(64);
@@ -72,7 +68,7 @@ async function approval(n: number, over: Record<string, unknown> = {}) {
     snapshot: j({ v: 1 }),
     content_hash: HASH,
     nonce: `nonce${n}`,
-    expires_at: T2,
+    expires_at: T15,
     used_at: null,
     environment: 'dryrun',
     ...over,
@@ -106,7 +102,7 @@ async function unit(n: number, orderN: number, over: Record<string, unknown> = {
     payee_merchant_id: 'MERCH1',
     amount_minor: 500,
     platform_fee_minor: 0,
-    capture_id: null,
+    capture_id: n === 1 ? 'CAP1' : null,
     status: 'expected',
     status_reason: null,
     paypal_fee_minor: null,
@@ -396,7 +392,7 @@ describe('append-only tables', () => {
     await expect(
       db.query(`UPDATE approvals SET expires_at = $1 WHERE id = 'apr_1'`, [T]),
     ).rejects.toThrow();
-    await db.query(`UPDATE approvals SET used_at = $1 WHERE id = 'apr_1'`, [T2]);
+    await db.query(`UPDATE approvals SET used_at = $1 WHERE id = 'apr_1'`, [T15]);
     await expect(
       db.query(`UPDATE approvals SET used_at = $1 WHERE id = 'apr_1'`, [T]),
     ).rejects.toThrow();
@@ -514,7 +510,11 @@ describe('money constraints', () => {
       'reversal_suspected',
       'reversed',
     ].entries()) {
-      await unit(20 + i, 1, { status: s });
+      await unit(20 + i, 1, {
+        status: s,
+        capture_id: `CAPX${i}`,
+        captured_verified_at: T,
+      });
     }
   });
   it('ledger refuses a second (capture, refund, kind)', async () => {
@@ -1028,5 +1028,309 @@ describe('drivers', () => {
     ).rejects.toThrow('boom');
     expect((await db.query('SELECT id FROM buyers ORDER BY id')).rows).toEqual([{ id: 'buy_t' }]);
     expect(db.dialect).toBe('pglite');
+  });
+});
+
+// Wave 1 review A: constraints that must hold in the database, not only in the application.
+describe('review A: ledger integrity (H1)', () => {
+  async function sale() {
+    await base();
+    await order(1);
+    await unit(1, 1);
+    await ledger(1);
+  }
+  it('H1: only one sale row per capture, whatever its refund_id', async () => {
+    await sale();
+    await expect(ledger(2)).rejects.toThrow();
+    await expect(ledger(3, { refund_id: 'RFX' })).rejects.toThrow();
+    await expect(ledger(4, { refund_id: 'RFY' })).rejects.toThrow();
+    const idx = await db.query<{ indexdef: string }>(
+      "SELECT indexdef FROM pg_indexes WHERE tablename = 'ledger_entries' AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%kind = ''sale''%'",
+    );
+    expect(idx.rows.length).toBe(1);
+  });
+  it('H1: refund and commission_reversal rows need a refund_id; other kinds must not carry one', async () => {
+    await sale();
+    await expect(ledger(2, { kind: 'refund', amount_minor: 10 })).rejects.toThrow(/check/i);
+    await expect(ledger(3, { kind: 'commission_reversal', amount_minor: 0 })).rejects.toThrow(
+      /check/i,
+    );
+    await expect(
+      ledger(4, { kind: 'paypal_fee', refund_id: 'RF1', amount_minor: 1 }),
+    ).rejects.toThrow(/check/i);
+    await ledger(5, { kind: 'refund', refund_id: 'RF1', amount_minor: 10 });
+    await ledger(6, { kind: 'commission_reversal', refund_id: 'RF1', amount_minor: 0 });
+  });
+  it('H1: refunds per capture cannot exceed the sale, singly or cumulatively', async () => {
+    await sale();
+    await expect(
+      ledger(2, { kind: 'refund', refund_id: 'RF1', amount_minor: 999999 }),
+    ).rejects.toThrow(/exceed/i);
+    await ledger(3, { kind: 'refund', refund_id: 'RF2', amount_minor: 300 });
+    await expect(
+      ledger(4, { kind: 'refund', refund_id: 'RF3', amount_minor: 300 }),
+    ).rejects.toThrow(/exceed/i);
+    await ledger(5, { kind: 'refund', refund_id: 'RF4', amount_minor: 200 });
+  });
+  it('H1: a refund with no sale row is refused', async () => {
+    await base();
+    await order(1);
+    await unit(1, 1);
+    await expect(ledger(1, { kind: 'refund', refund_id: 'RF1', amount_minor: 1 })).rejects.toThrow(
+      /exceed|sale/i,
+    );
+  });
+  it('H1: ledger currency must equal the order currency', async () => {
+    await sale();
+    await expect(
+      ledger(2, { kind: 'paypal_fee', amount_minor: 5, currency: 'EUR' }),
+    ).rejects.toThrow(/currency/i);
+    await expect(ledger(3, { id: 'led_e', currency: 'EUR', capture_id: 'CAP1' })).rejects.toThrow();
+  });
+  it('H1: a ledger capture_id must be the capture of its unit', async () => {
+    await sale();
+    await expect(
+      ledger(2, { kind: 'paypal_fee', amount_minor: 5, capture_id: 'NOT_ON_ANY_UNIT' }),
+    ).rejects.toThrow(/foreign key|violates/i);
+    await unit(2, 1, { capture_id: 'CAP2' });
+    await expect(
+      ledger(3, { kind: 'paypal_fee', amount_minor: 5, unit_id: 'unt_1', capture_id: 'CAP2' }),
+    ).rejects.toThrow(/foreign key|violates/i);
+  });
+});
+
+describe('review A: order unit status needs a verified capture (M1)', () => {
+  it('M1: captured states refuse a null capture_id or captured_verified_at', async () => {
+    await base();
+    await order(1);
+    let i = 10;
+    for (const s of [
+      'captured_verified',
+      'partially_refunded',
+      'refunded',
+      'reversal_suspected',
+      'reversed',
+    ]) {
+      await expect(
+        unit(i++, 1, { status: s, capture_id: null, captured_verified_at: T }),
+        `${s} without capture_id`,
+      ).rejects.toThrow(/check/i);
+      await expect(
+        unit(i++, 1, { status: s, capture_id: `CAPM${i}`, captured_verified_at: null }),
+        `${s} without captured_verified_at`,
+      ).rejects.toThrow(/check/i);
+      await unit(i++, 1, { status: s, capture_id: `CAPM${i}`, captured_verified_at: T });
+    }
+    await unit(i++, 1, { status: 'pending' });
+  });
+});
+
+describe('review A: provider order approve_url (M2)', () => {
+  it('M2: approve_url must be on the sandbox host', async () => {
+    await base();
+    await order(1);
+    const po = (n: number, url: string | null) =>
+      ins('provider_orders', {
+        id: `po_${n}`,
+        order_id: 'ord_1',
+        provider_order_id: null,
+        route: 'single',
+        approve_url: url,
+        status: null,
+      });
+    await po(1, null);
+    await po(2, 'https://www.sandbox.paypal.com/checkoutnow?token=ABC');
+    for (const [n, bad] of [
+      [3, `https://www.${'paypal'}.com/checkoutnow?token=ABC`],
+      [4, 'http://www.sandbox.paypal.com/x'],
+      [5, 'https://evil.example/https://www.sandbox.paypal.com/'],
+      [6, 'javascript:alert(1)'],
+      [7, 'https://www.sandbox.paypal.com.evil.example/x'],
+    ] as const) {
+      await expect(po(n, bad), bad).rejects.toThrow(/check/i);
+    }
+  });
+});
+
+describe('review A: approvals and orders agree (M7)', () => {
+  it('M7: expires_at must be created_at + 15 minutes', async () => {
+    await base();
+    await expect(approval(1, { expires_at: T2 })).rejects.toThrow(/check/i);
+    await expect(approval(2, { expires_at: T })).rejects.toThrow(/check/i);
+    await approval(3);
+  });
+  it('M7: used_at cannot be later than expires_at', async () => {
+    await base();
+    await expect(approval(1, { used_at: T2 })).rejects.toThrow(/check/i);
+    await approval(2, { used_at: T15 });
+    await approval(3);
+    await expect(
+      db.query("UPDATE approvals SET used_at = $1 WHERE id = 'apr_3'", [T2]),
+    ).rejects.toThrow();
+    await db.query("UPDATE approvals SET used_at = $1 WHERE id = 'apr_3'", [T15]);
+  });
+  it('M7: an order must carry its approval buyer and environment', async () => {
+    await base();
+    await ins('buyers', { id: 'buy_2', display_name: 'B2', auth_subject: 'sub2', country: 'US' });
+    await approval(1);
+    await approval(2, { environment: 'sandbox' });
+    const mk = (id: string, approvalId: string, buyer: string, env: string, ref: string) =>
+      ins('orders', {
+        id,
+        approval_id: approvalId,
+        buyer_id: buyer,
+        content_hash: HASH,
+        order_ref: ref,
+        expected: j({}),
+        status: 'created',
+        mismatch: false,
+        corridor_id: 'us-usd',
+        currency: 'USD',
+        total_minor: 500,
+        environment: env,
+      });
+    await expect(mk('ord_a', 'apr_1', 'buy_2', 'dryrun', 'ra')).rejects.toThrow(/approval/i);
+    await expect(mk('ord_b', 'apr_1', 'buy_1', 'sandbox', 'rb')).rejects.toThrow(/approval/i);
+    await expect(mk('ord_c', 'apr_2', 'buy_1', 'dryrun', 'rc')).rejects.toThrow(/approval/i);
+    await mk('ord_d', 'apr_1', 'buy_1', 'dryrun', 'rd');
+    await expect(
+      db.query("UPDATE orders SET buyer_id = 'buy_2' WHERE id = 'ord_d'"),
+    ).rejects.toThrow(/approval/i);
+  });
+});
+
+describe('review A: safety switches are not deletable (M8)', () => {
+  it('M8: DELETE and TRUNCATE of safety_switches are refused, UPDATE still works', async () => {
+    await ins('safety_switches', {
+      name: 'paypal_outbound',
+      on: false,
+      changed_by: 'x',
+      changed_at: T,
+      reason: 'r',
+    });
+    await expect(
+      db.query("DELETE FROM safety_switches WHERE name = 'paypal_outbound'"),
+    ).rejects.toThrow(/not allowed|cannot be deleted/i);
+    await expect(db.exec('TRUNCATE safety_switches')).rejects.toThrow();
+    await db.query('UPDATE safety_switches SET "on" = true WHERE name = \'paypal_outbound\'');
+    expect((await db.query('SELECT count(*)::int AS n FROM safety_switches')).rows[0]).toEqual({
+      n: 1,
+    });
+  });
+});
+
+describe('review A: outbound approvals list known operations (L4)', () => {
+  it('L4: operations must be PayPal operation names', async () => {
+    const oap = (n: number, operations: string[]) =>
+      ins('outbound_approvals', {
+        id: `oap_${n}`,
+        approval_ref: `ref${n}`,
+        scope: 'sandbox',
+        operations,
+        max_amount_minor: 100,
+        max_calls_per_day: 10,
+        valid_until: T2,
+        approved_by: 'owner',
+      });
+    await oap(1, ['create_order', 'capture_order']);
+    await expect(oap(2, ['drop_all_tables'])).rejects.toThrow(/check/i);
+    await expect(oap(3, ['create_order', 'nope'])).rejects.toThrow(/check/i);
+  });
+});
+
+describe('review A: ids reject bidi and invisible characters (L2)', () => {
+  it('L2: ums_id refuses bidi controls, word joiner and unicode edge whitespace', async () => {
+    const bad = ['‪', '‫', '‬', '‭', '‮', '⁦', '⁧', '⁨', '⁩', '⁠', '​', '﻿', '\u0085'];
+    for (const [i, ch] of bad.entries()) {
+      await expect(
+        ins('buyers', { id: `a${ch}b`, display_name: 'B', auth_subject: `s${i}`, country: 'US' }),
+        `U+${ch.codePointAt(0)!.toString(16)}`,
+      ).rejects.toThrow();
+    }
+    await expect(
+      ins('buyers', { id: ' x', display_name: 'B', auth_subject: 'n1', country: 'US' }),
+    ).rejects.toThrow();
+    await expect(
+      ins('buyers', { id: 'x　', display_name: 'B', auth_subject: 'n2', country: 'US' }),
+    ).rejects.toThrow();
+    await ins('buyers', { id: 'ok id é', display_name: 'B', auth_subject: 'ok1', country: 'US' });
+  });
+});
+
+describe('review A: reset guard (M4)', () => {
+  async function disk() {
+    const dir = mkdtempSync(join(tmpdir(), 'ums-reset-'));
+    const d = await openDatabase({ kind: 'pglite-disk', dir });
+    toClose.push(d);
+    await migrate(d, clock);
+    return d;
+  }
+  it('M4: a plain ums.allow_reset setting does not satisfy the TRUNCATE guard on a disk target', async () => {
+    const d = await disk();
+    await expect(
+      d.exec("SELECT set_config('ums.allow_reset', 'on', true); TRUNCATE ledger_entries"),
+    ).rejects.toThrow(/not allowed/i);
+    await expect(
+      d.exec("SELECT set_config('ums.allow_reset', 'on', false); TRUNCATE ledger_entries"),
+    ).rejects.toThrow(/not allowed/i);
+  });
+  it('M4: resetDatabase refuses a disk target unless the explicit test flag is given', async () => {
+    const d = await disk();
+    await expect(resetDatabase(d)).rejects.toThrow(/memory|refus/i);
+    await resetDatabase(d, { confirm: 'RESET_TEST_DATABASE' });
+  });
+  it('M4: resetDatabase refuses a driver that does not say where it runs', async () => {
+    const d = await openDatabase({ kind: 'pglite-memory' });
+    toClose.push(d);
+    await migrate(d, clock);
+    const anonymous = {
+      dialect: d.dialect,
+      query: d.query,
+      exec: d.exec,
+      transaction: d.transaction,
+    };
+    await expect(resetDatabase(anonymous)).rejects.toThrow(/memory|refus/i);
+  });
+  it('M4: a memory target still resets without any flag', async () => {
+    const d = await fresh();
+    await expect(resetDatabase(d)).resolves.toBeUndefined();
+  });
+});
+
+describe('review A: approval immutability (L3)', () => {
+  it('L3: used_at cannot be set in the same UPDATE as any other frozen column', async () => {
+    await base();
+    await ins('buyers', { id: 'buy_2', display_name: 'B2', auth_subject: 'sub2', country: 'US' });
+    const other: [string, unknown][] = [
+      ['nonce', 'zzz'],
+      ['content_hash', HASH2],
+      ['snapshot', '{"v":2}'],
+      ['buyer_id', 'buy_2'],
+      ['environment', 'sandbox'],
+      ['created_at', T2],
+      ['expires_at', T2],
+    ];
+    for (const [i, [column, value]] of other.entries()) {
+      // a fresh approval per column; created_at/expires_at keep the +15 minute rule where needed
+      await approval(100 + i);
+      const change =
+        column === 'created_at'
+          ? ["created_at = $2, expires_at = $2::timestamptz + interval '15 minutes'", value]
+          : [`${column} = $2`, value];
+      await expect(
+        db.query(`UPDATE approvals SET used_at = $1, ${change[0]} WHERE id = 'apr_${100 + i}'`, [
+          T15,
+          change[1],
+        ]),
+        column,
+      ).rejects.toThrow();
+      const row = await db.query<{ used_at: string | null }>(
+        `SELECT used_at FROM approvals WHERE id = 'apr_${100 + i}'`,
+      );
+      expect(row.rows[0]?.used_at, column).toBeNull();
+    }
+    // the allowed form still works
+    await approval(200);
+    await db.query(`UPDATE approvals SET used_at = $1 WHERE id = 'apr_200'`, [T15]);
   });
 });

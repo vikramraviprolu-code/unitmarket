@@ -14,7 +14,10 @@ CREATE TABLE approvals (
   used_at timestamptz,
   environment text NOT NULL CHECK (environment IN ('dryrun', 'sandbox')),
   created_at timestamptz NOT NULL,
-  updated_at timestamptz NOT NULL
+  updated_at timestamptz NOT NULL,
+  -- APPROVAL_TTL_MS in the contract is 15 minutes; a use cannot come after the expiry.
+  CHECK (expires_at = created_at + interval '15 minutes'),
+  CHECK (used_at IS NULL OR used_at <= expires_at)
 );
 
 -- An approval is frozen: the only allowed UPDATE sets used_at once, from NULL to a value, and
@@ -81,13 +84,33 @@ $$;
 CREATE TRIGGER orders_currency_guard BEFORE INSERT OR UPDATE ON orders
   FOR EACH ROW EXECUTE FUNCTION ums_order_currency_guard();
 
+-- An order carries the buyer and the environment of the approval it consumes.
+CREATE FUNCTION ums_order_approval_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  approval_buyer text;
+  approval_env text;
+BEGIN
+  SELECT buyer_id, environment INTO approval_buyer, approval_env FROM approvals WHERE id = NEW.approval_id;
+  IF approval_buyer IS DISTINCT FROM NEW.buyer_id THEN
+    RAISE EXCEPTION 'order buyer % does not match approval % buyer %', NEW.buyer_id, NEW.approval_id, approval_buyer;
+  END IF;
+  IF approval_env IS DISTINCT FROM NEW.environment THEN
+    RAISE EXCEPTION 'order environment % does not match approval % environment %', NEW.environment, NEW.approval_id, approval_env;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER orders_approval_guard BEFORE INSERT OR UPDATE ON orders
+  FOR EACH ROW EXECUTE FUNCTION ums_order_approval_guard();
+
 -- One internal order maps to 1..N PayPal orders (composite route).
 CREATE TABLE provider_orders (
   id ums_id PRIMARY KEY,
   order_id ums_id NOT NULL REFERENCES orders (id),
   provider_order_id text UNIQUE CHECK (provider_order_id ~ '^[A-Z0-9]{1,36}$'),
   route text NOT NULL CHECK (route IN ('single', 'per_publisher')),
-  approve_url text,
+  -- Only the sandbox approval host is ever stored (P15); the contract checks the same prefix.
+  approve_url text CHECK (approve_url IS NULL OR approve_url ~ '^https://www\.sandbox\.paypal\.com/[^[:space:][:cntrl:]]*$'),
   status text,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
@@ -115,7 +138,14 @@ CREATE TABLE order_units (
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   UNIQUE (order_id, reference_id),
-  CHECK (refunded_minor <= amount_minor)
+  -- Target of the ledger's composite foreign key: a ledger row's capture belongs to its unit.
+  UNIQUE (id, capture_id),
+  CHECK (refunded_minor <= amount_minor),
+  -- A captured state always has the capture id and the time it was verified.
+  CHECK (
+    status NOT IN ('captured_verified', 'partially_refunded', 'refunded', 'reversal_suspected', 'reversed')
+    OR (capture_id IS NOT NULL AND captured_verified_at IS NOT NULL)
+  )
 );
 
 CREATE TABLE operations (
@@ -193,11 +223,14 @@ CREATE TABLE refund_requests (
   updated_at timestamptz NOT NULL
 );
 
--- Append-only money ledger. Unique (capture_id, kind, refund_id) with NULLS NOT DISTINCT allows
--- many refunds per capture (one row per refund id) yet exactly one sale or fee row per capture.
+-- Append-only money ledger. refund and commission_reversal rows carry a refund_id and no other
+-- kind does, so the NULLS NOT DISTINCT unique key allows one row per refund id and exactly one row
+-- of every other kind per capture; a partial unique index states the one-sale rule on its own. The
+-- composite foreign key ties the capture id to the unit that owns it. The guard trigger checks the
+-- currency against the order and keeps refunds within the sale.
 CREATE TABLE ledger_entries (
   id ums_id PRIMARY KEY,
-  unit_id ums_id NOT NULL REFERENCES order_units (id),
+  unit_id ums_id NOT NULL,
   capture_id text NOT NULL,
   kind text NOT NULL CHECK (kind IN (
     'sale', 'paypal_fee', 'platform_fee', 'refund', 'reversal', 'commission_reversal'
@@ -209,8 +242,42 @@ CREATE TABLE ledger_entries (
   environment text NOT NULL CHECK (environment IN ('dryrun', 'sandbox')),
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
-  UNIQUE NULLS NOT DISTINCT (capture_id, kind, refund_id)
+  UNIQUE NULLS NOT DISTINCT (capture_id, kind, refund_id),
+  FOREIGN KEY (unit_id, capture_id) REFERENCES order_units (id, capture_id),
+  CHECK ((kind IN ('refund', 'commission_reversal')) = (refund_id IS NOT NULL))
 );
+CREATE UNIQUE INDEX ledger_entries_one_sale_per_capture ON ledger_entries (capture_id) WHERE kind = 'sale';
+
+CREATE FUNCTION ums_ledger_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  order_currency text;
+  sale_total numeric;
+  refunded_total numeric;
+BEGIN
+  -- Lock the unit row so two concurrent refunds on one capture are checked one after the other.
+  SELECT o.currency INTO order_currency
+    FROM order_units u JOIN orders o ON o.id = u.order_id
+    WHERE u.id = NEW.unit_id FOR UPDATE OF u;
+  IF NOT FOUND THEN
+    RETURN NEW; -- the foreign key reports the missing unit
+  END IF;
+  IF order_currency IS DISTINCT FROM NEW.currency THEN
+    RAISE EXCEPTION 'ledger currency % does not match order currency %', NEW.currency, order_currency;
+  END IF;
+  IF NEW.kind = 'refund' THEN
+    SELECT coalesce(sum(amount_minor), 0) INTO sale_total
+      FROM ledger_entries WHERE capture_id = NEW.capture_id AND kind = 'sale';
+    SELECT coalesce(sum(amount_minor), 0) INTO refunded_total
+      FROM ledger_entries WHERE capture_id = NEW.capture_id AND kind = 'refund';
+    IF refunded_total + NEW.amount_minor > sale_total THEN
+      RAISE EXCEPTION 'refunds % would exceed the sale % for capture %', refunded_total + NEW.amount_minor, sale_total, NEW.capture_id;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER ledger_entries_guard BEFORE INSERT ON ledger_entries
+  FOR EACH ROW EXECUTE FUNCTION ums_ledger_guard();
 CREATE TRIGGER ledger_entries_append_only BEFORE UPDATE OR DELETE ON ledger_entries
   FOR EACH ROW EXECUTE FUNCTION ums_deny_mutation();
 CREATE TRIGGER ledger_entries_no_truncate BEFORE TRUNCATE ON ledger_entries
