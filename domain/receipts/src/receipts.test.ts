@@ -137,7 +137,10 @@ describe('renderReceiptHtml', () => {
   });
 
   it('escapes quotes, ampersands and apostrophes', () => {
-    const html = renderReceiptHtml(asReceipt(body({ debug_ids: [`a"b'c&d`] })), 'Sandbox');
+    const html = renderReceiptHtml(
+      asReceipt(body({ debug_ids: [`a"b'c&d`], environment: 'sandbox' })),
+      'Sandbox',
+    );
     expect(html).toContain('a&quot;b&#39;c&amp;d');
   });
 
