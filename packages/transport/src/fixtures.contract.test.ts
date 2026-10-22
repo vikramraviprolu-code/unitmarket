@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -31,14 +31,13 @@ describe('fixture contract (MAINT-5, A-23 first half)', () => {
     expect(files.length).toBeGreaterThanOrEqual(60);
 
     const expected = await buildIndex(ROOT);
-    if (process.env['UPDATE_FIXTURE_INDEX'] === '1') {
-      writeFileSync(join(ROOT, 'index.json'), `${JSON.stringify(expected, null, 2)}\n`);
-    }
-    const actual = JSON.parse(readFileSync(join(ROOT, 'index.json'), 'utf8')) as typeof expected;
-    expect(actual).toEqual(expected);
+    // The committed index must equal the generated one byte for byte; `vitest -u` rewrites it.
+    await expect(`${JSON.stringify(expected, null, 2)}\n`).toMatchFileSnapshot(
+      join(ROOT, 'index.json'),
+    );
     // listed once each, with the real hash of the bytes on disk
-    expect(new Set(actual.files.map((e) => e.file)).size).toBe(files.length);
-    for (const e of actual.files) {
+    expect(new Set(expected.files.map((e) => e.file)).size).toBe(files.length);
+    for (const e of expected.files) {
       const bytes = readFileSync(join(ROOT, e.file));
       expect(e.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));
     }

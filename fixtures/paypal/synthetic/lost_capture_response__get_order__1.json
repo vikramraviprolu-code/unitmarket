@@ -23,7 +23,7 @@
       "paypal-debug-id": "sbxdebug0026"
     },
     "body": {
-      "id": "SBXLOSTCPORDER01",
+      "id": "SBXLOSTCPORD00001",
       "status": "APPROVED",
       "intent": "CAPTURE",
       "purchase_units": [
@@ -46,7 +46,7 @@
       "update_time": "2026-01-01T10:00:00Z",
       "links": [
         {
-          "href": "/v2/checkout/orders/SBXLOSTCPORDER01",
+          "href": "/v2/checkout/orders/SBXLOSTCPORD00001",
           "rel": "self",
           "method": "GET"
         }

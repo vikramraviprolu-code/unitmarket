@@ -1,2 +1,13 @@
-// Placeholder from lane 00 SCAFFOLD. Domain code arrives in later lanes.
 export const PACKAGE_NAME = '@umsbx/transport' as const;
+
+export { CERT_HOST_SUFFIX, CERT_PATH_PREFIX, PATHS, SANDBOX_API } from './endpoints';
+export type { PathSpec } from './endpoints';
+export { guard } from './guard';
+export type { GuardResult } from './guard';
+export { FixtureFileSchema } from './fixture-schema';
+export type { FixtureFile } from './fixture-schema';
+export { buildIndex, loadFixtures } from './fixture-store';
+export type { FixtureIndex, FixtureIndexEntry } from './fixture-store';
+export { createDryRunTransport } from './dryrun';
+export type { DryRunCall, DryRunTransport } from './dryrun';
+export { createSandboxTransport } from './sandbox';

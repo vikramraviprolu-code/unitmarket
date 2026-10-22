@@ -24,11 +24,11 @@
       "paypal-debug-id": "sbxdebug0033"
     },
     "body": {
-      "id": "SBXCAP202ORDER01",
+      "id": "SBXCAP202ORD00001",
       "status": "APPROVED",
       "links": [
         {
-          "href": "/v2/checkout/orders/SBXCAP202ORDER01",
+          "href": "/v2/checkout/orders/SBXCAP202ORD00001",
           "rel": "self",
           "method": "GET"
         }

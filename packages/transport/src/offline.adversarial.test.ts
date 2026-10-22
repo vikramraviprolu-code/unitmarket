@@ -32,9 +32,9 @@ describe('offline_opens_no_socket (A-02)', () => {
 
     const results = [
       await t.send(req('create_order', '/v2/checkout/orders')),
-      await t.send(req('get_order', '/v2/checkout/orders/SBXHAPPYORDER01')),
-      await t.send(req('capture_order', '/v2/checkout/orders/SBXHAPPYORDER01/capture')),
-      await t.send(req('get_order', '/v2/checkout/orders/SBXHAPPYORDER01')),
+      await t.send(req('get_order', '/v2/checkout/orders/SBXHAPPYORD00001')),
+      await t.send(req('capture_order', '/v2/checkout/orders/SBXHAPPYORD00001/capture')),
+      await t.send(req('get_order', '/v2/checkout/orders/SBXHAPPYORD00001')),
       await t.send(req('get_capture', '/v2/payments/captures/SBXHAPPYCAP00001')),
       await t.send(req('refund_capture', '/v2/payments/captures/SBXHAPPYCAP00001/refund')),
     ];
@@ -43,7 +43,7 @@ describe('offline_opens_no_socket (A-02)', () => {
     ]);
 
     // the sealed sandbox stub and a refused request are offline too
-    await createSandboxTransport().send(req('get_order', '/v2/checkout/orders/SBXHAPPYORDER01'));
+    await createSandboxTransport().send(req('get_order', '/v2/checkout/orders/SBXHAPPYORD00001'));
     await t.send(req('get_order', 'https://evil.example/x'));
 
     expect(netConnect).not.toHaveBeenCalled();

@@ -24,7 +24,7 @@
       "paypal-debug-id": "sbxdebug0003"
     },
     "body": {
-      "id": "SBXHAPPYORDER01",
+      "id": "SBXHAPPYORD00001",
       "status": "COMPLETED",
       "intent": "CAPTURE",
       "purchase_units": [
@@ -76,7 +76,7 @@
       "update_time": "2026-01-01T10:00:00Z",
       "links": [
         {
-          "href": "/v2/checkout/orders/SBXHAPPYORDER01",
+          "href": "/v2/checkout/orders/SBXHAPPYORD00001",
           "rel": "self",
           "method": "GET"
         }

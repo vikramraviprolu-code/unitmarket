@@ -50,21 +50,21 @@
       "paypal-debug-id": "sbxdebug0036"
     },
     "body": {
-      "id": "SBXPART207ORDER1",
+      "id": "SBXPART207ORD0001",
       "status": "CREATED",
       "links": [
         {
-          "href": "/v2/checkout/orders/SBXPART207ORDER1",
+          "href": "/v2/checkout/orders/SBXPART207ORD0001",
           "rel": "self",
           "method": "GET"
         },
         {
-          "href": "https://www.sandbox.paypal.com/checkoutnow?token=SBXPART207ORDER1",
+          "href": "https://www.sandbox.paypal.com/checkoutnow?token=SBXPART207ORD0001",
           "rel": "approve",
           "method": "GET"
         },
         {
-          "href": "/v2/checkout/orders/SBXPART207ORDER1/capture",
+          "href": "/v2/checkout/orders/SBXPART207ORD0001/capture",
           "rel": "capture",
           "method": "POST"
         }

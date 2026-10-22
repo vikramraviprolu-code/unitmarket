@@ -23,7 +23,7 @@
       "paypal-debug-id": "sbxdebug0046"
     },
     "body": {
-      "id": "SBXMISPAYORDER01",
+      "id": "SBXMISPAYORD00001",
       "status": "COMPLETED",
       "intent": "CAPTURE",
       "purchase_units": [
@@ -75,7 +75,7 @@
       "update_time": "2026-01-01T10:00:00Z",
       "links": [
         {
-          "href": "/v2/checkout/orders/SBXMISPAYORDER01",
+          "href": "/v2/checkout/orders/SBXMISPAYORD00001",
           "rel": "self",
           "method": "GET"
         }
