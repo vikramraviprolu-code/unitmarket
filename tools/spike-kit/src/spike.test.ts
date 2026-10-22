@@ -34,7 +34,11 @@ function spyOn(name: string, target: object, key: string) {
   const spy = vi.fn(() => {
     throw new Error(`network use forbidden: ${name}`);
   });
-  vi.spyOn(target as Record<string, never>, key as never).mockImplementation(spy as never);
+  const spyOnAny = vi.spyOn as unknown as (
+    t: object,
+    k: string,
+  ) => { mockImplementation: (f: () => never) => unknown };
+  spyOnAny(target, key).mockImplementation(spy as () => never);
   spies.push({ name, spy });
 }
 beforeEach(() => {
@@ -179,7 +183,9 @@ function fakeWire(opts: { pending?: boolean; log?: WireRequest[]; failAt?: numbe
         id: p.split('/').pop(),
         status: 'APPROVED',
         payer: { email_address: 'canary.payer@example.test', name: { given_name: 'Canary' } },
-        purchase_units: [{ reference_id: 'spike-A', amount: { currency_code: 'USD', value: '1.00' } }],
+        purchase_units: [
+          { reference_id: 'spike-A', amount: { currency_code: 'USD', value: '1.00' } },
+        ],
       });
     }
     if (p === '/v2/checkout/orders') {
@@ -189,7 +195,10 @@ function fakeWire(opts: { pending?: boolean; log?: WireRequest[]; failAt?: numbe
         status: 'PAYER_ACTION_REQUIRED',
         links: [
           { rel: 'self', href: `${SANDBOX_API}/v2/checkout/orders/${idOf(orders)}` },
-          { rel: 'payer-action', href: `https://www.sandbox.example.invalid/checkoutnow?token=${idOf(orders)}` },
+          {
+            rel: 'payer-action',
+            href: `https://www.sandbox.example.invalid/checkoutnow?token=${idOf(orders)}`,
+          },
         ],
         purchase_units: [{ reference_id: 'spike-A', custom_id: 'spike-custom-1' }],
       });
@@ -205,7 +214,9 @@ function fakeWire(opts: { pending?: boolean; log?: WireRequest[]; failAt?: numbe
                 {
                   id: 'CAP00000000000001',
                   status: opts.pending ? 'PENDING' : 'COMPLETED',
-                  status_details: opts.pending ? { reason: 'RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION' } : {},
+                  status_details: opts.pending
+                    ? { reason: 'RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION' }
+                    : {},
                   amount: { currency_code: 'USD', value: '1.00' },
                 },
               ],
@@ -214,8 +225,16 @@ function fakeWire(opts: { pending?: boolean; log?: WireRequest[]; failAt?: numbe
         ],
       });
     if (p.includes('/v2/payments/captures/') && p.endsWith('/refund'))
-      return json(201, { id: 'REF00000000000001', status: 'COMPLETED', links: [{ rel: 'up', href: '/x' }] });
-    return json(200, { id: 'GEN00000000000001', status: 'COMPLETED', amount: { currency_code: 'USD', value: '1.00' } });
+      return json(201, {
+        id: 'REF00000000000001',
+        status: 'COMPLETED',
+        links: [{ rel: 'up', href: '/x' }],
+      });
+    return json(200, {
+      id: 'GEN00000000000001',
+      status: 'COMPLETED',
+      amount: { currency_code: 'USD', value: '1.00' },
+    });
   };
 }
 
@@ -255,9 +274,9 @@ describe('constants and allow-list', () => {
     expect(() => assertAllowedCall(m, p)).toThrow(/path_not_allowed/);
   });
   it('accepts a runbook path', () => {
-    expect(assertAllowedCall('POST', '/v2/checkout/orders/5O190127TN364715T/capture').template).toBe(
-      '/v2/checkout/orders/{id}/capture',
-    );
+    expect(
+      assertAllowedCall('POST', '/v2/checkout/orders/5O190127TN364715T/capture').template,
+    ).toBe('/v2/checkout/orders/{id}/capture');
   });
 });
 
@@ -287,7 +306,10 @@ describe('preflight refusals', () => {
     ['live_value', (h) => void (h.deps.env['SPIKE_OPERATOR'] = 'vikram-production')],
     ['live_value', (h) => void (h.deps.env['PAYPAL_ENVIRONMENT'] = 'Production')],
     ['live_value', (h) => void (h.deps.env['PAYPAL_LIVE_CLIENT_ID'] = 'x')],
-    ['non_sandbox_host', (h) => void (h.deps.env['PAYPAL_API_BASE'] = 'https://api-m.' + 'paypal.com')],
+    [
+      'non_sandbox_host',
+      (h) => void (h.deps.env['PAYPAL_API_BASE'] = 'https://api-m.' + 'paypal.com'),
+    ],
     ['non_sandbox_host', (h) => void (h.deps.env['SPIKE_NOTE'] = 'http://evil.example.org/x')],
     ['bad_args', (h) => void (h.deps.argv = ['--yolo'])],
     ['output_in_repo', (h) => void (h.deps.argv = ['--out', path.join(REPO, 'spike-out')])],
@@ -311,7 +333,11 @@ describe('preflight refusals', () => {
     for (const code of REFUSAL_CODES) expect(covered.has(code), code).toBe(true);
   });
   it('main exits 2 on a refusal, writes nothing and never calls the wire', async () => {
-    const h = harness({ env: realEnv({ CI: '1' }), stdinIsTTY: true, argv: ['--out', path.join(tmp, 'out')] });
+    const h = harness({
+      env: realEnv({ CI: '1' }),
+      stdinIsTTY: true,
+      argv: ['--out', path.join(tmp, 'out')],
+    });
     const code = await main(h.deps);
     expect(code).toBe(2);
     expect(h.errLines.join('\n')).toMatch(/REFUSED ci_set/);
@@ -319,7 +345,10 @@ describe('preflight refusals', () => {
     expect(h.prompts).toEqual([]);
   });
   it('real mode in main refuses without fetch for dry runs: fetch is never given to a dry run', async () => {
-    const h = harness({ argv: ['--dry-run', '--out', path.join(tmp, 'out')], fetchImpl: vi.fn() as never });
+    const h = harness({
+      argv: ['--dry-run', '--out', path.join(tmp, 'out')],
+      fetchImpl: vi.fn() as never,
+    });
     expect(await main(h.deps)).toBe(0);
   });
 });
@@ -332,7 +361,7 @@ describe('redaction', () => {
   it('self-test reports survivors for a broken redactor', () => {
     const identity = () => {
       const r = createRedactor();
-      return { ...r, redact: <T,>(v: T) => v, text: (s: string) => s };
+      return { ...r, redact: <T>(v: T) => v, text: (s: string) => s };
     };
     expect(redactionSelfTest(identity).length).toBeGreaterThan(5);
   });
@@ -344,7 +373,11 @@ describe('redaction', () => {
           access_token: 'x1',
           client_secret: 'x2',
           nonce: 'n',
-          payer: { email_address: 'a@b.test', payer_id: 'PID', name: { given_name: 'A', surname: 'B' } },
+          payer: {
+            email_address: 'a@b.test',
+            payer_id: 'PID',
+            name: { given_name: 'A', surname: 'B' },
+          },
           shipping: { address: { address_line_1: '1 Road' } },
           phone: { national_number: '123' },
           name: 'RESOURCE_NOT_FOUND',
@@ -426,9 +459,18 @@ describe('--dry-run', () => {
     expect(summary).toMatch(/DRY RUN/);
     expect(summary).toMatch(/not PayPal evidence/i);
     // runbook order
-    const order = ['Step 3', 'Step 4', 'Step 5', 'Step 6', 'Step 9', 'Step 11', 'Step 14', 'Step 15', 'Step 17', 'Step 18'].map(
-      (s) => summary.indexOf(s),
-    );
+    const order = [
+      'Step 3',
+      'Step 4',
+      'Step 5',
+      'Step 6',
+      'Step 9',
+      'Step 11',
+      'Step 14',
+      'Step 15',
+      'Step 17',
+      'Step 18',
+    ].map((s) => summary.indexOf(s));
     expect(order.every((v) => v >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     for (const f of Object.values(files)) {
@@ -459,7 +501,7 @@ describe('--dry-run', () => {
   it('stays within the call cap', async () => {
     const h = harness({ argv: ['--dry-run', '--out', path.join(tmp, 'out')] });
     await main(h.deps);
-    const m = h.outLines.join('\n').match(/calls used: (\d+) of 40/);
+    const m = h.outLines.join('\n').match(/Calls used: (\d+) of 40/);
     expect(m).not.toBeNull();
     expect(Number(m?.[1])).toBeLessThanOrEqual(40);
     expect(Number(m?.[1])).toBeGreaterThan(10);
@@ -478,7 +520,10 @@ describe('--dry-run', () => {
   it('replay wire misses are errors, not network calls', async () => {
     const wire = createReplayWire(FIXTURES, (p) => fs.readFileSync(p, 'utf8'));
     await expect(
-      wire({ method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null }, 'no_such_fixture'),
+      wire(
+        { method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null },
+        'no_such_fixture',
+      ),
     ).rejects.toThrow(/fixture/i);
   });
 });
@@ -488,7 +533,12 @@ describe('real mode (fake wire, no socket)', () => {
   async function run(mode: 'read' | 'write', answers: string[] = [], wireOpts = {}) {
     const log: WireRequest[] = [];
     const out = path.join(tmp, 'out');
-    const h = harness({ env: realEnv({ SPIKE_MODE: mode }), stdinIsTTY: true, argv: ['--out', out], answers });
+    const h = harness({
+      env: realEnv({ SPIKE_MODE: mode }),
+      stdinIsTTY: true,
+      argv: ['--out', out],
+      answers,
+    });
     const pre = preflight(h.deps);
     if (!pre.ok) throw new Error(pre.message);
     const res = await runSpike(pre.cfg, h.deps, fakeWire({ log, ...wireOpts }));
@@ -509,19 +559,25 @@ describe('real mode (fake wire, no socket)', () => {
     expect(() => assertModeAllows('read', 'GET', '/v2/checkout/orders/ABC')).not.toThrow();
     expect(() => assertModeAllows('read', 'POST', '/v1/oauth2/token')).not.toThrow();
     expect(() => assertModeAllows('read', 'POST', '/v2/checkout/orders')).toThrow(/mode_violation/);
-    expect(() => assertModeAllows('read', 'POST', '/v2/payments/captures/ABC/refund')).toThrow(/mode_violation/);
+    expect(() => assertModeAllows('read', 'POST', '/v2/payments/captures/ABC/refund')).toThrow(
+      /mode_violation/,
+    );
     expect(() => assertModeAllows('write', 'POST', '/v2/checkout/orders')).not.toThrow();
   });
   it('write mode runs Part W after the token and asks twice before each write', async () => {
     const { log, h, res } = await run('write');
     expect(res.exitCode).toBe(0);
-    const paths = log.map((r) => `${r.method} ${new URL(r.url).pathname.replace(/[A-Z0-9]{17}/g, '{id}')}`);
+    const paths = log.map(
+      (r) => `${r.method} ${new URL(r.url).pathname.replace(/[A-Z0-9]{17}/g, '{id}')}`,
+    );
     expect(paths[0]).toBe('POST /v1/oauth2/token');
     expect(paths).toContain('POST /v2/checkout/orders');
     expect(paths.some((p) => p.endsWith('/capture'))).toBe(true);
     expect(log.length).toBeLessThanOrEqual(CALL_CAP);
     const second = h.prompts.filter((p) => /second confirmation/i.test(p));
-    const writes = log.filter((r) => r.method === 'POST' && !r.url.endsWith('/v1/oauth2/token')).length;
+    const writes = log.filter(
+      (r) => r.method === 'POST' && !r.url.endsWith('/v1/oauth2/token'),
+    ).length;
     expect(second.length).toBeGreaterThanOrEqual(writes);
   });
   it('write mode never reaches Part R steps 4 and 5', async () => {
@@ -540,7 +596,11 @@ describe('real mode (fake wire, no socket)', () => {
   });
   it('enforces the call cap and writes a summary naming it', async () => {
     const out = path.join(tmp, 'out');
-    const h = harness({ env: realEnv({ SPIKE_MODE: 'write' }), stdinIsTTY: true, argv: ['--out', out] });
+    const h = harness({
+      env: realEnv({ SPIKE_MODE: 'write' }),
+      stdinIsTTY: true,
+      argv: ['--out', out],
+    });
     const pre = preflight(h.deps);
     if (!pre.ok) throw new Error('pre');
     const log: WireRequest[] = [];
@@ -558,8 +618,16 @@ describe('real mode (fake wire, no socket)', () => {
   });
   it('keeps the token and secrets out of the screen and the files', async () => {
     const { h, out } = await run('write');
-    const all = [...h.outLines, ...h.errLines, ...h.prompts, ...Object.values(readOut(out))].join('\n');
-    for (const s of [FAKE_TOKEN, FAKE_SECRET, FAKE_ID, 'canary-nonce-123', 'canary.payer@example.test']) {
+    const all = [...h.outLines, ...h.errLines, ...h.prompts, ...Object.values(readOut(out))].join(
+      '\n',
+    );
+    for (const s of [
+      FAKE_TOKEN,
+      FAKE_SECRET,
+      FAKE_ID,
+      'canary-nonce-123',
+      'canary.payer@example.test',
+    ]) {
       expect(all, s).not.toContain(s);
     }
     expect(all).not.toContain(Buffer.from(`${FAKE_ID}:${FAKE_SECRET}`).toString('base64'));
@@ -577,7 +645,8 @@ describe('real mode (fake wire, no socket)', () => {
   it('uses the runbook idempotency keys', async () => {
     const { log } = await run('write');
     const keys = log.map((r) => r.headers['paypal-request-id']).filter(Boolean);
-    for (const k of ['spike-K1', 'spike-K2', 'spike-K3', 'spike-K4', 'spike-K5', 'spike-K6']) expect(keys).toContain(k);
+    for (const k of ['spike-K1', 'spike-K2', 'spike-K3', 'spike-K4', 'spike-K5', 'spike-K6'])
+      expect(keys).toContain(k);
   });
   it('creates orders with the example.invalid return urls and no payee', async () => {
     const { log } = await run('write');
@@ -618,7 +687,10 @@ describe('fetch wire guards', () => {
   it('sends only to the sandbox host, https, no redirects, with a timeout signal', async () => {
     const f = fetchOk();
     const wire = createFetchWire(f as never);
-    await wire({ method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null }, 'x');
+    await wire(
+      { method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null },
+      'x',
+    );
     const init = (f.mock.calls[0] as unknown as [string, RequestInit])[1];
     expect(init.redirect).toBe('error');
     expect(init.signal).toBeDefined();
@@ -644,7 +716,10 @@ describe('fetch wire guards', () => {
     }));
     const wire = createFetchWire(big as never);
     await expect(
-      wire({ method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null }, 'x'),
+      wire(
+        { method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null },
+        'x',
+      ),
     ).rejects.toThrow(/too large/i);
   });
 });

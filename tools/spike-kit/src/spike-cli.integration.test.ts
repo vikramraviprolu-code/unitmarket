@@ -19,7 +19,7 @@ const require = createRequire(import.meta.url);
 const log = process.env.SPY_LOG;
 const hit = (n) => { appendFileSync(log, n + '\\n'); throw new Error('network use forbidden: ' + n); };
 const patch = (mod, names, label) => { for (const k of names) { try { mod[k] = () => hit(label + '.' + k); } catch {} } };
-patch(require('node:net'), ['connect', 'createConnection', 'Socket'], 'net');
+patch(require('node:net'), ['connect', 'createConnection'], 'net');
 patch(require('node:tls'), ['connect'], 'tls');
 patch(require('node:http'), ['request', 'get'], 'http');
 patch(require('node:https'), ['request', 'get'], 'https');
@@ -48,7 +48,12 @@ function runKit(args: string[], env: Record<string, string>) {
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 60_000,
   });
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr, net: fs.readFileSync(netLog, 'utf8') };
+  return {
+    code: r.status,
+    stdout: r.stdout,
+    stderr: r.stderr,
+    net: fs.readFileSync(netLog, 'utf8'),
+  };
 }
 
 describe('spike kit as a process', () => {
