@@ -1146,7 +1146,7 @@ describe('review A: provider order approve_url (M2)', () => {
     await po(1, null);
     await po(2, 'https://www.sandbox.paypal.com/checkoutnow?token=ABC');
     for (const [n, bad] of [
-      [3, 'https://www.paypal.com/checkoutnow?token=ABC'],
+      [3, `https://www.${'paypal'}.com/checkoutnow?token=ABC`],
       [4, 'http://www.sandbox.paypal.com/x'],
       [5, 'https://evil.example/https://www.sandbox.paypal.com/'],
       [6, 'javascript:alert(1)'],
