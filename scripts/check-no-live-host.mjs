@@ -29,7 +29,23 @@ const LIVE = [
   // the bare host (no subdomain) directly after a URL scheme
   new RegExp(`//${P.replace('.', '\\.')}(?![A-Za-z0-9.-])`, 'i'),
 ];
-const SANDBOX_API = new RegExp(`api-m\\.sandbox\\.${P.replace('.', '\\.')}`, 'i');
+// Any sandbox API host spelling (api-m. or api.) counts: only the constant module may name one.
+const SANDBOX_API = new RegExp(`api(?:-m)?\\.sandbox\\.${P.replace('.', '\\.')}`, 'i');
+
+// Review L1: look at the text the way a parser would, not as typed. Decode JSON and JS escapes
+// (\\uXXXX, \\xXX, \\/), percent-escapes, then NFKC-normalise (fullwidth letters and dots) and map
+// the other full-stop characters to a dot. A line is checked in both its raw and decoded forms.
+const DOTS = /[\u3002\uFF61\uFE52\u2024\u2E2E]/g;
+function decode(line) {
+  let t = line
+    .replace(/\\u\{([0-9a-fA-F]{1,6})\}/g, (m, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/\\u([0-9a-fA-F]{4})/g, (m, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\x([0-9a-fA-F]{2})/g, (m, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\\//g, '/')
+    .replace(/%([0-9a-fA-F]{2})/g, (m, h) => String.fromCharCode(parseInt(h, 16)));
+  t = t.normalize('NFKC').replace(DOTS, '.');
+  return t;
+}
 
 const docsAllowed =
   existsSync(join(ROOT, ALLOWED_DOCS_DIR, MARKER)) ||
@@ -45,14 +61,16 @@ for (const file of listFiles(ROOT)) {
   const lines = text.split('\n');
   lines.forEach((line, i) => {
     if (inDocsAllow) return;
-    if (LIVE.some((re) => re.test(line))) {
+    const views = [line, decode(line)];
+    const hit = (re) => views.some((v) => re.test(v));
+    if (LIVE.some(hit)) {
       violations.push({
         file: file.rel,
         line: i + 1,
         message: `live PayPal hostname (forbidden; only docs under ${ALLOWED_DOCS_DIR} may name one)`,
       });
     }
-    if (SANDBOX_API.test(line) && !isConstant) {
+    if (hit(SANDBOX_API) && !isConstant) {
       violations.push({
         file: file.rel,
         line: i + 1,
