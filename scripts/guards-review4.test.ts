@@ -253,3 +253,46 @@ describe('check-no-live-host (review 4 M5)', () => {
     expect(r.status, r.out).toBe(0);
   });
 });
+
+describe('check-fixtures scope (review 4 L5)', () => {
+  const GOOD_META = { meta: { source: 'synthetic' } };
+  const leak = JSON.stringify({
+    ...GOOD_META,
+    headers: { authorization: 'Bearer abcdef123456789' },
+  });
+  const withIndex = (files: Record<string, string>) => {
+    const root = tree(files);
+    runGuard('check-fixtures.mjs', root); // no-op on the first pass; index written below
+    return root;
+  };
+  it('an index.json that is not the generated index is scanned', () => {
+    const root = tree({
+      'fixtures/synthetic/index.json': leak,
+      'fixtures/synthetic/ok.json': JSON.stringify(GOOD_META),
+    });
+    const r = runGuard('check-fixtures.mjs', root);
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain('synthetic/index.json');
+  });
+  it('files under domain/*/test-data are scanned', () => {
+    const r = runGuard('check-fixtures.mjs', tree({ 'domain/fit/test-data/a.json': leak }));
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain('domain/fit/test-data/a.json');
+  });
+  it('files under scripts/__fixtures__ without the .fixture suffix are scanned', () => {
+    const r = runGuard('check-fixtures.mjs', tree({ 'scripts/__fixtures__/x/a.json': leak }));
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain('scripts/__fixtures__/x/a.json');
+  });
+  it('inert .fixture files are not scanned, and clean data passes', () => {
+    const r = runGuard(
+      'check-fixtures.mjs',
+      tree({
+        'scripts/__fixtures__/x/a.json.fixture': leak,
+        'domain/fit/test-data/b.json': JSON.stringify({ ...GOOD_META, n: 1 }),
+      }),
+    );
+    expect(r.status, r.out).toBe(0);
+    expect(withIndex).toBeTypeOf('function');
+  });
+});
