@@ -1,17 +1,13 @@
-/* eslint-disable no-restricted-imports -- test-only helper (imported by *.test.ts files only): node:async_hooks tracks "inside a transaction" per async flow for the provider-call spy of the refund calls. S1 bars node:* in domain helpers (same exemption as lane 05a's support.ts). */
 // Test world for lane 05b: lane 05a's world plus a scripted refund side at PayPal, dashboard refunds,
 // forced capture statuses, a "process dies" switch before the capture reaches PayPal, and a spy that
 // reports any refund call made inside a database transaction. Synthetic rows only, no network.
-import { AsyncLocalStorage } from 'node:async_hooks';
 import type {
   CaptureStatus,
-  Database,
   Id,
   Money,
   PaymentsDeps,
   RefundRes,
   RefundStatus,
-  SqlExecutor,
 } from '@umsbx/contracts';
 import { onBuyerReturn } from '../index';
 import { approved, makeWorld as makeBaseWorld } from '../support';
@@ -59,16 +55,7 @@ export interface OpsWorld extends World {
 
 export async function makeWorld(opts: WorldOptions = {}): Promise<OpsWorld> {
   const base = await makeBaseWorld(opts);
-  const als = new AsyncLocalStorage<true>();
-  const outer = base.deps.db;
-  const db = {
-    dialect: outer.dialect,
-    query: outer.query.bind(outer),
-    exec: outer.exec.bind(outer),
-    transaction: <T>(fn: (tx: SqlExecutor) => Promise<T>) =>
-      outer.transaction((tx) => als.run(true, () => fn(tx))),
-    close: () => Promise.resolve(),
-  } as unknown as Database & { close(): Promise<void> };
+  const db = base.db;
   const paypal = base.paypal;
   const refunds = new Map<string, FakeRefund>();
   const forced = new Map<string, CaptureStatus>();
@@ -83,15 +70,26 @@ export async function makeWorld(opts: WorldOptions = {}): Promise<OpsWorld> {
   };
   const faults = { dieBeforeCapture: false, loseCreateResponse: false };
   let n = 0;
-  const guard = (op: string): void => {
-    if (als.getStore() === true) {
-      paypal.violations.push(op);
-      throw new Error(`PayPal call "${op}" made inside a database transaction`);
+  // The spy of lane 05a's fake knows when a call is made inside a database transaction. Its own
+  // read is used as the probe (and not kept in the call log), so the refund calls are held to the
+  // same rule without a second tracker.
+  const probe = paypal.getOrder.bind(paypal);
+  const guard = async (): Promise<void> => {
+    const kept = paypal.calls.length;
+    const queued = paypal.queue.get.splice(0); // the probe must not use up a scripted read
+    const hook = paypal.beforeGet;
+    paypal.beforeGet = null;
+    try {
+      await probe('SBXPROBE');
+    } finally {
+      paypal.calls.length = kept;
+      paypal.queue.get.unshift(...queued);
+      paypal.beforeGet = hook;
     }
   };
 
   // The capture as the order read shows it: refunds and forced statuses applied.
-  const realGet = paypal.getOrder.bind(paypal);
+  const realGet = probe;
   paypal.getOrder = async (id, scenario) => {
     const r = await realGet(id, scenario);
     if (r.kind !== 'order') return r;
@@ -143,8 +141,8 @@ export async function makeWorld(opts: WorldOptions = {}): Promise<OpsWorld> {
     return realCapture(r);
   };
 
-  paypal.refundCapture = (r) => {
-    guard('refund');
+  paypal.refundCapture = async (r) => {
+    await guard();
     refundCalls.push({ request_id: r.request_id, capture_id: r.capture_id, amount: r.amount });
     const same = [...refunds.values()].find((x) => x.request_id === r.request_id);
     if (same !== undefined) return Promise.resolve(refundRes(same));
@@ -170,8 +168,8 @@ export async function makeWorld(opts: WorldOptions = {}): Promise<OpsWorld> {
     if (refundNext.lose_response) return Promise.resolve<RefundRes>({ kind: 'timeout' });
     return Promise.resolve(refundRes(refund));
   };
-  paypal.getRefund = (id) => {
-    guard('get_refund');
+  paypal.getRefund = async (id) => {
+    await guard();
     getRefundCalls.push(id);
     const r = refunds.get(id);
     if (r === undefined) return Promise.resolve<RefundRes>({ kind: 'not_found', debug_id: null });

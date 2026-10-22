@@ -7,7 +7,7 @@
 // Adapted from AIC_Hackathon_UnitMarket packages/core/payments/reconcile.ts (refund and reversal
 // steps) at a36ddc03fd0b962000f686291c145b50ee337f90. Owned by SBX lane 05b.
 import { applyMoneyEvent } from '@umsbx/entitlements';
-import { appendLedgerEntry } from '@umsbx/ledger';
+import { appendLedgerEntry, LedgerRuleError } from '@umsbx/ledger';
 import { issueReceiptIfChanged } from '@umsbx/receipts';
 import { IdSchema, RefundResSchema, err, ok } from '@umsbx/contracts';
 import type {
@@ -439,14 +439,29 @@ async function book(
       [unit.capture_id],
     )
   ).rows[0];
-  const added = await appendLedgerEntry(tx, d, {
-    unit_id: unit.id,
-    capture_id: unit.capture_id,
-    kind: 'refund',
-    amount,
-    refund_id,
-    ref_entry_id: sale?.id ?? null,
-  });
+  let added;
+  try {
+    added = await appendLedgerEntry(tx, d, {
+      unit_id: unit.id,
+      capture_id: unit.capture_id,
+      kind: 'refund',
+      amount,
+      refund_id,
+      ref_entry_id: sale?.id ?? null,
+    });
+  } catch (e) {
+    // A rule of the ledger (for instance a replay of this refund id with another amount) is a
+    // programmer error, not a booking: nothing is written and a human is told.
+    if (!(e instanceof LedgerRuleError)) throw e;
+    await raiseOpsAlert(tx, d, {
+      kind: 'refund_unresolved',
+      order_id: unit.order_id,
+      unit_id: unit.id,
+      reason: `ledger_rule_${refund_id}`,
+      detail: { rule: e.message.slice(0, 200) },
+    });
+    return false;
+  }
   if (!added.ok) return true; // booked before: a replay changes nothing
   const total = unit.refunded_minor + amount.minor;
   const full = total >= unit.amount_minor;

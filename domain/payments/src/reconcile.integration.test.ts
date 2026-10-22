@@ -11,7 +11,14 @@ afterEach(async () => {
   expect(w.paypal.violations).toEqual([]);
   await w.close();
 });
-const nowMs = (): number => Number(process.hrtime.bigint() / 1_000_000n);
+// No wall clock is read here: the pass races a 60 s timer.
+const withinMs = <T>(ms: number, work: Promise<T>): Promise<T> =>
+  Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`took longer than ${ms} ms`)), ms);
+    }),
+  ]);
 
 describe('PERF-9', () => {
   it('500 open operations, fixture provider: one pass under 60 s and at most 2 calls per second', async () => {
@@ -32,10 +39,7 @@ describe('PERF-9', () => {
     expect(await count(w, 'operations', "state = 'unknown'")).toBe(N);
     w.tick(31_000);
     const callsBefore = w.paypal.calls.length;
-    const t0 = nowMs();
-    const r = await runDue(w.deps, { max_items: 100 });
-    const elapsed = nowMs() - t0;
-    expect(elapsed).toBeLessThan(60_000);
+    const r = await withinMs(60_000, runDue(w.deps, { max_items: 100 }));
     expect(r.processed).toBe(100);
     const calls = w.paypal.calls.length - callsBefore;
     expect(calls).toBeLessThanOrEqual(120); // 2 calls per second over a 60 s pass

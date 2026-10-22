@@ -73,30 +73,49 @@ describe('startLoop', () => {
     expect(sweepWindows).toHaveBeenCalledWith({ max_items: 7 });
   });
 
-  it('waits until the next due time but never longer than max_sleep_ms', async () => {
+  it('waits until the next due time', async () => {
     vi.useFakeTimers();
     const { d, clock } = makeDeps();
-    const sleeps: number[] = [];
-    const realSet = globalThis.setTimeout;
-    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
-      sleeps.push(ms ?? 0);
-      return realSet(fn, ms);
-    }) as typeof setTimeout);
+    const passes = (): number => vi.mocked(runDue).mock.calls.length;
     vi.mocked(nextDueAt).mockImplementation(() =>
       Promise.resolve(new Date(clock.now().getTime() + 12_000).toISOString()),
     );
     const loop = startLoop(d, { max_sleep_ms: 30_000, max_items: 10 });
     await vi.advanceTimersByTimeAsync(0);
-    expect(sleeps).toContain(12_000);
+    expect(passes()).toBe(1);
+    await vi.advanceTimersByTimeAsync(11_999);
+    expect(passes()).toBe(1); // still asleep
+    await vi.advanceTimersByTimeAsync(1);
+    expect(passes()).toBe(2); // woke at the due time, not later
+    await loop.stop();
+  });
+
+  it('never sleeps longer than max_sleep_ms, and with nothing due sleeps exactly that long', async () => {
+    vi.useFakeTimers();
+    const { d, clock } = makeDeps();
+    const passes = (): number => vi.mocked(runDue).mock.calls.length;
     vi.mocked(nextDueAt).mockImplementation(() =>
       Promise.resolve(new Date(clock.now().getTime() + 900_000).toISOString()),
     );
-    await vi.advanceTimersByTimeAsync(12_000);
-    expect(sleeps).toContain(30_000);
+    const far = startLoop(d, { max_sleep_ms: 30_000, max_items: 10 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(passes()).toBe(1);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(passes()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(passes()).toBe(2);
+    await far.stop();
+
+    vi.mocked(runDue).mockClear();
     vi.mocked(nextDueAt).mockResolvedValue(null);
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(sleeps.filter((s) => s === 30_000).length).toBeGreaterThanOrEqual(2);
-    await loop.stop();
+    const idle = startLoop(d, { max_sleep_ms: 20_000, max_items: 10 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(passes()).toBe(1);
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(passes()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(passes()).toBe(2);
+    await idle.stop();
   });
 
   it('something already due runs again at once (a short floor, no spinning)', async () => {
@@ -143,9 +162,13 @@ describe('startLoop', () => {
     const { d } = makeDeps();
     const loop = startLoop(d, { max_sleep_ms: 600_000, max_items: 5 });
     await vi.waitFor(() => expect(vi.mocked(runDue)).toHaveBeenCalledTimes(1));
-    const t0 = process.hrtime.bigint();
-    await loop.stop();
-    expect(Number((process.hrtime.bigint() - t0) / 1_000_000n)).toBeLessThan(2000);
+    // The sleep is 10 minutes long; stop must not wait for it.
+    await Promise.race([
+      loop.stop(),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('stop waited for the sleep')), 2000);
+      }),
+    ]);
     await loop.stop(); // idempotent
   });
 
