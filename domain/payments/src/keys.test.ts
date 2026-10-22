@@ -28,6 +28,13 @@ describe('requestIdFor lengths and prefixes', () => {
   it('an empty ref is refused', () => {
     expect(() => requestIdFor('create', '')).toThrow();
   });
+  it('the first attempt is the plain key; later attempts carry a suffix (D-014)', () => {
+    expect(requestIdFor('capture', ref, 1)).toBe(`umsK-${ref}`);
+    expect(requestIdFor('capture', ref, 2)).toBe(`umsK-${ref}-2`);
+    expect(requestIdFor('capture', ref, 3)).toBe(`umsK-${ref}-3`);
+    expect(() => requestIdFor('capture', ref, 0)).toThrow();
+    expect(() => requestIdFor('capture', 'x'.repeat(102), 2)).toThrow(/108/);
+  });
   it('is deterministic: the same ref gives the same key every time', () => {
     expect(requestIdFor('capture', ref)).toBe(requestIdFor('capture', ref));
   });

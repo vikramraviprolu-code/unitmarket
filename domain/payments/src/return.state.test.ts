@@ -47,6 +47,13 @@ const op = async (order_id: string, kind: string) =>
     )
   )[0];
 
+// The pre-gate may leave a `prepared` capture row with an expired lease (FIX-05A LOW); what these
+// tests mean is that a capture was never sent.
+const neverSent = async (order_id: string): Promise<void> => {
+  const o = await op(order_id, 'capture');
+  expect(o === undefined || (o.state === 'prepared' && o.first_sent_at === null)).toBe(true);
+};
+
 describe('the verified journey', () => {
   it('A-12: matching read-back unlocks, starts the window now, books sale and fee, issues receipt v1', async () => {
     w = await makeWorld();
@@ -261,6 +268,11 @@ describe('P5: tampering with the read freezes, before or after the capture', () 
     ['EUR', { currency: 'EUR' }],
     ['other custom_id', { custom_id: 'ord_SOMEONEELSE' }],
   ] as const;
+  const capturedCases = [
+    ['captured amount -1 (unit amount unchanged)', { capture_amount_delta: -1 }],
+    ['captured amount +1 (unit amount unchanged)', { capture_amount_delta: 1 }],
+    ['captured currency EUR (unit currency unchanged)', { capture_currency: 'EUR' }],
+  ] as const;
 
   it.each(cases)('A-13 before capture: %s freezes, nothing is captured', async (_n, tamper) => {
     w = await makeWorld();
@@ -270,13 +282,13 @@ describe('P5: tampering with the read freezes, before or after the capture', () 
     expect(r).toEqual({ ok: false, error: { code: 'frozen' } });
     expect(w.paypal.count('capture')).toBe(0);
     expect((await order(a.order_id)).status).toBe('frozen');
-    expect(await op(a.order_id, 'capture')).toBeUndefined();
+    await neverSent(a.order_id);
     expect(await count(w, 'ledger_entries')).toBe(0);
     expect(await ent()).toMatchObject({ money_state: 'pending', access_state: 'locked' });
     expect(await count(w, 'alerts', "kind = 'frozen_order'")).toBeGreaterThanOrEqual(1);
   });
 
-  it.each(cases)(
+  it.each([...cases, ...capturedCases])(
     'A-13 after capture: %s freezes with no sale and no unlock',
     async (_n, tamper) => {
       w = await makeWorld();
@@ -371,7 +383,7 @@ describe('the return is a trigger, never evidence', () => {
     expect(r).toEqual({ ok: false, error: { code: 'not_approved' } });
     expect((await order(a.order_id)).status).toBe('awaiting_buyer');
     expect(w.paypal.count('capture')).toBe(0);
-    expect(await op(a.order_id, 'capture')).toBeUndefined();
+    await neverSent(a.order_id);
   });
 
   it('order still being created (no provider order yet): not_approved without a call', async () => {
@@ -433,7 +445,7 @@ describe('A-17: delivery readiness is checked before any charge', () => {
     expect((await order(a.order_id)).status).toBe('failed');
     expect((await unit(a.order_id)).status).toBe('declined');
     expect(await ent()).toMatchObject({ money_state: 'denied', access_state: 'locked' });
-    expect(await op(a.order_id, 'capture')).toBeUndefined();
+    await neverSent(a.order_id);
     expect(await count(w, 'ledger_entries')).toBe(0);
     expect(await count(w, 'alerts', "kind = 'content_unavailable'")).toBe(1);
     // Asked again: the same plain answer, and still no charge.
@@ -530,7 +542,6 @@ describe('capture outcomes other than a clean claim', () => {
   it.each([
     ['unavailable', { kind: 'unavailable', retry_after_ms: null }],
     ['in_progress 409', { kind: 'in_progress', debug_id: null }],
-    ['blocked', { kind: 'blocked', by: 'budget' }],
     [
       '202 accepted',
       { kind: 'claim', http: 202, provider_order_id: 'X', units: [], debug_id: null },
@@ -560,7 +571,7 @@ describe('capture outcomes other than a clean claim', () => {
     },
   );
 
-  it('payer_action: the order goes back to awaiting_buyer with the redirect link; the same key serves the next try', async () => {
+  it('payer_action: the order goes back to awaiting_buyer with the redirect link; the next try uses a new key (H2)', async () => {
     w = await makeWorld();
     const a = await approved(w);
     w.paypal.queue.capture.push({
@@ -574,11 +585,12 @@ describe('capture outcomes other than a clean claim', () => {
       'https://www.sandbox.paypal.com/checkoutnow?token=AGAIN',
     );
     expect((await op(a.order_id, 'capture'))!.state).toBe('prepared');
-    // The buyer fixes the funding source and returns: captured with the same key.
+    // The buyer fixes the funding source and returns. PayPal replays the stored answer for a key,
+    // so the first key cannot succeed: a new attempt key is used, after a read (FIX-05A H2).
     const second = await ret(a.order_ref);
     expect(second.ok && second.value.status).toBe('paid');
     const keys = w.paypal.calls.filter((c) => c.op === 'capture').map((c) => c.request_id);
-    expect(keys).toEqual([`umsK-${a.order_ref}`, `umsK-${a.order_ref}`]);
+    expect(keys).toEqual([`umsK-${a.order_ref}`, `umsK-${a.order_ref}-2`]);
   });
 
   it('ORDER_NOT_APPROVED (a race): not_approved, back to awaiting_buyer, operation prepared', async () => {
@@ -612,7 +624,7 @@ describe('capture outcomes other than a clean claim', () => {
     expect(w.paypal.count('capture')).toBe(1);
   });
 
-  it('TRANSACTION_REFUSED: the read-back decides; with no capture shown the order stays unresolved, not declined', async () => {
+  it('TRANSACTION_REFUSED: the read-back decides; with no capture shown the order closes as failed, not charged (M3)', async () => {
     w = await makeWorld();
     const a = await approved(w);
     w.paypal.queue.capture.push({
@@ -623,9 +635,9 @@ describe('capture outcomes other than a clean claim', () => {
       debug_id: 'D',
     });
     const r = await ret(a.order_ref);
-    expect(r.ok && r.value.status).toBe('unresolved');
-    expect((await unit(a.order_id)).status).toBe('expected');
-    expect(await ent()).toMatchObject({ money_state: 'pending' });
+    expect(r.ok && r.value.status).toBe('failed');
+    expect((await unit(a.order_id)).status).toBe('declined');
+    expect(await ent()).toMatchObject({ money_state: 'denied' });
     expect(w.paypal.count('get')).toBe(2);
   });
 

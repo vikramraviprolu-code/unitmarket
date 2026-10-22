@@ -202,7 +202,20 @@ export async function applyReadback(
       }
       continue;
     }
-    if (unit.status === 'declined' || unit.status === 'mismatch') continue;
+    if (unit.status === 'declined' || unit.status === 'mismatch') {
+      // A unit we declined (a final DECLINED or FAILED, or a refused capture) whose capture now
+      // shows as received is money nobody expects: a human must look; nothing unlocks.
+      if (unit.status === 'declined' && m.result === 'matched') {
+        await alert({
+          kind: 'unexpected_capture',
+          order_id: order.id,
+          unit_id: unit.id,
+          reason: 'declined_unit_received',
+          detail: { trigger: i.trigger },
+        });
+      }
+      continue;
+    }
 
     if (m.result === 'pending') {
       report.pending.push(unit.id);
@@ -225,22 +238,40 @@ export async function applyReadback(
         await applyMoneyEvent(tx, d, { entitlement_id: id, event: 'declined' });
       });
     } else if (m.result === 'matched') {
-      await verify(tx, d, order, unit, ru, at, alert);
-      await startAccess(
-        tx,
-        d,
-        { ...unit, captured_verified_at: at },
-        i.gates,
-        report,
-        alert,
-        order,
-      );
+      // A lost compare-and-set (another caller verified or closed the unit) is a clean no-op:
+      // nothing is booked and no access starts from this read.
+      if (await verify(tx, d, order, unit, ru, at, alert)) {
+        await startAccess(
+          tx,
+          d,
+          { ...unit, captured_verified_at: at },
+          i.gates,
+          report,
+          alert,
+          order,
+        );
+      }
     }
     // no_capture: nothing to record.
   }
 
   // P8: terminal units, the order status and the operations.
   const fresh = await loadUnits(tx, order.id);
+  // A unit in mismatch is unverified money a human must look at: the order is frozen, never
+  // failed ("You were not charged" would be false), whatever the read says now (H1).
+  const stuck = fresh.find((u) => u.status === 'mismatch' && u.captured_verified_at === null);
+  if (stuck !== undefined && order.status !== 'paid' && order.status !== 'paid_partial') {
+    await alert({
+      kind: 'frozen_order',
+      order_id: order.id,
+      unit_id: stuck.id,
+      reason: `unit_${stuck.mismatch_reason ?? 'unknown'}`,
+      detail: { field: stuck.mismatch_reason, trigger: i.trigger },
+    });
+    report.mismatched.push(stuck.id);
+    await freezeOrMark(tx, order, report, alert, null, at, i.trigger);
+    return report;
+  }
   const verified = fresh.filter((u) => u.captured_verified_at !== null).length;
   const terminal = fresh.every(
     (u) => u.captured_verified_at !== null || u.status === 'declined' || u.status === 'mismatch',
@@ -251,6 +282,15 @@ export async function applyReadback(
     if (order.status === 'paid_partial' && status === 'paid') status = 'paid';
   } else if (IN_FLIGHT.has(order.status)) {
     status = 'unresolved';
+    if (await refusedWithoutCapture(tx, order, i.read)) {
+      // PayPal refused the capture for good and the read shows no capture on any unit: nothing
+      // was charged. The order is closed as not charged (M3).
+      await declineUnits(tx, d, order.id, 'capture_refused');
+      status = 'failed';
+      report.declined.push(
+        ...fresh.filter((u) => u.captured_verified_at === null).map((u) => u.id),
+      );
+    }
   }
   if (status !== order.status) {
     await tx.query('UPDATE orders SET status = $2, updated_at = $3 WHERE id = $1', [
@@ -267,6 +307,51 @@ export async function applyReadback(
 }
 
 // ---------------------------------------------------------------------------------------------
+
+/** Items of a failed order: units declined with a reason, entitlements denied. */
+export async function declineUnits(
+  tx: SqlExecutor,
+  d: CoreDeps,
+  order_id: Id,
+  reason: string,
+): Promise<void> {
+  const at = d.clock.now().toISOString();
+  for (const unit of await loadUnits(tx, order_id)) {
+    await tx.query(
+      `UPDATE order_units SET status = 'declined', status_reason = $2, updated_at = $3
+       WHERE id = $1 AND captured_verified_at IS NULL`,
+      [unit.id, reason, at],
+    );
+    const ents = await tx.query<{ id: string }>(
+      'SELECT id FROM entitlements WHERE unit_id = $1 ORDER BY article_id',
+      [unit.id],
+    );
+    for (const e of ents.rows) {
+      await applyMoneyEvent(tx, d, { entitlement_id: e.id, event: 'declined' });
+    }
+  }
+}
+
+// The capture operation was refused for good (a 4xx that is not "not approved") and the read shows
+// no capture on any unit.
+async function refusedWithoutCapture(
+  tx: SqlExecutor,
+  order: OrderRow,
+  read: Read,
+): Promise<boolean> {
+  if (read.units.some((u) => u.capture !== null)) return false;
+  const cap = await loadOperation(tx, order.id, 'capture');
+  return (
+    cap !== null &&
+    cap.state === 'failed' &&
+    (
+      await tx.query(
+        "SELECT 1 FROM operations WHERE id = $1 AND failure_reason IN ('rejected', 'invalid_request')",
+        [cap.id],
+      )
+    ).rows.length > 0
+  );
+}
 
 async function eachEntitlement(
   tx: SqlExecutor,
@@ -346,7 +431,7 @@ async function verify(
   ru: Read['units'][number],
   at: string,
   alert: (a: Parameters<typeof raiseAlert>[2]) => Promise<void>,
-): Promise<void> {
+): Promise<boolean> {
   const cap = ru.capture;
   if (cap === null) throw new Error('unreachable: a matched unit has a capture');
   const won = await tx.query(
@@ -355,12 +440,13 @@ async function verify(
      WHERE id = $1 AND captured_verified_at IS NULL AND status IN ('expected', 'pending') RETURNING id`,
     [unit.id, cap.capture_id, at, cap.paypal_fee_minor],
   );
-  if (won.rows.length === 0) return; // someone else verified it first, or the unit is no longer open
+  if (won.rows.length === 0) return false; // someone else verified it first, or the unit is no longer open
   await eachEntitlement(tx, unit, async (id) => {
     const r = await applyMoneyEvent(tx, d, { entitlement_id: id, event: 'capture_verified' });
     if (!r.ok) throw new Error(`entitlement ${id}: ${r.error.code} on a verified capture`);
   });
-  const money = { currency: order.currency, minor: unit.amount_minor };
+  // Book what PayPal captured (matchReadback has checked it equals the unit amount).
+  const money = { currency: cap.amount.currency, minor: cap.amount.minor };
   const sale = await appendLedgerEntry(tx, d, {
     unit_id: unit.id,
     capture_id: cap.capture_id,
@@ -389,6 +475,7 @@ async function verify(
       });
     }
   }
+  return true;
 }
 
 // The access window starts only when the unlock switch is on and the delivery probe passed. Without

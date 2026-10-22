@@ -9,7 +9,12 @@ export type AlertKind =
   | 'create_rejected'
   | 'content_unavailable'
   | 'unexpected_capture'
-  | 'fee_above_amount';
+  | 'fee_above_amount'
+  | 'payment_unresolved'
+  | 'reversal'
+  | 'refund_unbooked'
+  | 'refund_failed'
+  | 'refund_unresolved';
 
 export async function raiseAlert(
   tx: SqlExecutor,

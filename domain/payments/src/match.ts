@@ -92,6 +92,14 @@ export function matchReadback(input: MatchInput): MatchResult {
     if (got.payee_merchant_id !== want.payee_merchant_id) return result('mismatch', 'payee');
     if (got.amount.minor !== want.amount_minor) return result('mismatch', 'amount');
     if (capture === null || captureId === null) return result('no_capture');
+    // What PayPal says it captured must be what was ordered: same currency and same minor units
+    // (M1). Field `amount` stands for both: the contract has no separate capture field.
+    if (
+      capture.amount.currency !== expected.currency ||
+      capture.amount.minor !== want.amount_minor
+    ) {
+      return result('mismatch', 'amount');
+    }
     const holder = claimedBy.get(captureId);
     if (
       foreign.has(captureId) ||

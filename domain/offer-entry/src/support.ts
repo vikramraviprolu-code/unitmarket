@@ -114,6 +114,8 @@ export async function giveEntitlement(
     publisher_id: string;
     access_state: string;
     window: string | null;
+    /** Default: captured when access is available or ended, else pending. */
+    money_state?: string;
   },
 ): Promise<void> {
   const k = ++n;
@@ -161,7 +163,10 @@ export async function giveEntitlement(
       `CAPT${k}`, // a captured unit carries its capture id (FIX-W1A M1)
     ],
   );
-  const available = i.access_state === 'available' || i.access_state === 'ended';
+  const money =
+    i.money_state ??
+    (i.access_state === 'available' || i.access_state === 'ended' ? 'captured' : 'pending');
+  const licensed = money === 'captured' || money === 'refunded' || money === 'reversed';
   await db.query(
     'INSERT INTO entitlements (id, buyer_id, article_id, unit_id, option, policy, money_state, access_state, licence_state, transition_log, environment, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)',
     [
@@ -171,9 +176,9 @@ export async function giveEntitlement(
       `unt_t${k}`,
       'keep_retrieve',
       '{}',
-      available ? 'captured' : 'pending',
+      money,
       i.access_state,
-      available ? 'granted' : null,
+      licensed ? 'granted' : null,
       '[]',
       'dryrun',
       T0,

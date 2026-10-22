@@ -63,6 +63,9 @@ interface FakeOrder {
 }
 export interface Tamper {
   amount_delta?: number;
+  /** Only the captured amount differs; the purchase-unit amount stays as ordered (M1). */
+  capture_amount_delta?: number;
+  capture_currency?: string;
   payee?: string;
   currency?: string;
   custom_id?: string | null;
@@ -101,7 +104,17 @@ export interface FakePayPal extends PayPalPort {
   crashAfterCapture: boolean;
   /** Holds every capture call until released (concurrency tests). */
   hold: Promise<void> | null;
+  /**
+   * Like PayPal, the fake remembers the definitive answer to a PayPal-Request-Id for 6 hours and
+   * answers a second call with the same id from that memory (a resent capture is not executed
+   * again, and a resent create gives the same order). Transport-level answers (timeout, 5xx, 409,
+   * blocked) are not remembered. After the retention the id is a new request.
+   */
+  readonly retention_ms: number;
 }
+
+/** PayPal keeps an idempotency key for 6 hours (nfr.md P3, VERIFIED). */
+export const RETENTION_MS = 21_600_000;
 
 // PayPal gives each purchase unit its own capture: the first keeps the base id.
 const captureIdOf = (o: { capture: { capture_id: string } | null }, k: number): string =>
@@ -111,6 +124,8 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
   const calls: FakeCall[] = [];
   const violations: string[] = [];
   const orders = new Map<string, FakeOrder>();
+  const storedCreate = new Map<string, { at: number; res: CreateOrderRes }>();
+  const storedCapture = new Map<string, { at: number; res: CaptureRes }>();
   let n = 0;
   const guard = (op: string): void => {
     if (inTx()) {
@@ -135,8 +150,8 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
               status: o.capture.status,
               status_reason: o.capture.reason,
               amount: {
-                currency: t.currency ?? u.amount.currency,
-                minor: u.amount.minor + (t.amount_delta ?? 0),
+                currency: t.capture_currency ?? t.currency ?? u.amount.currency,
+                minor: u.amount.minor + (t.amount_delta ?? 0) + (t.capture_amount_delta ?? 0),
               },
               paypal_fee_minor: o.capture.fee,
               refunded_minor: 0,
@@ -175,6 +190,7 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
     beforeCreate: null,
     crashAfterCapture: false,
     hold: null,
+    retention_ms: RETENTION_MS,
     count: (op) => calls.filter((c) => c.op === op).length,
     approve(id) {
       const o = orders.get(id);
@@ -190,30 +206,27 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
         scenario: req.scenario,
       });
       if (fake.beforeCreate !== null) await fake.beforeCreate();
-      const forced = fake.queue.create.shift();
-      if (forced !== undefined) return forced;
-      // Idempotent on the request id.
-      for (const o of orders.values()) {
-        if (o.req.request_id === req.request_id) {
-          return {
-            kind: 'created',
-            provider_order_id: o.id,
-            status: 'CREATED',
-            approve_url: `https://www.sandbox.paypal.com/checkoutnow?token=${o.id}`,
-            debug_id: 'DBGCREATE',
-          };
+      const nowMs = clock.now().getTime();
+      const seen = storedCreate.get(req.request_id);
+      if (seen !== undefined && nowMs - seen.at < RETENTION_MS) return seen.res;
+      const remember = (res: CreateOrderRes): CreateOrderRes => {
+        if (res.kind === 'created' || res.kind === 'rejected') {
+          storedCreate.set(req.request_id, { at: nowMs, res });
         }
-      }
+        return res;
+      };
+      const forced = fake.queue.create.shift();
+      if (forced !== undefined) return remember(forced);
       n += 1;
       const id = `SBXFAKEORD${String(n).padStart(5, '0')}`;
       orders.set(id, { id, req, status: 'CREATED', capture: null, capture_request_id: null });
-      return {
+      return remember({
         kind: 'created',
         provider_order_id: id,
         status: 'CREATED',
         approve_url: `https://www.sandbox.paypal.com/checkoutnow?token=${id}`,
         debug_id: 'DBGCREATE',
-      };
+      });
     },
     async getOrder(id, scenario = null) {
       guard('get');
@@ -234,21 +247,29 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
         scenario: r.scenario ?? null,
       });
       if (fake.hold !== null) await fake.hold;
+      const nowMs = clock.now().getTime();
+      const seen = storedCapture.get(r.request_id);
+      if (seen !== undefined && nowMs - seen.at < RETENTION_MS) return seen.res;
+      const remember = (res: CaptureRes): CaptureRes => {
+        if (res.kind === 'rejected' || res.kind === 'payer_action') {
+          storedCapture.set(r.request_id, { at: nowMs, res });
+        } else if (res.kind === 'claim' && res.http !== 202) {
+          storedCapture.set(r.request_id, { at: nowMs, res: { ...res, http: 200 } });
+        }
+        return res;
+      };
       const forced = fake.queue.capture.shift();
-      if (forced !== undefined) return forced;
+      if (forced !== undefined) return remember(forced);
       const o = orders.get(r.provider_order_id);
       if (o === undefined) return { kind: 'not_found', debug_id: null };
-      if (o.capture !== null && o.capture_request_id === r.request_id) {
-        return claimOf(o, 200);
-      }
       if (o.status !== 'APPROVED') {
-        return {
+        return remember({
           kind: 'rejected',
           http: 422,
           name: 'UNPROCESSABLE_ENTITY',
           issue: o.capture === null ? 'ORDER_NOT_APPROVED' : 'ORDER_ALREADY_CAPTURED',
           debug_id: 'DBGCAP',
-        };
+        });
       }
       n += 1;
       o.capture = {
@@ -259,9 +280,10 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
       };
       o.capture_request_id = r.request_id;
       o.status = 'COMPLETED';
+      const claim = remember(claimOf(o, 201));
       if (fake.crashAfterCapture) throw new Error('process died after the capture');
       if (fake.next.lose_response) return { kind: 'timeout' };
-      return claimOf(o, 201);
+      return claim;
     },
     getCapture: () => Promise.reject(new Error('getCapture is not used by lane 05a')),
     refundCapture: () => Promise.reject(new Error('refundCapture is not used by lane 05a')),

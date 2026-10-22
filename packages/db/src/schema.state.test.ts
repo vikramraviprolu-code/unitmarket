@@ -178,6 +178,7 @@ describe('migrations', () => {
       '0007_links_session',
     ]);
     expect(first).toContain('0008_access_events_unique');
+    expect(first).toContain('0009_active_entitlement_unique');
     expect(await migrate(d, clock)).toEqual([]);
     const rows = await d.query<{ version: string; applied_at: Date | string }>(
       'SELECT version, applied_at FROM schema_migrations ORDER BY version',

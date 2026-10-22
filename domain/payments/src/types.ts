@@ -5,6 +5,8 @@ import type { VerifyError } from '@umsbx/approval';
 export type PlaceError =
   | { code: 'approval'; error: VerifyError }
   | { code: 'order_open'; http: 409 }
+  | { code: 'already_owned'; http: 409 }
+  | { code: 'payee_unavailable'; http: 409 }
   | { code: 'checkout_off'; http: 503 };
 
 export interface OrderView {

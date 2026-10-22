@@ -61,6 +61,8 @@ All changes are additive; existing exports keep their signatures.
 - `offer-entry` `already_owned` looks only at entitlements that are `available` or `running`. An entitlement that is `locked` with a capture in flight gets a fresh quote. Payments must dedupe: one open order per buyer and article, and refuse to create an order for an article whose entitlement is locked with a capture in flight.
 - Payments must refuse a payee without `payee_verified_at` and `paypal_merchant_id` before creating an order; the catalogue does not filter them out.
 
+<<<<<<< HEAD
+
 ## Lane 15b (web wired to the real payments engine)
 
 - `composition.server.ts` binds `placeOrder`, `beginCheckout`, `onBuyerReturn` (05a), `checkInvariants`, `requestRefund`, `recoverOnStartup` (05b) and `startLoop`/`health` (`@umsbx/jobs`). `requestRefund` is passed to the recovery `ResolveDeps` (ASM-10-2); the engine exposes `resolveCase` for the operator.
@@ -70,3 +72,18 @@ All changes are additive; existing exports keep their signatures.
 - Delivery links are bound to the session: `engine.sessionIdOf(cookie, actor)` gives the session id, the link route and `/c/[token]` pass it to `issueLink` and `planServe`.
 - Not adopted: `remote_addr`. Next.js route handlers get no socket address and `withRoute(...)` is fixed to the exact form `check:routes` pins, so the second argument cannot carry it. `trusted_proxies` is 0, so X-Forwarded-For is never read and every client shares one `no-address` ip bucket (the passcode limiter is then global). Needs either a proxy count in `packages/config` or a decision to allow a wrapper in the route inventory.
 - Checkout has its own rate bucket (`checkout`, 5 per minute per actor); before, it drew from the `order` bucket, so one purchase cost two tokens.
+  \=======
+
+## Lane 05a review fixes (FIX-05A)
+
+Branch `fix/05a-review`. Decisions: D-014 in `docs/decision-log.md`.
+
+- **Migration 0009** (`entitlements_one_active_per_buyer_article`): a buyer holds one entitlement per article while its money is pending, unknown or captured and its access is locked or available. The migration refuses to run with a clear error if such duplicates already exist. 0008 (access events unique) is on main and merged here; the schema test checks 0001 to 0007 by position and 0008 and 0009 by name.
+- **`placeOrder`** answers `already_owned` (409) when any article of the approval is held (also when locked, also while an order is in flight) and `payee_unavailable` (409) when a publisher's merchant id changed or lost `payee_verified_at` since the approval. Neither consumes the approval. `startFromOffer` uses the same held set for `already_owned`.
+- **Capture answers** (`captureOnce`, `retryCapture`) change the order only from `capture_requested`. Lock order is order, then operation, everywhere.
+- **Pre-gate**: a return takes a short lease on the capture operation row before its pre-capture read. A `prepared` capture row with `first_sent_at` null can therefore exist before any capture; it means nothing was sent.
+- **Unit in `mismatch`**: the order is `frozen` (with an alert), never `failed`. A definitive capture refusal (`rejected`, `invalid_request`) with no capture on the read closes the order as `failed` (not charged).
+- **M1 done**: `matchReadback` compares the captured amount and currency with the unit (mismatch, field `amount`; the contract has no separate `capture_amount` field, a change request if wanted) and `apply.ts` books the sale from the captured amount.
+- **For owners**: a `PARTIALLY_REFUNDED` verified unit can still start a not-started window after the unlock switch is turned back on (kept: the buyer paid and keeps what was not refunded; the refund path in 05b revokes access when the refund covers the whole unit).
+
+> > > > > > > fix/05a-review

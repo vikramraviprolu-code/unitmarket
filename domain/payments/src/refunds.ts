@@ -27,18 +27,9 @@ import type { AlertKind } from './alerts';
 import { requestIdFor } from './keys';
 import { addMs, backoffMs, insertOperation, loadOperation } from './store';
 
-/** Kinds this lane adds to the closed set of lane 05a's alerts. Lane 10 reads them as plain text. */
-export type OpsAlertKind =
-  | AlertKind
-  | 'payment_unresolved'
-  | 'reversal'
-  | 'refund_unbooked'
-  | 'refund_failed'
-  | 'refund_unresolved';
+/** Kept as an alias: the kinds lane 05b raises are part of lane 05a's AlertKind. */
+export type OpsAlertKind = AlertKind;
 
-// ASM-05B-2: lane 05a's AlertKind is a closed union in a file this lane may not edit; the alerts
-// table takes any text, so the extra kinds pass through one cast, here. Change request: add the
-// five kinds above to AlertKind in alerts.ts.
 export async function raiseOpsAlert(
   tx: SqlExecutor,
   d: Pick<CoreDeps, 'clock' | 'ids'>,
@@ -50,7 +41,7 @@ export async function raiseOpsAlert(
     detail?: Record<string, string | number | boolean | null>;
   },
 ): Promise<string | null> {
-  return raiseAlert(tx, d, { ...i, kind: i.kind as AlertKind });
+  return raiseAlert(tx, d, i);
 }
 
 // A request reserves its amount while it can still become a refund at PayPal.

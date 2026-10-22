@@ -23,6 +23,15 @@ const CLOSED = "('paid', 'paid_partial', 'failed', 'abandoned')";
 
 const isUniqueViolation = (e: unknown): boolean =>
   typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '23505';
+const violatesActiveEntitlement = (e: unknown): boolean =>
+  isUniqueViolation(e) && String((e as { message?: unknown }).message).includes(ACTIVE_INDEX);
+
+// An article is held while its money is pending, unknown or captured and its access is not ended
+// or revoked (also when locked, also while an order is in flight). The partial unique index
+// entitlements_one_active_per_buyer_article (migration 0009) lists the same set.
+const ACTIVE_INDEX = 'entitlements_one_active_per_buyer_article';
+const HELD =
+  "money_state IN ('pending', 'captured', 'unknown') AND access_state IN ('locked', 'available')";
 
 export async function placeOrder(
   d: PaymentsDeps,
@@ -47,6 +56,33 @@ export async function placeOrder(
           [approval.buyer_id, approval.content_hash],
         );
         if (open.rows.length > 0) return err({ code: 'order_open', http: 409 });
+        // The same article again, in any option, while it is held or in flight: no second charge.
+        const held = await tx.query(
+          `SELECT 1 FROM entitlements WHERE buyer_id = $1 AND article_id = ANY($2::text[]) AND ${HELD} LIMIT 1`,
+          [approval.buyer_id, snapshot.items.map((item) => item.article_id)],
+        );
+        if (held.rows.length > 0) return err({ code: 'already_owned', http: 409 });
+        // The payee is checked again now, not only when the approval was made: a merchant id that
+        // changed or lost its verification since must not receive a charge.
+        const payees = await tx.query<{
+          id: string;
+          paypal_merchant_id: string | null;
+          payee_verified_at: unknown;
+        }>(
+          'SELECT id, paypal_merchant_id, payee_verified_at FROM publishers WHERE id = ANY($1::text[])',
+          [snapshot.publishers.map((x) => x.publisher_id)],
+        );
+        const byId = new Map(payees.rows.map((row) => [row.id, row]));
+        for (const pub of snapshot.publishers) {
+          const row = byId.get(pub.publisher_id);
+          if (
+            row === undefined ||
+            row.payee_verified_at === null ||
+            row.paypal_merchant_id !== pub.payee_merchant_id
+          ) {
+            return err({ code: 'payee_unavailable', http: 409 });
+          }
+        }
         const used = await markUsed(tx, d, { approval_id: i.approval_id });
         if (!used.ok) {
           return err({ code: 'approval', error: { code: 'already_used', http: 409 } });
@@ -162,6 +198,7 @@ export async function placeOrder(
     );
   } catch (e) {
     // Two requests with the same content raced past the check: the database decided (P10).
+    if (violatesActiveEntitlement(e)) return err({ code: 'already_owned', http: 409 });
     if (isUniqueViolation(e)) return err({ code: 'order_open', http: 409 });
     throw e;
   }
