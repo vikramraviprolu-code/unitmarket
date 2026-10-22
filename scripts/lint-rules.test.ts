@@ -577,6 +577,8 @@ describe('named exemptions (D-015)', () => {
         'tests/mvp-a/app-a20-a22-perf.integration.test.ts -> sbx/no-package-escape',
         'tests/mvp-a/dryrun-kill-switch.integration.test.ts -> sbx/no-package-escape',
         'tests/mvp-a/safety-a01-a04.integration.test.ts -> sbx/no-package-escape',
+        'tests/mvp-b/b06-b08.integration.test.ts -> sbx/no-package-escape',
+        'tests/mvp-b/b09-logs-clean.integration.test.ts -> sbx/no-package-escape',
       ].sort(),
     );
   });

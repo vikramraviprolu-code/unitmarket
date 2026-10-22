@@ -866,6 +866,15 @@ export const NAMED_EXEMPTIONS = [
       'MVP-A gate (lane 18, FIX-GATE2): the web composition and route handlers are reachable only by relative path (@umsbx/web exports no composition); needed for the HTTP-level A-20, A-22 and PERF-2 checks, the dry-run kill switch (M1) and the refused-boot check (A-01)',
     off: ['sbx/no-package-escape'],
   },
+  {
+    files: [
+      'tests/mvp-b/b06-b08.integration.test.ts',
+      'tests/mvp-b/b09-logs-clean.integration.test.ts',
+    ],
+    reason:
+      'MVP-B offline acceptance (lane B-L5/B-L7): the web composition and route handlers are reachable only by relative path (@umsbx/web exports no composition); needed for the dry-run kill switch, timeout reconcile and call budget (B-06 to B-08) and the logs_clean journey through the route handlers (B-09)',
+    off: ['sbx/no-package-escape'],
+  },
 ];
 const namedExemptions = NAMED_EXEMPTIONS.map((e) => ({
   files: e.files,
