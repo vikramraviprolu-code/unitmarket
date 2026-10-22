@@ -28,6 +28,7 @@
     "@umsbx/safety": "workspace:*",
     "@umsbx/security": "workspace:*",
     "@umsbx/testkit": "workspace:*",
-    "@umsbx/transport": "workspace:*"
+    "@umsbx/transport": "workspace:*",
+    "server-only": "0.0.1"
   }
 }
