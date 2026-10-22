@@ -142,7 +142,7 @@ describe('check-isolation (review 4 M4)', () => {
     const r = runGuard('check-isolation.mjs', root);
     expect(r.status, r.out).toBe(1);
     expect(r.out).toContain('packages/linked');
-    expect(r.out).toMatch(/symlink/i);
+    expect(r.out).toMatch(/symbolic link/i);
   });
 
   it('fails on a symlinked file inside the repository', () => {
