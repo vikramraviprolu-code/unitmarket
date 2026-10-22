@@ -77,7 +77,19 @@ const FIXTURES = path.join(REPO, 'fixtures/paypal/docs-examples');
 const LOG = [
   '| Id | Date | Decision | Owner | Notes |',
   '| D-023 | 2026-10-22 | Sandbox accounts. This decision does not authorise any outbound call. | Owner | x |',
-  '| D-024 | 2026-10-25 | Owner written go for the read-only spike. | Owner | x |',
+  '| D-004 | 2026-10-01 | Some unrelated decision about money handling. | Owner | x |',
+  '| D-011 | 2026-10-05 | Another unrelated decision. | Owner | x |',
+  '| D-013 | 2026-10-06 | The sandbox host constant lives in one module. | Owner | x |',
+  // Synthetic well-formed rows for tests only. They are NOT in docs/decision-log.md.
+  '| D-024 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
+  '| D-025 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=vikram; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
+  '| D-026 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=sakthi; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
+  '| D-027 | 2026-10-01 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-10-25; approved in writing 2026-10-01 | Owner | x |',
+  '| D-028 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-10-26; approved in writing 2026-10-25 | Owner | x |',
+  '| D-029 | 2026-10-25 | SPIKE GO: scope=everything; operator=vikram; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
+  '| D-030 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-13-45; approved in writing 2026-10-25 | Owner | x |',
+  '| D-031 | 2026-10-25 | Owner written go for the read-only spike. | Owner | x |',
+  '| D-032 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-12-31 | Owner | x |',
 ].join('\n');
 
 let tmp: string;
@@ -287,6 +299,25 @@ describe('preflight refusals', () => {
     const r = preflight(good().deps);
     expect(r.ok).toBe(true);
   });
+  it('accepts a well-formed SPIKE GO row: read mode with spike-read, read mode with spike-write, write mode with spike-write', () => {
+    const readOnly = good();
+    readOnly.deps.env['SPIKE_APPROVAL_REF'] = 'D-025';
+    expect(preflight(readOnly.deps).ok).toBe(true);
+    expect(preflight(good().deps).ok).toBe(true); // D-024 spike-write, read mode
+    const w = good();
+    w.deps.env['SPIKE_MODE'] = 'write';
+    expect(preflight(w.deps).ok).toBe(true);
+    const s = good();
+    s.deps.env['SPIKE_OPERATOR'] = 'sakthi';
+    s.deps.env['SPIKE_APPROVAL_REF'] = 'D-026';
+    expect(preflight(s.deps).ok).toBe(true);
+  });
+  it('accepts a row on its last valid day', () => {
+    const h = good();
+    h.deps.env['SPIKE_APPROVAL_REF'] = 'D-028';
+    h.deps.nowIso = () => '2026-10-26T23:59:59.000Z';
+    expect(preflight(h.deps).ok).toBe(true);
+  });
   const cases: Array<[string, (h: Harness) => void]> = [
     ['ci_set', (h) => void (h.deps.env['CI'] = 'true')],
     ['not_tty', (h) => void (h.deps.stdinIsTTY = false)],
@@ -299,6 +330,31 @@ describe('preflight refusals', () => {
     ['approval_ref_pattern', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-24')],
     ['approval_ref_unknown', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-099')],
     ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-023')],
+    // H1: allow-list. Rows without the structured SPIKE GO marker never authorise.
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-011')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-004')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-013')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-031')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-032')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-029')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-030')],
+    ['approval_expired', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-027')],
+    [
+      'approval_expired',
+      (h) => {
+        h.deps.env['SPIKE_APPROVAL_REF'] = 'D-028';
+        h.deps.nowIso = () => '2026-10-27T00:00:00.000Z';
+      },
+    ],
+    [
+      'approval_scope_mismatch',
+      (h) => {
+        h.deps.env['SPIKE_APPROVAL_REF'] = 'D-025';
+        h.deps.env['SPIKE_MODE'] = 'write';
+      },
+    ],
+    ['approval_operator_mismatch', (h) => void (h.deps.env['SPIKE_OPERATOR'] = 'sakthi')],
+    ['approval_operator_mismatch', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-026')],
     ['decision_log_unreadable', (h) => void (h.deps.readText = () => null)],
     ['credentials_missing', (h) => void delete h.deps.env['PAYPAL_CLIENT_ID']],
     ['credentials_missing', (h) => void (h.deps.env['PAYPAL_CLIENT_SECRET'] = '')],

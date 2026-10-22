@@ -40,6 +40,9 @@ export const REFUSAL_CODES = [
   'decision_log_unreadable',
   'approval_ref_unknown',
   'approval_ref_not_authorising',
+  'approval_scope_mismatch',
+  'approval_operator_mismatch',
+  'approval_expired',
   'credentials_missing',
   'output_in_repo',
 ] as const;
@@ -460,6 +463,27 @@ function insideGitRepo(dir: string, exists: (p: string) => boolean): boolean {
   }
 }
 
+/** Structured owner marker a decision-log row must carry before a real spike run (FIX-BPREP H1). */
+const SPIKE_GO =
+  /SPIKE GO: scope=(spike-read|spike-write); operator=(vikram|sakthi); valid_until=(\d{4}-\d{2}-\d{2}); approved in writing (\d{4}-\d{2}-\d{2})/;
+function realDate(iso: string): boolean {
+  const t = Date.parse(`${iso}T00:00:00Z`);
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === iso;
+}
+export function parseSpikeGo(
+  row: string,
+): { scope: 'spike-read' | 'spike-write'; operator: string; validUntil: string } | null {
+  if (/does not authori[sz]e/i.test(row)) return null;
+  const m = SPIKE_GO.exec(row);
+  if (m === null) return null;
+  if (!realDate(m[3] as string) || !realDate(m[4] as string)) return null;
+  return {
+    scope: m[1] as 'spike-read' | 'spike-write',
+    operator: m[2] as string,
+    validUntil: m[3] as string,
+  };
+}
+
 export function preflight(deps: Deps): Preflight {
   const args = parseArgs(deps.argv);
   if (args === null)
@@ -530,11 +554,17 @@ export function preflight(deps: Deps): Preflight {
   const row = log.split('\n').find((l) => new RegExp(`^\\|\\s*${ref}\\s*\\|`).test(l));
   if (row === undefined)
     return refuse('approval_ref_unknown', `no row ${ref} in docs/decision-log.md`);
-  if (/does not authori[sz]e/i.test(row))
+  const go = parseSpikeGo(row);
+  if (go === null)
     return refuse(
       'approval_ref_not_authorising',
-      `row ${ref} says it does not authorise outbound calls`,
+      `row ${ref} carries no well-formed SPIKE GO marker (see docs/owner/SPIKE-RUNBOOK.md)`,
     );
+  if (!(modeRaw === 'write' ? go.scope === 'spike-write' : go.scope !== null))
+    return refuse('approval_scope_mismatch', `row ${ref} does not cover mode ${modeRaw}`);
+  if (go.operator !== operator)
+    return refuse('approval_operator_mismatch', `row ${ref} names a different operator`);
+  if (date > go.validUntil) return refuse('approval_expired', `row ${ref} has expired`);
   const clientId = env['PAYPAL_CLIENT_ID'];
   const clientSecret = env['PAYPAL_CLIENT_SECRET'];
   if (!clientId || !clientSecret)
