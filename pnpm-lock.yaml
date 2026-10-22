@@ -98,7 +98,17 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/paypal: {}
+  packages/paypal:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@umsbx/obs':
+        specifier: workspace:*
+        version: link:../obs
+      '@umsbx/transport':
+        specifier: workspace:*
+        version: link:../transport
 
   packages/runtime:
     dependencies:
