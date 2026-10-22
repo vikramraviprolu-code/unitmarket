@@ -224,3 +224,55 @@ describe('startLoop', () => {
     expect((await health(d)).last_pass_at).toBe('2026-10-22T10:00:01.000Z');
   });
 });
+
+describe('startLoop pause and resume (B-L5)', () => {
+  it('the outbound switch off then on: no PayPal work while off, work resumes after, nothing else changes', async () => {
+    const switches: Partial<Record<SwitchName, boolean>> = { paypal_outbound: true };
+    const { d, sweepWindows } = makeDeps(switches);
+    const loop = startLoop(d, { max_sleep_ms: 5, max_items: 4 });
+    await vi.waitFor(() => expect(vi.mocked(runDue).mock.calls.length).toBeGreaterThanOrEqual(2));
+    switches.paypal_outbound = false;
+    // Let a pass that was already running finish, then count from a quiet point.
+    await vi.waitFor(() => expect(logs.some((l) => l.msg.includes('paused'))).toBe(true));
+    const frozen = vi.mocked(runDue).mock.calls.length;
+    const swept = sweepWindows.mock.calls.length;
+    await vi.waitFor(() => expect(sweepWindows.mock.calls.length).toBeGreaterThan(swept + 1));
+    expect(vi.mocked(runDue).mock.calls.length).toBe(frozen);
+    switches.paypal_outbound = true;
+    await vi.waitFor(() => expect(vi.mocked(runDue).mock.calls.length).toBeGreaterThan(frozen));
+    await loop.stop();
+    expect(vi.mocked(runDue)).toHaveBeenLastCalledWith(d, { max_items: 4 });
+    expect(vi.mocked(recoverOnStartup)).toHaveBeenCalledTimes(1);
+  });
+
+  it('a paused loop does not ask when work is next due (it sleeps the full max_sleep_ms)', async () => {
+    const { d } = makeDeps({ paypal_outbound: false });
+    vi.mocked(nextDueAt).mockResolvedValue('2000-01-01T00:00:00.000Z');
+    const loop = startLoop(d, { max_sleep_ms: 5, max_items: 4 });
+    await vi.waitFor(() => expect(logs.some((l) => l.msg.includes('paused'))).toBe(true));
+    await loop.stop();
+    expect(vi.mocked(nextDueAt)).not.toHaveBeenCalled();
+  });
+
+  it('stop while paused returns quickly and starts no further pass', async () => {
+    const { d, sweepWindows } = makeDeps({ paypal_outbound: false });
+    const loop = startLoop(d, { max_sleep_ms: 60_000, max_items: 4 });
+    await vi.waitFor(() => expect(sweepWindows).toHaveBeenCalled());
+    const t0 = Date.now();
+    await loop.stop();
+    expect(Date.now() - t0).toBeLessThan(1000);
+    const n = sweepWindows.mock.calls.length;
+    await new Promise((r) => setTimeout(r, 30));
+    expect(sweepWindows.mock.calls.length).toBe(n);
+  });
+
+  it('a switch that cannot be read counts as off: the loop pauses and carries on', async () => {
+    const { d, sweepWindows } = makeDeps();
+    (d.switches as { isOn: () => Promise<boolean> }).isOn = () => Promise.reject(new Error('db down'));
+    const loop = startLoop(d, { max_sleep_ms: 5, max_items: 4 });
+    await vi.waitFor(() => expect(logs.some((l) => l.msg === 'jobs.loop.pass_failed')).toBe(true));
+    await loop.stop();
+    expect(vi.mocked(runDue)).not.toHaveBeenCalled();
+    expect(sweepWindows).not.toHaveBeenCalled();
+  });
+});
