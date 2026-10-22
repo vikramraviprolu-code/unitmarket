@@ -64,7 +64,14 @@ importers:
 
   domain/recovery: {}
 
-  packages/config: {}
+  packages/config:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
 
   packages/contracts:
     dependencies:
@@ -106,7 +113,24 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/safety: {}
+  packages/safety:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../db
+      '@umsbx/obs':
+        specifier: workspace:*
+        version: link:../obs
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../runtime
 
   packages/security:
     dependencies:
