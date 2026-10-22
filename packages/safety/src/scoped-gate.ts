@@ -1,8 +1,8 @@
-import { mintApprovalCapability } from '@umsbx/transport';
+import { claimApprovalMinter } from '@umsbx/transport';
 import type { ApprovalCapability } from '@umsbx/transport';
 import type { Clock, Database, OutboundGate, SwitchReader } from '@umsbx/contracts';
 import { findActiveApproval } from './budget';
-import { createOutboundGate } from './gate';
+import { createOutboundGate, isIssuedGate } from './gate';
 import type { GateConfig } from './gate';
 
 // The scoped gate (FIX-BPREP M3). It is the only place an approval capability is minted. The
@@ -17,6 +17,12 @@ export interface ScopedGateHandle extends OutboundGate {
   /** A capability for the approved transport factory, or null when activeApproval() is null. */
   approvalCapability(): Promise<ApprovalCapability | null>;
 }
+
+// The one approval minter, claimed when this module loads (SEAL2 H1). A second claim anywhere
+// throws, and this minter mints only for gates createOutboundGate built. Not re-exported by the
+// package index: `mintCapability` and `isIssuedGate` are for this package's own tests.
+export const mintCapability = claimApprovalMinter(isIssuedGate);
+export { isIssuedGate };
 
 export function createScopedGate(
   db: Database,
@@ -50,7 +56,7 @@ export function createScopedGate(
     async approvalCapability() {
       const a = await activeApproval();
       if (a === null) return null;
-      return mintApprovalCapability({ scope: a.scope, approval_ref: a.approval_ref, gate: inner });
+      return mintCapability({ scope: a.scope, approval_ref: a.approval_ref, gate: inner });
     },
   };
 }

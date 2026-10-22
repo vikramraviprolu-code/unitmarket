@@ -489,11 +489,105 @@ const noGlobalAlias = {
   },
 };
 
+// FIX-MVPB-SEAL2 H1: the approved sandbox transport factory and the approval-minter claim are
+// reachable only from packages/safety (and the few pinned test files, see NAMED_EXEMPTIONS). The
+// built-in no-restricted-imports cannot say "this export, from this entry, except in these files"
+// together with a namespace, a re-export, import() and require(), so one rule covers every spelling
+// of reaching the package's exports: namespace and default imports (they hand over the claim
+// function), `export * from`, `export { name } from`, import(), require() and `import x = require()`.
+// Type-only imports are harmless and stay allowed.
+const SEALED_MODULE = '@umsbx/transport';
+const SEALED_NAMES = new Set(['createApprovedSandboxTransport', 'claimApprovalMinter']);
+const MSG_SEALED =
+  'SEAL2 H1: the approved sandbox transport and the approval minter are reachable only from packages/safety. A namespace import, default import, re-export, import() or require() of @umsbx/transport reaches them too; import the plain names you need.';
+const specOf = (n) => {
+  if (n?.type === 'Literal' && typeof n.value === 'string') return n.value;
+  if (n?.type === 'TemplateLiteral' && n.expressions.length === 0) return n.quasis[0].value.cooked;
+  return null;
+};
+const sealedTransport = {
+  meta: { type: 'problem', schema: [], messages: { sealed: '{{msg}}' } },
+  create(context) {
+    const report = (node) =>
+      context.report({ node, messageId: 'sealed', data: { msg: MSG_SEALED } });
+    const isSealed = (spec) => spec === SEALED_MODULE || spec?.startsWith(`${SEALED_MODULE}/`);
+    const nameOf = (id) => (id.type === 'Literal' ? String(id.value) : id.name);
+    return {
+      ImportDeclaration(n) {
+        if (!isSealed(n.source.value) || n.importKind === 'type') return;
+        for (const sp of n.specifiers) {
+          if (sp.type === 'ImportNamespaceSpecifier' || sp.type === 'ImportDefaultSpecifier')
+            report(sp);
+          else if (sp.importKind !== 'type' && SEALED_NAMES.has(nameOf(sp.imported))) report(sp);
+        }
+      },
+      ExportAllDeclaration(n) {
+        if (isSealed(n.source.value) && n.exportKind !== 'type') report(n);
+      },
+      ExportNamedDeclaration(n) {
+        if (!n.source || !isSealed(n.source.value) || n.exportKind === 'type') return;
+        for (const sp of n.specifiers)
+          if (sp.exportKind !== 'type' && SEALED_NAMES.has(nameOf(sp.local))) report(sp);
+      },
+      ImportExpression(n) {
+        if (isSealed(specOf(n.source))) report(n);
+      },
+      CallExpression(n) {
+        if (
+          n.callee.type === 'Identifier' &&
+          n.callee.name === 'require' &&
+          isSealed(specOf(n.arguments[0]))
+        )
+          report(n);
+      },
+      TSImportEqualsDeclaration(n) {
+        const ref = n.moduleReference;
+        if (ref?.type === 'TSExternalModuleReference' && isSealed(specOf(ref.expression)))
+          report(n);
+      },
+    };
+  },
+};
+
+// FIX-MVPB-SEAL2 H2: the production Wire is built only for the explicit sentinel
+// `wire: 'production'`. Only apps/web/composition.server.ts and the transport package's own tests
+// may write it (NAMED_EXEMPTIONS pins both).
+const TS_WRAP = new Set([
+  'TSAsExpression',
+  'TSSatisfiesExpression',
+  'TSNonNullExpression',
+  'TSTypeAssertion',
+]);
+const sealedWireSentinel = {
+  meta: { type: 'problem', schema: [], messages: { sentinel: '{{msg}}' } },
+  create(context) {
+    return {
+      Property(n) {
+        const k = n.key;
+        const name = k.type === 'Identifier' && !n.computed ? k.name : specOf(k);
+        if (name !== 'wire') return;
+        let v = n.value;
+        while (v && TS_WRAP.has(v.type)) v = v.expression;
+        if (specOf(v) === 'production')
+          context.report({
+            node: n,
+            messageId: 'sentinel',
+            data: {
+              msg: "SEAL2 H2: wire: 'production' selects the real network Wire; only apps/web/composition.server.ts may write it.",
+            },
+          });
+      },
+    };
+  },
+};
+
 const sbx = {
   rules: {
     'no-package-escape': noPackageEscape,
     'no-global-alias': noGlobalAlias,
     'no-restricted-dynamic-import': noRestrictedDynamicImport,
+    'sealed-transport': sealedTransport,
+    'sealed-wire-sentinel': sealedWireSentinel,
   },
 };
 
@@ -553,6 +647,8 @@ function entry(files, { extra = [], paths = [], ignores = [], allow = {} } = {})
     plugins: { sbx },
     rules: {
       'sbx/no-package-escape': 'error',
+      'sbx/sealed-transport': 'error',
+      'sbx/sealed-wire-sentinel': 'error',
       'no-restricted-imports': ['error', { patterns, paths: [...basePaths, ...paths] }],
       'no-restricted-globals': allow.network ? 'off' : ['error', ...NO_FETCH_GLOBALS],
       'no-restricted-properties': ['error', ...props],
@@ -867,10 +963,13 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/no-package-escape'],
   },
   {
-    files: [
-      'tests/mvp-b/b06-b08.integration.test.ts',
-      'tests/mvp-b/b09-logs-clean.integration.test.ts',
-    ],
+    files: ['tests/mvp-b/b09-logs-clean.integration.test.ts'],
+    reason:
+      'MVP-B offline acceptance (lane B-L5/B-L7): the web composition and route handlers are reachable only by relative path (@umsbx/web exports no composition); needed for the logs_clean journey through the route handlers (B-09). It also builds the approved transport (FIX-MVPB-SEAL2) from a real scoped gate over an in-memory database to check the sandbox.send log lines',
+    off: ['sbx/no-package-escape', 'sbx/sealed-transport'],
+  },
+  {
+    files: ['tests/mvp-b/b06-b08.integration.test.ts'],
     reason:
       'MVP-B offline acceptance (lane B-L5/B-L7): the web composition and route handlers are reachable only by relative path (@umsbx/web exports no composition); needed for the dry-run kill switch, timeout reconcile and call budget (B-06 to B-08) and the logs_clean journey through the route handlers (B-09)',
     off: ['sbx/no-package-escape'],
@@ -897,6 +996,30 @@ export const NAMED_EXEMPTIONS = [
     reason:
       'B-L6: runs the kit as a child process under a network-blocking preload and passes it a minimal environment',
     off: ['no-restricted-imports', 'no-restricted-properties', 'sbx/no-global-alias'],
+  },
+  {
+    files: ['packages/safety/src/**/*.ts'],
+    reason:
+      'FIX-MVPB-SEAL2 H1: packages/safety claims the one approval minter when it loads, and its tests build the approved transport and probe the package namespace. Nothing else may',
+    off: ['sbx/sealed-transport'],
+  },
+  {
+    files: ['packages/paypal/src/sandbox-wire.integration.test.ts'],
+    reason:
+      'FIX-MVPB-SEAL2 H1: the test never loads @umsbx/safety, so its own module registry claims the minter with a permissive predicate to mint a capability for a fake gate and drive the adapter over the approved transport and a fake Wire',
+    off: ['sbx/sealed-transport'],
+  },
+  {
+    files: ['packages/transport/src/**/*.ts'],
+    reason:
+      "FIX-MVPB-SEAL2 H2: the transport package's own tests exercise the 'production' Wire sentinel (construction only; fetch is spied and never reached)",
+    off: ['sbx/sealed-wire-sentinel'],
+  },
+  {
+    files: ['apps/web/composition.server.ts'],
+    reason:
+      "FIX-MVPB-SEAL2 H2: the one file that may select the production Wire with wire: 'production' when the owner unseals the transport. It does not do so today (it builds only the sealed stub; tests/mvp-b/sealed-callers.test.ts pins that)",
+    off: ['sbx/sealed-wire-sentinel'],
   },
 ];
 const namedExemptions = NAMED_EXEMPTIONS.map((e) => ({

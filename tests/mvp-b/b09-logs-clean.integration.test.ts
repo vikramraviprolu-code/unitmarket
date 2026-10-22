@@ -5,8 +5,10 @@
 // call (net, tls, http, https, dns, fetch). The scanner proves itself first with its own canaries.
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createLogger } from '@umsbx/obs';
-import { systemClock } from '@umsbx/runtime';
-import { createApprovedSandboxTransport, mintApprovalCapability } from '@umsbx/transport';
+import { migrate, openDatabase } from '@umsbx/db';
+import { fakeClock, systemClock } from '@umsbx/runtime';
+import { createScopedGate, createSwitchReader } from '@umsbx/safety';
+import { createApprovedSandboxTransport } from '@umsbx/transport';
 import type { Wire } from '@umsbx/transport';
 import type { Actor, LogEvent, Logger, OutboundRequest } from '@umsbx/contracts';
 import type { App } from '../../apps/web/composition.server';
@@ -281,44 +283,64 @@ const obsBase: Omit<OutboundRequest, 'operation' | 'method' | 'path' | 'headers'
 describe('FIX-BPREP OBS: sandbox.send log lines', () => {
   it('carry the debug id, request id, approval ref and a correlation id, and no secret', async () => {
     const log = sandboxLogger();
-    const t = await createApprovedSandboxTransport({
-      approval: mintApprovalCapability({
+    // FIX-MVPB-SEAL2 H1: the capability comes from the real scoped gate over an in-memory database
+    // with a real approval row; no fake gate can be minted into one any more.
+    const REF = 'DL-2026-10-22-01';
+    const T0 = '2026-10-22T10:00:00Z';
+    const clock = fakeClock(T0);
+    const db = await openDatabase({ kind: 'pglite-memory' });
+    try {
+      await migrate(db, clock);
+      await db.query(
+        `INSERT INTO outbound_approvals (id, approval_ref, scope, operations, max_amount_minor, max_calls_per_day, valid_until, approved_by, created_at, updated_at)
+         VALUES ('oap_b09_obs',$1,'mvp_b_polling',$2,2000,100,'2026-10-23T00:00:00Z','owner',$3,$3)`,
+        [REF, ['oauth_token', 'get_order'], T0],
+      );
+      await db.query(`UPDATE safety_switches SET "on" = true WHERE name = 'paypal_outbound'`);
+      const gate = createScopedGate(db, clock, {
         scope: 'mvp_b_polling',
-        approval_ref: 'DL-2026-10-22-01',
-        gate: { check: async () => ({ allowed: true, approval_ref: 'DL-2026-10-22-01' }) },
-      }),
-      scope: 'mvp_b_polling',
-      clock: { now: () => new Date('2026-10-22T10:00:00Z') },
-      log,
-      wire: obsWire,
-    });
-    await t.send({
-      ...obsBase,
-      operation: 'oauth_token',
-      method: 'POST',
-      path: '/v1/oauth2/token',
-      headers: { authorization: `Basic ${OBS_SEED_BASIC}`, 'paypal-request-id': 'umsC-req-1' },
-      body: 'grant_type=client_credentials',
-    });
-    await t.send({
-      ...obsBase,
-      operation: 'get_order',
-      method: 'GET',
-      path: '/v2/checkout/orders/ABC123',
-      headers: { authorization: `Bearer ${OBS_SEED_BEARER}` },
-      body: null,
-    });
-    const sends = log.events.filter((e) => e.msg === 'sandbox.send');
-    expect(sends).toHaveLength(2);
-    for (const e of sends) {
-      expect(e.fields['approval_ref']).toBe('DL-2026-10-22-01');
-      expect(e.fields['paypal_debug_id']).toBe('dbg0123abc');
-      expect(typeof e.fields['correlation_id']).toBe('string');
+        switches: createSwitchReader(db, clock, 0),
+        config: { mode: 'sandbox', connect: true, outbound_approval_ref: REF },
+      });
+      const approval = await gate.approvalCapability();
+      expect(approval).not.toBeNull();
+      const t = await createApprovedSandboxTransport({
+        approval: approval!,
+        scope: 'mvp_b_polling',
+        clock,
+        log,
+        wire: obsWire,
+      });
+      await t.send({
+        ...obsBase,
+        operation: 'oauth_token',
+        method: 'POST',
+        path: '/v1/oauth2/token',
+        headers: { authorization: `Basic ${OBS_SEED_BASIC}`, 'paypal-request-id': 'umsC-req-1' },
+        body: 'grant_type=client_credentials',
+      });
+      await t.send({
+        ...obsBase,
+        operation: 'get_order',
+        method: 'GET',
+        path: '/v2/checkout/orders/ABC123',
+        headers: { authorization: `Bearer ${OBS_SEED_BEARER}` },
+        body: null,
+      });
+      const sends = log.events.filter((e) => e.msg === 'sandbox.send');
+      expect(sends).toHaveLength(2);
+      for (const e of sends) {
+        expect(e.fields['approval_ref']).toBe('DL-2026-10-22-01');
+        expect(e.fields['paypal_debug_id']).toBe('dbg0123abc');
+        expect(typeof e.fields['correlation_id']).toBe('string');
+      }
+      expect(sends[0]?.fields['request_id']).toBe('umsC-req-1');
+      const lines = log.events.map((e) => JSON.stringify(e));
+      expect(scanLines(lines, { seeds: [OBS_SEED_BEARER, OBS_SEED_BODY, OBS_SEED_BASIC] })).toEqual(
+        [],
+      );
+    } finally {
+      await db.close();
     }
-    expect(sends[0]?.fields['request_id']).toBe('umsC-req-1');
-    const lines = log.events.map((e) => JSON.stringify(e));
-    expect(scanLines(lines, { seeds: [OBS_SEED_BEARER, OBS_SEED_BODY, OBS_SEED_BASIC] })).toEqual(
-      [],
-    );
   });
 });

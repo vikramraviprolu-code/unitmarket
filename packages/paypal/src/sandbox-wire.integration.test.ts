@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createApprovedSandboxTransport, mintApprovalCapability } from '@umsbx/transport';
+import { claimApprovalMinter, createApprovedSandboxTransport } from '@umsbx/transport';
 import type { Wire, WireRequest, WireResult } from '@umsbx/transport';
 import { createPayPalAdapter } from './adapter';
 import type { ProviderCallRecord } from './adapter';
@@ -21,6 +21,11 @@ afterEach(() => {
     .filter((r) => r === 'TCPSocketWrap' || r === 'TCPConnectWrap' || r === 'TLSWrap');
   expect(open).toEqual([]);
 });
+
+// This test file never loads @umsbx/safety, so its module registry is free to claim the minter
+// with a permissive predicate (a named lint exemption, pinned in scripts/lint-rules.test.ts). In
+// the product, safety claims it first and vouches only for its own gates (FIX-MVPB-SEAL2 H1).
+const mintApprovalCapability = claimApprovalMinter(() => true);
 
 const json = (status: number, body: unknown): WireResult => ({
   kind: 'response',

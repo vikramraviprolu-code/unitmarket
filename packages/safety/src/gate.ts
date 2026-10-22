@@ -21,6 +21,13 @@ export interface GateConfig {
 // order's expected amount, by the same per-order cap.
 const MONEY_MOVING: ReadonlySet<PayPalOperation> = new Set(['create_order', 'refund_capture']);
 
+// Gates built by createOutboundGate. The approval minter (claimed in scoped-gate.ts) mints only
+// for a gate in this set, so an object literal with a `check` function is refused (SEAL2 H1).
+// Module-private; the package index does not export the predicate.
+const issued = new WeakSet<object>();
+export const isIssuedGate = (g: unknown): boolean =>
+  typeof g === 'object' && g !== null && issued.has(g);
+
 // Decides whether a PayPal call may leave the process. First failing check wins (lane 02):
 // connect_off, kill_switch, no_approval, budget. Any read error blocks (fail closed). An allowed
 // verdict has reserved one call of the approval's daily budget: call check() once per request.
@@ -36,7 +43,7 @@ export function createOutboundGate(d: {
    */
   bind?: { scope: string };
 }): OutboundGate {
-  return {
+  const gate: OutboundGate = {
     async check(c): Promise<GateVerdict> {
       const block = (
         by: 'connect_off' | 'kill_switch' | 'no_approval' | 'budget',
@@ -78,4 +85,7 @@ export function createOutboundGate(d: {
       }
     },
   };
+  Object.freeze(gate);
+  issued.add(gate);
+  return gate;
 }

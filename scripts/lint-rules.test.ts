@@ -558,6 +558,151 @@ describe('delivery hash-only files (replace the former eslint-disable comments)'
   });
 });
 
+// FIX-MVPB-SEAL2 H1/H2: the approved transport factory and the minter claim are reachable only
+// from packages/safety (and the pinned test files); a namespace import, a re-export, a dynamic
+// import or a require of the transport package is the same reach and is barred with them.
+describe('sealed transport imports (SEAL2 H1)', () => {
+  const SEALED = 'sbx/sealed-transport';
+  const factory = ['create', 'Approved', 'Sandbox', 'Transport'].join('');
+  const claim = ['claim', 'Approval', 'Minter'].join('');
+  const sealed = async (file: string, code: string) =>
+    (await lint(file, code)).filter((m) => m.ruleId === SEALED);
+  const outsiders = [
+    'packages/paypal/src/evil.ts',
+    'packages/jobs/src/evil.ts',
+    'packages/db/src/evil.ts',
+    'packages/testkit/src/evil.ts',
+    'packages/config/src/evil.ts',
+    'apps/web/composition.server.ts',
+    'apps/web/src/evil.ts',
+    'domain/payments/src/evil.ts',
+    'domain/payments/src/evil.test.ts',
+    'tests/mvp-b/evil.test.ts',
+    'tools/spike-kit/src/evil.ts',
+    'scripts/evil.mjs',
+    'evil.mjs',
+  ];
+
+  it('the review evasion: import * as T plus computed property names is refused everywhere outside safety', async () => {
+    const evil = [
+      "import * as T from '@umsbx/transport';",
+      'const lib = T as unknown as Record<string, (i: unknown) => unknown>;',
+      "const mint = lib[['mint', 'Approval', 'Capability'].join('')];",
+      "export const cap = mint?.({ scope: 'mvp_b_polling', approval_ref: 'X', gate: { check: async () => ({ allowed: true, approval_ref: 'X' }) } });",
+      '',
+    ].join('\n');
+    for (const f of outsiders) expect((await sealed(f, evil)).length, f).toBeGreaterThan(0);
+  });
+
+  const spellings: [string, string][] = [
+    [
+      'named import of the factory',
+      `import { ${factory} } from '@umsbx/transport';\nexport const f = ${factory};\n`,
+    ],
+    [
+      'named import of the claim',
+      `import { ${claim} } from '@umsbx/transport';\nexport const f = ${claim};\n`,
+    ],
+    ['renamed import', `import { ${claim} as c } from '@umsbx/transport';\nexport const f = c;\n`],
+    [
+      'string-named import',
+      `import { '${claim}' as c } from '@umsbx/transport';\nexport const f = c;\n`,
+    ],
+    ['namespace import', "import * as T from '@umsbx/transport';\nexport const f = T;\n"],
+    ['default import', "import T from '@umsbx/transport';\nexport const f = T;\n"],
+    [
+      'default plus named',
+      "import T, { guard } from '@umsbx/transport';\nexport const f = [T, guard];\n",
+    ],
+    ['export star', "export * from '@umsbx/transport';\n"],
+    ['export star as', "export * as T from '@umsbx/transport';\n"],
+    ['re-export of the factory', `export { ${factory} } from '@umsbx/transport';\n`],
+    ['re-export renamed', `export { ${claim} as c } from '@umsbx/transport';\n`],
+    ['dynamic import', "export const m = import('@umsbx/transport');\n"],
+    ['dynamic import (template)', 'export const m = import(`@umsbx/transport`);\n'],
+    [
+      'awaited dynamic import',
+      `export async function f() {\n  return (await import('@umsbx/transport')).${claim};\n}\n`,
+    ],
+    ['require', "export const m = require('@umsbx/transport');\n"],
+    ['import equals require', "import T = require('@umsbx/transport');\nexport const f = T;\n"],
+  ];
+  it.each(spellings)('refuses %s', async (_n, code) => {
+    for (const f of outsiders) expect((await sealed(f, code)).length, f).toBeGreaterThan(0);
+  });
+
+  it('allows the ordinary imports the other packages need, type imports included', async () => {
+    const ok = [
+      "import { guard, PATHS, SANDBOX_API, createSandboxTransport, createDryRunTransport } from '@umsbx/transport';",
+      "import type { Wire, SandboxTransport, ApprovalCapability } from '@umsbx/transport';",
+      `import type { ${factory} } from '@umsbx/transport';`,
+      'export const x = [guard, PATHS, SANDBOX_API, createSandboxTransport, createDryRunTransport];',
+      '',
+    ].join('\n');
+    for (const f of [
+      'packages/paypal/src/x.ts',
+      'apps/web/composition.server.ts',
+      'packages/testkit/src/x.ts',
+    ])
+      expect(await sealed(f, ok), f).toEqual([]);
+  });
+
+  it('packages/safety (production and tests) may use the claim, the factory and the namespace', async () => {
+    const all = `import * as T from '@umsbx/transport';\nimport { ${claim}, ${factory} } from '@umsbx/transport';\nexport const x = [T, ${claim}, ${factory}];\n`;
+    for (const f of ['packages/safety/src/scoped-gate.ts', 'packages/safety/src/x.state.test.ts'])
+      expect(await sealed(f, all), f).toEqual([]);
+  });
+
+  it('an inline disable comment does not switch the rule off', async () => {
+    const code = `/* eslint-disable sbx/sealed-transport */\nimport * as T from '@umsbx/transport';\nexport const f = T;\n`;
+    expect((await sealed('packages/paypal/src/evil.ts', code)).length).toBeGreaterThan(0);
+  });
+});
+
+describe('the production Wire sentinel (SEAL2 H2)', () => {
+  const SENT = 'sbx/sealed-wire-sentinel';
+  const sentinel = async (file: string, code: string) =>
+    (await lint(file, code)).filter((m) => m.ruleId === SENT);
+  const cases: [string, string][] = [
+    ['plain property', "export const o = { wire: 'production' };\n"],
+    ['quoted key', "export const o = { 'wire': 'production' };\n"],
+    ['template value', 'export const o = { wire: `production` };\n'],
+    [
+      'nested in a call',
+      "export const f = (g: (x: unknown) => void) => g({ a: 1, wire: 'production' });\n",
+    ],
+  ];
+  it.each(cases)(
+    'is barred outside composition and the transport package: %s',
+    async (_n, code) => {
+      for (const f of [
+        'packages/paypal/src/x.ts',
+        'packages/safety/src/x.ts',
+        'packages/testkit/src/x.ts',
+        'packages/jobs/src/x.ts',
+        'apps/web/src/x.ts',
+        'tests/mvp-b/x.test.ts',
+        'tools/spike-kit/src/x.ts',
+        'scripts/x.mjs',
+      ])
+        expect((await sentinel(f, code)).length, f).toBeGreaterThan(0);
+    },
+  );
+  it('composition and the transport package (its tests exercise the sentinel) may write it', async () => {
+    const code = "export const o = { wire: 'production' };\n";
+    for (const f of [
+      'apps/web/composition.server.ts',
+      'packages/transport/src/sandbox.test.ts',
+      'packages/transport/src/x.ts',
+    ])
+      expect(await sentinel(f, code), f).toEqual([]);
+  });
+  it('an ordinary use of the word production elsewhere is not flagged', async () => {
+    const code = "export const o = { env: 'production', wire: 'fake' };\n";
+    expect(await sentinel('packages/paypal/src/x.ts', code)).toEqual([]);
+  });
+});
+
 describe('named exemptions (D-015)', () => {
   it('the exemption list is pinned: adding a file or a rule needs a reviewed change here', async () => {
     const { NAMED_EXEMPTIONS } = await import('../eslint.config.mjs');
@@ -578,7 +723,11 @@ describe('named exemptions (D-015)', () => {
         'tests/mvp-a/dryrun-kill-switch.integration.test.ts -> sbx/no-package-escape',
         'tests/mvp-a/safety-a01-a04.integration.test.ts -> sbx/no-package-escape',
         'tests/mvp-b/b06-b08.integration.test.ts -> sbx/no-package-escape',
-        'tests/mvp-b/b09-logs-clean.integration.test.ts -> sbx/no-package-escape',
+        'tests/mvp-b/b09-logs-clean.integration.test.ts -> sbx/no-package-escape,sbx/sealed-transport',
+        'packages/paypal/src/sandbox-wire.integration.test.ts -> sbx/sealed-transport',
+        'packages/safety/src/**/*.ts -> sbx/sealed-transport',
+        'packages/transport/src/**/*.ts -> sbx/sealed-wire-sentinel',
+        'apps/web/composition.server.ts -> sbx/sealed-wire-sentinel',
         'tools/spike-kit/src/spike.ts -> no-restricted-globals,no-restricted-properties,no-restricted-syntax,sbx/no-global-alias',
         'tools/spike-kit/src/spike.test.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'tools/spike-kit/src/spike-cli.integration.test.ts -> no-restricted-imports,no-restricted-properties,sbx/no-global-alias',

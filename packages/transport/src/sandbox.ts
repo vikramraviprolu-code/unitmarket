@@ -66,8 +66,12 @@ export interface ApprovedSandboxOptions {
   scope: string;
   clock: Clock;
   log: Logger;
-  /** Tests inject a fake. Omitted: the production Wire. */
-  wire?: Wire;
+  /**
+   * REQUIRED (FIX-MVPB-SEAL2 H2). Tests inject a fake Wire. The production Wire is built only for
+   * the explicit sentinel `'production'`, which only apps/web/composition.server.ts may write
+   * (lint: sbx/sealed-wire-sentinel). Absent, undefined, null or anything else throws.
+   */
+  wire: Wire | 'production';
 }
 
 /**
@@ -167,6 +171,14 @@ function headerValue(h: Record<string, string>, name: string): string | null {
   return null;
 }
 
+/** The Wire to use, or a throw: there is no default and no fallback to the platform fetch. */
+function pickWire(w: unknown): Wire {
+  if (w === 'production') return createFetchWire();
+  if (typeof w === 'object' && w !== null && typeof (w as Wire).request === 'function')
+    return w as Wire;
+  throw new SandboxSealedError('no wire');
+}
+
 export async function createApprovedSandboxTransport(
   o: ApprovedSandboxOptions,
 ): Promise<SandboxTransport> {
@@ -181,7 +193,7 @@ export async function createApprovedSandboxTransport(
   const outbound = approval.gate;
   const approvalRef = approval.approval_ref;
   const scope = approval.scope;
-  const wire = o.wire ?? createFetchWire();
+  const wire = pickWire(o.wire);
   let serial = 0;
   const kept: SandboxCall[] = [];
 

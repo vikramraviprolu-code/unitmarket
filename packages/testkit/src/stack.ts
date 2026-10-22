@@ -18,13 +18,11 @@ import { createScriptedModel } from '@umsbx/model';
 import { createPayPalAdapter } from '@umsbx/paypal';
 import { createSwitchReader } from '@umsbx/safety';
 import {
-  createApprovedSandboxTransport,
   createSandboxTransport,
   createDryRunTransport,
   guard,
   loadFixtures,
 } from '@umsbx/transport';
-import type { ApprovalCapability, Wire } from '@umsbx/transport';
 import { loadConfigFromProcess, makeSecret } from '@umsbx/config';
 import { DomainConfigSchema } from '@umsbx/contracts';
 import type {
@@ -443,12 +441,13 @@ export function dryRunSubject(): ConformanceSubject {
  */
 export function sandboxSubject(
   /**
-   * B-L1: the approved transport pieces. Omitted (as composition does in this branch), the subject
-   * keeps the sealed transport and every call is blocked. The Wire is required here (FIX-BPREP M3):
-   * a test cannot fall back to the production Wire by leaving it out. The capability comes from
-   * `@umsbx/safety` createScopedGate or a test fake; only the owner's approval row opens a real one.
+   * B-L1: an approved sandbox transport the caller already built. Omitted (as composition does in
+   * this branch), the subject keeps the sealed transport and every call is blocked. This file does
+   * not import the approved factory (FIX-MVPB-SEAL2 H1): the caller builds the transport with a
+   * capability from `@umsbx/safety` createScopedGate and an explicit Wire, so a test cannot fall
+   * back to the production Wire by leaving it out.
    */
-  approved?: { approval: ApprovalCapability; scope: string; wire: Wire },
+  approved?: { transport: Transport },
 ): ConformanceSubject {
   let n = 0;
   return {
@@ -470,15 +469,7 @@ export function sandboxSubject(
       const clock: Clock = { now: () => new Date(Date.parse(T0)) };
       const urls: string[] = [];
       const inner: Transport =
-        approved === undefined
-          ? createSandboxTransport()
-          : await createApprovedSandboxTransport({
-              approval: approved.approval,
-              scope: approved.scope,
-              clock,
-              log: quietLog,
-              wire: approved.wire,
-            });
+        approved === undefined ? createSandboxTransport() : approved.transport;
       const transport: Transport = {
         kind: inner.kind,
         send: async (r) => {

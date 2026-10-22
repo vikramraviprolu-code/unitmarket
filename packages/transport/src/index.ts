@@ -28,8 +28,10 @@ export {
   createSandboxTransport,
   SCOPE_OPERATIONS,
 } from './sandbox';
-export { mintApprovalCapability } from './approval';
-export type { ApprovalCapability } from './approval';
+// FIX-MVPB-SEAL2 H1: the minter itself is not exported. `claimApprovalMinter` hands it out once
+// (to @umsbx/safety, when it loads); lint (sbx/sealed-transport) bars every other importer.
+export { claimApprovalMinter } from './approval';
+export type { ApprovalCapability, GateTrust, MintApprovalCapability } from './approval';
 export type { ApprovedSandboxOptions, SandboxCall, SandboxTransport } from './sandbox';
 export type { ScopedGate, Wire, WireErrorKind, WireRequest, WireResult } from './wire';
 export { MAX_RESPONSE_BYTES } from './wire-map';
