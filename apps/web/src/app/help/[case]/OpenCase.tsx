@@ -4,22 +4,19 @@ import { postJson } from '../../../lib/client-api';
 import { StatusBanner } from '../../../ui/StatusBanner';
 import { ErrorState } from '../../../ui/ErrorState';
 
-export function OpenCase({ note }: { note: string }) {
+export function OpenCase({ note, entitlementId }: { note: string; entitlementId?: string }) {
   const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
   const [error, setError] = useState<string | null>(null);
   async function open() {
     setState('busy');
     setError(null);
-    const r = await postJson<{ case_id: string }>('/api/cases', { note });
+    const r = await postJson<{ case_id: string }>('/api/cases', {
+      note,
+      ...(entitlementId !== undefined ? { entitlement_id: entitlementId } : {}),
+    });
     if (!r.ok) {
       setState('idle');
-      setError(
-        r.status === 401
-          ? 'Please sign in to ask for help.'
-          : r.code === 'recovery_not_wired'
-            ? 'Help requests are not available in this build yet. Your item and money are safe.'
-            : r.message,
-      );
+      setError(r.status === 401 ? 'Please sign in to ask for help.' : r.message);
       return;
     }
     setState('done');

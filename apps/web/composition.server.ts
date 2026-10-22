@@ -16,6 +16,7 @@ import type {
   AgentDeps,
   AuditSink,
   Brief,
+  CaseView,
   Clock,
   ContentStore,
   CoreDeps,
@@ -34,7 +35,7 @@ import type {
   SwitchReader,
   Transport,
 } from '@umsbx/contracts';
-import { err } from '@umsbx/contracts';
+import { err, ok } from '@umsbx/contracts';
 import { BOOT_REFUSAL_EXIT_CODE, loadConfig, loadConfigFromProcess } from '@umsbx/config';
 import type { Config } from '@umsbx/config';
 import { migrate, openDatabase } from '@umsbx/db';
@@ -50,11 +51,12 @@ import { startFromOffer } from '@umsbx/offer-entry';
 import { discover as discoverOffers, parseNeed } from '@umsbx/discovery';
 import { requestApproval } from '@umsbx/approval';
 import type { Selection } from '@umsbx/approval';
-import { getEntitlementForBuyer } from '@umsbx/entitlements';
 import { createPgContentStore, issueLink, planServe } from '@umsbx/delivery';
 import type { ServePlan } from '@umsbx/delivery';
 import { getReceiptForBuyer, receiptLabel, renderReceiptHtml } from '@umsbx/receipts';
 import { sweepWindows } from '@umsbx/access-clock';
+import { applyAutomaticRules, openCase as openRecoveryCase } from '@umsbx/recovery';
+import { getLibrary } from '@umsbx/library';
 import { resolveSession, createSession, verifyPasscode } from '@umsbx/security';
 import type { SecurityDeps } from '@umsbx/security';
 
@@ -177,6 +179,10 @@ export interface LibraryEntry {
   status_text: string;
   can_open: boolean;
   order_id: Id | null;
+  /** Receipt versions of the order, oldest first (lane 10). */
+  receipt_versions: number[];
+  /** The case still being worked on for this item, if any (lane 10). */
+  open_case: CaseView | null;
   environment: EnvironmentLabel;
 }
 export interface OpsSnapshot {
@@ -278,12 +284,12 @@ export interface Engine {
     order_id?: Id;
     entitlement_id?: Id;
     note?: string;
-  }): Promise<Result<{ case_id: Id }, { code: 'not_found' | 'recovery_not_wired' }>>;
+  }): Promise<Result<{ case_id: Id }, { code: 'not_found' | 'duplicate_open' }>>;
   opsSnapshot(actor: Actor): Promise<OpsSnapshot | null>;
   health(): Promise<{ ok: boolean; environment: EnvironmentLabel; db: boolean }>;
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
-  /** TEMP-until-05b: window sweep for the in-process loop (lane 05b owns the full job loop). */
+  /** TEMP-until-05b: window sweep and recovery rules for the in-process loop (lane 05b owns the full job loop). */
   sweep(): Promise<{ ended: number }>;
 }
 
@@ -465,8 +471,6 @@ function buildApp(config: Config, opts: AppOptions): App {
     public_origin: config.public_origin,
   };
 
-  const label = (): EnvironmentLabel => environment;
-
   // --- engine --------------------------------------------------------------------------------
   const offerPageOf = (v: NonNullable<Awaited<ReturnType<typeof getOffer>>>): OfferPage => ({
     offer_id: v.offer.id,
@@ -485,53 +489,48 @@ function buildApp(config: Config, opts: AppOptions): App {
   });
 
   const entitlementRows = async (buyer_id: Id, only: Id | null): Promise<LibraryEntry[]> => {
-    const rows = (
-      await db.query<{ id: string; title: string; publisher: string; order_id: string | null }>(
-        `SELECT e.id, a.title, p.display_name AS publisher, u.order_id
-           FROM entitlements e
-           JOIN articles a ON a.id = e.article_id
-           JOIN publishers p ON p.id = a.publisher_id
-           LEFT JOIN order_units u ON u.id = e.unit_id
-          WHERE e.buyer_id = $1 AND ($2::text IS NULL OR e.id = $2)
-          ORDER BY e.created_at DESC, e.id`,
-        [buyer_id, only],
-      )
-    ).rows;
+    // Lane 10 owns the read model (words, window, receipts, open case). The two extra columns are
+    // payment facts the item page shows beside it.
+    const items = await getLibrary(db, { buyer_id, now: clock.now() });
+    const facts = new Map(
+      (
+        await db.query<{ id: string; money_state: string; order_id: string | null }>(
+          `SELECT e.id, e.money_state, u.order_id
+             FROM entitlements e LEFT JOIN order_units u ON u.id = e.unit_id
+            WHERE e.buyer_id = $1`,
+          [buyer_id],
+        )
+      ).rows.map((r) => [r.id, r] as const),
+    );
     const out: LibraryEntry[] = [];
-    for (const r of rows) {
-      const v = await getEntitlementForBuyer(db, { entitlement_id: r.id, buyer_id });
-      if (v === null) continue;
+    for (const v of items) {
+      if (only !== null && v.entitlement_id !== only) continue;
       const ends = v.window.ends_at;
       const running = v.window.state === 'running' && ends !== null;
       const days =
         running && ends !== null
           ? Math.max(0, Math.ceil((Date.parse(ends) - clock.now().getTime()) / DAY_MS))
           : null;
-      const available = v.access === 'available' && running;
       out.push({
         entitlement_id: v.entitlement_id,
         article_id: v.article_id,
-        title: r.title,
-        publisher: r.publisher,
+        title: v.title,
+        publisher: v.publisher,
         option: v.option,
         access: v.access,
-        money: v.money,
+        money: facts.get(v.entitlement_id)?.money_state ?? 'unknown',
         window: {
           state: v.window.state,
           started_at: v.window.started_at,
           ends_at: ends,
           days_left: days,
         },
-        status_text: available
-          ? `Ready. ${days ?? 0} day${days === 1 ? '' : 's'} left`
-          : v.access === 'locked'
-            ? 'Waiting for payment to be confirmed'
-            : v.access === 'ended'
-              ? 'Access window ended'
-              : 'Access revoked',
-        can_open: available,
-        order_id: r.order_id,
-        environment: label(),
+        status_text: v.status_text,
+        can_open: v.can_open,
+        order_id: facts.get(v.entitlement_id)?.order_id ?? null,
+        receipt_versions: v.receipt_versions,
+        open_case: v.open_case,
+        environment: v.environment,
       });
     }
     return out;
@@ -756,10 +755,23 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     receiptHtml: (r) => renderReceiptHtml(r, receiptLabel(r.environment)),
 
-    // TEMP-until-10: lane 10 (recovery) owns openCase. The seam answers recovery_not_wired.
-    async openCase({ actor }) {
+    // Lane 10 (recovery) owns openCase. A buyer names an item or an order; the kind follows from
+    // which: an item is a delivery problem, an order is a payment question.
+    async openCase({ actor, order_id, entitlement_id, note }) {
       if (actor.kind !== 'buyer') return err({ code: 'not_found' as const });
-      return err({ code: 'recovery_not_wired' as const });
+      const r = await openRecoveryCase(core, {
+        kind: entitlement_id !== undefined ? 'delivery_failed' : 'payment_unresolved',
+        ...(entitlement_id !== undefined ? { entitlement_id } : {}),
+        ...(order_id !== undefined ? { order_id } : {}),
+        opened_by: 'buyer',
+        actor,
+        ...(note !== undefined ? { note } : {}),
+      });
+      if (r.ok) return ok({ case_id: r.value.case_id });
+      return err({
+        code:
+          r.error.code === 'duplicate_open' ? ('duplicate_open' as const) : ('not_found' as const),
+      });
     },
 
     async opsSnapshot(actor) {
@@ -804,7 +816,12 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     newKey: () => ids.nonce(),
 
-    sweep: () => sweepWindows(core, { max_items: 100 }),
+    async sweep() {
+      const swept = await sweepWindows(core, { max_items: 100 });
+      // Lane 10: turn new alerts and delivery failures into cases; close restored ones.
+      await applyAutomaticRules(core, { max_items: 100 });
+      return swept;
+    },
 
     async health() {
       try {

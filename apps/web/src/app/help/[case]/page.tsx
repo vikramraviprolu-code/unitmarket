@@ -32,8 +32,15 @@ const TOPICS: Record<string, { title: string; body: string[] }> = {
   },
 };
 
-export default async function Help({ params }: { params: Promise<{ case: string }> }) {
+export default async function Help({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ case: string }>;
+  searchParams: Promise<{ item?: string }>;
+}) {
   const { case: slug } = await params;
+  const { item } = await searchParams;
   const topic = TOPICS[slug];
   if (topic === undefined) notFound();
   return (
@@ -42,7 +49,7 @@ export default async function Help({ params }: { params: Promise<{ case: string 
       {topic.body.map((p) => (
         <p key={p}>{p}</p>
       ))}
-      <OpenCase note={`help:${slug}`} />
+      <OpenCase note={`help:${slug}`} {...(item !== undefined ? { entitlementId: item } : {})} />
     </>
   );
 }

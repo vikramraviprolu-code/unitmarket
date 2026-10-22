@@ -32,8 +32,11 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
     ...(input.note !== undefined ? { note: input.note } : {}),
   });
   if (r.ok) return { status: 201, body: r.value };
-  // TEMP-until-10: lane 10 (recovery) opens real cases.
-  return r.error.code === 'recovery_not_wired'
-    ? { status: 503, code: 'recovery_not_wired', message: 'Help requests are not available yet.' }
+  return r.error.code === 'duplicate_open'
+    ? {
+        status: 409,
+        code: 'duplicate_open',
+        message: 'We already have a request open for this. We will update you there.',
+      }
     : { status: 404, code: 'not_found', message: 'We could not find that item.' };
 })(securityDeps);
