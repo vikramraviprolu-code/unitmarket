@@ -357,3 +357,47 @@ describe('F-1: PayPal- and live-looking names (A-01)', () => {
     }
   });
 });
+
+// Gate review M3 and L3.
+describe('UMS_TRUSTED_PROXIES (M3)', () => {
+  it('defaults to 0 and accepts the integers 0 to 3', () => {
+    const d = loadConfig(offline());
+    expect(d.ok && d.value.trusted_proxies).toBe(0);
+    for (const n of [0, 1, 2, 3]) {
+      const r = loadConfig(offline({ UMS_TRUSTED_PROXIES: String(n) }));
+      expect(r.ok && r.value.trusted_proxies, String(n)).toBe(n);
+    }
+  });
+  it('refuses anything else, naming the variable', () => {
+    for (const v of ['4', '-1', '1.5', 'abc', '1e1', '0x1', ' 2 x']) {
+      expect(refusal(offline({ UMS_TRUSTED_PROXIES: v })), v).toEqual({
+        code: 'invalid_value',
+        name: 'UMS_TRUSTED_PROXIES',
+      });
+    }
+  });
+});
+
+describe('the environment label must agree with the mode (L3)', () => {
+  it('offline refuses a Sandbox label and sandbox refuses a Dry run label', () => {
+    expect(refusal(offline({ NEXT_PUBLIC_UMS_ENV_LABEL: 'Sandbox' }))).toEqual({
+      code: 'label_mode_mismatch',
+      name: 'NEXT_PUBLIC_UMS_ENV_LABEL',
+    });
+    expect(refusal(sandbox({ NEXT_PUBLIC_UMS_ENV_LABEL: 'Dry run' })).code).toBe(
+      'label_mode_mismatch',
+    );
+    expect(refusal(sandbox({ NEXT_PUBLIC_UMS_ENV_LABEL: 'Dry-run' })).code).toBe(
+      'label_mode_mismatch',
+    );
+  });
+  it('agreeing or unset labels boot', () => {
+    expect(loadConfig(offline({ NEXT_PUBLIC_UMS_ENV_LABEL: 'Dry run' })).ok).toBe(true);
+    expect(loadConfig(offline({ NEXT_PUBLIC_UMS_ENV_LABEL: 'Dry-run' })).ok).toBe(true);
+    expect(loadConfig(sandbox({ NEXT_PUBLIC_UMS_ENV_LABEL: 'Sandbox' })).ok).toBe(true);
+    expect(loadConfig(offline()).ok).toBe(true);
+  });
+  it('an unrecognised label still boots (it is a cosmetic string, the stored label wins)', () => {
+    expect(loadConfig(offline({ NEXT_PUBLIC_UMS_ENV_LABEL: 'Demo' })).ok).toBe(true);
+  });
+});
