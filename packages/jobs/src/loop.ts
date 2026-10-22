@@ -12,7 +12,7 @@ const MIN_SLEEP_MS = 100;
 
 export function startLoop(
   d: PaymentsDeps & { sweepWindows: (x: { max_items: number }) => Promise<{ ended: number }> },
-  o: { max_sleep_ms: number; max_items: number },
+  o: { max_sleep_ms: number; max_items: number; recover_on_start?: boolean },
 ): { stop(): Promise<void> } {
   let stopped = false;
   let wake: (() => void) | null = null;
@@ -35,10 +35,14 @@ export function startLoop(
     });
 
   const running = (async (): Promise<void> => {
-    try {
-      await recoverOnStartup(d);
-    } catch (e) {
-      fail('jobs.loop.recovery_failed', e);
+    // Recovery runs once per process: a caller that has already run it (composition's startJobs)
+    // passes recover_on_start: false. Run twice, it would take over operations of a live pass.
+    if (o.recover_on_start !== false) {
+      try {
+        await recoverOnStartup(d);
+      } catch (e) {
+        fail('jobs.loop.recovery_failed', e);
+      }
     }
     while (!stopped) {
       let delay = o.max_sleep_ms;

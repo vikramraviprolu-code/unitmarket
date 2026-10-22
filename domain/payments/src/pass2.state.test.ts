@@ -142,7 +142,7 @@ describe('H-2: a refund PayPal accepted is always read back', () => {
       await w.rows("SELECT amount_minor FROM ledger_entries WHERE kind = 'refund'"),
     ).toHaveLength(1);
     expect(await w.rows('SELECT money_state, access_state FROM entitlements')).toEqual([
-      { money_state: 'refunded', access_state: 'ended' },
+      { money_state: 'refunded', access_state: 'revoked' },
     ]);
     expect((await invariants())['INV6']).toBe(true);
   });
@@ -274,7 +274,7 @@ describe('M-2: a refund is booked from GET refund and the capture status, not fr
       await w.rows("SELECT amount_minor FROM ledger_entries WHERE kind = 'refund'"),
     ).toHaveLength(1);
     expect(await w.rows('SELECT money_state, access_state FROM entitlements')).toEqual([
-      { money_state: 'refunded', access_state: 'ended' },
+      { money_state: 'refunded', access_state: 'revoked' },
     ]);
     expect(await alertKinds(w, a.order_id)).toEqual([]);
     expect((await invariants())['INV1']).toBe(true);
@@ -289,7 +289,7 @@ describe('M-2: a refund is booked from GET refund and the capture status, not fr
     expect(await alertKinds(w, a.order_id)).toContain('refund_unbooked');
     expect(await w.rows('SELECT status FROM order_units')).toEqual([{ status: 'refunded' }]);
     expect(await w.rows('SELECT money_state, access_state FROM entitlements')).toEqual([
-      { money_state: 'refunded', access_state: 'ended' },
+      { money_state: 'refunded', access_state: 'revoked' },
     ]);
   });
 

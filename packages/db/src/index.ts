@@ -5,3 +5,4 @@ export { openDatabase } from './pglite';
 export { migrate, applyMigrations, listMigrations, MIGRATIONS_ROOT } from './migrate';
 export type { MigrationSet } from './migrate';
 export { tablesInDependencyOrder } from './export-sql';
+export { withSerializationRetry, isRetryableSqlError } from './retry';

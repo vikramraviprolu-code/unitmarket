@@ -4,12 +4,21 @@
 //   INV1 ledger sale minus refunds equals the verified captured amount per unit;
 //   INV2 every available item has a verified capture;
 //   INV3 no captured unit without its items (and none left pending or denied);
-//   INV4 the end of every access window equals the end the event log gives.
+//   INV4 the end of every access window equals the end the event log gives;
+//   INV5 every order in capture_requested, capture_claimed or unresolved has an operation that is
+//        `sent` or `unknown` (something is polling it), unless its create, capture or read-back
+//        gave up at the end of the 24 h window and a human was told (failed, window_expired);
+//   INV6 every open refund request (sent, unknown, pending) has a refund or refund read-back
+//        operation that is `sent` or `unknown`. A request nobody polls can stay open forever.
 import { computeWindow } from '@umsbx/access-clock';
 import { AccessPolicySchema } from '@umsbx/contracts';
 import type { AccessEvent, AccessEventKind, Id, SqlExecutor } from '@umsbx/contracts';
 
-type Result = { id: 'INV1' | 'INV2' | 'INV3' | 'INV4'; ok: boolean; detail: string };
+type Result = {
+  id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6';
+  ok: boolean;
+  detail: string;
+};
 const SHOWN = 5;
 
 const describe = (title: string, bad: string[]): string =>
@@ -112,7 +121,7 @@ async function inv4(db: SqlExecutor): Promise<Result> {
       source: AccessEvent['source'];
       evidence: AccessEvent['evidence'];
     }>(
-      'SELECT kind, at, source, evidence FROM access_events WHERE entitlement_id = $1 ORDER BY at, ctid',
+      'SELECT kind, at, source, evidence FROM access_events WHERE entitlement_id = $1 ORDER BY at, seq',
       [id],
     );
     // The end does not depend on the moment of the check, so any instant will do.
@@ -142,6 +151,48 @@ async function inv4(db: SqlExecutor): Promise<Result> {
   };
 }
 
+async function inv5(db: SqlExecutor): Promise<Result> {
+  const rows = await db.query<{ id: string; status: string }>(
+    `SELECT o.id, o.status FROM orders o
+      WHERE o.status IN ('capture_requested', 'capture_claimed', 'unresolved')
+        AND NOT EXISTS (SELECT 1 FROM operations p WHERE p.order_id = o.id AND p.state IN ('sent', 'unknown'))
+        AND NOT EXISTS (SELECT 1 FROM operations p WHERE p.order_id = o.id
+                          AND p.kind IN ('create', 'capture', 'readback')
+                          AND p.state = 'failed' AND p.failure_reason = 'window_expired')
+      ORDER BY o.id`,
+  );
+  const bad = rows.rows.map((r) => `order ${r.id} is ${r.status} and nothing polls it`);
+  return {
+    id: 'INV5',
+    ok: bad.length === 0,
+    detail: describe('every order in flight has an operation that is polled', bad),
+  };
+}
+
+async function inv6(db: SqlExecutor): Promise<Result> {
+  const rows = await db.query<{ id: string; state: string }>(
+    `SELECT r.id, r.state FROM refund_requests r
+      WHERE r.state IN ('sent', 'unknown', 'pending')
+        AND NOT EXISTS (SELECT 1 FROM operations p
+                         WHERE p.request_id IN ('umsR-' || r.id, 'umsRB-' || r.id)
+                           AND p.state IN ('sent', 'unknown'))
+      ORDER BY r.id`,
+  );
+  const bad = rows.rows.map((r) => `refund request ${r.id} is ${r.state} and nothing polls it`);
+  return {
+    id: 'INV6',
+    ok: bad.length === 0,
+    detail: describe('every open refund request has an operation that is polled', bad),
+  };
+}
+
 export async function checkInvariants(db: SqlExecutor): Promise<Result[]> {
-  return [await inv1(db), await inv2(db), await inv3(db), await inv4(db)];
+  return [
+    await inv1(db),
+    await inv2(db),
+    await inv3(db),
+    await inv4(db),
+    await inv5(db),
+    await inv6(db),
+  ];
 }

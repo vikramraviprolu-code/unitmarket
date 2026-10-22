@@ -24,6 +24,7 @@ describe('crash recovery (REL-2)', () => {
   it('kill -9 simulated between sent and response (PayPal captured): terminal within two passes', async () => {
     w = await makeWorld();
     const a = await sentCapture(w);
+    w.tick(61_000); // the lease (60 s) of the process that died is over
     await recoverOnStartup(w.restart());
     await runDue(w.restart(), { max_items: 10 });
     expect(TERMINAL.has(await orderStatus(w, a.order_id))).toBe(true);
@@ -33,6 +34,7 @@ describe('crash recovery (REL-2)', () => {
   it('kill -9 simulated between sent and response (PayPal never saw it): terminal within two passes, one charge', async () => {
     w = await makeWorld();
     const a = await deadCapture(w);
+    w.tick(61_000); // the lease (60 s) of the process that died is over
     await recoverOnStartup(w.restart());
     await runDue(w.restart(), { max_items: 10 });
     expect(TERMINAL.has(await orderStatus(w, a.order_id))).toBe(true);
@@ -43,6 +45,7 @@ describe('crash recovery (REL-2)', () => {
     w = await makeWorld();
     const a = await sentCapture(w);
     w.paypal.tamper = { amount_delta: 5 };
+    w.tick(61_000); // the lease (60 s) of the process that died is over
     await recoverOnStartup(w.restart());
     await runDue(w.restart(), { max_items: 10 });
     expect(await orderStatus(w, a.order_id)).toBe('frozen');

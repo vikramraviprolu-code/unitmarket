@@ -1,5 +1,6 @@
 import { PGlite } from '@electric-sql/pglite';
 import type { SqlDriver, DbTarget } from './driver';
+import { withSerializationRetry } from './retry';
 import type { SqlExecutor } from '@umsbx/contracts';
 
 function executor(q: Pick<PGlite, 'query' | 'exec'>): SqlExecutor {
@@ -22,7 +23,9 @@ export async function openDatabase(t: DbTarget): Promise<SqlDriver> {
   if (t.kind === 'pglite-memory')
     await pg.query("SELECT set_config('ums.db_target', 'memory', false)");
   const base = executor(pg);
-  return {
+  // PGlite never raises a deadlock or a serialization failure; the wrapper is in the path so the
+  // retry rule is the same one a node-postgres adapter will use (retry.ts).
+  return withSerializationRetry<SqlDriver>({
     dialect: 'pglite',
     target: t.kind,
     query: base.query,
@@ -30,5 +33,5 @@ export async function openDatabase(t: DbTarget): Promise<SqlDriver> {
     transaction: <T>(fn: (tx: SqlExecutor) => Promise<T>) =>
       pg.transaction((tx) => fn(executor(tx))),
     close: () => pg.close(),
-  };
+  });
 }

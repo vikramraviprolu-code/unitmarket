@@ -1,7 +1,9 @@
+import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { app } from '../../../server/access';
+import { isBuyerNavigation } from '../../../server/return-guard';
 import { currentActor } from '../../../server/session';
 import { ErrorState } from '../../../ui/ErrorState';
 
@@ -11,7 +13,8 @@ const SCENARIO = /^[a-z0-9_]{1,60}$/;
 const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 
 // The buyer's return is a trigger, never evidence: onBuyerReturn reads the order back itself and
-// uses the stored provider order id, not anything in this URL (P6).
+// uses the stored provider order id, not anything in this URL (P6). Only a page navigation starts
+// it (return-guard.ts); anything else is shown a button, and the button is a POST.
 export default async function CheckoutReturn({
   searchParams,
 }: {
@@ -20,10 +23,30 @@ export default async function CheckoutReturn({
   const q = await searchParams;
   const ref = one(q['ref']);
   if (ref === undefined || ref === '') notFound();
+  const sc = one(q['scenario']);
+  const h = await headers();
+  if (isBuyerNavigation((name) => h.get(name))) return finishReturn(ref, sc);
+  async function confirm(): Promise<void> {
+    'use server';
+    await finishReturn(ref as string, sc);
+  }
+  return (
+    <>
+      <h1>Confirm your return</h1>
+      <p>Press the button to go on to your order. Nothing is charged by this page itself.</p>
+      <form action={confirm}>
+        <button className="btn btn-primary" type="submit">
+          Continue to your order
+        </button>
+      </form>
+    </>
+  );
+}
+
+async function finishReturn(ref: string, sc: string | undefined) {
   const actor = await currentActor();
   if (actor?.kind !== 'buyer') redirect('/signin');
   const a = await app();
-  const sc = one(q['scenario']);
   const scenario = a.environment === 'dryrun' && sc !== undefined && SCENARIO.test(sc) ? sc : null;
   // Dry run only: this page stands in for PayPal's own approval step, so reaching it with a chosen
   // scenario is the pretend approval. In sandbox mode PayPal does that, and a scenario is ignored.

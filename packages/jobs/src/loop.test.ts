@@ -44,7 +44,7 @@ const zero = { processed: 0, still_unknown: 0, expired: 0, abandoned: 0 };
 beforeEach(() => {
   logs.length = 0;
   vi.mocked(runDue).mockReset().mockResolvedValue(zero);
-  vi.mocked(recoverOnStartup).mockReset().mockResolvedValue({ resumed: 0 });
+  vi.mocked(recoverOnStartup).mockReset().mockResolvedValue({ resumed: 0, repaired: 0 });
   vi.mocked(nextDueAt).mockReset().mockResolvedValue(null);
 });
 afterEach(() => {
@@ -57,7 +57,7 @@ describe('startLoop', () => {
     const order: string[] = [];
     vi.mocked(recoverOnStartup).mockImplementation(() => {
       order.push('recover');
-      return Promise.resolve({ resumed: 2 });
+      return Promise.resolve({ resumed: 2, repaired: 0 });
     });
     vi.mocked(runDue).mockImplementation(() => {
       order.push('due');
@@ -71,6 +71,14 @@ describe('startLoop', () => {
     expect(vi.mocked(recoverOnStartup)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(runDue)).toHaveBeenCalledWith(d, { max_items: 7 });
     expect(sweepWindows).toHaveBeenCalledWith({ max_items: 7 });
+  });
+
+  it('does not recover again when the caller has already recovered (once per process)', async () => {
+    const { d } = makeDeps();
+    const loop = startLoop(d, { max_sleep_ms: 5, max_items: 7, recover_on_start: false });
+    await vi.waitFor(() => expect(vi.mocked(runDue).mock.calls.length).toBeGreaterThanOrEqual(2));
+    await loop.stop();
+    expect(vi.mocked(recoverOnStartup)).not.toHaveBeenCalled();
   });
 
   it('waits until the next due time', async () => {

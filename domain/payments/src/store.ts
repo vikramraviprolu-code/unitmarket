@@ -151,6 +151,47 @@ export async function loadUnits(db: SqlExecutor, order_id: Id): Promise<UnitRow[
   );
   return found.rows.map(toUnit);
 }
+/**
+ * LOCK ORDER (docs/READINESS.md "Lock order"). Every transaction that moves money takes its row
+ * locks in one order: orders (and provider_orders), then operations, then order_units, then
+ * refund_requests, then entitlements (with their windows and events), then ledger_entries and receipts.
+ * This is the first step of that order: the order row, then every operation row of the order.
+ * Taking all the operation rows at once means a later statement on any of them waits for nothing.
+ */
+export async function lockOrderRows(db: SqlExecutor, order_id: Id): Promise<OrderRow | null> {
+  const order = await loadOrder(db, order_id, { lock: true });
+  if (order === null) return null;
+  await db.query('SELECT id FROM operations WHERE order_id = $1 ORDER BY id FOR UPDATE', [
+    order_id,
+  ]);
+  return order;
+}
+
+/** The order of a unit, locked first (see lockOrderRows); null when the unit does not exist. */
+export async function lockOrderOfUnit(db: SqlExecutor, unit_id: Id): Promise<Id | null> {
+  const found = await db.query<{ order_id: string }>(
+    'SELECT order_id FROM order_units WHERE id = $1',
+    [unit_id],
+  );
+  const order_id = found.rows[0]?.order_id;
+  if (order_id === undefined) return null;
+  return (await lockOrderRows(db, order_id)) === null ? null : order_id;
+}
+
+/** One operation by its own request id: refund operations belong to one refund request each. */
+export async function loadOperationByRequestId(
+  db: SqlExecutor,
+  request_id: string,
+  opts: { lock?: boolean } = {},
+): Promise<OperationRow | null> {
+  const found = await db.query<Raw>(
+    `SELECT * FROM operations WHERE request_id = $1${opts.lock === true ? ' FOR UPDATE' : ''}`,
+    [request_id],
+  );
+  const row = found.rows[0];
+  return row === undefined ? null : toOperation(row);
+}
+
 export async function loadOperation(
   db: SqlExecutor,
   order_id: Id,

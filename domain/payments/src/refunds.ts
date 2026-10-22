@@ -24,8 +24,15 @@ import type {
 } from '@umsbx/contracts';
 import { raiseAlert } from './alerts';
 import type { AlertKind } from './alerts';
-import { requestIdFor } from './keys';
-import { addMs, backoffMs, insertOperation, loadOperation } from './store';
+import { refundReadbackKeyFor, requestIdFor } from './keys';
+import {
+  addMs,
+  backoffMs,
+  insertOperation,
+  loadOperationByRequestId,
+  lockOrderOfUnit,
+  lockOrderRows,
+} from './store';
 
 /** Kept as an alias: the kinds lane 05b raises are part of lane 05a's AlertKind. */
 export type OpsAlertKind = AlertKind;
@@ -44,8 +51,11 @@ export async function raiseOpsAlert(
   return raiseAlert(tx, d, i);
 }
 
-// A request reserves its amount while it can still become a refund at PayPal.
-const OPEN = "('requested', 'sent', 'unknown', 'pending')";
+// A request reserves its amount while it can still become a refund at PayPal. `unresolved` is a
+// request whose outcome nobody could prove at the end of the window: PayPal may have refunded, so
+// the amount stays reserved until a human decides (M-2).
+const OPEN = "('requested', 'sent', 'unknown', 'pending', 'unresolved')";
+const REFUNDED_STATUS = new Set(['PARTIALLY_REFUNDED', 'REFUNDED']);
 const BOOKABLE = new Set(['captured_verified', 'partially_refunded']);
 
 interface UnitFacts {
@@ -106,6 +116,8 @@ export async function requestRefund(
   if (!(await d.switches.isOn('refunds_enabled'))) return err({ code: 'refunds_off' });
   const actor = i.actor;
   return d.db.transaction(async (tx) => {
+    // Lock order: the order of the unit first (store.ts lockOrderRows).
+    if (IdSchema.safeParse(i.unit_id).success) await lockOrderOfUnit(tx, i.unit_id);
     const unit = await loadUnitFacts(tx, i.unit_id, true);
     if (unit === null || !unit.verified || unit.capture_id === null || !BOOKABLE.has(unit.status)) {
       return err({ code: 'not_captured' as const });
@@ -211,11 +223,15 @@ export async function executeRefund(
   type Prepared =
     { kind: 'done'; result: Executed } | { kind: 'send'; rq: RequestRow; key: string };
   const prepared = await d.db.transaction(async (tx): Promise<Prepared> => {
+    // Lock order: the order and its operations, then the unit, then the request.
+    const first = await loadRequest(tx, i.refund_request_id);
+    if (first === null) return { kind: 'done', result: err({ code: 'rejected' }) };
+    await lockOrderOfUnit(tx, first.unit_id);
+    const unit = await loadUnitFacts(tx, first.unit_id, true);
+    if (unit === null) return { kind: 'done', result: err({ code: 'rejected' }) };
     const rq = await loadRequest(tx, i.refund_request_id, true);
     if (rq === null) return { kind: 'done', result: err({ code: 'rejected' }) };
     if (rq.state !== 'requested') return { kind: 'done', result: answerOf(rq.state) };
-    const unit = await loadUnitFacts(tx, rq.unit_id, true);
-    if (unit === null) return { kind: 'done', result: err({ code: 'rejected' }) };
     const at = d.clock.now().toISOString();
     const key = requestIdFor('refund', rq.id);
     await tx.query(
@@ -256,11 +272,16 @@ export async function executeRefund(
 async function recordCall(d: PaymentsDeps, request_id: Id, res: RefundRes): Promise<Executed> {
   const outcome = await d.db.transaction(async (tx) => {
     const at = d.clock.now().toISOString();
+    // Lock order: the order and its operations, then the request.
+    const first = await loadRequest(tx, request_id);
+    if (first === null) throw new Error(`refund request ${request_id} vanished`);
+    const unit = await loadUnitFacts(tx, first.unit_id, false);
+    if (unit === null) throw new Error(`unit of refund request ${request_id} vanished`);
+    await lockOrderRows(tx, unit.order_id);
     const rq = await loadRequest(tx, request_id, true);
     if (rq === null) throw new Error(`refund request ${request_id} vanished`);
-    const unit = await loadUnitFacts(tx, rq.unit_id, false);
-    if (unit === null) throw new Error(`unit of refund request ${request_id} vanished`);
-    const op = await loadOperation(tx, unit.order_id, 'refund');
+    // M-1: the operation of THIS request, by its own key, never "the refund operation of the order".
+    const op = await loadOperationByRequestId(tx, requestIdFor('refund', rq.id), { lock: true });
     if (op === null) throw new Error(`refund operation of ${request_id} vanished`);
     if (res.kind === 'refund') {
       await tx.query(
@@ -271,6 +292,9 @@ async function recordCall(d: PaymentsDeps, request_id: Id, res: RefundRes): Prom
         `UPDATE operations SET state = 'confirmed', lease_until = NULL, next_retry_at = NULL, updated_at = $2 WHERE id = $1`,
         [op.id, at],
       );
+      // H-2: `pending` and the operation that reads it back are stored together. If the read
+      // below never happens (a throw, a dead process), the due-work pass finishes the job.
+      await ensureRefundReadbackOp(tx, d, rq.id, unit.order_id, op.first_sent_at ?? at, at);
       return { kind: 'accepted' as const, refund_id: res.refund_id };
     }
     if (res.kind === 'rejected') {
@@ -306,6 +330,42 @@ async function recordCall(d: PaymentsDeps, request_id: Id, res: RefundRes): Prom
 }
 
 /**
+ * The read-back operation of one refund request (`umsRB-<request id>`, state unknown, polled with
+ * the backoff schedule until 24 h after the refund call). Created in the transaction that stores
+ * `pending`; reset to unknown when it exists in another state (startup recovery, a replay).
+ */
+export async function ensureRefundReadbackOp(
+  tx: SqlExecutor,
+  d: Pick<CoreDeps, 'clock' | 'ids' | 'config'>,
+  refund_request_id: Id,
+  order_id: Id,
+  anchor: string,
+  at: string,
+): Promise<void> {
+  const key = refundReadbackKeyFor(refund_request_id);
+  const until = addMs(anchor, d.config.reconcile_window_ms);
+  const existing = await loadOperationByRequestId(tx, key, { lock: true });
+  if (existing === null) {
+    await insertOperation(tx, {
+      id: d.ids.next('opr'),
+      order_id,
+      kind: 'refund_readback',
+      state: 'unknown',
+      request_id: key,
+      lease_until: null,
+      reconcile_until: until,
+      next_retry_at: addMs(at, backoffMs(d.config, 1)),
+      at,
+    });
+  } else if (existing.state !== 'unknown' && existing.state !== 'sent') {
+    await tx.query(
+      `UPDATE operations SET state = 'unknown', failure_reason = NULL, lease_until = NULL, reconcile_until = $2, next_retry_at = $3, updated_at = $4 WHERE id = $1`,
+      [existing.id, until, addMs(at, backoffMs(d.config, 1)), at],
+    );
+  }
+}
+
+/**
  * GET refund and a read of the order. Nothing is booked unless GET refund says COMPLETED and the
  * order read shows at least that much refunded; the amount booked is GET refund's. Anything else
  * leaves a refund_readback operation polling.
@@ -322,7 +382,10 @@ export async function readBack(d: PaymentsDeps, request_id: Id): Promise<Execute
     status = got.status;
     amount = got.amount;
   }
-  let shown = 0;
+  // What the order read says about the capture: its STATUS decides; the refunded total is advisory
+  // (PayPal may report 0 for a refunded capture) and is used only when it is there.
+  let capStatus: string | null = null;
+  let capRefunded = 0;
   if (status === 'COMPLETED') {
     const provider = (
       await d.db.query<{ provider_order_id: string | null }>(
@@ -333,20 +396,24 @@ export async function readBack(d: PaymentsDeps, request_id: Id): Promise<Execute
     const read: OrderRead | null =
       provider === undefined || provider === null ? null : await d.paypal.getOrder(provider);
     if (read !== null && read.kind === 'order') {
-      shown =
-        read.units.find((u) => u.capture?.capture_id === rq.capture_id)?.capture?.refunded_minor ??
-        0;
+      const cap = read.units.find((u) => u.capture?.capture_id === rq.capture_id)?.capture;
+      if (cap !== undefined && cap !== null) {
+        capStatus = cap.status;
+        capRefunded = cap.refunded_minor;
+      }
     }
   }
   return d.db.transaction(async (tx): Promise<Executed> => {
     const at = d.clock.now().toISOString();
+    // Lock order: the order and its operations, then the unit, then the request.
+    await lockOrderRows(tx, unit.order_id);
+    const fresh = await loadUnitFacts(tx, rq.unit_id, true);
+    if (fresh === null) throw new Error(`unit of refund request ${request_id} vanished`);
     const row = await loadRequest(tx, request_id, true);
     if (row === null) throw new Error(`refund request ${request_id} vanished`);
     // Someone else finished it first.
     if (row.state !== 'pending') return answerOf(row.state);
-    const fresh = await loadUnitFacts(tx, row.unit_id, true);
-    if (fresh === null) throw new Error(`unit of refund request ${request_id} vanished`);
-    const op = await loadOperation(tx, fresh.order_id, 'refund_readback', { lock: true });
+    const op = await loadOperationByRequestId(tx, refundReadbackKeyFor(row.id), { lock: true });
     const settle = async (): Promise<void> => {
       if (op !== null && op.state === 'unknown') {
         await tx.query(
@@ -355,7 +422,13 @@ export async function readBack(d: PaymentsDeps, request_id: Id): Promise<Execute
         );
       }
     };
-    if (status === 'COMPLETED' && amount !== null && shown >= fresh.refunded_minor + amount.minor) {
+    const shown =
+      status === 'COMPLETED' &&
+      amount !== null &&
+      capStatus !== null &&
+      REFUNDED_STATUS.has(capStatus) &&
+      (capRefunded === 0 || capRefunded >= fresh.refunded_minor + amount.minor);
+    if (shown && amount !== null) {
       // False means the amount did not fit the unit: an alert is raised and a human decides.
       await book(tx, d, fresh, row.refund_id as string, amount);
       await tx.query(
@@ -382,19 +455,8 @@ export async function readBack(d: PaymentsDeps, request_id: Id): Promise<Execute
       return ok({ status });
     }
     // PENDING, or COMPLETED but not yet shown by the order read, or no usable answer: keep polling.
-    if (op === null) {
-      await insertOperation(tx, {
-        id: d.ids.next('opr'),
-        order_id: fresh.order_id,
-        kind: 'refund_readback',
-        state: 'unknown',
-        request_id: `umsRB-${row.id}`,
-        lease_until: null,
-        reconcile_until: addMs(at, d.config.reconcile_window_ms),
-        next_retry_at: addMs(at, backoffMs(d.config, 1)),
-        at,
-      });
-    }
+    const sent = await loadOperationByRequestId(tx, requestIdFor('refund', row.id));
+    await ensureRefundReadbackOp(tx, d, row.id, fresh.order_id, sent?.first_sent_at ?? at, at);
     return ok({ status: 'PENDING' as const });
   });
 }
@@ -531,8 +593,10 @@ export async function resumeRefund(d: PaymentsDeps, op: RefundOp, ended: boolean
 
 /**
  * The 5 h key limit passed, or the 24 h window ended, with the outcome of a refund call unknown.
- * One read of the order: a capture refunded for more than UnitMarket booked means a refund exists
- * whose id is unknown, and a human is told. The operation is closed either way; no resend.
+ * One read of the order. The request is `failed` (and its reserved amount freed) only when that
+ * read PROVES PayPal did not refund: no refund id was ever returned and the capture shows no
+ * refund. In every other case PayPal may have refunded: the request becomes `unresolved`, keeps
+ * its reservation, and a human is told (M-2). The operation is closed either way; no resend.
  */
 export async function closeRefundUnknown(
   d: PaymentsDeps,
@@ -544,7 +608,9 @@ export async function closeRefundUnknown(
   if (rq === null) return true;
   const unit = await loadUnitFacts(d.db, rq.unit_id, false);
   if (unit === null) return true;
+  // null: not proven. 0: the read shows no refund beyond what is booked. > 0: a refund exists.
   let excess: number | null = null;
+  let readOk = false; // the order read showed this capture: what it shows is evidence
   if (rq.refund_id === null) {
     const provider = (
       await d.db.query<{ provider_order_id: string | null }>(
@@ -555,27 +621,33 @@ export async function closeRefundUnknown(
     if (provider !== undefined && provider !== null) {
       const read = await d.paypal.getOrder(provider);
       if (read.kind === 'order') {
-        const shown =
-          read.units.find((u) => u.capture?.capture_id === rq.capture_id)?.capture
-            ?.refunded_minor ?? 0;
-        excess = shown - unit.refunded_minor;
+        const cap = read.units.find((u) => u.capture?.capture_id === rq.capture_id)?.capture;
+        if (cap !== undefined && cap !== null) {
+          readOk = true;
+          if (cap.refunded_minor > 0) excess = cap.refunded_minor - unit.refunded_minor;
+          else if (!REFUNDED_STATUS.has(cap.status)) excess = 0;
+          // else: refunded at PayPal, amount not reported: not proven either way.
+        }
       }
     }
     // The read failed: try again until the window ends.
-    if (excess === null && !windowEnded) return false;
+    if (!readOk && !windowEnded) return false;
   }
   await d.db.transaction(async (tx) => {
     const at = d.clock.now().toISOString();
+    await lockOrderRows(tx, unit.order_id);
     await tx.query(
       `UPDATE operations SET state = 'failed', failure_reason = 'window_expired', lease_until = NULL, next_retry_at = NULL, updated_at = $2
        WHERE id = $1 AND state = 'unknown'`,
       [op.id, at],
     );
+    // A request that was still waiting on this operation is settled with it.
+    const proven = excess === 0;
     await tx.query(
-      "UPDATE refund_requests SET state = 'failed', updated_at = $2 WHERE id = $1 AND state IN ('unknown', 'pending')",
-      [rq.id, at],
+      "UPDATE refund_requests SET state = $3, updated_at = $2 WHERE id = $1 AND state IN ('unknown', 'pending')",
+      [rq.id, at, proven ? 'failed' : 'unresolved'],
     );
-    if (excess === null || excess > 0) {
+    if (!proven) {
       await raiseOpsAlert(tx, d, {
         kind: 'refund_unresolved',
         order_id: unit.order_id,
@@ -596,6 +668,14 @@ export async function suspectReversalTx(
   d: CoreDeps,
   i: { capture_id: string; source: string },
 ): Promise<{ found: boolean; changed: boolean }> {
+  // Lock order: the order of the capture and its operations first, then the unit.
+  const owner = (
+    await tx.query<{ order_id: string }>('SELECT order_id FROM order_units WHERE capture_id = $1', [
+      i.capture_id,
+    ])
+  ).rows[0];
+  if (owner === undefined) return { found: false, changed: false };
+  await lockOrderRows(tx, owner.order_id);
   const unit = (
     await tx.query<{ id: string; order_id: string; status: string }>(
       'SELECT id, order_id, status FROM order_units WHERE capture_id = $1 FOR UPDATE',
@@ -640,8 +720,10 @@ type OrderReadOk = Extract<OrderRead, { kind: 'order' }>;
 
 /**
  * After a read was applied: a verified capture that PayPal now shows as declined or failed is a
- * suspected reversal; a verified capture refunded for more than UnitMarket booked (a refund made at
- * the PayPal dashboard) is alerted, and a full one ends the access, because the money went back.
+ * suspected reversal; a verified capture that PayPal shows as refunded (status PARTIALLY_REFUNDED
+ * or REFUNDED) for more than UnitMarket booked (a refund made at the PayPal dashboard) is alerted,
+ * and a full one ends the access, because the money went back. The capture STATUS decides first;
+ * the refunded total is advisory (PayPal may report 0) and is used only when it is there (M-2).
  */
 export async function observeReadback(
   tx: SqlExecutor,
@@ -651,6 +733,14 @@ export async function observeReadback(
   for (const ru of read.units) {
     const cap = ru.capture;
     if (cap === null) continue;
+    const owner = (
+      await tx.query<{ order_id: string }>(
+        'SELECT order_id FROM order_units WHERE capture_id = $1 AND captured_verified_at IS NOT NULL',
+        [cap.capture_id],
+      )
+    ).rows[0];
+    if (owner === undefined) continue;
+    await lockOrderRows(tx, owner.order_id); // lock order: the order first, then the unit
     const unit = (
       await tx.query<{
         id: string;
@@ -660,7 +750,7 @@ export async function observeReadback(
         amount_minor: number;
       }>(
         `SELECT id, order_id, status, refunded_minor, amount_minor FROM order_units
-          WHERE capture_id = $1 AND captured_verified_at IS NOT NULL`,
+          WHERE capture_id = $1 AND captured_verified_at IS NOT NULL FOR UPDATE`,
         [cap.capture_id],
       )
     ).rows[0];
@@ -669,8 +759,19 @@ export async function observeReadback(
       await suspectReversalTx(tx, d, { capture_id: cap.capture_id, source: 'read' });
       continue;
     }
+    if (!REFUNDED_STATUS.has(cap.status)) continue;
     const booked = Number(unit.refunded_minor);
-    if (cap.refunded_minor <= booked) continue;
+    const full = cap.status === 'REFUNDED';
+    // Is there a refund UnitMarket has not booked? With a reported total, compare it. Without one,
+    // a full refund is unbooked unless the unit is already fully refunded, and a partial one is
+    // unbooked while nothing at all is booked.
+    const unbooked =
+      cap.refunded_minor > 0
+        ? cap.refunded_minor > booked
+        : full
+          ? unit.status !== 'refunded'
+          : booked === 0;
+    if (!unbooked) continue;
     const open = await tx.query(
       `SELECT 1 FROM refund_requests WHERE unit_id = $1 AND state IN ${OPEN} LIMIT 1`,
       [unit.id],
@@ -680,10 +781,10 @@ export async function observeReadback(
       kind: 'refund_unbooked',
       order_id: unit.order_id,
       unit_id: unit.id,
-      reason: `refund_unbooked_${cap.refunded_minor}`,
+      reason: `refund_unbooked_${cap.status.toLowerCase()}_${cap.refunded_minor}`,
       detail: { shown_minor: cap.refunded_minor, booked_minor: booked, status: cap.status },
     });
-    if (cap.status === 'REFUNDED' && BOOKABLE.has(unit.status)) {
+    if (full && BOOKABLE.has(unit.status)) {
       await tx.query("UPDATE order_units SET status = 'refunded', updated_at = $2 WHERE id = $1", [
         unit.id,
         d.clock.now().toISOString(),

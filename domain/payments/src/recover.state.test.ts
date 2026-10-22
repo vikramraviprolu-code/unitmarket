@@ -33,6 +33,7 @@ describe('recoverOnStartup', () => {
     expect((await opOf(w, a.order_id, 'capture')).state).toBe('sent');
     expect(await orderStatus(w, a.order_id)).toBe('capture_requested');
     const callsBefore = w.paypal.calls.length;
+    w.tick(61_000); // the lease (60 s) of the process that died is over
     const r = await recoverOnStartup(w.restart());
     expect(r.resumed).toBe(1);
     const after = w.paypal.calls.slice(callsBefore).map((c) => c.op);
@@ -48,6 +49,7 @@ describe('recoverOnStartup', () => {
     w.switches.paypal_outbound = false;
     w.tick(5000);
     const callsBefore = w.paypal.calls.length;
+    w.tick(61_000); // the lease (60 s) of the process that died is over
     const r = await recoverOnStartup(w.restart());
     expect(r.resumed).toBe(1);
     expect(w.paypal.calls.length).toBe(callsBefore);
@@ -63,6 +65,7 @@ describe('recoverOnStartup', () => {
   it('a dead capture (never reached PayPal) is read, then sent once more with the same key', async () => {
     w = await makeWorld();
     const a = await deadCapture(w);
+    w.tick(61_000); // the lease (60 s) of the process that died is over
     await recoverOnStartup(w.restart());
     const captures = w.paypal.calls.filter((c) => c.op === 'capture');
     expect(captures).toHaveLength(2);
@@ -84,6 +87,7 @@ describe('recoverOnStartup', () => {
     await expect(beginCheckout(w.deps, { order_id: p.order_id, actor: BUYER_A })).rejects.toThrow();
     w.paypal.beforeCreate = null;
     expect((await opOf(w, p.order_id, 'create')).state).toBe('sent');
+    w.tick(61_000); // the lease (60 s) of the process that died is over
     const r = await recoverOnStartup(w.restart());
     expect(r.resumed).toBe(1);
     expect(await orderStatus(w, p.order_id)).toBe('awaiting_buyer');
@@ -108,6 +112,7 @@ describe('recoverOnStartup', () => {
     w = await makeWorld();
     const p = await place(w);
     expect((await opOf(w, p.order_id, 'create')).state).toBe('prepared');
+    w.tick(61_000); // the lease (60 s) of the process that died is over
     const r = await recoverOnStartup(w.restart());
     expect(r.resumed).toBe(1);
     expect(await orderStatus(w, p.order_id)).toBe('awaiting_buyer');

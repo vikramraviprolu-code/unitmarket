@@ -35,6 +35,7 @@ import {
   loadOrder,
   loadProviderOrders,
   loadUnits,
+  lockOrderRows,
 } from './store';
 import type { OrderRow, UnitRow } from './store';
 import type { ApplyGates, ApplyReport, ReadinessEvidence } from './types';
@@ -99,7 +100,8 @@ export async function applyReadback(
     gates?: ApplyGates;
   },
 ): Promise<ApplyReport> {
-  const order = await loadOrder(tx, i.order_id, { lock: true });
+  // Lock order: the order row and its operations first (store.ts lockOrderRows).
+  const order = await lockOrderRows(tx, i.order_id);
   if (order === null) throw new Error(`applyReadback: unknown order ${i.order_id}`);
   const providers = await loadProviderOrders(tx, order.id);
   const provider = providers[0];

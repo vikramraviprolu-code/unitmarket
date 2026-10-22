@@ -196,7 +196,13 @@ describe('capture retry (P3): only after a read shows no capture, same key, insi
     w.tick(61_000);
     await runDue(w.deps, { max_items: 10 });
     expect(await orderStatus(w, a.order_id)).toBe('unresolved');
-    expect((await opOf(w, a.order_id, 'capture')).state).toBe('unknown');
+    // FIX-PAY2: the refusal closes the capture operation as failed, the same rule as the first send
+    // (capture.ts); the read-back operation keeps the order polled.
+    expect(await opOf(w, a.order_id, 'capture')).toMatchObject({
+      state: 'failed',
+      failure_reason: 'invalid_request',
+    });
+    expect((await opOf(w, a.order_id, 'readback')).state).toBe('unknown');
     expect(w.paypal.count('capture')).toBe(2);
   });
   it('a duplicate-invoice refusal freezes the order', async () => {

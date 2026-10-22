@@ -4,7 +4,7 @@
 // Postgres needs to be free of deadlocks between the capture, the poll, the refund and the sweeper.
 //
 // The order (docs/READINESS.md "Lock order"): 1 orders (and provider_orders) -> 2 operations ->
-// 3 refund_requests -> 4 order_units -> 5 entitlements (and their windows and events) ->
+// 3 order_units -> 4 refund_requests -> 5 entitlements (and their windows and events) ->
 // 6 ledger_entries and receipts. Alerts, audit and provider call rows are leaf inserts and are not
 // part of the order.
 import { afterEach, describe, expect, it } from 'vitest';
@@ -30,8 +30,8 @@ const RANK: Record<string, number> = {
   orders: 1,
   provider_orders: 1,
   operations: 2,
-  refund_requests: 3,
-  order_units: 4,
+  order_units: 3,
+  refund_requests: 4,
   entitlements: 5,
   access_windows: 5,
   access_events: 5,
