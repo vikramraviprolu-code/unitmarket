@@ -4,3 +4,4 @@ packages:
   - domain/*
   - packages/*
   - tools/*
+  - tests/*
