@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { CERT_HOST, LIVE_HOST, LIVE_WWW, SANDBOX_HOST } from './test-support';
+import { CERT_HOST, LIVE_HOST, LIVE_WWW, SANDBOX_HOST } from './test-helpers';
 
 // Offline hostile corpus for the fixture recorder (B-L3). Every canary is derived at runtime from a
 // label, so no source file or fixture carries a secret-looking literal and the repository scanners

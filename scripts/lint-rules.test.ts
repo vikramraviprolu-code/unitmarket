@@ -1,6 +1,6 @@
 // Proves the ESLint layering rules (architecture 2.2 and 2.3) with real lint runs on virtual files.
 import { ESLint } from 'eslint';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { REPO_ROOT, TOKENS } from './test-helpers';
 
@@ -667,15 +667,319 @@ describe('sealed transport imports (SEAL2 H1)', () => {
       expect(await sealed(f, ok), f).toEqual([]);
   });
 
-  it('packages/safety (production and tests) may use the claim, the factory and the namespace', async () => {
+  it('only the three pinned safety files may use the claim, the factory and the namespace', async () => {
     const all = `import * as T from '@umsbx/transport';\nimport { ${claim}, ${factory} } from '@umsbx/transport';\nexport const x = [T, ${claim}, ${factory}];\n`;
-    for (const f of ['packages/safety/src/scoped-gate.ts', 'packages/safety/src/x.state.test.ts'])
+    for (const f of [
+      'packages/safety/src/scoped-gate.ts',
+      'packages/safety/src/scoped-gate.state.test.ts',
+      'packages/safety/src/seal.adversarial.test.ts',
+    ])
       expect(await sealed(f, all), f).toEqual([]);
+    // Any other safety file, production or test, is an outsider like the rest.
+    for (const f of [
+      'packages/safety/src/gate.ts',
+      'packages/safety/src/status.ts',
+      'packages/safety/src/new.state.test.ts',
+    ])
+      expect((await sealed(f, all)).length, f).toBeGreaterThan(0);
   });
 
   it('an inline disable comment does not switch the rule off', async () => {
     const code = `/* eslint-disable sbx/sealed-transport */\nimport * as T from '@umsbx/transport';\nexport const f = T;\n`;
     expect((await sealed('packages/paypal/src/evil.ts', code)).length).toBeGreaterThan(0);
+  });
+});
+
+// FIX-MVPB-SEAL3 H-A. The sealed rule matched only the '@umsbx/transport' specifier, so a relative or
+// absolute path into the package sources reached the unexported minter, test-support and the
+// approved factory. Any import of any file under packages/transport or packages/safety from outside
+// that package is barred (the public way in is the package name); inside the package, the test-only
+// minters and test-support are for test files.
+describe('relative, absolute and indirect reach into the sealed packages (SEAL3 H-A)', () => {
+  const SEALED = 'sbx/sealed-transport';
+  const sealed = async (file: string, code: string) =>
+    (await lint(file, code)).filter((m) => m.ruleId === SEALED);
+  const maker = ['create', 'Approval', 'Minter'].join('');
+  const outsiders = [
+    'packages/paypal/src/evil.ts',
+    'packages/testkit/src/evil.ts',
+    'packages/db/src/evil.ts',
+    'apps/web/composition.server.ts',
+    'domain/payments/src/evil.test.ts',
+    'tests/mvp-b/evil.test.ts',
+    'tools/spike-kit/src/evil.ts',
+    'scripts/evil.mjs',
+    'scripts/lib/evil.mjs',
+    'evil.mjs',
+  ];
+  const rel = (from: string, target: string) => {
+    const r = relative(dirname(join(REPO_ROOT, from)), join(REPO_ROOT, target));
+    return r.startsWith('.') ? r : `./${r}`;
+  };
+  const targets = [
+    'packages/transport/src/approval.ts',
+    'packages/transport/src/approval',
+    'packages/transport/src/sandbox.ts',
+    'packages/transport/src/test-support.ts',
+    'packages/transport/src/recorder-corpus.ts',
+    'packages/transport/package.json',
+    'packages/safety/src/scoped-gate.ts',
+    'packages/safety/src/gate',
+  ];
+  // The package entry file spelled as a path is the package name in disguise: public names pass,
+  // everything the name check bars is barred here too.
+  const entries = [
+    'packages/transport/src/index.ts',
+    'packages/transport/src/index',
+    'packages/transport/src',
+    'packages/safety/src/index.ts',
+    'packages/safety/src',
+  ];
+  const forms: [string, (spec: string) => string][] = [
+    ['static import', (s) => `import * as M from '${s}';\nexport const m = M;\n`],
+    ['named import', (s) => `import { x } from '${s}';\nexport const m = x;\n`],
+    ['export star', (s) => `export * from '${s}';\n`],
+    ['named re-export', (s) => `export { x } from '${s}';\n`],
+    ['dynamic import', (s) => `export const m = await import('${s}');\n`],
+    ['require', (s) => `export const m = require('${s}');\n`],
+    ['importActual', (s) => `export const m = await vi.importActual('${s}');\n`],
+  ];
+  it('every form of every relative path into either package is refused from outside', async () => {
+    for (const f of outsiders)
+      for (const t of targets)
+        for (const [name, make] of forms)
+          expect((await sealed(f, make(rel(f, t)))).length, `${f} ${name} ${t}`).toBeGreaterThan(0);
+  });
+  it('the entry file by path is checked like the package name', async () => {
+    for (const f of outsiders) {
+      for (const t of entries) {
+        const sp = rel(f, t);
+        const sealedName = t.includes('transport') ? 'claimApprovalMinter' : 'createScopedGate';
+        const bad = [
+          `import * as M from '${sp}';\nexport const m = M;\n`,
+          `import { ${sealedName} } from '${sp}';\nexport const m = ${sealedName};\n`,
+          `export * from '${sp}';\n`,
+          `export { ${sealedName} } from '${sp}';\n`,
+          `export const m = await import('${sp}');\n`,
+          `export const m = require('${sp}');\n`,
+        ];
+        for (const code of bad)
+          expect((await sealed(f, code)).length, `${f} ${sp} ${code}`).toBeGreaterThan(0);
+        // Plain public names are fine, as they are through the package name.
+        const ok = `import { guard, createSwitchReader } from '${sp}';\nexport const m = [guard, createSwitchReader];\n`;
+        expect(await sealed(f, ok), `${f} ${sp}`).toEqual([]);
+      }
+    }
+  });
+  it('an absolute path, a file: URL and a node_modules symlink path are refused too', async () => {
+    const abs = join(REPO_ROOT, 'packages/transport/src/approval.ts');
+    const specs = [
+      abs,
+      `file://${abs}`,
+      '../node_modules/@umsbx/transport/src/approval.ts',
+      '../../node_modules/@umsbx/safety/src/scoped-gate.ts',
+    ];
+    for (const spec of specs)
+      for (const [name, make] of forms)
+        expect(
+          (await sealed('scripts/evil.mjs', make(spec))).length,
+          `${name} ${spec}`,
+        ).toBeGreaterThan(0);
+  });
+  it('reproduces the Opus probe: runtime-registered loader, dynamic import of approval.ts and sandbox.ts, computed names, permissive minter, fake gate, computed production sentinel', async () => {
+    const probe = [
+      "import { register } from 'node:module';",
+      "register('./lib/ts-hooks.mjs', import.meta.url);",
+      "const approval = await import('../packages/transport/src/approval.ts');",
+      "const sandbox = await import('../packages/transport/src/sandbox.ts');",
+      `const mint = approval[['create', 'Approval', 'Minter'].join('')](() => true);`,
+      "const fakeGate = { check: async () => ({ allowed: true, approval_ref: 'X' }) };",
+      "const cap = mint({ scope: 'mvp_b_polling', approval_ref: 'X', gate: fakeGate });",
+      "const make = sandbox[['create', 'Approved', 'Sandbox', 'Transport'].join('')];",
+      "export const t = await make({ approval: cap, scope: 'mvp_b_polling', wire: ['produc', 'tion'].join(''), clock: { now: () => new Date(0) }, log: { log() {}, child() { return this; } } });",
+      '',
+    ].join('\n');
+    const m = await sealed('scripts/probe-attack.mjs', probe);
+    expect(m.length).toBeGreaterThanOrEqual(2); // both dynamic imports
+    // Nothing else in the probe is a lint-clean way in.
+    const all = await lint('scripts/probe-attack.mjs', probe);
+    expect(all.length).toBeGreaterThan(0);
+  });
+  it('a file inside the package may import its own siblings; outside paths into other packages stay ordinary', async () => {
+    expect(
+      await sealed(
+        'packages/transport/src/sandbox.ts',
+        "import { a } from './guard';\nexport const b = a;\n",
+      ),
+    ).toEqual([]);
+    expect(
+      await sealed(
+        'packages/paypal/src/x.ts',
+        "import { a } from './adapter';\nexport const b = a;\n",
+      ),
+    ).toEqual([]);
+    expect(
+      await sealed('scripts/x.mjs', "import { a } from './lib/walk.mjs';\nexport const b = a;\n"),
+    ).toEqual([]);
+  });
+
+  describe('inside the packages: test-only minters and test-support are for test files', () => {
+    it(`${maker} and test-support are barred from non-test transport files`, async () => {
+      for (const f of [
+        'packages/transport/src/recorder-corpus.ts',
+        'packages/transport/src/sandbox.ts',
+        'packages/transport/src/new-file.ts',
+      ]) {
+        expect(
+          (await sealed(f, `import { ${maker} } from './approval';\nexport const m = ${maker};\n`))
+            .length,
+          f,
+        ).toBeGreaterThan(0);
+        expect(
+          (
+            await sealed(
+              f,
+              "import { fakeWire } from './test-support';\nexport const w = fakeWire;\n",
+            )
+          ).length,
+          f,
+        ).toBeGreaterThan(0);
+        expect(
+          (await sealed(f, "import * as A from './approval';\nexport const a = A;\n")).length,
+          f,
+        ).toBeGreaterThan(0);
+        expect((await sealed(f, "export * from './test-support';\n")).length, f).toBeGreaterThan(0);
+        expect(
+          (await sealed(f, "export const m = await import('./test-support');\n")).length,
+          f,
+        ).toBeGreaterThan(0);
+      }
+    });
+    it('approval.ts is claimed through the index only: the index re-exports the claim function and nothing else sealed', async () => {
+      expect(
+        await sealed(
+          'packages/transport/src/index.ts',
+          "export { claimApprovalMinter } from './approval';\n",
+        ),
+      ).toEqual([]);
+    });
+    it('test files and test-support.ts itself may use them', async () => {
+      const mk = `import { ${maker} } from './approval';\nexport const m = ${maker};\n`;
+      for (const f of [
+        'packages/transport/src/approval.test.ts',
+        'packages/transport/src/sandbox.test.ts',
+        'packages/transport/src/test-support.ts',
+      ])
+        expect(await sealed(f, mk), f).toEqual([]);
+      expect(
+        await sealed(
+          'packages/transport/src/sandbox.test.ts',
+          "import { fakeWire } from './test-support';\nexport const w = fakeWire;\n",
+        ),
+      ).toEqual([]);
+    });
+    it('the safety minter and issued-gate predicate are for scoped-gate.ts and tests', async () => {
+      const mint =
+        "import { mintCapability } from './scoped-gate';\nexport const m = mintCapability;\n";
+      const issued = "import { isIssuedGate } from './gate';\nexport const m = isIssuedGate;\n";
+      expect((await sealed('packages/safety/src/status.ts', mint)).length).toBeGreaterThan(0);
+      expect((await sealed('packages/safety/src/status.ts', issued)).length).toBeGreaterThan(0);
+      expect(
+        (
+          await sealed(
+            'packages/safety/src/status.ts',
+            "import * as G from './scoped-gate';\nexport const g = G;\n",
+          )
+        ).length,
+      ).toBeGreaterThan(0);
+      expect(await sealed('packages/safety/src/seal.adversarial.test.ts', mint)).toEqual([]);
+      expect(await sealed('packages/safety/src/scoped-gate.ts', issued)).toEqual([]);
+    });
+  });
+
+  describe('indirect loaders', () => {
+    const spellings: [string, string][] = [
+      [
+        'require aliased to a variable',
+        "const q = require;\nexport const m = q('@umsbx/transport');\n",
+      ],
+      ['comma-expression require', "export const m = (0, require)('@umsbx/transport');\n"],
+      ['require passed as an argument', 'export const m = [1].map(require);\n'],
+      ['require.call', "export const m = require.call(null, '@umsbx/transport');\n"],
+      ['require in an object', 'export const o = { load: require };\n'],
+      [
+        'vi.importActual of the package',
+        "export const m = await vi.importActual('@umsbx/transport');\n",
+      ],
+      [
+        'vi.importActual with a type argument',
+        "export const m = await vi.importActual<typeof import('@umsbx/transport')>('@umsbx/transport');\n",
+      ],
+      ['vi.importMock', "export const m = await vi.importMock('@umsbx/transport');\n"],
+      ['requireActual', "export const m = jest.requireActual('@umsbx/transport');\n"],
+      [
+        'importActual with a computed specifier',
+        "export const m = await vi.importActual(['@umsbx', 'transport'].join('/'));\n",
+      ],
+    ];
+    it.each(spellings)('is refused outside the allowed files: %s', async (_n, code) => {
+      for (const f of [
+        'packages/paypal/src/evil.ts',
+        'tests/mvp-b/evil.test.ts',
+        'scripts/evil.mjs',
+        'evil.cjs',
+      ])
+        expect((await sealed(f, code)).length, f).toBeGreaterThan(0);
+    });
+    it('an ordinary use of a local method named require or importActual elsewhere is not flagged', async () => {
+      expect(
+        await sealed(
+          'packages/paypal/src/x.ts',
+          'export const m = { require: 1 }.require;\nexport const n = typeof process;\n',
+        ),
+      ).toEqual([]);
+    });
+  });
+
+  describe('the createScopedGate factory bar (SEAL3 M-A control)', () => {
+    const fn = ['create', 'Scoped', 'Gate'].join('');
+    it('named, namespace and re-exported use of the safety scoped-gate factory is refused outside the pinned files', async () => {
+      for (const f of [
+        'packages/paypal/src/evil.ts',
+        'packages/testkit/src/probe-db.ts',
+        'apps/web/composition.server.ts',
+        'tests/mvp-b/evil.test.ts',
+        'scripts/evil.mjs',
+      ]) {
+        expect(
+          (await sealed(f, `import { ${fn} } from '@umsbx/safety';\nexport const g = ${fn};\n`))
+            .length,
+          f,
+        ).toBeGreaterThan(0);
+        expect(
+          (await sealed(f, "import * as S from '@umsbx/safety';\nexport const g = S;\n")).length,
+          f,
+        ).toBeGreaterThan(0);
+        expect(
+          (await sealed(f, `export { ${fn} } from '@umsbx/safety';\n`)).length,
+          f,
+        ).toBeGreaterThan(0);
+        expect(
+          (await sealed(f, "export const g = await import('@umsbx/safety');\n")).length,
+          f,
+        ).toBeGreaterThan(0);
+      }
+    });
+    it('the other safety exports stay importable', async () => {
+      const ok =
+        "import { createOutboundGate, createSwitchReader, readSafetyStatus, setSwitch } from '@umsbx/safety';\nimport type { ScopedGateHandle } from '@umsbx/safety';\nexport const g = [createOutboundGate, createSwitchReader, readSafetyStatus, setSwitch];\n";
+      for (const f of [
+        'apps/web/composition.server.ts',
+        'packages/testkit/src/x.ts',
+        'tests/mvp-a/x.test.ts',
+      ])
+        expect(await sealed(f, ok), f).toEqual([]);
+    });
   });
 });
 
@@ -751,7 +1055,10 @@ describe('named exemptions (D-015)', () => {
         'packages/paypal/src/sandbox-wire.integration.test.ts -> sbx/sealed-transport',
         `packages/transport/src/${WIRE}.ts -> no-restricted-properties,sbx/no-global-alias`,
         `packages/transport/src/${WIRE}.env.test.ts -> sbx/no-global-alias`,
-        'packages/safety/src/**/*.ts -> sbx/sealed-transport',
+        'scripts/record-fixtures.test.ts -> sbx/sealed-transport',
+        'packages/safety/src/scoped-gate.ts -> sbx/sealed-transport',
+        'packages/safety/src/scoped-gate.state.test.ts -> sbx/sealed-transport',
+        'packages/safety/src/seal.adversarial.test.ts -> sbx/sealed-transport',
         'packages/transport/src/**/*.ts -> sbx/sealed-wire-sentinel',
         'apps/web/composition.server.ts -> sbx/sealed-wire-sentinel',
         'tools/spike-kit/src/spike.ts -> no-restricted-globals,no-restricted-properties,no-restricted-syntax,sbx/no-global-alias',

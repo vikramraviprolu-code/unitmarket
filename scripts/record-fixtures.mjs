@@ -21,9 +21,9 @@ import { systemClock } from '../packages/runtime/src/index.ts';
 import {
   buildRecordings,
   formatSummary,
+  recorderSelfTest,
   writeRecordings,
-} from '../packages/transport/src/recorder.ts';
-import { recorderSelfTest } from '../packages/transport/src/recorder-selftest.ts';
+} from '../packages/transport/src/index.ts';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const say = (line) => process.stdout.write(`${line}\n`);

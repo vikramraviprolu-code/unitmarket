@@ -214,3 +214,80 @@ describe('no spelling of the package import hides the sealed names', () => {
     expect(hits).toEqual([]);
   });
 });
+
+// FIX-MVPB-SEAL3 H-A. A relative path into the two sealed packages bypassed the package-name checks.
+// The text scan below is the second fence behind lint (sbx/sealed-transport).
+describe('paths into the sealed packages (SEAL3 H-A)', () => {
+  const PKG = /packages\/(transport|safety)\//;
+  const insideSealed = (f: string) => PKG.test(f);
+  // Every quoted path in an import/export/require/import() that names a sealed package's files.
+  const reachOf = (t: string): string[] => {
+    const out: string[] = [];
+    const re =
+      /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)['"`]([^'"`\n]*(?:packages\/(?:transport|safety)\/|node_modules\/@umsbx\/(?:transport|safety)\/)[^'"`\n]*)['"`]/g;
+    for (let m = re.exec(t); m !== null; m = re.exec(t)) out.push(m[1] as string);
+    return out;
+  };
+  it('outside the two packages, only the package entry file is named by path; one test names the recorder corpus', () => {
+    const hits = [...text.entries()]
+      .filter(([f]) => !insideSealed(f) && !f.endsWith('sealed-callers.test.ts'))
+      .flatMap(([f, t]) => reachOf(t).map((p) => `${f} -> ${p.replace(/^(\.\.\/)+/, '')}`))
+      .sort();
+    expect(hits).toEqual(
+      [
+        'scripts/record-fixtures.mjs -> packages/transport/src/index.ts',
+        'scripts/record-fixtures.test.ts -> packages/transport/src/recorder-corpus',
+        'scripts/safety-cli.mjs -> packages/safety/src/index.ts',
+      ].sort(),
+    );
+  });
+  it('no non-test file of the transport package imports test-support, and none but approval.ts names the test minter', () => {
+    const offenders = [...text.entries()]
+      .filter(([f]) => isTransportSrc(f) && !isTest(f))
+      .filter(([, t]) => /from\s*['"]\.\/test-support['"]|import\(\s*['"]\.\/test-support/.test(t))
+      .map(([f]) => f);
+    expect(offenders).toEqual([]);
+    const minter = [...text.entries()]
+      .filter(
+        ([f, t]) => isTransportSrc(f) && !isTest(f) && new RegExp(`\\b${MAKE_MINTER}\\b`).test(t),
+      )
+      .map(([f]) => f);
+    expect(minter).toEqual(['packages/transport/src/approval.ts']);
+  });
+  it('in the safety package only scoped-gate.ts names the claimed minter and the issued-gate predicate', () => {
+    const named = (name: string) =>
+      [...text.entries()]
+        .filter(
+          ([f, t]) =>
+            f.startsWith('packages/safety/src/') &&
+            !isTest(f) &&
+            new RegExp(`\\b${name}\\b`).test(t),
+        )
+        .map(([f]) => f);
+    expect(named('mintCapability')).toEqual(['packages/safety/src/scoped-gate.ts']);
+    expect(named('isIssuedGate')).toEqual([
+      'packages/safety/src/gate.ts',
+      'packages/safety/src/scoped-gate.ts',
+    ]);
+  });
+  it('the scoped-gate factory is named only inside safety and the pinned b09 test', () => {
+    const fn = ['create', 'Scoped', 'Gate'].join('');
+    // An actual import or re-export of the name; a comment that mentions it does not count.
+    const users = withText(
+      new RegExp(`(?:import|export)\\s*(?:type\\s*)?\\{[^}]*\\b${fn}\\b[^}]*\\}\\s*from`),
+      (f) => !f.endsWith('sealed-callers.test.ts'),
+    );
+    expect(users.filter((f) => !f.startsWith('packages/safety/'))).toEqual([
+      'tests/mvp-b/b09-logs-clean.integration.test.ts',
+    ]);
+  });
+  it('require is only ever called directly in tracked source (no alias, no comma call)', () => {
+    const alias = /(?:=|,|\()\s*require\s*(?:[,)\];]|$)|\(\s*0\s*,\s*require\s*\)/m;
+    const hits = [...text.entries()]
+      .filter(
+        ([f, t]) => !f.endsWith('sealed-callers.test.ts') && alias.test(t.replace(/\/\/.*$/gm, '')),
+      )
+      .map(([f]) => f);
+    expect(hits).toEqual([]);
+  });
+});

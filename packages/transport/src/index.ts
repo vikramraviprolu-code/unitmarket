@@ -20,6 +20,7 @@ export type {
   WriteResult,
 } from './recorder';
 export { validateFolderLabels } from './fixture-store';
+export { recorderSelfTest } from './recorder-selftest';
 export {
   MAX_REQUEST_BODY_BYTES,
   REQUEST_TIMEOUT_MS,

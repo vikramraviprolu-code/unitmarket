@@ -499,61 +499,183 @@ const noGlobalAlias = {
   },
 };
 
-// FIX-MVPB-SEAL2 H1: the approved sandbox transport factory and the approval-minter claim are
-// reachable only from packages/safety (and the few pinned test files, see NAMED_EXEMPTIONS). The
-// built-in no-restricted-imports cannot say "this export, from this entry, except in these files"
-// together with a namespace, a re-export, import() and require(), so one rule covers every spelling
-// of reaching the package's exports: namespace and default imports (they hand over the claim
-// function), `export * from`, `export { name } from`, import(), require() and `import x = require()`.
-// Type-only imports are harmless and stay allowed.
-const SEALED_MODULE = '@umsbx/transport';
-const SEALED_NAMES = new Set(['createApprovedSandboxTransport', 'claimApprovalMinter']);
+// FIX-MVPB-SEAL2 H1 and FIX-MVPB-SEAL3 H-A: the approved sandbox transport factory, the approval
+// minter and the scoped-gate factory are reachable only from packages/safety (and the few pinned
+// files, see NAMED_EXEMPTIONS). The built-in no-restricted-imports cannot say "this export, from
+// this entry, except in these files" together with namespaces, re-exports, import(), require() and
+// paths, so one rule covers every way in:
+//  - the package name: namespace and default imports (they hand over every export), `export *`,
+//    `export { name } from`, import(), require(), `import x = require()` and the vitest
+//    importActual family; plus the named sealed exports;
+//  - a relative or absolute path, a file: URL or a node_modules symlink path to ANY file under
+//    packages/transport or packages/safety from outside that package (the public way in is the
+//    package name, so the sources are not importable by path at all);
+//  - inside the two packages, the test-only minters (createApprovalMinter, mintCapability,
+//    isIssuedGate) and transport's test-support.ts are for test files;
+//  - any use of `require` other than a direct call (const q = require; (0, require)(...)).
+// Type-only imports load nothing and stay allowed.
+const SEALED_PKG = {
+  '@umsbx/transport': {
+    dir: 'packages/transport',
+    names: new Set([
+      'createApprovedSandboxTransport',
+      'claimApprovalMinter',
+      'createApprovalMinter',
+    ]),
+  },
+  '@umsbx/safety': { dir: 'packages/safety', names: new Set(['createScopedGate']) },
+};
+// Names that only test files (and the one named non-test file) may import from a sibling.
+const IN_PKG_NAMES = {
+  createApprovalMinter: [],
+  mintCapability: [],
+  isIssuedGate: ['packages/safety/src/scoped-gate.ts'],
+};
+const IN_PKG_INTERNAL = new Set([
+  'packages/transport/src/approval',
+  'packages/transport/src/test-support',
+  'packages/safety/src/scoped-gate',
+  'packages/safety/src/gate',
+]);
+const TESTY = /\.test\.[cm]?[jt]sx?$/;
 const MSG_SEALED =
-  'SEAL2 H1: the approved sandbox transport and the approval minter are reachable only from packages/safety. A namespace import, default import, re-export, import() or require() of @umsbx/transport reaches them too; import the plain names you need.';
+  'SEAL2/SEAL3: the approved sandbox transport, the approval minter and the scoped-gate factory are reachable only from packages/safety (and pinned test files). Import the plain public names from the package; a namespace import, re-export, import(), require(), importActual or a path into packages/transport or packages/safety reaches them too, and test-only minters and test-support.ts are for test files.';
+const MSG_REQUIRE_ALIAS =
+  'SEAL3 H-A: require may only be called directly; aliasing or passing it hides what is loaded.';
 const specOf = (n) => {
   if (n?.type === 'Literal' && typeof n.value === 'string') return n.value;
   if (n?.type === 'TemplateLiteral' && n.expressions.length === 0) return n.quasis[0].value.cooked;
   return null;
 };
+const posix = (p) => p.split(path.sep).join('/');
+const stripExt = (p) => p.replace(/\.[cm]?[jt]sx?$/, '');
+/** Absolute candidates (lexical, and real path when it exists) for a path-like specifier. */
+const pathCandidates = (spec, file) => {
+  let abs = null;
+  if (spec.startsWith('file:')) {
+    try {
+      abs = new URL(spec).pathname;
+    } catch {
+      return [];
+    }
+  } else if (spec.startsWith('.')) abs = path.resolve(path.dirname(file), spec);
+  else if (path.isAbsolute(spec)) abs = path.resolve(spec);
+  if (abs === null) return [];
+  const out = [abs];
+  try {
+    out.push(fs.realpathSync(abs));
+  } catch {
+    /* a path without an extension need not exist */
+  }
+  return out;
+};
+const sealedPkgOfPath = (abs) => {
+  const rel = posix(path.relative(root, abs));
+  for (const cfg of Object.values(SEALED_PKG))
+    if (rel === cfg.dir || rel.startsWith(`${cfg.dir}/`)) return cfg.dir;
+  const m = /\/node_modules\/@umsbx\/(transport|safety)(?:\/|$)/.exec(posix(abs));
+  return m ? `packages/${m[1]}` : null;
+};
 const sealedTransport = {
-  meta: { type: 'problem', schema: [], messages: { sealed: '{{msg}}' } },
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: { sealed: '{{msg}}' },
+  },
   create(context) {
-    const report = (node) =>
-      context.report({ node, messageId: 'sealed', data: { msg: MSG_SEALED } });
-    const isSealed = (spec) => spec === SEALED_MODULE || spec?.startsWith(`${SEALED_MODULE}/`);
+    const file = context.filename;
+    const fileRel = posix(path.relative(root, file));
+    const ownPkg =
+      Object.values(SEALED_PKG).find((c) => fileRel.startsWith(`${c.dir}/`))?.dir ?? null;
+    const testy = TESTY.test(fileRel) || fileRel === 'packages/transport/src/test-support.ts';
+    const report = (node, msg = MSG_SEALED) =>
+      context.report({ node, messageId: 'sealed', data: { msg } });
     const nameOf = (id) => (id.type === 'Literal' ? String(id.value) : id.name);
+    // What the package entry exports: everything via a whole-module load or export *, else by name.
+    const byName = (node, key, kind, names) => {
+      if (kind === 'whole' || kind === 'exportAll') return report(node);
+      for (const { sp, name, whole } of names)
+        if (whole || SEALED_PKG[key].names.has(name)) report(sp);
+    };
+    // kind: 'whole' (dynamic import, require, importActual), 'import', 'exportAll', 'exportNamed'.
+    const check = (node, spec, kind, specifiers = []) => {
+      if (typeof spec !== 'string') return;
+      const names = specifiers
+        .filter((sp) => sp.importKind !== 'type' && sp.exportKind !== 'type')
+        .map((sp) => ({
+          sp,
+          name: nameOf(sp.imported ?? sp.local),
+          whole: sp.type === 'ImportNamespaceSpecifier' || sp.type === 'ImportDefaultSpecifier',
+        }));
+      // 1. the package name
+      const base = Object.keys(SEALED_PKG).find((k) => spec === k || spec.startsWith(`${k}/`));
+      if (base !== undefined) return byName(node, base, kind, names);
+      // 2. a path
+      for (const abs of pathCandidates(spec, file)) {
+        const pkg = sealedPkgOfPath(abs);
+        if (pkg === null) continue;
+        const target = stripExt(posix(path.relative(root, abs)));
+        if (pkg !== ownPkg) {
+          // The package's own entry file, spelled as a path, is the package name in disguise.
+          if ([pkg, `${pkg}/src`, `${pkg}/src/index`].includes(target)) {
+            const key = Object.keys(SEALED_PKG).find((k) => SEALED_PKG[k].dir === pkg);
+            return byName(node, key, kind, names);
+          }
+          return report(node);
+        }
+        if (testy) return;
+        if (target === 'packages/transport/src/test-support') return report(node);
+        for (const { sp, name } of names)
+          if (Object.hasOwn(IN_PKG_NAMES, name) && !IN_PKG_NAMES[name].includes(fileRel))
+            report(sp);
+        const handsOver = kind === 'whole' || kind === 'exportAll' || names.some((n) => n.whole);
+        if (handsOver && IN_PKG_INTERNAL.has(target)) report(node);
+        return;
+      }
+    };
+    const IMPORT_ACTUAL = new Set(['importActual', 'importMock', 'requireActual', 'requireMock']);
     return {
       ImportDeclaration(n) {
-        if (!isSealed(n.source.value) || n.importKind === 'type') return;
-        for (const sp of n.specifiers) {
-          if (sp.type === 'ImportNamespaceSpecifier' || sp.type === 'ImportDefaultSpecifier')
-            report(sp);
-          else if (sp.importKind !== 'type' && SEALED_NAMES.has(nameOf(sp.imported))) report(sp);
-        }
+        if (n.importKind !== 'type') check(n, n.source.value, 'import', n.specifiers);
       },
       ExportAllDeclaration(n) {
-        if (isSealed(n.source.value) && n.exportKind !== 'type') report(n);
+        if (n.exportKind !== 'type') check(n, n.source.value, 'exportAll');
       },
       ExportNamedDeclaration(n) {
-        if (!n.source || !isSealed(n.source.value) || n.exportKind === 'type') return;
-        for (const sp of n.specifiers)
-          if (sp.exportKind !== 'type' && SEALED_NAMES.has(nameOf(sp.local))) report(sp);
+        if (n.source && n.exportKind !== 'type')
+          check(n, n.source.value, 'exportNamed', n.specifiers);
       },
       ImportExpression(n) {
-        if (isSealed(specOf(n.source))) report(n);
+        check(n, specOf(n.source), 'whole');
       },
       CallExpression(n) {
-        if (
-          n.callee.type === 'Identifier' &&
-          n.callee.name === 'require' &&
-          isSealed(specOf(n.arguments[0]))
-        )
-          report(n);
+        const c = n.callee;
+        if (c.type === 'Identifier' && c.name === 'require')
+          check(n, specOf(n.arguments[0]), 'whole');
+        else if (
+          c.type === 'MemberExpression' &&
+          IMPORT_ACTUAL.has(c.property.name ?? c.property.value)
+        ) {
+          const spec = specOf(n.arguments[0]);
+          // A specifier that cannot be read statically could be anything: refuse it too.
+          if (spec === null) report(n);
+          else check(n, spec, 'whole');
+        }
       },
       TSImportEqualsDeclaration(n) {
         const ref = n.moduleReference;
-        if (ref?.type === 'TSExternalModuleReference' && isSealed(specOf(ref.expression)))
-          report(n);
+        if (ref?.type === 'TSExternalModuleReference') check(n, specOf(ref.expression), 'whole');
+      },
+      Identifier(n) {
+        if (n.name !== 'require') return;
+        const p = n.parent;
+        if (p.type === 'CallExpression' && p.callee === n) return;
+        if (p.type === 'MemberExpression' && p.property === n && !p.computed) return;
+        if (p.type === 'Property' && p.key === n && !p.computed && !p.shorthand) return;
+        if (p.type === 'UnaryExpression' && p.operator === 'typeof') return;
+        if (p.type === 'VariableDeclarator' && p.id === n) return;
+        if (/^(TS|Import|Export)/.test(p.type)) return;
+        report(n, MSG_REQUIRE_ALIAS);
       },
     };
   },
@@ -1030,9 +1152,19 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/no-global-alias'],
   },
   {
-    files: ['packages/safety/src/**/*.ts'],
+    files: ['scripts/record-fixtures.test.ts'],
     reason:
-      'FIX-MVPB-SEAL2 H1: packages/safety claims the one approval minter when it loads, and its tests build the approved transport and probe the package namespace. Nothing else may',
+      "SEAL3 H-A: the recorder CLI test feeds the recorder's hostile corpus (packages/transport/src/recorder-corpus.ts, deliberately not exported) to the CLI; it opens no network and builds no transport",
+    off: ['sbx/sealed-transport'],
+  },
+  {
+    files: [
+      'packages/safety/src/scoped-gate.ts',
+      'packages/safety/src/scoped-gate.state.test.ts',
+      'packages/safety/src/seal.adversarial.test.ts',
+    ],
+    reason:
+      'FIX-MVPB-SEAL2 H1 (narrowed in SEAL3): scoped-gate.ts claims the one approval minter when it loads; its state test builds the approved transport from a real scoped gate; the adversarial probe takes the transport namespace. No other safety file may',
     off: ['sbx/sealed-transport'],
   },
   {
