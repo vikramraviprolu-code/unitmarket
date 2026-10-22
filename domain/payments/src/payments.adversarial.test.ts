@@ -28,7 +28,8 @@ describe('capture race (P4)', () => {
     release();
     const results = await Promise.all(all);
     expect(w.paypal.count('capture')).toBe(1);
-    expect(results.every((r) => r.ok || r.error.code === 'not_approved')).toBe(true);
+    // Nobody is told "not approved": a parallel return that lost reads where the order stands.
+    expect(results.every((r) => r.ok)).toBe(true);
     const wins = results.filter((r) => r.ok && r.value.status === 'paid');
     expect(wins.length).toBeGreaterThanOrEqual(1);
     expect(await count(w, 'ledger_entries', "kind = 'sale'")).toBe(1);
@@ -215,6 +216,23 @@ describe('a PayPal call inside a transaction is detected and fails the test', ()
     ]);
     expect(w.paypal.violations).toEqual([]);
     expect(w.paypal.count('capture')).toBe(2);
+  });
+});
+
+describe('malformed input', () => {
+  it('a reference or order id with a NUL or control character names no order and never throws', async () => {
+    w = await makeWorld();
+    for (const bad of ['ord_\u0000x', ' ord', 'ord\u200b', 'x'.repeat(201), '']) {
+      expect(await onBuyerReturn(w.deps, { order_ref: bad, actor: BUYER_A })).toEqual({
+        ok: false,
+        error: { code: 'not_found' },
+      });
+      expect(await beginCheckout(w.deps, { order_id: bad, actor: BUYER_A })).toEqual({
+        ok: false,
+        error: { code: 'not_found' },
+      });
+    }
+    expect(w.paypal.calls).toEqual([]);
   });
 });
 

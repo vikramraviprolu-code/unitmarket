@@ -352,6 +352,23 @@ describe('gates: unlock switch and delivery readiness', () => {
   });
 });
 
+describe('a refund seen before 05b books it', () => {
+  it('a REFUNDED read of a verified capture does not start the window of a paused unlock', async () => {
+    w = await makeWorld();
+    const a = await sentCapture();
+    const base = await readOf(a);
+    w.switches.unlock_enabled = false;
+    await apply(a.order_id, setCapture(base, 0, { id: 'CAPR', status: 'COMPLETED' }));
+    expect(await ents()).toMatchObject([{ money_state: 'captured', access_state: 'locked' }]);
+    w.switches.unlock_enabled = true;
+    const report = await apply(a.order_id, setCapture(base, 0, { id: 'CAPR', status: 'REFUNDED' }));
+    expect(report.unlocked).toEqual([]);
+    expect(report.mismatched).toEqual([]);
+    expect(await ents()).toMatchObject([{ access_state: 'locked' }]);
+    expect(await count(w, 'access_events')).toBe(0);
+  });
+});
+
 describe('several publishers in one order', () => {
   it('one unit matched, the other pending: the first unlocks, the order stays unresolved', async () => {
     w = await makeWorld();

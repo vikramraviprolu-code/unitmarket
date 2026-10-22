@@ -5,7 +5,7 @@
 // the order with nothing charged; delivery readiness is checked before any charge; one gated
 // capture; the claim is stored; a separate read-back decides everything else.
 import { applyMoneyEvent, getEntitlementForBuyer } from '@umsbx/entitlements';
-import { err, ok } from '@umsbx/contracts';
+import { IdSchema, err, ok } from '@umsbx/contracts';
 import type { Actor, Id, PaymentsDeps, Result, SqlExecutor } from '@umsbx/contracts';
 import { raiseAlert } from './alerts';
 import { applyReadback, ensureReadbackOp, readApplyGates } from './apply';
@@ -33,6 +33,8 @@ export async function onBuyerReturn(
 ): Promise<Result<OrderView, ReturnError>> {
   const scenario = i.scenario ?? null;
   if (i.actor.kind !== 'buyer') return err({ code: 'not_found' });
+  // A malformed reference names no order (and a NUL character would make PostgreSQL throw).
+  if (!IdSchema.safeParse(i.order_ref).success) return err({ code: 'not_found' });
   const order = await loadOrderByRef(d.db, i.order_ref, i.actor.buyer_id);
   if (order === null) return err({ code: 'not_found' });
 
@@ -59,7 +61,17 @@ export async function onBuyerReturn(
   // 1. Pre-capture read of the order, with the stored provider id only.
   const read = await d.paypal.getOrder(provider_order_id, scenario);
   if (read.kind === 'blocked') return err({ code: 'payments_paused' });
-  if (read.kind !== 'order' || read.status !== 'APPROVED') return err({ code: 'not_approved' });
+  if (read.kind !== 'order' || read.status !== 'APPROVED') {
+    // Not capturable now. A parallel return may have captured it a moment ago: then the database,
+    // not this read, tells the buyer where the order stands.
+    const current = await loadOrder(d.db, order.id);
+    if (current !== null && current.status !== 'awaiting_buyer') {
+      return current.status === 'frozen'
+        ? err({ code: 'frozen' })
+        : ok(await loadOrderView(d.db, order.id));
+    }
+    return err({ code: 'not_approved' });
+  }
 
   // 2. Pre-capture check with empty claims: any difference freezes the order; nothing is captured.
   const units = await loadUnits(d.db, order.id);

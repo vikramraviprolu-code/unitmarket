@@ -19,7 +19,6 @@ import type {
   OrderStatus,
   PaymentsDeps,
   SqlExecutor,
-  UnitMatch,
 } from '@umsbx/contracts';
 import { raiseAlert } from './alerts';
 import type { AlertKind } from './alerts';
@@ -138,7 +137,7 @@ export async function applyReadback(
   // P7: an order-level failure freezes the order and changes no unit.
   if (match.level === 'order') {
     report.mismatched = units.map((u) => u.id);
-    await freezeOrMark(tx, d, order, report, alert, `read_${match.field}`, at, i.trigger);
+    await freezeOrMark(tx, order, report, alert, `read_${match.field}`, at, i.trigger);
     return report;
   }
 
@@ -164,7 +163,7 @@ export async function applyReadback(
         detail: { field: m.field, trigger: i.trigger },
       });
     }
-    await freezeOrMark(tx, d, order, report, alert, null, at, i.trigger);
+    await freezeOrMark(tx, order, report, alert, null, at, i.trigger);
     return report;
   }
 
@@ -197,7 +196,10 @@ export async function applyReadback(
 
     if (unit.captured_verified_at !== null) {
       // Verified before. A matched read only retries the access start (switch, readiness).
-      if (m.result === 'matched') await startAccess(tx, d, unit, i.gates, report, alert, order);
+      // A refunded capture never starts a window (lane 05b books the refund).
+      if (m.result === 'matched' && cap?.status !== 'REFUNDED') {
+        await startAccess(tx, d, unit, i.gates, report, alert, order);
+      }
       continue;
     }
     if (unit.status === 'declined' || unit.status === 'mismatch') continue;
@@ -223,7 +225,7 @@ export async function applyReadback(
         await applyMoneyEvent(tx, d, { entitlement_id: id, event: 'declined' });
       });
     } else if (m.result === 'matched') {
-      await verify(tx, d, order, unit, ru, m, at, report, alert);
+      await verify(tx, d, order, unit, ru, at, alert);
       await startAccess(
         tx,
         d,
@@ -282,7 +284,6 @@ async function eachEntitlement(
 // money was taken and a later clean read must still be able to book a refund.
 async function freezeOrMark(
   tx: SqlExecutor,
-  d: CoreDeps,
   order: OrderRow,
   report: ApplyReport,
   alert: (a: {
@@ -334,7 +335,6 @@ async function freezeOrMark(
     [order.id, at],
   );
   report.order_status = 'frozen';
-  void d;
 }
 
 // Compare-and-set: of a webhook and a poller racing, one wins and books.
@@ -344,9 +344,7 @@ async function verify(
   order: OrderRow,
   unit: UnitRow,
   ru: Read['units'][number],
-  m: UnitMatch,
   at: string,
-  report: ApplyReport,
   alert: (a: Parameters<typeof raiseAlert>[2]) => Promise<void>,
 ): Promise<void> {
   const cap = ru.capture;
@@ -358,7 +356,6 @@ async function verify(
     [unit.id, cap.capture_id, at, cap.paypal_fee_minor],
   );
   if (won.rows.length === 0) return; // someone else verified it first, or the unit is no longer open
-  void m;
   await eachEntitlement(tx, unit, async (id) => {
     const r = await applyMoneyEvent(tx, d, { entitlement_id: id, event: 'capture_verified' });
     if (!r.ok) throw new Error(`entitlement ${id}: ${r.error.code} on a verified capture`);

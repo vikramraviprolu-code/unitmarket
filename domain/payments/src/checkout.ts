@@ -8,6 +8,7 @@ import { applyMoneyEvent } from '@umsbx/entitlements';
 import {
   CreateOrderReqSchema,
   CreateOrderResSchema,
+  IdSchema,
   err,
   isUrlUnderOrigin,
   ok,
@@ -35,6 +36,7 @@ export async function beginCheckout(
 ): Promise<Result<{ approve_url: string }, CheckoutError>> {
   const scenario = i.scenario ?? null;
   const actor = i.actor;
+  if (!IdSchema.safeParse(i.order_id).success) return err({ code: 'not_found' });
   const first = await loadOrder(d.db, i.order_id);
   if (first === null || actor.kind !== 'buyer' || actor.buyer_id !== first.buyer_id) {
     return err({ code: 'not_found' });
