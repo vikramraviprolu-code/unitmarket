@@ -68,7 +68,11 @@ importers:
 
   packages/contracts: {}
 
-  packages/db: {}
+  packages/db:
+    dependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.10
+        version: 0.5.10
 
   packages/jobs: {}
 
@@ -91,6 +95,9 @@ importers:
   tools/spike-kit: {}
 
 packages:
+
+  '@electric-sql/pglite@0.5.10':
+    resolution: {integrity: sha512-tXc/25U3ulOkiRQuTFdwIv+JhBqtMdAF7Gvo6CfZZWtSB4+hgC4Wr2vwK5ngvvN5PJfAAEGIsfyCVy1JhCOBYw==}
 
   '@eslint-community/eslint-utils@4.10.1':
     resolution: {integrity: sha512-cuadcxVFE8sDK6iWJbs8Sn0av2Nrh2QSGQhVlBW9AaAHqHwjWsZHT8LJ4hFGPh7ASBV2deFdM7H/DPjulmh8rg==}
@@ -958,6 +965,8 @@ packages:
     engines: {node: '>=10'}
 
 snapshots:
+
+  '@electric-sql/pglite@0.5.10': {}
 
   '@eslint-community/eslint-utils@4.10.1(eslint@9.39.5)':
     dependencies:
