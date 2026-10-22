@@ -1,0 +1,75 @@
+import { describe, expect, it } from 'vitest';
+import {
+  CurrencyCodeSchema,
+  EnvironmentLabelSchema,
+  IdSchema,
+  IsoUtcSchema,
+  MinorUnitsSchema,
+  MoneySchema,
+  Sha256HexSchema,
+} from './primitives';
+
+const rejects = (s: { safeParse(v: unknown): { success: boolean } }, v: unknown) =>
+  expect(s.safeParse(v).success).toBe(false);
+const accepts = (s: { safeParse(v: unknown): { success: boolean } }, v: unknown) =>
+  expect(s.safeParse(v).success).toBe(true);
+
+describe('IdSchema', () => {
+  it('id rejects control, zero-width, edge whitespace, 201 chars', () => {
+    accepts(IdSchema, 'ord_01HZX');
+    accepts(IdSchema, 'a'.repeat(200));
+    rejects(IdSchema, '');
+    rejects(IdSchema, 'a'.repeat(201));
+    rejects(IdSchema, ' ord_1');
+    rejects(IdSchema, 'ord_1 ');
+    rejects(IdSchema, 'ord\u0000_1');
+    rejects(IdSchema, 'ord\n1');
+    rejects(IdSchema, 'ord\u007f1');
+    rejects(IdSchema, 'ord​1');
+    rejects(IdSchema, 'ord‍1');
+    rejects(IdSchema, 'ord﻿1');
+    rejects(IdSchema, 5);
+  });
+  it('allows inner whitespace', () => {
+    accepts(IdSchema, 'a b');
+  });
+});
+
+describe('IsoUtcSchema', () => {
+  it('IsoUtc accepts Z only; rejects +00:00', () => {
+    accepts(IsoUtcSchema, '2026-10-21T10:00:00Z');
+    accepts(IsoUtcSchema, '2026-10-21T10:00:00.123Z');
+    rejects(IsoUtcSchema, '2026-10-21T10:00:00+00:00');
+    rejects(IsoUtcSchema, '2026-10-21T10:00:00');
+    rejects(IsoUtcSchema, '2026-10-21');
+  });
+});
+
+describe('Money', () => {
+  it('Money rejects floats, negatives, lowercase currency', () => {
+    accepts(MoneySchema, { currency: 'USD', minor: 0 });
+    accepts(MoneySchema, { currency: 'USD', minor: 1999 });
+    rejects(MoneySchema, { currency: 'USD', minor: 19.99 });
+    rejects(MoneySchema, { currency: 'USD', minor: -1 });
+    rejects(MoneySchema, { currency: 'usd', minor: 1 });
+    rejects(MoneySchema, { currency: 'USDX', minor: 1 });
+    rejects(MoneySchema, { currency: 'USD', minor: 1, extra: 1 });
+    rejects(MinorUnitsSchema, Number.NaN);
+    rejects(MinorUnitsSchema, Number.POSITIVE_INFINITY);
+    rejects(CurrencyCodeSchema, 'US');
+  });
+});
+
+describe('Sha256Hex and EnvironmentLabel', () => {
+  it('Sha256Hex is 64 lowercase hex', () => {
+    accepts(Sha256HexSchema, 'a'.repeat(64));
+    rejects(Sha256HexSchema, 'A'.repeat(64));
+    rejects(Sha256HexSchema, 'a'.repeat(63));
+  });
+  it('EnvironmentLabel has exactly dryrun and sandbox', () => {
+    expect([...EnvironmentLabelSchema.options].sort()).toEqual(['dryrun', 'sandbox']);
+    rejects(EnvironmentLabelSchema, 'live');
+    rejects(EnvironmentLabelSchema, 'production');
+    rejects(EnvironmentLabelSchema, 'simulation');
+  });
+});
