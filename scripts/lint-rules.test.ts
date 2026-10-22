@@ -574,6 +574,7 @@ describe('named exemptions (D-015)', () => {
         'domain/recovery/src/world.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'domain/payments/src/support.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'domain/payments/src/payments.integration.test.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
+        'tests/mvp-a/app-a20-a22-perf.integration.test.ts -> sbx/no-package-escape',
       ].sort(),
     );
   });

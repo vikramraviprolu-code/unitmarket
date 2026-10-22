@@ -82,3 +82,39 @@ Branch `fix/05a-review`. Decisions: D-014 in `docs/decision-log.md`.
 - **Unit in `mismatch`**: the order is `frozen` (with an alert), never `failed`. A definitive capture refusal (`rejected`, `invalid_request`) with no capture on the read closes the order as `failed` (not charged).
 - **M1 done**: `matchReadback` compares the captured amount and currency with the unit (mismatch, field `amount`; the contract has no separate `capture_amount` field, a change request if wanted) and `apply.ts` books the sale from the captured amount.
 - **For owners**: a `PARTIALLY_REFUNDED` verified unit can still start a not-started window after the unlock switch is turned back on (kept: the buyer paid and keeps what was not refunded; the refund path in 05b revokes access when the refund covers the whole unit).
+
+## MVP-A gate (lane 18)
+
+Branch `feat/mvp-a-gate`. Verdict and evidence: `docs/evidence/mvp-a-gate-2026-10-22.md`. The state of a lane below is what the gate observed through public entry points, not a claim that nothing else is needed.
+
+| Lane                            | Gate state                                                              | Acceptance ids exercised    |
+| ------------------------------- | ----------------------------------------------------------------------- | --------------------------- |
+| 02 config and safety            | ready, one low finding (F-1: A-01 wording is wider than the boot check) | A-01, A-03                  |
+| 03 transport and fixtures       | ready                                                                   | A-02, A-04, A-23            |
+| 04 PayPal adapter               | ready                                                                   | A-23, A-24                  |
+| 06 approval                     | ready                                                                   | A-05, A-08, A-09            |
+| 07 entitlements and clock       | ready                                                                   | A-12, A-18, A-19            |
+| 08 ledger and receipts          | ready                                                                   | A-12, A-13, A-21, A-22      |
+| 09 delivery                     | ready                                                                   | A-17, A-18                  |
+| 10 recovery and library         | ready                                                                   | A-11, A-13, A-16, A-19      |
+| 11 security                     | ready                                                                   | A-20 (HTTP)                 |
+| 12 runtime, obs, db             | ready                                                                   | A-21                        |
+| 14a catalogue and offer entry   | ready                                                                   | A-05, A-06, A-07            |
+| 05a payments order and capture  | ready                                                                   | A-10 to A-17                |
+| 05b payments reconcile and jobs | ready                                                                   | A-14                        |
+| 15, 15b web                     | ready                                                                   | A-20, A-22, A-25 and PERF-2 |
+| 16 testkit                      | ready                                                                   | A-24                        |
+
+Known deviations the gate carries (each is stated elsewhere in this file; none is closed by the gate):
+
+- No `remote_addr`: every client shares one `no-address` ip bucket and `trusted_proxies` is 0 (lane 15b note).
+- Refund calls are not modelled in the dry-run order model (`blocked: dry_run_miss`); refunds are exercised by the payments lane tests only.
+- The dry-run model keeps its state in the process; an order from an earlier run on a `pglite-disk` database reads as unknown.
+- Concurrency tests run on PGlite (one connection): they prove SQL ordering and constraints, not Postgres lock behaviour (PORT-1 CI job).
+- The RLS spike covers a subset of tables and runs on PGlite only.
+- The contract has no separate `capture_amount` mismatch field (change request if wanted).
+- A `PARTIALLY_REFUNDED` verified unit can still start a not-started window after the unlock switch is turned back on.
+- No sandbox recording exists: every fixture is `docs-example` or `synthetic`.
+- `@vitest/coverage-v8` is not on the approved list, so MAINT-6 (branch coverage on money modules) is unmeasured.
+- A-10 says the create operation is `prepared` when the provider call starts; the engine has moved it to `sent` by then (lease taken). The gate accepts either state.
+- `pnpm audit --prod` reports two high and two moderate postcss advisories through `next` (finding F-2 in the gate report).

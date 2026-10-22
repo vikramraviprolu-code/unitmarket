@@ -856,6 +856,12 @@ export const NAMED_EXEMPTIONS = [
       'payments test helpers: node:async_hooks (provider-call spy), node:crypto hashing, real adapter over the dry-run transport',
     off: ['no-restricted-imports', 'sbx/no-restricted-dynamic-import'],
   },
+  {
+    files: ['tests/mvp-a/app-a20-a22-perf.integration.test.ts'],
+    reason:
+      'MVP-A gate (lane 18): the web composition and route handlers are reachable only by relative path (@umsbx/web exports no composition); needed for the HTTP-level A-20, A-22 and PERF-2 checks',
+    off: ['sbx/no-package-escape'],
+  },
 ];
 const namedExemptions = NAMED_EXEMPTIONS.map((e) => ({
   files: e.files,
