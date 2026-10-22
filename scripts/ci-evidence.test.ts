@@ -203,6 +203,72 @@ describe('fixtures_check', () => {
     });
     expect(fx(ok).status).toBe(0);
   });
+  // Review M4: shapes the key-name scan of plain JSON used to let through.
+  describe('secrets hidden from the plain key scan', () => {
+    const rec = (extra: Record<string, unknown>) =>
+      JSON.stringify({ meta: { source: 'sandbox-recording', label: 'x' }, id: 'ORD1', ...extra });
+    const failing = (files: Record<string, string>) => {
+      const r = fx(indexed(files));
+      expect(r.status).toBe(1);
+      expect(r.out).not.toContain('abcdefghijkl1234');
+      return r.out;
+    };
+    const recPath = 'fixtures/paypal/sandbox-recording/a.json';
+
+    it('a JSON string body holding an access_token fails', () => {
+      failing({ [recPath]: rec({ body: JSON.stringify({ access_token: 'abcdefghijkl1234' }) }) });
+    });
+    it('a doubly encoded JSON string body fails', () => {
+      const inner = JSON.stringify({
+        nested: JSON.stringify({ refresh_token: 'abcdefghijkl1234' }),
+      });
+      failing({ [recPath]: rec({ body: inner }) });
+    });
+    it.each([
+      'password',
+      'x-paypal-auth-assertion',
+      'paypal-auth-assertion',
+      'Authorization ',
+      ' access_token',
+      'id_token',
+      'token',
+      'x-api-key',
+      'client_secret_value',
+      'webhook_secret',
+    ])('the key %j with a real-looking value fails', (key) => {
+      failing({ [recPath]: rec({ [key]: 'abcdefghijkl1234' }) });
+    });
+    it('the same keys pass when redacted, and token_type is not a secret', () => {
+      const ok = indexed({
+        [recPath]: rec({
+          password: '[redacted]',
+          'x-paypal-auth-assertion': '',
+          token_type: 'Bearer',
+        }),
+      });
+      expect(fx(ok).status).toBe(0);
+    });
+    it('other text fixtures under fixtures/ are scanned', () => {
+      for (const ext of ['txt', 'md', 'http', 'har', 'yaml']) {
+        const body = `Authorization: Bearer ${'abcdefghijkl1234'}\n`;
+        failing({
+          'fixtures/paypal/synthetic/a.json': good(),
+          [`fixtures/paypal/sandbox-recording/raw.${ext}`]: body,
+        });
+      }
+      failing({
+        'fixtures/paypal/synthetic/a.json': good(),
+        'fixtures/notes.txt': `contact jane${'@'}example.org\n`,
+      });
+    });
+    it('fixture files kept under packages/*/src/**/fixtures are scanned too', () => {
+      failing({
+        'fixtures/paypal/synthetic/a.json': good(),
+        'packages/transport/src/fixtures/rec.json': rec({ access_token: 'abcdefghijkl1234' }),
+      });
+    });
+  });
+
   it('fails when the index is missing, stale or lists a deleted file', () => {
     const root = indexed({ 'fixtures/paypal/synthetic/a.json': good() });
     writeFileSync(join(root, 'fixtures/paypal/synthetic/a.json'), good({ changed: true }));
