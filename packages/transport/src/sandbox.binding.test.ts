@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createApprovedSandboxTransport, SCOPE_OPERATIONS } from './sandbox';
+import { createApprovedSandboxTransport, SCOPE_CURRENCIES, SCOPE_OPERATIONS } from './sandbox';
 import {
   approvalFrom,
   fakeWire,
@@ -170,6 +170,74 @@ describe('M4: amount_minor must equal the amount in the body for money-moving po
     const { t, wire } = await build({ scope: 'mvp_c_refunds' });
     expect((await t.send(refund())).kind).toBe('response');
     expect(wire.requests).toHaveLength(1);
+  });
+});
+
+// FIX-MVPB-SEAL2 LOW: each scope has a currency allow-list (D-023: USD first) and the MVP-B scope
+// never pays a merchant other than the account that owns the order (no purchase_units[].payee).
+describe('SEAL2 LOW: currency allow-list per scope and no payee in MVP-B', () => {
+  const blocked = async (scope: string, r: OutboundRequest, reason: string) => {
+    const { t, wire, gate, log } = await build({ scope });
+    expect(await t.send(r)).toEqual({ kind: 'blocked', by: 'egress' });
+    expect(wire.requests).toHaveLength(0);
+    expect(gate.checks).toHaveLength(0);
+    expect(log.events.at(-1)?.fields['reason']).toBe(reason);
+  };
+  it.each([
+    ['JPY', '500', 500],
+    ['XAU', '5.00', 500],
+    ['EUR', '5.00', 500],
+    ['GBP', '5.00', 500],
+  ])(
+    'mvp_b_polling blocks a create_order in %s even when the amount is bound',
+    async (c, v, minor) => {
+      await blocked(
+        'mvp_b_polling',
+        create({ body: body(v, c), amount_minor: minor }),
+        'currency_not_allowed',
+      );
+    },
+  );
+  it('mvp_b_polling sends a USD create_order', async () => {
+    const { t, wire } = await build();
+    expect((await t.send(create())).kind).toBe('response');
+    expect(wire.requests).toHaveLength(1);
+  });
+  it('mvp_c_refunds is USD only too: a EUR create_order and a EUR refund are blocked', async () => {
+    await blocked('mvp_c_refunds', create({ body: body('5.00', 'EUR') }), 'currency_not_allowed');
+    await blocked(
+      'mvp_c_refunds',
+      refund({ body: JSON.stringify({ amount: { currency_code: 'EUR', value: '5.00' } }) }),
+      'currency_not_allowed',
+    );
+  });
+  it('the allow-list covers exactly the two scopes', () => {
+    expect(SCOPE_CURRENCIES).toEqual({ mvp_b_polling: ['USD'], mvp_c_refunds: ['USD'] });
+    expect(Object.keys(SCOPE_CURRENCIES).sort()).toEqual(Object.keys(SCOPE_OPERATIONS).sort());
+  });
+  const withPayee = (payee: unknown) =>
+    JSON.stringify({
+      purchase_units: [{ amount: { currency_code: 'USD', value: '5.00' }, payee }],
+    });
+  it.each([
+    ['an email payee', { email_address: 'someone-else@example.test' }],
+    ['a merchant id payee', { merchant_id: 'ABCDEFGHIJKLM' }],
+    ['an empty payee object', {}],
+    ['a null payee', null],
+  ])('mvp_b_polling blocks %s in a purchase unit', async (_n, payee) => {
+    await blocked('mvp_b_polling', create({ body: withPayee(payee) }), 'payee_not_allowed');
+  });
+  it('a payee on the second of two units is also blocked', async () => {
+    const two = JSON.stringify({
+      purchase_units: [
+        { amount: { currency_code: 'USD', value: '2.50' } },
+        {
+          amount: { currency_code: 'USD', value: '2.50' },
+          payee: { email_address: 'x@example.test' },
+        },
+      ],
+    });
+    await blocked('mvp_b_polling', create({ body: two }), 'payee_not_allowed');
   });
 });
 

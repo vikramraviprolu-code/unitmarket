@@ -94,6 +94,18 @@ export const SCOPE_OPERATIONS: Readonly<Record<string, readonly PayPalOperation[
   ],
 };
 
+/**
+ * The currencies each approval scope may move (FIX-MVPB-SEAL2 LOW; D-023 picked USD first). The
+ * outbound gate sees only a minor-unit figure, so the transport checks the currency of the body it
+ * binds. JPY (no minor unit) and XAU (not a fiat unit) are refused whatever the approval row says.
+ */
+export const SCOPE_CURRENCIES: Readonly<Record<string, readonly string[]>> = {
+  mvp_b_polling: ['USD'],
+  mvp_c_refunds: ['USD'],
+};
+/** Scopes whose create_order may name a `purchase_units[].payee`. MVP-B pays the owning account only. */
+const PAYEE_SCOPES: ReadonlySet<string> = new Set(['mvp_c_refunds']);
+
 /** Hard total deadline per request (architecture 7 point 6). */
 export const REQUEST_TIMEOUT_MS = 10_000;
 /** Largest request body the transport will send. */
@@ -285,6 +297,10 @@ export async function createApprovedSandboxTransport(
         const checkedBody = canonicalMoneyBody(r.operation, r.body);
         if (r.amount_minor === null || checkedBody === null || checkedBody.minor !== r.amount_minor)
           return finish(seen, refuse(), ex('amount_unbound'));
+        if (!(SCOPE_CURRENCIES[scope] ?? []).includes(checkedBody.currency))
+          return finish(seen, refuse(), ex('currency_not_allowed'));
+        if (checkedBody.payee && !PAYEE_SCOPES.has(scope))
+          return finish(seen, refuse(), ex('payee_not_allowed'));
         if (Buffer.byteLength(checkedBody.body) > MAX_REQUEST_BODY_BYTES)
           return finish(seen, refuse(), ex('shape'));
         sendBody = checkedBody.body;
