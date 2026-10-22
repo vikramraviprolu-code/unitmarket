@@ -5,7 +5,8 @@
 import { createHash } from 'node:crypto';
 import type { AccessPolicy, Secret, CoreDeps, Database, IsoUtc } from '@umsbx/contracts';
 import { markAccessReady } from '@umsbx/access-clock';
-import { openDatabase, migrate, resetDatabase } from '@umsbx/db';
+import { openDatabase, migrate } from '@umsbx/db';
+import { resetDatabase } from '@umsbx/db/testing';
 import { fakeClock, seededIds } from '@umsbx/runtime';
 
 export const START: IsoUtc = '2026-10-21T10:00:00.000Z';
@@ -142,7 +143,7 @@ export async function makeWorld(seed = 'w'): Promise<World> {
           snapshot: '{}',
           content_hash: HASH,
           nonce: `nonce${n}`,
-          expires_at: '2027-01-01T00:00:00.000Z',
+          expires_at: new Date(clock.now().getTime() + 15 * 60_000).toISOString(),
           used_at: null,
           environment: 'dryrun',
         });
