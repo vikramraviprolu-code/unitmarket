@@ -38,9 +38,31 @@ importers:
 
   apps/web: {}
 
-  domain/access-clock: {}
+  domain/access-clock:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
-  domain/approval: {}
+  domain/approval:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/catalogue:
     dependencies:
@@ -57,11 +79,52 @@ importers:
 
   domain/delivery: {}
 
-  domain/discovery: {}
+  domain/discovery:
+    dependencies:
+      '@umsbx/catalogue':
+        specifier: workspace:*
+        version: link:../catalogue
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/fit':
+        specifier: workspace:*
+        version: link:../fit
+      '@umsbx/model':
+        specifier: workspace:*
+        version: link:../../packages/model
+      '@umsbx/offer-entry':
+        specifier: workspace:*
+        version: link:../offer-entry
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
-  domain/entitlements: {}
+  domain/entitlements:
+    dependencies:
+      '@umsbx/access-clock':
+        specifier: workspace:*
+        version: link:../access-clock
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
-  domain/fit: {}
+  domain/fit:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
 
   domain/ledger: {}
 
@@ -130,7 +193,17 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/paypal: {}
+  packages/paypal:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@umsbx/obs':
+        specifier: workspace:*
+        version: link:../obs
+      '@umsbx/transport':
+        specifier: workspace:*
+        version: link:../transport
 
   packages/runtime:
     dependencies:
