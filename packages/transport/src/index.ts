@@ -11,3 +11,13 @@ export type { FixtureIndex, FixtureIndexEntry } from './fixture-store';
 export { createDryRunTransport } from './dryrun';
 export type { DryRunCall, DryRunTransport } from './dryrun';
 export { createSandboxTransport } from './sandbox';
+export { buildRecordings, formatSummary, writeRecordings } from './recorder';
+export type {
+  BuildResult,
+  BuiltFile,
+  RecorderOptions,
+  Refusal,
+  Summary,
+  WriteResult,
+} from './recorder';
+export { validateFolderLabels } from './fixture-store';

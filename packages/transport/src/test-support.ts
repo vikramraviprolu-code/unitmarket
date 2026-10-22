@@ -10,6 +10,7 @@ import type {
 // Host strings are assembled at runtime so no source file carries a live or sandbox hostname
 // literal (scripts/check-no-live-host.mjs).
 export const LIVE_HOST = ['api-m', 'paypal', 'com'].join('.');
+export const LIVE_WWW = ['www', 'paypal', 'com'].join('.');
 export const SANDBOX_HOST = ['api-m', 'sandbox', 'paypal', 'com'].join('.');
 export const CERT_HOST = ['api', 'sandbox', 'paypal', 'com'].join('.');
 

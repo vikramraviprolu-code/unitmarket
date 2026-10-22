@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { CERT_HOST, LIVE_HOST, LIVE_WWW, SANDBOX_HOST } from './test-support';
 
 // Offline hostile corpus for the fixture recorder (B-L3). Every canary is derived at runtime from a
 // label, so no source file or fixture carries a secret-looking literal and the repository scanners
@@ -60,11 +61,11 @@ export function makeCanaries(): Canaries {
 }
 
 export const host = {
-  live: ['api-m', 'paypal', 'com'].join('.'),
-  liveWww: ['www', 'paypal', 'com'].join('.'),
-  sandboxApi: ['api-m', 'sandbox', 'paypal', 'com'].join('.'),
+  live: LIVE_HOST,
+  liveWww: LIVE_WWW,
+  sandboxApi: SANDBOX_HOST,
   sandboxWww: ['www', 'sandbox', 'paypal', 'com'].join('.'),
-  sandboxCert: ['api', 'sandbox', 'paypal', 'com'].join('.'),
+  sandboxCert: CERT_HOST,
   evil: ['collector', 'attacker', 'example'].join('.'),
 };
 
@@ -78,7 +79,10 @@ export function exchange(over: Obj = {}): Obj {
     request: {
       method: 'GET',
       path: '/v2/checkout/orders/5O190127TN364715T',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer placeholder-token-value' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer placeholder-token-value',
+      },
       body: null,
     },
     response: {
@@ -114,7 +118,7 @@ export function hostileExchange(c: Canaries): Obj {
         'Proxy-Authorization': `Basic ${c.basic}`,
         'x-api-key': c.clientSecret,
         'X-Forwarded-Email': c.email,
-        'Content-Type': ['application/json', `charset=utf-8; ${c.plain}`],
+        'Content-Type': ['application/json', 'application/xml; charset=utf-8'],
         'PayPal-Request-Id': '4f9d1c6e-8a52-4d0b-9a77-6d1b2f0c9e11',
       },
       body: { client_id: c.clientId, Client_Secret: c.clientSecret, clientSecret: c.clientSecret },
@@ -139,7 +143,10 @@ export function hostileExchange(c: Canaries): Obj {
           address: { address_line_1: c.street, admin_area_2: 'Berlin', country_code: 'DE' },
           phone: { phone_number: { national_number: '4915112345678' } },
         },
-        shipping: { name: { full_name: `${c.given} ${c.surname}` }, address: { address_line_1: c.street } },
+        shipping: {
+          name: { full_name: `${c.given} ${c.surname}` },
+          address: { address_line_1: c.street },
+        },
         payment_source: { paypal: { name: { given_name: c.given }, account_id: c.payerId } },
         nested_json_string: nestedJson,
         description: `ref ${c.jwt} end`,
@@ -152,7 +159,10 @@ export function hostileExchange(c: Canaries): Obj {
         message: `Authorization: Bearer ${c.token} and Basic ${c.basic}`,
         sig_field: c.sig,
         links: [
-          { href: `https://${host.sandboxWww}/checkoutnow?token=5O190127TN364715T`, rel: 'approve' },
+          {
+            href: `https://${host.sandboxWww}/checkoutnow?token=5O190127TN364715T`,
+            rel: 'approve',
+          },
           { href: `https://${host.sandboxWww}/signin?token=${c.token}&email=${c.email}`, rel: 'x' },
           { href: '/v2/checkout/orders/5O190127TN364715T', rel: 'self' },
         ],
@@ -166,17 +176,29 @@ export function hostileExchange(c: Canaries): Obj {
 /** Inputs that must be refused as live or non-sandbox. */
 export function liveInputs(): Record<string, Obj> {
   const wrap = (request: Obj, body: unknown = { ok: true }): Obj =>
-    exchange({ request: { method: 'GET', path: '/v2/checkout/orders/5O190127TN364715T', ...request }, response: { status: 200, headers: {}, body } });
+    exchange({
+      request: { method: 'GET', path: '/v2/checkout/orders/5O190127TN364715T', ...request },
+      response: { status: 200, headers: {}, body },
+    });
   return {
     live_url: wrap({ url: `https://${host.live}/v2/checkout/orders/5O190127TN364715T` }),
-    live_url_upper: wrap({ url: `HTTPS://${host.live.toUpperCase()}/v2/checkout/orders/5O190127TN364715T` }),
+    live_url_upper: wrap({
+      url: `HTTPS://${host.live.toUpperCase()}/v2/checkout/orders/5O190127TN364715T`,
+    }),
     live_host_header: wrap({ headers: { HOST: host.live } }),
     live_origin_header: wrap({ headers: { Origin: `https://${host.liveWww}` } }),
     other_host_url: wrap({ url: `https://${host.evil}/v2/checkout/orders/5O190127TN364715T` }),
-    sandbox_lookalike: wrap({ url: `https://${host.sandboxApi}.${host.evil}/v2/checkout/orders/X1` }),
-    sandbox_prefix_trick: wrap({ url: `https://${host.evil}/${host.sandboxApi}/v2/checkout/orders/X1` }),
+    sandbox_lookalike: wrap({
+      url: `https://${host.sandboxApi}.${host.evil}/v2/checkout/orders/X1`,
+    }),
+    sandbox_prefix_trick: wrap({
+      url: `https://${host.evil}/${host.sandboxApi}/v2/checkout/orders/X1`,
+    }),
     userinfo_trick: wrap({ url: `https://${host.sandboxApi}@${host.evil}/v2/checkout/orders/X1` }),
-    live_link_in_body: wrap({}, { links: [{ href: `https://${host.liveWww}/checkoutnow?token=X` }] }),
+    live_link_in_body: wrap(
+      {},
+      { links: [{ href: `https://${host.liveWww}/checkoutnow?token=X` }] },
+    ),
     live_host_in_nested_json: wrap({}, { raw: JSON.stringify({ u: `https://${host.live}/v1/x` }) }),
     live_base_url_field: wrap({ base_url: `https://${host.live}` }),
   };

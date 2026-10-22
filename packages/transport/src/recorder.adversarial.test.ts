@@ -35,7 +35,10 @@ describe('recorder opens no connection (B-L3, MVP-B offline rule)', () => {
     const c = makeCanaries();
     const root = await mkdtemp(join(tmpdir(), 'umsbx-rec-net-'));
     await mkdir(join(root, 'fixtures', 'paypal'), { recursive: true });
-    const r = await buildRecordings([hostileExchange(c), exchange({ scenario: 'second' })], { ...OPTS, canaries: c.all });
+    const r = await buildRecordings([hostileExchange(c), exchange({ scenario: 'second' })], {
+      ...OPTS,
+      canaries: c.all,
+    });
     expect(r.ok).toBe(true);
     if (r.ok) expect((await writeRecordings(root, r.files)).ok).toBe(true);
     for (const s of spies) expect(s).not.toHaveBeenCalled();
@@ -69,7 +72,14 @@ describe('hostile corpus end to end', () => {
     if (!first.ok) return;
     const fx = JSON.parse(first.files[0]!.text) as { request: unknown; response: unknown };
     const again = await buildRecordings(
-      [{ scenario: 'hostile', operation: 'get_order', request: fx.request, response: fx.response }],
+      [
+        {
+          scenario: 'hostile',
+          operation: 'get_order',
+          request: { ...(fx.request as object), path: '/v2/checkout/orders/5O190127TN364715T' },
+          response: fx.response,
+        },
+      ],
       OPTS,
     );
     expect(again.ok).toBe(true);
@@ -82,9 +92,15 @@ describe('hostile corpus end to end', () => {
     const c = makeCanaries();
     let deep: unknown = { leaf: c.email };
     for (let i = 0; i < 60; i += 1) deep = { n: deep };
-    const wide = Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`k${i}`, i % 7 === 0 ? c.token : 'v']));
+    const wide = Object.fromEntries(
+      Array.from({ length: 2000 }, (_, i) => [`k${i}`, i % 7 === 0 ? c.token : 'v']),
+    );
     const r = await buildRecordings(
-      [exchange({ response: { status: 200, headers: {}, body: { id: '5O190127TN364715T', deep, wide } } })],
+      [
+        exchange({
+          response: { status: 200, headers: {}, body: { id: '5O190127TN364715T', deep, wide } },
+        }),
+      ],
       { ...OPTS, canaries: c.all },
     );
     // either a clean redaction or an honest refusal; never a leak

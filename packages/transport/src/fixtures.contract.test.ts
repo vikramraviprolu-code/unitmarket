@@ -212,28 +212,43 @@ describe('sandbox-recordings folder (B-13)', () => {
   });
 
   it('requires recorded_at non-null in sandbox-recordings', async () => {
-    const d = await tree({ 'sandbox-recordings/spike_happy__get_order__1.json': rec({}, { recorded_at: null }) });
+    const d = await tree({
+      'sandbox-recordings/spike_happy__get_order__1.json': rec({}, { recorded_at: null }),
+    });
     await expect(validateFolderLabels(d)).rejects.toThrow(/recorded_at/);
   });
 
   it('refuses another source label inside sandbox-recordings and a recording elsewhere', async () => {
-    const a = await tree({ 'sandbox-recordings/spike_happy__get_order__1.json': rec({}, { source: 'synthetic', recorded_at: null }) });
-    expect((await validateFolderLabels(a)).join('|')).toMatch(/sandbox-recordings.*sandbox-recording/);
+    const a = await tree({
+      'sandbox-recordings/spike_happy__get_order__1.json': rec(
+        {},
+        { source: 'synthetic', recorded_at: null },
+      ),
+    });
+    expect((await validateFolderLabels(a)).join('|')).toMatch(
+      /sandbox-recordings.*sandbox-recording/,
+    );
     const b = await tree({ 'synthetic/spike_happy__get_order__1.json': rec() });
     expect((await validateFolderLabels(b)).join('|')).toMatch(/synthetic/);
   });
 
   it('requires an origin text and a redactions list in sandbox-recordings', async () => {
-    const a = await tree({ 'sandbox-recordings/spike_happy__get_order__1.json': rec({}, { origin: 'x' }) });
+    const a = await tree({
+      'sandbox-recordings/spike_happy__get_order__1.json': rec({}, { origin: 'x' }),
+    });
     expect((await validateFolderLabels(a)).join('|')).toMatch(/origin/);
-    const b = await tree({ 'sandbox-recordings/spike_happy__get_order__1.json': rec({}, { redactions: [] }) });
+    const b = await tree({
+      'sandbox-recordings/spike_happy__get_order__1.json': rec({}, { redactions: [] }),
+    });
     expect((await validateFolderLabels(b)).join('|')).toMatch(/redactions/);
   });
 
   it('keeps the other folders strict: a docs-example or synthetic file with recorded_at is refused', async () => {
     for (const folder of ['docs-examples', 'synthetic'] as const) {
       const src = folder === 'docs-examples' ? 'docs-example' : 'synthetic';
-      const d = await tree({ [`${folder}/spike_happy__get_order__1.json`]: rec({}, { source: src }) });
+      const d = await tree({
+        [`${folder}/spike_happy__get_order__1.json`]: rec({}, { source: src }),
+      });
       await expect(validateFolderLabels(d)).rejects.toThrow(/recorded_at/);
     }
   });

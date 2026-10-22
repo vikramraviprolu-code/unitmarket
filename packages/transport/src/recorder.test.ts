@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildRecordings, formatSummary, recorderSelfTest, writeRecordings } from './recorder';
+import { buildRecordings, formatSummary, writeRecordings } from './recorder';
+import { recorderSelfTest } from './recorder-selftest';
 import type { BuildResult } from './recorder';
 import { FixtureFileSchema } from './fixture-schema';
 import { buildIndex } from './fixture-store';
@@ -17,7 +18,10 @@ const ok = (r: BuildResult) => {
   if (!r.ok) throw new Error(`refused: ${r.refusal.code} ${r.refusal.where}`);
   return r;
 };
-const textOf = (r: BuildResult) => ok(r).files.map((f) => f.text).join('\n');
+const textOf = (r: BuildResult) =>
+  ok(r)
+    .files.map((f) => f.text)
+    .join('\n');
 
 async function tmpRoot(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'umsbx-rec-'));
@@ -42,7 +46,19 @@ describe('recorder output shape', () => {
   it('numbers steps per scenario and operation in input order', async () => {
     const r = ok(
       await buildRecordings(
-        [exchange(), exchange(), exchange({ operation: 'capture_order', request: { method: 'POST', path: '/v2/checkout/orders/5O190127TN364715T/capture', headers: {}, body: null } })],
+        [
+          exchange(),
+          exchange(),
+          exchange({
+            operation: 'capture_order',
+            request: {
+              method: 'POST',
+              path: '/v2/checkout/orders/5O190127TN364715T/capture',
+              headers: {},
+              body: null,
+            },
+          }),
+        ],
         OPTS,
       ),
     );
@@ -59,14 +75,30 @@ describe('recorder output shape', () => {
         {
           scenario: 'spike_timeout',
           operation: 'capture_order',
-          request: { method: 'POST', path: '/v2/checkout/orders/5O190127TN364715T/capture', headers: {}, body: '{}' },
+          request: {
+            method: 'POST',
+            path: '/v2/checkout/orders/5O190127TN364715T/capture',
+            headers: {},
+            body: '{}',
+          },
           result: { kind: 'timeout' },
         },
         {
           scenario: 'spike_timeout',
           operation: 'get_order',
-          request: { method: 'GET', path: '/v2/checkout/orders/5O190127TN364715T', headers: {}, body: null },
-          result: { kind: 'response', status: 200, headers: { 'content-type': 'application/json' }, body: '{"id":"5O190127TN364715T","status":"COMPLETED"}', duration_ms: 12 },
+          request: {
+            method: 'GET',
+            path: '/v2/checkout/orders/5O190127TN364715T',
+            headers: {},
+            body: null,
+          },
+          result: {
+            kind: 'response',
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+            body: '{"id":"5O190127TN364715T","status":"COMPLETED"}',
+            duration_ms: 12,
+          },
         },
       ],
     };
@@ -77,9 +109,33 @@ describe('recorder output shape', () => {
   });
 
   it('keeps debug ids, statuses, error names and sandbox play ids by default', async () => {
-    const body = { name: 'UNPROCESSABLE_ENTITY', message: 'The requested action could not be performed.', debug_id: 'abcdef0123456', details: [{ issue: 'ORDER_NOT_APPROVED' }], id: '5O190127TN364715T', status: 'CREATED' };
-    const t = textOf(await buildRecordings([exchange({ response: { status: 422, headers: { 'PayPal-Debug-Id': 'abcdef0123456' }, body } })], OPTS));
-    for (const keep of ['UNPROCESSABLE_ENTITY', 'abcdef0123456', 'ORDER_NOT_APPROVED', '5O190127TN364715T', 'CREATED', '"status": 422', 'paypal-debug-id']) {
+    const body = {
+      name: 'UNPROCESSABLE_ENTITY',
+      message: 'The requested action could not be performed.',
+      debug_id: 'abcdef0123456',
+      details: [{ issue: 'ORDER_NOT_APPROVED' }],
+      id: '5O190127TN364715T',
+      status: 'CREATED',
+    };
+    const t = textOf(
+      await buildRecordings(
+        [
+          exchange({
+            response: { status: 422, headers: { 'PayPal-Debug-Id': 'abcdef0123456' }, body },
+          }),
+        ],
+        OPTS,
+      ),
+    );
+    for (const keep of [
+      'UNPROCESSABLE_ENTITY',
+      'abcdef0123456',
+      'ORDER_NOT_APPROVED',
+      '5O190127TN364715T',
+      'CREATED',
+      '"status": 422',
+      'paypal-debug-id',
+    ]) {
       expect(t, keep).toContain(keep);
     }
   });
@@ -101,10 +157,17 @@ describe('redaction by key and by pattern', () => {
     const t = r.files[0]!.text;
     for (const v of c.all) expect(t.toLowerCase(), v.slice(0, 6)).not.toContain(v.toLowerCase());
     FixtureFileSchema.parse(JSON.parse(t));
-    const fx = JSON.parse(t) as { request: { headers: Record<string, string> }; response: { body: Record<string, unknown>; headers: Record<string, string> } };
+    const fx = JSON.parse(t) as {
+      request: { headers: Record<string, string> };
+      response: { body: Record<string, unknown>; headers: Record<string, string> };
+    };
     // only allow-listed request headers survive; authorization is a placeholder
     expect(fx.request.headers.authorization).toBe('[redacted]');
-    expect(Object.keys(fx.request.headers).sort()).toEqual(['authorization', 'content-type', 'paypal-request-id']);
+    expect(Object.keys(fx.request.headers).sort()).toEqual([
+      'authorization',
+      'content-type',
+      'paypal-request-id',
+    ]);
     expect(fx.response.headers['paypal-debug-id']).toBe('a1b2c3d4e5f67');
     expect(fx.response.body.debug_id).toBe('a1b2c3d4e5f67');
     expect(fx.response.body.status).toBe('APPROVED');
@@ -151,7 +214,13 @@ describe('redaction by key and by pattern', () => {
   it('treats header names case-insensitively, trims them, and drops unknown headers', async () => {
     const c = makeCanaries();
     const t = textOf(await buildRecordings([hostileExchange(c)], OPTS));
-    for (const name of ['assertion', 'cookie', 'proxy-authorization', 'x-api-key', 'x-forwarded-email']) {
+    for (const name of [
+      'assertion',
+      'cookie',
+      'proxy-authorization',
+      'x-api-key',
+      'x-forwarded-email',
+    ]) {
       expect(t.toLowerCase(), name).not.toContain(name);
     }
     expect((t.match(/"authorization"/g) ?? []).length).toBe(1);
@@ -178,7 +247,9 @@ describe('synthetic ids only on request', () => {
         body: {
           id: '5O190127TN364715T',
           status: 'COMPLETED',
-          purchase_units: [{ payments: { captures: [{ id: '3C679366HH908993F', status: 'COMPLETED' }] } }],
+          purchase_units: [
+            { payments: { captures: [{ id: '3C679366HH908993F', status: 'COMPLETED' }] } },
+          ],
           links: [{ href: '/v2/checkout/orders/5O190127TN364715T', rel: 'self' }],
         },
       },
@@ -213,13 +284,31 @@ describe('refusals', () => {
   });
 
   it('accepts a sandbox api url and sandbox subdomains', async () => {
-    const r = await buildRecordings([exchange({ request: { method: 'GET', url: `https://${host.sandboxApi}/v2/checkout/orders/5O190127TN364715T?x=1`, headers: {}, body: null } })], OPTS);
+    const r = await buildRecordings(
+      [
+        exchange({
+          request: {
+            method: 'GET',
+            url: `https://${host.sandboxApi}/v2/checkout/orders/5O190127TN364715T?x=1`,
+            headers: {},
+            body: null,
+          },
+        }),
+      ],
+      OPTS,
+    );
     expect(r.ok).toBe(true);
   });
 
   it('refuses when a caller canary survives (a value no rule can know)', async () => {
     const c = makeCanaries();
-    const e = exchange({ response: { status: 200, headers: {}, body: { id: '5O190127TN364715T', status: 'CREATED', memo: c.plain } } });
+    const e = exchange({
+      response: {
+        status: 200,
+        headers: {},
+        body: { id: '5O190127TN364715T', status: 'CREATED', memo: c.plain },
+      },
+    });
     const r = await buildRecordings([e], { ...OPTS, canaries: [c.plain] });
     expect(r.ok).toBe(false);
     if (!r.ok) {
@@ -230,8 +319,18 @@ describe('refusals', () => {
 
   it('finds a canary in encoded forms too (url-encoded, base64, case)', async () => {
     const c = makeCanaries();
-    for (const form of [encodeURIComponent(`${c.plain} x`), Buffer.from(c.plain).toString('base64'), c.plain.toUpperCase()]) {
-      const e = exchange({ response: { status: 200, headers: {}, body: { id: '5O190127TN364715T', memo: form.slice(0, 30) } } });
+    for (const form of [
+      encodeURIComponent(`${c.plain} x`),
+      Buffer.from(c.plain).toString('base64'),
+      c.plain.toUpperCase(),
+    ]) {
+      const e = exchange({
+        response: {
+          status: 200,
+          headers: {},
+          body: { id: '5O190127TN364715T', memo: form.slice(0, 30) },
+        },
+      });
       const r = await buildRecordings([e], { ...OPTS, canaries: [c.plain] });
       expect(r.ok, form).toBe(false);
     }
@@ -248,7 +347,11 @@ describe('refusals', () => {
   });
 
   it('refuses bad options: missing recorded_at, bad time, short origin, non-array input', async () => {
-    for (const o of [{ ...OPTS, recorded_at: '' }, { ...OPTS, recorded_at: 'yesterday' }, { ...OPTS, origin: 'x' }]) {
+    for (const o of [
+      { ...OPTS, recorded_at: '' },
+      { ...OPTS, recorded_at: 'yesterday' },
+      { ...OPTS, origin: 'x' },
+    ]) {
       const r = await buildRecordings([exchange()], o);
       expect(r.ok).toBe(false);
     }
@@ -258,8 +361,8 @@ describe('refusals', () => {
 });
 
 describe('self test', () => {
-  it('passes with canaries built at runtime and fails when a rule is sabotaged', () => {
-    const good = recorderSelfTest();
+  it('passes with canaries built at runtime and proves the checks are alive', async () => {
+    const good = await recorderSelfTest();
     expect(good.ok).toBe(true);
     expect(good.failures).toEqual([]);
     expect(good.checked).toBeGreaterThan(10);
@@ -275,12 +378,18 @@ describe('writeRecordings', () => {
     const dir = join(root, 'fixtures', 'paypal', 'sandbox-recordings');
     expect(await readdir(dir)).toEqual(['spike_happy__get_order__1.json']);
     const bytes = await readFile(join(dir, 'spike_happy__get_order__1.json'));
-    const idx = JSON.parse(await readFile(join(root, 'fixtures', 'paypal', 'index.json'), 'utf8')) as { files: { file: string; sha256: string; source: string }[] };
+    const idx = JSON.parse(
+      await readFile(join(root, 'fixtures', 'paypal', 'index.json'), 'utf8'),
+    ) as { files: { file: string; sha256: string; source: string }[] };
     const e = idx.files.find((f) => f.file === 'sandbox-recordings/spike_happy__get_order__1.json');
     expect(e?.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));
     expect(e?.source).toBe('sandbox-recording');
     expect((await buildIndex(join(root, 'fixtures', 'paypal'))).files.length).toBe(1);
-    expect(await readdir(join(root, 'fixtures', 'paypal'))).toEqual(['index.json', 'sandbox-recordings', 'synthetic']);
+    expect(await readdir(join(root, 'fixtures', 'paypal'))).toEqual([
+      'index.json',
+      'sandbox-recordings',
+      'synthetic',
+    ]);
   });
 
   it('refuses an existing file unless overwrite is set, and writes nothing then', async () => {
@@ -298,7 +407,13 @@ describe('writeRecordings', () => {
   it('refuses names that could leave the folder', async () => {
     const root = await tmpRoot();
     const r = ok(await buildRecordings([exchange()], OPTS));
-    for (const name of ['../escape__get_order__1.json', 'a/b__get_order__1.json', '..\\x__get_order__1.json', 'index.json', '.hidden__get_order__1.json']) {
+    for (const name of [
+      '../escape__get_order__1.json',
+      'a/b__get_order__1.json',
+      '..\\x__get_order__1.json',
+      'index.json',
+      '.hidden__get_order__1.json',
+    ]) {
       const w = await writeRecordings(root, [{ ...r.files[0]!, name }]);
       expect(w.ok, name).toBe(false);
     }
@@ -317,15 +432,33 @@ describe('writeRecordings', () => {
   it('rolls back when the tree fails validation (duplicate key in another folder)', async () => {
     const root = await tmpRoot();
     const dup = {
-      meta: { source: 'synthetic', scenario: 'spike_happy', operation: 'get_order', step: 1, recorded_at: null, origin: 'synthetic duplicate for the test', redactions: [] },
-      request: { method: 'GET', path_template: '/v2/checkout/orders/{id}', headers: {}, body: null },
+      meta: {
+        source: 'synthetic',
+        scenario: 'spike_happy',
+        operation: 'get_order',
+        step: 1,
+        recorded_at: null,
+        origin: 'synthetic duplicate for the test',
+        redactions: [],
+      },
+      request: {
+        method: 'GET',
+        path_template: '/v2/checkout/orders/{id}',
+        headers: {},
+        body: null,
+      },
       response: { status: 200, headers: {}, body: { id: 'X' } },
     };
-    await writeFile(join(root, 'fixtures', 'paypal', 'synthetic', 'spike_happy__get_order__1.json'), JSON.stringify(dup));
+    await writeFile(
+      join(root, 'fixtures', 'paypal', 'synthetic', 'spike_happy__get_order__1.json'),
+      JSON.stringify(dup),
+    );
     const r = ok(await buildRecordings([exchange()], OPTS));
     const w = await writeRecordings(root, r.files);
     expect(w.ok).toBe(false);
-    expect(await readdir(join(root, 'fixtures', 'paypal', 'sandbox-recordings')).catch(() => [])).toEqual([]);
+    expect(
+      await readdir(join(root, 'fixtures', 'paypal', 'sandbox-recordings')).catch(() => []),
+    ).toEqual([]);
   });
 
   it('does not write when the build was refused (live input)', async () => {

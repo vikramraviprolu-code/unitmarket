@@ -25,6 +25,7 @@
     "check:no-live-host": "node scripts/check-no-live-host.mjs",
     "check:secrets-names": "node scripts/check-secrets-names.mjs",
     "check:fixtures": "node scripts/check-fixtures.mjs",
+    "record:fixtures": "node --import ./scripts/lib/ts-register.mjs scripts/record-fixtures.mjs",
     "check:routes": "node scripts/route-inventory.mjs --check",
     "check:provenance": "node scripts/check-provenance.mjs",
     "check:bundle": "node scripts/check-bundle-secrets.mjs",

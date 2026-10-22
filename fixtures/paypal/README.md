@@ -1,7 +1,7 @@
 # PayPal fixtures (lane 03)
 
 Data for the dry-run transport. Nothing here is PayPal evidence unless its `meta.source` is
-`sandbox-recording`, and no such file exists yet. No fixture holds a credential, an email address or a
+`sandbox-recording`, and no such file exists yet (the recorder below writes them after the owner's spike). No fixture holds a credential, an email address or a
 live hostname; `packages/transport/src/fixtures.contract.test.ts` enforces this.
 
 ## Layout
@@ -10,7 +10,7 @@ live hostname; `packages/transport/src/fixtures.contract.test.ts` enforces this.
 | --------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `docs-examples/`      | `docs-example`      | Examples from the official OpenAPI files (`checkout_orders_v2.json`, `payments_payment_v2.json`, github.com/paypal/paypal-rest-api-specifications), downloaded 21 Oct 2026. Hosts removed from links, emails replaced; `meta.redactions` lists each change. Error bodies are composed from the OpenAPI error shape and `orders-errors.md`; `meta.origin` says so. |
 | `synthetic/`          | `synthetic`         | Hand-written from simulation scenarios (conformance S1 to S6, payment-readback acceptance list), simulation repo at a36ddc03fd0b962000f686291c145b50ee337f90.                                                                                                                                                                                                     |
-| `sandbox-recordings/` | `sandbox-recording` | Redacted recordings from the owner's spike. Empty in MVP-A.                                                                                                                                                                                                                                                                                                       |
+| `sandbox-recordings/` | `sandbox-recording` | Redacted recordings from the owner's spike, written only by `pnpm record:fixtures`. Empty until then. `recorded_at`, `origin` and `redactions` are required here.                                                                                                                                                                                                 |
 | `index.json`          |                     | Generated list: file, sha256, source, scenario, operation, step.                                                                                                                                                                                                                                                                                                  |
 
 Regenerate the index after adding or editing a fixture: run `corepack pnpm exec prettier --write fixtures`
@@ -49,3 +49,25 @@ Standard identifiers: order `SBX<TAG>ORD00001`, capture `SBX<TAG>CAP00001`, paye
 | `server_500`             | create 1 (500); create 2 (201)                                                                                                                                               |
 
 `docs-examples` scenarios each hold one step, named `docs_<case>`.
+
+## Recording sandbox calls (lane B-L3, acceptance B-13)
+
+`pnpm record:fixtures --input <raw.json> --origin "<where it came from>"` turns the owner's raw spike
+output, or a transport call log, into `sandbox-recordings/<scenario>__<operation>__<step>.json`, adds the
+sha256 entries to `fixtures/paypal/index.json` (and `fixtures/INDEX.json`), and prints counts only. It is
+offline: it opens no connection and reads no credential. Input is a JSON array (or `{ "exchanges": [...] }`)
+of `{ scenario, operation, step?, request: { method?, path | url, headers?, body? }, response | result }`;
+a transport result of kind `timeout` becomes `{ "timeout": true }`.
+
+| Rule       | Behaviour                                                                                                                                                                                                                                                                                                                               |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| By key     | credentials, tokens, client id and secret, `nonce`, `app_id`, payer id, account id, emails, payer and shipping names, addresses, phones become `[redacted]`, whatever the casing or spacing of the key. An error `name` such as `UNPROCESSABLE_ENTITY` stays.                                                                           |
+| By pattern | bearer and basic values, JWT-like and long base64 or hex values, emails (also percent-encoded, entity-encoded or written `[at]`), URL query values (only order-id-shaped values stay), certificate URL queries, JSON held inside strings.                                                                                               |
+| Headers    | allow-list: `content-type`, `accept`, `prefer`, `paypal-debug-id`, `paypal-request-id`, `retry-after`, `date`, each checked against its expected shape. `authorization` is the placeholder. Everything else is dropped.                                                                                                                 |
+| Kept       | PayPal debug ids, statuses, error names, amounts, and the sandbox order and capture ids. `--synthetic-ids` replaces them with `SBX<SCENARIO>ORD00001`-style ids, consistently across files.                                                                                                                                             |
+| Refused    | any live PayPal host (`www`, `api-m`, the apex), any non-sandbox host in a request URL, host or origin; a caller canary that survives (`--canary-stdin`, values never printed); any residue found by the second check; names that could leave the folder; a symlinked folder; an existing file (no overwrite). Nothing is written then. |
+
+`printenv NAME_OF_SECRET_VARIABLE | pnpm record:fixtures ... --canary-stdin` lets the shell hand the
+owner's real client id and secret to the tool as values that must not appear in any output file.
+Run `pnpm record:fixtures --self-test` for the built-in canary self-test. After recording: read each file,
+run `corepack pnpm check:fixtures` and the transport contract tests, then commit.
