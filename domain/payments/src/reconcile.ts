@@ -5,7 +5,6 @@
 // transaction (the gates are read before it opens), plus the two re-sends that are allowed, each
 // with its original key: a create and a capture, both only inside the 5 h window and, for a
 // capture, only after a read showed no capture. Provider calls never happen inside a transaction.
-import { applyMoneyEvent } from '@umsbx/entitlements';
 import {
   CaptureResSchema,
   CreateOrderReqSchema,
@@ -21,7 +20,7 @@ import type {
   PaymentsDeps,
   SqlExecutor,
 } from '@umsbx/contracts';
-import { applyReadback, readApplyGates } from './apply';
+import { applyReadback, readApplyGates, declineUnits } from './apply';
 import { raiseOpsAlert, observeReadback } from './refunds';
 import { addMs, loadOrder, loadProviderOrders, loadUnits } from './store';
 import type { OperationRow, OrderRow } from './store';
@@ -85,30 +84,6 @@ export async function reconcileOrder(
 
 // ---------------------------------------------------------------------------------------------
 
-/** Items of a failed order: units declined with a reason, entitlements denied. */
-export async function declineUnits(
-  tx: SqlExecutor,
-  d: PaymentsDeps,
-  order_id: Id,
-  reason: string,
-): Promise<void> {
-  const at = d.clock.now().toISOString();
-  for (const unit of await loadUnits(tx, order_id)) {
-    await tx.query(
-      `UPDATE order_units SET status = 'declined', status_reason = $2, updated_at = $3
-       WHERE id = $1 AND captured_verified_at IS NULL`,
-      [unit.id, reason, at],
-    );
-    const ents = await tx.query<{ id: string }>(
-      'SELECT id FROM entitlements WHERE unit_id = $1 ORDER BY article_id',
-      [unit.id],
-    );
-    for (const e of ents.rows) {
-      await applyMoneyEvent(tx, d, { entitlement_id: e.id, event: 'declined' });
-    }
-  }
-}
-
 /**
  * The one capture re-send. Claimed by compare-and-set on the attempt number (of two callers one
  * wins), sent with the original key outside any transaction, recorded afterwards. The answer is
@@ -147,15 +122,38 @@ export async function retryCapture(
 
   return d.db.transaction(async (tx) => {
     const at = d.clock.now().toISOString();
+    // Lock order, then operation. The order may have moved on while the call was open (frozen by a
+    // concurrent read, verified by a poll): then only the operation is closed to match, and the
+    // order is never moved backwards (H1, M2).
+    const current = await loadOrder(tx, order.id, { lock: true });
+    const live = current !== null && current.status === 'capture_requested';
+    const money =
+      current !== null && (current.status === 'paid' || current.status === 'paid_partial');
+    const settleDead = async (): Promise<void> => {
+      if (current === null) return;
+      const set = money
+        ? "state = 'confirmed', lease_until = NULL, next_retry_at = NULL"
+        : current.status === 'frozen'
+          ? "state = 'failed', failure_reason = 'mismatch', lease_until = NULL, next_retry_at = NULL"
+          : null;
+      if (set !== null) {
+        await tx.query(
+          `UPDATE operations SET ${set}, updated_at = $2 WHERE id = $1 AND state IN ('sent', 'unknown')`,
+          [op.id, at],
+        );
+      }
+    };
     const unknown = async (): Promise<void> => {
+      if (!live) return settleDead();
       await tx.query(
-        `UPDATE operations SET state = 'unknown', lease_until = NULL, next_retry_at = $2, updated_at = $2 WHERE id = $1`,
+        `UPDATE operations SET state = 'unknown', lease_until = NULL, next_retry_at = $2, updated_at = $2
+         WHERE id = $1 AND state IN ('sent', 'unknown')`,
         [op.id, at],
       );
-      await tx.query("UPDATE orders SET status = 'unresolved', updated_at = $2 WHERE id = $1", [
-        order.id,
-        at,
-      ]);
+      await tx.query(
+        "UPDATE orders SET status = 'unresolved', updated_at = $2 WHERE id = $1 AND status = 'capture_requested'",
+        [order.id, at],
+      );
     };
     // The read-back operation of an order that goes back to the buyer or stops has nothing to poll.
     const closeReadback = async (state: 'confirmed' | 'failed'): Promise<void> => {
@@ -165,20 +163,26 @@ export async function retryCapture(
         [order.id, state, state === 'failed' ? 'mismatch' : null, at],
       );
     };
-    const reopen = async (): Promise<void> => {
+    const reopen = async (): Promise<boolean> => {
+      if (!live) {
+        await settleDead();
+        return false;
+      }
       await closeReadback('confirmed');
-      // Nothing was captured; the buyer has to act at PayPal. Same key, same operation.
+      // Nothing was captured; the buyer has to act at PayPal. The attempt count is kept, so the
+      // next try (a new key, see capture.ts gate) is counted against the cap.
       await tx.query(
-        `UPDATE operations SET state = 'prepared', lease_until = $2, updated_at = $3 WHERE id = $1`,
-        [op.id, addMs(at, d.config.operation_lease_ms), at],
+        `UPDATE operations SET state = 'prepared', lease_until = $2, updated_at = $2 WHERE id = $1 AND state IN ('sent', 'unknown')`,
+        [op.id, at],
       );
-      await tx.query("UPDATE orders SET status = 'awaiting_buyer', updated_at = $2 WHERE id = $1", [
-        order.id,
-        at,
-      ]);
+      await tx.query(
+        "UPDATE orders SET status = 'awaiting_buyer', updated_at = $2 WHERE id = $1 AND status = 'capture_requested'",
+        [order.id, at],
+      );
+      return true;
     };
     if (res.kind === 'payer_action') {
-      await reopen();
+      if (!(await reopen())) return 'lost' as const;
       if (res.redirect_url !== null) {
         await tx.query(
           'UPDATE provider_orders SET approve_url = $2, updated_at = $3 WHERE order_id = $1',
@@ -188,8 +192,7 @@ export async function retryCapture(
       return 'reopened' as const;
     }
     if (res.kind === 'rejected' && res.issue === 'ORDER_NOT_APPROVED') {
-      await reopen();
-      return 'reopened' as const;
+      return (await reopen()) ? ('reopened' as const) : ('lost' as const);
     }
     if (res.kind === 'rejected' && res.issue === 'DUPLICATE_INVOICE_ID') {
       await tx.query(
@@ -211,6 +214,10 @@ export async function retryCapture(
       return 'frozen' as const;
     }
     await unknown();
+    if (res.kind === 'blocked' && live) {
+      // Nothing was sent: the attempt is not spent.
+      await tx.query('UPDATE operations SET attempt = $2 WHERE id = $1', [op.id, op.attempt]);
+    }
     return res.kind === 'claim' ? ('claim' as const) : ('unknown' as const);
   });
 }
@@ -291,6 +298,25 @@ export async function resendCreate(
         [order.id, at],
       );
       return 'confirmed' as const;
+    }
+    if (res.kind === 'rejected' && res.issue === 'DUPLICATE_INVOICE_ID') {
+      // A suspected duplicate: frozen for a human, nothing declined (same as beginCheckout).
+      await tx.query(
+        `UPDATE operations SET state = 'failed', failure_reason = 'rejected', lease_until = NULL, next_retry_at = NULL, updated_at = $2 WHERE id = $1`,
+        [op.id, at],
+      );
+      await tx.query(
+        "UPDATE orders SET status = 'frozen', mismatch = true, updated_at = $2 WHERE id = $1 AND status = 'created'",
+        [order.id, at],
+      );
+      await raiseOpsAlert(tx, d, {
+        kind: 'frozen_order',
+        order_id: order.id,
+        unit_id: null,
+        reason: 'duplicate_invoice_id',
+        detail: { phase: 'create', debug_id: res.debug_id },
+      });
+      return 'failed' as const;
     }
     if (res.kind === 'rejected') {
       // Nothing was charged: the order never existed at PayPal.

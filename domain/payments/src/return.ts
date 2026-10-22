@@ -9,7 +9,7 @@ import { IdSchema, err, ok } from '@umsbx/contracts';
 import type { Actor, Id, PaymentsDeps, Result, SqlExecutor } from '@umsbx/contracts';
 import { raiseAlert } from './alerts';
 import { applyReadback, ensureReadbackOp, readApplyGates } from './apply';
-import { captureOnce } from './capture';
+import { captureOnce, claimPrecheck, releasePrecheck } from './capture';
 import { matchReadback } from './match';
 import {
   claimsOf,
@@ -58,6 +58,97 @@ export async function onBuyerReturn(
   }
   const provider_order_id = provider.provider_order_id;
 
+  // An order flagged mismatch, or with a unit in mismatch, is never captured, whatever the order
+  // status says now (H1): the flag is a fact a human must clear.
+  const flagged = await loadUnits(d.db, order.id);
+  if (order.mismatch || flagged.some((u) => u.status === 'mismatch')) {
+    await d.db.transaction(async (tx) => {
+      const at = d.clock.now().toISOString();
+      const moved = await tx.query(
+        "UPDATE orders SET status = 'frozen', mismatch = true, updated_at = $2 WHERE id = $1 AND status = 'awaiting_buyer' RETURNING id",
+        [order.id, at],
+      );
+      if (moved.rows.length === 0) return;
+      await raiseAlert(tx, d, {
+        kind: 'frozen_order',
+        order_id: order.id,
+        unit_id: null,
+        reason: 'return_on_flagged_order',
+        detail: { phase: 'pre_capture' },
+      });
+    });
+    return err({ code: 'frozen' });
+  }
+
+  // The pre-gate: one of many concurrent returns reads; the others answer from the database.
+  if (!(await claimPrecheck(d, order))) return ok(await loadOrderView(d.db, order.id));
+  const early = await precapture(d, order, provider_order_id, scenario).catch(
+    async (e: unknown) => {
+      await releasePrecheck(d, order);
+      throw e;
+    },
+  );
+  if (early !== null) {
+    await releasePrecheck(d, order);
+    return early;
+  }
+
+  // 4. The one gated capture.
+  const outcome = await captureOnce(d, order, provider_order_id, scenario);
+  switch (outcome.kind) {
+    case 'lost':
+    case 'unknown':
+      return ok(await loadOrderView(d.db, order.id));
+    case 'blocked':
+      return err({ code: 'payments_paused' });
+    case 'capped':
+      await releasePrecheck(d, order);
+      return err({ code: 'not_approved' });
+    case 'not_approved':
+      return err({ code: 'not_approved' });
+    case 'frozen':
+      return err({ code: 'frozen' });
+    case 'payer_action':
+      return ok(await loadOrderView(d.db, order.id));
+    case 'claim':
+    case 'read_decides':
+      break;
+  }
+
+  // 5. A separate read of the order; the claim never unlocks anything by itself.
+  const after = await d.paypal.getOrder(provider_order_id, scenario);
+  if (after.kind !== 'order') {
+    await d.db.transaction(async (tx) => {
+      const at = d.clock.now().toISOString();
+      const current = await loadOrder(tx, order.id, { lock: true });
+      if (current === null) return;
+      if (current.status === 'capture_requested' || current.status === 'capture_claimed') {
+        await tx.query("UPDATE orders SET status = 'unresolved', updated_at = $2 WHERE id = $1", [
+          order.id,
+          at,
+        ]);
+      }
+      await ensureReadbackOp(tx, d, current, at);
+    });
+    return ok(await loadOrderView(d.db, order.id));
+  }
+  const postGates = await readApplyGates(d, order.id);
+  await d.db.transaction((tx) =>
+    applyReadback(tx, d, { order_id: order.id, read: after, trigger: 'capture', gates: postGates }),
+  );
+  return ok(await loadOrderView(d.db, order.id));
+}
+
+/**
+ * Steps 1 to 3 of the return: the pre-capture read, the pre-capture match and the delivery
+ * readiness. Returns the answer to give when the capture must not go ahead, or null to go on.
+ */
+async function precapture(
+  d: PaymentsDeps,
+  order: OrderRow,
+  provider_order_id: string,
+  scenario: string | null,
+): Promise<Result<OrderView, ReturnError> | null> {
   // 1. Pre-capture read of the order, with the stored provider id only.
   const read = await d.paypal.getOrder(provider_order_id, scenario);
   if (read.kind === 'blocked') return err({ code: 'payments_paused' });
@@ -161,46 +252,7 @@ export async function onBuyerReturn(
     });
     return err({ code: 'not_charged_content_unavailable' });
   }
-
-  // 4. The one gated capture.
-  const outcome = await captureOnce(d, order, provider_order_id, scenario);
-  switch (outcome.kind) {
-    case 'lost':
-    case 'unknown':
-      return ok(await loadOrderView(d.db, order.id));
-    case 'not_approved':
-      return err({ code: 'not_approved' });
-    case 'frozen':
-      return err({ code: 'frozen' });
-    case 'payer_action':
-      return ok(await loadOrderView(d.db, order.id));
-    case 'claim':
-    case 'read_decides':
-      break;
-  }
-
-  // 5. A separate read of the order; the claim never unlocks anything by itself.
-  const after = await d.paypal.getOrder(provider_order_id, scenario);
-  if (after.kind !== 'order') {
-    await d.db.transaction(async (tx) => {
-      const at = d.clock.now().toISOString();
-      const current = await loadOrder(tx, order.id, { lock: true });
-      if (current === null) return;
-      if (current.status === 'capture_requested' || current.status === 'capture_claimed') {
-        await tx.query("UPDATE orders SET status = 'unresolved', updated_at = $2 WHERE id = $1", [
-          order.id,
-          at,
-        ]);
-      }
-      await ensureReadbackOp(tx, d, current, at);
-    });
-    return ok(await loadOrderView(d.db, order.id));
-  }
-  const postGates = await readApplyGates(d, order.id);
-  await d.db.transaction((tx) =>
-    applyReadback(tx, d, { order_id: order.id, read: after, trigger: 'capture', gates: postGates }),
-  );
-  return ok(await loadOrderView(d.db, order.id));
+  return null;
 }
 
 // ---------------------------------------------------------------------------------------------

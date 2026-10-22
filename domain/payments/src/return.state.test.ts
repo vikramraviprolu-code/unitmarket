@@ -47,6 +47,13 @@ const op = async (order_id: string, kind: string) =>
     )
   )[0];
 
+// The pre-gate may leave a `prepared` capture row with an expired lease (FIX-05A LOW); what these
+// tests mean is that a capture was never sent.
+const neverSent = async (order_id: string): Promise<void> => {
+  const o = await op(order_id, 'capture');
+  expect(o === undefined || (o.state === 'prepared' && o.first_sent_at === null)).toBe(true);
+};
+
 describe('the verified journey', () => {
   it('A-12: matching read-back unlocks, starts the window now, books sale and fee, issues receipt v1', async () => {
     w = await makeWorld();
@@ -270,7 +277,7 @@ describe('P5: tampering with the read freezes, before or after the capture', () 
     expect(r).toEqual({ ok: false, error: { code: 'frozen' } });
     expect(w.paypal.count('capture')).toBe(0);
     expect((await order(a.order_id)).status).toBe('frozen');
-    expect(await op(a.order_id, 'capture')).toBeUndefined();
+    await neverSent(a.order_id);
     expect(await count(w, 'ledger_entries')).toBe(0);
     expect(await ent()).toMatchObject({ money_state: 'pending', access_state: 'locked' });
     expect(await count(w, 'alerts', "kind = 'frozen_order'")).toBeGreaterThanOrEqual(1);
@@ -371,7 +378,7 @@ describe('the return is a trigger, never evidence', () => {
     expect(r).toEqual({ ok: false, error: { code: 'not_approved' } });
     expect((await order(a.order_id)).status).toBe('awaiting_buyer');
     expect(w.paypal.count('capture')).toBe(0);
-    expect(await op(a.order_id, 'capture')).toBeUndefined();
+    await neverSent(a.order_id);
   });
 
   it('order still being created (no provider order yet): not_approved without a call', async () => {
@@ -433,7 +440,7 @@ describe('A-17: delivery readiness is checked before any charge', () => {
     expect((await order(a.order_id)).status).toBe('failed');
     expect((await unit(a.order_id)).status).toBe('declined');
     expect(await ent()).toMatchObject({ money_state: 'denied', access_state: 'locked' });
-    expect(await op(a.order_id, 'capture')).toBeUndefined();
+    await neverSent(a.order_id);
     expect(await count(w, 'ledger_entries')).toBe(0);
     expect(await count(w, 'alerts', "kind = 'content_unavailable'")).toBe(1);
     // Asked again: the same plain answer, and still no charge.

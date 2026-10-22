@@ -264,6 +264,11 @@ describe('placeOrder: one transaction writes everything before any call', () => 
     w = await makeWorld();
     const first = await place(w);
     await w.db.query("UPDATE orders SET status = 'failed' WHERE id = $1", [first.order_id]);
+    // A failed order has denied its items (declineUnits); a pending item would hold the article.
+    await w.db.query(
+      "UPDATE entitlements SET money_state = 'denied' WHERE unit_id IN (SELECT id FROM order_units WHERE order_id = $1)",
+      [first.order_id],
+    );
     const again = await place(w);
     expect(again.order_id).not.toBe(first.order_id);
     expect(await count(w, 'orders')).toBe(2);

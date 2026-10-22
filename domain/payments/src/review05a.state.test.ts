@@ -471,7 +471,7 @@ describe('H3 probes D and E: no second charge for an article already held or in 
   });
 
   it.each([
-    ['money denied', "money_state = 'denied', licence_state = NULL"],
+    ['money denied', "money_state = 'denied', licence_state = NULL, access_state = 'locked'"],
     ['access ended', "access_state = 'ended'"],
     ['access revoked', "access_state = 'revoked'"],
   ])('%s: the article may be bought again', async (_n, set) => {

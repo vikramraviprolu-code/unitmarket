@@ -158,12 +158,16 @@ export async function startFromOffer(
       : offer.options.find((o) => o.option === i.option);
   if (!chosen) return ok(noMatch('option_not_offered'));
 
-  // 6. already holds the article (available, or an access window still running)
+  // 6. already holds the article: money pending, unknown or captured and access not ended or
+  // revoked, so also a locked entitlement with a capture in flight or access paused (FIX-05A H3).
+  // domain/payments placeOrder and the partial unique index entitlements_one_active_per_buyer_article
+  // use the same set.
   if (buyerId !== null) {
     const owned = await d.db.query(
       `SELECT 1 AS x FROM entitlements e
-         LEFT JOIN access_windows w ON w.entitlement_id = e.id
-        WHERE e.buyer_id = $1 AND e.article_id = $2 AND (e.access_state = 'available' OR w.state = 'running')
+        WHERE e.buyer_id = $1 AND e.article_id = $2
+          AND e.money_state IN ('pending', 'captured', 'unknown')
+          AND e.access_state IN ('locked', 'available')
         LIMIT 1`,
       [buyerId, article.id],
     );

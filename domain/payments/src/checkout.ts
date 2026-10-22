@@ -132,6 +132,26 @@ export async function beginCheckout(
       );
       return ok({ approve_url: res.approve_url });
     }
+    if (res.kind === 'rejected' && res.issue === 'DUPLICATE_INVOICE_ID') {
+      // PayPal already has an order for this reference: a suspected duplicate. Nothing is declined
+      // and nothing is retried; the order is frozen for a human (architecture 5, error table).
+      await tx.query(
+        `UPDATE operations SET state = 'failed', failure_reason = $2, lease_until = NULL, next_retry_at = NULL, updated_at = $3 WHERE id = $1`,
+        [op.id, res.http === 400 ? 'invalid_request' : 'rejected', at],
+      );
+      await tx.query(
+        "UPDATE orders SET status = 'frozen', mismatch = true, updated_at = $2 WHERE id = $1 AND status = 'created'",
+        [order.id, at],
+      );
+      await raiseAlert(tx, d, {
+        kind: 'frozen_order',
+        order_id: order.id,
+        unit_id: null,
+        reason: 'duplicate_invoice_id',
+        detail: { phase: 'create', debug_id: res.debug_id },
+      });
+      return err({ code: 'create_failed' });
+    }
     if (res.kind === 'rejected') {
       // Nothing was charged: the order never existed at PayPal.
       await tx.query(

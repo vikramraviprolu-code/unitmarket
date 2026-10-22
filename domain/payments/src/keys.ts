@@ -6,9 +6,15 @@ import type { Id } from '@umsbx/contracts';
 export const MAX_REQUEST_ID_LENGTH = 108;
 const PREFIX = { create: 'umsC-', capture: 'umsK-', refund: 'umsR-' } as const;
 
-export function requestIdFor(kind: 'create' | 'capture' | 'refund', ref: Id): string {
+/**
+ * The key of the nth capture attempt. The first attempt keeps the plain key; a later attempt gets
+ * a suffix. PayPal replays the stored answer for a key it has seen (6 h), so a new try after a
+ * definitive answer such as payer_action needs a new key (D-014).
+ */
+export function requestIdFor(kind: 'create' | 'capture' | 'refund', ref: Id, attempt = 1): string {
   if (ref.length === 0) throw new RangeError('requestIdFor: empty reference');
-  const key = `${PREFIX[kind]}${ref}`;
+  if (!Number.isInteger(attempt) || attempt < 1) throw new RangeError('requestIdFor: attempt');
+  const key = `${PREFIX[kind]}${ref}${attempt === 1 ? '' : `-${attempt}`}`;
   if (key.length > MAX_REQUEST_ID_LENGTH) {
     throw new RangeError(`requestIdFor: key longer than ${MAX_REQUEST_ID_LENGTH} characters`);
   }
