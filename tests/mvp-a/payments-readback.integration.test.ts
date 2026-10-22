@@ -1,13 +1,10 @@
-// OPEN DEFECTS found by the Opus second-pass review of domain/payments (main 7345ad4). The owning
-// lane (FIX-PAY2, branch fix/payments-pass2) is fixing both. These tests state the required
-// behaviour from the requirements ("an accepted capture or refund is always read back; the order
-// never stays in flight with nothing polling it") and are expected to FAIL on main today, so they
-// are describe.skip until FIX-PAY2 merges. After the merge: change describe.skip to describe, run
-// them, and they must pass. They go through public entry points only; no production file is touched.
-//   OD-1 (HIGH)  capture_claimed stuck: the process dies between the capture claim and the
-//                post-capture read; no read-back operation exists, nothing polls, order never settles.
-//   OD-2 (HIGH)  refund accepted at PayPal but the read-back fails once; the refund request stays
-//                pending forever, the sale is never reversed, access never ends.
+// Read-back rules from the second-pass review of domain/payments, fixed by FIX-PAY2 (merged) and
+// now ordinary gate tests: an accepted capture or refund is always read back, and an order never
+// stays in flight with nothing polling it. They go through public entry points only.
+//   RB-1  the process dies between the capture claim and the post-capture read; the poll still
+//         finishes the order (was OD-1).
+//   RB-2  a refund PayPal accepted but whose first read-back fails is completed by the poll: the
+//         sale is reversed and access ends (was OD-2).
 import { executeRefund, onBuyerReturn, requestRefund, runDue } from '@umsbx/payments';
 import { describe, expect, it } from 'vitest';
 import type { Money, RefundRes } from '@umsbx/contracts';
@@ -25,7 +22,7 @@ async function pump(w: World, hours: number): Promise<void> {
   }
 }
 
-describe('OPEN DEFECT OD-1 (HIGH, FIX-PAY2 H-1): capture claim without a read-back operation', () => {
+describe('RB-1 capture claim always has a read-back operation', () => {
   it('the process dies between the claim and the post-capture read; the poll still finishes the order', async () => {
     const w = await makeWorld();
     const order = await placeAndCheckout(w, BUYER_A, 'tide-tables');
@@ -53,7 +50,7 @@ describe('OPEN DEFECT OD-1 (HIGH, FIX-PAY2 H-1): capture claim without a read-ba
   });
 });
 
-describe('OPEN DEFECT OD-2 (HIGH, FIX-PAY2 H-2): refund accepted but never read back', () => {
+describe('RB-2 an accepted refund is always read back', () => {
   it('getRefund fails once after PayPal accepted the refund; a later poll books it', async () => {
     const w = await makeWorld();
     const order = await placeAndCheckout(w, BUYER_A, 'tide-tables');

@@ -165,7 +165,8 @@ describe('A-14 lost_response_one_capture', () => {
     const w = await makeWorld();
     await outboundOn(w);
     w.paypal.next.lose_response = true;
-    w.paypal.readsUnavailableAfterCapture = true;
+    // The read answers but shows no capture (a stale read): the 5 h rule, not an outage, stops a resend.
+    w.paypal.readsShowNoCapture = true;
     await buy(w, BUYER_A, 'tide-tables');
     const before = w.paypal.count('capture');
     w.td.clock.advance(5 * 3_600_000 + 60_000);
@@ -175,6 +176,10 @@ describe('A-14 lost_response_one_capture', () => {
     // before 5 h, and no resend of any kind after it.
     expect(w.paypal.count('capture')).toBe(before);
     expect(keys.size).toBe(1);
+    // The read ran (it was answered, not unavailable) and the order is not paid on a read that
+    // shows nothing.
+    expect(w.paypal.count('get')).toBeGreaterThan(0);
+    expect(await count(w, "SELECT count(*) AS c FROM ledger_entries WHERE kind = 'sale'")).toBe(0);
   });
 });
 

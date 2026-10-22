@@ -67,6 +67,8 @@ export class FakePayPal implements PayPalPort {
   readsUnavailable = false;
   /** When set, order reads answer `unavailable` once a capture exists (the read-back after capture). */
   readsUnavailableAfterCapture = false;
+  /** When set, order reads answer normally but show no capture, whatever the provider did (stale read). */
+  readsShowNoCapture = false;
   /** Runs when a create call reaches the provider: the database can be inspected here (A-10). */
   onCreate: (() => Promise<void>) | null = null;
   /** Holds capture calls until released (A-15). */
@@ -131,7 +133,7 @@ export class FakePayPal implements PayPalPort {
           minor: u.amount.minor + (t.amount_delta ?? 0),
         },
         capture:
-          o.capture === null
+          o.capture === null || this.readsShowNoCapture
             ? null
             : {
                 capture_id: `${o.capture.id}${k === 0 ? '' : `U${k}`}`,

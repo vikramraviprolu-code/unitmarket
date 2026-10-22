@@ -10,6 +10,8 @@ import { createLogger } from '@umsbx/obs';
 import { testDb, fakeClock, T0 } from '@umsbx/testkit';
 import { BUYER_A, buy, makeWorld } from './world';
 
+vi.mock('server-only', () => ({}));
+
 const host = (...parts: string[]) => parts.join('.');
 const LIVE_API = host('api-m', 'paypal', 'com');
 const LIVE_WEB = host('www', 'paypal', 'com');
@@ -119,8 +121,8 @@ describe('A-01 boot_refuses_live', () => {
     expect(loadConfig(base({ UMS_PAYPAL_CONNECT: 'live' })).ok).toBe(false);
   });
 
-  // OPEN DEFECT F-1 (lane 02, medium): A-01 says any PayPal-related config value containing live or
-  // production is refused. Only UMS_MODE, the public label and PayPal host names are checked.
+  // F-1 (fixed in lane 02): A-01 says any PayPal-related config value containing live or
+  // production is refused, whatever the variable is called.
   it('PayPal environment switches named PAYPAL_* or UMS_PAYPAL_* with live or production are refused', () => {
     const accepted: string[] = [];
     for (const name of [
@@ -165,13 +167,15 @@ describe('A-01 boot_refuses_live', () => {
     expect(lines.join('\n')).not.toContain('secret-path');
   });
 
-  it('a refused boot builds no transport object', async () => {
-    const created = vi.fn();
-    const real = createSandboxTransport;
-    expect(real).toBeTypeOf('function');
-    const r = loadConfig(base({ UMS_MODE: 'live' }));
-    expect(r.ok).toBe(false);
-    expect(created).not.toHaveBeenCalled();
+  it('a refused boot builds no app and no transport: createApp throws on a live mode', async () => {
+    const { createApp } = await import('../../apps/web/composition.server');
+    for (const over of [
+      { UMS_MODE: 'live' },
+      { UMS_MODE: 'production' },
+      { NEXT_PUBLIC_UMS_ENV_LABEL: 'Live' },
+    ]) {
+      expect(() => createApp(base(over))).toThrow(/boot refused/);
+    }
   });
 });
 
