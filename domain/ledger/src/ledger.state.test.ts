@@ -22,7 +22,11 @@ function value<T, E>(r: Result<T, E>): T {
 async function booked(over: { currency?: string; amount_minor?: number } = {}) {
   n += 1;
   const o = await w.order(n, over);
-  const sale = value(await append(w.input(n, { amount: { currency: over.currency ?? 'USD', minor: over.amount_minor ?? 500 } })));
+  const sale = value(
+    await append(
+      w.input(n, { amount: { currency: over.currency ?? 'USD', minor: over.amount_minor ?? 500 } }),
+    ),
+  );
   return { n, ...o, sale };
 }
 const refund = (k: number, id: string, minor: number) =>
@@ -49,14 +53,22 @@ describe('append', () => {
     const r2 = value(await append(refund(k, 'RF2', 150)));
     expect(r1.id).not.toBe(r2.id);
     const rows = await listLedger(w.db, { capture_id });
-    expect(unitBalance(rows)).toEqual({ sold_minor: 500, refunded_minor: 250, reversed_minor: 0, net_minor: 250 });
+    expect(unitBalance(rows)).toEqual({
+      sold_minor: 500,
+      refunded_minor: 250,
+      reversed_minor: 0,
+      net_minor: 250,
+    });
   });
 
   it('same refund id twice is duplicate', async () => {
     const { n: k } = await booked();
     const first = value(await append(refund(k, 'RF1', 100)));
     const second = await append(refund(k, 'RF1', 100));
-    expect(second).toEqual({ ok: false, error: { code: 'duplicate', existing_entry_id: first.id } });
+    expect(second).toEqual({
+      ok: false,
+      error: { code: 'duplicate', existing_entry_id: first.id },
+    });
     // A replay is not double counted, and a replay with a larger amount does not rewrite history.
     const third = await append(refund(k, 'RF1', 400));
     expect(third).toEqual({ ok: false, error: { code: 'duplicate', existing_entry_id: first.id } });
@@ -75,7 +87,9 @@ describe('append', () => {
   it('reversal above remaining after refunds is refused', async () => {
     const { n: k } = await booked();
     value(await append(refund(k, 'RF1', 300)));
-    await expect(append(w.input(k, { kind: 'reversal', amount: { currency: 'USD', minor: 201 } }))).rejects.toThrow(/exceed/i);
+    await expect(
+      append(w.input(k, { kind: 'reversal', amount: { currency: 'USD', minor: 201 } })),
+    ).rejects.toThrow(/exceed/i);
     value(await append(w.input(k, { kind: 'reversal', amount: { currency: 'USD', minor: 200 } })));
   });
 
@@ -90,44 +104,82 @@ describe('programmer errors are thrown, not booked', () => {
   it('currency must equal the order currency', async () => {
     n += 1;
     await w.order(n);
-    await expect(append(w.input(n, { amount: { currency: 'EUR', minor: 500 } }))).rejects.toThrow(/currency/i);
+    await expect(append(w.input(n, { amount: { currency: 'EUR', minor: 500 } }))).rejects.toThrow(
+      /currency/i,
+    );
     n += 1;
     await w.order(n, { currency: 'EUR' });
-    await expect(append(w.input(n, { amount: { currency: 'USD', minor: 500 } }))).rejects.toThrow(/currency/i);
+    await expect(append(w.input(n, { amount: { currency: 'USD', minor: 500 } }))).rejects.toThrow(
+      /currency/i,
+    );
   });
 
   it('refund and commission_reversal need a refund id, other kinds must not carry one', async () => {
     const { n: k } = await booked();
-    await expect(append(w.input(k, { kind: 'refund', refund_id: null, amount: { currency: 'USD', minor: 1 } }))).rejects.toThrow(/refund_id/);
-    await expect(append(w.input(k, { kind: 'reversal', refund_id: 'RF9', amount: { currency: 'USD', minor: 1 } }))).rejects.toThrow(/refund_id/);
-    await expect(append(w.input(k, { kind: 'paypal_fee', refund_id: 'RF9', amount: { currency: 'USD', minor: 1 } }))).rejects.toThrow(/refund_id/);
+    await expect(
+      append(
+        w.input(k, { kind: 'refund', refund_id: null, amount: { currency: 'USD', minor: 1 } }),
+      ),
+    ).rejects.toThrow(/refund_id/);
+    await expect(
+      append(
+        w.input(k, { kind: 'reversal', refund_id: 'RF9', amount: { currency: 'USD', minor: 1 } }),
+      ),
+    ).rejects.toThrow(/refund_id/);
+    await expect(
+      append(
+        w.input(k, { kind: 'paypal_fee', refund_id: 'RF9', amount: { currency: 'USD', minor: 1 } }),
+      ),
+    ).rejects.toThrow(/refund_id/);
     expect(await listLedger(w.db, { unit_id: `unt_${k}` })).toHaveLength(1);
   });
 
   it('platform_fee is never written in MVP-A (D-3)', async () => {
     const { n: k } = await booked();
-    await expect(append(w.input(k, { kind: 'platform_fee', amount: { currency: 'USD', minor: 5 } }))).rejects.toThrow(/platform_fee/);
+    await expect(
+      append(w.input(k, { kind: 'platform_fee', amount: { currency: 'USD', minor: 5 } })),
+    ).rejects.toThrow(/platform_fee/);
   });
 
   it('the capture id must belong to the unit, the unit must exist', async () => {
     const { n: k } = await booked();
-    await expect(append(w.input(k, { kind: 'paypal_fee', capture_id: 'OTHERCAP' }))).rejects.toThrow(/capture/i);
-    await expect(append(w.input(k, { kind: 'paypal_fee', unit_id: 'unt_missing' }))).rejects.toThrow(/unit/i);
+    await expect(
+      append(w.input(k, { kind: 'paypal_fee', capture_id: 'OTHERCAP' })),
+    ).rejects.toThrow(/capture/i);
+    await expect(
+      append(w.input(k, { kind: 'paypal_fee', unit_id: 'unt_missing' })),
+    ).rejects.toThrow(/unit/i);
   });
 
   it('amounts are integers: float, negative and malformed input throw', async () => {
     const { n: k } = await booked();
-    await expect(append(w.input(k, { kind: 'paypal_fee', amount: { currency: 'USD', minor: 1.5 } }))).rejects.toThrow();
-    await expect(append(w.input(k, { kind: 'paypal_fee', amount: { currency: 'USD', minor: -1 } }))).rejects.toThrow();
+    await expect(
+      append(w.input(k, { kind: 'paypal_fee', amount: { currency: 'USD', minor: 1.5 } })),
+    ).rejects.toThrow();
+    await expect(
+      append(w.input(k, { kind: 'paypal_fee', amount: { currency: 'USD', minor: -1 } })),
+    ).rejects.toThrow();
     await expect(append(refund(k, 'RF1', 0))).rejects.toThrow();
-    await expect(append({ ...w.input(k, { kind: 'paypal_fee' }), extra: 1 } as LedgerEntryInput)).rejects.toThrow();
+    await expect(
+      append({ ...w.input(k, { kind: 'paypal_fee' }), extra: 1 } as LedgerEntryInput),
+    ).rejects.toThrow();
   });
 
   it('ref_entry_id must name an entry of the same capture', async () => {
     const a = await booked();
     const b = await booked();
-    await expect(append(w.input(a.n, { kind: 'paypal_fee', ref_entry_id: b.sale.id }))).rejects.toThrow(/ref_entry_id/);
-    const ok = value(await append(w.input(a.n, { kind: 'paypal_fee', ref_entry_id: a.sale.id, amount: { currency: 'USD', minor: 30 } })));
+    await expect(
+      append(w.input(a.n, { kind: 'paypal_fee', ref_entry_id: b.sale.id })),
+    ).rejects.toThrow(/ref_entry_id/);
+    const ok = value(
+      await append(
+        w.input(a.n, {
+          kind: 'paypal_fee',
+          ref_entry_id: a.sale.id,
+          amount: { currency: 'USD', minor: 30 },
+        }),
+      ),
+    );
     expect(ok.ref_entry_id).toBe(a.sale.id);
   });
 });
@@ -135,8 +187,12 @@ describe('programmer errors are thrown, not booked', () => {
 describe('append-only (P12, A-21)', () => {
   it('UPDATE and DELETE refused', async () => {
     const { sale } = await booked();
-    await expect(w.db.query('UPDATE ledger_entries SET amount_minor = 1 WHERE id = $1', [sale.id])).rejects.toThrow(/append-only/);
-    await expect(w.db.query('DELETE FROM ledger_entries WHERE id = $1', [sale.id])).rejects.toThrow(/append-only/);
+    await expect(
+      w.db.query('UPDATE ledger_entries SET amount_minor = 1 WHERE id = $1', [sale.id]),
+    ).rejects.toThrow(/append-only/);
+    await expect(w.db.query('DELETE FROM ledger_entries WHERE id = $1', [sale.id])).rejects.toThrow(
+      /append-only/,
+    );
     const rows = await listLedger(w.db, { capture_id: sale.capture_id });
     expect(rows[0]!.amount.minor).toBe(500);
   });

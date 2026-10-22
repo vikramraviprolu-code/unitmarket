@@ -1,3 +1,4 @@
+// Origin: AIC_Hackathon_UnitMarket@a36ddc03fd0b962000f686291c145b50ee337f90:packages/core/ledger/ledger.ts (sums). Adapted; owned by SBX.
 // Pure sums over ledger rows (P11: the reconciler compares these with the PayPal read-back).
 import type { LedgerEntry } from '@umsbx/contracts';
 

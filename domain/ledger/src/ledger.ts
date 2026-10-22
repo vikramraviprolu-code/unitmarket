@@ -1,5 +1,4 @@
-// Adapted from AIC_Hackathon_UnitMarket packages/core/ledger/ledger.ts at
-// a36ddc03fd0b962000f686291c145b50ee337f90. Owned by SBX.
+// Origin: AIC_Hackathon_UnitMarket@a36ddc03fd0b962000f686291c145b50ee337f90:packages/core/ledger/ledger.ts. Adapted; owned by SBX.
 // Append-only money ledger. There is no update and no delete function; a correction is a new
 // entry. Rows are keyed (capture_id, kind, refund_id) so several partial refunds book (ASM-LED-1);
 // a replay returns the existing entry id. Rules that the database also enforces (kind and
@@ -90,7 +89,9 @@ export async function appendLedgerEntry(
   ).rows[0];
   if (unit === undefined) throw new LedgerRuleError(`unit ${input.unit_id} does not exist`);
   if (unit.capture_id === null || unit.capture_id !== input.capture_id) {
-    throw new LedgerRuleError(`capture ${input.capture_id} does not belong to unit ${input.unit_id}`);
+    throw new LedgerRuleError(
+      `capture ${input.capture_id} does not belong to unit ${input.unit_id}`,
+    );
   }
   if (unit.currency !== input.amount.currency) {
     throw new LedgerRuleError(
@@ -103,10 +104,10 @@ export async function appendLedgerEntry(
     );
   }
   if (input.ref_entry_id !== null) {
-    const ref = await tx.query(
-      'SELECT 1 FROM ledger_entries WHERE id = $1 AND capture_id = $2',
-      [input.ref_entry_id, input.capture_id],
-    );
+    const ref = await tx.query('SELECT 1 FROM ledger_entries WHERE id = $1 AND capture_id = $2', [
+      input.ref_entry_id,
+      input.capture_id,
+    ]);
     if (ref.rows.length === 0) {
       throw new LedgerRuleError('ref_entry_id must name an entry of the same capture');
     }

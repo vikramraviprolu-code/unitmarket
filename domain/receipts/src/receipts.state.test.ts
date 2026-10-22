@@ -37,7 +37,14 @@ const rawRow = async (world: World, order_id: string, version: number) =>
     )
   ).rows[0]!;
 const count = async (world: World, order_id: string) =>
-  Number((await world.db.query<{ c: string }>('SELECT count(*) AS c FROM receipts WHERE order_id = $1', [order_id])).rows[0]!.c);
+  Number(
+    (
+      await world.db.query<{ c: string }>(
+        'SELECT count(*) AS c FROM receipts WHERE order_id = $1',
+        [order_id],
+      )
+    ).rows[0]!.c,
+  );
 
 describe('issueReceiptIfChanged', () => {
   it('no receipt before a verified capture', async () => {
@@ -63,7 +70,9 @@ describe('issueReceiptIfChanged', () => {
     expect(r.environment).toBe('dryrun');
     expect(r.lines.map((l) => l.article_id)).toEqual(o.articles);
     expect(r.lines[0]).toMatchObject({
-      option: 'keep_retrieve', amount_minor: 400, capture_id: o.capture_id,
+      option: 'keep_retrieve',
+      amount_minor: 400,
+      capture_id: o.capture_id,
       window: { state: 'running', credit_ms: 0, ends_at: '2026-10-27T10:00:00.000Z' },
       delivery: [{ kind: 'access_ready', at: '2026-10-22T10:00:01.000Z' }],
     });
@@ -97,8 +106,14 @@ describe('issueReceiptIfChanged', () => {
     expect(after).toEqual(before);
     const r2 = (await getReceiptForBuyer(w.db, { order_id: o.order_id, buyer_id: 'buy_A' }))!;
     expect(r2.version).toBe(2);
-    expect(r2.refunds).toEqual([{ refund_id: 'RF1', amount: { currency: 'USD', minor: 100 }, at: expect.any(String) }]);
-    const r1 = (await getReceiptForBuyer(w.db, { order_id: o.order_id, buyer_id: 'buy_A', version: 1 }))!;
+    expect(r2.refunds).toEqual([
+      { refund_id: 'RF1', amount: { currency: 'USD', minor: 100 }, at: expect.any(String) },
+    ]);
+    const r1 = (await getReceiptForBuyer(w.db, {
+      order_id: o.order_id,
+      buyer_id: 'buy_A',
+      version: 1,
+    }))!;
     expect(r1.version).toBe(1);
     expect(r1.refunds).toEqual([]);
     expect(r1.sha256).toBe(v1.sha256);
@@ -115,7 +130,9 @@ describe('issueReceiptIfChanged', () => {
     const v2 = value(await issue(w, o.order_id));
     expect(v2).toMatchObject({ version: 2, changed: true });
     const r = (await getReceiptForBuyer(w.db, { order_id: o.order_id, buyer_id: 'buy_A' }))!;
-    expect(r.lines[1]!.delivery).toEqual([{ kind: 'reader_rendered', at: '2026-10-22T10:30:00.000Z' }]);
+    expect(r.lines[1]!.delivery).toEqual([
+      { kind: 'reader_rendered', at: '2026-10-22T10:30:00.000Z' },
+    ]);
   });
 
   it('a reversal shows on the receipt and makes a new version', async () => {
@@ -126,8 +143,12 @@ describe('issueReceiptIfChanged', () => {
       await w.db.transaction((tx) =>
         import('@umsbx/ledger').then((m) =>
           m.appendLedgerEntry(tx, w.deps, {
-            unit_id: o.unit_id, capture_id: o.capture_id, kind: 'reversal',
-            amount: { currency: 'USD', minor: 650 }, refund_id: null, ref_entry_id: null,
+            unit_id: o.unit_id,
+            capture_id: o.capture_id,
+            kind: 'reversal',
+            amount: { currency: 'USD', minor: 650 },
+            refund_id: null,
+            ref_entry_id: null,
           }),
         ),
       ),
@@ -167,9 +188,14 @@ describe('hash (PAY-09)', () => {
     value(await issue(w, o.order_id));
     // Simulate corruption below the application: bypass the immutability trigger as a superuser would.
     await w.db.exec(`ALTER TABLE receipts DISABLE TRIGGER receipts_immutable`);
-    await w.db.query(`UPDATE receipts SET body = jsonb_set(body, '{order_id}', '"ord_other"') WHERE order_id = $1`, [o.order_id]);
+    await w.db.query(
+      `UPDATE receipts SET body = jsonb_set(body, '{order_id}', '"ord_other"') WHERE order_id = $1`,
+      [o.order_id],
+    );
     await w.db.exec(`ALTER TABLE receipts ENABLE TRIGGER receipts_immutable`);
-    await expect(getReceiptForBuyer(w.db, { order_id: o.order_id, buyer_id: 'buy_A' })).rejects.toThrow(/hash/i);
+    await expect(
+      getReceiptForBuyer(w.db, { order_id: o.order_id, buyer_id: 'buy_A' }),
+    ).rejects.toThrow(/hash/i);
   });
 });
 
@@ -178,8 +204,15 @@ describe('immutability (P12, A-21)', () => {
     n += 1;
     const o = await w.order(n);
     value(await issue(w, o.order_id));
-    await expect(w.db.query(`UPDATE receipts SET sha256 = $2 WHERE order_id = $1`, [o.order_id, 'c'.repeat(64)])).rejects.toThrow(/append-only/);
-    await expect(w.db.query(`DELETE FROM receipts WHERE order_id = $1`, [o.order_id])).rejects.toThrow(/append-only/);
+    await expect(
+      w.db.query(`UPDATE receipts SET sha256 = $2 WHERE order_id = $1`, [
+        o.order_id,
+        'c'.repeat(64),
+      ]),
+    ).rejects.toThrow(/append-only/);
+    await expect(
+      w.db.query(`DELETE FROM receipts WHERE order_id = $1`, [o.order_id]),
+    ).rejects.toThrow(/append-only/);
     expect(await count(w, o.order_id)).toBe(1);
   });
 });
