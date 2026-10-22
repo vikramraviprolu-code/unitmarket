@@ -857,9 +857,13 @@ export const NAMED_EXEMPTIONS = [
     off: ['no-restricted-imports', 'sbx/no-restricted-dynamic-import'],
   },
   {
-    files: ['tests/mvp-a/app-a20-a22-perf.integration.test.ts'],
+    files: [
+      'tests/mvp-a/app-a20-a22-perf.integration.test.ts',
+      'tests/mvp-a/dryrun-kill-switch.integration.test.ts',
+      'tests/mvp-a/safety-a01-a04.integration.test.ts',
+    ],
     reason:
-      'MVP-A gate (lane 18): the web composition and route handlers are reachable only by relative path (@umsbx/web exports no composition); needed for the HTTP-level A-20, A-22 and PERF-2 checks',
+      'MVP-A gate (lane 18, FIX-GATE2): the web composition and route handlers are reachable only by relative path (@umsbx/web exports no composition); needed for the HTTP-level A-20, A-22 and PERF-2 checks, the dry-run kill switch (M1) and the refused-boot check (A-01)',
     off: ['sbx/no-package-escape'],
   },
 ];
