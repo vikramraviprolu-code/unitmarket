@@ -107,7 +107,7 @@ Branch `feat/mvp-a-gate`. Verdict and evidence: `docs/evidence/mvp-a-gate-2026-1
 
 Known deviations the gate carries (each is stated elsewhere in this file; none is closed by the gate):
 
-- No `remote_addr`: every client shares one `no-address` ip bucket and `trusted_proxies` is 0 (lane 15b note).
+- No `remote_addr`: unless `UMS_TRUSTED_PROXIES` is set, every client shares one `no-address` ip bucket (lane 15b note; see the gate conditions section: the right passcode is no longer locked out by it, and a hosted demo must set the proxy count).
 - Refund calls are not modelled in the dry-run order model (`blocked: dry_run_miss`); refunds are exercised by the payments lane tests only.
 - The dry-run model keeps its state in the process; an order from an earlier run on a `pglite-disk` database reads as unknown.
 - Concurrency tests run on PGlite (one connection): they prove SQL ordering and constraints, not Postgres lock behaviour (PORT-1 CI job).
@@ -117,7 +117,7 @@ Known deviations the gate carries (each is stated elsewhere in this file; none i
 - No sandbox recording exists: every fixture is `docs-example` or `synthetic`.
 - `@vitest/coverage-v8` is not on the approved list, so MAINT-6 (branch coverage on money modules) is unmeasured.
 - A-10 says the create operation is `prepared` when the provider call starts; the engine has moved it to `sent` by then (lease taken). The gate accepts either state.
-- `pnpm audit --prod` reports two high and two moderate postcss advisories through `next` (finding F-2 in the gate report).
+- Closed (D-017): `postcss` is pinned to 8.5.28 through `overrides`; `pnpm audit --prod` is clean. It listed two high and two moderate postcss advisories through `next` (finding F-2).
 
 ## Payments second-pass fixes (FIX-PAY2)
 
@@ -140,3 +140,13 @@ Every transaction that moves money takes its row locks in this order, and a stat
 5. `ledger_entries`, `receipts`.
 
 Alerts, audit and provider-call rows are leaf inserts and are not part of the order. PGlite serialises all statements, so a deadlock cannot be reproduced here. **Real-Postgres race tests (concurrent capture/poll/refund/sweeper on one order, with the pg adapter) are required before MVP-C.**
+
+## Gate conditions (FIX-GATE2, branch fix/gate-conditions)
+
+Closes the conditions of the Opus gate review of main 364af49. Report: `docs/evidence/mvp-a-gate-2026-10-22-final.md`.
+
+- **Condition: set `UMS_TRUSTED_PROXIES` before any hosted demo.** The count of reverse proxies in front of the app (integer 0 to 3, default 0, `packages/config`). With N above 0 the client address is the Nth entry from the right of `X-Forwarded-For`. With 0 and no socket address (Next.js route handlers receive none) all clients share one `no-address` limiter bucket: since FIX-GATE2 an exhausted shared bucket refuses only wrong passcodes, and the right passcode still signs in and resets that persona's bucket. That removes the lockout but also means brute force is bounded by the scrypt cost and the passcode strength only, so a hosted demo must set the count (and use a strong passcode) to get a per-client limit. A named address keeps the strict lockout.
+- **Dry-run kill switch (M1).** The dry-run transport reads `paypal_outbound` first and answers `blocked kill_switch` (checkout and return answer `payments_paused`). Offline boots seed `paypal_outbound` ON (`changed_by` `seed:dryrun`, only when the row is still the migration seed, so an operator stop survives a restart). Sandbox mode never takes that path and keeps the switch OFF until the owner approves. Recovery, reconcile and the job loop run in the dry-run demo; they pause when an operator stops the switch. In dry run an operator can stop; turning it back on follows the normal rule (MFA and an active approval row).
+- **Environment label (L3).** `NEXT_PUBLIC_UMS_ENV_LABEL` must agree with the mode (offline: Dry run; sandbox: Sandbox) or boot is refused (`label_mode_mismatch`); the footer and page description follow the stored label (L2).
+- **Build stability (L4).** `apps/web/next-env.d.ts` and `apps/web/tsconfig.json` are committed in the form `next build` writes and are skipped by prettier and eslint, so a build leaves the tree clean. Root scripts call `corepack pnpm`.
+- **Still open, not for this branch:** PORT-1 (stock Postgres CI) needs an owner waiver or a run; real-Postgres race tests before MVP-C; mutation scores for `domain/payments` `reconcile.ts`, `refunds.ts`, `due.ts`, `capture.ts` are pending (MUT-PAY on `test/mutation-payments` has not reported a score).

@@ -7,7 +7,9 @@ export type BootRefusal = {
     | 'equal_secrets'
     | 'insecure_origin'
     | 'non_sandbox_host'
-    | 'unknown_corridor';
+    | 'unknown_corridor'
+    | 'invalid_value'
+    | 'label_mode_mismatch';
   /** the environment variable at fault; never its value */
   name: string;
 };

@@ -210,8 +210,8 @@ describe('ops snapshot, jobs and health', () => {
       operator_id: 'opr_demo',
       mfa: false,
     });
-    expect(snap?.kill_switch.outbound_on).toBe(false);
-    expect(snap?.kill_switch.changed_by).toBe('seed');
+    expect(snap?.kill_switch.outbound_on).toBe(true);
+    expect(snap?.kill_switch.changed_by).toBe('seed:dryrun');
     expect(snap?.invariants.length).toBe(6);
     expect(snap?.jobs.last_pass_at).toBeNull();
   });

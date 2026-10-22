@@ -410,6 +410,16 @@ function buildApp(config: Config, opts: AppOptions): App {
           WHERE paypal_merchant_id IS NULL`,
         [now],
       );
+      // Dry run only: the migration seeds paypal_outbound off (fail closed). A dry run opens no
+      // socket, and recovery and reconcile pause while the switch is off, so the offline seed turns it
+      // on. Only the untouched migration row is changed: an operator stop survives a restart.
+      // Sandbox mode never takes this path and keeps the switch off until the owner approves.
+      await d.query(
+        `UPDATE safety_switches SET "on" = true, changed_by = 'seed:dryrun', changed_at = $1,
+                reason = 'seed: dry run opens no socket', updated_at = $1
+          WHERE name = 'paypal_outbound' AND changed_by = 'seed'`,
+        [now],
+      );
     }
     for (const [persona, id] of Object.entries(BUYER_IDS)) {
       await d.query(
@@ -450,6 +460,10 @@ function buildApp(config: Config, opts: AppOptions): App {
         async send(r) {
           const checked = guard(r, 'dryrun');
           if (!checked.ok) return { kind: 'blocked', by: 'egress' };
+          // The stop blocks every call, reads included (architecture 7.4). The gate answers
+          // connect_off first in dry run, so the kill switch is read here, before it.
+          if (!(await switches.isOn('paypal_outbound')))
+            return { kind: 'blocked', by: 'kill_switch' };
           const verdict = await gate.check({
             operation: r.operation,
             amount_minor: r.amount_minor,
@@ -535,11 +549,11 @@ function buildApp(config: Config, opts: AppOptions): App {
     session_secret: config.session_secret,
     passcode_hash: config.passcode_hash,
     public_origin: config.public_origin,
-    // No reverse proxy is trusted: X-Forwarded-For is never read, so a client cannot choose its own
-    // limiter bucket. Next.js route handlers receive no socket address (RouteCallContext.remote_addr
-    // has no source here), so every client shares one 'no-address' ip bucket until the host config
-    // can name the proxy count (needs a packages/config value; reported in docs/READINESS.md).
-    trusted_proxies: 0,
+    // UMS_TRUSTED_PROXIES (default 0): how many reverse proxies sit in front. With 0, X-Forwarded-For
+    // is never read, a client cannot choose its own limiter bucket, and (route handlers receive no
+    // socket address) every client shares one 'no-address' bucket; the login then refuses only
+    // wrong passcodes once it is spent. A hosted deployment must set the proxy count.
+    trusted_proxies: config.trusted_proxies,
   };
 
   // --- engine --------------------------------------------------------------------------------

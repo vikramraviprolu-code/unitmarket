@@ -20,6 +20,7 @@ import { createPayPalAdapter } from '@umsbx/paypal';
 import {
   describeDryRunOnly,
   describePayPalConformance,
+  dryRunScenarios,
   dryRunSubject,
   createReqFor,
   fakeClock,
@@ -174,6 +175,12 @@ describeDryRunOnly(dryRunSubject());
 describe('A-24 conformance_dryrun', () => {
   it('the suites above are registered for the dry-run subject (P1..P15 and D1..D6)', () => {
     expect(dryRunSubject().name).toBe('dry-run');
+    // The cases register themselves, so count them where they are defined: all fifteen P cases
+    // and the six dry-run scenarios D1..D6 exist, and this file ran both suites (imports above).
+    const src = readFileSync(join(ROOT, 'packages/testkit/src/conformance.ts'), 'utf8');
+    const p = [...src.matchAll(/\bit\('P(\d+) /g)].map((m) => Number(m[1]));
+    expect(p).toEqual(Array.from({ length: 15 }, (_, k) => k + 1));
+    expect(dryRunScenarios.length).toBeGreaterThanOrEqual(6);
   });
 });
 

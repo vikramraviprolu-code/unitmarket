@@ -5,13 +5,17 @@ import './globals.css';
 import { app } from '../server/access';
 import { currentActor } from '../server/session';
 import { EnvLabel } from '../ui/EnvLabel';
+import { siteDescription, siteFooter } from '../ui/env-copy';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: { default: 'UnitMarket', template: '%s | UnitMarket' },
-  description: 'Buy just the article you need. Sandbox build: no real money moves.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const a = await app();
+  return {
+    title: { default: 'UnitMarket', template: '%s | UnitMarket' },
+    description: siteDescription(a.environment),
+  };
+}
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const a = await app();
@@ -60,7 +64,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           {children}
         </main>
         <footer className="site-footer">
-          <p>Sandbox build for testing. No real money moves and nothing here is a live payment.</p>
+          <p>{siteFooter(a.environment)}</p>
         </footer>
       </body>
     </html>

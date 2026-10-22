@@ -17,6 +17,8 @@ export interface Config {
   passcode_hash: string | null;
   public_origin: string;
   corridors: string[];
+  /** Reverse proxies in front of the app, 0 to 3 (UMS_TRUSTED_PROXIES). 0: X-Forwarded-For is never read. */
+  trusted_proxies: number;
   env_label: 'Dry run' | 'Sandbox';
   node_env: 'development' | 'test' | 'production';
 }
@@ -38,6 +40,7 @@ export const ENV_NAMES = [
   'UMS_DEMO_PASSCODE_HASH',
   'UMS_PUBLIC_ORIGIN',
   'UMS_CORRIDORS',
+  'UMS_TRUSTED_PROXIES',
   'NEXT_PUBLIC_UMS_ENV_LABEL',
 ] as const;
 

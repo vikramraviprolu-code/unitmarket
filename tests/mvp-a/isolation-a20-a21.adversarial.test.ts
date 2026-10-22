@@ -84,7 +84,10 @@ describe('A-20 buyer_isolation', () => {
     await expect(
       issueLink(w.deps, { entitlement_id: e.id, actor: undefined as unknown as Actor }),
     ).rejects.toThrow();
+    // The check is only meaningful while the library is not empty: buyer A's own read has rows.
+    expect((await getLibrary(w.td.db, { buyer_id: 'buy_A' })).length).toBeGreaterThan(0);
     expect(await getLibrary(w.td.db, { buyer_id: undefined as unknown as string })).toEqual([]);
+    expect(await getLibrary(w.td.db, { buyer_id: '' })).toEqual([]);
     expect(
       await getEntitlementForBuyer(w.td.db, { entitlement_id: e.id, buyer_id: '' }),
     ).toBeNull();
@@ -107,7 +110,9 @@ describe('A-21 ledger_append_only', () => {
       message = String((error as Error).message);
     }
     // A syntax or column error must not pass for a protection: the trigger's own words are needed.
-    return /append-only|not allowed|truncate|immutable|may not|cannot change|only/i.test(message)
+    return /is not allowed: (the table is append-only|rows are switched off)|can only be updated to set used_at|is immutable except used_at|is already used and cannot change/i.test(
+      message,
+    )
       ? message
       : `OTHER: ${message}`;
   };
