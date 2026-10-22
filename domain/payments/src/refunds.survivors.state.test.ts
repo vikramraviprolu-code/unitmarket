@@ -154,8 +154,8 @@ describe('booking against the total the order read reports', () => {
     for (const r of w.refunds.values()) r.status = 'COMPLETED';
     // The order read still shows only 100 refunded although GET refund says 200 are completed.
     const real = w.paypal.getOrder.bind(w.paypal);
-    w.paypal.getOrder = async (id) => {
-      const res = await real(id);
+    w.paypal.getOrder = async (id, scenario?: string | null) => {
+      const res = await real(id, scenario);
       if (res.kind !== 'order') return res;
       return {
         ...res,
@@ -171,7 +171,7 @@ describe('booking against the total the order read reports', () => {
               }
             : x,
         ),
-      };
+      } as typeof res;
     };
     w.tick(31_000);
     await runDue(w.deps, { max_items: 10 });

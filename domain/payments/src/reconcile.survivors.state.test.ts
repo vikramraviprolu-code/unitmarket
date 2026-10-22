@@ -24,7 +24,7 @@ afterEach(async () => {
 });
 
 type Res = Parameters<OpsWorld['paypal']['queue']['capture']['push']>[0];
-const rejected = (http: number, issue: string): Res => ({
+const rejected = (http: 400 | 403 | 422, issue: string): Res => ({
   kind: 'rejected',
   http,
   name: 'X',
