@@ -63,6 +63,7 @@ const setCapture = (
             capture_id: c.id,
             status: c.status,
             status_reason: c.reason ?? null,
+            amount: u.amount,
             paypal_fee_minor: c.fee === undefined ? 45 : c.fee,
             refunded_minor: 0,
           },
