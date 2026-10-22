@@ -6,10 +6,87 @@ import { createAuditSink } from '@umsbx/obs';
 import { cryptoIds, systemClock } from '@umsbx/runtime';
 import { setSwitch } from '@umsbx/safety';
 import type { Actor } from '@umsbx/contracts';
+import { createApp, installApp } from '../../apps/web/composition.server';
 import type { App } from '../../apps/web/composition.server';
-import { bootApp, buyerOf, callRows, checkoutAndApprove, one, placeOrder } from './journey';
+import { testEnv } from '../../apps/web/src/support';
 
 vi.mock('server-only', () => ({}));
+
+async function bootApp(log_sink?: (line: string) => void): Promise<App> {
+  const app = createApp(await testEnv(), { switch_cache_ms: 0, ...(log_sink ? { log_sink } : {}) });
+  installApp(app);
+  await app.ready();
+  return app;
+}
+
+async function buyerOf(app: App, subject = 'buyer-a'): Promise<Actor> {
+  const row = await app.db.query<{ id: string }>(`SELECT id FROM buyers WHERE auth_subject = $1`, [
+    `persona:${subject}`,
+  ]);
+  return { kind: 'buyer', buyer_id: row.rows[0]!.id };
+}
+
+async function placeOrder(
+  app: App,
+  actor: Actor,
+  offerIndex = 0,
+): Promise<{ order_ref: string; order_id: string }> {
+  const offers = (await app.engine.listOffers()).filter(
+    (o) => o.publisher_slug === 'harbour-ledger',
+  );
+  const offer = offers[offerIndex]!.offer_code;
+  const page = await app.engine.offerPage({ publisher: 'harbour-ledger', offer });
+  const q = await app.engine.quote({
+    offer: { publisher_slug: 'harbour-ledger', offer_code: offer },
+    actor,
+    source: 'direct',
+    option: page!.options[0]!.option,
+  });
+  if (!q.ok || q.value.kind !== 'quote') throw new Error('no quote');
+  const g = await app.engine.requestApproval({
+    actor,
+    selection: { kind: 'quote', quote_id: q.value.quote_id },
+    consent: { terms: true, identity_share: false },
+  });
+  if (!g.ok) throw new Error('no approval');
+  const placed = await app.engine.payments.placeOrder({
+    approval_id: g.value.approval_id,
+    token: g.value.token,
+    actor,
+  });
+  if (!placed.ok) throw new Error('place failed');
+  return placed.value;
+}
+
+/** Create the PayPal order (checkout) and let the dry-run buyer approve it. */
+async function checkoutAndApprove(
+  app: App,
+  actor: Actor,
+  order: { order_ref: string; order_id: string },
+  scenario: string,
+): Promise<void> {
+  const co = await app.engine.payments.beginCheckout({ order_id: order.order_id, actor, scenario });
+  if (!co.ok) throw new Error(`checkout: ${co.error.code}`);
+  const ok = await app.engine.dryRunApprove({ order_ref: order.order_ref, actor, scenario });
+  if (!ok) throw new Error('dry-run approve failed');
+}
+
+async function callRows(
+  app: App,
+): Promise<{ operation: string; method: string; outcome: string; http_status: number | null }[]> {
+  return (
+    await app.db.query<{
+      operation: string;
+      method: string;
+      outcome: string;
+      http_status: number | null;
+    }>(`SELECT operation, method, outcome, http_status FROM provider_calls ORDER BY created_at, id`)
+  ).rows;
+}
+
+async function one(app: App, sql: string, params: unknown[] = []): Promise<number> {
+  return Number((await app.db.query<{ c: string }>(sql, params)).rows[0]?.c);
+}
 
 let app: App;
 let actor: Actor;
@@ -63,9 +140,9 @@ describe('B-06 kill_switch_mid_flow', () => {
     if (!blocked.ok) expect(blocked.error.code).toBe('payments_paused');
     // Blocked means no capture reached the transport and nothing was booked.
     const during = await callRows(app);
-    expect(during.filter((c) => c.operation === 'capture_order' && c.outcome !== 'blocked')).toEqual(
-      [],
-    );
+    expect(
+      during.filter((c) => c.operation === 'capture_order' && c.outcome !== 'blocked'),
+    ).toEqual([]);
     expect(during.length - before.length).toBeLessThanOrEqual(1);
     expect(await sales(order.order_id)).toBe(0);
     expect(await captureIds(order.order_id)).toBe(0);

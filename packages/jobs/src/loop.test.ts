@@ -258,9 +258,11 @@ describe('startLoop pause and resume (B-L5)', () => {
     const { d, sweepWindows } = makeDeps({ paypal_outbound: false });
     const loop = startLoop(d, { max_sleep_ms: 60_000, max_items: 4 });
     await vi.waitFor(() => expect(sweepWindows).toHaveBeenCalled());
-    const t0 = Date.now();
-    await loop.stop();
-    expect(Date.now() - t0).toBeLessThan(1000);
+    const settled = await Promise.race([
+      loop.stop().then(() => 'stopped'),
+      new Promise((resolve) => setTimeout(() => resolve('too slow'), 1000)),
+    ]);
+    expect(settled).toBe('stopped');
     const n = sweepWindows.mock.calls.length;
     await new Promise((r) => setTimeout(r, 30));
     expect(sweepWindows.mock.calls.length).toBe(n);
@@ -268,7 +270,8 @@ describe('startLoop pause and resume (B-L5)', () => {
 
   it('a switch that cannot be read counts as off: the loop pauses and carries on', async () => {
     const { d, sweepWindows } = makeDeps();
-    (d.switches as { isOn: () => Promise<boolean> }).isOn = () => Promise.reject(new Error('db down'));
+    (d.switches as { isOn: () => Promise<boolean> }).isOn = () =>
+      Promise.reject(new Error('db down'));
     const loop = startLoop(d, { max_sleep_ms: 5, max_items: 4 });
     await vi.waitFor(() => expect(logs.some((l) => l.msg === 'jobs.loop.pass_failed')).toBe(true));
     await loop.stop();
