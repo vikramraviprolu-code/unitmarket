@@ -5,12 +5,16 @@
 -- every timestamp from the Clock port. Runs unchanged on PGlite and stock Postgres 15+.
 
 -- Domains mirror the contract primitives (Id, MinorUnits, CurrencyCode, Sha256Hex).
+-- ums_id and the contract IdSchema (packages/contracts/src/primitives.ts) refuse the same set:
+-- 1..200 chars; no leading or trailing whitespace (ASCII and Unicode); no C0 or C1 control
+-- characters; no zero-width characters (U+200B-U+200D, U+2060, U+FEFF); no bidirectional
+-- controls (U+202A-U+202E, U+2066-U+2069).
 CREATE DOMAIN ums_id AS text
   CHECK (
     length(VALUE) BETWEEN 1 AND 200
-    AND VALUE ~ '^\S(.*\S)?$'
-    AND VALUE !~ '[[:cntrl:]]'
-    AND VALUE !~ '[​-‍⁠﻿]'
+    AND VALUE !~ E'^[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]'
+    AND VALUE !~ E'[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]$'
+    AND VALUE !~ E'[\\u0001-\\u001f\\u007f-\\u009f\\u200b-\\u200d\\u2060\\u202a-\\u202e\\u2066-\\u2069\\ufeff]'
   );
 CREATE DOMAIN ums_minor AS integer CHECK (VALUE >= 0);
 CREATE DOMAIN ums_currency AS text CHECK (VALUE ~ '^[A-Z]{3}$');

@@ -397,7 +397,7 @@ describe('append-only tables', () => {
     await expect(
       db.query(`UPDATE approvals SET expires_at = $1 WHERE id = 'apr_1'`, [T]),
     ).rejects.toThrow();
-    await db.query(`UPDATE approvals SET used_at = $1 WHERE id = 'apr_1'`, [T2]);
+    await db.query(`UPDATE approvals SET used_at = $1 WHERE id = 'apr_1'`, [T15]);
     await expect(
       db.query(`UPDATE approvals SET used_at = $1 WHERE id = 'apr_1'`, [T]),
     ).rejects.toThrow();
