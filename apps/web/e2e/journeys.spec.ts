@@ -1,7 +1,7 @@
 // Lane 15 e2e (offline, dry-run). Journeys that need the payments lane (05a) are test.fixme with
 // the lane named; they are written against the final page text so they run once 05a is wired.
 import { test, expect } from '@playwright/test';
-import { askPrice, buyerPage, expectDryRun, toApproval } from './support';
+import { askPrice, buyerPage, expectDryRun, payWithScenario, toApproval } from './support';
 
 test.describe('offer and discovery journeys up to the approval screen', () => {
   test('offer journey: offer, quote, terms, approval screen with the frozen total (A-12 first half)', async ({
@@ -140,10 +140,64 @@ test.describe('labels and accessibility', () => {
   });
 });
 
-test.describe('needs lane 05a (payments) and 10 (library, recovery)', () => {
-  test.fixme('offer journey: dry-run approve, return, library shows Ready with 5 days, receipt hash matches (A-12, PAY-09)', () => {});
-  test.fixme('claim-only scenario shows Confirming payment (A-11)', () => {});
-  test.fixme('pending scenario shows Payment pending at PayPal (A-16)', () => {});
-  test.fixme('mismatch scenario shows a calm frozen message and a case (A-13)', () => {});
-  test.fixme('order status changes are announced in the aria-live region (A11Y-4, order page)', () => {});
+test.describe('payments journeys (real engine over the dry-run model, no PayPal)', () => {
+  test('offer journey: approve, dry-run approve, return, library shows Ready with 5 days, receipt hash matches (A-12, PAY-09)', async ({
+    browser,
+  }) => {
+    const page = await buyerPage(browser);
+    await payWithScenario(page, { offer: 'tide-tables', scenario: 'happy' });
+    const live = page.getByTestId('order-live');
+    await expect(live).toContainText('Paid. Your item is in your library.');
+    await expectDryRun(page);
+    const receiptHref = await page.getByRole('link', { name: 'View receipt' }).getAttribute('href');
+    expect(receiptHref).toMatch(/^\/receipts\/ord_/);
+    await page.getByRole('link', { name: 'Open my library' }).click();
+    const item = page.getByTestId('library-item').filter({ hasText: 'tide table' }).first();
+    await expect(item.getByTestId('library-status')).toContainText(
+      /Ready, (5 days|4 days 2\d hours) left/,
+    );
+    await page.goto(receiptHref ?? '/');
+    const shown = (await page.getByTestId('receipt-sha256').textContent())?.trim();
+    expect(shown).toMatch(/^[0-9a-f]{64}$/);
+    const orderId = decodeURIComponent((receiptHref ?? '').split('/').pop() ?? '');
+    const api = await page.request.get(`/api/receipts/${encodeURIComponent(orderId)}`);
+    expect(api.status()).toBe(200);
+    expect(((await api.json()) as { sha256: string }).sha256).toBe(shown);
+  });
+
+  test('claim-only scenario shows Confirming payment (A-11)', async ({ browser }) => {
+    const page = await buyerPage(browser);
+    await payWithScenario(page, { offer: 'ferry-timetables', scenario: 'capture_202' });
+    await expect(page.getByTestId('order-live')).toContainText('Confirming payment');
+    await expect(page.getByRole('link', { name: 'Open my library' })).toHaveCount(0);
+  });
+
+  test('pending scenario shows Payment pending at PayPal (A-16)', async ({ browser }) => {
+    const page = await buyerPage(browser);
+    await payWithScenario(page, { offer: 'harbour-fees', scenario: 'pending_receiving_pref' });
+    await expect(page.getByTestId('order-live')).toContainText('Payment pending at PayPal');
+    await expect(page.getByRole('link', { name: 'Open my library' })).toHaveCount(0);
+  });
+
+  test('mismatch scenario shows a calm frozen message and a case (A-13)', async ({ browser }) => {
+    const page = await buyerPage(browser);
+    await payWithScenario(page, { offer: 'knot-notebook', scenario: 'mismatch_amount' });
+    const live = page.getByTestId('order-live');
+    await expect(live).toContainText('on hold while we check it');
+    await expect(live).toContainText('You have not been charged twice');
+    await expect(live).not.toContainText(/error|failed|exception/i);
+    // The recovery rules run in the in-process job loop; the order page then names the case.
+    await page.goto(page.url());
+    await expect(page.getByTestId('order-case')).toContainText(/case/i, { timeout: 20_000 });
+  });
+
+  test('order status changes are announced in the aria-live region (A11Y-4, order page)', async ({
+    browser,
+  }) => {
+    const page = await buyerPage(browser);
+    await payWithScenario(page, { offer: 'dock-history', scenario: 'happy' });
+    const live = page.locator('[aria-live="polite"][data-testid="order-live"]');
+    await expect(live).toHaveAttribute('aria-atomic', 'true');
+    await expect(live).toContainText('Paid. Your item is in your library.');
+  });
 });

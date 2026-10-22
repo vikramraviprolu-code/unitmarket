@@ -42,3 +42,28 @@ export async function toApproval(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Review and approve' }).click();
   await expect(page).toHaveURL(/\/approve\//);
 }
+
+/** Approval screen to the dry-run checkout page: confirm, continue to payment. */
+export async function toDryRunCheckout(page: Page): Promise<void> {
+  await page.getByLabel(/I confirm the price and terms above/).check();
+  await page.getByRole('button', { name: 'Continue to payment' }).click();
+  await expect(page).toHaveURL(/\/checkout\/dry-run\//);
+  await expect(page.getByRole('heading', { name: 'Dry run: no PayPal' }).first()).toBeVisible();
+}
+
+/**
+ * The whole buyer journey up to the order page: offer, price, terms, approval, dry-run checkout
+ * with the chosen pretend payment outcome, return. Each journey uses its own offer, because one
+ * buyer cannot hold two open orders for the same article.
+ */
+export async function payWithScenario(
+  page: Page,
+  o: { offer: string; scenario: string; option?: 'Read online' | 'Download and keep' },
+): Promise<void> {
+  await askPrice(page, { offer: o.offer, ...(o.option === undefined ? {} : { option: o.option }) });
+  await toApproval(page);
+  await toDryRunCheckout(page);
+  await page.getByLabel('What should the pretend payment do?').selectOption(o.scenario);
+  await page.getByRole('button', { name: 'Approve payment (dry run)' }).click();
+  await expect(page).toHaveURL(/\/orders\//);
+}
