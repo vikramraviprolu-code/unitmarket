@@ -363,6 +363,31 @@ describe('match: unit level, P5 order payee, amount, capture, claim, status', ()
       ['unt_2', 'matched'],
     ]);
   });
+  it('units come back in reference id order even when the expected list is in another order', () => {
+    const exp = expected();
+    const reversed = expected({ units: [exp.units[1]!, exp.units[0]!] });
+    const m = run(read(), { exp: reversed });
+    expect(m.level === 'units' && m.units.map((u) => u.reference_id)).toEqual(['unt_1', 'unt_2']);
+    const three = expected({
+      total_minor: 651,
+      units: [
+        { ...exp.units[1]!, reference_id: 'unt_c' },
+        { ...exp.units[0]!, reference_id: 'unt_a', amount_minor: 401 },
+        { ...exp.units[1]!, reference_id: 'unt_b', amount_minor: 0 },
+      ],
+    });
+    const r = read({}, [
+      unitRead('unt_b', 'MERCH2', 0, null),
+      unitRead('unt_c', 'MERCH2', 250, null),
+      unitRead('unt_a', 'MERCH1', 401, null),
+    ]);
+    const m3 = run(r, { exp: three });
+    expect(m3.level === 'units' && m3.units.map((u) => u.reference_id)).toEqual([
+      'unt_a',
+      'unt_b',
+      'unt_c',
+    ]);
+  });
   it('one bad unit does not hide a good one: both are reported', () => {
     const r = read({}, [
       unitRead('unt_1', 'MERCH1', 401, { id: 'CAP1', status: 'COMPLETED' }),
