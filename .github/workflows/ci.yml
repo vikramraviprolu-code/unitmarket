@@ -63,6 +63,7 @@ jobs:
       - run: pnpm check:no-live-host
       - run: pnpm check:secrets-names
       - run: pnpm check:fixtures
+      - run: pnpm check:routes
       # SUP-2: zero high or critical in production dependencies, or a dated waiver in the gate report.
       - run: pnpm audit --prod
 
