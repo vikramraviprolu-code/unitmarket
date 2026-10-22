@@ -15,6 +15,7 @@ import {
   RefundResSchema,
   RefundStatusSchema,
   WebhookVerdictSchema,
+  isUrlUnderOrigin,
 } from './paypal';
 
 const usd = (minor: number) => ({ currency: 'USD', minor });
@@ -116,7 +117,7 @@ describe('result unions', () => {
       kind: 'created',
       provider_order_id: 'ABC123',
       status: 'CREATED',
-      approve_url: 'https://example.test/approve',
+      approve_url: 'https://www.sandbox.paypal.com/checkoutnow?token=ABC123',
       debug_id: null,
     };
     expect(CreateOrderResSchema.safeParse(created).success).toBe(true);
@@ -195,5 +196,76 @@ describe('result unions', () => {
     expect(WebhookVerdictSchema.safeParse({ kind: 'malformed' }).success).toBe(true);
     expect(WebhookVerdictSchema.safeParse({ kind: 'unverifiable' }).success).toBe(true);
     expect(WebhookVerdictSchema.safeParse({ kind: 'verified' }).success).toBe(false);
+  });
+});
+
+// Review A (M2): URLs that reach a buyer's browser are shape-checked in the contract.
+describe('payer URLs (M2)', () => {
+  const live = `https://www.${'paypal'}.com/checkoutnow?token=ABC123`;
+  const badApprove = [
+    'https://example.test/approve',
+    live,
+    'http://www.sandbox.paypal.com/checkoutnow',
+    'https://www.sandbox.paypal.com.evil.example/x',
+    'https://evil.example/https://www.sandbox.paypal.com/',
+    'https://user@www.sandbox.paypal.com/x',
+    'javascript:alert(1)',
+    'data:text/html,x',
+    '',
+  ];
+  const created = {
+    kind: 'created',
+    provider_order_id: 'ABC123',
+    status: 'CREATED',
+    debug_id: null,
+  };
+  it('M2: CreateOrderRes approve_url must be on the sandbox approval host', () => {
+    const good = 'https://www.sandbox.paypal.com/checkoutnow?token=ABC123';
+    expect(CreateOrderResSchema.safeParse({ ...created, approve_url: good }).success).toBe(true);
+    for (const url of badApprove) {
+      expect(CreateOrderResSchema.safeParse({ ...created, approve_url: url }).success, url).toBe(
+        false,
+      );
+    }
+  });
+  it('M2: payer_action redirect_url is null or on the sandbox approval host', () => {
+    const fail = (redirect_url: string | null) =>
+      PayPalFailSchema.safeParse({ kind: 'payer_action', redirect_url, debug_id: null }).success;
+    expect(fail(null)).toBe(true);
+    expect(fail('https://www.sandbox.paypal.com/checkoutnow?token=ABC123')).toBe(true);
+    for (const url of badApprove) expect(fail(url), url).toBe(false);
+  });
+  it('M2: return_url and cancel_url take https or http://localhost only, no userinfo or fragment', () => {
+    const req = (u: Record<string, string>) =>
+      CreateOrderReqSchema.safeParse({ ...createReq, ...u }).success;
+    expect(req({})).toBe(true);
+    expect(req({ return_url: 'http://localhost/return' })).toBe(true);
+    for (const bad of [
+      'ftp://example.test/return',
+      'javascript:alert(1)',
+      'data:text/html,x',
+      'file:///etc/passwd',
+      'http://example.test/return',
+      'http://localhost.evil.test/return',
+      'https://user:pw@example.test/return',
+      'https://example.test/return#frag',
+      'http://localhost@evil.test/return',
+    ]) {
+      expect(req({ return_url: bad }), bad).toBe(false);
+      expect(req({ cancel_url: bad }), bad).toBe(false);
+    }
+  });
+  it('M2: isUrlUnderOrigin accepts only URLs whose origin equals the public origin', () => {
+    expect(isUrlUnderOrigin('https://example.test/return?x=1', 'https://example.test')).toBe(true);
+    expect(isUrlUnderOrigin('http://localhost:3000/cancel', 'http://localhost:3000')).toBe(true);
+    expect(isUrlUnderOrigin('https://example.test.evil.test/return', 'https://example.test')).toBe(
+      false,
+    );
+    expect(
+      isUrlUnderOrigin('https://evil.test/https://example.test/', 'https://example.test'),
+    ).toBe(false);
+    expect(isUrlUnderOrigin('https://example.test:8443/x', 'https://example.test')).toBe(false);
+    expect(isUrlUnderOrigin('http://example.test/x', 'https://example.test')).toBe(false);
+    expect(isUrlUnderOrigin('not a url', 'https://example.test')).toBe(false);
   });
 });

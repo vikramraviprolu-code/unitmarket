@@ -43,4 +43,33 @@ describe('DomainConfig', () => {
     expect(DomainConfigSchema.safeParse({ ...cfg, link_ttl_ms: -1 }).success).toBe(false);
     expect(DomainConfigSchema.safeParse({ ...cfg, reconcile_backoff_ms: [] }).success).toBe(false);
   });
+
+  it('M3: idem_safe_window_ms stays under the 6 h PayPal key retention; max_capture_retries is at most 1', () => {
+    const ok = (o: object) => DomainConfigSchema.safeParse({ ...cfg, ...o }).success;
+    expect(ok({ idem_safe_window_ms: 18_000_000 })).toBe(true);
+    expect(ok({ idem_safe_window_ms: 18_000_001 })).toBe(false);
+    expect(ok({ idem_safe_window_ms: 21_600_000 })).toBe(false);
+    expect(ok({ max_capture_retries: 1 })).toBe(true);
+    expect(ok({ max_capture_retries: 0 })).toBe(true);
+    expect(ok({ max_capture_retries: 2 })).toBe(false);
+  });
+  it('L4: public_origin refuses userinfo, query, fragment and an empty host', () => {
+    const ok = (o: string) => DomainConfigSchema.safeParse({ ...cfg, public_origin: o }).success;
+    expect(ok('https://example.test')).toBe(true);
+    expect(ok('https://example.test:8443')).toBe(true);
+    expect(ok('http://localhost:3000')).toBe(true);
+    for (const bad of [
+      'https://user@example.test',
+      'https://user:pw@example.test',
+      'https://example.test?x=1',
+      'https://example.test#frag',
+      'https://example.test/',
+      'https://',
+      'https://example.test:99999999',
+      'http://localhost@evil.test',
+      'http://localhost?x=1',
+    ]) {
+      expect(ok(bad), bad).toBe(false);
+    }
+  });
 });
