@@ -77,7 +77,24 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
-  domain/delivery: {}
+  domain/delivery:
+    dependencies:
+      '@umsbx/access-clock':
+        specifier: workspace:*
+        version: link:../access-clock
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/entitlements':
+        specifier: workspace:*
+        version: link:../entitlements
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/discovery: {}
 
