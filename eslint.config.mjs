@@ -875,6 +875,29 @@ export const NAMED_EXEMPTIONS = [
       'MVP-B offline acceptance (lane B-L5/B-L7): the web composition and route handlers are reachable only by relative path (@umsbx/web exports no composition); needed for the dry-run kill switch, timeout reconcile and call budget (B-06 to B-08) and the logs_clean journey through the route handlers (B-09)',
     off: ['sbx/no-package-escape'],
   },
+  {
+    files: ['tools/spike-kit/src/spike.ts'],
+    reason:
+      'B-L6 spike kit: the owner-run entry reads process.env, the real clock and passes the global fetch to the guarded wire; --dry-run never builds that wire (tests spy on every network entry point)',
+    off: [
+      'no-restricted-properties',
+      'no-restricted-globals',
+      'no-restricted-syntax',
+      'sbx/no-global-alias',
+    ],
+  },
+  {
+    files: ['tools/spike-kit/src/spike.test.ts'],
+    reason:
+      'B-L6: the test imports node:net, tls, http, https and dns only to spy on them and prove zero network use',
+    off: ['no-restricted-imports', 'sbx/no-restricted-dynamic-import'],
+  },
+  {
+    files: ['tools/spike-kit/src/spike-cli.integration.test.ts'],
+    reason:
+      'B-L6: runs the kit as a child process under a network-blocking preload and passes it a minimal environment',
+    off: ['no-restricted-imports', 'no-restricted-properties', 'sbx/no-global-alias'],
+  },
 ];
 const namedExemptions = NAMED_EXEMPTIONS.map((e) => ({
   files: e.files,

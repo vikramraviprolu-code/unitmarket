@@ -33,6 +33,20 @@ describe('check-no-live-host', () => {
     expect(r.status).toBe(0);
   });
 
+  it('allows the sandbox host in the spike kit file only (B-L6)', () => {
+    const sandbox = ['https://api-m', 'sandbox', 'paypal', 'com'].join('.');
+    const src = `export const SANDBOX_API = '${sandbox}';\n`;
+    const root = mkdtempSync(join(tmpdir(), 'live-host-'));
+    for (const rel of ['tools/spike-kit/src/spike.ts', 'tools/spike-kit/src/other.ts']) {
+      mkdirSync(dirname(join(root, rel)), { recursive: true });
+      writeFileSync(join(root, rel), src);
+    }
+    const r = runGuard(GUARD, root);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('tools/spike-kit/src/other.ts');
+    expect(r.out).not.toContain('spike-kit/src/spike.ts');
+  });
+
   it('passes on the clean repository', () => {
     const r = runGuard(GUARD);
     expect(r.out).toContain('check-no-live-host: ok');
