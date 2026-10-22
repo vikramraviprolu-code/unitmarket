@@ -78,8 +78,8 @@ describe('OPEN DEFECT OD-2 (HIGH, FIX-PAY2 H-2): refund accepted but never read 
     // status, FIX-PAY2 M-2); this scripted provider has to say so once it has accepted the refund.
     let refunded = false;
     const realOrder = w.paypal.getOrder.bind(w.paypal);
-    w.paypal.getOrder = async (id, scenario) => {
-      const res = await realOrder(id, scenario);
+    w.paypal.getOrder = async (id: string) => {
+      const res = await realOrder(id);
       if (!refunded || res.kind !== 'order') return res;
       return {
         ...res,
