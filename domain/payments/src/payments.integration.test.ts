@@ -136,7 +136,8 @@ describe('dry-run journeys over the real adapter', () => {
     });
     expect(r.ok && r.value.status).toBe('unresolved');
     expect(r.ok && r.value.items[0]!.access).toBe('locked');
-    expect(r.ok && r.value.buyer_message).toContain('RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION');
+    expect(r.ok && r.value.buyer_message).toBe('Payment pending at PayPal');
+    expect(r.ok && r.value.operator_note).toBe('RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION');
     expect(await count(w, 'ledger_entries')).toBe(0);
     expect(transport.calls().length).toBeLessThanOrEqual(6);
   });

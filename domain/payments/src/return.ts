@@ -290,6 +290,10 @@ export async function loadOrderView(db: SqlExecutor, order_id: Id): Promise<Orde
     order_ref: order.order_ref,
     status: order.status,
     buyer_message: messageFor(order, units, items, money),
+    operator_note:
+      order.status === 'unresolved'
+        ? (units.find((u) => u.status === 'pending')?.status_reason ?? null)
+        : null,
     items,
     environment: order.environment,
     approve_url: order.status === 'awaiting_buyer' ? (provider?.approve_url ?? null) : null,
@@ -312,9 +316,7 @@ function messageFor(
       return 'Confirming payment';
     case 'unresolved': {
       const pending = units.find((u) => u.status === 'pending');
-      return pending === undefined
-        ? 'Confirming payment'
-        : `Payment pending at PayPal: ${pending.status_reason ?? 'waiting for PayPal'}`;
+      return pending === undefined ? 'Confirming payment' : 'Payment pending at PayPal';
     }
     case 'paid':
     case 'paid_partial':

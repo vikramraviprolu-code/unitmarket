@@ -240,7 +240,8 @@ describe('claims never unlock', () => {
     expect(r.value.status).toBe('unresolved');
     expect(r.value.items[0]!.access).toBe('locked');
     expect(r.value.buyer_message).toContain('pending');
-    expect(r.value.buyer_message).toContain('RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION');
+    expect(r.value.buyer_message).not.toContain('RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION');
+    expect(r.value.operator_note).toBe('RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION');
     expect(await unit(a.order_id)).toMatchObject({
       status: 'pending',
       status_reason: 'RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION',

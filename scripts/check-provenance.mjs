@@ -55,10 +55,10 @@ const section = (() => {
 const listed = [...section.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
 
 if (process.argv.includes('--write')) {
-  const block = `${BEGIN}\n${[...headered]
+  const block = `${BEGIN}\n\n${[...headered]
     .sort()
     .map((f) => `- \`${f}\``)
-    .join('\n')}\n${END}\n`;
+    .join('\n')}\n\n${END}\n`;
   let next;
   if (docText.includes(BEGIN) && docText.includes(END)) {
     next =
