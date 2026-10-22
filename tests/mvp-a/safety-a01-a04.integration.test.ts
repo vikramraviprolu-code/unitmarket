@@ -13,7 +13,7 @@ import { BUYER_A, buy, makeWorld } from './world';
 const host = (...parts: string[]) => parts.join('.');
 const LIVE_API = host('api-m', 'paypal', 'com');
 const LIVE_WEB = host('www', 'paypal', 'com');
-const SANDBOX_API = host('api-m', 'sandbox', 'paypal', 'com');
+const SBX_HOST = host('api-m', 'sandbox', 'paypal', 'com');
 
 const base = (over: Record<string, string> = {}): Record<string, string> => ({
   UMS_MODE: 'offline',
@@ -95,7 +95,7 @@ describe('A-01 boot_refuses_live', () => {
     ['PAYPAL_API_BASE', `https://${LIVE_API}`],
     ['UMS_PUBLIC_ORIGIN', `https://${LIVE_WEB}`],
     ['SOME_OTHER_SETTING', `redirect=https://${LIVE_API}/v2/checkout/orders`],
-    ['SOME_OTHER_SETTING', `https://${SANDBOX_API.replace('sandbox.', 'sandbox%2e')}`],
+    ['SOME_OTHER_SETTING', `https://${SBX_HOST.replace('sandbox.', 'sandbox%2e')}`],
     ['SOME_OTHER_SETTING', LIVE_API.toUpperCase()],
   ] as const) {
     it(`a non-sandbox PayPal host in ${name} is refused`, () => {
@@ -384,24 +384,24 @@ describe('A-04 egress_guard', () => {
 
   it('control: the listed sandbox path is accepted', () => {
     expect(refused({ path: '/v2/checkout/orders/ABC123' }).ok).toBe(true);
-    expect(refused({ path: `https://${SANDBOX_API}/v2/checkout/orders/ABC123` }).ok).toBe(true);
+    expect(refused({ path: `https://${SBX_HOST}/v2/checkout/orders/ABC123` }).ok).toBe(true);
   });
 
   it('a wrong host is refused', () => {
     expect(refused({ path: `https://${LIVE_API}/v2/checkout/orders/ABC123` }).ok).toBe(false);
     expect(refused({ path: 'https://example.invalid/v2/checkout/orders/ABC123' }).ok).toBe(false);
     expect(
-      refused({ path: `https://${SANDBOX_API}.example.invalid/v2/checkout/orders/ABC123` }).ok,
+      refused({ path: `https://${SBX_HOST}.example.invalid/v2/checkout/orders/ABC123` }).ok,
     ).toBe(false);
     expect(refused({ path: `https://x@${LIVE_API}/v2/checkout/orders/ABC123` }).ok).toBe(false);
   });
 
   it('http scheme is refused', () => {
-    expect(refused({ path: `http://${SANDBOX_API}/v2/checkout/orders/ABC123` }).ok).toBe(false);
+    expect(refused({ path: `http://${SBX_HOST}/v2/checkout/orders/ABC123` }).ok).toBe(false);
   });
 
   it('port 8443 is refused', () => {
-    expect(refused({ path: `https://${SANDBOX_API}:8443/v2/checkout/orders/ABC123` }).ok).toBe(
+    expect(refused({ path: `https://${SBX_HOST}:8443/v2/checkout/orders/ABC123` }).ok).toBe(
       false,
     );
   });
