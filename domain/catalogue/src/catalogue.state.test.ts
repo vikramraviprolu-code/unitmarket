@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports -- TEMP-until-lane-16: tests read the seed fixture with node:fs / node:path until testkit lands. */
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';

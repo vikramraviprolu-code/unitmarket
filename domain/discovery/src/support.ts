@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports -- TEMP-until-lane-16: the test stack (@umsbx/testkit testDb, testDeps) is not on main yet; swap this helper for it then. */
 // Test helper only (never exported from index.ts): migrated in-memory PGlite, a seeded catalogue that
 // adds climate articles for discovery, and deps for the agent path. Pattern adapted from
 // domain/offer-entry/src/support.ts (lane 14a). Content is synthetic and fictional.

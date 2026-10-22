@@ -1,8 +1,17 @@
 // Idempotency-Key handling on `api_idempotency`. A row is reserved before the handler runs
-// (response = {"pending":true}), completed on success and deleted on failure so a client can retry.
+// (response = {"pending":true}) and completed on success. A handler that returns a refusal (4xx)
+// clears the reservation so the client can retry; a handler that THROWS keeps it, because side
+// effects may already have happened. A pending row older than IDEMPOTENCY_PENDING_TTL_MS is
+// reclaimed by the next attempt, so a crash never leaves a key stuck at 409 forever.
+//
+// Contract for money handlers: this layer is the first guard, not the only one. Every handler that
+// moves money or calls a provider must be idempotent by its own provider request id (the order or
+// payment attempt id sent as PayPal-Request-Id), so a reclaimed or retried attempt cannot pay twice.
 import { sha256Hex } from './csrf';
 import type { Actor } from '@umsbx/contracts';
 import type { SecurityDeps } from './route';
+
+export const IDEMPOTENCY_PENDING_TTL_MS = 5 * 60_000;
 
 export const IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -65,15 +74,38 @@ export async function beginIdempotent(
     ],
   );
   if (inserted.rows.length > 0) return { kind: 'new' };
-  const res = await deps.db.query<{ route: string; request_sha256: string; response: unknown }>(
-    'SELECT route, request_sha256, response FROM api_idempotency WHERE actor_kind = $1 AND actor_id = $2 AND key = $3',
+  const res = await deps.db.query<{
+    route: string;
+    request_sha256: string;
+    response: unknown;
+    updated_at: unknown;
+  }>(
+    'SELECT route, request_sha256, response, updated_at FROM api_idempotency WHERE actor_kind = $1 AND actor_id = $2 AND key = $3',
     [scope.actor_kind, scope.actor_id, scope.key],
   );
   const row = res.rows[0];
   if (row === undefined) return { kind: 'in_progress' };
   if (row.route !== route || row.request_sha256 !== request_sha256) return { kind: 'key_reused' };
   const stored = parse(row.response);
-  if (stored.pending === true) return { kind: 'in_progress' };
+  if (stored.pending === true) {
+    const age = deps.clock.now().getTime() - Date.parse(String(row.updated_at));
+    if (!(age > IDEMPOTENCY_PENDING_TTL_MS)) return { kind: 'in_progress' };
+    // Reclaim: only one concurrent attempt wins the conditional update.
+    const taken = await deps.db.query(
+      `UPDATE api_idempotency SET updated_at = $4
+       WHERE actor_kind = $1 AND actor_id = $2 AND key = $3
+         AND response @> '{"pending":true}'::jsonb AND updated_at = $5::timestamptz
+       RETURNING id`,
+      [
+        scope.actor_kind,
+        scope.actor_id,
+        scope.key,
+        now,
+        new Date(row.updated_at as string | number | Date).toISOString(),
+      ],
+    );
+    return taken.rows.length > 0 ? { kind: 'new' } : { kind: 'in_progress' };
+  }
   return { kind: 'replay', response: stored as unknown as StoredResponse };
 }
 

@@ -17,7 +17,7 @@ const meta: RouteMeta = {
 
 describe('idempotency', () => {
   it('idempotency replays the stored response and refuses a changed body with 422', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     let runs = 0;
     const route = withRoute(meta, z.object({ n: z.number() }).strict(), async (ctx) => {
       runs += 1;
@@ -57,7 +57,7 @@ describe('idempotency', () => {
   });
 
   it('a key belongs to its actor: another buyer with the same key runs afresh', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     let runs = 0;
     const route = withRoute(meta, z.object({}).strict(), async () => ({
       status: 201 as const,
@@ -82,7 +82,7 @@ describe('idempotency', () => {
   });
 
   it('a failed attempt is not stored, so the same key can retry', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     let fail = true;
     const route = withRoute(meta, z.object({}).strict(), async () =>
       fail

@@ -5,15 +5,22 @@ import type { Result } from '@umsbx/contracts';
 import type { BootRefusal } from './refusal';
 import { BOOT_REFUSAL_EXIT_CODE, refusalLine } from './refusal';
 import { makeSecret } from './secret';
-import { ENV_NAMES, KNOWN_CORRIDORS, MIN_SECRET_BYTES, ORIGIN_PATTERN } from './schema';
+import { KNOWN_CORRIDORS, MIN_SECRET_BYTES, ORIGIN_PATTERN } from './schema';
 import type { Config, Mode } from './schema';
 
 type Env = Record<string, string | undefined>;
 
-// Built from parts so no PayPal hostname literal sits in the tree (scripts/check-no-live-host).
-const PP = ['paypal', 'com'].join('.');
-const ALLOWED_PAYPAL_HOST = ['api-m', 'sandbox', PP].join('.');
-const PAYPAL_HOST = new RegExp(`[a-z0-9.-]*${PP.replace('.', '\\.')}`, 'gi');
+// D-013: the sandbox base URL is a code constant in packages/transport and no environment variable
+// may carry a PayPal host at all, sandbox or live. The pattern matches the registrable names only.
+const PAYPAL_HOST = /paypal(?:objects)?\.com/i;
+const carriesPayPalHost = (v: string): boolean => {
+  if (PAYPAL_HOST.test(v)) return true;
+  try {
+    return PAYPAL_HOST.test(decodeURIComponent(v));
+  } catch {
+    return false;
+  }
+};
 const MODE_WORD = /(?:^|[^a-z0-9])(?:live|production)(?:$|[^a-z0-9])/i;
 
 const refuse = (code: BootRefusal['code'], name: string) => err<BootRefusal>({ code, name });
@@ -37,13 +44,9 @@ export function loadConfig(env: Env): Result<Config, BootRefusal> {
     return refuse('live_not_available', 'NEXT_PUBLIC_UMS_ENV_LABEL');
   }
 
-  // 2. any PayPal hostname other than the sandbox API host, in any known value
-  for (const name of ENV_NAMES) {
-    const v = env[name];
-    if (v === undefined) continue;
-    for (const host of v.match(PAYPAL_HOST) ?? []) {
-      if (host.toLowerCase() !== ALLOWED_PAYPAL_HOST) return refuse('non_sandbox_host', name);
-    }
+  // 2. any PayPal hostname in any environment variable value (D-013)
+  for (const [name, v] of Object.entries(env)) {
+    if (v !== undefined && carriesPayPalHost(v)) return refuse('non_sandbox_host', name);
   }
 
   // 3. connect flag

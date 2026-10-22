@@ -3,7 +3,7 @@
 // The domain layering lint (S1) bars @umsbx/db and @umsbx/runtime in domain packages. State tests
 // need a real PGlite database and the fake clock, so this one file opts out with a reason. See the
 // change request in the lane 06 hand-off (add a test-only exemption to eslint.config.mjs).
-/* eslint-disable no-restricted-imports -- S1 exemption for the test harness, see header */
+
 import { migrate, openDatabase } from '@umsbx/db';
 import { cryptoIds, fakeClock, seededIds } from '@umsbx/runtime';
 import type {

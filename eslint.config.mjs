@@ -99,6 +99,18 @@ const DEEP = { group: ['@umsbx/*/*'], message: 'Only a package root export is pu
 const pat = (group, message) => ({ group, message });
 const BASE_PATTERNS = [pat(SIM, MSG_SIM), pat(NETWORK_MODULES, MSG_NET), DEEP];
 
+// Every randomness entry point of node:crypto. Hashing and HMAC (createHash, createHmac,
+// timingSafeEqual) stay available to the two approval files that are allowed to import it.
+const RANDOM_FNS = [
+  'randomUUID',
+  'randomBytes',
+  'randomInt',
+  'randomFill',
+  'randomFillSync',
+  'getRandomValues',
+  'webcrypto',
+  'subtle',
+];
 const BASE_PATHS = [
   {
     name: 'node:process',
@@ -108,12 +120,12 @@ const BASE_PATHS = [
   { name: 'process', importNames: ['env'], message: 'S3: only packages/config reads process.env.' },
   {
     name: 'node:crypto',
-    importNames: ['randomUUID', 'randomBytes', 'randomInt', 'getRandomValues'],
+    importNames: RANDOM_FNS,
     message: 'S6: randomness and ids only in packages/runtime (inject Ids or an Rng).',
   },
   {
     name: 'crypto',
-    importNames: ['randomUUID', 'randomBytes', 'randomInt', 'getRandomValues'],
+    importNames: RANDOM_FNS,
     message: 'S6: randomness and ids only in packages/runtime (inject Ids or an Rng).',
   },
 ];
@@ -130,14 +142,56 @@ const TIME_PROPS = [
   { object: 'performance', property: 'now', message: 'S6: use the injected Clock.' },
   { object: 'crypto', property: 'randomUUID', message: 'S6: use injected Ids.' },
   { object: 'crypto', property: 'getRandomValues', message: 'S6: use an injected Rng.' },
+  { object: 'crypto', property: 'randomBytes', message: 'S6: use injected Ids or an Rng.' },
+  { object: 'crypto', property: 'randomInt', message: 'S6: use an injected Rng.' },
+  { object: 'crypto', property: 'randomFillSync', message: 'S6: use an injected Rng.' },
+  { object: 'crypto', property: 'randomFill', message: 'S6: use an injected Rng.' },
   { object: 'globalThis', property: 'fetch', message: MSG_NET },
   { object: 'process', property: 'env', message: 'S3: only packages/config reads process.env.' },
 ];
+const GLOBAL_OBJ = '/^(globalThis|self|window|global)$/';
+const NET_GLOBAL = '/^(fetch|WebSocket|XMLHttpRequest|EventSource)$/';
 const SYNTAX = {
-  time: {
-    selector: "NewExpression[callee.name='Date'][arguments.length=0]",
-    message: 'S6: new Date() reads real time; use the injected Clock.',
-  },
+  // Review H2: every spelling of "read the clock" that the plain Date.now rule misses.
+  time: [
+    {
+      selector:
+        "NewExpression[callee.name='Date'][arguments.length=0], NewExpression[callee.property.name='Date'][arguments.length=0]",
+      message: 'S6: new Date() reads real time; use the injected Clock.',
+    },
+    {
+      selector:
+        "NewExpression[callee.name='Date'] > Identifier.arguments[name='undefined'], NewExpression[callee.property.name='Date'] > Identifier.arguments[name='undefined']",
+      message: 'S6: new Date(undefined) reads real time; use the injected Clock.',
+    },
+    {
+      selector: "CallExpression[callee.object.name='Reflect'][callee.property.name='construct']",
+      message: 'S6: Reflect.construct can build a real-time Date; use the injected Clock.',
+    },
+    {
+      selector: `MemberExpression[object.property.name='Date'][property.name='now']`,
+      message: 'S6: use the injected Clock.',
+    },
+  ],
+  // Review H2: network globals reached through globalThis/self/window, by name or computed.
+  network: [
+    {
+      selector: `MemberExpression[object.name=${GLOBAL_OBJ}][property.name=${NET_GLOBAL}]`,
+      message: MSG_NET,
+    },
+    {
+      selector: `MemberExpression[object.name=${GLOBAL_OBJ}][computed=true][property.value=${NET_GLOBAL}]`,
+      message: MSG_NET,
+    },
+    {
+      selector: `MemberExpression[object.name=${GLOBAL_OBJ}][computed=true]:not([property.type='Literal'])`,
+      message: 'S2: a computed lookup on the global object can reach fetch; name the property.',
+    },
+    {
+      selector: `VariableDeclarator[init.name=${GLOBAL_OBJ}][id.type='ObjectPattern']`,
+      message: 'S2: do not destructure the global object; it can pull in fetch.',
+    },
+  ],
   // Name-based: client-exposed prefixes may never carry a secret. Only the label is allowed.
   publicName: {
     selector:
@@ -192,7 +246,71 @@ const noPackageEscape = {
     };
   },
 };
-const sbx = { rules: { 'no-package-escape': noPackageEscape } };
+
+// Review H2: no-restricted-imports does not see import() or require(). This rule applies the same
+// patterns and paths to them, and bars a specifier it cannot read statically (a variable, a
+// concatenation, a template with a placeholder).
+const globToRegExp = (glob) => {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === '*' && glob[i + 1] === '*') {
+      i++;
+      if (glob[i + 1] === '/') {
+        i++;
+        re += '(?:.*/)?';
+      } else re += '.*';
+    } else if (c === '*') re += '[^/]*';
+    else re += c.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${re}(?:/.*)?$`);
+};
+const noRestrictedDynamicImport = {
+  meta: {
+    type: 'problem',
+    schema: [{ type: 'object' }],
+    messages: { barred: '{{msg}}', dynamic: 'Dynamic import needs a string literal specifier.' },
+  },
+  create(context) {
+    const opts = context.options[0] ?? {};
+    const patterns = (opts.patterns ?? []).map((p) => ({
+      res: p.group.filter((g) => !g.startsWith('!')).map(globToRegExp),
+      not: p.group.filter((g) => g.startsWith('!')).map((g) => globToRegExp(g.slice(1))),
+      message: p.message,
+    }));
+    const paths = (opts.paths ?? []).filter((p) => p.importNames === undefined);
+    const staticSpec = (n) => {
+      if (n?.type === 'Literal' && typeof n.value === 'string') return n.value;
+      if (n?.type === 'TemplateLiteral' && n.expressions.length === 0)
+        return n.quasis[0].value.cooked;
+      return null;
+    };
+    const check = (node, arg, isRequire) => {
+      const spec = staticSpec(arg);
+      if (spec === null) {
+        if (!isRequire) context.report({ node, messageId: 'dynamic' });
+        return;
+      }
+      const hit =
+        patterns.find((p) => p.res.some((r) => r.test(spec)) && !p.not.some((r) => r.test(spec))) ??
+        paths.find((p) => p.name === spec);
+      if (hit) context.report({ node, messageId: 'barred', data: { msg: hit.message } });
+    };
+    return {
+      ImportExpression: (n) => check(n, n.source, false),
+      CallExpression(n) {
+        if (n.callee.type === 'Identifier' && n.callee.name === 'require' && n.arguments.length > 0)
+          check(n, n.arguments[0], true);
+      },
+    };
+  },
+};
+const sbx = {
+  rules: {
+    'no-package-escape': noPackageEscape,
+    'no-restricted-dynamic-import': noRestrictedDynamicImport,
+  },
+};
 
 /**
  * Build one config entry.
@@ -222,7 +340,16 @@ function entry(files, { extra = [], paths = [], ignores = [], allow = {} } = {})
       'no-restricted-imports': ['error', { patterns, paths: [...basePaths, ...paths] }],
       'no-restricted-globals': allow.network ? 'off' : ['error', ...NO_FETCH_GLOBALS],
       'no-restricted-properties': ['error', ...props],
-      'no-restricted-syntax': ['error', ...(allow.time ? [] : [SYNTAX.time]), SYNTAX.publicName],
+      'sbx/no-restricted-dynamic-import': [
+        'error',
+        { patterns, paths: [...basePaths, ...paths], allowNetwork: Boolean(allow.network) },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        ...(allow.time ? [] : SYNTAX.time),
+        ...(allow.network ? [] : SYNTAX.network),
+        SYNTAX.publicName,
+      ],
     },
   };
 }
@@ -238,7 +365,7 @@ function pair(dir, opts = {}) {
     }),
     entry(
       TESTS.map((t) => `${dir}/${t}`),
-      opts,
+      opts.testExtra === undefined ? opts : { ...opts, extra: opts.testExtra },
     ),
   ];
 }
@@ -269,16 +396,57 @@ const AGENT_FORBIDDEN = pkg([
 const FRAMEWORK = ['next', 'next/*', 'react', 'react/*', 'react-dom', 'react-dom/*', 'server-only'];
 const DRIVERS = ['pg', 'pg/*', '@electric-sql/*', 'zod', 'zod/*', 'node:*'];
 
+const HELPERS = ['test-fixtures.ts', 'world.ts', 'support.ts'];
 const packageEntries = [
   // Z2/Z3 domain: pure TypeScript. Contracts and sibling domain modules only (S1).
+  // Tests and test helpers (test-fixtures.ts, world.ts, support.ts) may also use the database,
+  // runtime doubles and the scripted model; only *.test.ts may use node:fs and node:crypto.
   ...DOMAIN.flatMap((name) => {
-    const extra = [
-      pat(except(INFRA, ['testkit']), S1_MSG),
+    const dir = `domain/${name}`;
+    const s4 = ['discovery', 'fit'].includes(name);
+    // S4/9.10 (lane 14b CR-1): only discovery calls the model port implementation.
+    const modelOk = name === 'discovery' ? ['model'] : [];
+    const prodExtra = [
+      pat(except(INFRA, ['testkit', ...modelOk]), S1_MSG),
       pat(FRAMEWORK, S1_MSG),
       pat(DRIVERS, S1_MSG),
-      ...(['discovery', 'fit'].includes(name) ? [pat(AGENT_FORBIDDEN, S4_MSG)] : []),
+      ...(s4 ? [pat(AGENT_FORBIDDEN, S4_MSG)] : []),
     ];
-    return pair(`domain/${name}`, { extra, prod: [] });
+    const harnessExtra = (nodeAllowed) => [
+      pat(except(INFRA, ['testkit', 'db', 'runtime', ...modelOk]), S1_MSG),
+      pat(FRAMEWORK, S1_MSG),
+      pat(nodeAllowed ? DRIVERS.filter((d) => d !== 'node:*') : DRIVERS, S1_MSG),
+      ...(s4
+        ? [
+            pat(
+              AGENT_FORBIDDEN.filter((p) => p !== '@umsbx/db'),
+              S4_MSG,
+            ),
+          ]
+        : []),
+    ];
+    const helpers = HELPERS.map((h) => `${dir}/**/${h}`);
+    return [
+      entry(inDir(dir), {
+        extra: [...prodExtra, pat(pkg(['testkit']), 'testkit is for tests only.')],
+        ignores: [...TESTS.map((t) => `${dir}/${t}`), ...helpers],
+      }),
+      entry(helpers, { extra: harnessExtra(false) }),
+      entry(
+        TESTS.map((t) => `${dir}/${t}`),
+        { extra: harnessExtra(true) },
+      ),
+    ];
+  }),
+  // approval: hashing and HMAC need node:crypto, nothing else from node:*. The random functions
+  // stay banned by name (RANDOM_FNS), so these two files cannot mint ids, nonces or salts.
+  entry(['domain/approval/src/canonical.ts', 'domain/approval/src/token.ts'], {
+    extra: [
+      pat(except(INFRA, []), S1_MSG),
+      pat(FRAMEWORK, S1_MSG),
+      pat(DRIVERS.filter((d) => d !== 'node:*').concat(['node:*', '!node:crypto']), S1_MSG),
+      pat(pkg(['testkit']), 'testkit is for tests only.'),
+    ],
   }),
   // contracts: zod only.
   ...pair('packages/contracts', {
@@ -309,6 +477,16 @@ const packageEntries = [
     ],
   }),
   ...pair('packages/safety', {
+    // Lane 02 follow-up: safety tests use the real database, logger and runtime doubles.
+    testExtra: [
+      pat(
+        except(
+          [...DOMAIN, ...INFRA],
+          ['contracts', 'transport', 'safety', 'testkit', 'db', 'obs', 'runtime'],
+        ),
+        'safety tests import contracts, transport, db, obs and runtime only.',
+      ),
+    ],
     extra: [
       pat(
         except([...DOMAIN, ...INFRA], ['contracts', 'transport', 'safety', 'testkit']),

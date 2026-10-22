@@ -168,3 +168,208 @@ describe('runtime rules (2.3 S3, S6, no NEXT_PUBLIC secrets)', () => {
     expect(await lint('apps/web/app/page.tsx', label)).toEqual([]);
   });
 });
+
+// Review H2: dynamic import() and global lookups used to bypass the import and global rules.
+describe('bypass attempts (review H2)', () => {
+  const inModel = 'packages/model/src/x.ts';
+  const inDomain = 'domain/payments/src/x.ts';
+  const cases: [string, string, string][] = [
+    [
+      'import() of a barred workspace package',
+      inModel,
+      "export const m = () => import('@umsbx/paypal');",
+    ],
+    [
+      'import() of a package the model may not use',
+      inModel,
+      "export const m = () => import('@umsbx/payments');",
+    ],
+    ['import() of a network module', inModel, "export const m = () => import('node:https');"],
+    [
+      'new globalThis.WebSocket',
+      inModel,
+      "export const m = new globalThis.WebSocket('wss://x.test');",
+    ],
+    ['self.fetch', inModel, "export const m = () => self.fetch('x');"],
+    ['window.XMLHttpRequest', inModel, 'export const m = new window.XMLHttpRequest();'],
+    [
+      'import() of a simulation package',
+      inDomain,
+      `export const m = () => import('${SIM_SCOPE}/harness');`,
+    ],
+    [
+      'import() of a template literal',
+      inDomain,
+      'export const m = () => import(`@unitmarket/core`);',
+    ],
+    [
+      'import() of a concatenated specifier',
+      inDomain,
+      "export const m = () => import('node:' + 'https');",
+    ],
+    ['import() of a variable', inDomain, 'export const m = (n: string) => import(n);'],
+    ['computed globalThis lookup', inDomain, "export const m = globalThis['fe' + 'tch'];"],
+    ['destructured fetch', inDomain, 'export const { fetch: f } = globalThis;'],
+    ['Reflect.construct(Date)', inDomain, 'export const m = Reflect.construct(Date, []);'],
+    ['new Date(undefined)', inDomain, 'export const m = new Date(undefined);'],
+    ['new globalThis.Date()', inDomain, 'export const m = new globalThis.Date();'],
+    ['globalThis.Date.now()', inDomain, 'export const m = globalThis.Date.now();'],
+  ];
+  it.each(cases)('fails: %s', async (_name, file, code) => {
+    const m = await lint(file, `${code}\n`);
+    expect(m.length).toBeGreaterThan(0);
+  });
+
+  it('allows a literal import() of an allowed package and new Date(arg)', async () => {
+    expect(
+      await lint(
+        inDomain,
+        "export const m = () => import('@umsbx/contracts');\nexport const d = new Date(0);\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it('the transport package may still use the network globals', async () => {
+    expect(
+      await lint(
+        'packages/transport/src/x.ts',
+        "export const m = () => globalThis.fetch('x');\nexport const n = () => import('node:https');\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it('runtime may read real time through the globals', async () => {
+    expect(
+      await lint('packages/runtime/src/x.ts', 'export const m = new globalThis.Date();\n'),
+    ).toEqual([]);
+  });
+});
+
+// Wave 2 exemptions (coordinator request) and the lane 02 follow-up.
+describe('narrow test and crypto exemptions', () => {
+  const hash = "import { createHash } from 'node:crypto';\nexport const h = createHash;\n";
+  it('approval canonical.ts and token.ts may import node:crypto, but not its random functions', async () => {
+    for (const f of ['canonical.ts', 'token.ts']) {
+      expect(await lint(`domain/approval/src/${f}`, hash), f).toEqual([]);
+      for (const name of [
+        'randomBytes',
+        'randomUUID',
+        'randomInt',
+        'getRandomValues',
+        'randomFillSync',
+        'randomFill',
+      ]) {
+        const m = await lint(
+          `domain/approval/src/${f}`,
+          `import { ${name} } from 'node:crypto';\nexport const r = ${name};\n`,
+        );
+        expect(m.length, `${f} ${name}`).toBeGreaterThan(0);
+      }
+      const ns = await lint(
+        `domain/approval/src/${f}`,
+        "import crypto from 'node:crypto';\nexport const r = crypto.randomBytes(4);\n",
+      );
+      expect(ns.length, `${f} namespace`).toBeGreaterThan(0);
+      const fs = await lint(
+        `domain/approval/src/${f}`,
+        "import { readFileSync } from 'node:fs';\nexport const r = readFileSync;\n",
+      );
+      expect(fs.length, `${f} fs`).toBeGreaterThan(0);
+    }
+  });
+  it('other domain production files still cannot import node:crypto', async () => {
+    expect((await lint('domain/approval/src/other.ts', hash)).length).toBeGreaterThan(0);
+    expect((await lint('domain/ledger/src/canonical.ts', hash)).length).toBeGreaterThan(0);
+  });
+
+  const dbImport =
+    "import { openDatabase } from '@umsbx/db';\nimport { fakeClock } from '@umsbx/runtime';\nexport const x = [openDatabase, fakeClock];\n";
+  it('domain tests and test helpers may import @umsbx/db and @umsbx/runtime', async () => {
+    for (const f of [
+      'domain/ledger/src/a.test.ts',
+      'domain/ledger/src/a.state.test.ts',
+      'domain/ledger/src/test-fixtures.ts',
+      'domain/ledger/src/world.ts',
+      'domain/ledger/src/support.ts',
+      'domain/discovery/src/support.ts',
+    ])
+      expect(await lint(f, dbImport), f).toEqual([]);
+  });
+  it('domain production files still cannot import @umsbx/db or @umsbx/runtime', async () => {
+    expect((await lint('domain/ledger/src/service.ts', dbImport)).length).toBeGreaterThan(0);
+  });
+  it('tests and helpers stay barred from providers, and discovery from payments', async () => {
+    for (const f of ['domain/ledger/src/a.test.ts', 'domain/ledger/src/world.ts']) {
+      for (const spec of ['@umsbx/paypal', '@umsbx/transport', '@umsbx/safety'])
+        expect(
+          (await lint(f, `import { a } from '${spec}';\nexport const b = a;\n`)).length,
+          `${f} ${spec}`,
+        ).toBeGreaterThan(0);
+    }
+    expect(
+      (
+        await lint(
+          'domain/discovery/src/support.ts',
+          "import { a } from '@umsbx/payments';\nexport const b = a;\n",
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+  it('node:fs and node:crypto are for *.test.ts only, and random functions stay banned', async () => {
+    const fs = "import { readFileSync } from 'node:fs';\nexport const r = readFileSync;\n";
+    expect(await lint('domain/ledger/src/a.test.ts', fs)).toEqual([]);
+    expect(await lint('domain/ledger/src/a.test.ts', hash)).toEqual([]);
+    expect((await lint('domain/ledger/src/world.ts', fs)).length).toBeGreaterThan(0);
+    expect((await lint('domain/ledger/src/support.ts', hash)).length).toBeGreaterThan(0);
+    expect(
+      (
+        await lint(
+          'domain/ledger/src/a.test.ts',
+          "import { randomBytes } from 'node:crypto';\nexport const r = randomBytes;\n",
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+  it('lane 02 follow-up: safety and security tests may import db, obs and runtime; production may not', async () => {
+    const code =
+      "import { openDatabase } from '@umsbx/db';\nimport { createLogger } from '@umsbx/obs';\nimport { fakeClock } from '@umsbx/runtime';\nexport const x = [openDatabase, createLogger, fakeClock];\n";
+    expect(await lint('packages/safety/src/a.state.test.ts', code)).toEqual([]);
+    expect(await lint('packages/security/src/a.test.ts', code)).toEqual([]);
+    expect((await lint('packages/safety/src/a.ts', code)).length).toBeGreaterThan(0);
+    expect(
+      (
+        await lint(
+          'packages/safety/src/a.test.ts',
+          "import { a } from '@umsbx/paypal';\nexport const b = a;\n",
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+});
+
+describe('@umsbx/model is for domain/discovery only (S4, 14b CR-1)', () => {
+  const model =
+    "import { createScriptedModel } from '@umsbx/model';\nexport const m = createScriptedModel;\n";
+  const fs = "import { readFileSync } from 'node:fs';\nexport const r = readFileSync;\n";
+  it('discovery production, tests and helpers may import the model', async () => {
+    for (const f of ['discover.ts', 'discover.state.test.ts', 'support.ts'])
+      expect(await lint(`domain/discovery/src/${f}`, model), f).toEqual([]);
+  });
+  it('no other domain package may, in production, tests or helpers', async () => {
+    for (const d of ['fit', 'payments', 'ledger', 'approval', 'catalogue'])
+      for (const f of ['x.ts', 'x.test.ts', 'support.ts'])
+        expect((await lint(`domain/${d}/src/${f}`, model)).length, `${d}/${f}`).toBeGreaterThan(0);
+  });
+  it('discovery may still not import payments, and uses node:fs in tests only', async () => {
+    expect(
+      (
+        await lint(
+          'domain/discovery/src/discover.ts',
+          "import { a } from '@umsbx/payments';\nexport const b = a;\n",
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(await lint('domain/discovery/src/discover.state.test.ts', fs)).toEqual([]);
+    expect((await lint('domain/discovery/src/discover.ts', fs)).length).toBeGreaterThan(0);
+  });
+});

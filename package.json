@@ -20,16 +20,19 @@
     "test:integration": "vitest run --maxWorkers=2 --project integration --passWithNoTests",
     "test:adversarial": "vitest run --maxWorkers=2 --project adversarial --passWithNoTests",
     "test:golden": "vitest run --maxWorkers=2 --project golden --passWithNoTests",
+    "test:e2e": "node -e \"console.log('test:e2e: placeholder until lane 15 adds the Playwright suite (offline). Nothing was run.')\"",
     "check:isolation": "node scripts/check-isolation.mjs",
     "check:no-live-host": "node scripts/check-no-live-host.mjs",
     "check:secrets-names": "node scripts/check-secrets-names.mjs",
     "check:fixtures": "node scripts/check-fixtures.mjs",
+    "check:routes": "node scripts/route-inventory.mjs --check",
+    "check:provenance": "node scripts/check-provenance.mjs",
     "check:bundle": "node scripts/check-bundle-secrets.mjs",
     "mutation": "node scripts/mutation-checks.mjs",
     "evidence": "node scripts/evidence.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "ci": "pnpm install --frozen-lockfile && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:isolation && pnpm check:no-live-host && pnpm check:secrets-names && pnpm check:fixtures"
+    "ci": "pnpm install --frozen-lockfile && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:isolation && pnpm check:no-live-host && pnpm check:secrets-names && pnpm check:fixtures && pnpm check:routes && pnpm check:provenance"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

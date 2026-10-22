@@ -283,6 +283,10 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../db
 
   packages/testkit: {}
 

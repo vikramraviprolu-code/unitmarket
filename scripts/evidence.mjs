@@ -3,16 +3,25 @@
 //   node scripts/evidence.mjs --lane <id> [--date YYYY-MM-DD] [--out-dir docs/evidence]
 //        [--id <raw id>]... [--pnpm "<cmd>"] [--step "name=command"]...
 //
-// Writes <out-dir>/<lane>-<date>.md holding, per step: the command, the exit code and the test
-// counts. Command output is never copied into the report. Ids passed with --id are shortened to
-// their first four characters; the commit is shortened to six. Any run of sixteen or more
-// identifier characters in a command is replaced by [long], so a pasted secret cannot land in the file. The date defaults to the date of the
+// Writes <out-dir>/<lane>-<date>.md holding, per step: the step name, the exit code and the test
+// counts. Neither the command nor its output is copied into the report. Step names pass through
+// redact(): NAME=value assignments, URL credentials and any run of seven or more identifier
+// characters that contains a digit are replaced. Ids passed with --id are shortened to their first
+// four characters; the commit is shortened to six. The date defaults to the date of the
 // HEAD commit (no clock read). Exit 0 when every step exits 0, 1 otherwise, 2 on bad arguments.
 // Coverage (MAINT-6) is not part of the set: it needs @vitest/coverage-v8, which is not approved.
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+/** Review M5. Removes anything that could be a secret or an identifier from a short text. */
+export function redact(text) {
+  return String(text)
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]*@/gi, '[redacted-url]@')
+    .replace(/[A-Za-z_][A-Za-z0-9_.-]*\s*=\s*\S*/g, '[redacted-assignment]')
+    .replace(/[A-Za-z0-9+/=_-]{7,}/g, (run) => (/\d/.test(run) ? '[redacted-id]' : run));
+}
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const argv = process.argv.slice(2);
@@ -61,7 +70,6 @@ function main() {
     return 2;
   }
 
-  const redact = (text) => text.replace(/[A-Za-z0-9_-]{16,}/g, '[long]');
   const count = (out, word) => {
     const line =
       out
@@ -84,7 +92,7 @@ function main() {
     const passed = count(out, 'passed');
     const failed = count(out, 'failed');
     rows.push({ ...s, code: r.status ?? 1, passed, failed, counted: passed + failed > 0 });
-    console.log(`evidence: ${s.name}: exit ${r.status ?? 1}`);
+    console.log(`evidence: ${redact(s.name)}: exit ${r.status ?? 1}`);
   }
 
   const ok = rows.every((r) => r.code === 0);
@@ -101,11 +109,11 @@ function main() {
     `- Node: ${process.version}`,
     '- Mode: offline. No PayPal contact, no credentials, no environment values recorded.',
     '',
-    '| Step | Command | Exit | Tests |',
-    '| ---- | ------- | ---- | ----- |',
+    '| Step | Exit | Tests |',
+    '| ---- | ---- | ----- |',
     ...rows.map(
       (r) =>
-        `| ${r.name} | \`${redact(r.cmd).replace(/\|/g, '/')}\` | exit ${r.code} | ${
+        `| ${redact(r.name).replace(/\|/g, '/')} | exit ${r.code} | ${
           r.counted ? `${r.passed} passed, ${r.failed} failed` : '-'
         } |`,
     ),

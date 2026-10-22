@@ -7,7 +7,7 @@ import type { Actor, AgentDeps, Brief, Result } from '@umsbx/contracts';
 // CHANGE-REQUEST-S1: eslint S1 bars @umsbx/model from domain/*, but architecture 2.3 S4 and lane 14b name it as
 // an allowed dependency of discovery (BRIEF_SYSTEM, schemas, sanitiseModelOutput). Disabled per line until the
 // lane 00 rule is amended.
-// eslint-disable-next-line no-restricted-imports
+
 import { BRIEF_SYSTEM, BriefParseOutputSchema } from '@umsbx/model';
 
 export const MAX_BRIEF_CHARS = 2000;

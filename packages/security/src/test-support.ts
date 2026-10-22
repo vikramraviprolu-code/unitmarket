@@ -1,20 +1,10 @@
 // Test support for @umsbx/security (lane 11). Not exported from index. Deterministic stand-ins for
-// the lane 01 / 12 ports: fake clock, seeded ids, memory logger and audit sink, and an in-memory
-// Database that understands only the statements packages/security issues against `sessions`,
-// `rate_buckets` and `api_idempotency` (column lists from lane 12, 0002 and 0006).
-// TEMP-until-lane-12: replace the fake database with PGlite when lane 12 merges.
+// the lane 01 ports (fake clock, seeded ids, memory logger and audit sink) over a real PGlite
+// database migrated with the lane 12 schema (review H1: no fake database).
 import { createHash } from 'node:crypto';
-import type {
-  AuditEntry,
-  Clock,
-  Database,
-  IdPrefix,
-  Ids,
-  LogEvent,
-  Logger,
-  Secret,
-  SqlExecutor,
-} from '@umsbx/contracts';
+import { afterAll } from 'vitest';
+import type { AuditEntry, Clock, IdPrefix, Ids, LogEvent, Logger, Secret } from '@umsbx/contracts';
+import { migrate, openDatabase, type SqlDriver } from '@umsbx/db';
 import type { SecurityDeps } from './route';
 
 export const ORIGIN = 'https://sandbox.example.test';
@@ -62,105 +52,21 @@ export function memoryLogger(): Logger & { events: LogEvent[] } {
   return Object.assign(make({}), { events });
 }
 
-type Row = Record<string, unknown>;
+let shared: SqlDriver | null = null;
+afterAll(async () => {
+  await shared?.close();
+  shared = null;
+});
 
-export function fakeDb(): Database & {
-  tables: {
-    sessions: Map<string, Row>;
-    rate_buckets: Map<string, Row>;
-    api_idempotency: Map<string, Row>;
-  };
-} {
-  const tables = {
-    sessions: new Map<string, Row>(),
-    rate_buckets: new Map<string, Row>(),
-    api_idempotency: new Map<string, Row>(),
-  };
-  const idemKey = (kind: unknown, id: unknown, key: unknown): string => `${kind}|${id}|${key}`;
-  const exec: SqlExecutor = {
-    async query<T>(raw: string, p: unknown[] = []) {
-      const sql = raw.replace(/\s+/g, ' ').trim();
-      const rows = ((): Row[] => {
-        if (sql.startsWith('INSERT INTO sessions')) {
-          tables.sessions.set(String(p[0]), {
-            id: p[0],
-            actor_kind: p[1],
-            actor_id: p[2],
-            csrf_token_hash: p[3],
-            created_at: p[4],
-            last_seen_at: p[4],
-            expires_at: p[5],
-            revoked_at: null,
-          });
-          return [];
-        }
-        if (sql.startsWith('SELECT id, actor_kind, actor_id, csrf_token_hash')) {
-          const r = tables.sessions.get(String(p[0]));
-          return r ? [{ ...r }] : [];
-        }
-        if (sql.startsWith('UPDATE sessions SET last_seen_at')) {
-          const r = tables.sessions.get(String(p[0]));
-          if (r) r.last_seen_at = p[1];
-          return [];
-        }
-        if (sql.startsWith('UPDATE sessions SET revoked_at')) {
-          const hit: Row[] = [];
-          for (const r of tables.sessions.values()) {
-            if (r.actor_kind === p[0] && r.actor_id === p[1] && r.revoked_at === null) {
-              r.revoked_at = p[2];
-              hit.push({ id: r.id });
-            }
-          }
-          return hit;
-        }
-        if (sql.startsWith('SELECT tokens, refilled_at FROM rate_buckets')) {
-          const r = tables.rate_buckets.get(String(p[0]));
-          return r ? [{ tokens: r.tokens, refilled_at: r.refilled_at }] : [];
-        }
-        if (sql.startsWith('INSERT INTO rate_buckets')) {
-          tables.rate_buckets.set(String(p[0]), { tokens: p[1], refilled_at: p[2] });
-          return [];
-        }
-        if (sql.startsWith('INSERT INTO api_idempotency')) {
-          const k = idemKey(p[2], p[3], p[1]);
-          if (tables.api_idempotency.has(k)) return [];
-          tables.api_idempotency.set(k, {
-            route: p[4],
-            request_sha256: p[5],
-            response: JSON.parse(String(p[6])),
-          });
-          return [{ id: p[0] }];
-        }
-        if (sql.startsWith('SELECT route, request_sha256, response FROM api_idempotency')) {
-          const r = tables.api_idempotency.get(idemKey(p[0], p[1], p[2]));
-          return r ? [{ ...r }] : [];
-        }
-        if (sql.startsWith('UPDATE api_idempotency SET response')) {
-          const r = tables.api_idempotency.get(idemKey(p[0], p[1], p[2]));
-          if (r) r.response = JSON.parse(String(p[3]));
-          return [];
-        }
-        if (sql.startsWith('DELETE FROM api_idempotency')) {
-          tables.api_idempotency.delete(idemKey(p[0], p[1], p[2]));
-          return [];
-        }
-        throw new Error(`fakeDb: unsupported statement: ${sql.slice(0, 60)}`);
-      })();
-      return { rows: rows as T[] };
-    },
-    async exec() {
-      /* no DDL in the fake */
-    },
-  };
-  return Object.assign(
-    {
-      dialect: 'pglite' as const,
-      query: exec.query,
-      exec: exec.exec,
-      transaction: <T>(fn: (tx: SqlExecutor) => Promise<T>) => fn(exec),
-    },
-    { tables },
-  );
+// The real schema: PGlite plus the common migrations from @umsbx/db (review H1: no fake database
+// that accepts any column). One database per test file, emptied for each rig, keeps this fast.
+export async function realDb(clock: Clock): Promise<SqlDriver> {
+  if (shared === null) {
+    shared = await openDatabase({ kind: 'pglite-memory' });
+    await migrate(shared, clock);
+  }
+  await shared.exec('TRUNCATE sessions, rate_buckets, api_idempotency');
+  return shared;
 }
 
 export interface TestRig {
@@ -168,14 +74,14 @@ export interface TestRig {
   clock: ReturnType<typeof fakeClock>;
   log: ReturnType<typeof memoryLogger>;
   audit: AuditEntry[];
-  db: ReturnType<typeof fakeDb>;
+  db: SqlDriver;
 }
 
-export function makeRig(over: Partial<SecurityDeps> = {}): TestRig {
+export async function makeRig(over: Partial<SecurityDeps> = {}): Promise<TestRig> {
   const clock = fakeClock('2026-10-22T09:00:00.000Z');
   const log = memoryLogger();
   const audit: AuditEntry[] = [];
-  const db = fakeDb();
+  const db = over.db === undefined ? await realDb(clock) : (over.db as SqlDriver);
   const deps: SecurityDeps = {
     db,
     clock,

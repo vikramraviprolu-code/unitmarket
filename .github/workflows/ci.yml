@@ -9,6 +9,11 @@
 # needs @vitest/coverage-v8, which is not on the D-4 list. Add a `coverage` step once approved.
 # TODO (SUP-6): gitleaks on full history. Run `gitleaks git --no-banner --redact` locally and paste
 # the output into the PR until a pinned, reviewed install step is approved for CI.
+# TODO(pin): actions are pinned by tag (v4). Pin each to a full commit SHA once it can be verified
+# against the upstream repository, which is not possible offline. Verification step, per action:
+#   git ls-remote https://github.com/actions/checkout refs/tags/v4 refs/tags/v4^{}
+#   git ls-remote https://github.com/actions/setup-node refs/tags/v4 refs/tags/v4^{}
+# Take the dereferenced (^{}) SHA when present, replace `@v4` with `@<sha> # v4`, and re-run CI.
 name: ci
 
 on:
@@ -26,6 +31,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -40,6 +46,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -54,6 +62,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -63,6 +72,8 @@ jobs:
       - run: pnpm check:no-live-host
       - run: pnpm check:secrets-names
       - run: pnpm check:fixtures
+      - run: pnpm check:routes
+      - run: pnpm check:provenance
       # SUP-2: zero high or critical in production dependencies, or a dated waiver in the gate report.
       - run: pnpm audit --prod
 
@@ -72,6 +83,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -85,6 +98,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc

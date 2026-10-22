@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -10,7 +10,8 @@ const SCRIPT = join(REPO_ROOT, 'scripts', 'route-inventory.mjs');
 function repoWith(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'route-inv-'));
   for (const [rel, src] of Object.entries(files)) {
-    const p = join(root, 'apps/web/src/app', rel);
+    // A key starting with apps/ is relative to the repository root, any other is under src/app.
+    const p = rel.startsWith('apps/') ? join(root, rel) : join(root, 'apps/web/src/app', rel);
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, src);
   }
@@ -32,6 +33,7 @@ export const routeMeta: RouteMeta = {
   idempotent: false,
   risk: 'low',
 };
+export const POST = withRoute(routeMeta, schema, handler);
 `;
 
 describe('route-inventory', () => {
@@ -69,6 +71,7 @@ describe('route-inventory', () => {
   it('route groups and dynamic segments map to the URL path', () => {
     const src = GOOD.replace('/api/quotes', '/api/orders/[id]')
       .replace("'POST'", "'GET'")
+      .replace('export const POST', 'export const GET')
       .replace('csrf: true', 'csrf: false');
     const r = run(repoWith({ '(shop)/api/orders/[id]/route.ts': src }), '--check');
     expect(r.out).toContain('route-inventory: ok');
@@ -78,5 +81,123 @@ describe('route-inventory', () => {
   it('passes on the repository as it stands', () => {
     const r = run(REPO_ROOT, '--check');
     expect(r.status).toBe(0);
+  });
+
+  // Review H4: the literal alone proves nothing; the handler export must use it.
+  describe('handlers must be built with withRoute(routeMeta, ...)', () => {
+    const fails = (files: Record<string, string>, pattern: RegExp) => {
+      const r = run(repoWith(files), '--check');
+      expect(r.status).toBe(1);
+      expect(r.out).toMatch(pattern);
+    };
+
+    it('a raw exported POST function next to a routeMeta literal fails', () => {
+      fails(
+        {
+          'api/quotes/route.ts':
+            GOOD.replace(/export const POST.*\n/, '') +
+            'export async function POST() { return new Response(null); }\n',
+        },
+        /withRoute/,
+      );
+    });
+    it('a raw exported const handler fails', () => {
+      fails(
+        {
+          'api/quotes/route.ts':
+            GOOD.replace(/export const POST.*\n/, '') +
+            'export const POST = async () => new Response(null);\n',
+        },
+        /withRoute/,
+      );
+    });
+    it('a re-exported or aliased handler fails', () => {
+      fails(
+        {
+          'api/quotes/route.ts':
+            GOOD.replace(/export const POST.*\n/, '') +
+            'const h = withRoute(routeMeta, s, f);\nexport { h as POST };\n',
+        },
+        /withRoute/,
+      );
+      fails(
+        {
+          'api/quotes/route.ts':
+            GOOD.replace(/export const POST.*\n/, '') + "export { POST } from './impl';\n",
+        },
+        /withRoute/,
+      );
+    });
+    it('withRoute named only in a comment or string does not count', () => {
+      fails(
+        {
+          'api/quotes/route.ts':
+            GOOD.replace(/export const POST.*\n/, '') +
+            "// withRoute(routeMeta, a, b)\nexport const POST = async () => new Response('withRoute(routeMeta');\n",
+        },
+        /withRoute/,
+      );
+    });
+    it('a handler built with another meta fails', () => {
+      fails(
+        { 'api/quotes/route.ts': GOOD.replace('withRoute(routeMeta', 'withRoute(otherMeta') },
+        /withRoute/,
+      );
+    });
+    it('the exported verb must match routeMeta.method', () => {
+      fails(
+        { 'api/quotes/route.ts': GOOD.replace('export const POST', 'export const GET') },
+        /method/,
+      );
+      fails(
+        { 'api/quotes/route.ts': GOOD + 'export const DELETE = withRoute(routeMeta, s, f);\n' },
+        /method/,
+      );
+    });
+    it('a route file that exports no handler fails', () => {
+      fails(
+        { 'api/quotes/route.ts': GOOD.replace(/export const POST.*\n/, '') },
+        /no exported handler/,
+      );
+    });
+    it('route.js, route.mjs, route.jsx files are scanned too', () => {
+      for (const ext of ['js', 'mjs', 'jsx', 'mts']) {
+        fails(
+          {
+            [`api/orders/route.${ext}`]:
+              'export async function POST() { return new Response(null); }\n',
+          },
+          /RouteMeta/,
+        );
+      }
+    });
+    it('apps/web/app and the pages router are scanned; pages/api is refused', () => {
+      fails(
+        {
+          'apps/web/app/api/orders/route.ts':
+            'export async function POST() { return new Response(null); }\n',
+        },
+        /RouteMeta/,
+      );
+      fails({ 'apps/web/pages/api/orders.ts': 'export default function h() {}\n' }, /pages\/api/);
+      fails(
+        { 'apps/web/src/pages/api/orders/index.js': 'module.exports = () => {};\n' },
+        /pages\/api/,
+      );
+    });
+    it('apps/web/app without src passes with a good route', () => {
+      const r = run(repoWith({ 'apps/web/app/api/quotes/route.ts': GOOD }), '--check');
+      expect(r.status).toBe(0);
+    });
+  });
+
+  it('check:routes is a package script and runs in ci and in the CI workflow', () => {
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts['check:routes']).toContain('route-inventory.mjs --check');
+    expect(pkg.scripts['ci']).toContain('check:routes');
+    const wf = readFileSync(join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8');
+    expect(wf).toContain('pnpm check:routes');
   });
 });

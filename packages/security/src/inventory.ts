@@ -83,6 +83,118 @@ export function parseRouteMeta(source: string): Partial<RouteMeta> | null {
   return meta as Partial<RouteMeta>;
 }
 
+export const HTTP_VERBS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
+
+// Blank out comments and the inside of string and template literals, keeping offsets and newlines,
+// so the handler checks cannot be fooled by text that only looks like code.
+export function stripNonCode(src: string): string {
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i] as string;
+    const n = src[i + 1];
+    if (c === '/' && n === '/') {
+      while (i < src.length && src[i] !== '\n') {
+        out += ' ';
+        i++;
+      }
+    } else if (c === '/' && n === '*') {
+      const end = src.indexOf('*/', i + 2);
+      const stop = end < 0 ? src.length : end + 2;
+      out += src.slice(i, stop).replace(/[^\n]/g, ' ');
+      i = stop;
+    } else if (c === "'" || c === '"' || c === '`') {
+      out += c;
+      i++;
+      while (i < src.length && src[i] !== c) {
+        if (src[i] === '\\') {
+          out += ' ';
+          i++;
+        }
+        out += src[i] === '\n' ? '\n' : ' ';
+        i++;
+      }
+      out += c;
+      i++;
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
+
+const STATEMENT_START =
+  /^\s*(export|const|let|var|function|async|class|import|type|interface|enum)\b/;
+
+// The text of the initializer that starts after `=` at `from`, up to the end of the statement.
+function initializerAt(code: string, from: number): string {
+  let depth = 0;
+  for (let i = from; i < code.length; i++) {
+    const c = code[i];
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (depth <= 0 && c === ';') return code.slice(from, i);
+    else if (depth <= 0 && c === '\n') {
+      const rest = code.slice(
+        i + 1,
+        code.indexOf('\n', i + 1) < 0 ? undefined : code.indexOf('\n', i + 1),
+      );
+      if (STATEMENT_START.test(rest)) return code.slice(from, i);
+    }
+  }
+  return code.slice(from);
+}
+
+// Review H4: every exported HTTP handler must be built by withRoute(routeMeta, ...), and the verb
+// must be the one routeMeta declares. Returns problems, empty when fine.
+export function checkHandlers(source: string, method: string | undefined): string[] {
+  const code = stripNonCode(source);
+  const problems: string[] = [];
+  const verbs = new Set<string>();
+  const verbRe = HTTP_VERBS.join('|');
+  for (const m of code.matchAll(
+    new RegExp(`export\\s+(?:async\\s+)?function\\s*\\*?\\s*(${verbRe})\\b`, 'g'),
+  )) {
+    verbs.add(m[1] as string);
+    problems.push(`handler ${m[1]} is a plain function; build it with withRoute(routeMeta, ...)`);
+  }
+  for (const m of code.matchAll(
+    new RegExp(`export\\s+(?:const|let|var)\\s+(${verbRe})\\b[^=]*=`, 'g'),
+  )) {
+    verbs.add(m[1] as string);
+    const init = initializerAt(code, m.index + m[0].length);
+    if (!/\bwithRoute\s*\(\s*routeMeta\s*,/.test(init))
+      problems.push(`handler ${m[1]} is not built with withRoute(routeMeta, ...)`);
+  }
+  for (const m of code.matchAll(/export\s*\{([^}]*)\}/g)) {
+    for (const part of (m[1] as string).split(',')) {
+      const name =
+        part
+          .trim()
+          .split(/\s+as\s+/)
+          .at(-1)
+          ?.trim() ?? '';
+      if ((HTTP_VERBS as readonly string[]).includes(name)) {
+        verbs.add(name);
+        problems.push(
+          `handler ${name} is exported by name or alias; build it with withRoute(routeMeta, ...)`,
+        );
+      }
+    }
+  }
+  if (/export\s*\*\s*from/.test(code))
+    problems.push('export * hides handlers; build each with withRoute(routeMeta, ...)');
+  if (verbs.size === 0)
+    problems.push('no exported handler (use export const POST = withRoute(routeMeta, ...))');
+  for (const v of verbs)
+    if (v !== method)
+      problems.push(`exported handler ${v} does not match routeMeta.method ${method}`);
+  if (verbs.size > 0 && method !== undefined && !verbs.has(method))
+    problems.push(`routeMeta.method ${method} has no exported handler`);
+  return problems;
+}
+
 export function checkEntry(file: string, relativeToApp: string, source: string): InventoryEntry {
   const meta = parseRouteMeta(source);
   const problems: string[] = [];
@@ -110,6 +222,7 @@ export function checkEntry(file: string, relativeToApp: string, source: string):
     problems.push('risk must be low, medium or high');
   if (meta.method === 'POST' && meta.auth !== 'webhook' && meta.csrf === false)
     problems.push('POST route needs csrf: true');
+  problems.push(...checkHandlers(source, meta.method));
   return { file, meta, problems };
 }
 
