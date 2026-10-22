@@ -63,6 +63,9 @@ interface FakeOrder {
 }
 export interface Tamper {
   amount_delta?: number;
+  /** Only the captured amount differs; the purchase-unit amount stays as ordered (M1). */
+  capture_amount_delta?: number;
+  capture_currency?: string;
   payee?: string;
   currency?: string;
   custom_id?: string | null;
@@ -147,8 +150,8 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
               status: o.capture.status,
               status_reason: o.capture.reason,
               amount: {
-                currency: t.currency ?? u.amount.currency,
-                minor: u.amount.minor + (t.amount_delta ?? 0),
+                currency: t.capture_currency ?? t.currency ?? u.amount.currency,
+                minor: u.amount.minor + (t.amount_delta ?? 0) + (t.capture_amount_delta ?? 0),
               },
               paypal_fee_minor: o.capture.fee,
               refunded_minor: 0,

@@ -96,6 +96,13 @@ const single = (r: Read, o: Parameters<typeof run>[1] = {}) => {
   if (m.level !== 'units') throw new Error(`expected unit level, got ${JSON.stringify(m)}`);
   return m.units[0]!;
 };
+const withCaptureAmount = (r: Read, amount: { currency: string; minor: number }): Read => ({
+  ...r,
+  units: r.units.map((u) => ({
+    ...u,
+    capture: u.capture === null ? null : { ...u.capture, amount },
+  })),
+});
 const oneUnit = (capture: Parameters<typeof unitRead>[3], over: Partial<Read> = {}): Read =>
   read(over, [unitRead('unt_1', 'MERCH1', 400, capture)]);
 
@@ -436,5 +443,36 @@ describe('match: the shape of a unit-level result (FIX-05A M4)', () => {
       'unt_2',
       'unt_3',
     ]);
+  });
+});
+
+describe('M1: the captured amount is compared with the unit', () => {
+  const ok = () => oneUnit({ id: 'CAP1', status: 'COMPLETED' });
+  it('same amount and currency: matched', () => {
+    expect(single(withCaptureAmount(ok(), { currency: 'USD', minor: 400 })).result).toBe('matched');
+  });
+  it('captured minor differs by one in either direction: mismatch amount', () => {
+    for (const minor of [399, 401]) {
+      expect(single(withCaptureAmount(ok(), { currency: 'USD', minor }))).toMatchObject({
+        result: 'mismatch',
+        field: 'amount',
+      });
+    }
+  });
+  it('captured currency differs: mismatch amount, not matched', () => {
+    expect(single(withCaptureAmount(ok(), { currency: 'EUR', minor: 400 }))).toMatchObject({
+      result: 'mismatch',
+      field: 'amount',
+    });
+  });
+  it('a pending capture with a wrong amount is a mismatch too', () => {
+    expect(
+      single(
+        withCaptureAmount(oneUnit({ id: 'CAP1', status: 'PENDING' }), {
+          currency: 'USD',
+          minor: 1,
+        }),
+      ),
+    ).toMatchObject({ result: 'mismatch', field: 'amount' });
   });
 });

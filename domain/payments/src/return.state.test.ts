@@ -268,6 +268,11 @@ describe('P5: tampering with the read freezes, before or after the capture', () 
     ['EUR', { currency: 'EUR' }],
     ['other custom_id', { custom_id: 'ord_SOMEONEELSE' }],
   ] as const;
+  const capturedCases = [
+    ['captured amount -1 (unit amount unchanged)', { capture_amount_delta: -1 }],
+    ['captured amount +1 (unit amount unchanged)', { capture_amount_delta: 1 }],
+    ['captured currency EUR (unit currency unchanged)', { capture_currency: 'EUR' }],
+  ] as const;
 
   it.each(cases)('A-13 before capture: %s freezes, nothing is captured', async (_n, tamper) => {
     w = await makeWorld();
@@ -283,7 +288,7 @@ describe('P5: tampering with the read freezes, before or after the capture', () 
     expect(await count(w, 'alerts', "kind = 'frozen_order'")).toBeGreaterThanOrEqual(1);
   });
 
-  it.each(cases)(
+  it.each([...cases, ...capturedCases])(
     'A-13 after capture: %s freezes with no sale and no unlock',
     async (_n, tamper) => {
       w = await makeWorld();

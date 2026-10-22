@@ -445,7 +445,8 @@ async function verify(
     const r = await applyMoneyEvent(tx, d, { entitlement_id: id, event: 'capture_verified' });
     if (!r.ok) throw new Error(`entitlement ${id}: ${r.error.code} on a verified capture`);
   });
-  const money = { currency: order.currency, minor: unit.amount_minor };
+  // Book what PayPal captured (matchReadback has checked it equals the unit amount).
+  const money = { currency: cap.amount.currency, minor: cap.amount.minor };
   const sale = await appendLedgerEntry(tx, d, {
     unit_id: unit.id,
     capture_id: cap.capture_id,
