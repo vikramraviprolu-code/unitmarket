@@ -2,6 +2,8 @@
 // limit, the 24 h window, backoff, the paused switch. Real PGlite, scripted PayPal.
 import { afterEach, describe, expect, it } from 'vitest';
 import { beginCheckout, reconcileOrder, runDue } from './index';
+import { resendCreate, retryCapture } from './reconcile';
+import { loadOperation, loadOrder } from './store';
 import {
   BUYER_A,
   alertKinds,
@@ -15,6 +17,7 @@ import {
   paid,
   place,
   sentCapture,
+  START,
 } from './ops/support';
 import type { OpsWorld } from './ops/support';
 
@@ -155,6 +158,44 @@ describe('capture retry (P3): only after a read shows no capture, same key, insi
     await runDue(w.deps, { max_items: 10 });
     expect(await orderStatus(w, a.order_id)).toBe('awaiting_buyer');
     expect(w.paypal.count('capture')).toBe(2);
+    // Nothing left to poll while the buyer is at PayPal.
+    expect((await ops(w, a.order_id)).filter((o) => o.state === 'unknown')).toEqual([]);
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('prepared');
+    expect(
+      (await w.rows<{ approve_url: string }>('SELECT approve_url FROM provider_orders'))[0]!
+        .approve_url,
+    ).toBe('https://www.sandbox.paypal.com/checkoutnow?token=again');
+  });
+  it('a retry refused as not approved reopens the order for the buyer', async () => {
+    w = await makeWorld();
+    const a = await deadCapture(w);
+    w.paypal.queue.capture.push({
+      kind: 'rejected',
+      http: 422,
+      name: 'UNPROCESSABLE_ENTITY',
+      issue: 'ORDER_NOT_APPROVED',
+      debug_id: 'D',
+    });
+    w.tick(61_000);
+    await runDue(w.deps, { max_items: 10 });
+    expect(await orderStatus(w, a.order_id)).toBe('awaiting_buyer');
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('prepared');
+  });
+  it('any other refusal of the retry leaves the order unresolved and polling, with no charge', async () => {
+    w = await makeWorld();
+    const a = await deadCapture(w);
+    w.paypal.queue.capture.push({
+      kind: 'rejected',
+      http: 400,
+      name: 'INVALID_REQUEST',
+      issue: 'X',
+      debug_id: 'D',
+    });
+    w.tick(61_000);
+    await runDue(w.deps, { max_items: 10 });
+    expect(await orderStatus(w, a.order_id)).toBe('unresolved');
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('unknown');
+    expect(w.paypal.count('capture')).toBe(2);
   });
   it('a duplicate-invoice refusal freezes the order', async () => {
     w = await makeWorld();
@@ -170,6 +211,22 @@ describe('capture retry (P3): only after a read shows no capture, same key, insi
     await runDue(w.deps, { max_items: 10 });
     expect(await orderStatus(w, a.order_id)).toBe('frozen');
     expect(await alertKinds(w, a.order_id)).toContain('frozen_order');
+    expect((await opOf(w, a.order_id, 'capture')).failure_reason).toBe('rejected');
+    expect((await ops(w, a.order_id)).filter((o) => o.state === 'unknown')).toEqual([]);
+  });
+  it('a duplicate-invoice refusal with http 400 is recorded as an invalid request', async () => {
+    w = await makeWorld();
+    const a = await deadCapture(w);
+    w.paypal.queue.capture.push({
+      kind: 'rejected',
+      http: 400,
+      name: 'INVALID_REQUEST',
+      issue: 'DUPLICATE_INVOICE_ID',
+      debug_id: 'D',
+    });
+    w.tick(61_000);
+    await runDue(w.deps, { max_items: 10 });
+    expect((await opOf(w, a.order_id, 'capture')).failure_reason).toBe('invalid_request');
   });
 });
 
@@ -204,7 +261,8 @@ describe('create unknown (5 h resend limit)', () => {
     w.paypal.queue.create.push({ kind: 'timeout' }, { kind: 'timeout' });
     await beginCheckout(w.deps, { order_id: p.order_id, actor: BUYER_A });
     w.tick(31_000);
-    await runDue(w.deps, { max_items: 10 }); // resend inside the window, lost again
+    const resent = await runDue(w.deps, { max_items: 10 }); // resend inside the window, lost again
+    expect(resent.still_unknown).toBe(1);
     expect(w.paypal.count('create')).toBe(2);
     expect((await opOf(w, p.order_id, 'create')).state).toBe('unknown');
 
@@ -239,6 +297,14 @@ describe('create unknown (5 h resend limit)', () => {
     await runDue(w.deps, { max_items: 10 });
     expect(await orderStatus(w, p.order_id)).toBe('failed');
     expect(await alertKinds(w, p.order_id)).toEqual(['create_rejected']);
+    expect((await opOf(w, p.order_id, 'create')).failure_reason).toBe('rejected');
+    expect(
+      (await w.rows<{ status_reason: string }>('SELECT status_reason FROM order_units'))[0]!
+        .status_reason,
+    ).toBe('create_rejected');
+    expect(
+      (await w.rows<{ detail: { reason: string } }>('SELECT detail FROM alerts'))[0]!.detail.reason,
+    ).toBe('422_X');
   });
 });
 
@@ -247,10 +313,12 @@ describe('24 h window (INC-2)', () => {
     w = await makeWorld();
     const a = await lostResponse(w);
     w.paypal.queue.get.push(...timeouts(300)); // PayPal cannot be read for a day
+    let expired = 0;
     for (let k = 0; k < 60; k += 1) {
       w.tick(30 * 60_000);
-      await runDue(w.deps, { max_items: 10 });
+      expired += (await runDue(w.deps, { max_items: 10 })).expired;
     }
+    expect(expired).toBe(1); // one order whose window ended, counted once
     expect(w.paypal.count('capture')).toBe(1);
     const op = await opOf(w, a.order_id, 'capture');
     expect([op.state, op.failure_reason]).toEqual(['failed', 'window_expired']);
@@ -390,5 +458,188 @@ describe('reconcileOrder', () => {
     const r = await reconcileOrder(w.deps, { order_id: a.order_id, trigger: 'poll' });
     expect('skipped' in r ? '' : r.order_status).toBe('paid');
     expect(await access(a.order_id)).toEqual(['available']);
+  });
+});
+
+describe('what a pass passes on and records', () => {
+  it('the trigger reaches the alert: webhook and poll are told apart', async () => {
+    w = await makeWorld();
+    const a = await sentCapture(w);
+    const b = await sentCapture(w, { buyer_id: 'buy_B' });
+    w.paypal.tamper = { amount_delta: 5 };
+    await reconcileOrder(w.deps, { order_id: a.order_id, trigger: 'webhook' });
+    await reconcileOrder(w.deps, { order_id: b.order_id, trigger: 'poll' });
+    const seen = async (order_id: string) =>
+      (
+        await w.rows<{ detail: { trigger: string } }>(
+          "SELECT detail FROM alerts WHERE order_id = $1 AND kind = 'frozen_order'",
+          [order_id],
+        )
+      ).map((r) => r.detail.trigger);
+    expect(await seen(a.order_id)).toContain('webhook');
+    expect(await seen(b.order_id)).toContain('poll');
+    expect(await seen(b.order_id)).not.toContain('webhook');
+  });
+  it('a read that fails changes nothing and says where the order stands', async () => {
+    w = await makeWorld();
+    const a = await lostResponse(w);
+    w.paypal.queue.get.push({ kind: 'timeout' });
+    const r = await reconcileOrder(w.deps, { order_id: a.order_id, trigger: 'poll' });
+    expect(r).toEqual({
+      order_status: 'unresolved',
+      unlocked: [],
+      pending: [],
+      declined: [],
+      mismatched: [],
+      alerts: [],
+    });
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('unknown');
+  });
+  it('an order with no PayPal order yet is not read', async () => {
+    w = await makeWorld();
+    const p = await place(w);
+    const r = await reconcileOrder(w.deps, { order_id: p.order_id, trigger: 'poll' });
+    expect('skipped' in r ? '' : r.order_status).toBe('created');
+    expect(w.paypal.calls).toHaveLength(0);
+  });
+  it('one read serves both operations of an order', async () => {
+    w = await makeWorld();
+    const a = await deadCapture(w);
+    w.tick(5 * 3_600_000 + 60_000); // past the key window: a read, no retry
+    await runDue(w.deps, { max_items: 10 });
+    expect((await ops(w, a.order_id)).filter((o) => o.state === 'unknown')).toHaveLength(2);
+    w.tick(2 * 3_600_000);
+    const gets = w.paypal.count('get');
+    const r = await runDue(w.deps, { max_items: 10 });
+    expect(w.paypal.count('get')).toBe(gets + 1);
+    expect(r.processed).toBe(1);
+    expect(r.still_unknown).toBe(2);
+  });
+  it('operations of an order that is already frozen or failed are closed, not polled', async () => {
+    w = await makeWorld();
+    const f = await lostResponse(w);
+    const g = await lostResponse(w, { buyer_id: 'buy_B' });
+    await w.db.query("UPDATE orders SET status = 'frozen' WHERE id = $1", [f.order_id]);
+    await w.db.query("UPDATE orders SET status = 'failed' WHERE id = $1", [g.order_id]);
+    const gets = w.paypal.count('get');
+    w.tick(31_000);
+    await runDue(w.deps, { max_items: 10 });
+    expect(w.paypal.count('get')).toBe(gets);
+    const a = await opOf(w, f.order_id, 'capture');
+    const b = await opOf(w, g.order_id, 'capture');
+    expect([a.state, a.failure_reason]).toEqual(['failed', 'mismatch']);
+    expect([b.state, b.failure_reason]).toEqual(['failed', 'declined']);
+  });
+  it('a create whose order has moved on is settled, not sent again', async () => {
+    w = await makeWorld();
+    const p = await place(w);
+    w.paypal.queue.create.push({ kind: 'timeout' });
+    await beginCheckout(w.deps, { order_id: p.order_id, actor: BUYER_A });
+    await w.db.query("UPDATE orders SET status = 'awaiting_buyer' WHERE id = $1", [p.order_id]);
+    w.tick(31_000);
+    await runDue(w.deps, { max_items: 10 });
+    expect(w.paypal.count('create')).toBe(1);
+    expect((await opOf(w, p.order_id, 'create')).state).toBe('confirmed');
+  });
+  it('a create window that ends with a PayPal order id stored leaves the order unresolved', async () => {
+    w = await makeWorld();
+    const p = await place(w);
+    w.paypal.queue.create.push({ kind: 'timeout' });
+    await beginCheckout(w.deps, { order_id: p.order_id, actor: BUYER_A });
+    await w.db.query(
+      "UPDATE provider_orders SET provider_order_id = 'SBXSTORED1' WHERE order_id = $1",
+      [p.order_id],
+    );
+    w.tick(5 * 3_600_000 + 1000);
+    await runDue(w.deps, { max_items: 10 });
+    expect(await orderStatus(w, p.order_id)).toBe('unresolved');
+    expect(await alertKinds(w, p.order_id)).toEqual(['payment_unresolved']);
+  });
+  it('a resend of the create refused with http 400 is an invalid request', async () => {
+    w = await makeWorld();
+    const p = await place(w);
+    w.paypal.queue.create.push(
+      { kind: 'timeout' },
+      { kind: 'rejected', http: 400, name: 'INVALID_REQUEST', issue: null, debug_id: 'D' },
+    );
+    await beginCheckout(w.deps, { order_id: p.order_id, actor: BUYER_A });
+    w.tick(31_000);
+    await runDue(w.deps, { max_items: 10 });
+    expect((await opOf(w, p.order_id, 'create')).failure_reason).toBe('invalid_request');
+    expect(
+      (await w.rows<{ detail: { reason: string } }>('SELECT detail FROM alerts'))[0]!.detail.reason,
+    ).toBe('400_INVALID_REQUEST');
+  });
+  it('an item that throws is logged and polled again later, the pass goes on', async () => {
+    w = await makeWorld();
+    const logged: string[] = [];
+    w.deps.log = { log: (e) => void logged.push(e.msg), child: () => w.deps.log };
+    const a = await lostResponse(w);
+    w.paypal.queue.get.push({ kind: 'order', provider_order_id: 'NOT-VALID' } as never);
+    w.tick(31_000);
+    const r = await runDue(w.deps, { max_items: 10 });
+    expect(r.processed).toBe(1);
+    expect(logged).toContain('payments.due.item_failed');
+    const o = await opOf(w, a.order_id, 'capture');
+    expect(o.next_retry_at!.toISOString()).toBe(
+      new Date(Date.parse(START) + 150_000).toISOString(),
+    );
+  });
+});
+
+describe('the two re-sends are claimed by compare-and-set', () => {
+  it('a capture retry on a stale attempt number sends nothing', async () => {
+    w = await makeWorld();
+    const a = await deadCapture(w);
+    w.tick(61_000);
+    await w.db.query(
+      "UPDATE operations SET state = 'unknown', next_retry_at = $2, reconcile_until = $3 WHERE order_id = $1 AND kind = 'capture'",
+      [
+        a.order_id,
+        w.clock.now().toISOString(),
+        new Date(Date.parse(START) + 86_400_000).toISOString(),
+      ],
+    );
+    const order = (await loadOrder(w.db, a.order_id))!;
+    const op = (await loadOperation(w.db, a.order_id, 'capture'))!;
+    const calls = w.paypal.count('capture');
+    expect(
+      await retryCapture(w.deps, order, { ...op, attempt: op.attempt + 3 }, a.provider_order_id),
+    ).toBe('lost');
+    expect(w.paypal.count('capture')).toBe(calls);
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('unknown');
+    expect(await retryCapture(w.deps, order, op, a.provider_order_id)).toBe('claim');
+    expect(w.paypal.count('capture')).toBe(calls + 1);
+  });
+  it('a create re-send on a stale attempt number sends nothing', async () => {
+    w = await makeWorld();
+    const p = await place(w);
+    w.paypal.queue.create.push({ kind: 'timeout' });
+    await beginCheckout(w.deps, { order_id: p.order_id, actor: BUYER_A });
+    const order = (await loadOrder(w.db, p.order_id))!;
+    const op = (await loadOperation(w.db, p.order_id, 'create'))!;
+    expect(await resendCreate(w.deps, order, { ...op, attempt: op.attempt + 2 })).toBe('lost');
+    expect(w.paypal.count('create')).toBe(1);
+    expect(await resendCreate(w.deps, order, op)).toBe('confirmed');
+    expect(w.paypal.count('create')).toBe(2);
+  });
+  it('the switch turned off between the retry and the re-read pauses the pass; the next one finishes', async () => {
+    w = await makeWorld();
+    const a = await deadCapture(w);
+    const real = w.paypal.captureOrder.bind(w.paypal);
+    w.paypal.captureOrder = async (r) => {
+      const res = await real(r);
+      w.switches.paypal_outbound = false;
+      return res;
+    };
+    w.tick(61_000);
+    await runDue(w.deps, { max_items: 10 });
+    expect(w.paypal.count('capture')).toBe(2);
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('unknown');
+    expect(await orderStatus(w, a.order_id)).not.toBe('paid');
+    w.switches.paypal_outbound = true;
+    await runDue(w.deps, { max_items: 10 });
+    expect(await orderStatus(w, a.order_id)).toBe('paid');
+    expect(w.paypal.count('capture')).toBe(2);
   });
 });

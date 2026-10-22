@@ -23,9 +23,6 @@ import { readbackKeyFor } from './keys';
 import { addMs, insertOperation, isoOf, loadOperation, loadOrder } from './store';
 import type { OperationRow, OrderRow } from './store';
 
-export const REREAD_MS = 3_600_000;
-export const WATCH_MS = 7 * 86_400_000;
-
 const earlier = (a: string, b: string): string => (Date.parse(a) <= Date.parse(b) ? a : b);
 
 /**

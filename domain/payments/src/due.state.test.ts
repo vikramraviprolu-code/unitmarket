@@ -2,6 +2,7 @@
 // hourly re-read of paid orders, stale leases, nextDueAt. Real PGlite, scripted PayPal.
 import { afterEach, describe, expect, it } from 'vitest';
 import { nextDueAt, runDue } from './index';
+import { markUnknown } from './due';
 import {
   alertKinds,
   approved,
@@ -258,5 +259,60 @@ describe('nextDueAt', () => {
     const op = await opOf(w, a.order_id, 'capture');
     w.tick(10 * H);
     expect(await nextDueAt(w.db)).toBe(op.next_retry_at!.toISOString());
+  });
+});
+
+describe('guards', () => {
+  it('a max_items that is not a positive whole number does nothing', async () => {
+    w = await makeWorld();
+    await lostResponse(w);
+    const gets = w.paypal.count('get');
+    w.tick(31_000);
+    for (const max_items of [-5, 1.5, Number.NaN]) {
+      expect(await runDue(w.deps, { max_items })).toEqual({
+        processed: 0,
+        still_unknown: 0,
+        expired: 0,
+        abandoned: 0,
+      });
+    }
+    expect(w.paypal.count('get')).toBe(gets);
+  });
+  it('an APPROVED order whose capture needs the payer again is abandoned, nothing charged', async () => {
+    w = await makeWorld();
+    const a = await approved(w);
+    w.paypal.queue.capture.push({
+      kind: 'payer_action',
+      redirect_url: 'https://www.sandbox.paypal.com/checkoutnow?token=again',
+      debug_id: null,
+    });
+    w.tick(DAY + 1000);
+    const r = await runDue(w.deps, { max_items: 10 });
+    expect(r.abandoned).toBe(1);
+    expect(await orderStatus(w, a.order_id)).toBe('abandoned');
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('failed');
+    expect(await count(w, 'ledger_entries')).toBe(0);
+  });
+  it('markUnknown moves only an operation that is in the state it is told', async () => {
+    w = await makeWorld();
+    const a = await paid(w);
+    const op = await opOf(w, a.order_id, 'capture'); // confirmed
+    const moved = await w.db.transaction((tx) =>
+      markUnknown(
+        tx,
+        w.deps,
+        {
+          id: op.id,
+          order_id: a.order_id,
+          kind: 'capture',
+          first_sent_at: null,
+          request_id: op.request_id,
+        },
+        'sent',
+      ),
+    );
+    expect(moved).toBe(false);
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('confirmed');
+    expect(await orderStatus(w, a.order_id)).toBe('paid');
   });
 });

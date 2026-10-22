@@ -157,7 +157,16 @@ export async function retryCapture(
         at,
       ]);
     };
+    // The read-back operation of an order that goes back to the buyer or stops has nothing to poll.
+    const closeReadback = async (state: 'confirmed' | 'failed'): Promise<void> => {
+      await tx.query(
+        `UPDATE operations SET state = $2, failure_reason = $3, lease_until = NULL, next_retry_at = NULL, updated_at = $4
+         WHERE order_id = $1 AND kind = 'readback' AND state = 'unknown'`,
+        [order.id, state, state === 'failed' ? 'mismatch' : null, at],
+      );
+    };
     const reopen = async (): Promise<void> => {
+      await closeReadback('confirmed');
       // Nothing was captured; the buyer has to act at PayPal. Same key, same operation.
       await tx.query(
         `UPDATE operations SET state = 'prepared', lease_until = $2, updated_at = $3 WHERE id = $1`,
@@ -191,6 +200,7 @@ export async function retryCapture(
         "UPDATE orders SET status = 'frozen', mismatch = true, updated_at = $2 WHERE id = $1",
         [order.id, at],
       );
+      await closeReadback('failed');
       await raiseOpsAlert(tx, d, {
         kind: 'frozen_order',
         order_id: order.id,

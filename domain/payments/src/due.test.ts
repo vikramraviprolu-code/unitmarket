@@ -32,7 +32,7 @@ describe('nextPollAt', () => {
     expect(nextPollAt({ reconcile_backoff_ms: [1000] }, A, at(2500), UNTIL)).toBe(at(3000));
   });
   it('a zero entry still moves forward', () => {
-    const next = nextPollAt({ reconcile_backoff_ms: [0] }, A, at(5), UNTIL);
-    expect(Date.parse(next)).toBeGreaterThan(Date.parse(at(5)));
+    expect(nextPollAt({ reconcile_backoff_ms: [0] }, A, A, UNTIL)).toBe(at(1));
+    expect(nextPollAt({ reconcile_backoff_ms: [0] }, A, at(5), UNTIL)).toBe(at(6));
   });
 });

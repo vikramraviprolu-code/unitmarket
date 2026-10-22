@@ -1,14 +1,16 @@
 // State tests of startup recovery (lane 05b): sent and prepared operations become unknown, the
 // first thing after a restart is a read, and a reopened capture is left alone.
 import { afterEach, describe, expect, it } from 'vitest';
-import { beginCheckout, recoverOnStartup } from './index';
+import { beginCheckout, executeRefund, recoverOnStartup, requestRefund, runDue } from './index';
 import {
   BUYER_A,
   alertKinds,
   approved,
   count,
+  OPERATOR,
   deadCapture,
   makeWorld,
+  paid,
   opOf,
   ops,
   orderStatus,
@@ -143,5 +145,69 @@ describe('recoverOnStartup', () => {
     expect(
       await alertKinds(w, (await w.rows<{ id: string }>('SELECT id FROM orders'))[0]!.id),
     ).toEqual([]);
+  });
+
+  it('a refund call that died with the process: unknown after the restart, sent again with its key inside 5 h', async () => {
+    w = await makeWorld();
+    const a = await paid(w);
+    const unit = (
+      await w.rows<{ id: string }>('SELECT id FROM order_units WHERE order_id = $1', [a.order_id])
+    )[0]!;
+    const rq = await requestRefund(w.deps, {
+      unit_id: unit.id,
+      amount: { currency: 'USD', minor: 100 },
+      reason: 'x',
+      actor: OPERATOR,
+    });
+    if (!rq.ok) throw new Error('refused');
+    const real = w.paypal.refundCapture.bind(w.paypal);
+    w.paypal.refundCapture = () => Promise.reject(new Error('process died'));
+    await expect(
+      executeRefund(w.deps, { refund_request_id: rq.value.refund_request_id }),
+    ).rejects.toThrow();
+    w.paypal.refundCapture = real;
+    const state = async () =>
+      (await w.rows<{ state: string }>('SELECT state FROM refund_requests'))[0]!.state;
+    expect(await state()).toBe('sent');
+    w.tick(61_000);
+    w.switches.paypal_outbound = false;
+    expect((await recoverOnStartup(w.restart())).resumed).toBe(1);
+    expect(await state()).toBe('unknown');
+    w.switches.paypal_outbound = true;
+    await runDue(w.deps, { max_items: 10 });
+    expect(await state()).toBe('completed');
+    expect(w.refundCalls.at(-1)!.request_id).toBe(`umsR-${rq.value.refund_request_id}`);
+    expect(await count(w, 'ledger_entries', "kind = 'refund'")).toBe(1);
+  });
+  it('a refund call that died, found after 5 h: never sent again, the operation ends and is counted', async () => {
+    w = await makeWorld();
+    const a = await paid(w);
+    const unit = (
+      await w.rows<{ id: string }>('SELECT id FROM order_units WHERE order_id = $1', [a.order_id])
+    )[0]!;
+    const rq = await requestRefund(w.deps, {
+      unit_id: unit.id,
+      amount: null,
+      reason: 'x',
+      actor: OPERATOR,
+    });
+    if (!rq.ok) throw new Error('refused');
+    w.paypal.refundCapture = () => Promise.reject(new Error('process died'));
+    await expect(
+      executeRefund(w.deps, { refund_request_id: rq.value.refund_request_id }),
+    ).rejects.toThrow();
+    w.tick(5 * 3_600_000 + 1000);
+    w.switches.paypal_outbound = false;
+    await recoverOnStartup(w.restart());
+    w.switches.paypal_outbound = true;
+    const r = await runDue(w.deps, { max_items: 10 });
+    expect(r.expired).toBe(1);
+    const op = (
+      await w.rows<{ state: string; failure_reason: string }>(
+        "SELECT state, failure_reason FROM operations WHERE kind = 'refund'",
+      )
+    )[0]!;
+    expect([op.state, op.failure_reason]).toEqual(['failed', 'window_expired']);
+    expect(await count(w, 'ledger_entries', "kind = 'refund'")).toBe(0);
   });
 });
