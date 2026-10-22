@@ -118,3 +118,25 @@ Known deviations the gate carries (each is stated elsewhere in this file; none i
 - `@vitest/coverage-v8` is not on the approved list, so MAINT-6 (branch coverage on money modules) is unmeasured.
 - A-10 says the create operation is `prepared` when the provider call starts; the engine has moved it to `sent` by then (lease taken). The gate accepts either state.
 - `pnpm audit --prod` reports two high and two moderate postcss advisories through `next` (finding F-2 in the gate report).
+
+## Payments second-pass fixes (FIX-PAY2)
+
+Branch `fix/payments-pass2`. Decisions: D-018, D-019, D-020 in `docs/decision-log.md`. Findings: Opus second-pass review at main 7345ad4.
+
+- **H-1 capture claim.** The claim transaction stores the read-back operation (`ensureReadbackOp`) together with `capture_claimed`. A process that dies between the claim and the post-capture read is finished by the poll. New invariant INV5: every order in `capture_requested`, `capture_claimed` or `unresolved` has an operation that is `sent` or `unknown` (or gave up with `failed`, `window_expired` after the 24 h window, which raised an alert).
+- **H-2, M-1 refunds.** `refund_readback` (`umsRB-<request id>`) is created in the transaction that stores `pending`. Refund operations are looked up by their own request id, never per order. New invariant INV6: every open refund request (`sent`, `unknown`, `pending`) has an operation that is `sent` or `unknown`. A refund operation no longer switches off the 7 day re-read of a paid order.
+- **M-2 `refunded_minor`.** Booking needs GET refund `COMPLETED` and the capture status `PARTIALLY_REFUNDED` or `REFUNDED`; the reported total is used only when it is above 0. `observeReadback` acts on the capture status first. A request that cannot be proven not refunded ends `unresolved` (reservation kept, alert), not `failed`. The test world reports `refunded_minor` 0 by default (`reportRefunded`). **Not done:** the refunded AMOUNT of a dashboard refund is not booked, because the PayPal port has no call that lists the refunds of a capture (`packages/paypal` and `packages/contracts` are outside this task). The unit ends `refunded` and access is revoked for a full refund; a partial dashboard refund raises `refund_unbooked` for a human. A change request for a `listRefunds(capture_id)` adapter method with fixtures is the next step.
+- **M-3 lock order.** Documented below, applied to every money path, pinned by `lockorder.state.test.ts` (a spy on the SqlExecutor asserts the order of the locks of each transaction). `withSerializationRetry` (`packages/db/src/retry.ts`) retries 40P01 and 40001 up to 3 times; it is in the path of the PGlite driver and will be for the pg adapter.
+- **LOW.** Startup recovery skips operations whose lease is still running and runs once per process (`startLoop` option `recover_on_start`, composition passes `false`); `nextDueAt` wakes the loop when a `sent` lease runs out. Capture re-send refusals close the capture as failed (D-018). The D-014 cap counts keys. Event ordering uses `seq` (INV4, recovery cases). `GET /checkout/return` starts the capture only for a page navigation (`Sec-Fetch-Dest: document`, `Sec-Fetch-Mode: navigate`); anything else gets a confirm button. A cross-site top-level navigation (which is also how PayPal returns the buyer) cannot be told from a hostile link by headers; it is harmless because the return only captures an order the buyer already approved at PayPal and the order reference is not guessable. The confirm button is a GET form (a page navigation), because server actions are barred by `check:routes`; a client that sends no Sec-Fetch headers at all cannot pass. `observeReadback` and `suspectReversal` lock the unit row before changing it.
+
+### Lock order
+
+Every transaction that moves money takes its row locks in this order, and a statement on a class already locked in the same transaction takes nothing new:
+
+1. `orders` (and `provider_orders`), then every `operations` row of that order (`lockOrderRows` in `domain/payments/src/store.ts`);
+2. `order_units`;
+3. `refund_requests`;
+4. `entitlements` (with `access_windows`, `access_events`);
+5. `ledger_entries`, `receipts`.
+
+Alerts, audit and provider-call rows are leaf inserts and are not part of the order. PGlite serialises all statements, so a deadlock cannot be reproduced here. **Real-Postgres race tests (concurrent capture/poll/refund/sweeper on one order, with the pg adapter) are required before MVP-C.**

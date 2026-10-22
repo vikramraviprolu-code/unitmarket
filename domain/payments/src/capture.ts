@@ -5,15 +5,16 @@
 import { CaptureResSchema } from '@umsbx/contracts';
 import type { CaptureRes, Id, PaymentsDeps, ProviderOrderId } from '@umsbx/contracts';
 import { raiseAlert } from './alerts';
-import { requestIdFor } from './keys';
+import { captureKeyNumber, requestIdFor } from './keys';
+import { ensureReadbackOp } from './apply';
 import {
   addMs,
   backoffMs,
   canStoreCaptureId,
   insertOperation,
   loadOperation,
-  loadOrder,
   loadUnits,
+  lockOrderRows,
 } from './store';
 import type { OperationRow, OrderRow } from './store';
 
@@ -94,8 +95,8 @@ async function gate(d: PaymentsDeps, order: OrderRow): Promise<Gated> {
   try {
     return await d.db.transaction(async (tx): Promise<Gated> => {
       const at = d.clock.now().toISOString();
-      // Lock order first, then the operation: the order every other writer uses.
-      const current = await loadOrder(tx, order.id, { lock: true });
+      // Lock order first, then the operations: the order every other writer uses (store.ts).
+      const current = await lockOrderRows(tx, order.id);
       if (current === null || current.status !== 'awaiting_buyer') throw new Lost();
       let op = await loadOperation(tx, order.id, 'capture', { lock: true });
       if (op === null) {
@@ -116,7 +117,13 @@ async function gate(d: PaymentsDeps, order: OrderRow): Promise<Gated> {
       if (op.state !== 'prepared') throw new Lost();
       const sentBefore = op.first_sent_at !== null;
       const attempt = sentBefore ? op.attempt + 1 : op.attempt;
-      if (attempt > 1 + d.config.max_capture_retries) {
+      // D-014: the cap counts keys, not sends. A same-key resend (a lost answer) is not a new
+      // attempt; the total of sends is bounded separately.
+      const keyNumber = captureKeyNumber(order.order_ref, op.request_id) + (sentBefore ? 1 : 0);
+      if (
+        keyNumber > 1 + d.config.max_capture_retries ||
+        attempt > 2 * (1 + d.config.max_capture_retries)
+      ) {
         await raiseAlert(tx, d, {
           kind: 'payment_unresolved',
           order_id: order.id,
@@ -126,7 +133,7 @@ async function gate(d: PaymentsDeps, order: OrderRow): Promise<Gated> {
         });
         return { kind: 'capped' };
       }
-      const request_id = requestIdFor('capture', order.order_ref, attempt);
+      const request_id = requestIdFor('capture', order.order_ref, keyNumber);
       const won = await tx.query(
         `UPDATE operations SET state = 'sent', attempt = $5, request_id = $6, first_sent_at = $2,
            idem_safe_until = $3, lease_until = $4, updated_at = $2
@@ -191,7 +198,7 @@ export async function captureOnce(
     // The answer is recorded under the same lock order as everything else: order, then operation.
     // The order may have moved on while the call was open (a concurrent read froze it, a poll
     // verified it, the sweeper gave the call up): the answer then changes the operation only.
-    const current = await loadOrder(tx, order.id, { lock: true });
+    const current = await lockOrderRows(tx, order.id);
     if (current === null) throw new Error(`order ${order.id} vanished`);
     const op = await loadOperation(tx, order.id, 'capture', { lock: true });
     if (op === null) throw new Error(`capture operation of ${order.id} vanished`);
@@ -282,6 +289,9 @@ export async function captureOnce(
       }
       await setOp("state = 'confirmed', lease_until = NULL, next_retry_at = NULL");
       await setOrder('capture_claimed');
+      // H-1: the claim is stored together with the thing that will read it back. If the process
+      // dies before the post-capture read, the poll of this operation finishes the order.
+      if (live) await ensureReadbackOp(tx, d, current, at);
       return { kind: 'claim' };
     }
     if (res.kind === 'claim') return unknown(null); // 202: accepted, no final units

@@ -19,9 +19,9 @@ import type {
   OrderStatus,
   PaymentsDeps,
 } from '@umsbx/contracts';
-import { applyReadback, readApplyGates, declineUnits } from './apply';
+import { applyReadback, ensureReadbackOp, readApplyGates, declineUnits } from './apply';
 import { raiseOpsAlert, observeReadback } from './refunds';
-import { addMs, loadOrder, loadProviderOrders, loadUnits } from './store';
+import { addMs, loadOrder, loadProviderOrders, loadUnits, lockOrderRows } from './store';
 import type { OperationRow, OrderRow } from './store';
 import type { ApplyReport } from './types';
 
@@ -96,6 +96,8 @@ export async function retryCapture(
 ): Promise<'claim' | 'unknown' | 'reopened' | 'frozen' | 'lost'> {
   const claimed = await d.db.transaction(async (tx) => {
     const at = d.clock.now().toISOString();
+    // Lock order: the order and its operations first (store.ts lockOrderRows).
+    await lockOrderRows(tx, order.id);
     const won = await tx.query(
       `UPDATE operations SET state = 'sent', attempt = attempt + 1, lease_until = $2, next_retry_at = NULL, updated_at = $3
        WHERE id = $1 AND state = 'unknown' AND attempt = $4 RETURNING id`,
@@ -124,7 +126,7 @@ export async function retryCapture(
     // Lock order, then operation. The order may have moved on while the call was open (frozen by a
     // concurrent read, verified by a poll): then only the operation is closed to match, and the
     // order is never moved backwards (H1, M2).
-    const current = await loadOrder(tx, order.id, { lock: true });
+    const current = await lockOrderRows(tx, order.id);
     const live = current !== null && current.status === 'capture_requested';
     const money =
       current !== null && (current.status === 'paid' || current.status === 'paid_partial');
@@ -211,6 +213,35 @@ export async function retryCapture(
         detail: { debug_id: res.debug_id },
       });
       return 'frozen' as const;
+    }
+    if (res.kind === 'rejected' && res.issue !== 'ORDER_ALREADY_CAPTURED') {
+      // The same rule as the first send (capture.ts): a refusal closes the capture operation as
+      // failed; the order stays unresolved and the read-back operation decides (nothing is
+      // recharged, nothing is declared failed without a read that shows no capture).
+      if (!live) {
+        await settleDead();
+        return 'unknown' as const;
+      }
+      await tx.query(
+        `UPDATE operations SET state = 'failed', failure_reason = $2, lease_until = NULL, next_retry_at = NULL, updated_at = $3
+         WHERE id = $1 AND state IN ('sent', 'unknown')`,
+        [op.id, res.http === 400 ? 'invalid_request' : 'rejected', at],
+      );
+      await tx.query(
+        "UPDATE orders SET status = 'unresolved', updated_at = $2 WHERE id = $1 AND status = 'capture_requested'",
+        [order.id, at],
+      );
+      if (res.http === 400) {
+        await raiseOpsAlert(tx, d, {
+          kind: 'payment_unresolved',
+          order_id: order.id,
+          unit_id: null,
+          reason: 'capture_invalid_request',
+          detail: { debug_id: res.debug_id },
+        });
+      }
+      if (current !== null) await ensureReadbackOp(tx, d, current, at);
+      return 'unknown' as const;
     }
     await unknown();
     if (res.kind === 'blocked' && live) {

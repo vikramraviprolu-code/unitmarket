@@ -27,10 +27,10 @@ const unit = async (order_id: string) =>
     .id;
 
 describe('checkInvariants passes after every scenario', () => {
-  it('reports the four invariants, in order, with a detail line each', async () => {
+  it('reports the six invariants, in order, with a detail line each', async () => {
     w = await makeWorld();
     const r = await checkInvariants(w.db);
-    expect(r.map((x) => x.id)).toEqual(['INV1', 'INV2', 'INV3', 'INV4']);
+    expect(r.map((x) => x.id)).toEqual(['INV1', 'INV2', 'INV3', 'INV4', 'INV5', 'INV6']);
     expect(r.every((x) => x.ok && x.detail.length > 0)).toBe(true);
   });
   it('after a paid order, a failed order, a waiting order and an open capture', async () => {

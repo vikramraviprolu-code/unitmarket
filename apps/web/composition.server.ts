@@ -987,12 +987,16 @@ function buildApp(config: Config, opts: AppOptions): App {
     startJobs: async () => {
       if (loop !== null) return loop;
       await open();
-      // Recovery first, and awaited: a boot that returns has already read what was in flight. The
-      // loop then runs due payments work and the sweep, and recovers once more (idempotent).
+      // Recovery first, and awaited: a boot that returns has already read what was in flight. It
+      // runs once per process: the loop is told not to recover again.
       await recoverOnStartup(paymentsDeps);
       const running = startLoop(
         { ...paymentsDeps, sweepWindows: sweepAll },
-        { max_sleep_ms: config.node_env === 'test' ? 200 : 5_000, max_items: 100 },
+        {
+          max_sleep_ms: config.node_env === 'test' ? 200 : 5_000,
+          max_items: 100,
+          recover_on_start: false,
+        },
       );
       loop = {
         stop: async () => {

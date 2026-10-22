@@ -39,6 +39,13 @@ export interface OpsWorld extends World {
     /** GET refund answers with this amount instead (minor units). */
     read_minor: number | null;
   };
+  /**
+   * What the order read reports as the refunded total of a capture. Real PayPal may report 0 for a
+   * refunded capture (map-order.ts: the field is advisory), so the default is false: the read
+   * shows the capture STATUS (PARTIALLY_REFUNDED, REFUNDED) and refunded_minor 0. A test that
+   * needs the old behaviour sets it to true.
+   */
+  reportRefunded: boolean;
   /** Faults of the process. */
   faults: { dieBeforeCapture: boolean; loseCreateResponse: boolean };
   /** A refund made at the PayPal dashboard: money went back, UnitMarket never heard of it. */
@@ -69,6 +76,7 @@ export async function makeWorld(opts: WorldOptions = {}): Promise<OpsWorld> {
     read_minor: null,
   };
   const faults = { dieBeforeCapture: false, loseCreateResponse: false };
+  const flags = { reportRefunded: false };
   let n = 0;
   // The spy of lane 05a's fake knows when a call is made inside a database transaction. Its own
   // read is used as the probe (and not kept in the call log), so the refund calls are held to the
@@ -113,7 +121,7 @@ export async function makeWorld(opts: WorldOptions = {}): Promise<OpsWorld> {
           capture: {
             ...c,
             status,
-            refunded_minor: done,
+            refunded_minor: flags.reportRefunded ? done : 0,
             amount: u.amount,
           } as typeof c,
         };
@@ -219,6 +227,12 @@ export async function makeWorld(opts: WorldOptions = {}): Promise<OpsWorld> {
     getRefundCalls,
     refundNext,
     faults,
+    get reportRefunded() {
+      return flags.reportRefunded;
+    },
+    set reportRefunded(v: boolean) {
+      flags.reportRefunded = v;
+    },
     dashboardRefund(capture_id, minor) {
       n += 1;
       refunds.set(`SBXDASH${String(n).padStart(5, '0')}`, {

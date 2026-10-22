@@ -20,7 +20,7 @@ import { readAndApply, resendCreate, retryCapture, TERMINAL } from './reconcile'
 import { raiseOpsAlert, resumeRefund } from './refunds';
 import type { RefundOp } from './refunds';
 import { readbackKeyFor } from './keys';
-import { addMs, insertOperation, isoOf, loadOperation, loadOrder } from './store';
+import { addMs, insertOperation, isoOf, loadOperation, loadOrder, lockOrderRows } from './store';
 import type { OperationRow, OrderRow } from './store';
 
 const earlier = (a: string, b: string): string => (Date.parse(a) <= Date.parse(b) ? a : b);
@@ -57,7 +57,8 @@ const PAID_WATCH = `
     LEFT JOIN LATERAL (SELECT max(p.updated_at) AS last_at FROM operations p WHERE p.order_id = o.id AND p.kind = 'readback') m
       ON true
    WHERE o.status IN ('paid', 'paid_partial')
-     AND NOT EXISTS (SELECT 1 FROM operations p WHERE p.order_id = o.id AND p.state = 'unknown')`;
+     AND NOT EXISTS (SELECT 1 FROM operations p WHERE p.order_id = o.id AND p.state = 'unknown'
+                       AND p.kind IN ('create', 'capture', 'readback'))`;
 // Orders that never got to the buyer: nothing was sent, or a create is still being settled elsewhere.
 const NOT_SENT = `NOT EXISTS (SELECT 1 FROM operations p WHERE p.order_id = o.id AND p.kind = 'create' AND p.state IN ('sent', 'unknown'))`;
 
@@ -68,6 +69,7 @@ export async function nextDueAt(
   const found = await db.query<Record<string, unknown>>(
     `SELECT
        (SELECT min(next_retry_at) FROM operations WHERE state = 'unknown') AS retry_at,
+       (SELECT min(lease_until) FROM operations WHERE state = 'sent') AS lease_at,
        (SELECT min(o.created_at) FROM orders o WHERE o.status = 'awaiting_buyer'
            OR (o.status = 'created' AND ${NOT_SENT})) AS waiting_at,
        (SELECT min(w.next_at) FROM (${PAID_WATCH}) w
@@ -77,6 +79,9 @@ export async function nextDueAt(
   const times: string[] = [];
   const retry = isoOf(row['retry_at']);
   if (retry !== null) times.push(retry);
+  // A `sent` operation whose lease runs out belongs to a dead process: the pass must be there then.
+  const lease = isoOf(row['lease_at']);
+  if (lease !== null) times.push(lease);
   const waiting = isoOf(row['waiting_at']);
   if (waiting !== null) times.push(addMs(waiting, config.abandoned_checkout_ms));
   const reread = isoOf(row['reread_at']);
@@ -121,6 +126,8 @@ export async function markUnknown(
 ): Promise<boolean> {
   const at = nowIso(d);
   const until = addMs(op.first_sent_at ?? at, d.config.reconcile_window_ms);
+  // Lock order: the order and its operations first (store.ts lockOrderRows).
+  await lockOrderRows(tx, op.order_id);
   const moved = await tx.query(
     `UPDATE operations SET state = 'unknown', lease_until = NULL, next_retry_at = $2,
        reconcile_until = COALESCE(reconcile_until, $3), updated_at = $2
@@ -371,12 +378,12 @@ async function settleRead(
 async function expireRead(d: PaymentsDeps, op: DueOp): Promise<void> {
   await d.db.transaction(async (tx) => {
     const at = nowIso(d);
+    const order = await lockOrderRows(tx, op.order_id);
     await tx.query(
       `UPDATE operations SET state = 'failed', failure_reason = 'window_expired', lease_until = NULL, next_retry_at = NULL, updated_at = $2
        WHERE id = $1 AND state = 'unknown'`,
       [op.id, at],
     );
-    const order = await loadOrder(tx, op.order_id, { lock: true });
     if (order === null || order.status === 'paid' || order.status === 'paid_partial') return;
     const open = await tx.query<{ id: string }>(
       `SELECT e.id FROM entitlements e JOIN order_units u ON u.id = e.unit_id
@@ -434,6 +441,7 @@ async function processCreate(d: PaymentsDeps, op: DueOp, out: Counts): Promise<v
 async function expireCreate(d: PaymentsDeps, op: DueOp): Promise<void> {
   await d.db.transaction(async (tx) => {
     const at = nowIso(d);
+    await lockOrderRows(tx, op.order_id);
     const closed = await tx.query(
       `UPDATE operations SET state = 'failed', failure_reason = 'window_expired', lease_until = NULL, next_retry_at = NULL, updated_at = $2
        WHERE id = $1 AND state = 'unknown' RETURNING id`,
@@ -547,6 +555,7 @@ async function abandonOne(
   }
   const done = await d.db.transaction(async (tx) => {
     const at = nowIso(d);
+    await lockOrderRows(tx, order.id);
     const moved = await tx.query(
       `UPDATE orders SET status = 'abandoned', updated_at = $2 WHERE id = $1 AND status IN ('created', 'awaiting_buyer') RETURNING id`,
       [order.id, at],
@@ -566,6 +575,7 @@ async function abandonOne(
 async function takeOver(d: PaymentsDeps, order: OrderRow): Promise<'handled' | 'skipped'> {
   const moved = await d.db.transaction(async (tx) => {
     const at = nowIso(d);
+    await lockOrderRows(tx, order.id);
     const won = await tx.query(
       "UPDATE orders SET status = 'unresolved', updated_at = $2 WHERE id = $1 AND status = 'awaiting_buyer' RETURNING id",
       [order.id, at],
@@ -613,6 +623,7 @@ async function rereadPaid(d: PaymentsDeps, budget: number, out: Counts): Promise
 async function touchWatch(d: PaymentsDeps, order: OrderRow): Promise<void> {
   await d.db.transaction(async (tx) => {
     const at = nowIso(d);
+    await lockOrderRows(tx, order.id);
     const existing = await loadOperation(tx, order.id, 'readback', { lock: true });
     if (existing === null) {
       await insertOperation(tx, {

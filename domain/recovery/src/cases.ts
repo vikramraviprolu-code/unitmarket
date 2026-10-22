@@ -317,7 +317,7 @@ interface Evidence {
 
 async function loadEvidence(tx: SqlExecutor, entitlement_id: string): Promise<Evidence> {
   const r = await tx.query<EventRow>(
-    'SELECT id, kind, at, source, evidence FROM access_events WHERE entitlement_id = $1 ORDER BY at, ctid',
+    'SELECT id, kind, at, source, evidence FROM access_events WHERE entitlement_id = $1 ORDER BY at, seq',
     [entitlement_id],
   );
   return {

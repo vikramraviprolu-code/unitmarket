@@ -25,3 +25,21 @@ export function requestIdFor(kind: 'create' | 'capture' | 'refund', ref: Id, att
 export function readbackKeyFor(ref: Id): string {
   return `umsB-${ref}`;
 }
+
+/** Request id of the read-back of one refund request. It is never sent to PayPal. */
+export function refundReadbackKeyFor(refund_request_id: Id): string {
+  return `umsRB-${refund_request_id}`;
+}
+
+/**
+ * The number of the key behind a capture request id (1 for the plain key, n for `-n`): how many
+ * different keys have been used. A same-key resend does not change it (D-014).
+ */
+export function captureKeyNumber(ref: Id, request_id: string): number {
+  const plain = requestIdFor('capture', ref);
+  if (request_id === plain) return 1;
+  const suffix = request_id.startsWith(`${plain}-`)
+    ? Number(request_id.slice(plain.length + 1))
+    : NaN;
+  return Number.isInteger(suffix) && suffix >= 2 ? suffix : 1;
+}

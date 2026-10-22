@@ -17,13 +17,15 @@ import type { World } from './world';
 const OPERATOR = { kind: 'operator', operator_id: 'opr_1', mfa: true } as const;
 
 async function pump(w: World, hours: number): Promise<void> {
+  // The gate world seeds the outbound switch off; the poll is outbound, so it is turned on here.
+  await w.td.db.query(`UPDATE safety_switches SET "on" = true WHERE name = 'paypal_outbound'`);
   for (let k = 0; k < hours; k += 1) {
     w.td.clock.advance(HOUR);
     await runDue(w.deps, { max_items: 10 });
   }
 }
 
-describe.skip('OPEN DEFECT OD-1 (HIGH, FIX-PAY2 H-1): capture claim without a read-back operation', () => {
+describe('OPEN DEFECT OD-1 (HIGH, FIX-PAY2 H-1): capture claim without a read-back operation', () => {
   it('the process dies between the claim and the post-capture read; the poll still finishes the order', async () => {
     const w = await makeWorld();
     const order = await placeAndCheckout(w, BUYER_A, 'tide-tables');
@@ -51,7 +53,7 @@ describe.skip('OPEN DEFECT OD-1 (HIGH, FIX-PAY2 H-1): capture claim without a re
   });
 });
 
-describe.skip('OPEN DEFECT OD-2 (HIGH, FIX-PAY2 H-2): refund accepted but never read back', () => {
+describe('OPEN DEFECT OD-2 (HIGH, FIX-PAY2 H-2): refund accepted but never read back', () => {
   it('getRefund fails once after PayPal accepted the refund; a later poll books it', async () => {
     const w = await makeWorld();
     const order = await placeAndCheckout(w, BUYER_A, 'tide-tables');
@@ -72,8 +74,25 @@ describe.skip('OPEN DEFECT OD-2 (HIGH, FIX-PAY2 H-2): refund accepted but never 
       debug_id: 'DBGREF',
     };
     let reads = 0;
+    // A refunded capture reads REFUNDED at PayPal (booking needs GET refund COMPLETED and that
+    // status, FIX-PAY2 M-2); this scripted provider has to say so once it has accepted the refund.
+    let refunded = false;
+    const realOrder = w.paypal.getOrder.bind(w.paypal);
+    w.paypal.getOrder = async (id: string) => {
+      const res = await realOrder(id);
+      if (!refunded || res.kind !== 'order') return res;
+      return {
+        ...res,
+        units: res.units.map((u) =>
+          u.capture === null ? u : { ...u, capture: { ...u.capture, status: 'REFUNDED' as const } },
+        ),
+      } as typeof res;
+    };
     Object.assign(w.paypal, {
-      refundCapture: async () => accepted,
+      refundCapture: async () => {
+        refunded = true;
+        return accepted;
+      },
       getRefund: async () => {
         reads += 1;
         if (reads === 1) throw new Error('socket hang up');
@@ -96,7 +115,7 @@ describe.skip('OPEN DEFECT OD-2 (HIGH, FIX-PAY2 H-2): refund accepted but never 
       await rows(w, "SELECT amount_minor FROM ledger_entries WHERE kind = 'refund'"),
     ).toHaveLength(1);
     expect(await rows(w, 'SELECT money_state, access_state FROM entitlements')).toEqual([
-      { money_state: 'refunded', access_state: 'ended' },
+      { money_state: 'refunded', access_state: 'revoked' },
     ]);
   });
 });
