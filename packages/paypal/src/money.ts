@@ -17,8 +17,9 @@ export function minorUnitsFor(currency: string): MinorUnitsExp {
 }
 
 const CURRENCY = /^[A-Z]{3}$/;
-// digits, then optionally a dot and digits: no sign, exponent, spaces, separators or lone dot
-const PLAIN_DECIMAL = /^([0-9]{1,20})(?:\.([0-9]{1,20}))?$/;
+// Digits, then optionally a dot and digits: no sign, exponent, spaces, separators, lone dot or
+// leading dot (".5" is refused: safe, PayPal never sends it) or leading zeros ("007.50").
+const PLAIN_DECIMAL = /^(0|[1-9][0-9]{0,19})(?:\.([0-9]{1,20}))?$/;
 
 /** 250 with minor_units 2 gives "2.50". Throws for a minor value that is not a safe integer >= 0. */
 export function toDecimalString(m: Money, minor_units: MinorUnitsExp): string {

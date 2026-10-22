@@ -216,10 +216,10 @@ describe('capture', () => {
   it('a lost response is a timeout, and the replay is a 200 claim', async () => {
     const { adapter } = harness(await dryRunTransport('lost_capture_response'));
     expect(
-      await adapter.captureOrder({ provider_order_id: 'SBXLOSTORD00001', request_id: 'k' }),
+      await adapter.captureOrder({ provider_order_id: 'SBXLOSTCPORD00001', request_id: 'k' }),
     ).toEqual({ kind: 'timeout' });
     expect(
-      await adapter.captureOrder({ provider_order_id: 'SBXLOSTORD00001', request_id: 'k' }),
+      await adapter.captureOrder({ provider_order_id: 'SBXLOSTCPORD00001', request_id: 'k' }),
     ).toMatchObject({
       kind: 'claim',
       http: 200,
@@ -279,6 +279,7 @@ describe('read', () => {
             capture_id: 'SBXHAPPYCAP00001',
             status: 'COMPLETED',
             status_reason: null,
+            amount: { currency: 'USD', minor: 500 },
             paypal_fee_minor: 45,
             refunded_minor: 0,
           },
@@ -327,6 +328,7 @@ describe('read', () => {
         capture_id: 'SBXHAPPYCAP00001',
         status: 'COMPLETED',
         status_reason: null,
+        amount: { currency: 'USD', minor: 500 },
         paypal_fee_minor: 45,
         refunded_minor: 0,
       },
