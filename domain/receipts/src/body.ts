@@ -2,7 +2,9 @@
 // The receipt body: canonical JSON of { order_id, snapshot, content_hash, lines, refunds,
 // debug_ids, environment }. Built only from stored facts (order, frozen approval snapshot,
 // entitlement windows, access events, ledger rows, provider call debug ids); the hash of the
-// canonical text is what the buyer sees and what is stored.
+// canonical text is what the buyer sees and what is stored. Anything a buyer can trigger by
+// reading or re-requesting (beacons, link re-issues, buyer-sourced events, read-back calls) stays
+// out of the hashed body, so such actions never create a receipt version.
 import { canonicalJson, minorUnitsFor, sha256Hex } from '@umsbx/approval';
 import { ApprovalSnapshotSchema, WindowStateSchema, err, ok } from '@umsbx/contracts';
 import type {
@@ -107,6 +109,8 @@ export async function buildReceiptBody(
          JOIN entitlements e ON e.id = a.entitlement_id
          JOIN order_units u ON u.id = e.unit_id
         WHERE u.order_id = $1
+          AND a.source <> 'buyer'
+          AND a.kind NOT IN ('reader_beacon', 'link_issued')
         ORDER BY a.at, a.kind, a.id`,
       [order_id],
     )
@@ -164,7 +168,8 @@ export async function buildReceiptBody(
   const debug = await db.query<{ debug_id: string }>(
     `SELECT DISTINCT p.debug_id FROM provider_calls p
        JOIN operations o ON o.id = p.operation_id
-      WHERE o.order_id = $1 AND p.debug_id IS NOT NULL`,
+      WHERE o.order_id = $1 AND p.debug_id IS NOT NULL
+        AND p.operation IN ('capture_order', 'refund_capture')`,
     [order_id],
   );
   const debug_ids = [...new Set(debug.rows.map((r) => sanitiseDebugId(r.debug_id)))].sort(byText);

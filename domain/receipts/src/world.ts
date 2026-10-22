@@ -218,7 +218,7 @@ export async function makeWorld(
         await insert('provider_calls', {
           id: `pcl_${n}`,
           operation_id: `opr_${n}`,
-          operation: 'capture',
+          operation: 'capture_order',
           method: 'POST',
           path_template: '/v2/checkout/orders/{id}/capture',
           http_status: 201,

@@ -145,6 +145,8 @@ export const CapturedPartSchema = z
     capture_id: z.string().min(1),
     status: CaptureStatusSchema,
     status_reason: z.string().nullable(),
+    /** The captured amount as PayPal reports it. Payments compares it with the unit amount. */
+    amount: MoneySchema,
     paypal_fee_minor: MinorUnitsSchema.nullable(),
     refunded_minor: MinorUnitsSchema,
   })

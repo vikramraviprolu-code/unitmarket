@@ -23,7 +23,7 @@ export function moneyOf(v: unknown): Money | null {
 
 export interface ReadCapture {
   part: CapturedPart;
-  amount: Money | null;
+  amount: Money;
   notes: string[];
 }
 
@@ -35,15 +35,16 @@ export function readCapture(c: unknown): ReadCapture | null {
   if (!status.success) return null;
   const notes: string[] = [];
 
-  const amount = c.amount === undefined ? null : moneyOf(c.amount);
-  if (c.amount !== undefined && amount === null) return null;
+  // A capture without a readable amount cannot be compared with the unit: malformed.
+  const amount = moneyOf(c.amount);
+  if (amount === null) return null;
 
   const breakdown = isRecord(c.seller_receivable_breakdown) ? c.seller_receivable_breakdown : null;
   let paypal_fee_minor: number | null = null;
   if (breakdown !== null && breakdown.paypal_fee !== undefined) {
     const fee = moneyOf(breakdown.paypal_fee);
     if (fee === null) return null;
-    if (amount !== null && fee.currency !== amount.currency) notes.push('fee_currency_mismatch');
+    if (fee.currency !== amount.currency) notes.push('fee_currency_mismatch');
     else paypal_fee_minor = fee.minor;
   }
 
@@ -64,7 +65,9 @@ export function readCapture(c: unknown): ReadCapture | null {
     refunded_minor = m.minor;
     source = 'capture';
   }
-  notes.push(`refunded_source=${source}`);
+  // PayPal may report 0 here for a refunded capture. The amount is advisory: 05b takes refunded
+  // amounts from GET refund. The note lands in the call record outcome.
+  notes.push(`refunded_source=${source}`, 'refunded_advisory=use_get_refund');
 
   const reason =
     isRecord(c.status_details) && typeof c.status_details.reason === 'string'
@@ -75,6 +78,7 @@ export function readCapture(c: unknown): ReadCapture | null {
       capture_id: c.id,
       status: status.data,
       status_reason: reason,
+      amount,
       paypal_fee_minor,
       refunded_minor,
     },
@@ -184,7 +188,7 @@ export function mapCaptureRead(h: Http, now: Date): Mapped<CaptureRead> {
     };
   }
   const c = readCapture(h.body);
-  if (c === null || c.amount === null) return { result: unreadable, notes: ['malformed_response'] };
+  if (c === null) return { result: unreadable, notes: ['malformed_response'] };
   return {
     result: {
       kind: 'capture',

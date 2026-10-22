@@ -15,14 +15,24 @@ export async function sweepWindows(
       `SELECT w.entitlement_id FROM access_windows w
        WHERE w.state IN ('running', 'ended') AND w.ends_at <= $1
          AND NOT EXISTS (SELECT 1 FROM access_events e WHERE e.entitlement_id = w.entitlement_id AND e.kind = 'window_ended')
-       ORDER BY w.ends_at, w.entitlement_id LIMIT $2 FOR UPDATE OF w SKIP LOCKED`,
+       ORDER BY w.ends_at, w.entitlement_id LIMIT $2`,
       [now.toISOString(), i.max_items],
     );
     let ended = 0;
+    // Lock order is entitlement, then window, as on every other path (a window first would
+    // deadlock with them on Postgres). The scan above takes no lock; a row another transaction
+    // holds is skipped and the next sweep finds it.
     for (const row of due.rows) {
-      const head = await lockEntitlement(tx, row.entitlement_id);
+      const head = await lockEntitlement(tx, row.entitlement_id, { skipLocked: true });
       if (head === null) continue;
-      const window = computeWindow(await loadEvents(tx, head.id), head.policy, now);
+      await tx.query(
+        'SELECT entitlement_id FROM access_windows WHERE entitlement_id = $1 FOR UPDATE',
+        [head.id],
+      );
+      const events = await loadEvents(tx, head.id);
+      // Under the lock: another sweep may have recorded the end since the scan.
+      if (events.some((e) => e.kind === 'window_ended')) continue;
+      const window = computeWindow(events, head.policy, now);
       if (window.state !== 'ended' || window.ends_at === null) continue;
       await insertEvent(tx, d, {
         entitlement_id: head.id,
