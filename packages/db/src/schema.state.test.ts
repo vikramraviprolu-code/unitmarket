@@ -167,7 +167,8 @@ describe('migrations', () => {
     const d = await openDatabase({ kind: 'pglite-memory' });
     toClose.push(d);
     const first = await migrate(d, clock);
-    expect(first).toEqual([
+    // Later migrations (0007 from another lane, 0008) are checked by name, not by count.
+    expect(first.slice(0, 6)).toEqual([
       '0001_core',
       '0002_buyers',
       '0003_entry',
@@ -175,11 +176,12 @@ describe('migrations', () => {
       '0005_access',
       '0006_platform',
     ]);
+    expect(first).toContain('0008_access_events_unique');
     expect(await migrate(d, clock)).toEqual([]);
     const rows = await d.query<{ version: string; applied_at: Date | string }>(
       'SELECT version, applied_at FROM schema_migrations ORDER BY version',
     );
-    expect(rows.rows).toHaveLength(6);
+    expect(rows.rows).toHaveLength(first.length);
     expect(new Date(rows.rows[0]!.applied_at as string).toISOString()).toBe(
       '2026-10-21T10:00:00.000Z',
     );
@@ -373,7 +375,9 @@ describe('append-only tables', () => {
     for (const t of TABLES)
       expect((await db.query(`SELECT count(*)::int AS n FROM ${t}`)).rows[0]).toEqual({ n: 0 });
     expect((await db.query('SELECT count(*)::int AS n FROM schema_migrations')).rows[0]).toEqual({
-      n: 6,
+      n: readdirSync(new URL('../migrations/common/', import.meta.url)).filter((f) =>
+        f.endsWith('.sql'),
+      ).length,
     });
     await expect(db.exec('TRUNCATE ledger_entries')).rejects.toThrow();
   });
@@ -736,7 +740,7 @@ describe('access constraints', () => {
     await w({});
     await expect(w({})).rejects.toThrow();
   });
-  it('delivery evidence is unique per (link_id, kind) when a link is present', async () => {
+  it('link_issued is unique per link; other delivery evidence is repeatable (0008)', async () => {
     await base();
     await order(1);
     await unit(1, 1);
@@ -753,7 +757,7 @@ describe('access constraints', () => {
       ins('access_events', {
         id: `aev_${n}`,
         entitlement_id: 'ent_1',
-        kind: 'download_completed',
+        kind: 'link_issued',
         at: T,
         source: 'buyer',
         evidence: j({}),
@@ -764,6 +768,10 @@ describe('access constraints', () => {
     await ev(1, {});
     await expect(ev(2, {})).rejects.toThrow(/duplicate key|unique/i);
     await ev(3, { kind: 'download_aborted' });
+    await ev(7, { kind: 'download_completed' });
+    await ev(8, { kind: 'download_completed' });
+    await ev(9, { kind: 'delivery_failed' });
+    await ev(10, { kind: 'delivery_failed' });
     await ev(4, { link_id: null });
     await ev(5, { link_id: null });
     await expect(ev(6, { kind: 'nonsense', link_id: null })).rejects.toThrow();
