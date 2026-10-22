@@ -4,7 +4,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { describePayPalConformance, sandboxSubject } from '@umsbx/testkit';
 
-const enabled = import.meta.env['UMS_SANDBOX_TESTS'] === '1';
+// Vitest mirrors the environment into import.meta.env. Only packages/config may read process.env
+// (lint S3), and this one opt-in flag is not a config value, so it is read from there.
+const viteEnv = (import.meta as { env?: Record<string, string | undefined> }).env;
+const enabled = viteEnv?.['UMS_SANDBOX_TESTS'] === '1';
 
 const subject = sandboxSubject();
 const made = vi.fn(subject.make);
