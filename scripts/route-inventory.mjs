@@ -3,7 +3,7 @@
 // of any extension and refuses any pages/api file (the pages router would bypass withRoute).
 // `--check` exits 1 on any problem. `--root <dir>` points at another repository root.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { checkEntry, formatInventory } from '../packages/security/src/inventory.ts';
@@ -30,6 +30,7 @@ function walk(dir, accept, out = []) {
 // Review 4 M6. The text check in inventory.ts is a first filter; this parse is the rule: each
 // exported HTTP verb is a const whose initializer is exactly withRoute(routeMeta, ...), seen
 // through parentheses and type assertions only.
+const STREAM_WRAPPER_FILES = new Set(['apps/web/src/app/c/[token]/route.ts']);
 const VERBS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 const peel = (n) => {
   while (
@@ -50,7 +51,28 @@ function astProblems(file, source) {
     if (!st.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) continue;
     for (const d of st.declarationList.declarations) {
       if (!ts.isIdentifier(d.name) || !VERBS.has(d.name.text)) continue;
-      const init = d.initializer === undefined ? undefined : peel(d.initializer);
+      // The deps binding `withRoute(routeMeta, ...)(securityDeps)` is the one call allowed around it.
+      let init = d.initializer === undefined ? undefined : peel(d.initializer);
+      // The delivery route streams the article body; withStream only attaches the stream to
+      // withRoute's own 200 answer. One named wrapper in one named file (decision D-016).
+      if (
+        init !== undefined &&
+        STREAM_WRAPPER_FILES.has(relative(root, file).split(sep).join('/')) &&
+        ts.isCallExpression(init) &&
+        ts.isIdentifier(init.expression) &&
+        init.expression.text === 'withStream' &&
+        init.arguments.length === 1
+      )
+        init = peel(init.arguments[0]);
+      if (
+        init !== undefined &&
+        ts.isCallExpression(init) &&
+        init.arguments.length === 1 &&
+        ts.isIdentifier(init.arguments[0]) &&
+        init.arguments[0].text === 'securityDeps' &&
+        ts.isCallExpression(peel(init.expression))
+      )
+        init = peel(init.expression);
       const ok =
         init !== undefined &&
         ts.isCallExpression(init) &&

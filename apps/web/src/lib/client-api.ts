@@ -64,7 +64,6 @@ export async function postJson<T>(
   extra: Record<string, string> = {},
 ): Promise<ApiOk<T> | ApiFail> {
   try {
-    // eslint-disable-next-line no-restricted-globals -- same-origin call from the browser to this app's own JSON API; S2 targets payment network clients
     const res = await fetch(path, {
       method: 'POST',
       credentials: 'same-origin',
@@ -86,7 +85,6 @@ export async function postJson<T>(
 
 export async function getJson<T>(path: string): Promise<ApiOk<T> | ApiFail> {
   try {
-    // eslint-disable-next-line no-restricted-globals -- same-origin call from the browser to this app's own JSON API; S2 targets payment network clients
     const res = await fetch(path, { credentials: 'same-origin' });
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (res.ok) return { ok: true, status: res.status, data: json as T };

@@ -7,6 +7,7 @@
 //
 // Dry-run only. UMS_MODE=sandbox builds the sealed sandbox transport stub (MVP-A): no byte leaves
 // the process either way.
+import { getSingleton, setSingleton } from './src/server/singleton';
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -853,16 +854,13 @@ function buildApp(config: Config, opts: AppOptions): App {
 // Process-wide singleton. Kept on globalThis so route bundles, pages and instrumentation share one
 // app even when the bundler duplicates this module.
 // ---------------------------------------------------------------------------------------------
-type Holder = { __umsbx_app?: App };
-const holder = (): Holder => globalThis as unknown as Holder;
-
 export function installApp(app: App): void {
-  holder().__umsbx_app = app;
+  setSingleton<App>(app);
 }
 
 export function getApp(): App {
-  const h = holder();
-  if (h.__umsbx_app !== undefined) return h.__umsbx_app;
+  const existing = getSingleton<App>();
+  if (existing !== undefined) return existing;
   const loaded = loadConfigFromProcess();
   if (!loaded.ok) {
     process.stderr.write(
@@ -870,8 +868,9 @@ export function getApp(): App {
     );
     process.exit(BOOT_REFUSAL_EXIT_CODE);
   }
-  h.__umsbx_app = buildApp(loaded.value, {});
-  return h.__umsbx_app;
+  const built = buildApp(loaded.value, {});
+  setSingleton<App>(built);
+  return built;
 }
 
 /**

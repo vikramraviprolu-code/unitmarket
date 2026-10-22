@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports -- TEMP-until-lane-16: the testkit does not yet offer a migrated test database, so this test-only helper (imported by *.test.ts files only) opens one from @umsbx/db and @umsbx/runtime. Replace with the testkit helper when lane 16 merges. */
 // Adapted from domain/delivery/src/world.ts at main 0451c44 (SBX lane 09); owned by SBX lane 10.
 // Test-only world for the recovery state and adversarial tests: one PGlite database, the supply
 // and money rows a case points at, a CoreDeps with a fake clock and seeded ids, and an audit sink

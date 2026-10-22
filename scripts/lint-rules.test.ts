@@ -368,8 +368,11 @@ describe('@umsbx/model is for domain/discovery only (S4, 14b CR-1)', () => {
       expect(await lint(`domain/discovery/src/${f}`, model), f).toEqual([]);
   });
   it('no other domain package may, in production, tests or helpers', async () => {
+    // domain/payments/src/support.ts is a named exemption (D-015) and is checked by its own pin test.
     for (const d of ['fit', 'payments', 'ledger', 'approval', 'catalogue'])
-      for (const f of ['x.ts', 'x.test.ts', 'support.ts'])
+      for (const f of d === 'payments'
+        ? ['x.ts', 'x.test.ts']
+        : ['x.ts', 'x.test.ts', 'support.ts'])
         expect((await lint(`domain/${d}/src/${f}`, model)).length, `${d}/${f}`).toBeGreaterThan(0);
   });
   it('discovery may still not import payments, and uses node:fs in tests only', async () => {
@@ -552,5 +555,26 @@ describe('delivery hash-only files (replace the former eslint-disable comments)'
         f,
       ).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('named exemptions (D-015)', () => {
+  it('the exemption list is pinned: adding a file or a rule needs a reviewed change here', async () => {
+    const { NAMED_EXEMPTIONS } = await import('../eslint.config.mjs');
+    const flat = NAMED_EXEMPTIONS.flatMap((e: { files: string[]; off: string[] }) =>
+      e.files.map((f) => `${f} -> ${[...e.off].sort().join(',')}`),
+    ).sort();
+    expect(flat).toEqual(
+      [
+        'apps/web/src/server/singleton.ts -> no-restricted-syntax,sbx/no-global-alias',
+        'apps/web/src/instrumentation.ts -> no-restricted-properties,sbx/no-global-alias',
+        'apps/web/src/lib/client-api.ts -> no-restricted-globals',
+        'packages/paypal/src/paypal.sandbox.contract.test.ts -> no-restricted-syntax,sbx/no-global-alias',
+        'domain/library/src/world.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
+        'domain/recovery/src/world.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
+        'domain/payments/src/support.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
+        'domain/payments/src/payments.integration.test.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
+      ].sort(),
+    );
   });
 });

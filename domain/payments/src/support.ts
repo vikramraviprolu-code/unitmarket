@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports -- test-only helper (imported by *.test.ts files only): node:async_hooks tracks "inside a transaction" per async flow for the provider-call spy; node:crypto hashes the seeded article bytes. S1 bars node:* in domain helpers (change request in the lane 05a hand-off). */
 // Test world for lane 05a. Synthetic rows only; no real merchant or payer data, no network.
 // A PGlite database with every migration, the supply rows an approval needs, a scripted PayPalPort
 // (in memory, no transport) and a ContentStore double. The spy: any provider call made while a

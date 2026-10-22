@@ -822,6 +822,46 @@ const webEntries = [
   ),
 ];
 
+// Named exemptions (review 4 H1: no inline disables). Each entry is one file, one reason, and the list
+// is pinned by scripts/lint-rules.test.ts so it cannot grow unnoticed. Decision D-015.
+export const NAMED_EXEMPTIONS = [
+  {
+    files: ['apps/web/src/server/singleton.ts'],
+    reason: 'process-wide app holder shared by route bundles and instrumentation (globalThis key)',
+    off: ['sbx/no-global-alias', 'no-restricted-syntax'],
+  },
+  {
+    files: ['apps/web/src/instrumentation.ts'],
+    reason: 'reads the framework flag NEXT_RUNTIME, which is not application configuration',
+    off: ['no-restricted-properties', 'sbx/no-global-alias'],
+  },
+  {
+    files: ['apps/web/src/lib/client-api.ts'],
+    reason: 'browser same-origin fetch to this app JSON API; S2 targets payment network clients',
+    off: ['no-restricted-globals'],
+  },
+  {
+    files: ['packages/paypal/src/paypal.sandbox.contract.test.ts'],
+    reason: 'test spies on globalThis.fetch to prove the sandbox subject opens no socket',
+    off: ['sbx/no-global-alias', 'no-restricted-syntax'],
+  },
+  {
+    files: ['domain/library/src/world.ts', 'domain/recovery/src/world.ts'],
+    reason: 'test world hashes seeded article bytes with node:crypto (hash only, no randomness)',
+    off: ['no-restricted-imports', 'sbx/no-restricted-dynamic-import'],
+  },
+  {
+    files: ['domain/payments/src/support.ts', 'domain/payments/src/payments.integration.test.ts'],
+    reason:
+      'payments test helpers: node:async_hooks (provider-call spy), node:crypto hashing, real adapter over the dry-run transport',
+    off: ['no-restricted-imports', 'sbx/no-restricted-dynamic-import'],
+  },
+];
+const namedExemptions = NAMED_EXEMPTIONS.map((e) => ({
+  files: e.files,
+  rules: Object.fromEntries(e.off.map((r) => [r, 'off'])),
+}));
+
 export default tseslint.config(
   {
     ignores: [
@@ -854,5 +894,6 @@ export default tseslint.config(
   // Per-package entries come last so their clause lists win.
   ...packageEntries,
   ...webEntries,
+  ...namedExemptions,
   prettier,
 );

@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports -- test-only: the integration journey runs the real PayPal adapter over the dry-run transport (lane 03 fixtures, no network). S1 bars @umsbx/paypal and @umsbx/transport in domain tests; change request in the lane 05a hand-off (add a test-only exemption for *.integration.test.ts). */
 // Integration: approval to available item over the real adapter and the dry-run transport,
 // fixtures only (synthetic, labelled; not PayPal evidence). The offline twin of journey B-08.
 import { fileURLToPath } from 'node:url';

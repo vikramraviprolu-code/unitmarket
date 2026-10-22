@@ -215,6 +215,15 @@ describe('route-inventory AST rules (review 4 M6)', () => {
     ['sequence', 'export const POST = (0, raw, withRoute(routeMeta, schema, handler));'],
     ['member call', 'export const POST = lib.withRoute(routeMeta, schema, handler);'],
     ['no call', 'export const POST = withRoute;'],
+    [
+      'stream wrapper outside the allowed file',
+      'export const POST = withStream(withRoute(routeMeta, schema, handler));',
+    ],
+    ['other deps binding', 'export const POST = withRoute(routeMeta, schema, handler)(evil);'],
+    [
+      'two arguments bound',
+      'export const POST = withRoute(routeMeta, schema, handler)(securityDeps, 1);',
+    ],
   ])('refuses %s', (_n, line) => {
     const r = run(repoWith({ 'api/quotes/route.ts': withHandler(line) }), '--check');
     expect(r.status, r.out).toBe(1);
@@ -225,6 +234,7 @@ describe('route-inventory AST rules (review 4 M6)', () => {
       'export const POST = (withRoute(routeMeta, schema, handler));',
       'export const POST = withRoute(routeMeta, schema, handler) as unknown as Handler;',
       'export const POST: Handler = withRoute(routeMeta, schema, handler);',
+      'export const POST = withRoute(routeMeta, schema, handler)(securityDeps);',
     ])
       expect(run(repoWith({ 'api/quotes/route.ts': withHandler(line) }), '--check').status).toBe(0);
   });
