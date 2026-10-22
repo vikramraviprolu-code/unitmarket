@@ -191,11 +191,11 @@ describe('fixtures_check', () => {
   });
   it('fails on an unredacted secret-bearing key or bearer token', () => {
     const t1 = indexed({
-      'fixtures/paypal/synthetic/a.json': good({ access_token: 'abcdefgh12345678' }),
+      'fixtures/paypal/synthetic/a.json': good({ access_token: 'x'.repeat(16) }),
     });
     expect(fx(t1).status).toBe(1);
     const t2 = indexed({
-      'fixtures/paypal/synthetic/a.json': good({ header: 'Bearer abcdefgh12345678' }),
+      'fixtures/paypal/synthetic/a.json': good({ header: 'Bearer ' + 'x'.repeat(16) }),
     });
     expect(fx(t2).status).toBe(1);
     const ok = indexed({
