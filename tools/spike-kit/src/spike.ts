@@ -356,7 +356,7 @@ export function redactionSelfTest(make: () => Redactor): string[] {
 // ---- wires ----------------------------------------------------------------------------------------
 /** The real wire. It checks scheme, host, port, userinfo and path before any fetch, never follows a
  * redirect, times out, caps the response, and never retries. Built only after every refusal check. */
-export function createFetchWire(fetchImpl: FetchLike): Wire {
+export function createSpikeFetchWire(fetchImpl: FetchLike): Wire {
   return async (req) => {
     const u = new URL(req.url);
     if (
@@ -1760,7 +1760,7 @@ export async function main(deps: Deps): Promise<number> {
   const cfg = pre.cfg;
   let wire: Wire;
   if (cfg.dryRun) wire = createReplayWire(deps.fixtureDir, deps.readText);
-  else if (deps.fetchImpl) wire = createFetchWire(deps.fetchImpl);
+  else if (deps.fetchImpl) wire = createSpikeFetchWire(deps.fetchImpl);
   else {
     deps.err('REFUSED no_transport: no fetch function available');
     return 2;

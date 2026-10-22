@@ -18,7 +18,7 @@ import {
   SANDBOX_HOST,
   assertAllowedCall,
   assertModeAllows,
-  createFetchWire,
+  createSpikeFetchWire,
   createRedactor,
   createReplayWire,
   main,
@@ -686,7 +686,7 @@ describe('fetch wire guards', () => {
     }));
   it('sends only to the sandbox host, https, no redirects, with a timeout signal', async () => {
     const f = fetchOk();
-    const wire = createFetchWire(f as never);
+    const wire = createSpikeFetchWire(f as never);
     await wire(
       { method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null },
       'x',
@@ -704,7 +704,7 @@ describe('fetch wire guards', () => {
     `${SANDBOX_API}/v1/payments/payouts`,
   ])('refuses %s before calling fetch', async (url) => {
     const f = fetchOk();
-    const wire = createFetchWire(f as never);
+    const wire = createSpikeFetchWire(f as never);
     await expect(wire({ method: 'GET', url, headers: {}, body: null }, 'x')).rejects.toThrow();
     expect(f).not.toHaveBeenCalled();
   });
@@ -714,7 +714,7 @@ describe('fetch wire guards', () => {
       headers: new Headers(),
       arrayBuffer: async () => new Uint8Array(1_048_577).buffer,
     }));
-    const wire = createFetchWire(big as never);
+    const wire = createSpikeFetchWire(big as never);
     await expect(
       wire(
         { method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null },
