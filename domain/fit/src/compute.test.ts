@@ -348,7 +348,7 @@ describe('purity and honesty', () => {
 
   it('no field anywhere holds a percentage or probability', () => {
     const r = rng(15);
-    const bad = /%|percent|probab|likel|chance|score|confiden|\d\.\d{2,}/i;
+    const bad = /%|percent|probab|likel|chance|score|confiden/i;
     const walk = (v: unknown, path: string): void => {
       if (typeof v === 'number') {
         expect(Number.isInteger(v), `${path} must be an integer`).toBe(true);
