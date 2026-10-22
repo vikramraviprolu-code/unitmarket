@@ -186,7 +186,7 @@ describe('boot refusal bypasses (review 4)', () => {
   const host = (sep: string, label = 'api-m') => `https://${label}${sep}${PP.replace('.', sep)}`;
   it('M1: characters URL parsing removes or maps still carry the host', () => {
     const variants = [
-      `https://api-m.paypal\u3002com`.replace('\\u3002', '\u3002'),
+      `https://api-m.paypal\u3002com`,
       `https://api-m.pay\u00adpal.com`,
       `https://api-m.pay\u034fpal.com`,
       `https://api-m.pay\u200bpal.com`,
@@ -197,7 +197,7 @@ describe('boot refusal bypasses (review 4)', () => {
       `https://api-m.\uff50\uff41\uff59\uff50\uff41\uff4c.com`,
       `https://api-m.paypal\uff0ecom`,
       `https://api-m.paypal\uff61com`,
-      `https://api-m.paypa\u2113.com`.replace('\\u2113', 'l'),
+      `https://api-m.paypa\u2113.com`,
       `https://api-m.paypal%E3%80%82com`,
       `https://api-m.pay%C2%ADpal.com`,
       `https://www.paypalobjects.com/x`,
@@ -249,18 +249,31 @@ describe('boot refusal bypasses (review 4)', () => {
     ]) {
       expect(refusal(offline({ UMS_PUBLIC_ORIGIN: v })).code, v).toBe('insecure_origin');
     }
-    for (const v of ['https://um.example.org', 'https://um.example.org:8443', 'http://localhost:3000'])
+    for (const v of [
+      'https://um.example.org',
+      'https://um.example.org:8443',
+      'http://localhost:3000',
+    ])
       expect(loadConfig(offline({ UMS_PUBLIC_ORIGIN: v })).ok, v).toBe(true);
   });
   it('L8: repeated-character and blank secrets are weak; client id equal to secret is refused', () => {
-    for (const v of ['a'.repeat(32), 'é'.repeat(16), ' '.repeat(40), '\t'.repeat(40), '0'.repeat(64)])
+    for (const v of [
+      'a'.repeat(32),
+      'é'.repeat(16),
+      ' '.repeat(40),
+      '\t'.repeat(40),
+      '0'.repeat(64),
+    ])
       expect(refusal(offline({ UMS_LINK_SECRET: v })), JSON.stringify(v)).toEqual({
         code: 'weak_secret',
         name: 'UMS_LINK_SECRET',
       });
     expect(
       refusal(
-        sandbox({ PAYPAL_CLIENT_ID: 'same-value-for-both', PAYPAL_CLIENT_SECRET: 'same-value-for-both' }),
+        sandbox({
+          PAYPAL_CLIENT_ID: 'same-value-for-both',
+          PAYPAL_CLIENT_SECRET: 'same-value-for-both',
+        }),
       ).code,
     ).toBe('equal_secrets');
   });

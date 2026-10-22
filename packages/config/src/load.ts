@@ -5,7 +5,7 @@ import type { Result } from '@umsbx/contracts';
 import type { BootRefusal } from './refusal';
 import { BOOT_REFUSAL_EXIT_CODE, refusalLine } from './refusal';
 import { makeSecret } from './secret';
-import { KNOWN_CORRIDORS, MIN_SECRET_BYTES, ORIGIN_PATTERN } from './schema';
+import { KNOWN_CORRIDORS, MIN_SECRET_BYTES, isPublicOrigin } from './schema';
 import type { Config, Mode } from './schema';
 
 type Env = Record<string, string | undefined>;
@@ -13,13 +13,41 @@ type Env = Record<string, string | undefined>;
 // D-013: the sandbox base URL is a code constant in packages/transport and no environment variable
 // may carry a PayPal host at all, sandbox or live. The pattern matches the registrable names only.
 const PAYPAL_HOST = /paypal(?:objects)?\.com/i;
-const carriesPayPalHost = (v: string): boolean => {
-  if (PAYPAL_HOST.test(v)) return true;
+// Review 4 M1: look at the value the way a URL parser would. Same steps as scripts/check-no-live-host.mjs
+// (config cannot import scripts, so this is a copy; config.test.ts holds the same cases):
+// percent- and escape-decoding (repeated), NFKC (full-width letters and dots), other full stops mapped
+// to '.', then the code points IDNA ignores are removed (soft hyphen, U+034F, zero-width, variation
+// selectors, bidi and format controls).
+const DOTS = /[\u3002\uFF61\uFE52\u2024\u2E2E]/gu;
+const IDNA_IGNORED =
+  /[\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\u{E0000}-\u{E01EF}]/gu;
+const unescapeOnce = (t: string): string =>
+  t
+    .replace(/\\u\{([0-9a-fA-F]{1,6})\}/g, (m, h: string) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/\\u([0-9a-fA-F]{4})/g, (m, h: string) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\x([0-9a-fA-F]{2})/g, (m, h: string) => String.fromCharCode(parseInt(h, 16)));
+const percentOnce = (t: string): string => {
   try {
-    return PAYPAL_HOST.test(decodeURIComponent(v));
+    return decodeURIComponent(t);
   } catch {
-    return false;
+    return t.replace(/%([0-9a-fA-F]{2})/g, (m, h: string) => String.fromCharCode(parseInt(h, 16)));
   }
+};
+export function foldHostText(v: string): string {
+  let t = v;
+  for (let i = 0; i < 3; i++) {
+    const next = percentOnce(unescapeOnce(t));
+    if (next === t) break;
+    t = next;
+  }
+  return t.normalize('NFKC').replace(DOTS, '.').replace(IDNA_IGNORED, '');
+}
+const carriesPayPalHost = (v: string): boolean =>
+  PAYPAL_HOST.test(v) || PAYPAL_HOST.test(foldHostText(v));
+// Review 4 L8: long enough once trimmed, and not one character repeated.
+const isWeakSecret = (v: string): boolean => {
+  const t = v.trim();
+  return Buffer.byteLength(t, 'utf8') < MIN_SECRET_BYTES || /^(.)\1*$/su.test(t);
 };
 const MODE_WORD = /(?:^|[^a-z0-9])(?:live|production)(?:$|[^a-z0-9])/i;
 
@@ -57,9 +85,13 @@ export function loadConfig(env: Env): Result<Config, BootRefusal> {
   const connect = rawConnect === 'on';
 
   // 4. node env
-  const ne = val(env, 'NODE_ENV');
-  const node_env: Config['node_env'] =
-    ne === 'production' ? 'production' : ne === 'test' ? 'test' : 'development';
+  // Review 4 M2: any casing of a known value, nothing else. An unknown value must not fall back to
+  // development, which would skip the production checks below.
+  const ne = val(env, 'NODE_ENV')?.toLowerCase();
+  if (ne !== undefined && ne !== 'development' && ne !== 'test' && ne !== 'production') {
+    return refuse('missing_value', 'NODE_ENV');
+  }
+  const node_env: Config['node_env'] = ne ?? 'development';
 
   // 5. secrets: present, long enough, distinct
   const secretNames = ['UMS_SESSION_SECRET', 'UMS_APPROVAL_SECRET', 'UMS_LINK_SECRET'] as const;
@@ -67,7 +99,7 @@ export function loadConfig(env: Env): Result<Config, BootRefusal> {
   for (const name of secretNames) {
     const v = env[name];
     if (v === undefined || v === '') return refuse('missing_value', name);
-    if (Buffer.byteLength(v, 'utf8') < MIN_SECRET_BYTES) return refuse('weak_secret', name);
+    if (isWeakSecret(v)) return refuse('weak_secret', name);
     secretValues.push(v);
   }
 
@@ -85,6 +117,7 @@ export function loadConfig(env: Env): Result<Config, BootRefusal> {
       client_secret: makeSecret(secret),
       webhook_id: val(env, 'PAYPAL_WEBHOOK_ID') ?? null,
     };
+    if (id === secret) return refuse('equal_secrets', 'PAYPAL_CLIENT_SECRET');
     secretValues.push(secret);
   }
   if (new Set(secretValues).size !== secretValues.length) {
@@ -111,7 +144,7 @@ export function loadConfig(env: Env): Result<Config, BootRefusal> {
     return refuse('missing_value', 'UMS_PUBLIC_ORIGIN');
   }
   const public_origin = origin ?? 'http://localhost:3000';
-  if (!ORIGIN_PATTERN.test(public_origin)) return refuse('insecure_origin', 'UMS_PUBLIC_ORIGIN');
+  if (!isPublicOrigin(public_origin)) return refuse('insecure_origin', 'UMS_PUBLIC_ORIGIN');
 
   // 9. passcode hash
   const passcode_hash = val(env, 'UMS_DEMO_PASSCODE_HASH') ?? null;
