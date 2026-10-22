@@ -4,6 +4,8 @@ import http from 'node:http';
 import https from 'node:https';
 import dns from 'node:dns';
 import { vi } from 'vitest';
+import { mintApprovalCapability } from './approval';
+import type { ApprovalCapability } from './approval';
 import type { ScopedGate, Wire, WireRequest, WireResult } from './wire';
 import type {
   Clock,
@@ -88,7 +90,26 @@ export function fakeWire(
 }
 
 export interface FakeGate extends ScopedGate {
-  readonly checks: { operation: PayPalOperation; amount_minor: number | null }[];
+  readonly checks: {
+    operation: PayPalOperation;
+    amount_minor: number | null;
+    scope?: string;
+    approval_ref?: string;
+  }[];
+}
+
+/**
+ * Test-only: mint a capability from a fake gate's own report. Production code gets one only from
+ * `@umsbx/safety` createScopedGate. Throws when the gate reports no approval.
+ */
+export async function approvalFrom(gate: ScopedGate, scope?: string): Promise<ApprovalCapability> {
+  const a = await gate.activeApproval();
+  if (a === null) throw new Error('fake gate has no approval');
+  return mintApprovalCapability({
+    scope: scope ?? a.scope,
+    approval_ref: a.approval_ref,
+    gate,
+  });
 }
 export function scopedGate(
   o: {
@@ -102,7 +123,12 @@ export function scopedGate(
     checks,
     activeApproval: async () => (scope === null ? null : { scope, approval_ref: 'appr-test' }),
     check: async (c) => {
-      checks.push({ operation: c.operation, amount_minor: c.amount_minor });
+      checks.push({
+        operation: c.operation,
+        amount_minor: c.amount_minor,
+        ...(c.scope === undefined ? {} : { scope: c.scope }),
+        ...(c.approval_ref === undefined ? {} : { approval_ref: c.approval_ref }),
+      });
       return (o.verdict ? o.verdict() : { allowed: true, approval_ref: 'appr-test' }) as Awaited<
         ReturnType<OutboundGate['check']>
       >;

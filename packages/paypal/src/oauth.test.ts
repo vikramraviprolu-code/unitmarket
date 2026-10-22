@@ -71,6 +71,30 @@ describe('oauth token cache', () => {
     expect(new Set(second.map((r) => (r.ok ? r.value : 'x')))).toEqual(new Set(['tok-2']));
   });
 
+  it('a short-lived token (FIX-BPREP L6) is refreshed at half its life, not on every call', async () => {
+    const { clock, transport, cache } = setup(200);
+    await cache.get();
+    await cache.get();
+    await cache.get();
+    expect(transport.sent).toHaveLength(1);
+    clock.advance(99_000);
+    await cache.get();
+    expect(transport.sent).toHaveLength(1);
+    clock.advance(1_000);
+    await cache.get();
+    expect(transport.sent).toHaveLength(2);
+  });
+
+  it('expires_in of exactly 300 s and 301 s also keep the token for half its life', async () => {
+    for (const life of [300, 301]) {
+      const { clock, transport, cache } = setup(life);
+      await cache.get();
+      clock.advance((life / 2) * 1000 - 1000);
+      await cache.get();
+      expect(transport.sent, `life ${life}`).toHaveLength(1);
+    }
+  });
+
   it('invalidate forces one new request', async () => {
     const { transport, cache } = setup();
     await cache.get();

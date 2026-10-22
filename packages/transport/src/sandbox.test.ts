@@ -6,6 +6,7 @@ import {
 } from './sandbox';
 import {
   SANDBOX_HOST,
+  approvalFrom,
   fakeWire,
   fixedClock,
   memoryLogger,
@@ -14,6 +15,7 @@ import {
   scopedGate,
 } from './test-support';
 import type { OutboundRequest, Transport } from '@umsbx/contracts';
+import { mintApprovalCapability } from './approval';
 import type { FakeGate, FakeWire } from './test-support';
 import type { WireResult } from './wire';
 
@@ -29,16 +31,33 @@ afterEach(() => {
 
 const BASE = `https://${SANDBOX_HOST}`;
 const SCOPE = 'mvp_b_polling';
+const orderBody = (value: string) =>
+  JSON.stringify({
+    intent: 'CAPTURE',
+    purchase_units: [{ amount: { currency_code: 'USD', value } }],
+  });
+// A create_order whose body asks for exactly the amount the caller declares (FIX-BPREP M4).
+const createOrder = (over: Partial<OutboundRequest> = {}) =>
+  req('create_order', '/v2/checkout/orders', {
+    body: orderBody('5.00'),
+    amount_minor: 500,
+    ...over,
+  });
 
 async function build(
-  o: { wire?: FakeWire; gate?: FakeGate; clock?: ReturnType<typeof fixedClock> } = {},
+  o: {
+    wire?: FakeWire;
+    gate?: FakeGate;
+    clock?: ReturnType<typeof fixedClock>;
+    scope?: string;
+  } = {},
 ) {
   const wire = o.wire ?? fakeWire();
-  const gate = o.gate ?? scopedGate();
+  const gate = o.gate ?? scopedGate({ scope: o.scope ?? SCOPE });
   const log = memoryLogger();
   const t = await createApprovedSandboxTransport({
-    gate,
-    scope: SCOPE,
+    approval: await approvalFrom(gate),
+    scope: o.scope ?? SCOPE,
     wire,
     clock: o.clock ?? fixedClock(),
     log,
@@ -60,42 +79,45 @@ describe('sealed by default', () => {
     }
   });
 
-  it('the approved factory refuses with a named error unless a gate reports an active approval for the scope', async () => {
+  it('the approved factory refuses with a named error unless it holds a minted approval capability for the scope', async () => {
     const wire = fakeWire();
     const base = { scope: SCOPE, wire, clock: fixedClock(), log: memoryLogger() };
+    const gate = scopedGate();
+    const forged = {
+      scope: SCOPE,
+      approval_ref: 'x',
+      gate: { check: async () => ({ allowed: true, approval_ref: 'x' }) },
+    };
+    const real = await approvalFrom(gate);
     const bad: unknown[] = [
       undefined,
       {},
       { ...base },
-      { ...base, gate: undefined },
-      { ...base, gate: null },
-      { ...base, gate: { check: async () => ({ allowed: true, approval_ref: 'x' }) } },
-      { ...base, gate: { activeApproval: async () => ({ scope: SCOPE, approval_ref: 'x' }) } },
-      { ...base, gate: scopedGate({ scope: null }) },
-      { ...base, gate: scopedGate({ scope: 'mvp_c_refunds' }) },
-      { ...base, gate: scopedGate({ scope: '' }) },
+      { ...base, approval: undefined },
+      { ...base, approval: null },
+      // M3: any structurally typed object is refused, only a minted capability passes.
+      { ...base, approval: forged },
+      { ...base, approval: { ...real } },
+      { ...base, approval: Object.create(real) },
+      { ...base, approval: JSON.parse(JSON.stringify(real)) },
+      { ...base, gate },
+      { ...base, approval: gate },
+      // A real capability for another scope, or an unknown scope, is refused.
+      { ...base, approval: await approvalFrom(scopedGate({ scope: 'mvp_c_refunds' })) },
       {
         ...base,
-        gate: {
-          check: async () => ({ allowed: true, approval_ref: 'x' }),
-          activeApproval: async () => {
-            throw new Error('db down');
-          },
-        },
+        scope: 'invented',
+        approval: await approvalFrom(scopedGate({ scope: 'invented' })),
       },
-      {
-        ...base,
-        gate: {
-          check: async () => ({ allowed: true, approval_ref: 'x' }),
-          activeApproval: async () => ({ scope: SCOPE, approval_ref: '' }),
-        },
-      },
+      { ...base, scope: '', approval: real },
     ];
     for (const o of bad) {
       const p = (createApprovedSandboxTransport as (x: unknown) => Promise<Transport>)(o);
       await expect(p).rejects.toBeInstanceOf(SandboxSealedError);
       await expect(p).rejects.toMatchObject({ name: 'SandboxSealedError' });
     }
+    expect(() => mintApprovalCapability({ scope: '', approval_ref: 'x', gate })).toThrow();
+    expect(() => mintApprovalCapability({ scope: SCOPE, approval_ref: '', gate })).toThrow();
     expect(wire.requests).toHaveLength(0);
   });
 
@@ -150,7 +172,7 @@ describe('exact bytes on the wire (OpenAPI shapes)', () => {
           Prefer: 'return=representation',
           'PayPal-Request-Id': 'umsC-req-1',
         },
-        body: '{"intent":"CAPTURE"}',
+        body: orderBody('5.00'),
         amount_minor: 500,
       }),
       wire: {
@@ -163,7 +185,7 @@ describe('exact bytes on the wire (OpenAPI shapes)', () => {
           prefer: 'return=representation',
           'paypal-request-id': 'umsC-req-1',
         },
-        body: '{"intent":"CAPTURE"}',
+        body: orderBody('5.00'),
       },
     },
     {
@@ -245,11 +267,19 @@ describe('exact bytes on the wire (OpenAPI shapes)', () => {
 
   for (const c of cases) {
     it(`${c.name}: wire sees exactly the normalised url, headers, body and the 10 s timeout`, async () => {
-      const { t, wire, gate } = await build();
+      const scope = c.name === 'refund_capture' ? 'mvp_c_refunds' : SCOPE;
+      const { t, wire, gate } = await build({ scope });
       const res = await t.send(c.r);
       expect(res.kind).toBe('response');
       expect(wire.requests).toEqual([{ ...c.wire, timeout_ms: 10_000 }]);
-      expect(gate.checks).toEqual([{ operation: c.r.operation, amount_minor: c.r.amount_minor }]);
+      expect(gate.checks).toEqual([
+        {
+          operation: c.r.operation,
+          amount_minor: c.r.amount_minor,
+          scope,
+          approval_ref: 'appr-test',
+        },
+      ]);
     });
   }
 
@@ -319,15 +349,16 @@ describe('request headers', () => {
       by: 'egress',
     });
     const edge = 'x'.repeat(64 * 1024);
-    expect((await b.t.send(req('create_order', '/v2/checkout/orders', { body: edge }))).kind).toBe(
-      'response',
-    );
+    expect(
+      (await b.t.send(req('capture_order', '/v2/checkout/orders/ABC123/capture', { body: edge })))
+        .kind,
+    ).toBe('response');
     expect(b.wire.requests).toHaveLength(1);
   });
 
   it('refuses a POST without a body string', async () => {
     const b = await build();
-    const r = await b.t.send(req('create_order', '/v2/checkout/orders', { body: null }));
+    const r = await b.t.send(createOrder({ body: null }));
     expect(r).toEqual({ kind: 'blocked', by: 'egress' });
     expect(b.wire.requests).toHaveLength(0);
   });
@@ -381,11 +412,12 @@ describe('gate', () => {
 
   it('consults the gate exactly once per send, with the operation and the amount', async () => {
     const { t, gate } = await build();
-    await t.send(req('create_order', '/v2/checkout/orders', { amount_minor: 1234 }));
+    await t.send(createOrder({ body: orderBody('12.34'), amount_minor: 1234 }));
     await t.send(req('get_order', '/v2/checkout/orders/ABC123'));
+    const bound = { scope: SCOPE, approval_ref: 'appr-test' };
     expect(gate.checks).toEqual([
-      { operation: 'create_order', amount_minor: 1234 },
-      { operation: 'get_order', amount_minor: null },
+      { operation: 'create_order', amount_minor: 1234, ...bound },
+      { operation: 'get_order', amount_minor: null, ...bound },
     ]);
   });
 });
@@ -410,7 +442,7 @@ describe('no retries, error mapping, response handling', () => {
     it(`wire error ${name} maps to ${JSON.stringify(expected)}; a POST is sent once and a GET is sent once`, async () => {
       const wire = fakeWire(() => wireResult);
       const { t } = await build({ wire });
-      expect(await t.send(req('create_order', '/v2/checkout/orders'))).toEqual(expected);
+      expect(await t.send(createOrder())).toEqual(expected);
       expect(wire.requests).toHaveLength(1);
       expect(await t.send(req('get_order', '/v2/checkout/orders/ABC123'))).toEqual(expected);
       expect(wire.requests).toHaveLength(2);
@@ -430,7 +462,7 @@ describe('no retries, error mapping, response handling', () => {
     ]) {
       const wire = fakeWire(h);
       const { t } = await build({ wire });
-      expect(await t.send(req('create_order', '/v2/checkout/orders'))).toEqual({
+      expect(await t.send(createOrder())).toEqual({
         kind: 'network_error',
         code: 'wire_failure',
       });
@@ -500,7 +532,7 @@ describe('no retries, error mapping, response handling', () => {
       body: '{"id":"X"}',
     }));
     const { t } = await build({ wire, clock });
-    const r = await t.send(req('create_order', '/v2/checkout/orders'));
+    const r = await t.send(createOrder());
     expect(r).toEqual({
       kind: 'response',
       status: 201,

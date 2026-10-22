@@ -3,6 +3,7 @@ import { createApprovedSandboxTransport } from './sandbox';
 import { createFetchWire } from './wire-fetch';
 import {
   LIVE_HOST,
+  approvalFrom,
   SANDBOX_HOST,
   fakeWire,
   fixedClock,
@@ -26,10 +27,11 @@ afterEach(() => {
 
 async function build() {
   const wire = fakeWire();
-  const gate = scopedGate();
+  // The wide scope on purpose: these tests probe the egress guard, not the scope's operation list.
+  const gate = scopedGate({ scope: 'mvp_c_refunds' });
   const t = await createApprovedSandboxTransport({
-    gate,
-    scope: 'mvp_b_polling',
+    approval: await approvalFrom(gate),
+    scope: 'mvp_c_refunds',
     wire,
     clock: fixedClock(),
     log: memoryLogger(),

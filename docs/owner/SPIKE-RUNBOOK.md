@@ -22,8 +22,23 @@ Rules that always apply:
 
 1. You have the repository on your computer (the folder called `unitmarket-sandbox`).
 2. Node 22 is installed. Open a terminal and type `node -v`. It should show `v22.` followed by numbers (the project uses 22.22.0). If it does not, ask Sakthi.
-3. Sakthi has told you the **approval reference**: an id like `D-024`. It is a row in `docs/decision-log.md` that records your written go for the spike. The kit checks that the row exists. It refuses the row `D-023`, because that row says it does not authorise any outbound call.
+3. Sakthi has told you the **approval reference**: an id like `D-024`. It is a row in `docs/decision-log.md` that records your written go for the spike. The kit checks that the row exists. The row must carry the structured marker shown in "The approval row template" below. The kit refuses every row without that marker (for example `D-023`, which says it does not authorise any outbound call), a row for a different operator or scope, and a row past its `valid_until` date.
 4. You know your PayPal developer login (the one that owns the sandbox accounts).
+5. Run the kit only on your own machine, off any corporate VPN, and never inside a cloud, remote or AI container. Proxy and certificate settings in the environment change where your credentials go, so the kit refuses to start when any is present (see `transport_env_override` below).
+6. Windows: Git Bash does not give the kit a real terminal (it refuses with `not_tty`). Use WSL (Ubuntu) as the only Windows route.
+
+### The approval row template
+
+Only the owner writes this row; no AI session adds it. Sakthi adds the row to `docs/decision-log.md` in a reviewed pull request after you have said yes in writing. Fill in the values and keep the marker text exactly:
+
+```
+| D-nnn | YYYY-MM-DD | SPIKE GO: scope=spike-read; operator=vikram; valid_until=YYYY-MM-DD; approved in writing YYYY-MM-DD | Owner | notes |
+```
+
+- `scope` is `spike-read` (Part R) or `spike-write` (Part W; also allows read).
+- `operator` is `vikram` or `sakthi` and must match `SPIKE_OPERATOR`.
+- `valid_until` is the last day the go is valid (the kit compares it with today's date).
+- A row without the marker, with a bad date, or one that says it does not authorise outbound calls is refused.
 
 ## Part 1: dashboard checks (steps 1 and 2 of the runbook)
 
@@ -126,23 +141,27 @@ Variables are settings that live only in the open terminal window. When you clos
 
 ### If the kit refuses
 
-| It says                                                | Plain meaning                                                      | What to do                                                                                                                                                             |
-| ------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `REFUSED ci_set`                                       | The terminal thinks it is an automatic build machine               | Use your own normal terminal window                                                                                                                                    |
-| `REFUSED not_tty`                                      | It is not a normal interactive window                              | Use a normal terminal window, not a script or an editor panel that cannot take typing                                                                                  |
-| `REFUSED bad_operator`                                 | `SPIKE_OPERATOR` is missing or not vikram or sakthi                | Set it again                                                                                                                                                           |
-| `REFUSED bad_mode`                                     | `SPIKE_MODE` is missing or not `read`                              | Set `SPIKE_MODE=read`                                                                                                                                                  |
-| `REFUSED approval_ref_missing`, `approval_ref_pattern` | The approval reference is missing or malformed                     | Set `SPIKE_APPROVAL_REF` to an id like `D-024`                                                                                                                         |
-| `REFUSED approval_ref_unknown`                         | No such row in the decision log                                    | Ask Sakthi which row records your go                                                                                                                                   |
-| `REFUSED approval_ref_not_authorising`                 | That row says it does not authorise outbound calls (this is D-023) | Ask Sakthi for the row that records your written go                                                                                                                    |
-| `REFUSED decision_log_unreadable`                      | The kit cannot read `docs/decision-log.md`                         | Use the kit from your checkout of the repository (the file `docs/decision-log.md` must be there)                                                                       |
-| `REFUSED credentials_missing`                          | The client id or secret is not set in this window                  | Redo the two `read -s` lines                                                                                                                                           |
-| `REFUSED live_value` or `non_sandbox_host`             | Some variable mentions live, production or a different website     | Close the window, open a new one, set only the variables above, and check you took the credentials from the **Sandbox** tab. If it happens again, stop and tell Sakthi |
-| `REFUSED output_in_repo`                               | The output folder would be inside a repository                     | Do not use `--out`; let the kit use its default folder                                                                                                                 |
-| `REFUSED bad_args`                                     | A word after the command was not recognised                        | Type the command exactly as shown                                                                                                                                      |
-| `REDACTION SELF-TEST FAILED`                           | The kit's own safety test failed                                   | Stop. Tell Sakthi. Do not run it again                                                                                                                                 |
-| `Stopped: ... transport error`                         | The network request failed. The kit never retries                  | Note the time. Tell Sakthi before trying again                                                                                                                         |
-| `Stopped: token request failed with HTTP 401`          | PayPal rejected the credentials                                    | Check you used the **Sandbox** app's id and secret, then redo Part 3. If it still fails, tell Sakthi                                                                   |
+| It says                                                | Plain meaning                                                  | What to do                                                                                                                                                             |
+| ------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `REFUSED ci_set`                                       | The terminal thinks it is an automatic build machine           | Use your own normal terminal window                                                                                                                                    |
+| `REFUSED not_tty`                                      | It is not a normal interactive window                          | Use a normal terminal window, not a script or an editor panel that cannot take typing                                                                                  |
+| `REFUSED bad_operator`                                 | `SPIKE_OPERATOR` is missing or not vikram or sakthi            | Set it again                                                                                                                                                           |
+| `REFUSED bad_mode`                                     | `SPIKE_MODE` is missing or not `read`                          | Set `SPIKE_MODE=read`                                                                                                                                                  |
+| `REFUSED approval_ref_missing`, `approval_ref_pattern` | The approval reference is missing or malformed                 | Set `SPIKE_APPROVAL_REF` to an id like `D-024`                                                                                                                         |
+| `REFUSED approval_ref_unknown`                         | No such row in the decision log                                | Ask Sakthi which row records your go                                                                                                                                   |
+| `REFUSED approval_ref_not_authorising`                 | That row has no SPIKE GO marker or says it does not authorise  | Ask Sakthi for the row that records your written go                                                                                                                    |
+| `REFUSED approval_scope_mismatch`                      | The row covers read only but you asked for write mode          | Ask for a row with scope `spike-write`, or use read mode                                                                                                               |
+| `REFUSED approval_operator_mismatch`                   | The row names the other person                                 | Use the row written for you, or set `SPIKE_OPERATOR` correctly                                                                                                         |
+| `REFUSED approval_expired`                             | The row's `valid_until` date has passed                        | Ask for a new written go                                                                                                                                               |
+| `REFUSED transport_env_override`                       | A proxy, certificate or Node option variable is set            | Close the window, open a new one on your own machine off VPN, unset the variable named in the message. Never run inside a cloud or AI container                        |
+| `REFUSED decision_log_unreadable`                      | The kit cannot read `docs/decision-log.md`                     | Use the kit from your checkout of the repository (the file `docs/decision-log.md` must be there)                                                                       |
+| `REFUSED credentials_missing`                          | The client id or secret is not set in this window              | Redo the two `read -s` lines                                                                                                                                           |
+| `REFUSED live_value` or `non_sandbox_host`             | Some variable mentions live, production or a different website | Close the window, open a new one, set only the variables above, and check you took the credentials from the **Sandbox** tab. If it happens again, stop and tell Sakthi |
+| `REFUSED output_in_repo`                               | The output folder would be inside a repository                 | Do not use `--out`; let the kit use its default folder                                                                                                                 |
+| `REFUSED bad_args`                                     | A word after the command was not recognised                    | Type the command exactly as shown                                                                                                                                      |
+| `REDACTION SELF-TEST FAILED`                           | The kit's own safety test failed                               | Stop. Tell Sakthi. Do not run it again                                                                                                                                 |
+| `Stopped: ... transport error`                         | The network request failed. The kit never retries              | Note the time. Tell Sakthi before trying again                                                                                                                         |
+| `Stopped: token request failed with HTTP 401`          | PayPal rejected the credentials                                | Check you used the **Sandbox** app's id and secret, then redo Part 3. If it still fails, tell Sakthi                                                                   |
 
 ## Part 4: what to copy into the evidence form
 
@@ -154,7 +173,8 @@ Open `docs/owner/EVIDENCE-TEMPLATE.md` (make a copy to fill in; do not fill in t
 4. For Step 5, copy what you typed.
 5. For steps 1 and 2, copy what you wrote down in Part 1.
 6. The `.json` files in the folder (`03-token.json`, `04-not-found.json`, `05-webhooks.json`) are already cleaned by the kit. Before you share any of them, open it and read it once. If you see an email address, a person's name, or a very long string of random letters and digits, do not share it; tell Sakthi.
-7. Give the filled-in form (and optionally those three `.json` files) to Sakthi. Sakthi puts chosen outputs into the repository through a reviewed pull request, labelled as coming from your spike.
+7. Keep the filled-in form and any `.json` files outside the repository (for example in your home folder or a private drive), never in the checkout. After you paste a secret into the terminal, clear the clipboard (copy any harmless word over it) and close the window.
+8. Give the filled-in form (and optionally those three `.json` files) to Sakthi. Sakthi puts chosen outputs into the repository through a reviewed pull request, labelled as coming from your spike.
 
 ## What you never share or paste anywhere
 

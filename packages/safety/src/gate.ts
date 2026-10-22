@@ -1,4 +1,11 @@
-import type { Clock, Database, GateVerdict, OutboundGate, SwitchReader } from '@umsbx/contracts';
+import type {
+  Clock,
+  Database,
+  GateVerdict,
+  OutboundGate,
+  PayPalOperation,
+  SwitchReader,
+} from '@umsbx/contracts';
 import { findActiveApproval, reserveCall } from './budget';
 
 // Structural copy of Pick<Config, ...>: lint lets safety import contracts and transport only.
@@ -8,6 +15,12 @@ export interface GateConfig {
   outbound_approval_ref: string | null;
 }
 
+// Operations that move money. A null amount on one of these is never allowed through: the cap
+// would be skipped (FIX-BPREP M4). capture_order carries no amount of its own (the order was capped
+// when it was created); it is limited by the daily call count and, when the caller supplies the
+// order's expected amount, by the same per-order cap.
+const MONEY_MOVING: ReadonlySet<PayPalOperation> = new Set(['create_order', 'refund_capture']);
+
 // Decides whether a PayPal call may leave the process. First failing check wins (lane 02):
 // connect_off, kill_switch, no_approval, budget. Any read error blocks (fail closed). An allowed
 // verdict has reserved one call of the approval's daily budget: call check() once per request.
@@ -16,6 +29,12 @@ export function createOutboundGate(d: {
   clock: Clock;
   switches: SwitchReader;
   config: GateConfig;
+  /**
+   * Scoped use (createScopedGate): the request must name this scope and the configured approval
+   * ref, or it is blocked no_approval. Without it, scope and approval_ref are checked only when the
+   * caller supplies them.
+   */
+  bind?: { scope: string };
 }): OutboundGate {
   return {
     async check(c): Promise<GateVerdict> {
@@ -33,6 +52,16 @@ export function createOutboundGate(d: {
         const now = d.clock.now();
         const row = await findActiveApproval(d.db, ref, now);
         if (row === null || !row.operations.includes(c.operation)) return block('no_approval');
+        // M2: the request stands on this row and this scope, or it is blocked.
+        if (d.bind !== undefined) {
+          if (c.scope !== d.bind.scope || c.approval_ref !== row.approval_ref)
+            return block('no_approval');
+        }
+        if (c.scope !== undefined && c.scope !== row.scope) return block('no_approval');
+        if (c.approval_ref !== undefined && c.approval_ref !== row.approval_ref)
+          return block('no_approval');
+        // M4: a money-moving post must carry the amount it moves.
+        if (c.amount_minor === null && MONEY_MOVING.has(c.operation)) return block('budget');
         if (c.amount_minor !== null && c.amount_minor > row.max_amount_minor)
           return block('budget');
         // Review 4 H3: the budget is reserved here, not just read (see budget.ts).

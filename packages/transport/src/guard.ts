@@ -10,7 +10,8 @@ import type { OutboundRequest } from '@umsbx/contracts';
 
 const SANDBOX_HOST = new URL(SANDBOX_API).hostname;
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const CERT_HOST_RE = new RegExp(`^[a-z0-9-]+(\\.[a-z0-9-]+)*${escapeRe(CERT_HOST_SUFFIX)}$`);
+// One label under the sandbox domain is enough for a certificate download (FIX-BPREP L3).
+const CERT_HOST_RE = new RegExp(`^[a-z0-9-]+${escapeRe(CERT_HOST_SUFFIX)}$`);
 // The file name starts with a letter or digit, so '.', '..', '...' and dot-files are refused.
 const CERT_PATH_RE = new RegExp(`^${escapeRe(CERT_PATH_PREFIX)}[A-Za-z0-9][A-Za-z0-9._-]*$`);
 

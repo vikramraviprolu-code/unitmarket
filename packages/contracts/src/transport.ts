@@ -73,6 +73,19 @@ export const GateVerdictSchema = z.discriminatedUnion('allowed', [
 ]);
 export type GateVerdict = z.infer<typeof GateVerdictSchema>;
 
+/**
+ * What the transport asks the gate about one request. `scope` and `approval_ref` are the
+ * construction-time approval the transport stands on (FIX-BPREP M2); a gate that receives them
+ * blocks when they do not match its active approval row. Optional so older gates and callers
+ * keep compiling.
+ */
+export interface OutboundCheck {
+  operation: PayPalOperation;
+  amount_minor: MinorUnits | null;
+  scope?: string;
+  approval_ref?: string;
+}
+
 export interface OutboundGate {
-  check(c: { operation: PayPalOperation; amount_minor: MinorUnits | null }): Promise<GateVerdict>;
+  check(c: OutboundCheck): Promise<GateVerdict>;
 }

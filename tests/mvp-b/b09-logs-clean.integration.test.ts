@@ -6,7 +6,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createLogger } from '@umsbx/obs';
 import { systemClock } from '@umsbx/runtime';
-import type { Actor } from '@umsbx/contracts';
+import { createApprovedSandboxTransport, mintApprovalCapability } from '@umsbx/transport';
+import type { Wire } from '@umsbx/transport';
+import type { Actor, LogEvent, Logger, OutboundRequest } from '@umsbx/contracts';
 import type { App } from '../../apps/web/composition.server';
 import { call, signIn, testEnv, PASSCODE } from '../../apps/web/src/support';
 import type { Session } from '../../apps/web/src/support';
@@ -245,5 +247,78 @@ describe('B-09 logs_clean', () => {
 
   it('the whole journey made no network call: no net, tls, http, https, dns or fetch', () => {
     expect(trace.calls).toEqual([]);
+  });
+});
+
+const OBS_SEED_BEARER = part('tok-seed-', 'abcdef', '123456');
+const OBS_SEED_BODY = part('tok-body-', 'secret-', '123456');
+const OBS_SEED_BASIC = part('Zm9vOmJh', 'cjEyMzQ1', 'Njc4OQ');
+
+function sandboxLogger(): Logger & { events: LogEvent[] } {
+  const events: LogEvent[] = [];
+  const make = (base: LogEvent['fields']): Logger => ({
+    log: (e) => void events.push({ ...e, fields: { ...base, ...e.fields } }),
+    child: (f) => make({ ...base, ...f }),
+  });
+  return Object.assign(make({}), { events });
+}
+const obsWire: Wire = {
+  async request() {
+    return {
+      kind: 'response',
+      status: 200,
+      headers: { 'paypal-debug-id': 'dbg0123abc', 'set-cookie': 'sid=cookie-value-12345' },
+      body: JSON.stringify({ access_token: OBS_SEED_BODY }),
+    };
+  },
+};
+const obsBase: Omit<OutboundRequest, 'operation' | 'method' | 'path' | 'headers' | 'body'> = {
+  order_ref: null,
+  amount_minor: null,
+  scenario: null,
+};
+
+describe('FIX-BPREP OBS: sandbox.send log lines', () => {
+  it('carry the debug id, request id, approval ref and a correlation id, and no secret', async () => {
+    const log = sandboxLogger();
+    const t = await createApprovedSandboxTransport({
+      approval: mintApprovalCapability({
+        scope: 'mvp_b_polling',
+        approval_ref: 'DL-2026-10-22-01',
+        gate: { check: async () => ({ allowed: true, approval_ref: 'DL-2026-10-22-01' }) },
+      }),
+      scope: 'mvp_b_polling',
+      clock: { now: () => new Date('2026-10-22T10:00:00Z') },
+      log,
+      wire: obsWire,
+    });
+    await t.send({
+      ...obsBase,
+      operation: 'oauth_token',
+      method: 'POST',
+      path: '/v1/oauth2/token',
+      headers: { authorization: `Basic ${OBS_SEED_BASIC}`, 'paypal-request-id': 'umsC-req-1' },
+      body: 'grant_type=client_credentials',
+    });
+    await t.send({
+      ...obsBase,
+      operation: 'get_order',
+      method: 'GET',
+      path: '/v2/checkout/orders/ABC123',
+      headers: { authorization: `Bearer ${OBS_SEED_BEARER}` },
+      body: null,
+    });
+    const sends = log.events.filter((e) => e.msg === 'sandbox.send');
+    expect(sends).toHaveLength(2);
+    for (const e of sends) {
+      expect(e.fields['approval_ref']).toBe('DL-2026-10-22-01');
+      expect(e.fields['paypal_debug_id']).toBe('dbg0123abc');
+      expect(typeof e.fields['correlation_id']).toBe('string');
+    }
+    expect(sends[0]?.fields['request_id']).toBe('umsC-req-1');
+    const lines = log.events.map((e) => JSON.stringify(e));
+    expect(scanLines(lines, { seeds: [OBS_SEED_BEARER, OBS_SEED_BODY, OBS_SEED_BASIC] })).toEqual(
+      [],
+    );
   });
 });

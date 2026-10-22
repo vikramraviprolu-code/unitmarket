@@ -9,7 +9,8 @@ export type BootRefusal = {
     | 'non_sandbox_host'
     | 'unknown_corridor'
     | 'invalid_value'
-    | 'label_mode_mismatch';
+    | 'label_mode_mismatch'
+    | 'transport_env_override';
   /** the environment variable at fault; never its value */
   name: string;
 };

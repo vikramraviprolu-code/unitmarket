@@ -26,7 +26,10 @@ export {
   SandboxSealedError,
   createApprovedSandboxTransport,
   createSandboxTransport,
+  SCOPE_OPERATIONS,
 } from './sandbox';
+export { mintApprovalCapability } from './approval';
+export type { ApprovalCapability } from './approval';
 export type { ApprovedSandboxOptions, SandboxCall, SandboxTransport } from './sandbox';
 export type { ScopedGate, Wire, WireErrorKind, WireRequest, WireResult } from './wire';
 export { MAX_RESPONSE_BYTES } from './wire-map';

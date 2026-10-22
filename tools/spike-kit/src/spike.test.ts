@@ -18,7 +18,7 @@ import {
   SANDBOX_HOST,
   assertAllowedCall,
   assertModeAllows,
-  createFetchWire,
+  createSpikeFetchWire,
   createRedactor,
   createReplayWire,
   main,
@@ -77,7 +77,19 @@ const FIXTURES = path.join(REPO, 'fixtures/paypal/docs-examples');
 const LOG = [
   '| Id | Date | Decision | Owner | Notes |',
   '| D-023 | 2026-10-22 | Sandbox accounts. This decision does not authorise any outbound call. | Owner | x |',
-  '| D-024 | 2026-10-25 | Owner written go for the read-only spike. | Owner | x |',
+  '| D-004 | 2026-10-01 | Some unrelated decision about money handling. | Owner | x |',
+  '| D-011 | 2026-10-05 | Another unrelated decision. | Owner | x |',
+  '| D-013 | 2026-10-06 | The sandbox host constant lives in one module. | Owner | x |',
+  // Synthetic well-formed rows for tests only. They are NOT in docs/decision-log.md.
+  '| D-024 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
+  '| D-025 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=vikram; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
+  '| D-026 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=sakthi; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
+  '| D-027 | 2026-10-01 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-10-25; approved in writing 2026-10-01 | Owner | x |',
+  '| D-028 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-10-26; approved in writing 2026-10-25 | Owner | x |',
+  '| D-029 | 2026-10-25 | SPIKE GO: scope=everything; operator=vikram; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
+  '| D-030 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-13-45; approved in writing 2026-10-25 | Owner | x |',
+  '| D-031 | 2026-10-25 | Owner written go for the read-only spike. | Owner | x |',
+  '| D-032 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-12-31 | Owner | x |',
 ].join('\n');
 
 let tmp: string;
@@ -127,6 +139,7 @@ function harness(over: Partial<Deps> & { answers?: string[] } = {}): Harness {
       mkdirp: (p) => void fs.mkdirSync(p, { recursive: true }),
       writeFile: (p, t) => fs.writeFileSync(p, t),
       exists: (p) => fs.existsSync(p),
+      realpath: (p) => fs.realpathSync(p),
     },
     ...over,
   };
@@ -287,8 +300,28 @@ describe('preflight refusals', () => {
     const r = preflight(good().deps);
     expect(r.ok).toBe(true);
   });
+  it('accepts a well-formed SPIKE GO row: read mode with spike-read, read mode with spike-write, write mode with spike-write', () => {
+    const readOnly = good();
+    readOnly.deps.env['SPIKE_APPROVAL_REF'] = 'D-025';
+    expect(preflight(readOnly.deps).ok).toBe(true);
+    expect(preflight(good().deps).ok).toBe(true); // D-024 spike-write, read mode
+    const w = good();
+    w.deps.env['SPIKE_MODE'] = 'write';
+    expect(preflight(w.deps).ok).toBe(true);
+    const s = good();
+    s.deps.env['SPIKE_OPERATOR'] = 'sakthi';
+    s.deps.env['SPIKE_APPROVAL_REF'] = 'D-026';
+    expect(preflight(s.deps).ok).toBe(true);
+  });
+  it('accepts a row on its last valid day', () => {
+    const h = good();
+    h.deps.env['SPIKE_APPROVAL_REF'] = 'D-028';
+    h.deps.nowIso = () => '2026-10-26T23:59:59.000Z';
+    expect(preflight(h.deps).ok).toBe(true);
+  });
   const cases: Array<[string, (h: Harness) => void]> = [
     ['ci_set', (h) => void (h.deps.env['CI'] = 'true')],
+    ['transport_env_override', (h) => void (h.deps.env['HTTPS_PROXY'] = 'http://127.0.0.1:9')],
     ['not_tty', (h) => void (h.deps.stdinIsTTY = false)],
     ['bad_operator', (h) => void (h.deps.env['SPIKE_OPERATOR'] = 'mallory')],
     ['bad_operator', (h) => void delete h.deps.env['SPIKE_OPERATOR']],
@@ -299,6 +332,31 @@ describe('preflight refusals', () => {
     ['approval_ref_pattern', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-24')],
     ['approval_ref_unknown', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-099')],
     ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-023')],
+    // H1: allow-list. Rows without the structured SPIKE GO marker never authorise.
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-011')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-004')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-013')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-031')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-032')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-029')],
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-030')],
+    ['approval_expired', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-027')],
+    [
+      'approval_expired',
+      (h) => {
+        h.deps.env['SPIKE_APPROVAL_REF'] = 'D-028';
+        h.deps.nowIso = () => '2026-10-27T00:00:00.000Z';
+      },
+    ],
+    [
+      'approval_scope_mismatch',
+      (h) => {
+        h.deps.env['SPIKE_APPROVAL_REF'] = 'D-025';
+        h.deps.env['SPIKE_MODE'] = 'write';
+      },
+    ],
+    ['approval_operator_mismatch', (h) => void (h.deps.env['SPIKE_OPERATOR'] = 'sakthi')],
+    ['approval_operator_mismatch', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-026')],
     ['decision_log_unreadable', (h) => void (h.deps.readText = () => null)],
     ['credentials_missing', (h) => void delete h.deps.env['PAYPAL_CLIENT_ID']],
     ['credentials_missing', (h) => void (h.deps.env['PAYPAL_CLIENT_SECRET'] = '')],
@@ -686,7 +744,7 @@ describe('fetch wire guards', () => {
     }));
   it('sends only to the sandbox host, https, no redirects, with a timeout signal', async () => {
     const f = fetchOk();
-    const wire = createFetchWire(f as never);
+    const wire = createSpikeFetchWire(f as never);
     await wire(
       { method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null },
       'x',
@@ -704,7 +762,7 @@ describe('fetch wire guards', () => {
     `${SANDBOX_API}/v1/payments/payouts`,
   ])('refuses %s before calling fetch', async (url) => {
     const f = fetchOk();
-    const wire = createFetchWire(f as never);
+    const wire = createSpikeFetchWire(f as never);
     await expect(wire({ method: 'GET', url, headers: {}, body: null }, 'x')).rejects.toThrow();
     expect(f).not.toHaveBeenCalled();
   });
@@ -714,12 +772,205 @@ describe('fetch wire guards', () => {
       headers: new Headers(),
       arrayBuffer: async () => new Uint8Array(1_048_577).buffer,
     }));
-    const wire = createFetchWire(big as never);
+    const wire = createSpikeFetchWire(big as never);
     await expect(
       wire(
         { method: 'GET', url: `${SANDBOX_API}/v2/checkout/orders/ABC`, headers: {}, body: null },
         'x',
       ),
     ).rejects.toThrow(/too large/i);
+  });
+});
+
+// ---- FIX-BPREP M1, L1, L4, L5 -----------------------------------------------------------------------
+describe('M1: proxy, certificate and Node-option overrides are refused in real modes', () => {
+  const names = [
+    'NODE_USE_ENV_PROXY',
+    'NODE_TLS_REJECT_UNAUTHORIZED',
+    'NODE_EXTRA_CA_CERTS',
+    'NODE_OPTIONS',
+    'HTTP_PROXY',
+    'HTTPS_PROXY',
+    'ALL_PROXY',
+  ];
+  const real = () => harness({ env: realEnv(), stdinIsTTY: true });
+  it.each(names.flatMap((n) => [n, n.toLowerCase()]))('refuses %s with its name', (name) => {
+    const h = real();
+    h.deps.env[name] = '1';
+    const r = preflight(h.deps);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('transport_env_override');
+      expect(r.message).toContain(name.toUpperCase());
+      expect(r.message).not.toContain(FAKE_SECRET);
+    }
+  });
+  it.each([
+    '--use-env-proxy',
+    '--require',
+    '-r',
+    '--import',
+    '--inspect',
+    '--inspect=0.0.0.0:9229',
+  ])('refuses execArgv %s', (flag) => {
+    const h = real();
+    h.deps.execArgv = ['--max-old-space-size=512', flag];
+    const r = preflight(h.deps);
+    expect(!r.ok && r.code).toBe('transport_env_override');
+  });
+  it('accepts harmless execArgv and empty override values', () => {
+    const h = real();
+    h.deps.execArgv = ['--max-old-space-size=512'];
+    h.deps.env['HTTPS_PROXY'] = '';
+    expect(preflight(h.deps).ok).toBe(true);
+  });
+  it('a dry run does not refuse them (the cloud container sets HTTPS_PROXY)', () => {
+    const h = harness({
+      env: { HTTPS_PROXY: 'http://127.0.0.1:9', NODE_OPTIONS: '--max-old-space-size=512' },
+      argv: ['--dry-run', '--out', path.join(tmp, 'out')],
+      execArgv: ['--inspect'],
+    });
+    expect(preflight(h.deps).ok).toBe(true);
+  });
+  it('main refuses and prints the code, never a value', async () => {
+    const h = harness({
+      env: realEnv({ HTTPS_PROXY: 'http://user:pw-canary@127.0.0.1:9' }),
+      stdinIsTTY: true,
+      argv: ['--out', path.join(tmp, 'out')],
+      fetchImpl: vi.fn() as never,
+    });
+    expect(await main(h.deps)).toBe(2);
+    const text = h.errLines.join('\n');
+    expect(text).toMatch(/REFUSED transport_env_override/);
+    expect(text).not.toContain('pw-canary');
+    expect(fs.existsSync(path.join(tmp, 'out'))).toBe(false);
+  });
+});
+
+describe('L5: every common CI marker is refused; the response is capped while streaming', () => {
+  it.each([
+    'CI',
+    'GITHUB_ACTIONS',
+    'GITLAB_CI',
+    'BUILDKITE',
+    'JENKINS_URL',
+    'CIRCLECI',
+    'TF_BUILD',
+    'CODESPACES',
+  ])('refuses %s', (name) => {
+    const h = harness({ env: realEnv({ [name]: 'true' }), stdinIsTTY: true });
+    const r = preflight(h.deps);
+    expect(!r.ok && r.code).toBe('ci_set');
+  });
+  it('a dry run still works under a CI marker', () => {
+    const h = harness({
+      env: { GITHUB_ACTIONS: 'true' },
+      argv: ['--dry-run', '--out', path.join(tmp, 'out')],
+    });
+    expect(preflight(h.deps).ok).toBe(true);
+  });
+  const url = `${SANDBOX_API}/v2/checkout/orders/ABC`;
+  const streaming = (chunks: number, size: number, cancelled: { n: number }) => ({
+    status: 200,
+    headers: new Headers(),
+    arrayBuffer: async () => {
+      throw new Error('arrayBuffer must not be used when a body stream exists');
+    },
+    body: {
+      getReader() {
+        let sent = 0;
+        return {
+          async read() {
+            if (sent >= chunks) return { done: true as const, value: undefined };
+            sent += 1;
+            return { done: false as const, value: new Uint8Array(size) };
+          },
+          async cancel() {
+            cancelled.n += 1;
+          },
+        };
+      },
+    },
+  });
+  it('stops reading and cancels as soon as the cap is passed', async () => {
+    const cancelled = { n: 0 };
+    const wire = createSpikeFetchWire((async () => streaming(1000, 500_000, cancelled)) as never);
+    await expect(wire({ method: 'GET', url, headers: {}, body: null }, 'x')).rejects.toThrow(
+      /too large/i,
+    );
+    expect(cancelled.n).toBe(1);
+  });
+  it('refuses on a declared content-length over the cap without reading', async () => {
+    const cancelled = { n: 0 };
+    const res = {
+      ...streaming(1, 10, cancelled),
+      headers: new Headers({ 'content-length': '5000000' }),
+    };
+    const wire = createSpikeFetchWire((async () => res) as never);
+    await expect(wire({ method: 'GET', url, headers: {}, body: null }, 'x')).rejects.toThrow(
+      /too large/i,
+    );
+  });
+  it('reads a small streamed body in full', async () => {
+    const wire = createSpikeFetchWire((async () => streaming(3, 4, { n: 0 })) as never);
+    const r = await wire({ method: 'GET', url, headers: {}, body: null }, 'x');
+    expect(r.text.length).toBe(12);
+  });
+});
+
+describe('L4: the output directory is checked by real path', () => {
+  const real = (out: string) => {
+    const h = harness({ env: realEnv(), stdinIsTTY: true, argv: ['--out', out] });
+    return preflight(h.deps);
+  };
+  it('refuses a symlink that leads into the repository', () => {
+    const link = path.join(tmp, 'link');
+    fs.symlinkSync(path.join(REPO, 'docs'), link);
+    const r = real(path.join(link, 'sub', 'deeper'));
+    expect(!r.ok && r.code).toBe('output_in_repo');
+    const r2 = real(link);
+    expect(!r2.ok && r2.code).toBe('output_in_repo');
+  });
+  it('refuses a chain of two symlinks', () => {
+    const a = path.join(tmp, 'a');
+    const b = path.join(tmp, 'b');
+    fs.symlinkSync(path.join(REPO, 'docs'), a);
+    fs.symlinkSync(a, b);
+    const r = real(path.join(b, 'x'));
+    expect(!r.ok && r.code).toBe('output_in_repo');
+  });
+  it('accepts a plain folder outside every repository', () => {
+    expect(real(path.join(tmp, 'plain', 'out')).ok).toBe(true);
+  });
+});
+
+describe('L1: account and other id keys are redacted', () => {
+  it('redacts payment_source.paypal.account_id and related keys', () => {
+    const r = createRedactor();
+    const out = JSON.stringify(
+      r.redact({
+        payment_source: {
+          paypal: {
+            account_id: 'CANARYACCT' + 'ID99',
+            email_address: 'a@b.test',
+            name: { given_name: 'X' },
+          },
+        },
+        payer: { payer_id: 'CANARYPAYER' + 'ID2', account_id: 'CANARYACCT' + 'ID98' },
+        payee: { merchant_id: 'CANARYMERCH' + 'ANT2', display_name: 'Canary Shop' },
+        customer: { id: 'CANARYCUST' + 'ID7' },
+      }),
+    );
+    expect(out).not.toMatch(/CANARYACCT|CANARYPAYER|Canary Shop/);
+    expect(out).toContain('***ANT2');
+  });
+  it('the self-test canary list carries an account id and reports it when a redactor lets it through', () => {
+    const identity = () => ({
+      ...createRedactor(),
+      redact: <T>(v: T) => v,
+      text: (x: string) => x,
+    });
+    expect(redactionSelfTest(identity)).toContain('account id');
+    expect(redactionSelfTest(createRedactor)).toEqual([]);
   });
 });

@@ -40,6 +40,10 @@ export const REFUSAL_CODES = [
   'decision_log_unreadable',
   'approval_ref_unknown',
   'approval_ref_not_authorising',
+  'approval_scope_mismatch',
+  'approval_operator_mismatch',
+  'approval_expired',
+  'transport_env_override',
   'credentials_missing',
   'output_in_repo',
 ] as const;
@@ -90,6 +94,13 @@ export type FetchLike = (
   status: number;
   headers: { forEach(cb: (value: string, key: string) => void): void };
   arrayBuffer(): Promise<ArrayBuffer>;
+  /** A real fetch Response has one; the wire reads it chunk by chunk so the cap holds early. */
+  body?: {
+    getReader(): {
+      read(): Promise<{ done: boolean; value?: Uint8Array }>;
+      cancel(): Promise<void>;
+    };
+  } | null;
 }>;
 export interface Deps {
   env: Record<string, string | undefined>;
@@ -108,8 +119,12 @@ export interface Deps {
     mkdirp: (path: string) => void;
     writeFile: (path: string, text: string) => void;
     exists: (path: string) => boolean;
+    /** Resolves symlinks. Optional so older callers compile; absent means lexical paths only. */
+    realpath?: (path: string) => string;
   };
   fetchImpl?: FetchLike;
+  /** process.execArgv of the running process; the real entry point supplies it. */
+  execArgv?: readonly string[];
 }
 export interface Config {
   dryRun: boolean;
@@ -192,6 +207,12 @@ const FULL_KEYS = new Set([
   'surname',
   'full_name',
   'payer_id',
+  'account_id',
+  'customer_id',
+  'vault_id',
+  'account_number',
+  'display_name',
+  'business_name',
   'phone',
   'phone_number',
   'national_number',
@@ -286,6 +307,7 @@ export function redactionSelfTest(make: () => Redactor): string[] {
     given: 'Canarygiven',
     surname: 'Canarysurname',
     payerId: 'CANARYPAYER' + 'ID1',
+    accountId: 'CANARYACCT' + 'ID1',
     street: 'Canary Street 9',
     phone: '0049' + '555123456',
     nonce: 'canary-nonce-' + '12345',
@@ -314,6 +336,7 @@ export function redactionSelfTest(make: () => Redactor): string[] {
       payer: {
         email_address: c.email,
         payer_id: c.payerId,
+        account_id: c.accountId,
         name: { given_name: c.given, surname: c.surname },
         address: { address_line_1: c.street },
         phone: { phone_number: { national_number: c.phone } },
@@ -340,6 +363,7 @@ export function redactionSelfTest(make: () => Redactor): string[] {
     ['given name', c.given],
     ['surname', c.surname],
     ['payer id', c.payerId],
+    ['account id', c.accountId],
     ['street', c.street],
     ['phone', c.phone],
     ['nonce', c.nonce],
@@ -356,7 +380,7 @@ export function redactionSelfTest(make: () => Redactor): string[] {
 // ---- wires ----------------------------------------------------------------------------------------
 /** The real wire. It checks scheme, host, port, userinfo and path before any fetch, never follows a
  * redirect, times out, caps the response, and never retries. Built only after every refusal check. */
-export function createFetchWire(fetchImpl: FetchLike): Wire {
+export function createSpikeFetchWire(fetchImpl: FetchLike): Wire {
   return async (req) => {
     const u = new URL(req.url);
     if (
@@ -377,13 +401,39 @@ export function createFetchWire(fetchImpl: FetchLike): Wire {
       ...(req.body === null ? {} : { body: req.body }),
     };
     const res = await fetchImpl(`${SANDBOX_API}${u.pathname}`, init);
-    const buf = await res.arrayBuffer();
-    if (buf.byteLength > MAX_RESPONSE_BYTES)
-      throw new SpikeError('response_too_large', 'response too large (over 1 MB)');
     const headers: Record<string, string> = {};
     res.headers.forEach((value, key) => {
       headers[key.toLowerCase()] = value;
     });
+    const tooLarge = () => new SpikeError('response_too_large', 'response too large (over 1 MB)');
+    const declared = Number(headers['content-length']);
+    if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) throw tooLarge();
+    // L5: count bytes while streaming and stop at the cap; a huge body is never held in memory.
+    if (res.body) {
+      const reader = res.body.getReader();
+      const parts: Uint8Array[] = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value === undefined) continue;
+        total += value.byteLength;
+        if (total > MAX_RESPONSE_BYTES) {
+          await reader.cancel().catch(() => undefined);
+          throw tooLarge();
+        }
+        parts.push(value);
+      }
+      const all = new Uint8Array(total);
+      let at = 0;
+      for (const part of parts) {
+        all.set(part, at);
+        at += part.byteLength;
+      }
+      return { status: res.status, headers, text: new TextDecoder().decode(all) };
+    }
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength > MAX_RESPONSE_BYTES) throw tooLarge();
     return { status: res.status, headers, text: new TextDecoder().decode(buf) };
   };
 }
@@ -448,7 +498,51 @@ function parseArgs(argv: string[]): Args | null {
 }
 const refuse = (code: RefusalCode, message: string): Preflight => ({ ok: false, code, message });
 const LIVE = /live|production/i;
+// L5: the usual CI markers. A real run refuses all of them; a dry run is allowed anywhere.
+const CI_MARKERS = [
+  'CI',
+  'GITHUB_ACTIONS',
+  'GITLAB_CI',
+  'BUILDKITE',
+  'JENKINS_URL',
+  'CIRCLECI',
+  'TF_BUILD',
+  'CODESPACES',
+];
+const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
+  'NODE_USE_ENV_PROXY',
+  'NODE_TLS_REJECT_UNAUTHORIZED',
+  'NODE_EXTRA_CA_CERTS',
+  'NODE_OPTIONS',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+]);
+const OVERRIDE_FLAG = /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait)?)(?:=|$)/;
 const HOSTISH = /(?:https?:\/\/[^\s/"']+|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|dev)\b)/gi;
+
+/**
+ * The path with symlinks resolved: realpath of the nearest existing ancestor, plus the part that
+ * does not exist yet. Falls back to the lexical path if the file system cannot answer.
+ */
+function realLocation(p: string, fsx: Deps['fs']): string {
+  const rest: string[] = [];
+  let cur = resolve(p);
+  for (;;) {
+    if (fsx.exists(cur)) {
+      try {
+        const r = (fsx.realpath as (x: string) => string)(cur);
+        return join(r, ...rest.reverse());
+      } catch {
+        return resolve(p);
+      }
+    }
+    const up = dirname(cur);
+    if (up === cur) return resolve(p);
+    rest.push(cur.slice(up.length + 1));
+    cur = up;
+  }
+}
 
 function insideGitRepo(dir: string, exists: (p: string) => boolean): boolean {
   let cur = resolve(dir);
@@ -458,6 +552,27 @@ function insideGitRepo(dir: string, exists: (p: string) => boolean): boolean {
     if (up === cur) return false;
     cur = up;
   }
+}
+
+/** Structured owner marker a decision-log row must carry before a real spike run (FIX-BPREP H1). */
+const SPIKE_GO =
+  /SPIKE GO: scope=(spike-read|spike-write); operator=(vikram|sakthi); valid_until=(\d{4}-\d{2}-\d{2}); approved in writing (\d{4}-\d{2}-\d{2})/;
+function realDate(iso: string): boolean {
+  const t = Date.parse(`${iso}T00:00:00Z`);
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === iso;
+}
+export function parseSpikeGo(
+  row: string,
+): { scope: 'spike-read' | 'spike-write'; operator: string; validUntil: string } | null {
+  if (/does not authori[sz]e/i.test(row)) return null;
+  const m = SPIKE_GO.exec(row);
+  if (m === null) return null;
+  if (!realDate(m[3] as string) || !realDate(m[4] as string)) return null;
+  return {
+    scope: m[1] as 'spike-read' | 'spike-write',
+    operator: m[2] as string,
+    validUntil: m[3] as string,
+  };
 }
 
 export function preflight(deps: Deps): Preflight {
@@ -488,9 +603,16 @@ export function preflight(deps: Deps): Preflight {
       ? join(deps.tmpDir, 'unitmarket-spike-dryrun', date)
       : join(deps.homeDir, 'unitmarket-spike', date);
   const checkOut = (): Preflight | null => {
-    const rootPrefix = resolve(deps.repoRoot) + sep;
-    if ((outBase + sep).startsWith(rootPrefix) || insideGitRepo(outBase, deps.fs.exists))
-      return refuse('output_in_repo', 'the output directory must be outside any git repository');
+    // L4: judge the real location. A symlink (or a chain of them) into the repository is the repo.
+    const real = deps.fs.realpath ? realLocation(outBase, deps.fs) : outBase;
+    const rootReal = deps.fs.realpath
+      ? realLocation(resolve(deps.repoRoot), deps.fs)
+      : resolve(deps.repoRoot);
+    const rootPrefixes = [resolve(deps.repoRoot) + sep, rootReal + sep];
+    for (const p of [outBase, real]) {
+      if (rootPrefixes.some((rp) => (p + sep).startsWith(rp)) || insideGitRepo(p, deps.fs.exists))
+        return refuse('output_in_repo', 'the output directory must be outside any git repository');
+    }
     return null;
   };
   if (args.dryRun) {
@@ -511,8 +633,24 @@ export function preflight(deps: Deps): Preflight {
       },
     };
   }
-  if (env['CI'] !== undefined && env['CI'] !== '')
-    return refuse('ci_set', 'CI is set; the kit never runs in CI');
+  for (const name of CI_MARKERS) {
+    const v = env[name];
+    if (v !== undefined && v !== '')
+      return refuse('ci_set', `${name} is set; the kit never runs in CI`);
+  }
+  // M1: nothing may sit between this process and the sandbox host, and the CA store stays default.
+  for (const [name, v] of Object.entries(env)) {
+    if (OVERRIDE_NAMES.has(name.toUpperCase()) && v !== undefined && v.trim() !== '')
+      return refuse(
+        'transport_env_override',
+        `${name.toUpperCase()} is set; run on your own machine, off VPN, not in a container`,
+      );
+  }
+  if ((deps.execArgv ?? []).some((a) => OVERRIDE_FLAG.test(a)))
+    return refuse(
+      'transport_env_override',
+      'a Node flag that changes networking or loads code is set',
+    );
   if (!deps.stdinIsTTY)
     return refuse('not_tty', 'stdin is not a terminal; run it by hand in a terminal');
   const operator = env['SPIKE_OPERATOR'];
@@ -530,11 +668,17 @@ export function preflight(deps: Deps): Preflight {
   const row = log.split('\n').find((l) => new RegExp(`^\\|\\s*${ref}\\s*\\|`).test(l));
   if (row === undefined)
     return refuse('approval_ref_unknown', `no row ${ref} in docs/decision-log.md`);
-  if (/does not authori[sz]e/i.test(row))
+  const go = parseSpikeGo(row);
+  if (go === null)
     return refuse(
       'approval_ref_not_authorising',
-      `row ${ref} says it does not authorise outbound calls`,
+      `row ${ref} carries no well-formed SPIKE GO marker (see docs/owner/SPIKE-RUNBOOK.md)`,
     );
+  if (!(modeRaw === 'write' ? go.scope === 'spike-write' : go.scope !== null))
+    return refuse('approval_scope_mismatch', `row ${ref} does not cover mode ${modeRaw}`);
+  if (go.operator !== operator)
+    return refuse('approval_operator_mismatch', `row ${ref} names a different operator`);
+  if (date > go.validUntil) return refuse('approval_expired', `row ${ref} has expired`);
   const clientId = env['PAYPAL_CLIENT_ID'];
   const clientSecret = env['PAYPAL_CLIENT_SECRET'];
   if (!clientId || !clientSecret)
@@ -1760,7 +1904,7 @@ export async function main(deps: Deps): Promise<number> {
   const cfg = pre.cfg;
   let wire: Wire;
   if (cfg.dryRun) wire = createReplayWire(deps.fixtureDir, deps.readText);
-  else if (deps.fetchImpl) wire = createFetchWire(deps.fetchImpl);
+  else if (deps.fetchImpl) wire = createSpikeFetchWire(deps.fetchImpl);
   else {
     deps.err('REFUSED no_transport: no fetch function available');
     return 2;
@@ -1779,7 +1923,8 @@ export async function main(deps: Deps): Promise<number> {
 const entry = process.argv[1];
 if (entry !== undefined && import.meta.url === pathToFileURL(resolve(entry)).href) {
   const { createInterface } = await import('node:readline');
-  const { readFileSync, mkdirSync, writeFileSync, existsSync } = await import('node:fs');
+  const { readFileSync, mkdirSync, writeFileSync, existsSync, realpathSync } =
+    await import('node:fs');
   const { homedir, tmpdir } = await import('node:os');
   const argv = process.argv.slice(2);
   const dry = argv.includes('--dry-run');
@@ -1790,6 +1935,7 @@ if (entry !== undefined && import.meta.url === pathToFileURL(resolve(entry)).hre
     env: process.env,
     argv,
     stdinIsTTY: process.stdin.isTTY === true,
+    execArgv: process.execArgv,
     nowIso: () => new Date().toISOString(),
     homeDir: homedir(),
     tmpDir: tmpdir(),
@@ -1809,6 +1955,7 @@ if (entry !== undefined && import.meta.url === pathToFileURL(resolve(entry)).hre
       mkdirp: (p) => void mkdirSync(p, { recursive: true, mode: 0o700 }),
       writeFile: (p, t) => writeFileSync(p, t, { mode: 0o600 }),
       exists: (p) => existsSync(p),
+      realpath: (p) => realpathSync(p),
     },
     ...(dry ? {} : { fetchImpl: fetch as unknown as FetchLike }),
   };

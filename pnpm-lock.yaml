@@ -455,6 +455,9 @@ importers:
       '@umsbx/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@umsbx/transport':
+        specifier: workspace:*
+        version: link:../transport
       zod:
         specifier: 4.6.7
         version: 4.6.7

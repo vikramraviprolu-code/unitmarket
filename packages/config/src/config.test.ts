@@ -401,3 +401,71 @@ describe('the environment label must agree with the mode (L3)', () => {
     expect(loadConfig(offline({ NEXT_PUBLIC_UMS_ENV_LABEL: 'Demo' })).ok).toBe(true);
   });
 });
+
+// FIX-BPREP M1: a proxy, certificate or Node-option override changes where credentials go, so
+// sandbox mode refuses to boot with one. Offline mode (the cloud container sets HTTPS_PROXY) does not.
+describe('transport environment overrides (M1)', () => {
+  const names = [
+    'NODE_USE_ENV_PROXY',
+    'NODE_TLS_REJECT_UNAUTHORIZED',
+    'NODE_EXTRA_CA_CERTS',
+    'NODE_OPTIONS',
+    'HTTP_PROXY',
+    'HTTPS_PROXY',
+    'ALL_PROXY',
+  ];
+  const variants = names.flatMap((n) => [n, n.toLowerCase()]);
+  it.each(variants)('sandbox mode refuses %s', (name) => {
+    expect(refusal(sandbox({ [name]: '1' }))).toEqual({
+      code: 'transport_env_override',
+      name: name.toUpperCase(),
+    });
+  });
+  it('sandbox mode refuses a mixed-case proxy name', () => {
+    expect(refusal(sandbox({ Https_Proxy: 'http://127.0.0.1:1' })).code).toBe(
+      'transport_env_override',
+    );
+  });
+  it('an empty value is not an override', () => {
+    expect(loadConfig(sandbox({ HTTPS_PROXY: '', NODE_OPTIONS: '  ' })).ok).toBe(true);
+  });
+  it.each(['--use-env-proxy', '--require', '-r', '--import', '--inspect', '--inspect-brk'])(
+    'sandbox mode refuses execArgv %s',
+    (flag) => {
+      const r = loadConfig(sandbox(), { execArgv: ['--max-old-space-size=512', flag] });
+      expect(!r.ok && r.error).toEqual({ code: 'transport_env_override', name: 'execArgv' });
+    },
+  );
+  it.each(['--require=./x.js', '--import=./x.mjs', '--inspect=0.0.0.0:9229'])(
+    'sandbox mode refuses execArgv %s',
+    (flag) => {
+      const r = loadConfig(sandbox(), { execArgv: [flag] });
+      expect(!r.ok && r.error.code).toBe('transport_env_override');
+    },
+  );
+  it('sandbox mode accepts harmless execArgv', () => {
+    expect(loadConfig(sandbox(), { execArgv: ['--max-old-space-size=512'] }).ok).toBe(true);
+  });
+  it('offline mode does not refuse them (the cloud container sets HTTPS_PROXY)', () => {
+    const env = offline({
+      HTTPS_PROXY: 'http://proxy.invalid:3128',
+      NODE_OPTIONS: '--max-old-space-size=512',
+      NODE_EXTRA_CA_CERTS: '/etc/ssl/ca.pem',
+    });
+    expect(loadConfig(env, { execArgv: ['--inspect'] }).ok).toBe(true);
+  });
+  it('the refusal line names the variable and never a value', () => {
+    const w: string[] = [];
+    expect(() =>
+      bootOrExit(
+        sandbox({ HTTPS_PROXY: 'http://user:pw-canary@proxy.invalid:3128' }),
+        (c) => {
+          throw new Error(`exit ${c}`);
+        },
+        (l) => w.push(l),
+      ),
+    ).toThrow('exit 78');
+    expect(w.join()).toContain('transport_env_override (HTTPS_PROXY)');
+    expect(w.join()).not.toContain('pw-canary');
+  });
+});
