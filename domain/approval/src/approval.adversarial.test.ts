@@ -150,9 +150,12 @@ describe('stored snapshot', () => {
 
   it('expires_at pushed out in DB: the token (bound to expires_at) fails 403', async () => {
     const g = await granted();
-    await editRow(`UPDATE approvals SET expires_at = '2027-01-01T00:00:00Z' WHERE id = $1`, [
-      g.approval_id,
-    ]);
+    // created_at moves too, so the DB check (expires_at = created_at + 15 minutes) still holds and
+    // the token binding is what is under test.
+    await editRow(
+      `UPDATE approvals SET created_at = '2026-12-31T23:45:00Z', expires_at = '2027-01-01T00:00:00Z' WHERE id = $1`,
+      [g.approval_id],
+    );
     const r = await verify(g, g.token);
     expect(r.ok).toBe(false);
     expect(r.ok ? '' : r.error.code).toMatch(/^(bad_token|snapshot_tampered)$/);
