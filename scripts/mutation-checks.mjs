@@ -10,13 +10,20 @@
 // For every mutant the source file is rewritten, the test command runs, and the file is restored
 // (try/finally and signal handlers). A mutant is KILLED when the command exits non-zero or times out
 // and SURVIVED when it exits 0. Exit 0 when the score is at least the threshold, 1 when below it,
-// 2 when the baseline suite is red or the arguments are wrong. A target that does not exist yet is
-// reported as SKIP; with no target at all the gate passes with a warning.
+// 2 when the baseline suite is red, a target still carries a leftover mutant or the arguments are
+// wrong. A target that does not exist yet is reported as SKIP; with no target at all the gate
+// prints a loud SKIPPED banner and passes, unless --require-targets is given (exit 3). The MVP-A
+// gate runs with --require-targets, so a vacuous pass cannot reach it.
+// Every mutant carries the marker /*SBX-MUTANT*/. The files are rewritten in place and restored on
+// normal exit, on exceptions and on SIGINT/SIGTERM/SIGHUP; a run that finds the marker in a target
+// at startup (a killed earlier run) refuses to start.
 // Offline: no network, no credential. The test command inherits this process's environment as is.
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+export const MUTANT_MARKER = '/*SBX-MUTANT*/';
 
 export const DEFAULT_TARGETS = [
   'domain/payments/src/match.ts',
@@ -154,14 +161,38 @@ function packageDirOf(root, rel) {
 }
 
 // --- running -------------------------------------------------------------------------------
+let current = null;
+const killCurrent = () => {
+  if (current?.pid === undefined) return;
+  try {
+    process.kill(-current.pid, 'SIGKILL');
+  } catch {
+    /* already gone */
+  }
+};
+
+// Asynchronous on purpose: a signal handler can only run while the event loop is free, so a
+// blocking spawn would delay the restore of the mutated file until the test command ended.
 function runCommand(cmd, root, timeoutMs) {
-  const r = spawnSync(cmd, {
-    cwd: root,
-    shell: true,
-    encoding: 'utf8',
-    timeout: timeoutMs,
+  return new Promise((resolveRun) => {
+    const child = spawn(cmd, { cwd: root, shell: true, stdio: 'ignore', detached: true });
+    current = child;
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killCurrent();
+    }, timeoutMs);
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      current = null;
+      resolveRun({ code: code ?? 1, timedOut });
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      current = null;
+      resolveRun({ code: 1, timedOut });
+    });
   });
-  return { code: r.status ?? 1, timedOut: r.error?.code === 'ETIMEDOUT' };
 }
 
 function parseArgs(argv) {
@@ -177,10 +208,11 @@ function parseArgs(argv) {
     max: Number(get('--max') ?? 60),
     timeout: Number(get('--timeout') ?? 120),
     list: argv.includes('--list'),
+    requireTargets: argv.includes('--require-targets'),
   };
 }
 
-function main(argv) {
+async function main(argv) {
   const opt = parseArgs(argv);
   const root = resolve(opt.root ?? join(dirname(fileURLToPath(import.meta.url)), '..'));
   if (
@@ -195,8 +227,25 @@ function main(argv) {
   const { found, missing } = expandTargets(root, patterns);
   for (const m of missing) console.log(`SKIP ${m} (not present yet)`);
   if (found.length === 0) {
-    console.log('mutation-checks: no target present; nothing to mutate (pass with warning)');
+    console.log('mutation-checks: ##########################################################');
+    console.log('mutation-checks: SKIPPED: no target file is present. NOTHING WAS MUTATED.');
+    console.log(
+      'mutation-checks: This is not a passing score; it is the absence of a measurement.',
+    );
+    console.log('mutation-checks: ##########################################################');
+    if (opt.requireTargets) {
+      console.error('mutation-checks: FAILED: --require-targets was given and no target exists');
+      return 3;
+    }
     return 0;
+  }
+  for (const rel of found) {
+    if (readFileSync(join(root, rel), 'utf8').includes(MUTANT_MARKER)) {
+      console.error(
+        `mutation-checks: leftover mutant marker in ${rel}; a killed earlier run left it. Restore the file (git checkout -- ${rel}) and run again`,
+      );
+      return 2;
+    }
   }
   const pnpm = 'corepack pnpm';
   const cmdFor = (rel) =>
@@ -224,9 +273,16 @@ function main(argv) {
   };
   for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP'])
     process.on(s, () => {
+      killCurrent();
       restore();
       process.exit(130);
     });
+  process.on('exit', restore);
+  process.on('uncaughtException', (e) => {
+    restore();
+    console.error(e);
+    process.exit(1);
+  });
 
   let killed = 0;
   let total = 0;
@@ -237,7 +293,7 @@ function main(argv) {
       const cmd = cmdFor(t.rel);
       if (!baselined.has(cmd)) {
         baselined.add(cmd);
-        const base = runCommand(cmd, root, timeoutMs);
+        const base = await runCommand(cmd, root, timeoutMs);
         if (base.code !== 0) {
           console.error(
             `mutation-checks: baseline suite is red for ${t.rel} (${cmd}); fix it first`,
@@ -250,8 +306,11 @@ function main(argv) {
       originals.set(file, original);
       let tKilled = 0;
       for (const m of t.chosen) {
-        writeFileSync(file, original.slice(0, m.start) + m.replacement + original.slice(m.end));
-        const r = runCommand(cmd, root, timeoutMs);
+        writeFileSync(
+          file,
+          original.slice(0, m.start) + m.replacement + MUTANT_MARKER + original.slice(m.end),
+        );
+        const r = await runCommand(cmd, root, timeoutMs);
         writeFileSync(file, original);
         total += 1;
         if (r.code !== 0 || r.timedOut) {
@@ -282,4 +341,4 @@ function main(argv) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
-  process.exitCode = main(process.argv.slice(2));
+  process.exitCode = await main(process.argv.slice(2));
