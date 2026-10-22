@@ -8,5 +8,17 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@umsbx/catalogue": "workspace:*",
+    "@umsbx/config": "workspace:*",
+    "@umsbx/contracts": "workspace:*",
+    "@umsbx/db": "workspace:*",
+    "@umsbx/model": "workspace:*",
+    "@umsbx/obs": "workspace:*",
+    "@umsbx/paypal": "workspace:*",
+    "@umsbx/runtime": "workspace:*",
+    "@umsbx/safety": "workspace:*",
+    "@umsbx/transport": "workspace:*"
   }
 }
