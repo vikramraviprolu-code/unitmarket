@@ -174,15 +174,39 @@ describe('bypass attempts (review H2)', () => {
   const inModel = 'packages/model/src/x.ts';
   const inDomain = 'domain/payments/src/x.ts';
   const cases: [string, string, string][] = [
-    ['import() of a barred workspace package', inModel, "export const m = () => import('@umsbx/paypal');"],
-    ['import() of a package the model may not use', inModel, "export const m = () => import('@umsbx/payments');"],
+    [
+      'import() of a barred workspace package',
+      inModel,
+      "export const m = () => import('@umsbx/paypal');",
+    ],
+    [
+      'import() of a package the model may not use',
+      inModel,
+      "export const m = () => import('@umsbx/payments');",
+    ],
     ['import() of a network module', inModel, "export const m = () => import('node:https');"],
-    ['new globalThis.WebSocket', inModel, "export const m = new globalThis.WebSocket('wss://x.test');"],
+    [
+      'new globalThis.WebSocket',
+      inModel,
+      "export const m = new globalThis.WebSocket('wss://x.test');",
+    ],
     ['self.fetch', inModel, "export const m = () => self.fetch('x');"],
     ['window.XMLHttpRequest', inModel, 'export const m = new window.XMLHttpRequest();'],
-    ['import() of a simulation package', inDomain, `export const m = () => import('${SIM_SCOPE}/harness');`],
-    ['import() of a template literal', inDomain, 'export const m = () => import(`@unitmarket/core`);'],
-    ['import() of a concatenated specifier', inDomain, "export const m = () => import('node:' + 'https');"],
+    [
+      'import() of a simulation package',
+      inDomain,
+      `export const m = () => import('${SIM_SCOPE}/harness');`,
+    ],
+    [
+      'import() of a template literal',
+      inDomain,
+      'export const m = () => import(`@unitmarket/core`);',
+    ],
+    [
+      'import() of a concatenated specifier',
+      inDomain,
+      "export const m = () => import('node:' + 'https');",
+    ],
     ['import() of a variable', inDomain, 'export const m = (n: string) => import(n);'],
     ['computed globalThis lookup', inDomain, "export const m = globalThis['fe' + 'tch'];"],
     ['destructured fetch', inDomain, 'export const { fetch: f } = globalThis;'],
@@ -198,17 +222,25 @@ describe('bypass attempts (review H2)', () => {
 
   it('allows a literal import() of an allowed package and new Date(arg)', async () => {
     expect(
-      await lint(inDomain, "export const m = () => import('@umsbx/contracts');\nexport const d = new Date(0);\n"),
+      await lint(
+        inDomain,
+        "export const m = () => import('@umsbx/contracts');\nexport const d = new Date(0);\n",
+      ),
     ).toEqual([]);
   });
 
   it('the transport package may still use the network globals', async () => {
     expect(
-      await lint('packages/transport/src/x.ts', "export const m = () => globalThis.fetch('x');\nexport const n = () => import('node:https');\n"),
+      await lint(
+        'packages/transport/src/x.ts',
+        "export const m = () => globalThis.fetch('x');\nexport const n = () => import('node:https');\n",
+      ),
     ).toEqual([]);
   });
 
   it('runtime may read real time through the globals', async () => {
-    expect(await lint('packages/runtime/src/x.ts', 'export const m = new globalThis.Date();\n')).toEqual([]);
+    expect(
+      await lint('packages/runtime/src/x.ts', 'export const m = new globalThis.Date();\n'),
+    ).toEqual([]);
   });
 });
