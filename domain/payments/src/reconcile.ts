@@ -18,7 +18,6 @@ import type {
   OrderRead,
   OrderStatus,
   PaymentsDeps,
-  SqlExecutor,
 } from '@umsbx/contracts';
 import { applyReadback, readApplyGates, declineUnits } from './apply';
 import { raiseOpsAlert, observeReadback } from './refunds';
