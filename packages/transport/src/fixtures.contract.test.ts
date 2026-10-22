@@ -3,7 +3,9 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { buildIndex, loadFixtures } from './fixture-store';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { buildIndex, loadFixtures, validateFolderLabels } from './fixture-store';
 
 const ROOT = fileURLToPath(new URL('../../../fixtures/paypal/', import.meta.url));
 
@@ -171,6 +173,83 @@ describe('fixture contract (MAINT-5, A-23 first half)', () => {
       for (const m of text.matchAll(/"authorization":\s*"([^"]*)"/gi)) {
         expect(m[1], rel).toBe('[redacted]');
       }
+    }
+  });
+});
+
+describe('sandbox-recordings folder (B-13)', () => {
+  const rec = (over: Record<string, unknown> = {}, metaOver: Record<string, unknown> = {}) => ({
+    meta: {
+      source: 'sandbox-recording',
+      scenario: 'spike_happy',
+      operation: 'get_order',
+      step: 1,
+      recorded_at: '2026-10-23T09:30:00Z',
+      origin: 'sandbox-recording: owner spike run 1',
+      redactions: ['header authorization: replaced'],
+      ...metaOver,
+    },
+    request: { method: 'GET', path_template: '/v2/checkout/orders/{id}', headers: {}, body: null },
+    response: { status: 200, headers: {}, body: { id: 'X1', status: 'CREATED' } },
+    ...over,
+  });
+  async function tree(files: Record<string, unknown>): Promise<string> {
+    const d = await mkdtemp(join(tmpdir(), 'umsbx-fxc-'));
+    for (const [rel, v] of Object.entries(files)) {
+      await mkdir(join(d, rel, '..'), { recursive: true });
+      await writeFile(join(d, rel), JSON.stringify(v));
+    }
+    return d;
+  }
+
+  it('the committed tree has no label or recorded_at problem in any folder', async () => {
+    expect(await validateFolderLabels(ROOT)).toEqual([]);
+  });
+
+  it('accepts a well-formed recording', async () => {
+    const d = await tree({ 'sandbox-recordings/spike_happy__get_order__1.json': rec() });
+    expect(await validateFolderLabels(d)).toEqual([]);
+  });
+
+  it('requires recorded_at non-null in sandbox-recordings', async () => {
+    const d = await tree({
+      'sandbox-recordings/spike_happy__get_order__1.json': rec({}, { recorded_at: null }),
+    });
+    await expect(validateFolderLabels(d)).rejects.toThrow(/recorded_at/);
+  });
+
+  it('refuses another source label inside sandbox-recordings and a recording elsewhere', async () => {
+    const a = await tree({
+      'sandbox-recordings/spike_happy__get_order__1.json': rec(
+        {},
+        { source: 'synthetic', recorded_at: null },
+      ),
+    });
+    expect((await validateFolderLabels(a)).join('|')).toMatch(
+      /sandbox-recordings.*sandbox-recording/,
+    );
+    const b = await tree({ 'synthetic/spike_happy__get_order__1.json': rec() });
+    expect((await validateFolderLabels(b)).join('|')).toMatch(/synthetic/);
+  });
+
+  it('requires an origin text and a redactions list in sandbox-recordings', async () => {
+    const a = await tree({
+      'sandbox-recordings/spike_happy__get_order__1.json': rec({}, { origin: 'x' }),
+    });
+    expect((await validateFolderLabels(a)).join('|')).toMatch(/origin/);
+    const b = await tree({
+      'sandbox-recordings/spike_happy__get_order__1.json': rec({}, { redactions: [] }),
+    });
+    expect((await validateFolderLabels(b)).join('|')).toMatch(/redactions/);
+  });
+
+  it('keeps the other folders strict: a docs-example or synthetic file with recorded_at is refused', async () => {
+    for (const folder of ['docs-examples', 'synthetic'] as const) {
+      const src = folder === 'docs-examples' ? 'docs-example' : 'synthetic';
+      const d = await tree({
+        [`${folder}/spike_happy__get_order__1.json`]: rec({}, { source: src }),
+      });
+      await expect(validateFolderLabels(d)).rejects.toThrow(/recorded_at/);
     }
   });
 });

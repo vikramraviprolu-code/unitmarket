@@ -83,3 +83,33 @@ export async function buildIndex(dir: string): Promise<FixtureIndex> {
     })),
   };
 }
+
+const FOLDER_SOURCE: Record<string, FixtureFile['meta']['source']> = {
+  'docs-examples': 'docs-example',
+  synthetic: 'synthetic',
+  'sandbox-recordings': 'sandbox-recording',
+};
+
+/**
+ * Folder rules (README, B-13). Schema errors throw (so `recorded_at` null in a recording, or set
+ * anywhere else, is refused as before). Returned strings are label problems: a file whose
+ * `meta.source` does not match its folder, and a sandbox recording without an origin text or a
+ * redactions list. The other two folders are not loosened.
+ */
+export async function validateFolderLabels(dir: string): Promise<string[]> {
+  const problems: string[] = [];
+  for (const { file, fx } of await readAll(dir)) {
+    const folder = file.split('/')[0] ?? '';
+    const want = FOLDER_SOURCE[folder];
+    if (want === undefined) continue;
+    if (fx.meta.source !== want)
+      problems.push(`${file}: ${folder} holds only meta.source ${want}, found ${fx.meta.source}`);
+    if (want === 'sandbox-recording') {
+      if (fx.meta.origin.trim().length < 10)
+        problems.push(`${file}: a sandbox recording needs an origin text`);
+      if (fx.meta.redactions.length === 0)
+        problems.push(`${file}: a sandbox recording needs a redactions list`);
+    }
+  }
+  return problems;
+}
