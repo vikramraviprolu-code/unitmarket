@@ -28,7 +28,7 @@ import {
   type IdemScope,
   type StoredResponse,
 } from './idempotency';
-import { takeToken, type RateRule } from './rate';
+import { resetBucket, takeToken, type RateRule } from './rate';
 import { resolveSessionRecord, type SessionRecord } from './session';
 
 export type { RateRule } from './rate';
@@ -233,6 +233,9 @@ export function withRoute<I, O>(
           'retry-after': String(Math.max(1, Math.ceil(retry_ms / 1000))),
         });
 
+      let targetSubject: string | null = null;
+      let sharedBucketRetryMs: number | null = null;
+
       if (meta.rate?.per === 'ip' && meta.auth !== 'webhook' && meta.rate_target === undefined) {
         const v = await takeToken(deps, meta.rate, ip_hash);
         if (!v.allowed) return tooMany(v.retry_after_ms);
@@ -310,9 +313,15 @@ export function withRoute<I, O>(
 
       if (meta.rate?.per === 'ip' && meta.auth !== 'webhook' && meta.rate_target !== undefined) {
         const target = (raw as Record<string, unknown> | null)?.[meta.rate_target];
-        const subject = `${ip_hash}:${sha256Hex(String(target ?? '')).slice(0, 32)}`;
-        const v = await takeToken(deps, meta.rate, subject);
-        if (!v.allowed) return tooMany(v.retry_after_ms);
+        targetSubject = `${ip_hash}:${sha256Hex(String(target ?? '')).slice(0, 32)}`;
+        const v = await takeToken(deps, meta.rate, targetSubject);
+        if (!v.allowed) {
+          // M3: with no client address the bucket is shared by every client, so an exhausted bucket
+          // proves nothing about this caller. The handler still runs; a wrong answer is throttled
+          // (429), a right one signs in. With an address the lockout is strict.
+          if (clientIp(req, deps, call) !== 'no-address') return tooMany(v.retry_after_ms);
+          sharedBucketRetryMs = v.retry_after_ms;
+        }
       }
 
       // Webhook limiter (M2): refuse an exhausted source before the handler (signature check) runs.
@@ -356,6 +365,20 @@ export function withRoute<I, O>(
       }
 
       const result = await handler({ actor, input: parsed.data, req_id, ip_hash, log });
+
+      // M3: a failure against a spent shared bucket is throttled; a success resets that bucket
+      // (only this target's, for the same client key).
+      if (targetSubject !== null && meta.rate !== null) {
+        if ('code' in result) {
+          if (sharedBucketRetryMs !== null) {
+            if (idem !== null) await abandonIdempotent(deps, idem);
+            idem = null;
+            return tooMany(sharedBucketRetryMs);
+          }
+        } else {
+          await resetBucket(deps, meta.rate, targetSubject);
+        }
+      }
 
       // Webhook limiter counts only rejected requests; a valid webhook is never limited.
       if (

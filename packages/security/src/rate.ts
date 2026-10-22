@@ -26,6 +26,22 @@ export interface RateVerdict {
   retry_after_ms: number;
 }
 
+const bucketKey = (rule: RateRule, subject: string): string =>
+  `${rule.name}:${rule.per}:${subject}`.slice(0, 190);
+
+/** Gives a bucket its full tokens back (a successful sign-in resets the failures that preceded it). */
+export async function resetBucket(
+  deps: { db: Database; clock: Clock },
+  rule: RateRule,
+  subject: string,
+): Promise<void> {
+  const stamp = deps.clock.now().toISOString();
+  await deps.db.query(
+    'UPDATE rate_buckets SET tokens = $2, refilled_at = $3, updated_at = $3 WHERE bucket_key = $1',
+    [bucketKey(rule, subject), rule.limit, stamp],
+  );
+}
+
 const ms = (v: unknown): number => (v instanceof Date ? v.getTime() : Date.parse(String(v)));
 
 export async function takeToken(
@@ -34,7 +50,7 @@ export async function takeToken(
   subject: string,
   mode: 'take' | 'peek' = 'take',
 ): Promise<RateVerdict> {
-  const key = `${rule.name}:${rule.per}:${subject}`.slice(0, 190);
+  const key = bucketKey(rule, subject);
   const interval = rule.window_ms / rule.limit;
   return deps.db.transaction(async (tx) => {
     const now = deps.clock.now().getTime();

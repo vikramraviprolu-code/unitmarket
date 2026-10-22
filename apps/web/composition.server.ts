@@ -549,11 +549,11 @@ function buildApp(config: Config, opts: AppOptions): App {
     session_secret: config.session_secret,
     passcode_hash: config.passcode_hash,
     public_origin: config.public_origin,
-    // No reverse proxy is trusted: X-Forwarded-For is never read, so a client cannot choose its own
-    // limiter bucket. Next.js route handlers receive no socket address (RouteCallContext.remote_addr
-    // has no source here), so every client shares one 'no-address' ip bucket until the host config
-    // can name the proxy count (needs a packages/config value; reported in docs/READINESS.md).
-    trusted_proxies: 0,
+    // UMS_TRUSTED_PROXIES (default 0): how many reverse proxies sit in front. With 0, X-Forwarded-For
+    // is never read, a client cannot choose its own limiter bucket, and (route handlers receive no
+    // socket address) every client shares one 'no-address' bucket; the login then refuses only
+    // wrong passcodes once it is spent. A hosted deployment must set the proxy count.
+    trusted_proxies: config.trusted_proxies,
   };
 
   // --- engine --------------------------------------------------------------------------------

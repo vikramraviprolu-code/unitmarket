@@ -114,6 +114,15 @@ export function loadConfig(env: Env): Result<Config, BootRefusal> {
   if (label !== undefined && MODE_WORD.test(label)) {
     return refuse('live_not_available', 'NEXT_PUBLIC_UMS_ENV_LABEL');
   }
+  // L3: the label is cosmetic, so a label that contradicts the mode would mislead a viewer. Offline
+  // means Dry run only; sandbox means Sandbox only. Other words (a free label) are not judged.
+  if (label !== undefined) {
+    const norm = label.toLowerCase().replace(/[\s_-]+/g, ' ');
+    if (norm === 'sandbox' && mode !== 'sandbox')
+      return refuse('label_mode_mismatch', 'NEXT_PUBLIC_UMS_ENV_LABEL');
+    if (norm === 'dry run' && mode !== 'offline')
+      return refuse('label_mode_mismatch', 'NEXT_PUBLIC_UMS_ENV_LABEL');
+  }
 
   // 2. any PayPal hostname in any environment variable value (D-013)
   for (const [name, v] of Object.entries(env)) {
@@ -213,6 +222,11 @@ export function loadConfig(env: Env): Result<Config, BootRefusal> {
     return refuse('unknown_corridor', 'UMS_CORRIDORS');
   }
 
+  // 11. proxies in front of the app: an integer 0 to 3, nothing else (M3)
+  const rawProxies = val(env, 'UMS_TRUSTED_PROXIES') ?? '0';
+  if (!/^[0-3]$/.test(rawProxies)) return refuse('invalid_value', 'UMS_TRUSTED_PROXIES');
+  const trusted_proxies = Number(rawProxies);
+
   return ok<Config>({
     mode,
     connect,
@@ -225,6 +239,7 @@ export function loadConfig(env: Env): Result<Config, BootRefusal> {
     passcode_hash,
     public_origin,
     corridors,
+    trusted_proxies,
     env_label: mode === 'sandbox' ? 'Sandbox' : 'Dry run',
     node_env,
   });
