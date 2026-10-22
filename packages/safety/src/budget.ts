@@ -2,6 +2,7 @@ import type { Database, SqlExecutor } from '@umsbx/contracts';
 
 export interface ApprovalRow {
   approval_ref: string;
+  scope: string;
   operations: string[];
   max_amount_minor: number;
   max_calls_per_day: number;
@@ -22,11 +23,12 @@ export async function findActiveApproval(
 ): Promise<ApprovalRow | null> {
   const r = await db.query<{
     approval_ref: string;
+    scope: string;
     operations: string[];
     max_amount_minor: number | string;
     max_calls_per_day: number;
   }>(
-    `SELECT approval_ref, operations, max_amount_minor, max_calls_per_day
+    `SELECT approval_ref, scope, operations, max_amount_minor, max_calls_per_day
        FROM outbound_approvals WHERE approval_ref = $1 AND valid_until > $2`,
     [ref, now.toISOString()],
   );
@@ -34,6 +36,7 @@ export async function findActiveApproval(
   if (row === undefined) return null;
   return {
     approval_ref: row.approval_ref,
+    scope: row.scope,
     operations: row.operations,
     max_amount_minor: Number(row.max_amount_minor),
     max_calls_per_day: row.max_calls_per_day,

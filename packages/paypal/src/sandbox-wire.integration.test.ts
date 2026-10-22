@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createApprovedSandboxTransport } from '@umsbx/transport';
-import type { ScopedGate, Wire, WireRequest, WireResult } from '@umsbx/transport';
+import { createApprovedSandboxTransport, mintApprovalCapability } from '@umsbx/transport';
+import type { Wire, WireRequest, WireResult } from '@umsbx/transport';
 import { createPayPalAdapter } from './adapter';
 import type { ProviderCallRecord } from './adapter';
 import { createReq, memoryLogger, mutableClock, secret } from './test-support';
@@ -37,14 +37,15 @@ async function setup(handler: (r: WireRequest, n: number) => WireResult) {
       return handler(r, seen.length);
     },
   };
-  const gate: ScopedGate = {
-    activeApproval: async () => ({ scope: 'mvp_b_polling', approval_ref: 'appr' }),
-    check: async () => ({ allowed: true, approval_ref: 'appr' }),
-  };
+  const approval = mintApprovalCapability({
+    scope: 'mvp_c_refunds',
+    approval_ref: 'appr',
+    gate: { check: async () => ({ allowed: true, approval_ref: 'appr' }) },
+  });
   const clock = mutableClock();
   const transport = await createApprovedSandboxTransport({
-    gate,
-    scope: 'mvp_b_polling',
+    approval,
+    scope: 'mvp_c_refunds',
     wire,
     clock,
     log: memoryLogger(),

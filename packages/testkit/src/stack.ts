@@ -24,7 +24,7 @@ import {
   guard,
   loadFixtures,
 } from '@umsbx/transport';
-import type { ScopedGate, Wire } from '@umsbx/transport';
+import type { ApprovalCapability, Wire } from '@umsbx/transport';
 import { loadConfigFromProcess, makeSecret } from '@umsbx/config';
 import { DomainConfigSchema } from '@umsbx/contracts';
 import type {
@@ -444,10 +444,11 @@ export function dryRunSubject(): ConformanceSubject {
 export function sandboxSubject(
   /**
    * B-L1: the approved transport pieces. Omitted (as composition does in this branch), the subject
-   * keeps the sealed transport and every call is blocked. Tests pass a fake Wire here; the real
-   * Wire is only ever built inside the transport factory, and only the owner's approval row opens it.
+   * keeps the sealed transport and every call is blocked. The Wire is required here (FIX-BPREP M3):
+   * a test cannot fall back to the production Wire by leaving it out. The capability comes from
+   * `@umsbx/safety` createScopedGate or a test fake; only the owner's approval row opens a real one.
    */
-  approved?: { gate: ScopedGate; scope: string; wire?: Wire },
+  approved?: { approval: ApprovalCapability; scope: string; wire: Wire },
 ): ConformanceSubject {
   let n = 0;
   return {
@@ -472,11 +473,11 @@ export function sandboxSubject(
         approved === undefined
           ? createSandboxTransport()
           : await createApprovedSandboxTransport({
-              gate: approved.gate,
+              approval: approved.approval,
               scope: approved.scope,
               clock,
               log: quietLog,
-              ...(approved.wire === undefined ? {} : { wire: approved.wire }),
+              wire: approved.wire,
             });
       const transport: Transport = {
         kind: inner.kind,

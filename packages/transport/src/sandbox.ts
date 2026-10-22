@@ -8,10 +8,13 @@ import type {
   Transport,
   TransportResult,
 } from '@umsbx/contracts';
+import { AMOUNT_BOUND, bodyAmountMinor } from './amount-binding';
+import { isApprovalCapability } from './approval';
+import type { ApprovalCapability } from './approval';
 import { guard } from './guard';
 import { createFetchWire } from './wire-fetch';
 import { MAX_RESPONSE_BYTES } from './wire-map';
-import type { ScopedGate, Wire, WireRequest } from './wire';
+import type { Wire, WireRequest } from './wire';
 
 // ---------------------------------------------------------------------------------------------
 // The sealed stub (MVP-A behaviour, still what composition builds in this branch).
@@ -57,14 +60,35 @@ export interface SandboxTransport extends Transport {
 }
 
 export interface ApprovedSandboxOptions {
-  gate: ScopedGate;
-  /** The approval scope this transport serves, e.g. `mvp_b_polling`. */
+  /** Minted by `@umsbx/safety` createScopedGate from an active outbound_approvals row. */
+  approval: ApprovalCapability;
+  /** The approval scope this transport serves, e.g. `mvp_b_polling`. Must equal approval.scope. */
   scope: string;
   clock: Clock;
   log: Logger;
   /** Tests inject a fake. Omitted: the production Wire. */
   wire?: Wire;
 }
+
+/**
+ * The operations each approval scope may ever send, enforced by the transport itself so a wide
+ * approval row cannot widen a phase (FIX-BPREP M4). `mvp_b_polling` is the MVP-B phase: no refund
+ * and no webhook operation. `mvp_c_refunds` is the later superset; no approval row exists for it.
+ */
+export const SCOPE_OPERATIONS: Readonly<Record<string, readonly PayPalOperation[]>> = {
+  mvp_b_polling: ['oauth_token', 'create_order', 'get_order', 'capture_order', 'get_capture'],
+  mvp_c_refunds: [
+    'oauth_token',
+    'create_order',
+    'get_order',
+    'capture_order',
+    'get_capture',
+    'refund_capture',
+    'get_refund',
+    'verify_webhook_postback',
+    'fetch_webhook_cert',
+  ],
+};
 
 /** Hard total deadline per request (architecture 7 point 6). */
 export const REQUEST_TIMEOUT_MS = 10_000;
@@ -135,44 +159,36 @@ function redactHeaders(h: Record<string, string>): Record<string, string> {
 
 const refuse = (): TransportResult => ({ kind: 'blocked', by: 'egress' });
 
+/** A header value by case-insensitive name; null when absent or not a log-safe short token. */
+function headerValue(h: Record<string, string>, name: string): string | null {
+  for (const [k, v] of Object.entries(h)) {
+    if (k.toLowerCase() === name && /^[A-Za-z0-9._-]{1,64}$/.test(v)) return v;
+  }
+  return null;
+}
+
 export async function createApprovedSandboxTransport(
   o: ApprovedSandboxOptions,
 ): Promise<SandboxTransport> {
   if (typeof o !== 'object' || o === null) throw new SandboxSealedError('no options');
-  const gate: unknown = o.gate;
-  if (
-    typeof gate !== 'object' ||
-    gate === null ||
-    typeof (gate as { check?: unknown }).check !== 'function' ||
-    typeof (gate as { activeApproval?: unknown }).activeApproval !== 'function'
-  ) {
-    throw new SandboxSealedError('no gate that reports an approval');
-  }
+  if (!isApprovalCapability(o.approval)) throw new SandboxSealedError('no approval capability');
   if (typeof o.scope !== 'string' || o.scope === '') throw new SandboxSealedError('no scope');
-  let active: unknown;
-  try {
-    active = await o.gate.activeApproval();
-  } catch {
-    throw new SandboxSealedError('approval lookup failed');
-  }
-  const a = active as { scope?: unknown; approval_ref?: unknown } | null;
-  if (
-    typeof a !== 'object' ||
-    a === null ||
-    a.scope !== o.scope ||
-    typeof a.approval_ref !== 'string' ||
-    a.approval_ref === ''
-  ) {
-    throw new SandboxSealedError('no active approval for this scope');
-  }
+  if (o.approval.scope !== o.scope) throw new SandboxSealedError('approval is for another scope');
+  if (!Object.hasOwn(SCOPE_OPERATIONS, o.scope)) throw new SandboxSealedError('unknown scope');
+  const allowedOps: readonly PayPalOperation[] = SCOPE_OPERATIONS[o.scope] ?? [];
 
-  const { gate: outbound, clock, log } = o;
+  const { approval, clock, log } = o;
+  const outbound = approval.gate;
+  const approvalRef = approval.approval_ref;
+  const scope = approval.scope;
   const wire = o.wire ?? createFetchWire();
+  let serial = 0;
   const kept: SandboxCall[] = [];
 
   const finish = (
     call: Omit<SandboxCall, 'outcome' | 'status'>,
     result: TransportResult,
+    extra: { correlation_id: string; request_id: string | null; reason?: string },
   ): TransportResult => {
     const outcome: SandboxCall['outcome'] =
       result.kind === 'blocked'
@@ -183,10 +199,21 @@ export async function createApprovedSandboxTransport(
     const status = result.kind === 'response' ? result.status : null;
     kept.push({ ...call, outcome, status });
     if (kept.length > MAX_KEPT_CALLS) kept.shift();
+    const debugId =
+      result.kind === 'response' ? headerValue(result.headers, 'paypal-debug-id') : null;
     log.log({
       msg: 'sandbox.send',
       level: 'info',
-      fields: { operation: call.operation, outcome, status },
+      fields: {
+        operation: call.operation,
+        outcome,
+        status,
+        approval_ref: approvalRef,
+        correlation_id: extra.correlation_id,
+        request_id: extra.request_id,
+        paypal_debug_id: debugId,
+        ...(extra.reason === undefined ? {} : { reason: extra.reason }),
+      },
     });
     return result;
   };
@@ -195,17 +222,38 @@ export async function createApprovedSandboxTransport(
     kind: 'sandbox',
     calls: () => kept.map((c) => ({ ...c, headers: { ...c.headers } })),
     async send(raw): Promise<TransportResult> {
+      serial += 1;
+      const correlation = `sbx-${String(serial).padStart(6, '0')}-${clock.now().getTime().toString(36)}`;
       // One read of the caller's object: later changes to it cannot alter what was validated.
       const parsed = OutboundRequestSchema.safeParse(raw);
       if (!parsed.success) {
-        log.log({ msg: 'sandbox.send', level: 'info', fields: { outcome: 'blocked:egress' } });
+        log.log({
+          msg: 'sandbox.send',
+          level: 'info',
+          fields: {
+            outcome: 'blocked:egress',
+            approval_ref: approvalRef,
+            correlation_id: correlation,
+            reason: 'schema',
+          },
+        });
         return refuse();
       }
       const r = parsed.data;
       const base = { operation: r.operation, method: r.method, url: null, headers: {} };
+      const rid = headerValue(r.headers, 'paypal-request-id');
+      const ex = (reason?: string) => ({
+        correlation_id: correlation,
+        request_id: rid,
+        ...(reason === undefined ? {} : { reason }),
+      });
+
+      // The scope, not the approval row, caps the operations of this phase.
+      if (!allowedOps.includes(r.operation))
+        return finish(base, { kind: 'blocked', by: 'no_approval' }, ex('operation_not_in_scope'));
 
       const checked = guard(r, 'sandbox');
-      if (!checked.ok) return finish(base, refuse());
+      if (!checked.ok) return finish(base, refuse(), ex('guard'));
       const url = checked.url.href;
 
       const headers = selectHeaders(r.headers);
@@ -213,19 +261,38 @@ export async function createApprovedSandboxTransport(
         r.method === 'GET'
           ? r.body === null
           : r.body !== null && Buffer.byteLength(r.body) <= MAX_REQUEST_BODY_BYTES;
-      if (headers === null || !bodyOk) return finish({ ...base, url }, refuse());
+      if (headers === null || !bodyOk) return finish({ ...base, url }, refuse(), ex('shape'));
+      // A certificate fetch goes to a PayPal-controlled host and never carries our token.
+      if (r.operation === 'fetch_webhook_cert') delete headers['authorization'];
       const seen = { ...base, url, headers: redactHeaders(headers) };
+
+      // M4: the amount the gate caps is the amount the body asks for.
+      if (AMOUNT_BOUND.has(r.operation)) {
+        const inBody = bodyAmountMinor(r.operation, r.body);
+        if (r.amount_minor === null || inBody === null || inBody !== r.amount_minor)
+          return finish(seen, refuse(), ex('amount_unbound'));
+      }
 
       let verdict;
       try {
         verdict = GateVerdictSchema.safeParse(
-          await outbound.check({ operation: r.operation, amount_minor: r.amount_minor }),
+          await outbound.check({
+            operation: r.operation,
+            amount_minor: r.amount_minor,
+            scope,
+            approval_ref: approvalRef,
+          }),
         );
       } catch {
-        return finish(seen, { kind: 'blocked', by: 'kill_switch' });
+        return finish(seen, { kind: 'blocked', by: 'kill_switch' }, ex('gate_error'));
       }
-      if (!verdict.success) return finish(seen, { kind: 'blocked', by: 'kill_switch' });
-      if (!verdict.data.allowed) return finish(seen, { kind: 'blocked', by: verdict.data.by });
+      if (!verdict.success)
+        return finish(seen, { kind: 'blocked', by: 'kill_switch' }, ex('gate_verdict'));
+      if (!verdict.data.allowed)
+        return finish(seen, { kind: 'blocked', by: verdict.data.by }, ex());
+      // M2: the verdict must stand on the same approval this transport was built from.
+      if (verdict.data.approval_ref !== approvalRef)
+        return finish(seen, { kind: 'blocked', by: 'no_approval' }, ex('approval_ref_mismatch'));
 
       const out: WireRequest = {
         method: r.method,
@@ -239,33 +306,38 @@ export async function createApprovedSandboxTransport(
       try {
         answer = WireResultSchema.safeParse(await wire.request(out));
       } catch {
-        return finish(seen, { kind: 'network_error', code: 'wire_failure' });
+        return finish(seen, { kind: 'network_error', code: 'wire_failure' }, ex());
       }
-      if (!answer.success) return finish(seen, { kind: 'network_error', code: 'wire_failure' });
+      if (!answer.success)
+        return finish(seen, { kind: 'network_error', code: 'wire_failure' }, ex());
       const w = answer.data;
 
       if (w.kind === 'error') {
-        if (w.error === 'timeout') return finish(seen, { kind: 'timeout' });
+        if (w.error === 'timeout') return finish(seen, { kind: 'timeout' }, ex());
         const code = w.error === 'too_large' ? 'response_too_large' : w.error;
-        return finish(seen, { kind: 'network_error', code });
+        return finish(seen, { kind: 'network_error', code }, ex());
       }
       // A redirect is never followed, whatever the Wire did.
       if (w.status >= 300 && w.status <= 399) {
-        return finish(seen, { kind: 'network_error', code: 'redirect' });
+        return finish(seen, { kind: 'network_error', code: 'redirect' }, ex());
       }
       if (Buffer.byteLength(w.body) > MAX_RESPONSE_BYTES) {
-        return finish(seen, { kind: 'network_error', code: 'response_too_large' });
+        return finish(seen, { kind: 'network_error', code: 'response_too_large' }, ex());
       }
       const responseHeaders = Object.fromEntries(
         Object.entries(w.headers).filter(([k]) => k.toLowerCase() !== 'set-cookie'),
       );
-      return finish(seen, {
-        kind: 'response',
-        status: w.status,
-        headers: responseHeaders,
-        body: w.body,
-        duration_ms: Math.max(0, clock.now().getTime() - started),
-      });
+      return finish(
+        seen,
+        {
+          kind: 'response',
+          status: w.status,
+          headers: responseHeaders,
+          body: w.body,
+          duration_ms: Math.max(0, clock.now().getTime() - started),
+        },
+        ex(),
+      );
     },
   };
 }
