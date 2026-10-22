@@ -38,7 +38,18 @@ importers:
 
   apps/web: {}
 
-  domain/access-clock: {}
+  domain/access-clock:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/approval: {}
 
@@ -48,7 +59,21 @@ importers:
 
   domain/discovery: {}
 
-  domain/entitlements: {}
+  domain/entitlements:
+    dependencies:
+      '@umsbx/access-clock':
+        specifier: workspace:*
+        version: link:../access-clock
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/fit: {}
 
