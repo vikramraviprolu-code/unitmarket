@@ -879,6 +879,8 @@ export default tseslint.config(
       '.pglite/**',
       'pnpm-lock.yaml',
       'docs/design/**',
+      // Written by next build; not ours to lint or format (L4).
+      'apps/web/next-env.d.ts',
     ],
   },
   // Review 4 H1: an inline eslint-disable comment would switch off any guard above, so none is

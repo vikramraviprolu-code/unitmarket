@@ -12,7 +12,7 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "pnpm -r --if-present typecheck && tsc -p scripts/tsconfig.json",
+    "typecheck": "corepack pnpm -r --if-present typecheck && tsc -p scripts/tsconfig.json",
     "test": "vitest run --maxWorkers=2 --project unit --project state --project contract --project integration --project adversarial --project golden --passWithNoTests",
     "test:unit": "vitest run --maxWorkers=2 --project unit --passWithNoTests",
     "test:state": "vitest run --maxWorkers=2 --project state --passWithNoTests",
@@ -20,7 +20,7 @@
     "test:integration": "vitest run --maxWorkers=2 --project integration --passWithNoTests",
     "test:adversarial": "vitest run --maxWorkers=2 --project adversarial --passWithNoTests",
     "test:golden": "vitest run --maxWorkers=2 --project golden --passWithNoTests",
-    "test:e2e": "pnpm --filter @umsbx/web test:e2e",
+    "test:e2e": "corepack pnpm --filter @umsbx/web test:e2e",
     "check:isolation": "node scripts/check-isolation.mjs",
     "check:no-live-host": "node scripts/check-no-live-host.mjs",
     "check:secrets-names": "node scripts/check-secrets-names.mjs",
@@ -32,7 +32,7 @@
     "evidence": "node scripts/evidence.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "ci": "pnpm install --frozen-lockfile && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:isolation && pnpm check:no-live-host && pnpm check:secrets-names && pnpm check:fixtures && pnpm check:routes && pnpm check:provenance",
+    "ci": "corepack pnpm install --frozen-lockfile && corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm check:isolation && corepack pnpm check:no-live-host && corepack pnpm check:secrets-names && corepack pnpm check:fixtures && corepack pnpm check:routes && corepack pnpm check:provenance",
     "safety:status": "node --env-file-if-exists=.env.local --import ./scripts/lib/ts-register.mjs scripts/safety-cli.mjs status",
     "safety:stop": "node --env-file-if-exists=.env.local --import ./scripts/lib/ts-register.mjs scripts/safety-cli.mjs stop",
     "safety:approve": "node --env-file-if-exists=.env.local --import ./scripts/lib/ts-register.mjs scripts/safety-cli.mjs approve"
