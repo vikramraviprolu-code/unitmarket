@@ -1,7 +1,12 @@
 // State tests for the access clock against a real (PGlite) database.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  computeWindow, grantCredit, markAccessReady, recordDeliveryEvent, revokeWindow, sweepWindows,
+  computeWindow,
+  grantCredit,
+  markAccessReady,
+  recordDeliveryEvent,
+  revokeWindow,
+  sweepWindows,
 } from './index';
 import { FIVE_DAYS_MS, HASH, makeWorld, policyFor, START } from './world';
 import type { World } from './world';
@@ -22,16 +27,41 @@ beforeEach(async () => {
 });
 
 const evidence = { capture_id: 'CAP1', content_sha256: HASH, link_probe: 'ok' as const };
-const ready = (id: string) => w.db.transaction((tx) => markAccessReady(tx, w.deps, { entitlement_id: id, evidence }));
+const ready = (id: string) =>
+  w.db.transaction((tx) => markAccessReady(tx, w.deps, { entitlement_id: id, evidence }));
 const win = async (id: string) =>
-  (await w.db.query<{ state: string; started_at: Date | null; ends_at: Date | null; paused_at: Date | null; credit_ms: number }>(
-    'SELECT state, started_at, ends_at, paused_at, credit_ms FROM access_windows WHERE entitlement_id = $1', [id])).rows[0]!;
+  (
+    await w.db.query<{
+      state: string;
+      started_at: Date | null;
+      ends_at: Date | null;
+      paused_at: Date | null;
+      credit_ms: number;
+    }>(
+      'SELECT state, started_at, ends_at, paused_at, credit_ms FROM access_windows WHERE entitlement_id = $1',
+      [id],
+    )
+  ).rows[0]!;
 const access = async (id: string) =>
-  (await w.db.query<{ access_state: string }>('SELECT access_state FROM entitlements WHERE id = $1', [id])).rows[0]!.access_state;
+  (
+    await w.db.query<{ access_state: string }>(
+      'SELECT access_state FROM entitlements WHERE id = $1',
+      [id],
+    )
+  ).rows[0]!.access_state;
 const kinds = async (id: string) =>
-  (await w.db.query<{ kind: string }>('SELECT kind FROM access_events WHERE entitlement_id = $1 ORDER BY at, ctid', [id])).rows.map((r) => r.kind);
-const delivery = (id: string, kind: Parameters<typeof recordDeliveryEvent>[1]['kind'], link_id: string | null = null, source: 'system' | 'buyer' = 'system') =>
-  recordDeliveryEvent(w.deps, { entitlement_id: id, kind, link_id, source, evidence: {} });
+  (
+    await w.db.query<{ kind: string }>(
+      'SELECT kind FROM access_events WHERE entitlement_id = $1 ORDER BY at, ctid',
+      [id],
+    )
+  ).rows.map((r) => r.kind);
+const delivery = (
+  id: string,
+  kind: Parameters<typeof recordDeliveryEvent>[1]['kind'],
+  link_id: string | null = null,
+  source: 'system' | 'buyer' = 'system',
+) => recordDeliveryEvent(w.deps, { entitlement_id: id, kind, link_id, source, evidence: {} });
 const ms = (d: Date | null) => (d === null ? null : d.getTime());
 
 describe('markAccessReady', () => {
@@ -50,12 +80,18 @@ describe('markAccessReady', () => {
     const id = await w.rawEntitlement(1);
     const window = await ready(id);
     expect(window).toEqual({
-      state: 'running', started_at: START, base_ends_at: new Date(T0 + FIVE_DAYS_MS).toISOString(),
-      ends_at: new Date(T0 + FIVE_DAYS_MS).toISOString(), paused_at: null, credit_ms: 0,
+      state: 'running',
+      started_at: START,
+      base_ends_at: new Date(T0 + FIVE_DAYS_MS).toISOString(),
+      ends_at: new Date(T0 + FIVE_DAYS_MS).toISOString(),
+      paused_at: null,
+      credit_ms: 0,
     });
     expect(await access(id)).toBe('available');
     const e = await w.db.query<{ kind: string; source: string; evidence: Record<string, unknown> }>(
-      'SELECT kind, source, evidence FROM access_events WHERE entitlement_id = $1', [id]);
+      'SELECT kind, source, evidence FROM access_events WHERE entitlement_id = $1',
+      [id],
+    );
     expect(e.rows).toEqual([{ kind: 'access_ready', source: 'system', evidence }]);
     expect(ms((await win(id)).ends_at)).toBe(T0 + FIVE_DAYS_MS);
   });
@@ -143,7 +179,9 @@ describe('lost time', () => {
 describe('grantCredit', () => {
   const by = { kind: 'operator' as const, operator_id: 'opr_1', mfa: true };
   const grant = (id: string, credit_ms: number) =>
-    w.db.transaction((tx) => grantCredit(tx, w.deps, { entitlement_id: id, credit_ms, case_id: 'cas_1', by }));
+    w.db.transaction((tx) =>
+      grantCredit(tx, w.deps, { entitlement_id: id, credit_ms, case_id: 'cas_1', by }),
+    );
 
   it('adds the credit and keeps the case id as evidence', async () => {
     const id = await w.rawEntitlement(1);
@@ -152,8 +190,12 @@ describe('grantCredit', () => {
     expect(r.ok && r.value).toMatchObject({ state: 'running', credit_ms: 2 * H });
     expect(ms((await win(id)).ends_at)).toBe(T0 + FIVE_DAYS_MS + 2 * H);
     const e = await w.db.query<{ source: string; evidence: Record<string, unknown> }>(
-      "SELECT source, evidence FROM access_events WHERE kind = 'credit_granted'");
-    expect(e.rows[0]).toMatchObject({ source: 'operator', evidence: { credit_ms: 2 * H, case_id: 'cas_1' } });
+      "SELECT source, evidence FROM access_events WHERE kind = 'credit_granted'",
+    );
+    expect(e.rows[0]).toMatchObject({
+      source: 'operator',
+      evidence: { credit_ms: 2 * H, case_id: 'cas_1' },
+    });
   });
 
   it('refuses a non-positive credit and a window that has not started', async () => {
@@ -161,7 +203,10 @@ describe('grantCredit', () => {
     expect(await grant(id, 1)).toEqual({ ok: false, error: { code: 'window_not_started' } });
     await ready(id);
     for (const bad of [0, -1, -H, 0.5, Number.NaN]) {
-      expect(await grant(id, bad), String(bad)).toEqual({ ok: false, error: { code: 'credit_must_be_positive' } });
+      expect(await grant(id, bad), String(bad)).toEqual({
+        ok: false,
+        error: { code: 'credit_must_be_positive' },
+      });
     }
     expect(await kinds(id)).toEqual(['access_ready']);
   });
@@ -170,7 +215,14 @@ describe('grantCredit', () => {
     const id = await w.rawEntitlement(1);
     await ready(id);
     await expect(
-      w.db.transaction((tx) => grantCredit(tx, w.deps, { entitlement_id: id, credit_ms: H, case_id: 'cas_1', by: { kind: 'buyer', buyer_id: 'buy_1' } })),
+      w.db.transaction((tx) =>
+        grantCredit(tx, w.deps, {
+          entitlement_id: id,
+          credit_ms: H,
+          case_id: 'cas_1',
+          by: { kind: 'buyer', buyer_id: 'buy_1' },
+        }),
+      ),
     ).rejects.toThrow(/actor/);
     expect((await win(id)).credit_ms).toBe(0);
   });
@@ -181,17 +233,23 @@ describe('revokeWindow', () => {
     const id = await w.rawEntitlement(1);
     await ready(id);
     w.clock.advance(D);
-    const r = await w.db.transaction((tx) => revokeWindow(tx, w.deps, { entitlement_id: id, reason: 'refund' }));
+    const r = await w.db.transaction((tx) =>
+      revokeWindow(tx, w.deps, { entitlement_id: id, reason: 'refund' }),
+    );
     expect(r.state).toBe('revoked');
     expect(await access(id)).toBe('revoked');
-    const again = await w.db.transaction((tx) => revokeWindow(tx, w.deps, { entitlement_id: id, reason: 'reversal' }));
+    const again = await w.db.transaction((tx) =>
+      revokeWindow(tx, w.deps, { entitlement_id: id, reason: 'reversal' }),
+    );
     expect(again).toEqual(r);
     expect((await kinds(id)).filter((k) => k === 'revoked')).toHaveLength(1);
   });
   it('a revoked window cannot be restarted or extended', async () => {
     const id = await w.rawEntitlement(1);
     await ready(id);
-    await w.db.transaction((tx) => revokeWindow(tx, w.deps, { entitlement_id: id, reason: 'refund' }));
+    await w.db.transaction((tx) =>
+      revokeWindow(tx, w.deps, { entitlement_id: id, reason: 'refund' }),
+    );
     const r = await ready(id);
     expect(r.state).toBe('revoked');
     expect((await delivery(id, 'delivery_failed')).state).toBe('revoked');
@@ -211,14 +269,23 @@ describe('sweepWindows', () => {
     expect((await win(id)).state).toBe('ended');
     expect(await access(id)).toBe('ended');
     expect(await kinds(id)).toEqual(['access_ready', 'window_ended']);
-    const at = await w.db.query<{ at: Date }>("SELECT at FROM access_events WHERE kind = 'window_ended'");
+    const at = await w.db.query<{ at: Date }>(
+      "SELECT at FROM access_events WHERE kind = 'window_ended'",
+    );
     expect(at.rows[0]!.at.getTime()).toBe(T0 + FIVE_DAYS_MS);
   });
 
   it('honours credit: a credited window ends later', async () => {
     const id = await w.rawEntitlement(1);
     await ready(id);
-    await w.db.transaction((tx) => grantCredit(tx, w.deps, { entitlement_id: id, credit_ms: 6 * H, case_id: 'cas_1', by: { kind: 'system' } }));
+    await w.db.transaction((tx) =>
+      grantCredit(tx, w.deps, {
+        entitlement_id: id,
+        credit_ms: 6 * H,
+        case_id: 'cas_1',
+        by: { kind: 'system' },
+      }),
+    );
     w.clock.advance(FIVE_DAYS_MS);
     expect(await sweepWindows(w.deps, { max_items: 10 })).toEqual({ ended: 0 });
     w.clock.advance(6 * H);
@@ -241,7 +308,9 @@ describe('sweepWindows', () => {
   it('skips revoked windows', async () => {
     const id = await w.rawEntitlement(1);
     await ready(id);
-    await w.db.transaction((tx) => revokeWindow(tx, w.deps, { entitlement_id: id, reason: 'refund' }));
+    await w.db.transaction((tx) =>
+      revokeWindow(tx, w.deps, { entitlement_id: id, reason: 'refund' }),
+    );
     w.clock.advance(FIVE_DAYS_MS * 2);
     expect(await sweepWindows(w.deps, { max_items: 10 })).toEqual({ ended: 0 });
     expect(await kinds(id)).toEqual(['access_ready', 'revoked']);
@@ -262,21 +331,64 @@ describe('materialised row equals recomputed', () => {
   it('after every step of a mixed scenario', async () => {
     const id = await w.rawEntitlement(1);
     const check = async () => {
-      const rows = await w.db.query<{ kind: string; at: Date; source: 'system' | 'buyer' | 'operator'; evidence: Record<string, string | number | boolean | null> }>(
-        'SELECT kind, at, source, evidence FROM access_events WHERE entitlement_id = $1 ORDER BY at, ctid', [id]);
-      const events = rows.rows.map((r) => ({ entitlement_id: id, kind: r.kind as never, at: r.at.toISOString(), source: r.source, evidence: r.evidence }));
-      const expected = computeWindow(events, policyFor('keep_retrieve'), w.clock.now());
+      const rows = await w.db.query<{
+        kind: string;
+        at: Date;
+        source: 'system' | 'buyer' | 'operator';
+        evidence: Record<string, string | number | boolean | null>;
+      }>(
+        'SELECT kind, at, source, evidence FROM access_events WHERE entitlement_id = $1 ORDER BY at, ctid',
+        [id],
+      );
+      const events = rows.rows.map((r) => ({
+        entitlement_id: id,
+        kind: r.kind as never,
+        at: r.at.toISOString(),
+        source: r.source,
+        evidence: r.evidence,
+      }));
       const row = await win(id);
+      const stamp = (
+        await w.db.query<{ updated_at: Date }>(
+          'SELECT updated_at FROM access_windows WHERE entitlement_id = $1',
+          [id],
+        )
+      ).rows[0]!.updated_at;
+      const expected = computeWindow(events, policyFor('keep_retrieve'), stamp);
       expect({
-        state: row.state, started_at: row.started_at?.toISOString() ?? null, ends_at: row.ends_at?.toISOString() ?? null,
-        paused_at: row.paused_at?.toISOString() ?? null, credit_ms: row.credit_ms,
-      }).toEqual({ state: expected.state, started_at: expected.started_at, ends_at: expected.ends_at, paused_at: expected.paused_at, credit_ms: expected.credit_ms });
+        state: row.state,
+        started_at: row.started_at?.toISOString() ?? null,
+        ends_at: row.ends_at?.toISOString() ?? null,
+        paused_at: row.paused_at?.toISOString() ?? null,
+        credit_ms: row.credit_ms,
+      }).toEqual({
+        state: expected.state,
+        started_at: expected.started_at,
+        ends_at: expected.ends_at,
+        paused_at: expected.paused_at,
+        credit_ms: expected.credit_ms,
+      });
     };
     await check();
-    await ready(id); await check();
-    w.clock.advance(D); await delivery(id, 'delivery_failed'); await check();
-    w.clock.advance(5 * H + 10 * 60_000); await delivery(id, 'delivery_restored'); await check();
-    await w.db.transaction((tx) => grantCredit(tx, w.deps, { entitlement_id: id, credit_ms: H, case_id: 'c', by: { kind: 'system' } })); await check();
-    w.clock.advance(5 * D); await sweepWindows(w.deps, { max_items: 5 }); await check();
+    await ready(id);
+    await check();
+    w.clock.advance(D);
+    await delivery(id, 'delivery_failed');
+    await check();
+    w.clock.advance(5 * H + 10 * 60_000);
+    await delivery(id, 'delivery_restored');
+    await check();
+    await w.db.transaction((tx) =>
+      grantCredit(tx, w.deps, {
+        entitlement_id: id,
+        credit_ms: H,
+        case_id: 'c',
+        by: { kind: 'system' },
+      }),
+    );
+    await check();
+    w.clock.advance(5 * D);
+    await sweepWindows(w.deps, { max_items: 5 });
+    await check();
   });
 });

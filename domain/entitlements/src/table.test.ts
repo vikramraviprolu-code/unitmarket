@@ -9,17 +9,22 @@ import { nextMoneyState, nextStates, transitionsBetween } from './table';
 import type { EntitlementStates } from './table';
 
 const EVENTS: MoneyEvent[] = [
-  'capture_verified', 'pending', 'declined', 'unknown', 'refund_verified', 'reversal_verified',
+  'capture_verified',
+  'pending',
+  'declined',
+  'unknown',
+  'refund_verified',
+  'reversal_verified',
 ];
 const MONEY: MoneyState[] = ['pending', 'unknown', 'captured', 'denied', 'refunded', 'reversed'];
 
 type Cell = MoneyState | '=' | 'x';
 // Rows: from money state. Columns in EVENTS order.
 const EXPECTED: Record<MoneyState, Cell[]> = {
-  pending:  ['captured', '=', 'denied', 'unknown', 'x', 'x'],
-  unknown:  ['captured', 'x', 'denied', '=', 'x', 'x'],
+  pending: ['captured', '=', 'denied', 'unknown', 'x', 'x'],
+  unknown: ['captured', 'x', 'denied', '=', 'x', 'x'],
   captured: ['=', 'x', 'x', 'x', 'refunded', 'reversed'],
-  denied:   ['x', 'x', '=', 'x', 'x', 'x'],
+  denied: ['x', 'x', '=', 'x', 'x', 'x'],
   refunded: ['x', 'x', 'x', 'x', '=', 'x'],
   reversed: ['x', 'x', 'x', 'x', 'x', '='],
 };
@@ -49,9 +54,15 @@ describe('transition table', () => {
         const cell = EXPECTED[m][i]!;
         const r = nextStates(FROM[m], e);
         if (cell === 'x') {
-          expect(r, `${m} + ${e}`).toEqual({ ok: false, error: { code: 'forbidden_transition', from: m, event: e } });
+          expect(r, `${m} + ${e}`).toEqual({
+            ok: false,
+            error: { code: 'forbidden_transition', from: m, event: e },
+          });
         } else if (cell === '=') {
-          expect(r, `${m} + ${e}`).toEqual({ ok: true, value: { states: FROM[m], changed: false } });
+          expect(r, `${m} + ${e}`).toEqual({
+            ok: true,
+            value: { states: FROM[m], changed: false },
+          });
         } else {
           expect(r.ok && r.value.changed, `${m} + ${e}`).toBe(true);
           expect(r.ok && r.value.states.money, `${m} + ${e}`).toBe(cell);
@@ -94,7 +105,10 @@ describe('transition table', () => {
 
   it('a captured no-op keeps its access and licence', () => {
     const ended: EntitlementStates = { money: 'captured', access: 'ended', licence: 'granted' };
-    expect(nextStates(ended, 'capture_verified')).toEqual({ ok: true, value: { states: ended, changed: false } });
+    expect(nextStates(ended, 'capture_verified')).toEqual({
+      ok: true,
+      value: { states: ended, changed: false },
+    });
   });
 
   it('does not modify its input', () => {
