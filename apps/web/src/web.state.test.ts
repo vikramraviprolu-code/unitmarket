@@ -210,7 +210,7 @@ describe('discovery and the ai_enabled switch', () => {
       body: { need: 'tide tables, under $1, read online' },
     });
     expect(off.status).toBe(503);
-    expect(((await off.json()) as { code: string }).code).toBe('ai_off');
+    expect(((await off.json()) as { error: { code: string } }).error.code).toBe('ai_off');
     const offDisc = await call(discover.POST, {
       url: '/api/discover',
       method: 'POST',

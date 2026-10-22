@@ -53,7 +53,8 @@ export function call(
   }
   if (o.session) {
     headers['cookie'] = o.session.cookie;
-    if (o.csrf !== false && (o.method ?? 'GET') === 'POST') headers['x-csrf-token'] = o.session.csrf;
+    if (o.csrf !== false && (o.method ?? 'GET') === 'POST')
+      headers['x-csrf-token'] = o.session.csrf;
   }
   const init: RequestInit = { method: o.method ?? 'GET', headers };
   if (o.body !== undefined) init.body = JSON.stringify(o.body);
@@ -67,7 +68,11 @@ export async function signIn(
   persona: string,
   passcode = PASSCODE,
 ): Promise<Session | null> {
-  const res = await call(post, { url: '/api/session', method: 'POST', body: { persona, passcode } });
+  const res = await call(post, {
+    url: '/api/session',
+    method: 'POST',
+    body: { persona, passcode },
+  });
   if (res.status !== 200) return null;
   const set = res.headers.get('set-cookie') ?? '';
   const body = (await res.json()) as { csrf_token: string };

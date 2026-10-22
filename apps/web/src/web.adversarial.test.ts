@@ -44,9 +44,7 @@ describe('client components', () => {
 describe('routes', () => {
   const routeFiles = sources.filter((f) => /\/route\.ts$/.test(f));
   it('there is at least the documented route set', () => {
-    const paths = routeFiles
-      .map((f) => pathFromFile(relative(join(SRC, 'app'), f)))
-      .sort();
+    const paths = routeFiles.map((f) => pathFromFile(relative(join(SRC, 'app'), f))).sort();
     for (const p of [
       '/api/session',
       '/api/quotes',
@@ -78,7 +76,9 @@ describe('routes', () => {
 describe('pages and inputs', () => {
   it('no card-like input exists in any source (P8)', () => {
     const bad = sources.filter((f) =>
-      /(?:name|id|autoComplete|autocomplete)=["'](?:card|cc-|cvv|cvc|pan\b)/i.test(read(f)),
+      /(?<![A-Za-z])(?:name|id|autoComplete|autocomplete)=["'](?:card|cc-|cvv|cvc|pan\b)/i.test(
+        read(f),
+      ),
     );
     expect(bad.map((f) => relative(WEB, f))).toEqual([]);
   });

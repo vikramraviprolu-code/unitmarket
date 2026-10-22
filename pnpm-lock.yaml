@@ -38,6 +38,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.10
+        version: 0.5.10
       '@umsbx/access-clock':
         specifier: workspace:*
         version: link:../../domain/access-clock
