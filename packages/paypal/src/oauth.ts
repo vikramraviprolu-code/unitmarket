@@ -117,7 +117,10 @@ export function createTokenCache(o: {
 
     if (fail !== null || token === null)
       return err(fail ?? { kind: 'unavailable', retry_after_ms: null });
-    cached = { token, refreshAtMs: started + expiresIn * 1000 - REFRESH_MARGIN_MS };
+    // L6: never refresh earlier than half the token's life, so a short-lived token is not
+    // fetched again on every call.
+    const margin = Math.min(REFRESH_MARGIN_MS, (expiresIn * 1000) / 2);
+    cached = { token, refreshAtMs: started + expiresIn * 1000 - margin };
     return ok(token);
   }
 
