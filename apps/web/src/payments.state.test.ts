@@ -162,7 +162,10 @@ describe('the real payments engine behind the facade', () => {
   });
 
   it('a bad approval token is refused with 403 and writes no order', async () => {
-    const a = await approval((await offers())[0]!, actorB);
+    const a = await approval(
+      ((await offers())[4] ?? (await offers())[5] ?? (await offers())[0])!,
+      actorB,
+    );
     const before = await app.db.query<{ c: string }>('SELECT count(*) AS c FROM orders');
     const res = await call(orders.POST, {
       url: '/api/orders',
