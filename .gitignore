@@ -10,6 +10,7 @@ coverage/
 .env
 .env.*
 !.env.example
+!scripts/__fixtures__/**/.env*.fixture
 
 # Local data directories (PGlite on disk, recordings before redaction, tool output)
 .data/
