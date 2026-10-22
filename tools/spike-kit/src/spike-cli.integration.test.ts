@@ -65,6 +65,15 @@ describe('spike kit as a process', () => {
     expect(fs.existsSync(path.join(out, 'summary.md'))).toBe(true);
     expect(fs.readFileSync(path.join(out, 'summary.md'), 'utf8')).toMatch(/DRY RUN/);
   });
+  it.each(['CLAUDECODE', 'CLAUDE_CODE_REMOTE'])(
+    '--dry-run exits 0 under the AI-session marker %s, with no network',
+    (name) => {
+      const out = path.join(tmp, 'out');
+      const r = runKit(['--dry-run', '--out', out], { [name]: '1' });
+      expect(r.code, r.stderr).toBe(0);
+      expect(r.net).toBe('');
+    },
+  );
   it('--dry-run default output goes under the temp directory, not the home directory or the repo', () => {
     const r = runKit(['--dry-run'], { TMPDIR: tmp });
     expect(r.code, r.stderr).toBe(0);

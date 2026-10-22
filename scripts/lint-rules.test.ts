@@ -729,6 +729,7 @@ describe('named exemptions (D-015)', () => {
         'packages/transport/src/**/*.ts -> sbx/sealed-wire-sentinel',
         'apps/web/composition.server.ts -> sbx/sealed-wire-sentinel',
         'tools/spike-kit/src/spike.ts -> no-restricted-globals,no-restricted-properties,no-restricted-syntax,sbx/no-global-alias',
+        'tools/spike-kit/src/git-head.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'tools/spike-kit/src/spike.test.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'tools/spike-kit/src/spike-cli.integration.test.ts -> no-restricted-imports,no-restricted-properties,sbx/no-global-alias',
       ].sort(),

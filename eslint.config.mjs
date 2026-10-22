@@ -986,6 +986,12 @@ export const NAMED_EXEMPTIONS = [
     ],
   },
   {
+    files: ['tools/spike-kit/src/git-head.ts'],
+    reason:
+      'B-L6 / FIX-MVPB-SEAL2 M1: runs local `git show HEAD:<path>` through node:child_process with a minimal environment, to prove the decision log equals its committed copy; no network, loaded only for a real spike run',
+    off: ['no-restricted-imports', 'sbx/no-restricted-dynamic-import'],
+  },
+  {
     files: ['tools/spike-kit/src/spike.test.ts'],
     reason:
       'B-L6: the test imports node:net, tls, http, https and dns only to spy on them and prove zero network use',

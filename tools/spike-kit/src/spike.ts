@@ -43,6 +43,10 @@ export const REFUSAL_CODES = [
   'approval_scope_mismatch',
   'approval_operator_mismatch',
   'approval_expired',
+  'approval_ref_duplicate',
+  'approval_window_invalid',
+  'decision_log_unverified',
+  'ai_environment',
   'transport_env_override',
   'credentials_missing',
   'output_in_repo',
@@ -125,6 +129,11 @@ export interface Deps {
   fetchImpl?: FetchLike;
   /** process.execArgv of the running process; the real entry point supplies it. */
   execArgv?: readonly string[];
+  /**
+   * The committed text of a repository file (`git show HEAD:<path>`, local git only), or null when
+   * git cannot answer. A real run needs it: docs/decision-log.md must equal HEAD (SEAL2 M1).
+   */
+  gitShowHead?: (relPath: string) => string | null;
 }
 export interface Config {
   dryRun: boolean;
@@ -509,6 +518,9 @@ const CI_MARKERS = [
   'TF_BUILD',
   'CODESPACES',
 ];
+// LOW (SEAL2): sessions of an AI coding agent or a cloud IDE. A real run refuses them; --dry-run
+// is allowed anywhere.
+const AI_MARKERS = ['CLAUDECODE', 'CLAUDE_CODE_REMOTE'];
 const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   'NODE_USE_ENV_PROXY',
   'NODE_TLS_REJECT_UNAUTHORIZED',
@@ -554,25 +566,82 @@ function insideGitRepo(dir: string, exists: (p: string) => boolean): boolean {
   }
 }
 
-/** Structured owner marker a decision-log row must carry before a real spike run (FIX-BPREP H1). */
+/**
+ * The only shape that grants: the whole Decision cell of a table row is exactly this marker
+ * (FIX-BPREP H1, anchored in FIX-MVPB-SEAL2 M1). Text before or after it, a quote, a different
+ * letter case or a second marker in another cell never grants.
+ */
 const SPIKE_GO =
-  /SPIKE GO: scope=(spike-read|spike-write); operator=(vikram|sakthi); valid_until=(\d{4}-\d{2}-\d{2}); approved in writing (\d{4}-\d{2}-\d{2})/;
+  /^SPIKE GO: scope=(spike-read|spike-write); operator=(vikram|sakthi); valid_until=(\d{4}-\d{2}-\d{2}); approved in writing (\d{4}-\d{2}-\d{2})$/;
+// Words that turn a row into something other than a grant, wherever they appear in the row
+// (the notes cell included): negations, withdrawals, templates and examples.
+const NON_GRANTING =
+  /\b(?:not|no longer|cannot|can't|won't|never|revok\w*|withdr[ae]w\w*|supersed\w*|templat\w*|example\w*|sample|placeholder)\b|n't\b|\be\.g\./i;
+const MAX_GO_DAYS = 14;
 function realDate(iso: string): boolean {
   const t = Date.parse(`${iso}T00:00:00Z`);
   return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === iso;
 }
-export function parseSpikeGo(
-  row: string,
-): { scope: 'spike-read' | 'spike-write'; operator: string; validUntil: string } | null {
-  if (/does not authori[sz]e/i.test(row)) return null;
-  const m = SPIKE_GO.exec(row);
+const dayNumber = (iso: string): number => Math.floor(Date.parse(`${iso}T00:00:00Z`) / 86_400_000);
+export function parseSpikeGo(row: string): {
+  scope: 'spike-read' | 'spike-write';
+  operator: string;
+  validUntil: string;
+  approved: string;
+} | null {
+  if (typeof row !== 'string' || NON_GRANTING.test(row)) return null;
+  const t = row.trim();
+  if (!t.startsWith('|')) return null;
+  // | Id | Date | Decision | Owner | Notes |
+  const cells = t
+    .replace(/^\|/, '')
+    .replace(/\|\s*$/, '')
+    .split('|')
+    .map((c) => c.trim());
+  if (cells.length < 4) return null;
+  const m = SPIKE_GO.exec(cells[2] as string);
   if (m === null) return null;
   if (!realDate(m[3] as string) || !realDate(m[4] as string)) return null;
   return {
     scope: m[1] as 'spike-read' | 'spike-write',
     operator: m[2] as string,
     validUntil: m[3] as string,
+    approved: m[4] as string,
   };
+}
+
+/**
+ * The lines of the log that start the table row `ref`, and whether each sits where Markdown shows
+ * code instead of a table: a ``` or ~~~ fence, an HTML comment, or a block indented four columns.
+ */
+function findRows(log: string, ref: string): { line: string; hidden: boolean }[] {
+  const out: { line: string; hidden: boolean }[] = [];
+  const head = new RegExp(`^\\s*\\|\\s*${ref}\\s*\\|`);
+  let fence: string | null = null;
+  let comment = false;
+  for (const line of log.split('\n')) {
+    const opener = /^(```|~~~)/.exec(line.trimStart());
+    if (fence !== null) {
+      if (opener !== null && opener[1] === fence) {
+        fence = null;
+        continue;
+      }
+    } else if (opener !== null) {
+      fence = opener[1] as string;
+      continue;
+    }
+    const opens = line.includes('<!--');
+    const closes = line.includes('-->');
+    const inComment = comment || opens;
+    if (opens && !closes) comment = true;
+    else if (comment && closes) comment = false;
+    if (head.test(line))
+      out.push({
+        line,
+        hidden: fence !== null || inComment || /^(?: {4}|\t)/.test(line),
+      });
+  }
+  return out;
 }
 
 export function preflight(deps: Deps): Preflight {
@@ -651,6 +720,14 @@ export function preflight(deps: Deps): Preflight {
       'transport_env_override',
       'a Node flag that changes networking or loads code is set',
     );
+  for (const name of AI_MARKERS) {
+    const v = env[name];
+    if (v !== undefined && v.trim() !== '')
+      return refuse(
+        'ai_environment',
+        `${name} is set; the spike is run by the owner by hand, never from an AI or cloud session`,
+      );
+  }
   if (!deps.stdinIsTTY)
     return refuse('not_tty', 'stdin is not a terminal; run it by hand in a terminal');
   const operator = env['SPIKE_OPERATOR'];
@@ -665,10 +742,36 @@ export function preflight(deps: Deps): Preflight {
     return refuse('approval_ref_pattern', 'SPIKE_APPROVAL_REF must look like D-024');
   const log = deps.readText(join(deps.repoRoot, 'docs', 'decision-log.md'));
   if (log === null) return refuse('decision_log_unreadable', 'docs/decision-log.md cannot be read');
-  const row = log.split('\n').find((l) => new RegExp(`^\\|\\s*${ref}\\s*\\|`).test(l));
-  if (row === undefined)
+  // The log the grant is read from must be the committed one: a row typed into a working copy, or
+  // a missing git, is not an approval (SEAL2 M1).
+  let committed: string | null = null;
+  try {
+    committed = deps.gitShowHead ? deps.gitShowHead('docs/decision-log.md') : null;
+  } catch {
+    committed = null;
+  }
+  if (committed === null)
+    return refuse(
+      'decision_log_unverified',
+      'git cannot show docs/decision-log.md at HEAD; run inside the repository clone with git installed',
+    );
+  if (committed !== log)
+    return refuse(
+      'decision_log_unverified',
+      'docs/decision-log.md differs from the committed copy; commit or discard the change first',
+    );
+  const rows = findRows(log, ref);
+  if (rows.length === 0)
     return refuse('approval_ref_unknown', `no row ${ref} in docs/decision-log.md`);
-  const go = parseSpikeGo(row);
+  if (rows.length > 1)
+    return refuse('approval_ref_duplicate', `docs/decision-log.md has more than one row ${ref}`);
+  const row = rows[0] as { line: string; hidden: boolean };
+  if (row.hidden)
+    return refuse(
+      'approval_ref_not_authorising',
+      `row ${ref} sits in a code block or comment, not in the table`,
+    );
+  const go = parseSpikeGo(row.line);
   if (go === null)
     return refuse(
       'approval_ref_not_authorising',
@@ -678,6 +781,16 @@ export function preflight(deps: Deps): Preflight {
     return refuse('approval_scope_mismatch', `row ${ref} does not cover mode ${modeRaw}`);
   if (go.operator !== operator)
     return refuse('approval_operator_mismatch', `row ${ref} names a different operator`);
+  // approved <= today <= valid_until, and the window is at most 14 days.
+  if (
+    go.approved > go.validUntil ||
+    dayNumber(go.validUntil) - dayNumber(go.approved) > MAX_GO_DAYS ||
+    date < go.approved
+  )
+    return refuse(
+      'approval_window_invalid',
+      `row ${ref} must be approved on or before today, and valid for at most ${MAX_GO_DAYS} days`,
+    );
   if (date > go.validUntil) return refuse('approval_expired', `row ${ref} has expired`);
   const clientId = env['PAYPAL_CLIENT_ID'];
   const clientSecret = env['PAYPAL_CLIENT_SECRET'];
@@ -1928,6 +2041,8 @@ if (entry !== undefined && import.meta.url === pathToFileURL(resolve(entry)).hre
   const { homedir, tmpdir } = await import('node:os');
   const argv = process.argv.slice(2);
   const dry = argv.includes('--dry-run');
+  // SEAL2 M1: a real run proves docs/decision-log.md equals HEAD with local git (never a dry run).
+  const git = dry ? null : await import('./git-head.ts');
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const here = dirname(new URL(import.meta.url).pathname);
   const repoRoot = resolve(here, '..', '..', '..');
@@ -1957,6 +2072,9 @@ if (entry !== undefined && import.meta.url === pathToFileURL(resolve(entry)).hre
       exists: (p) => existsSync(p),
       realpath: (p) => realpathSync(p),
     },
+    ...(git === null
+      ? {}
+      : { gitShowHead: (rel: string) => git.gitShowHead(repoRoot, rel, process.env) }),
     ...(dry ? {} : { fetchImpl: fetch as unknown as FetchLike }),
   };
   const code = await main(deps);

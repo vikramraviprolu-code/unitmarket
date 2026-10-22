@@ -22,6 +22,7 @@ import {
   createRedactor,
   createReplayWire,
   main,
+  parseSpikeGo,
   preflight,
   redactionSelfTest,
   runSpike,
@@ -74,6 +75,9 @@ const FAKE_SECRET = part('fake', '-client-', 'secret-0002-zzzz');
 const FAKE_TOKEN = part('A21AA', 'FAKETOKEN', 'abcdefghijklmnopqrstuvwxyz0123456789');
 const REPO = path.resolve(new URL('../../..', import.meta.url).pathname);
 const FIXTURES = path.join(REPO, 'fixtures/paypal/docs-examples');
+// A well-formed SPIKE GO decision cell; the dates default to an 11 day window around 2026-10-26.
+const MARK = (o: { approved?: string; until?: string } = {}): string =>
+  `SPIKE GO: scope=spike-read; operator=vikram; valid_until=${o.until ?? '2026-11-05'}; approved in writing ${o.approved ?? '2026-10-25'}`;
 const LOG = [
   '| Id | Date | Decision | Owner | Notes |',
   '| D-023 | 2026-10-22 | Sandbox accounts. This decision does not authorise any outbound call. | Owner | x |',
@@ -81,15 +85,50 @@ const LOG = [
   '| D-011 | 2026-10-05 | Another unrelated decision. | Owner | x |',
   '| D-013 | 2026-10-06 | The sandbox host constant lives in one module. | Owner | x |',
   // Synthetic well-formed rows for tests only. They are NOT in docs/decision-log.md.
-  '| D-024 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
-  '| D-025 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=vikram; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
-  '| D-026 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=sakthi; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
-  '| D-027 | 2026-10-01 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-10-25; approved in writing 2026-10-01 | Owner | x |',
+  '| D-024 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | x |',
+  '| D-025 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=vikram; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | x |',
+  '| D-026 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=sakthi; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | x |',
+  '| D-027 | 2026-10-20 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-10-25; approved in writing 2026-10-20 | Owner | x |',
   '| D-028 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-10-26; approved in writing 2026-10-25 | Owner | x |',
-  '| D-029 | 2026-10-25 | SPIKE GO: scope=everything; operator=vikram; valid_until=2026-12-31; approved in writing 2026-10-25 | Owner | x |',
+  '| D-029 | 2026-10-25 | SPIKE GO: scope=everything; operator=vikram; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | x |',
   '| D-030 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-13-45; approved in writing 2026-10-25 | Owner | x |',
   '| D-031 | 2026-10-25 | Owner written go for the read-only spike. | Owner | x |',
   '| D-032 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-12-31 | Owner | x |',
+  // FIX-MVPB-SEAL2 M1: rows that quote, negate or only look like a grant. None may authorise.
+  `| D-040 | 2026-10-25 | Example only, NOT yet granted: "${MARK()}" | Owner | x |`,
+  `| D-041 | 2026-10-25 | ${MARK()} REVOKED | Owner | x |`,
+  `| D-042 | 2026-10-25 | This is not authorised: ${MARK()} | Owner | x |`,
+  `| D-043 | 2026-10-25 | ${MARK({ until: '9999-12-31' })} | Owner | x |`,
+  `| D-044 | 2026-10-25 | ${MARK({ until: '2026-10-24' })} | Owner | x |`,
+  `| D-046 | 2026-10-25 | ${MARK()} | Owner | first |`,
+  `| D-046 | 2026-10-25 | ${MARK()} | Owner | second |`,
+  `| D-047 | 2026-10-10 | ${MARK({ approved: '2026-10-10', until: '2026-10-20' })} | Owner | x |`,
+  `| D-048 | 2026-10-25 | ${MARK()} | Owner | template |`,
+  `| D-049 | 2026-10-25 | ${MARK()} | Owner | superseded by D-050 |`,
+  `| D-051 | 2026-10-25 | ${MARK()} | Owner | withdrawn |`,
+  `| D-052 | 2026-10-25 | ${MARK()} | Owner | e.g. a test run |`,
+  `| D-053 | 2026-10-25 | ${MARK()} | Owner | see the runbook example |`,
+  `| D-054 | 2026-10-25 | ${MARK({ until: '2026-11-08' })} | Owner | exactly 14 days |`,
+  `| D-055 | 2026-10-25 | ${MARK({ until: '2026-11-09' })} | Owner | 15 days |`,
+  `| D-056 | 2026-10-30 | ${MARK({ approved: '2026-10-30', until: '2026-11-05' })} | Owner | starts later |`,
+  `| D-057 | 2026-10-25 | ${MARK()} and more | Owner | x |`,
+  `| D-058 | 2026-10-25 | Owner go: ${MARK()} | Owner | x |`,
+  `| D-059 | 2026-10-25 | spike go: scope=spike-read; operator=vikram; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | lower case |`,
+  `| D-060 | 2026-10-25 | ${MARK()} | Owner | cannot be used |`,
+].join('\n');
+// Rows inside a code fence, an HTML comment or an indented code block are not decisions.
+const FENCED_LOG = [
+  LOG,
+  '```',
+  `| D-045 | 2026-10-25 | ${MARK()} | Owner | x |`,
+  '```',
+  '<!--',
+  `| D-061 | 2026-10-25 | ${MARK()} | Owner | x |`,
+  '-->',
+  `    | D-062 | 2026-10-25 | ${MARK()} | Owner | x |`,
+  '~~~',
+  `| D-063 | 2026-10-25 | ${MARK()} | Owner | x |`,
+  '~~~',
 ].join('\n');
 
 let tmp: string;
@@ -107,7 +146,8 @@ interface Harness {
   prompts: string[];
   answers: string[];
 }
-function harness(over: Partial<Deps> & { answers?: string[] } = {}): Harness {
+function harness(rest: Partial<Deps> & { answers?: string[]; log?: string } = {}): Harness {
+  const { log: logText = LOG, ...over } = rest;
   const outLines: string[] = [];
   const errLines: string[] = [];
   const prompts: string[] = [];
@@ -121,7 +161,7 @@ function harness(over: Partial<Deps> & { answers?: string[] } = {}): Harness {
     tmpDir: path.join(tmp, 'tmp'),
     repoRoot: REPO,
     readText: (p) => {
-      if (p.endsWith('decision-log.md')) return LOG;
+      if (p.endsWith('decision-log.md')) return logText;
       try {
         return fs.readFileSync(p, 'utf8');
       } catch {
@@ -129,6 +169,8 @@ function harness(over: Partial<Deps> & { answers?: string[] } = {}): Harness {
       }
     },
     fixtureDir: FIXTURES,
+    // The committed copy of the log; equal to the working copy unless a test says otherwise.
+    gitShowHead: (rel) => (rel === 'docs/decision-log.md' ? logText : null),
     ask: async (q) => {
       prompts.push(q);
       return answers.length > 0 ? (answers.shift() as string) : 'y';
@@ -341,6 +383,35 @@ describe('preflight refusals', () => {
     ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-029')],
     ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-030')],
     ['approval_expired', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-027')],
+    // FIX-MVPB-SEAL2 M1: the review table.
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-040')], // quoted example, "NOT yet granted"
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-041')], // marker then REVOKED
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-042')], // "This is not authorised: <marker>"
+    ['approval_window_invalid', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-043')], // valid_until=9999-12-31
+    ['approval_window_invalid', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-044')], // approved after valid_until
+    ['approval_ref_duplicate', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-046')], // two rows with one id
+    ['approval_expired', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-047')], // past valid_until
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-048')], // template
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-049')], // superseded
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-051')], // withdrawn
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-052')], // e.g.
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-053')], // example
+    ['approval_window_invalid', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-055')], // 15 days
+    ['approval_window_invalid', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-056')], // approved in the future
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-057')], // trailing text in the cell
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-058')], // leading text in the cell
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-059')], // lower case marker
+    ['approval_ref_not_authorising', (h) => void (h.deps.env['SPIKE_APPROVAL_REF'] = 'D-060')], // "cannot"
+    [
+      'decision_log_unverified',
+      (h) =>
+        void (h.deps.gitShowHead = () =>
+          LOG + '\n| D-099 | 2026-10-25 | an uncommitted line | Owner | x |'),
+    ], // working tree differs from HEAD
+    ['decision_log_unverified', (h) => void (h.deps.gitShowHead = () => null)], // git unavailable
+    ['decision_log_unverified', (h) => void delete h.deps.gitShowHead], // no git reader supplied
+    ['ai_environment', (h) => void (h.deps.env['CLAUDECODE'] = '1')],
+    ['ai_environment', (h) => void (h.deps.env['CLAUDE_CODE_REMOTE'] = 'true')],
     [
       'approval_expired',
       (h) => {
@@ -407,6 +478,147 @@ describe('preflight refusals', () => {
       argv: ['--dry-run', '--out', path.join(tmp, 'out')],
       fetchImpl: vi.fn() as never,
     });
+    expect(await main(h.deps)).toBe(0);
+  });
+});
+
+// ---- FIX-MVPB-SEAL2 M1: the SPIKE GO row must be a whole, current, committed, unambiguous grant --------
+describe('M1 (SEAL2): SPIKE GO rows that only look like a grant never authorise', () => {
+  const real = (ref: string, over: Partial<Deps> & { log?: string } = {}) => {
+    const h = harness({ env: realEnv({ SPIKE_APPROVAL_REF: ref }), stdinIsTTY: true, ...over });
+    return preflight(h.deps);
+  };
+  it.each(['D-045', 'D-061', 'D-062', 'D-063'])(
+    'a row in a code fence, an HTML comment or an indented block (%s) is not a decision',
+    (ref) => {
+      const r = real(ref, { log: FENCED_LOG });
+      expect(!r.ok && r.code).toBe('approval_ref_not_authorising');
+    },
+  );
+  it('the same log still authorises a plain row outside every fence', () => {
+    expect(real('D-024', { log: FENCED_LOG }).ok).toBe(true);
+  });
+  it('accepts a window of exactly 14 days and refuses 15 (D-054, D-055)', () => {
+    expect(real('D-054').ok).toBe(true);
+    const r = real('D-055');
+    expect(!r.ok && r.code).toBe('approval_window_invalid');
+  });
+  it('accepts a row on the day it is approved and on its last day', () => {
+    const h = harness({ env: realEnv({ SPIKE_APPROVAL_REF: 'D-024' }), stdinIsTTY: true });
+    h.deps.nowIso = () => '2026-10-25T00:00:00.000Z';
+    expect(preflight(h.deps).ok).toBe(true);
+    h.deps.nowIso = () => '2026-11-05T23:59:59.000Z';
+    expect(preflight(h.deps).ok).toBe(true);
+    h.deps.nowIso = () => '2026-11-06T00:00:00.000Z';
+    const r = preflight(h.deps);
+    expect(!r.ok && r.code).toBe('approval_expired');
+  });
+  it('a row approved after today is refused even though it has not expired', () => {
+    const r = real('D-056');
+    expect(!r.ok && r.code).toBe('approval_window_invalid');
+  });
+  it('a duplicate id is refused even when one of the rows is a perfect grant', () => {
+    const log = [LOG, `| D-024 | 2026-10-25 | not a grant | Owner | x |`].join('\n');
+    const r = real('D-024', { log });
+    expect(!r.ok && r.code).toBe('approval_ref_duplicate');
+  });
+  it('a duplicate id with one copy in a fence is refused as a duplicate too', () => {
+    const log = [LOG, '```', `| D-024 | 2026-10-25 | ${MARK()} | Owner | x |`, '```'].join('\n');
+    const r = real('D-024', { log });
+    expect(!r.ok && r.code).toBe('approval_ref_duplicate');
+  });
+  it('asks git for docs/decision-log.md at HEAD and compares byte for byte', () => {
+    const asked: string[] = [];
+    const ok = harness({ env: realEnv(), stdinIsTTY: true });
+    const inner = ok.deps.gitShowHead;
+    ok.deps.gitShowHead = (rel) => {
+      asked.push(rel);
+      return inner?.(rel) ?? null;
+    };
+    expect(preflight(ok.deps).ok).toBe(true);
+    expect(asked).toEqual(['docs/decision-log.md']);
+    // One extra trailing newline in the working tree is a difference.
+    const dirty = harness({ env: realEnv(), stdinIsTTY: true });
+    dirty.deps.readText = (p) => (p.endsWith('decision-log.md') ? LOG + '\n' : null);
+    const r = preflight(dirty.deps);
+    expect(!r.ok && r.code).toBe('decision_log_unverified');
+  });
+  it('a git reader that throws is a refusal, not a crash', () => {
+    const h = harness({ env: realEnv(), stdinIsTTY: true });
+    h.deps.gitShowHead = () => {
+      throw new Error('git exploded');
+    };
+    const r = preflight(h.deps);
+    expect(!r.ok && r.code).toBe('decision_log_unverified');
+  });
+  it('the real docs/decision-log.md: D-004, D-011, D-013 and D-023 stay refused', () => {
+    const real_ = fs.readFileSync(path.join(REPO, 'docs/decision-log.md'), 'utf8');
+    for (const ref of ['D-004', 'D-011', 'D-013', 'D-023']) {
+      const r = real(ref, { log: real_ });
+      expect(!r.ok && r.code, ref).toBe('approval_ref_not_authorising');
+    }
+    expect(real_).not.toContain('SPIKE GO:');
+  });
+  it('never reads the runbook, whose template row is not a decision', () => {
+    const read: string[] = [];
+    const h = harness({ env: realEnv(), stdinIsTTY: true });
+    const inner = h.deps.readText;
+    h.deps.readText = (p) => {
+      read.push(p);
+      return inner(p);
+    };
+    expect(preflight(h.deps).ok).toBe(true);
+    expect(read.filter((p) => /runbook|owner/i.test(p))).toEqual([]);
+    // The template's placeholder id is not even a well-formed reference.
+    const t = harness({ env: realEnv({ SPIKE_APPROVAL_REF: 'D-nnn' }), stdinIsTTY: true });
+    const r = preflight(t.deps);
+    expect(!r.ok && r.code).toBe('approval_ref_pattern');
+  });
+  it('parseSpikeGo reads the marker only from the whole decision cell', () => {
+    const row = (cell: string, notes = 'x') =>
+      `| D-024 | 2026-10-25 | ${cell} | Owner | ${notes} |`;
+    expect(parseSpikeGo(row(MARK()))).toEqual({
+      scope: 'spike-read',
+      operator: 'vikram',
+      validUntil: '2026-11-05',
+      approved: '2026-10-25',
+    });
+    for (const bad of [
+      row(`"${MARK()}"`),
+      row(`${MARK()}.`),
+      row(`> ${MARK()}`),
+      row(`${MARK()} (revoked)`),
+      row(MARK(), 'NOT granted'),
+      row(MARK(), 'Template'),
+      row(MARK(), 'E.G.'),
+      '',
+      '|',
+      `| D-024 | ${MARK()} |`,
+    ])
+      expect(parseSpikeGo(bad), bad).toBeNull();
+  });
+});
+
+describe('LOW (SEAL2): AI and cloud-session markers refuse a real run, not a dry run', () => {
+  it.each(['CLAUDECODE', 'CLAUDE_CODE_REMOTE'])(
+    '%s refuses a real run with ai_environment',
+    (name) => {
+      const h = harness({ env: realEnv({ [name]: '1' }), stdinIsTTY: true });
+      const r = preflight(h.deps);
+      expect(!r.ok && r.code).toBe('ai_environment');
+      expect(!r.ok && r.message).toContain(name);
+    },
+  );
+  it.each(['CLAUDECODE', 'CLAUDE_CODE_REMOTE'])('%s: an empty value is not a marker', (name) => {
+    const h = harness({ env: realEnv({ [name]: '' }), stdinIsTTY: true });
+    expect(preflight(h.deps).ok).toBe(true);
+  });
+  it.each(['CLAUDECODE', 'CLAUDE_CODE_REMOTE'])('%s: --dry-run still works', async (name) => {
+    const h = harness({
+      env: { [name]: '1' },
+      argv: ['--dry-run', '--out', path.join(tmp, 'out')],
+    });
+    expect(preflight(h.deps).ok).toBe(true);
     expect(await main(h.deps)).toBe(0);
   });
 });
