@@ -93,7 +93,6 @@ describe('loadConfig refuses (P15, RLR-4)', () => {
   });
   it('D-013: no environment variable may carry any PayPal host, not even the sandbox host', () => {
     const PP = ['paypal', 'com'].join('.');
-    const PY = ['pay', 'pal'].join('');
     for (const v of [
       `https://${SANDBOX_HOST}`,
       `https://${LIVE_HOST}`,

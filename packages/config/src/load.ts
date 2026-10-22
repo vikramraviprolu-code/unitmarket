@@ -19,8 +19,30 @@ const PAYPAL_HOST = /paypal(?:objects)?\.com/i;
 // to '.', then the code points IDNA ignores are removed (soft hyphen, U+034F, zero-width, variation
 // selectors, bidi and format controls).
 const DOTS = /[\u3002\uFF61\uFE52\u2024\u2E2E]/gu;
-const IDNA_IGNORED =
-  /[\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\u{E0000}-\u{E01EF}]/gu;
+const IGNORED_RANGES: [number, number][] = [
+  [0xad, 0xad],
+  [0x34f, 0x34f],
+  [0x61c, 0x61c],
+  [0x115f, 0x1160],
+  [0x17b4, 0x17b5],
+  [0x180b, 0x180f],
+  [0x200b, 0x200f],
+  [0x202a, 0x202e],
+  [0x2060, 0x206f],
+  [0x3164, 0x3164],
+  [0xfe00, 0xfe0f],
+  [0xfeff, 0xfeff],
+  [0xffa0, 0xffa0],
+  [0xe0000, 0xe01ef],
+];
+// Not a regex character class: lint rejects combining marks and joiners inside one.
+const stripIgnored = (t: string): string =>
+  Array.from(t)
+    .filter((ch) => {
+      const cp = ch.codePointAt(0) ?? 0;
+      return !IGNORED_RANGES.some(([lo, hi]) => cp >= lo && cp <= hi);
+    })
+    .join('');
 const unescapeOnce = (t: string): string =>
   t
     .replace(/\\u\{([0-9a-fA-F]{1,6})\}/g, (m, h: string) => String.fromCodePoint(parseInt(h, 16)))
@@ -40,7 +62,7 @@ export function foldHostText(v: string): string {
     if (next === t) break;
     t = next;
   }
-  return t.normalize('NFKC').replace(DOTS, '.').replace(IDNA_IGNORED, '');
+  return stripIgnored(t.normalize('NFKC').replace(DOTS, '.'));
 }
 const carriesPayPalHost = (v: string): boolean =>
   PAYPAL_HOST.test(v) || PAYPAL_HOST.test(foldHostText(v));
@@ -189,6 +211,11 @@ export function bootOrExit(
     return exit(BOOT_REFUSAL_EXIT_CODE);
   }
   return r.value;
+}
+
+/** The terminal facts the operator CLIs check (SOP 2): only the CI flag, never a value that could be a secret. */
+export function terminalEnv(): Record<string, string | undefined> {
+  return { CI: process.env.CI };
 }
 
 /** The one place that hands the real environment to loadConfig. */

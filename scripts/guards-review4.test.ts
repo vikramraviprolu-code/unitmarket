@@ -174,7 +174,11 @@ describe('check-no-live-host (review 4 M5)', () => {
   const b64 = (t: string) => Buffer.from(t).toString('base64');
   const bad: [string, string, string][] = [
     ['literal soft hyphen', 'src/a.ts', `export const u = 'https://api-m.pay­pal.${COM}';\n`],
-    ['literal zero-width space', 'src/a.ts', `export const u = 'https://api-m.pay​pal.${COM}';\n`],
+    [
+      'literal zero-width space',
+      'src/a.ts',
+      `export const u = 'https://api-m.pay\u200Bpal.${COM}';\n`,
+    ],
     ['literal U+034F', 'src/a.ts', `export const u = 'https://api-m.pay͏pal.${COM}';\n`],
     [
       'concatenated strings',
