@@ -12,14 +12,16 @@ const TERMINAL = new Set(['paid', 'paid_partial', 'failed', 'abandoned', 'frozen
 export function OrderStatus({ initial }: { initial: OrderView }) {
   const [view, setView] = useState(initial);
   useEffect(() => {
-    if (TERMINAL.has(view.status)) return;
+    // A frozen order is settled, but its case appears a moment later (the recovery rules run in
+    // the job loop), so keep looking until the case shows.
+    if (TERMINAL.has(view.status) && !(view.status === 'frozen' && view.open_case === null)) return;
     const t = setInterval(() => {
       void getJson<OrderView>(`/api/orders/${encodeURIComponent(view.order_ref)}`).then((r) => {
         if (r.ok) setView(r.data);
       });
     }, 3000);
     return () => clearInterval(t);
-  }, [view.status, view.order_ref]);
+  }, [view.status, view.order_ref, view.open_case]);
   const tone =
     view.status === 'paid' || view.status === 'paid_partial'
       ? 'success'
@@ -33,6 +35,11 @@ export function OrderStatus({ initial }: { initial: OrderView }) {
       <div aria-live="polite" aria-atomic="true" data-testid="order-live">
         <StatusBanner tone={tone} live={false} title={view.buyer_message} />
       </div>
+      {view.open_case !== null ? (
+        <p data-testid="order-case">
+          We opened case {view.open_case.case_id}. {view.open_case.buyer_message}
+        </p>
+      ) : null}
       <ul>
         {view.items.map((i) => (
           <li key={i.article_id}>

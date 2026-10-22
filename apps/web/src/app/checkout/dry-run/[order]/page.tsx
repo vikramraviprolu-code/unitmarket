@@ -7,16 +7,6 @@ import { StatusBanner } from '../../../../ui/StatusBanner';
 
 export const metadata: Metadata = { title: 'Dry-run checkout' };
 
-// Fixture scenarios of lane 03 that a tester can drive. Only offered when the environment is dry run.
-const SCENARIOS: { id: string; label: string }[] = [
-  { id: 'happy', label: 'Payment goes through' },
-  { id: 'capture_202', label: 'PayPal answers "accepted" (claim only)' },
-  { id: 'pending_receiving_pref', label: 'Payment pending at PayPal' },
-  { id: 'lost_capture_response', label: 'Response lost, we read it back' },
-  { id: 'mismatch_amount', label: 'Amount does not match (frozen)' },
-  { id: 'declined', label: 'Payment declined' },
-];
-
 export default async function DryRunCheckout({ params }: { params: Promise<{ order: string }> }) {
   const { order } = await params;
   const actor = await currentActor();
@@ -38,7 +28,7 @@ export default async function DryRunCheckout({ params }: { params: Promise<{ ord
         <div className="field">
           <label htmlFor="scenario">What should the pretend payment do?</label>
           <select id="scenario" name="scenario" defaultValue="happy">
-            {SCENARIOS.map((s) => (
+            {a.engine.dryRunScenarios().map((s) => (
               <option key={s.id} value={s.id}>
                 {s.label}
               </option>

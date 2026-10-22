@@ -1,5 +1,5 @@
 // Lane 15 state tests: the route handlers over a real offline app (PGlite, dry-run transport, seeded
-// catalogue). Money-state behaviour is the payments lanes' job; here payments is the TEMP stub.
+// catalogue). Money-state behaviour is the payments lanes' job; payments is the real engine (see payments.state.test.ts).
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { App } from '../composition.server';
 import { bootTestApp, call, signIn } from './support';
@@ -185,8 +185,8 @@ describe('access control', () => {
   });
 });
 
-describe('payments seam (TEMP-until-05a)', () => {
-  it('POST /api/orders refuses with 503 payments_not_wired and writes no order', async () => {
+describe('payments through the routes', () => {
+  it('POST /api/orders with an unknown approval is 404 and writes no order', async () => {
     const res = await call(orders.POST, {
       url: '/api/orders',
       method: 'POST',
@@ -194,7 +194,7 @@ describe('payments seam (TEMP-until-05a)', () => {
       headers: { 'idempotency-key': 'test-key-0001' },
       body: { approval_id: 'apr_00000000000000000000000000', token: 'x'.repeat(40) },
     });
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(404);
     const n = await app.db.query<{ c: string }>('SELECT count(*) AS c FROM orders');
     expect(Number(n.rows[0]?.c)).toBe(0);
   });

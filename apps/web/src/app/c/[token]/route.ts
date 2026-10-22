@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { withRoute } from '@umsbx/security';
 import type { RouteMeta } from '@umsbx/security';
 import { app, securityDeps } from '../../../server/access';
+import { currentSessionId } from '../../../server/session';
 
 export const routeMeta: RouteMeta = {
   path: '/c/[token]',
@@ -47,12 +48,14 @@ function withStream(guarded: (req: Request, call?: Call) => Promise<Response>) {
 
 export const GET = withStream(
   withRoute(routeMeta, Input, async ({ actor, input, req_id }) => {
+    const session_id = await currentSessionId(actor);
     const r = await (
       await app()
     ).engine.serve({
       token: input.token,
       actor,
       mode: input.mode ?? 'read',
+      ...(session_id !== undefined ? { session_id } : {}),
     });
     if (r.ok) {
       served.set(req_id, { headers: r.headers, stream: r.stream });

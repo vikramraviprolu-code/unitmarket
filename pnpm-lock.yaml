@@ -71,6 +71,9 @@ importers:
       '@umsbx/fit':
         specifier: workspace:*
         version: link:../../domain/fit
+      '@umsbx/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
       '@umsbx/ledger':
         specifier: workspace:*
         version: link:../../domain/ledger
@@ -86,6 +89,9 @@ importers:
       '@umsbx/offer-entry':
         specifier: workspace:*
         version: link:../../domain/offer-entry
+      '@umsbx/payments':
+        specifier: workspace:*
+        version: link:../../domain/payments
       '@umsbx/paypal':
         specifier: workspace:*
         version: link:../../packages/paypal
