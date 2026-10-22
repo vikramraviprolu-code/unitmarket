@@ -345,7 +345,18 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/jobs: {}
+  packages/jobs:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@umsbx/payments':
+        specifier: workspace:*
+        version: link:../../domain/payments
+    devDependencies:
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../runtime
 
   packages/model:
     dependencies:
