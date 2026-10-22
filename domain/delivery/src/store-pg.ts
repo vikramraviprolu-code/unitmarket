@@ -9,28 +9,36 @@ const CHUNK = 64 * 1024;
 interface BlobRow {
   data: Uint8Array;
   mime: string;
+  /** The hash column written when the object was stored (review 4 H2). */
+  sha256: Sha256Hex;
 }
 
 export function createPgContentStore(db: Database): ContentStore {
   const load = async (key: string): Promise<BlobRow | null> => {
     const r = await db.query<BlobRow>(
-      'SELECT data, mime FROM content_blobs WHERE content_key = $1',
+      'SELECT data, mime, sha256 FROM content_blobs WHERE content_key = $1',
       [key],
     );
     const row = r.rows[0];
-    return row === undefined ? null : { data: new Uint8Array(row.data), mime: row.mime };
+    return row === undefined
+      ? null
+      : { data: new Uint8Array(row.data), mime: row.mime, sha256: row.sha256 };
   };
+  const hashOf = (row: BlobRow): Sha256Hex =>
+    createHash('sha256').update(row.data).digest('hex') as Sha256Hex;
   return {
-    // The hash is recomputed from the stored bytes, so altered bytes surface as a hash mismatch.
+    // The hash is recomputed from the stored bytes, so altered bytes surface as a hash mismatch
+    // against the hash the buyer bought (planServe) or the snapshot (checkReadiness).
     async head(key): Promise<ContentHead | null> {
       const row = await load(key);
       if (row === null) return null;
-      const sha256 = createHash('sha256').update(row.data).digest('hex') as Sha256Hex;
-      return { bytes: row.data.length, sha256, mime: row.mime };
+      return { bytes: row.data.length, sha256: hashOf(row), mime: row.mime };
     },
     async open(key): Promise<AsyncIterable<Uint8Array> | null> {
       const row = await load(key);
       if (row === null) return null;
+      // Review 4 H2: never stream bytes that disagree with the hash stored beside them.
+      if (hashOf(row) !== row.sha256) throw new Error(`content integrity check failed for ${key}`);
       const data = row.data;
       return {
         async *[Symbol.asyncIterator]() {
