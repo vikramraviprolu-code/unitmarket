@@ -127,7 +127,7 @@ export async function makeWorld(
         snapshot: JSON.stringify(snapshot),
         content_hash: hash,
         nonce: `nonce${n}`,
-        expires_at: '2026-10-22T10:15:00.000Z',
+        expires_at: new Date(clock.now().getTime() + 900_000).toISOString(),
         used_at: null,
         environment: env,
       });
