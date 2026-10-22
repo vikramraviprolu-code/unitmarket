@@ -401,9 +401,7 @@ describe('A-04 egress_guard', () => {
   });
 
   it('port 8443 is refused', () => {
-    expect(refused({ path: `https://${SBX_HOST}:8443/v2/checkout/orders/ABC123` }).ok).toBe(
-      false,
-    );
+    expect(refused({ path: `https://${SBX_HOST}:8443/v2/checkout/orders/ABC123` }).ok).toBe(false);
   });
 
   it('redirect-style and traversal paths are refused', () => {
