@@ -174,7 +174,42 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
-  domain/payments: {}
+  domain/payments:
+    dependencies:
+      '@umsbx/access-clock':
+        specifier: workspace:*
+        version: link:../access-clock
+      '@umsbx/approval':
+        specifier: workspace:*
+        version: link:../approval
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/delivery':
+        specifier: workspace:*
+        version: link:../delivery
+      '@umsbx/entitlements':
+        specifier: workspace:*
+        version: link:../entitlements
+      '@umsbx/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@umsbx/receipts':
+        specifier: workspace:*
+        version: link:../receipts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/paypal':
+        specifier: workspace:*
+        version: link:../../packages/paypal
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@umsbx/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
 
   domain/receipts:
     dependencies:

@@ -8,5 +8,20 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@umsbx/access-clock": "workspace:*",
+    "@umsbx/approval": "workspace:*",
+    "@umsbx/contracts": "workspace:*",
+    "@umsbx/delivery": "workspace:*",
+    "@umsbx/entitlements": "workspace:*",
+    "@umsbx/ledger": "workspace:*",
+    "@umsbx/receipts": "workspace:*"
+  },
+  "devDependencies": {
+    "@umsbx/db": "workspace:*",
+    "@umsbx/paypal": "workspace:*",
+    "@umsbx/runtime": "workspace:*",
+    "@umsbx/transport": "workspace:*"
   }
 }
