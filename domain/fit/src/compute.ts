@@ -20,13 +20,13 @@ export function bandOf(dimensions: FitDimension[]): FitCard['band'] {
 
 export function computeFit(
   brief: Brief,
-  facts: { offer: Offer; article: ArticleFacts; price_minor: number },
+  facts: { offer: Offer; article: ArticleFacts; price_minor: number; minor_units?: number },
   now: Date,
 ): FitCard {
-  const { offer, article, price_minor } = facts;
+  const { offer, article, price_minor, minor_units } = facts;
   const dimensions: FitDimension[] = [
     topicDimension(brief, article),
-    budgetDimension(brief, offer, price_minor),
+    budgetDimension(brief, offer, price_minor, minor_units),
     accessDimension(brief, offer),
     languageDimension(brief, article),
     recencyDimension(article, now),

@@ -1,7 +1,7 @@
 // Signed short-lived link tokens: base64url(link_id.exp.hmac). The token proves only that we issued
 // it and when it expires; the links row binds it to an entitlement and a buyer.
 // Adapted from packages/core/entitlements/links.ts at a36ddc03fd0b962000f686291c145b50ee337f90 (refusal codes); owned by SBX lane 09.
-// eslint-disable-next-line no-restricted-imports -- hashing and HMAC are deterministic (no randomness); S1 bars node:* in domain packages (change request in the lane 09 hand-off)
+// node:crypto (hashing and HMAC only) is allowed for this file by name in eslint.config.mjs.
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import type { Id, Result, Secret } from '@umsbx/contracts';
 

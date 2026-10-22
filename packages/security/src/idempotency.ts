@@ -44,8 +44,10 @@ export function scopeOf(actor: Actor, key: string): IdemScope | null {
   }
 }
 
-export const requestHash = (route: string, method: string, rawBody: string): string =>
-  sha256Hex(`${method} ${route}\n${rawBody}`);
+// Review 4 M8: `extra` carries the real request path and the merged route params, so the same key
+// on /orders/A and /orders/B is a different request, not a replay.
+export const requestHash = (route: string, method: string, rawBody: string, extra = ''): string =>
+  sha256Hex(`${method} ${route}\n${extra}\n${rawBody}`);
 
 const parse = (v: unknown): Record<string, unknown> =>
   (typeof v === 'string' ? JSON.parse(v) : v) as Record<string, unknown>;

@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-imports -- TEMP-until-lane-16: the testkit does not yet offer a migrated test database, so this test-only helper (imported by *.test.ts files only) opens one from @umsbx/db and @umsbx/runtime. Replace with the testkit helper when lane 16 merges. */
+// TEMP-until-lane-16: the testkit does not yet offer a migrated test database, so this test-only helper (imported by *.test.ts files only) opens one from @umsbx/db and @umsbx/runtime. Replace with the testkit helper when lane 16 merges.
 // Adapted from domain/entitlements/src/world.ts at main f6ebf63 (SBX lane 07); owned by SBX lane 09.
 // Test-only world for the entitlement and access-clock state tests: one PGlite database, the supply
 // and money rows an entitlement points at, and a CoreDeps with a fake clock and seeded ids.

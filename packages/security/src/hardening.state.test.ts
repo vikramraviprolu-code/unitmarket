@@ -157,7 +157,7 @@ describe('ip limiting without a client address (L3)', () => {
     risk: 'high',
   };
 
-  it('failed attempts on one persona do not lock another persona, or a client with a known address', async () => {
+  it('failed attempts on one persona do not lock another persona', async () => {
     const rig = await makeRig();
     const route = withRoute(login, z.object({ persona: z.string() }).strict(), async () => ({
       status: 401 as const,
@@ -176,8 +176,10 @@ describe('ip limiting without a client address (L3)', () => {
     expect((await attempt('amira')).status).toBe(401);
     expect((await attempt('amira')).status).toBe(429); // the attacker's own target is limited
     expect((await attempt('ben')).status).toBe(401); // another persona is untouched
-    expect((await attempt('amira', { 'x-forwarded-for': '203.0.113.7' })).status).toBe(401);
-    expect((await attempt('amira', { 'user-agent': 'other client' })).status).toBe(401);
+    // Review 4 M7: without a trusted proxy these headers are the client's to rotate, so they no
+    // longer open a fresh bucket.
+    expect((await attempt('amira', { 'x-forwarded-for': '203.0.113.7' })).status).toBe(429);
+    expect((await attempt('amira', { 'user-agent': 'other client' })).status).toBe(429);
   });
 
   it('rate_target needs a rate', () => {

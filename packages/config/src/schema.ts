@@ -46,5 +46,18 @@ export const KNOWN_CORRIDORS: readonly string[] = ['us-usd'];
 
 export const MIN_SECRET_BYTES = 32;
 
-// https origin with no path, or http://localhost[:port]. Same shape as contracts DomainConfig.
-export const ORIGIN_PATTERN = /^(?:https:\/\/[^/\s]+|http:\/\/localhost(?::\d{1,5})?)$/;
+// An origin is scheme://host[:port] with nothing else: https, or http on localhost. The value must
+// equal what URL parsing reads back as its origin, so userinfo (https://x@localhost), a path, a
+// query, a fragment, a trailing slash, backslashes and whitespace are all refused (review 4 M3).
+export function isPublicOrigin(value: string): boolean {
+  if (/[\s\\]/u.test(value)) return false;
+  let u: URL;
+  try {
+    u = new URL(value);
+  } catch {
+    return false;
+  }
+  if (u.origin !== value || u.hostname === '') return false;
+  if (u.protocol === 'https:') return true;
+  return u.protocol === 'http:' && u.hostname === 'localhost';
+}

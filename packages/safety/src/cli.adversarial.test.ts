@@ -119,6 +119,43 @@ describe('operator CLIs (SOP 2)', () => {
     await d.close();
   });
 
+  it('runApprove caps validity at 30 days (review 4 M10)', async () => {
+    const d = await openDatabase({ kind: 'pglite-memory' });
+    const clock = fakeClock('2026-10-22T10:00:00Z');
+    await migrate(d, clock);
+    const ids = seededIds('cli4');
+    const audit = createAuditSink(ids, clock);
+    const mk = (ref: string, valid_until: string) => ({
+      db: d,
+      clock,
+      ids,
+      audit,
+      tty: { isTTY: true, env: {} },
+      write: () => undefined,
+      by: { kind: 'operator' as const, operator_id: 'op_1', mfa: true },
+      ask: async () => 'mvp_b_polling',
+      input: {
+        approval_ref: ref,
+        scope: 'mvp_b_polling',
+        operations: ['create_order' as const],
+        max_amount_minor: 2000,
+        max_calls_per_day: 300,
+        valid_until,
+        approved_by: 'owner',
+      },
+    });
+    expect(await runApprove(mk('LONG', '2026-11-21T10:00:01Z'))).toEqual({
+      ok: false,
+      error: 'invalid_input',
+    });
+    expect(await runApprove(mk('FOREVER', '2999-01-01T00:00:00Z'))).toEqual({
+      ok: false,
+      error: 'invalid_input',
+    });
+    expect((await runApprove(mk('EDGE', '2026-11-21T10:00:00Z'))).ok).toBe(true);
+    await d.close();
+  });
+
   it('runStop turns paypal_outbound off with a reason and audits it', async () => {
     const d = await openDatabase({ kind: 'pglite-memory' });
     const clock = fakeClock('2026-10-22T10:00:00Z');
@@ -126,12 +163,13 @@ describe('operator CLIs (SOP 2)', () => {
     const audit = createAuditSink(seededIds('cli3'), clock);
     await d.query(`UPDATE safety_switches SET "on" = true WHERE name = 'paypal_outbound'`);
     const tty = { isTTY: true, env: {} };
+    const op = { kind: 'operator' as const, operator_id: 'op_1', mfa: true };
+    // review 4 M10: stopping is an operator action; the old test used the system actor.
     expect(
-      (await runStop({ db: d, clock, audit, tty, by: { kind: 'system' }, reason: '' })).ok,
-    ).toBe(false);
-    expect(
-      (await runStop({ db: d, clock, audit, tty, by: { kind: 'system' }, reason: 'drill' })).ok,
-    ).toBe(true);
+      await runStop({ db: d, clock, audit, tty, by: { kind: 'system' }, reason: 'drill' }),
+    ).toEqual({ ok: false, error: 'operator_required' });
+    expect((await runStop({ db: d, clock, audit, tty, by: op, reason: '' })).ok).toBe(false);
+    expect((await runStop({ db: d, clock, audit, tty, by: op, reason: 'drill' })).ok).toBe(true);
     const r = await d.query<{ on: boolean }>(
       `SELECT "on" FROM safety_switches WHERE name='paypal_outbound'`,
     );

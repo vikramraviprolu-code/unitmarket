@@ -1,5 +1,5 @@
 import type { Clock, Database, GateVerdict, OutboundGate, SwitchReader } from '@umsbx/contracts';
-import { callsToday, findActiveApproval } from './budget';
+import { findActiveApproval, reserveCall } from './budget';
 
 // Structural copy of Pick<Config, ...>: lint lets safety import contracts and transport only.
 export interface GateConfig {
@@ -9,7 +9,8 @@ export interface GateConfig {
 }
 
 // Decides whether a PayPal call may leave the process. First failing check wins (lane 02):
-// connect_off, kill_switch, no_approval, budget. Any read error blocks (fail closed).
+// connect_off, kill_switch, no_approval, budget. Any read error blocks (fail closed). An allowed
+// verdict has reserved one call of the approval's daily budget: call check() once per request.
 export function createOutboundGate(d: {
   db: Database;
   clock: Clock;
@@ -34,7 +35,14 @@ export function createOutboundGate(d: {
         if (row === null || !row.operations.includes(c.operation)) return block('no_approval');
         if (c.amount_minor !== null && c.amount_minor > row.max_amount_minor)
           return block('budget');
-        if ((await callsToday(d.db, now)) >= row.max_calls_per_day) return block('budget');
+        // Review 4 H3: the budget is reserved here, not just read (see budget.ts).
+        const reservation = await reserveCall(
+          d.db,
+          { approval_ref: row.approval_ref, operation: c.operation, amount_minor: c.amount_minor },
+          now,
+        );
+        if (reservation === 'budget') return block('budget');
+        if (reservation === 'no_approval') return block('no_approval');
         return { allowed: true, approval_ref: row.approval_ref };
       } catch {
         return block('kill_switch');
