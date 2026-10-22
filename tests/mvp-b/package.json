@@ -1,0 +1,34 @@
+{
+  "name": "@umsbx/mvp-b-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MVP-B offline acceptance B-06 to B-09 (lane B-L5, B-L7). Tests only; offline.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@umsbx/access-clock": "workspace:*",
+    "@umsbx/approval": "workspace:*",
+    "@umsbx/catalogue": "workspace:*",
+    "@umsbx/config": "workspace:*",
+    "@umsbx/contracts": "workspace:*",
+    "@umsbx/db": "workspace:*",
+    "@umsbx/delivery": "workspace:*",
+    "@umsbx/entitlements": "workspace:*",
+    "@umsbx/ledger": "workspace:*",
+    "@umsbx/library": "workspace:*",
+    "@umsbx/obs": "workspace:*",
+    "@umsbx/offer-entry": "workspace:*",
+    "@umsbx/payments": "workspace:*",
+    "@umsbx/paypal": "workspace:*",
+    "@umsbx/receipts": "workspace:*",
+    "@umsbx/recovery": "workspace:*",
+    "@umsbx/runtime": "workspace:*",
+    "@umsbx/safety": "workspace:*",
+    "@umsbx/security": "workspace:*",
+    "@umsbx/testkit": "workspace:*",
+    "@umsbx/transport": "workspace:*",
+    "server-only": "0.0.1"
+  }
+}
