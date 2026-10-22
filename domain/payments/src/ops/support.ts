@@ -14,7 +14,7 @@ import type {
   SqlExecutor,
 } from '@umsbx/contracts';
 import { onBuyerReturn } from '../index';
-import { BUYER_A, approved, makeWorld as makeBaseWorld } from '../support';
+import { approved, makeWorld as makeBaseWorld } from '../support';
 import type { Awaiting, World, WorldOptions } from '../support';
 
 export { BUYER_A, BUYER_B, START, approved, awaiting, count, place } from '../support';
@@ -255,6 +255,10 @@ export async function makeWorld(opts: WorldOptions = {}): Promise<OpsWorld> {
 }
 
 // ---------- journeys ----------
+const buyerOf = (o: { buyer_id?: string }) => ({
+  kind: 'buyer' as const,
+  buyer_id: o.buyer_id ?? 'buy_A',
+});
 /** Approved at PayPal; the capture happens but the answer is lost (the process dies). */
 export async function sentCapture(
   w: OpsWorld,
@@ -262,7 +266,7 @@ export async function sentCapture(
 ): Promise<Awaiting> {
   const a = await approved(w, o);
   w.paypal.crashAfterCapture = true;
-  await onBuyerReturn(w.deps, { order_ref: a.order_ref, actor: BUYER_A }).then(
+  await onBuyerReturn(w.deps, { order_ref: a.order_ref, actor: buyerOf(o) }).then(
     () => {
       throw new Error('the capture should have died');
     },
@@ -278,7 +282,7 @@ export async function deadCapture(
 ): Promise<Awaiting> {
   const a = await approved(w, o);
   w.faults.dieBeforeCapture = true;
-  await onBuyerReturn(w.deps, { order_ref: a.order_ref, actor: BUYER_A }).then(
+  await onBuyerReturn(w.deps, { order_ref: a.order_ref, actor: buyerOf(o) }).then(
     () => {
       throw new Error('the capture should have died');
     },
@@ -294,7 +298,7 @@ export async function lostResponse(
 ): Promise<Awaiting> {
   const a = await approved(w, o);
   w.paypal.next.lose_response = true;
-  const r = await onBuyerReturn(w.deps, { order_ref: a.order_ref, actor: BUYER_A });
+  const r = await onBuyerReturn(w.deps, { order_ref: a.order_ref, actor: buyerOf(o) });
   w.paypal.next.lose_response = false;
   if (!r.ok) throw new Error(`return refused: ${r.error.code}`);
   return a;
@@ -302,7 +306,7 @@ export async function lostResponse(
 /** Paid and unlocked. */
 export async function paid(w: OpsWorld, o: Parameters<typeof approved>[1] = {}): Promise<Awaiting> {
   const a = await approved(w, o);
-  const r = await onBuyerReturn(w.deps, { order_ref: a.order_ref, actor: BUYER_A });
+  const r = await onBuyerReturn(w.deps, { order_ref: a.order_ref, actor: buyerOf(o) });
   if (!r.ok || r.value.status !== 'paid') throw new Error('order is not paid');
   return a;
 }
@@ -332,6 +336,15 @@ export async function ops(
     'SELECT id, kind, state, attempt, failure_reason, next_retry_at, request_id FROM operations WHERE order_id = $1 ORDER BY created_at, id',
     [order_id],
   );
+}
+export async function opOf(
+  w: OpsWorld,
+  order_id: Id,
+  kind: string,
+): Promise<Awaited<ReturnType<typeof ops>>[number]> {
+  const found = (await ops(w, order_id)).filter((o) => o.kind === kind);
+  if (found.length !== 1) throw new Error(`expected one ${kind} operation, found ${found.length}`);
+  return found[0]!;
 }
 export async function alertKinds(w: OpsWorld, order_id: Id): Promise<string[]> {
   return (

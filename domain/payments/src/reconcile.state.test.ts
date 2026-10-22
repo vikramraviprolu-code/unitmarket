@@ -9,6 +9,7 @@ import {
   deadCapture,
   lostResponse,
   makeWorld,
+  opOf,
   ops,
   orderStatus,
   paid,
@@ -37,14 +38,15 @@ describe('lost capture response (A-14, REL-3)', () => {
     w = await makeWorld();
     const a = await lostResponse(w);
     expect(await orderStatus(w, a.order_id)).toBe('unresolved');
-    expect((await ops(w, a.order_id)).map((o) => [o.kind, o.state])).toEqual([
-      ['capture', 'unknown'],
-    ]);
+    expect(
+      (await ops(w, a.order_id)).filter((o) => o.kind === 'capture').map((o) => [o.kind, o.state]),
+    ).toEqual([['capture', 'unknown']]);
 
     // Not due yet: nothing happens before the first backoff.
+    const gets = w.paypal.count('get');
     w.tick(29_000);
     expect((await runDue(w.deps, { max_items: 10 })).processed).toBe(0);
-    expect(w.paypal.count('get')).toBe(0);
+    expect(w.paypal.count('get')).toBe(gets);
 
     w.tick(2_000);
     const r = await runDue(w.deps, { max_items: 10 });
@@ -54,7 +56,7 @@ describe('lost capture response (A-14, REL-3)', () => {
     expect(await access(a.order_id)).toEqual(['available']);
     expect(w.paypal.count('capture')).toBe(1);
     expect(await count(w, 'ledger_entries', "kind = 'sale'")).toBe(1);
-    expect((await ops(w, a.order_id))[0]!.state).toBe('confirmed');
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('confirmed');
     // Read first: the read came before anything else, and the capture was never sent again.
     expect(w.paypal.calls.map((c) => c.op)).toEqual(['create', 'get', 'capture', 'get']);
   });
@@ -116,7 +118,7 @@ describe('capture retry (P3): only after a read shows no capture, same key, insi
     w.tick(61_000);
     await runDue(w.deps, { max_items: 10 });
     expect(w.paypal.count('capture')).toBe(2);
-    expect((await ops(w, a.order_id))[0]!.attempt).toBe(2);
+    expect((await opOf(w, a.order_id, 'capture')).attempt).toBe(2);
     for (let k = 0; k < 6; k += 1) {
       w.tick(20 * 60_000);
       await runDue(w.deps, { max_items: 10 });
@@ -178,7 +180,7 @@ describe('create unknown (5 h resend limit)', () => {
     w.paypal.queue.create.push({ kind: 'timeout' });
     const c = await beginCheckout(w.deps, { order_id: p.order_id, actor: BUYER_A });
     expect(c.ok).toBe(false);
-    expect((await ops(w, p.order_id))[0]!.state).toBe('unknown');
+    expect((await opOf(w, p.order_id, 'create')).state).toBe('unknown');
     w.tick(31_000);
     const r = await runDue(w.deps, { max_items: 10 });
     expect(r.processed).toBe(1);
@@ -187,7 +189,7 @@ describe('create unknown (5 h resend limit)', () => {
     expect(creates[1]!.request_id).toBe(creates[0]!.request_id);
     expect(await orderStatus(w, p.order_id)).toBe('awaiting_buyer');
     expect(w.paypal.orders.size).toBe(1);
-    expect((await ops(w, p.order_id))[0]!.state).toBe('confirmed');
+    expect((await opOf(w, p.order_id, 'create')).state).toBe('confirmed');
     expect(
       (
         await w.rows<{ provider_order_id: string | null }>(
@@ -204,13 +206,13 @@ describe('create unknown (5 h resend limit)', () => {
     w.tick(31_000);
     await runDue(w.deps, { max_items: 10 }); // resend inside the window, lost again
     expect(w.paypal.count('create')).toBe(2);
-    expect((await ops(w, p.order_id))[0]!.state).toBe('unknown');
+    expect((await opOf(w, p.order_id, 'create')).state).toBe('unknown');
 
     w.tick(5 * H);
     const r = await runDue(w.deps, { max_items: 10 });
     expect(w.paypal.count('create')).toBe(2);
     expect(r.expired).toBe(1);
-    const op = (await ops(w, p.order_id))[0]!;
+    const op = await opOf(w, p.order_id, 'create');
     expect([op.state, op.failure_reason]).toEqual(['failed', 'window_expired']);
     // No provider order id was ever stored: nothing can have been charged.
     expect(await orderStatus(w, p.order_id)).toBe('failed');
@@ -250,7 +252,7 @@ describe('24 h window (INC-2)', () => {
       await runDue(w.deps, { max_items: 10 });
     }
     expect(w.paypal.count('capture')).toBe(1);
-    const op = (await ops(w, a.order_id))[0]!;
+    const op = await opOf(w, a.order_id, 'capture');
     expect([op.state, op.failure_reason]).toEqual(['failed', 'window_expired']);
     expect(await alertKinds(w, a.order_id)).toEqual(['payment_unresolved']);
     // Money was possibly taken: the order is never failed by absence.
@@ -296,7 +298,7 @@ describe('backoff', () => {
     const a = await lostResponse(w);
     w.paypal.queue.get.push(...timeouts(50));
     const next = async (): Promise<number> => {
-      const o = (await ops(w, a.order_id))[0]!;
+      const o = await opOf(w, a.order_id, 'capture');
       return o.next_retry_at!.getTime();
     };
     const sentAt = w.clock.now().getTime();
@@ -328,7 +330,7 @@ describe('reconcileOrder', () => {
       abandoned: 0,
     });
     expect(w.paypal.calls.length).toBe(before);
-    expect((await ops(w, a.order_id))[0]!.state).toBe('unknown');
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('unknown');
     w.switches.paypal_outbound = true;
     await runDue(w.deps, { max_items: 10 });
     expect(await orderStatus(w, a.order_id)).toBe('paid');

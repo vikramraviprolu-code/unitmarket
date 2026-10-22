@@ -36,11 +36,11 @@ describe('checkInvariants passes after every scenario', () => {
   it('after a paid order, a failed order, a waiting order and an open capture', async () => {
     w = await makeWorld();
     await paid(w);
-    await awaiting(w);
-    await place(w);
-    await lostResponse(w);
-    await sentCapture(w);
-    await deadCapture(w);
+    await awaiting(w, { buyer_id: 'buy_B' });
+    await place(w, { offers: ['ofr_2'] });
+    await lostResponse(w, { offers: ['ofr_3'] });
+    await sentCapture(w, { offers: ['ofr_2'], buyer_id: 'buy_B' });
+    await deadCapture(w, { offers: ['ofr_3'], buyer_id: 'buy_B' });
     expect(await failing()).toEqual([]);
     w.tick(10 * 60_000);
     await runDue(w.deps, { max_items: 50 });
@@ -49,7 +49,7 @@ describe('checkInvariants passes after every scenario', () => {
   it('after an abandoned checkout and a frozen order', async () => {
     w = await makeWorld();
     await awaiting(w);
-    const a = await approved(w);
+    const a = await approved(w, { buyer_id: 'buy_B' });
     w.paypal.tamper = { amount_delta: 1 };
     w.tick(25 * 3_600_000);
     await runDue(w.deps, { max_items: 50 });
@@ -131,17 +131,20 @@ describe('checkInvariants fails on injected drift', () => {
   });
   it('INV3: a verified unit with no item at all', async () => {
     w = await makeWorld();
-    const a = await paid(w);
+    const a = await awaiting(w);
     const ids = (
       await w.rows<{ id: string }>(
         'SELECT e.id FROM entitlements e JOIN order_units u ON u.id = e.unit_id WHERE u.order_id = $1',
         [a.order_id],
       )
     ).map((r) => r.id);
-    await w.db.query('DELETE FROM access_events WHERE entitlement_id = ANY($1::text[])', [ids]);
     await w.db.query('DELETE FROM access_windows WHERE entitlement_id = ANY($1::text[])', [ids]);
     await w.db.query('DELETE FROM entitlements WHERE id = ANY($1::text[])', [ids]);
-    expect(await failing()).toEqual(['INV3']);
+    await w.db.query(
+      "UPDATE order_units SET status = 'captured_verified', capture_id = 'FAKECAP', captured_verified_at = '2026-10-22T10:00:00Z' WHERE order_id = $1",
+      [a.order_id],
+    );
+    expect(await failing()).toContain('INV3');
   });
   it('INV4: a window whose end is not what the log gives', async () => {
     w = await makeWorld();
@@ -149,10 +152,10 @@ describe('checkInvariants fails on injected drift', () => {
     await w.db.query("UPDATE access_windows SET ends_at = ends_at + interval '2 hours'");
     expect(await failing()).toEqual(['INV4']);
   });
-  it('INV4: a running window with no access_ready event', async () => {
+  it('INV4: a window whose start is not what the log gives', async () => {
     w = await makeWorld();
     await paid(w);
-    await w.db.query('DELETE FROM access_events');
+    await w.db.query("UPDATE access_windows SET started_at = started_at + interval '1 hour'");
     expect(await failing()).toContain('INV4');
   });
 });

@@ -1,2 +1,4 @@
-// Placeholder from lane 00 SCAFFOLD. Domain code arrives in later lanes.
+// @umsbx/jobs: the job loop that drives payments' due work (lane 05b).
 export const PACKAGE_NAME = '@umsbx/jobs' as const;
+export { startLoop } from './loop';
+export { health } from './health';

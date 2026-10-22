@@ -52,7 +52,7 @@ const window = async (order_id: string) =>
   )[0]!.state;
 const refundEntries = () =>
   w.rows<{ refund_id: string; amount_minor: number; kind: string }>(
-    "SELECT refund_id, amount_minor, kind FROM ledger_entries WHERE kind = 'refund' ORDER BY created_at, id",
+    "SELECT refund_id, amount_minor, kind FROM ledger_entries WHERE kind = 'refund' ORDER BY refund_id",
   );
 
 async function refund(unit_id: string, minor: number | null, reason = 'goodwill') {

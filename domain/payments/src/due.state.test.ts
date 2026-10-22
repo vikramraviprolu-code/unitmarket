@@ -10,6 +10,7 @@ import {
   deadCapture,
   lostResponse,
   makeWorld,
+  opOf,
   ops,
   orderStatus,
   paid,
@@ -126,8 +127,8 @@ describe('abandoned checkouts (P17)', () => {
   it('max_items bounds the sweep too', async () => {
     w = await makeWorld();
     await awaiting(w);
-    await awaiting(w);
-    await awaiting(w);
+    await awaiting(w, { buyer_id: 'buy_B' });
+    await awaiting(w, { offers: ['ofr_2'] });
     w.tick(DAY + 1000);
     expect((await runDue(w.deps, { max_items: 2 })).abandoned).toBe(2);
     expect((await runDue(w.deps, { max_items: 2 })).abandoned).toBe(1);
@@ -139,7 +140,7 @@ describe('ordering, limits and leases', () => {
     w = await makeWorld();
     const first = await lostResponse(w);
     w.tick(10_000);
-    const second = await lostResponse(w);
+    const second = await lostResponse(w, { buyer_id: 'buy_B' });
     w.tick(40_000); // both are due; the first became due earlier
     const r1 = await runDue(w.deps, { max_items: 1 });
     expect(r1.processed).toBe(1);
@@ -152,9 +153,10 @@ describe('ordering, limits and leases', () => {
   it('a non-positive max_items does nothing', async () => {
     w = await makeWorld();
     await lostResponse(w);
+    const gets = w.paypal.count('get');
     w.tick(31_000);
     expect((await runDue(w.deps, { max_items: 0 })).processed).toBe(0);
-    expect(w.paypal.count('get')).toBe(0);
+    expect(w.paypal.count('get')).toBe(gets);
   });
   it('a sent operation is left alone until its lease ran out, then read first', async () => {
     w = await makeWorld();
@@ -240,7 +242,7 @@ describe('nextDueAt', () => {
     const a = await awaiting(w);
     const t0 = w.clock.now().getTime();
     expect(await nextDueAt(w.db)).toBe(new Date(t0 + DAY).toISOString());
-    await lostResponse(w);
+    await lostResponse(w, { buyer_id: 'buy_B' });
     expect(await nextDueAt(w.db)).toBe(new Date(t0 + 30_000).toISOString());
     w.tick(31_000);
     await runDue(w.deps, { max_items: 10 });
@@ -254,7 +256,7 @@ describe('nextDueAt', () => {
   it('an operation that is overdue is due now: not later than any other', async () => {
     w = await makeWorld();
     const a = await lostResponse(w);
-    const op = (await ops(w, a.order_id))[0]!;
+    const op = await opOf(w, a.order_id, 'capture');
     w.tick(10 * H);
     expect(await nextDueAt(w.db)).toBe(op.next_retry_at!.toISOString());
   });

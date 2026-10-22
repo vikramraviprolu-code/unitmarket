@@ -9,6 +9,7 @@ import {
   count,
   deadCapture,
   makeWorld,
+  opOf,
   ops,
   orderStatus,
   place,
@@ -27,7 +28,7 @@ describe('recoverOnStartup', () => {
   it('a sent capture becomes unknown with next_retry_at now, is read first and ends terminal', async () => {
     w = await makeWorld();
     const a = await sentCapture(w);
-    expect((await ops(w, a.order_id))[0]!.state).toBe('sent');
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('sent');
     expect(await orderStatus(w, a.order_id)).toBe('capture_requested');
     const callsBefore = w.paypal.calls.length;
     const r = await recoverOnStartup(w.restart());
@@ -36,7 +37,7 @@ describe('recoverOnStartup', () => {
     expect(after[0]).toBe('get'); // read first
     expect(after).not.toContain('capture'); // the capture had happened: never sent again
     expect(await orderStatus(w, a.order_id)).toBe('paid');
-    expect((await ops(w, a.order_id))[0]!.state).toBe('confirmed');
+    expect((await opOf(w, a.order_id, 'capture')).state).toBe('confirmed');
     expect(await count(w, 'ledger_entries', "kind = 'sale'")).toBe(1);
   });
   it('the operation is unknown with next_retry_at = now while the outbound switch is off', async () => {
@@ -48,7 +49,7 @@ describe('recoverOnStartup', () => {
     const r = await recoverOnStartup(w.restart());
     expect(r.resumed).toBe(1);
     expect(w.paypal.calls.length).toBe(callsBefore);
-    const op = (await ops(w, a.order_id))[0]!;
+    const op = await opOf(w, a.order_id, 'capture');
     expect(op.state).toBe('unknown');
     expect(op.next_retry_at!.toISOString()).toBe(w.clock.now().toISOString());
     expect(await orderStatus(w, a.order_id)).toBe('unresolved');
@@ -80,7 +81,7 @@ describe('recoverOnStartup', () => {
     w.paypal.beforeCreate = () => Promise.reject(new Error('process died during the create'));
     await expect(beginCheckout(w.deps, { order_id: p.order_id, actor: BUYER_A })).rejects.toThrow();
     w.paypal.beforeCreate = null;
-    expect((await ops(w, p.order_id))[0]!.state).toBe('sent');
+    expect((await opOf(w, p.order_id, 'create')).state).toBe('sent');
     const r = await recoverOnStartup(w.restart());
     expect(r.resumed).toBe(1);
     expect(await orderStatus(w, p.order_id)).toBe('awaiting_buyer');
@@ -96,6 +97,7 @@ describe('recoverOnStartup', () => {
     w.faults.loseCreateResponse = false;
     expect(c.ok).toBe(false);
     expect(w.paypal.orders.size).toBe(1);
+    w.tick(31_000); // the answer was lost with the process alive: the operation is already unknown
     await recoverOnStartup(w.restart());
     expect(await orderStatus(w, p.order_id)).toBe('awaiting_buyer');
     expect(w.paypal.orders.size).toBe(1);
@@ -103,7 +105,7 @@ describe('recoverOnStartup', () => {
   it('a prepared create of an order that is still created is resumed', async () => {
     w = await makeWorld();
     const p = await place(w);
-    expect((await ops(w, p.order_id))[0]!.state).toBe('prepared');
+    expect((await opOf(w, p.order_id, 'create')).state).toBe('prepared');
     const r = await recoverOnStartup(w.restart());
     expect(r.resumed).toBe(1);
     expect(await orderStatus(w, p.order_id)).toBe('awaiting_buyer');

@@ -185,7 +185,7 @@ describe('startLoop', () => {
     const { d, clock } = makeDeps();
     const { health } = await import('./health');
     expect((await health(d)).last_pass_at).toBeNull();
-    d.db.query.mockResolvedValue({ rows: [{ n: 0 }] });
+    (d.db.query as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ rows: [{ n: 0 }] });
     clock.advance(1000);
     const loop = startLoop(d, { max_sleep_ms: 5, max_items: 5 });
     await vi.waitFor(() => expect(vi.mocked(runDue)).toHaveBeenCalled());
