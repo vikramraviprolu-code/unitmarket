@@ -6,12 +6,17 @@ import type { Browser, Page } from '@playwright/test';
 export const PASSCODE = 'e2e passcode one';
 const dir = fileURLToPath(new URL('./.auth/', import.meta.url));
 export const AUTH_A = `${dir}buyer-a.json`;
-const CSRF_A = `${dir}buyer-a.csrf`;
+export const AUTH_B = `${dir}buyer-b.json`;
+const csrfOf = (auth: string): string => auth.replace(/\.json$/, '.csrf');
 
-/** A page signed in as buyer A through the saved session (one passcode attempt for the whole run). */
-export async function buyerPage(browser: Browser): Promise<Page> {
-  const ctx = await browser.newContext({ storageState: AUTH_A });
-  const csrf = readFileSync(CSRF_A, 'utf8');
+/**
+ * A page signed in as buyer A (or B, who owns nothing yet) through the session saved by the setup
+ * project (one passcode attempt per buyer for the whole run).
+ */
+export async function buyerPage(browser: Browser, who: 'a' | 'b' = 'a'): Promise<Page> {
+  const auth = who === 'a' ? AUTH_A : AUTH_B;
+  const ctx = await browser.newContext({ storageState: auth });
+  const csrf = readFileSync(csrfOf(auth), 'utf8');
   await ctx.addInitScript((token) => {
     window.sessionStorage.setItem('um_csrf', token);
   }, csrf);

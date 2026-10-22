@@ -8,7 +8,7 @@ export const routeMeta: RouteMeta = {
   method: 'POST',
   auth: 'buyer',
   csrf: true,
-  rate: { name: 'order', per: 'actor', limit: 5, window_ms: 60_000 },
+  rate: { name: 'checkout', per: 'actor', limit: 5, window_ms: 60_000 },
   max_body_bytes: 1024,
   idempotent: false,
   risk: 'high',

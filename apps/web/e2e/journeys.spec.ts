@@ -194,8 +194,8 @@ test.describe('payments journeys (real engine over the dry-run model, no PayPal)
   test('order status changes are announced in the aria-live region (A11Y-4, order page)', async ({
     browser,
   }) => {
-    const page = await buyerPage(browser);
-    await payWithScenario(page, { offer: 'dock-history', scenario: 'happy' });
+    const page = await buyerPage(browser, 'b');
+    await payWithScenario(page, { offer: 'tide-tables', scenario: 'happy' });
     const live = page.locator('[aria-live="polite"][data-testid="order-live"]');
     await expect(live).toHaveAttribute('aria-atomic', 'true');
     await expect(live).toContainText('Paid. Your item is in your library.');
