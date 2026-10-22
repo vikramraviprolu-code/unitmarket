@@ -60,9 +60,6 @@ describe('loadConfig accepts', () => {
     const p = loadConfig(offline({ UMS_DB: 'postgres', DATABASE_URL: 'postgres://u:p@h/db' }));
     expect(p.ok && p.value.db.kind).toBe('postgres');
   });
-  it('allows the sandbox hostname in a value', () => {
-    expect(loadConfig(offline({ UMS_PUBLIC_ORIGIN: `https://${SANDBOX_HOST}` })).ok).toBe(true);
-  });
 });
 
 describe('loadConfig refuses (P15, RLR-4)', () => {
@@ -92,6 +89,20 @@ describe('loadConfig refuses (P15, RLR-4)', () => {
         }),
       ).code,
     ).toBe('non_sandbox_host');
+  });
+  it('D-013: no environment variable may carry any PayPal host, not even the sandbox host', () => {
+    const PP = ['paypal', 'com'].join('.');
+    for (const v of [
+      `https://${SANDBOX_HOST}`,
+      `https://${LIVE_HOST}`,
+      `HTTPS://API-M.SANDBOX.${PP.toUpperCase()}/x`,
+      `https://api-m.sandbox.${PP.replace('.', '%2E')}`,
+    ]) {
+      expect(refusal(offline({ UMS_PUBLIC_ORIGIN: v })).code, v).toBe('non_sandbox_host');
+    }
+    // an unrelated variable (not in the known list) is refused as well
+    const r = loadConfig({ ...offline(), SOME_OTHER_VAR: `https://${SANDBOX_HOST}` });
+    expect(!r.ok && r.error).toEqual({ code: 'non_sandbox_host', name: 'SOME_OTHER_VAR' });
   });
   it('sandbox without approval ref refuses; without credentials refuses', () => {
     expect(refusal(sandbox({ UMS_OUTBOUND_APPROVAL_REF: undefined }))).toEqual({

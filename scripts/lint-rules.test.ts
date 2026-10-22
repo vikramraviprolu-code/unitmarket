@@ -244,3 +244,105 @@ describe('bypass attempts (review H2)', () => {
     ).toEqual([]);
   });
 });
+
+// Wave 2 exemptions (coordinator request) and the lane 02 follow-up.
+describe('narrow test and crypto exemptions', () => {
+  const hash = "import { createHash } from 'node:crypto';\nexport const h = createHash;\n";
+  it('approval canonical.ts and token.ts may import node:crypto, but not its random functions', async () => {
+    for (const f of ['canonical.ts', 'token.ts']) {
+      expect(await lint(`domain/approval/src/${f}`, hash), f).toEqual([]);
+      for (const name of [
+        'randomBytes',
+        'randomUUID',
+        'randomInt',
+        'getRandomValues',
+        'randomFillSync',
+        'randomFill',
+      ]) {
+        const m = await lint(
+          `domain/approval/src/${f}`,
+          `import { ${name} } from 'node:crypto';\nexport const r = ${name};\n`,
+        );
+        expect(m.length, `${f} ${name}`).toBeGreaterThan(0);
+      }
+      const ns = await lint(
+        `domain/approval/src/${f}`,
+        "import crypto from 'node:crypto';\nexport const r = crypto.randomBytes(4);\n",
+      );
+      expect(ns.length, `${f} namespace`).toBeGreaterThan(0);
+      const fs = await lint(
+        `domain/approval/src/${f}`,
+        "import { readFileSync } from 'node:fs';\nexport const r = readFileSync;\n",
+      );
+      expect(fs.length, `${f} fs`).toBeGreaterThan(0);
+    }
+  });
+  it('other domain production files still cannot import node:crypto', async () => {
+    expect((await lint('domain/approval/src/other.ts', hash)).length).toBeGreaterThan(0);
+    expect((await lint('domain/ledger/src/canonical.ts', hash)).length).toBeGreaterThan(0);
+  });
+
+  const dbImport =
+    "import { openDatabase } from '@umsbx/db';\nimport { fakeClock } from '@umsbx/runtime';\nexport const x = [openDatabase, fakeClock];\n";
+  it('domain tests and test helpers may import @umsbx/db and @umsbx/runtime', async () => {
+    for (const f of [
+      'domain/ledger/src/a.test.ts',
+      'domain/ledger/src/a.state.test.ts',
+      'domain/ledger/src/test-fixtures.ts',
+      'domain/ledger/src/world.ts',
+      'domain/ledger/src/support.ts',
+      'domain/discovery/src/support.ts',
+    ])
+      expect(await lint(f, dbImport), f).toEqual([]);
+  });
+  it('domain production files still cannot import @umsbx/db or @umsbx/runtime', async () => {
+    expect((await lint('domain/ledger/src/service.ts', dbImport)).length).toBeGreaterThan(0);
+  });
+  it('tests and helpers stay barred from providers, and discovery from payments', async () => {
+    for (const f of ['domain/ledger/src/a.test.ts', 'domain/ledger/src/world.ts']) {
+      for (const spec of ['@umsbx/paypal', '@umsbx/transport', '@umsbx/safety'])
+        expect(
+          (await lint(f, `import { a } from '${spec}';\nexport const b = a;\n`)).length,
+          `${f} ${spec}`,
+        ).toBeGreaterThan(0);
+    }
+    expect(
+      (
+        await lint(
+          'domain/discovery/src/support.ts',
+          "import { a } from '@umsbx/payments';\nexport const b = a;\n",
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+  it('node:fs and node:crypto are for *.test.ts only, and random functions stay banned', async () => {
+    const fs = "import { readFileSync } from 'node:fs';\nexport const r = readFileSync;\n";
+    expect(await lint('domain/ledger/src/a.test.ts', fs)).toEqual([]);
+    expect(await lint('domain/ledger/src/a.test.ts', hash)).toEqual([]);
+    expect((await lint('domain/ledger/src/world.ts', fs)).length).toBeGreaterThan(0);
+    expect((await lint('domain/ledger/src/support.ts', hash)).length).toBeGreaterThan(0);
+    expect(
+      (
+        await lint(
+          'domain/ledger/src/a.test.ts',
+          "import { randomBytes } from 'node:crypto';\nexport const r = randomBytes;\n",
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+  it('lane 02 follow-up: safety and security tests may import db, obs and runtime; production may not', async () => {
+    const code =
+      "import { openDatabase } from '@umsbx/db';\nimport { createLogger } from '@umsbx/obs';\nimport { fakeClock } from '@umsbx/runtime';\nexport const x = [openDatabase, createLogger, fakeClock];\n";
+    expect(await lint('packages/safety/src/a.state.test.ts', code)).toEqual([]);
+    expect(await lint('packages/security/src/a.test.ts', code)).toEqual([]);
+    expect((await lint('packages/safety/src/a.ts', code)).length).toBeGreaterThan(0);
+    expect(
+      (
+        await lint(
+          'packages/safety/src/a.test.ts',
+          "import { a } from '@umsbx/paypal';\nexport const b = a;\n",
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+});
