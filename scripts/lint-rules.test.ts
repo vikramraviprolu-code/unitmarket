@@ -385,3 +385,143 @@ describe('@umsbx/model is for domain/discovery only (S4, 14b CR-1)', () => {
     expect((await lint('domain/discovery/src/discover.ts', fs)).length).toBeGreaterThan(0);
   });
 });
+
+// Opus review 4 H1: spellings that used to slip past the network, clock, randomness and env bans.
+describe('bypass attempts (review 4 H1)', () => {
+  const fit = 'domain/fit/src/x.ts';
+  const obs = 'packages/obs/src/x.ts';
+  const cases: [string, string, string][] = [
+    [
+      'process.getBuiltinModule(https)',
+      fit,
+      "export const m = process.getBuiltinModule('node:https');",
+    ],
+    [
+      'process.getBuiltinModule(process).env',
+      fit,
+      "export const m = process.getBuiltinModule('node:process').env;",
+    ],
+    ['aliasing globalThis', fit, 'const g = globalThis;\nexport const m = g.fetch;'],
+    ['Reflect.get(globalThis)', fit, "export const m = Reflect.get(globalThis, 'fetch');"],
+    ['(0, globalThis).fetch', fit, 'export const m = (0, globalThis).fetch;'],
+    ['globalThis.process.env', fit, 'export const m = globalThis.process.env;'],
+    ['aliasing Date', fit, 'const D = Date;\nexport const m = new D();'],
+    ['new (Date as any)()', fit, 'export const m = new (Date as any)();'],
+    ['Date.prototype.constructor.now', fit, 'export const m = Date.prototype.constructor.now();'],
+    ["Date['no'+'w']", fit, "export const m = Date['no' + 'w']();"],
+    ['Date() call', fit, 'export const m = Date();'],
+    ['process.hrtime.bigint()', fit, 'export const m = process.hrtime.bigint();'],
+    ['aliasing process', fit, 'const p = process;\nexport const m = p.env;'],
+    ['aliasing Math', fit, 'const M = Math;\nexport const m = M.random();'],
+    ['aliasing crypto', fit, 'const c = crypto;\nexport const m = c.randomUUID();'],
+    ["require('node:' + 'https')", fit, "export const m = require('node:' + 'https');"],
+    ['require(variable)', fit, 'export const m = (n: string) => require(n);'],
+    ["module.require('https')", fit, "export const m = module.require('https');"],
+    ["require('_http_client')", fit, "export const m = require('_http_client');"],
+    ["require('node:child_process')", fit, "export const m = require('node:child_process');"],
+    ["new Function('return fetch')()", fit, "export const m = new Function('return fetch')();"],
+    ["Function('return fetch')()", fit, "export const m = Function('return fetch')();"],
+    ["eval('1')", fit, "export const m = eval('1');"],
+    ['.constructor() call', fit, "export const m = (() => 1).constructor('return fetch')();"],
+    ['globalThis.crypto.randomUUID()', fit, 'export const m = globalThis.crypto.randomUUID();'],
+    [
+      'import node:module',
+      obs,
+      "import { createRequire } from 'node:module';\nexport const m = createRequire;",
+    ],
+    [
+      'createRequire call',
+      obs,
+      "import { createRequire } from 'node:module';\nexport const m = createRequire(import.meta.url)('node:https');",
+    ],
+    [
+      'node:process default import',
+      obs,
+      "import proc from 'node:process';\nexport const m = proc.env;",
+    ],
+    [
+      'node:process namespace import',
+      obs,
+      "import * as proc from 'node:process';\nexport const m = proc.env;",
+    ],
+    [
+      'node:crypto default import',
+      obs,
+      "import cr from 'node:crypto';\nexport const m = cr.randomUUID();",
+    ],
+    [
+      'node:crypto namespace import',
+      obs,
+      "import * as cr from 'node:crypto';\nexport const m = cr.randomUUID();",
+    ],
+    [
+      'dynamic import of node:crypto',
+      obs,
+      "export const m = async () => (await import('node:crypto')).randomUUID();",
+    ],
+    [
+      'node:child_process',
+      obs,
+      "import { execSync } from 'node:child_process';\nexport const m = () => execSync('true');",
+    ],
+    [
+      'node:worker_threads',
+      obs,
+      "import { Worker } from 'node:worker_threads';\nexport const m = Worker;",
+    ],
+    ['node:vm', obs, "import vm from 'node:vm';\nexport const m = vm;"],
+    ['_tls_wrap', obs, "import t from '_tls_wrap';\nexport const m = t;"],
+    [
+      'node:perf_hooks performance',
+      obs,
+      "import { performance } from 'node:perf_hooks';\nexport const m = performance.now();",
+    ],
+    [
+      'eslint-disable-next-line',
+      fit,
+      '// eslint-disable-next-line no-restricted-globals\nexport const m = fetch;',
+    ],
+    ['blanket eslint-disable', fit, '/* eslint-disable */\nexport const m = fetch;'],
+    [
+      'eslint-disable of an import rule',
+      fit,
+      "/* eslint-disable no-restricted-imports */\nimport h from 'node:https';\nexport const m = h;",
+    ],
+  ];
+  it.each(cases)('fails: %s', async (_name, file, code) => {
+    expect((await lint(file, `${code}\n`)).length).toBeGreaterThan(0);
+  });
+
+  it('keeps allowed spellings working', async () => {
+    const ok = [
+      'export const a = Date.UTC(2020, 0, 1);\nexport const b = (x: unknown) => x instanceof Date;\nexport const c: Date = new Date(0);',
+      'export const a = Math.floor(1.5);\nexport const b = process.argv.length + (process.exitCode ?? 0);',
+      'export const process = (n: number) => n;\nexport const x = process(1);',
+    ];
+    for (const code of ok) expect(await lint(fit, `${code}\n`)).toEqual([]);
+    expect(
+      await lint(
+        'domain/approval/src/token.ts',
+        "import { createHash } from 'node:crypto';\nexport const h = createHash;\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it('packages/transport keeps its network and module access', async () => {
+    expect(
+      await lint(
+        'packages/transport/src/x.ts',
+        "import https from 'node:https';\nimport { createRequire } from 'node:module';\nexport const m = [https, createRequire, globalThis.fetch];\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it('scripts keep node:child_process', async () => {
+    expect(
+      await lint(
+        'scripts/x.mjs',
+        "import { spawnSync } from 'node:child_process';\nexport const m = spawnSync;\n",
+      ),
+    ).toEqual([]);
+  });
+});
