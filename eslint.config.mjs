@@ -99,6 +99,18 @@ const DEEP = { group: ['@umsbx/*/*'], message: 'Only a package root export is pu
 const pat = (group, message) => ({ group, message });
 const BASE_PATTERNS = [pat(SIM, MSG_SIM), pat(NETWORK_MODULES, MSG_NET), DEEP];
 
+// Every randomness entry point of node:crypto. Hashing and HMAC (createHash, createHmac,
+// timingSafeEqual) stay available to the two approval files that are allowed to import it.
+const RANDOM_FNS = [
+  'randomUUID',
+  'randomBytes',
+  'randomInt',
+  'randomFill',
+  'randomFillSync',
+  'getRandomValues',
+  'webcrypto',
+  'subtle',
+];
 const BASE_PATHS = [
   {
     name: 'node:process',
@@ -108,12 +120,12 @@ const BASE_PATHS = [
   { name: 'process', importNames: ['env'], message: 'S3: only packages/config reads process.env.' },
   {
     name: 'node:crypto',
-    importNames: ['randomUUID', 'randomBytes', 'randomInt', 'getRandomValues'],
+    importNames: RANDOM_FNS,
     message: 'S6: randomness and ids only in packages/runtime (inject Ids or an Rng).',
   },
   {
     name: 'crypto',
-    importNames: ['randomUUID', 'randomBytes', 'randomInt', 'getRandomValues'],
+    importNames: RANDOM_FNS,
     message: 'S6: randomness and ids only in packages/runtime (inject Ids or an Rng).',
   },
 ];
@@ -130,6 +142,10 @@ const TIME_PROPS = [
   { object: 'performance', property: 'now', message: 'S6: use the injected Clock.' },
   { object: 'crypto', property: 'randomUUID', message: 'S6: use injected Ids.' },
   { object: 'crypto', property: 'getRandomValues', message: 'S6: use an injected Rng.' },
+  { object: 'crypto', property: 'randomBytes', message: 'S6: use injected Ids or an Rng.' },
+  { object: 'crypto', property: 'randomInt', message: 'S6: use an injected Rng.' },
+  { object: 'crypto', property: 'randomFillSync', message: 'S6: use an injected Rng.' },
+  { object: 'crypto', property: 'randomFill', message: 'S6: use an injected Rng.' },
   { object: 'globalThis', property: 'fetch', message: MSG_NET },
   { object: 'process', property: 'env', message: 'S3: only packages/config reads process.env.' },
 ];
@@ -258,7 +274,8 @@ const noRestrictedDynamicImport = {
   create(context) {
     const opts = context.options[0] ?? {};
     const patterns = (opts.patterns ?? []).map((p) => ({
-      res: p.group.map(globToRegExp),
+      res: p.group.filter((g) => !g.startsWith('!')).map(globToRegExp),
+      not: p.group.filter((g) => g.startsWith('!')).map((g) => globToRegExp(g.slice(1))),
       message: p.message,
     }));
     const paths = (opts.paths ?? []).filter((p) => p.importNames === undefined);
@@ -275,7 +292,8 @@ const noRestrictedDynamicImport = {
         return;
       }
       const hit =
-        patterns.find((p) => p.res.some((r) => r.test(spec))) ?? paths.find((p) => p.name === spec);
+        patterns.find((p) => p.res.some((r) => r.test(spec)) && !p.not.some((r) => r.test(spec))) ??
+        paths.find((p) => p.name === spec);
       if (hit) context.report({ node, messageId: 'barred', data: { msg: hit.message } });
     };
     return {
@@ -347,7 +365,7 @@ function pair(dir, opts = {}) {
     }),
     entry(
       TESTS.map((t) => `${dir}/${t}`),
-      opts,
+      opts.testExtra === undefined ? opts : { ...opts, extra: opts.testExtra },
     ),
   ];
 }
@@ -378,16 +396,57 @@ const AGENT_FORBIDDEN = pkg([
 const FRAMEWORK = ['next', 'next/*', 'react', 'react/*', 'react-dom', 'react-dom/*', 'server-only'];
 const DRIVERS = ['pg', 'pg/*', '@electric-sql/*', 'zod', 'zod/*', 'node:*'];
 
+const HELPERS = ['test-fixtures.ts', 'world.ts', 'support.ts'];
 const packageEntries = [
   // Z2/Z3 domain: pure TypeScript. Contracts and sibling domain modules only (S1).
+  // Tests and test helpers (test-fixtures.ts, world.ts, support.ts) may also use the database,
+  // runtime doubles and the scripted model; only *.test.ts may use node:fs and node:crypto.
   ...DOMAIN.flatMap((name) => {
-    const extra = [
-      pat(except(INFRA, ['testkit']), S1_MSG),
+    const dir = `domain/${name}`;
+    const s4 = ['discovery', 'fit'].includes(name);
+    // S4/9.10 (lane 14b CR-1): only discovery calls the model port implementation.
+    const modelOk = name === 'discovery' ? ['model'] : [];
+    const prodExtra = [
+      pat(except(INFRA, ['testkit', ...modelOk]), S1_MSG),
       pat(FRAMEWORK, S1_MSG),
       pat(DRIVERS, S1_MSG),
-      ...(['discovery', 'fit'].includes(name) ? [pat(AGENT_FORBIDDEN, S4_MSG)] : []),
+      ...(s4 ? [pat(AGENT_FORBIDDEN, S4_MSG)] : []),
     ];
-    return pair(`domain/${name}`, { extra, prod: [] });
+    const harnessExtra = (nodeAllowed) => [
+      pat(except(INFRA, ['testkit', 'db', 'runtime', ...modelOk]), S1_MSG),
+      pat(FRAMEWORK, S1_MSG),
+      pat(nodeAllowed ? DRIVERS.filter((d) => d !== 'node:*') : DRIVERS, S1_MSG),
+      ...(s4
+        ? [
+            pat(
+              AGENT_FORBIDDEN.filter((p) => p !== '@umsbx/db'),
+              S4_MSG,
+            ),
+          ]
+        : []),
+    ];
+    const helpers = HELPERS.map((h) => `${dir}/**/${h}`);
+    return [
+      entry(inDir(dir), {
+        extra: [...prodExtra, pat(pkg(['testkit']), 'testkit is for tests only.')],
+        ignores: [...TESTS.map((t) => `${dir}/${t}`), ...helpers],
+      }),
+      entry(helpers, { extra: harnessExtra(false) }),
+      entry(
+        TESTS.map((t) => `${dir}/${t}`),
+        { extra: harnessExtra(true) },
+      ),
+    ];
+  }),
+  // approval: hashing and HMAC need node:crypto, nothing else from node:*. The random functions
+  // stay banned by name (RANDOM_FNS), so these two files cannot mint ids, nonces or salts.
+  entry(['domain/approval/src/canonical.ts', 'domain/approval/src/token.ts'], {
+    extra: [
+      pat(except(INFRA, []), S1_MSG),
+      pat(FRAMEWORK, S1_MSG),
+      pat(DRIVERS.filter((d) => d !== 'node:*').concat(['node:*', '!node:crypto']), S1_MSG),
+      pat(pkg(['testkit']), 'testkit is for tests only.'),
+    ],
   }),
   // contracts: zod only.
   ...pair('packages/contracts', {
@@ -418,6 +477,16 @@ const packageEntries = [
     ],
   }),
   ...pair('packages/safety', {
+    // Lane 02 follow-up: safety tests use the real database, logger and runtime doubles.
+    testExtra: [
+      pat(
+        except(
+          [...DOMAIN, ...INFRA],
+          ['contracts', 'transport', 'safety', 'testkit', 'db', 'obs', 'runtime'],
+        ),
+        'safety tests import contracts, transport, db, obs and runtime only.',
+      ),
+    ],
     extra: [
       pat(
         except([...DOMAIN, ...INFRA], ['contracts', 'transport', 'safety', 'testkit']),

@@ -3,8 +3,8 @@
 // only, and every integer under a key ending `_minor` written as a decimal string using the
 // corridor's number of minor-unit digits (0, 2 or 3).
 // node:crypto createHash is deterministic (no randomness); the S1 lint bars node:* in domain
-// packages, so this one import is exempted with a reason (change request in the lane 06 hand-off).
-// eslint-disable-next-line no-restricted-imports -- hashing only; see header
+// packages; eslint.config.mjs exempts this file for node:crypto hashing only (random functions stay banned).
+
 import { createHash } from 'node:crypto';
 
 export type MinorUnits = 0 | 2 | 3;

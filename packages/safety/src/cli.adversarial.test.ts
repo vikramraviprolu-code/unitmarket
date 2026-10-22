@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-imports -- tests need the real db, obs and runtime doubles; lint change request in lane 02 report */
+ 
 import { describe, expect, it } from 'vitest';
 import { migrate, openDatabase } from '@umsbx/db';
 import { createAuditSink } from '@umsbx/obs';

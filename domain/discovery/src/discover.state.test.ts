@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports -- CHANGE-REQUEST-S1: tests use @umsbx/model (createScriptedModel) and node:fs (test data); lint S1 bars both in domain/*. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BriefSchema, FitCardSchema } from '@umsbx/contracts';
 import type { Actor, AgentDeps, ModelPort, ModelRequest } from '@umsbx/contracts';

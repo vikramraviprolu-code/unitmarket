@@ -12,3 +12,8 @@ Question: does PGlite 0.5.10 enforce row-level security under `SET ROLE`?
 Method: `packages/db/migrations/supabase/0001_roles_rls.sql` applied to a migrated in-memory PGlite, two buyers inserted, `SET ROLE ums_app`, `ums.actor_kind=buyer`, `ums.actor_id=buy_a`, `SELECT id FROM buyers`.
 Result: the policy file applies without error, and the select returns only `buy_a`. PGlite enforces the policy under `SET ROLE`. The test is `packages/db/src/rls-spike.state.test.ts` (prints `RLS_SPIKE_RESULT`; never fails the suite).
 Not covered: the full policy set against every table, and stock Postgres (CI job, PORT-1).
+
+## Discovery and the `ai_enabled` switch (note for lane 15)
+
+Discovery must refuse when the `ai_enabled` switch is off, or fall back to a catalogue-only list.
+Lane 15 wires the switch into the discovery route; until then the domain function does not read it.

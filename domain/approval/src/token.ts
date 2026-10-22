@@ -3,8 +3,8 @@
 // `approval_id|nonce|content_hash|expires_at`. The token is never stored; it is recomputed from
 // the stored row and the server secret, so a reader of the database cannot mint one.
 // node:crypto createHmac and timingSafeEqual are deterministic (no randomness). S1 bars node:* in
-// domain packages, so this import is exempted with a reason (change request in the hand-off).
-// eslint-disable-next-line no-restricted-imports -- HMAC and constant-time compare; see header
+// domain packages; eslint.config.mjs exempts this file for node:crypto hashing only (random functions stay banned).
+
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export interface TokenParts {

@@ -346,3 +346,30 @@ describe('narrow test and crypto exemptions', () => {
     ).toBeGreaterThan(0);
   });
 });
+
+describe('@umsbx/model is for domain/discovery only (S4, 14b CR-1)', () => {
+  const model =
+    "import { createScriptedModel } from '@umsbx/model';\nexport const m = createScriptedModel;\n";
+  const fs = "import { readFileSync } from 'node:fs';\nexport const r = readFileSync;\n";
+  it('discovery production, tests and helpers may import the model', async () => {
+    for (const f of ['discover.ts', 'discover.state.test.ts', 'support.ts'])
+      expect(await lint(`domain/discovery/src/${f}`, model), f).toEqual([]);
+  });
+  it('no other domain package may, in production, tests or helpers', async () => {
+    for (const d of ['fit', 'payments', 'ledger', 'approval', 'catalogue'])
+      for (const f of ['x.ts', 'x.test.ts', 'support.ts'])
+        expect((await lint(`domain/${d}/src/${f}`, model)).length, `${d}/${f}`).toBeGreaterThan(0);
+  });
+  it('discovery may still not import payments, and uses node:fs in tests only', async () => {
+    expect(
+      (
+        await lint(
+          'domain/discovery/src/discover.ts',
+          "import { a } from '@umsbx/payments';\nexport const b = a;\n",
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(await lint('domain/discovery/src/discover.state.test.ts', fs)).toEqual([]);
+    expect((await lint('domain/discovery/src/discover.ts', fs)).length).toBeGreaterThan(0);
+  });
+});

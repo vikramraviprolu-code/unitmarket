@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports -- TEMP-until-lane-16: the test stack (@umsbx/testkit testDb) is not on main yet; swap this helper for it then. */
 // Test helper only (never exported from index.ts): a migrated in-memory PGlite database.
 import { migrate, openDatabase } from '@umsbx/db';
 import { fakeClock, seededIds } from '@umsbx/runtime';

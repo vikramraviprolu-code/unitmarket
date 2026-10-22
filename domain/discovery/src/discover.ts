@@ -17,7 +17,7 @@ import { listAuthorisedOffers } from '@umsbx/catalogue';
 import type { OfferView } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
 // CHANGE-REQUEST-S1: see brief.ts.
-// eslint-disable-next-line no-restricted-imports
+
 import { COMPOSE_SYSTEM, sanitiseModelOutput } from '@umsbx/model';
 import { computeFit, rankFit } from '@umsbx/fit';
 
