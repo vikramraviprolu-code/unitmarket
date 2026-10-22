@@ -24,6 +24,18 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
   const e = r.error;
   if (e.code === 'order_open')
     return { status: 409, code: 'order_open', message: 'You already have an open order for this.' };
+  if (e.code === 'already_owned')
+    return {
+      status: 409,
+      code: 'already_owned',
+      message: 'You already have this. Nothing was charged.',
+    };
+  if (e.code === 'payee_unavailable')
+    return {
+      status: 409,
+      code: 'payee_unavailable',
+      message: 'This publisher cannot take payment right now. Nothing was charged.',
+    };
   if (e.code === 'checkout_off')
     return {
       status: 503,
