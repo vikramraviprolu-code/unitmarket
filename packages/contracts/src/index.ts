@@ -1,2 +1,5 @@
-// Placeholder from lane 00 SCAFFOLD. Domain code arrives in later lanes.
-export const PACKAGE_NAME = '@umsbx/contracts' as const;
+// @umsbx/contracts: single entry. F1 (primitives, result, ports, actor).
+export * from './primitives';
+export * from './result';
+export * from './ports';
+export * from './actor';
