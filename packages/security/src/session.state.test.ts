@@ -8,7 +8,7 @@ const HOUR = 60 * MIN;
 
 describe('session lifetime', () => {
   it('session expires at 8 h absolute and 30 min idle', async () => {
-    const { deps, clock } = makeRig();
+    const { deps, clock } = await makeRig();
     const s = await createSession(deps, buyer);
     const c = cookiePair(s.cookie);
 
@@ -33,7 +33,7 @@ describe('session lifetime', () => {
   });
 
   it('revokeAll ends every session of the actor and no other', async () => {
-    const { deps, audit } = makeRig();
+    const { deps, audit } = await makeRig();
     const a1 = await createSession(deps, buyer);
     const a2 = await createSession(deps, buyer);
     const b = await createSession(deps, { kind: 'buyer', buyer_id: 'buy_b' });
@@ -49,19 +49,19 @@ describe('session lifetime', () => {
   });
 
   it('a tampered signature or a foreign secret is refused', async () => {
-    const a = makeRig();
+    const a = await makeRig();
     const s = await createSession(a.deps, buyer);
     const c = cookiePair(s.cookie);
     const forged = c.replace(/.$/, (ch) => (ch === 'A' ? 'B' : 'A'));
     expect(await resolveSession(a.deps, forged)).toBeNull();
-    const other = makeRig({
+    const other = await makeRig({
+      db: a.db,
       session_secret: {
         reveal: () => 'another-secret',
         toString: () => '[redacted]',
         toJSON: () => '[redacted]',
       },
     });
-    other.db.tables.sessions = a.db.tables.sessions;
     expect(await resolveSession(other.deps, c)).toBeNull();
   });
 });

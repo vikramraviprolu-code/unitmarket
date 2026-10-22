@@ -36,7 +36,7 @@ const good = (u: { cookie: string; csrf: string }) => ({
 
 describe('route wrapper adversarial', () => {
   it('happy path works with all credentials', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const u = await login(rig);
     const res = await echo(rig.deps)(post(good(u)));
     expect(res.status).toBe(200);
@@ -47,13 +47,13 @@ describe('route wrapper adversarial', () => {
   });
 
   it('no session gives 401', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const res = await echo(rig.deps)(post({ origin: ORIGIN }));
     expect(res.status).toBe(401);
   });
 
   it('a publisher session on a buyer route gives 403', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const s = await createSession(rig.deps, { kind: 'publisher', publisher_id: 'pub_a' });
     const res = await echo(rig.deps)(
       post({ cookie: cookiePair(s.cookie), origin: ORIGIN, 'x-csrf-token': s.csrf_token }),
@@ -62,7 +62,7 @@ describe('route wrapper adversarial', () => {
   });
 
   it('buyer B on buyer A object gives 404', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const rows = new Map([['ord_1', { id: 'ord_1', buyer_id: 'buy_a', total: 5 }]]);
     const route = withRoute(
       { ...base, method: 'GET', csrf: false, path: '/api/orders/[id]' },
@@ -105,7 +105,7 @@ describe('route wrapper adversarial', () => {
   });
 
   it('POST without Origin or with a foreign Origin gives 403', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const u = await login(rig);
     const noOrigin = await echo(rig.deps)(post({ cookie: u.cookie, 'x-csrf-token': u.csrf }));
     expect(noOrigin.status).toBe(403);
@@ -121,7 +121,7 @@ describe('route wrapper adversarial', () => {
   });
 
   it('missing or wrong csrf token gives 403', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const u = await login(rig);
     expect((await echo(rig.deps)(post({ cookie: u.cookie, origin: ORIGIN }))).status).toBe(403);
     expect(
@@ -139,7 +139,7 @@ describe('route wrapper adversarial', () => {
   });
 
   it('extra JSON field gives 422 with field names only', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const u = await login(rig);
     const res = await echo(rig.deps)(
       post(good(u), '{"title":"x","buyer_id":"buy_b","is_admin":true}'),
@@ -154,7 +154,7 @@ describe('route wrapper adversarial', () => {
   });
 
   it('65 KB body gives 413', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const u = await login(rig);
     const big = JSON.stringify({ title: 'a'.repeat(65 * 1024) });
     const res = await echo(rig.deps)(post(good(u), big));
@@ -165,7 +165,7 @@ describe('route wrapper adversarial', () => {
   });
 
   it('handler throw returns a generic body without the error text', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const boom = withRoute(base, schema, async () => {
       throw new Error('SECRET-DB-PASSWORD at /srv/app/db.ts:12');
     });
@@ -181,7 +181,7 @@ describe('route wrapper adversarial', () => {
   });
 
   it('malformed cookie never throws', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const weird = [
       '',
       ';;;',
@@ -203,7 +203,7 @@ describe('route wrapper adversarial', () => {
   });
 
   it('a handler cannot override security headers and a 303 must stay on this site', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const u = await login(rig);
     const sneaky = withRoute(base, schema, async () => ({
       status: 200 as const,
@@ -242,7 +242,7 @@ describe('route wrapper adversarial', () => {
   });
 
   it('operator without mfa may read but not write (MVP-A)', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const s = await createSession(rig.deps, { kind: 'operator', operator_id: 'op_1', mfa: false });
     const h = { cookie: cookiePair(s.cookie), origin: ORIGIN, 'x-csrf-token': s.csrf_token };
     const write = withRoute({ ...base, auth: 'operator' }, schema, async () => ({
@@ -265,7 +265,7 @@ describe('route wrapper adversarial', () => {
   });
 
   it('wrong method on the route gives 404', async () => {
-    const rig = makeRig();
+    const rig = await makeRig();
     const u = await login(rig);
     const res = await echo(rig.deps)(
       new Request(`${ORIGIN}/api/things`, { method: 'GET', headers: { cookie: u.cookie } }),
