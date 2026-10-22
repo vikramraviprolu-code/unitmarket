@@ -22,6 +22,9 @@ export function checkOperatorTerminal(t: {
   return ok(undefined);
 }
 
+/** An approval is valid for 30 days at most (review 4 M10); renew it instead of leaving it open. */
+export const MAX_APPROVAL_VALIDITY_MS = 30 * 86_400_000;
+
 export interface ApprovalInput {
   approval_ref: string;
   scope: string;
@@ -62,7 +65,8 @@ export async function runApprove(d: {
     Number.isInteger(i.max_calls_per_day) &&
     i.max_calls_per_day >= 0 &&
     !Number.isNaN(Date.parse(i.valid_until)) &&
-    Date.parse(i.valid_until) > d.clock.now().getTime();
+    Date.parse(i.valid_until) > d.clock.now().getTime() &&
+    Date.parse(i.valid_until) <= d.clock.now().getTime() + MAX_APPROVAL_VALIDITY_MS;
   if (!valid) return err('invalid_input');
   d.write(
     `Approving ${i.operations.join(', ')} up to ${i.max_amount_minor} minor units, ${i.max_calls_per_day} calls a day, until ${i.valid_until}.`,

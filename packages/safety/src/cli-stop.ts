@@ -11,7 +11,7 @@ export async function runStop(d: {
   tty: { isTTY: boolean | undefined; env: Record<string, string | undefined> };
   by: Actor;
   reason: string;
-}): Promise<Result<void, 'not_a_tty' | 'ci_set' | 'reason_required'>> {
+}): Promise<Result<void, 'not_a_tty' | 'ci_set' | 'reason_required' | 'operator_required'>> {
   const term = checkOperatorTerminal(d.tty);
   if (!term.ok) return term;
   const r = await setSwitch(d.db, d.audit, d.clock, {
@@ -21,6 +21,6 @@ export async function runStop(d: {
     reason: d.reason,
     approval_ref: null,
   });
-  if (!r.ok) return err('reason_required');
+  if (!r.ok) return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
   return r;
 }

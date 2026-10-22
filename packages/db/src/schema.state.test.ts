@@ -174,12 +174,13 @@ describe('migrations', () => {
       '0004_money',
       '0005_access',
       '0006_platform',
+      '0007_links_session',
     ]);
     expect(await migrate(d, clock)).toEqual([]);
     const rows = await d.query<{ version: string; applied_at: Date | string }>(
       'SELECT version, applied_at FROM schema_migrations ORDER BY version',
     );
-    expect(rows.rows).toHaveLength(6);
+    expect(rows.rows).toHaveLength(7);
     expect(new Date(rows.rows[0]!.applied_at as string).toISOString()).toBe(
       '2026-10-21T10:00:00.000Z',
     );
@@ -373,7 +374,7 @@ describe('append-only tables', () => {
     for (const t of TABLES)
       expect((await db.query(`SELECT count(*)::int AS n FROM ${t}`)).rows[0]).toEqual({ n: 0 });
     expect((await db.query('SELECT count(*)::int AS n FROM schema_migrations')).rows[0]).toEqual({
-      n: 6,
+      n: 7,
     });
     await expect(db.exec('TRUNCATE ledger_entries')).rejects.toThrow();
   });

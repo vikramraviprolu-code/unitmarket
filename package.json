@@ -32,7 +32,10 @@
     "evidence": "node scripts/evidence.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "ci": "pnpm install --frozen-lockfile && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:isolation && pnpm check:no-live-host && pnpm check:secrets-names && pnpm check:fixtures && pnpm check:routes && pnpm check:provenance"
+    "ci": "pnpm install --frozen-lockfile && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:isolation && pnpm check:no-live-host && pnpm check:secrets-names && pnpm check:fixtures && pnpm check:routes && pnpm check:provenance",
+    "safety:status": "node --env-file-if-exists=.env.local --import ./scripts/lib/ts-register.mjs scripts/safety-cli.mjs status",
+    "safety:stop": "node --env-file-if-exists=.env.local --import ./scripts/lib/ts-register.mjs scripts/safety-cli.mjs stop",
+    "safety:approve": "node --env-file-if-exists=.env.local --import ./scripts/lib/ts-register.mjs scripts/safety-cli.mjs approve"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

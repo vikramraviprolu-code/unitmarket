@@ -75,7 +75,7 @@ export async function safeHead(content: ContentStore, key: string): Promise<Cont
 
 export async function issueLink(
   d: DeliveryDeps,
-  i: { entitlement_id: Id; actor: Actor },
+  i: { entitlement_id: Id; actor: Actor; session_id?: Id },
 ): Promise<Result<{ link_id: Id; url: string; expires_at: IsoUtc }, LinkError>> {
   const gate = await gateEntitlement(d, i);
   if (!gate.ok) return gate;
@@ -96,9 +96,17 @@ export async function issueLink(
   }
   const stamp = now.toISOString();
   await d.db.query(
-    `INSERT INTO links (id, entitlement_id, buyer_id, token_hash, expires_at, uses, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, 0, $6, $6)`,
-    [link_id, view.entitlement_id, view.buyer_id, hashToken(token), expires_at, stamp],
+    `INSERT INTO links (id, entitlement_id, buyer_id, token_hash, expires_at, uses, created_at, updated_at, session_id)
+     VALUES ($1, $2, $3, $4, $5, 0, $6, $6, $7)`,
+    [
+      link_id,
+      view.entitlement_id,
+      view.buyer_id,
+      hashToken(token),
+      expires_at,
+      stamp,
+      i.session_id ?? null,
+    ],
   );
   await recordDeliveryEvent(d, {
     entitlement_id: view.entitlement_id,

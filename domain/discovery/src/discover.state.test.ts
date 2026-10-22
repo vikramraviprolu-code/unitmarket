@@ -280,21 +280,21 @@ describe('discover', () => {
     expect(await count(db, 'quotes')).toBe(quotes);
   });
 
-  it('unknown brief and not the owner', async () => {
+  it('unknown brief and not the owner are one answer (review 4 L1)', async () => {
     const owner = await buyerActor();
     const other = await buyerActor();
     const b = await brief(owner);
     expect(await discover(deps, { actor: owner, brief_id: 'brf_missing' })).toEqual({
       ok: false,
-      error: { code: 'unknown_brief' },
+      error: { code: 'not_found' },
     });
     expect(await discover(deps, { actor: other, brief_id: b.brief_id })).toEqual({
       ok: false,
-      error: { code: 'not_owner' },
+      error: { code: 'not_found' },
     });
     expect(await discover(deps, { actor: { kind: 'system' }, brief_id: b.brief_id })).toEqual({
       ok: false,
-      error: { code: 'not_owner' },
+      error: { code: 'not_found' },
     });
   });
 

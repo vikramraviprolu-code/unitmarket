@@ -56,20 +56,36 @@ function actorLabel(a: Actor): string {
 
 // Changes a switch and writes the audit row in one transaction. Turning paypal_outbound on needs
 // the approval ref of the owner's written approval (architecture 7.4).
+export type SetSwitchError =
+  'reason_required' | 'approval_ref_required' | 'operator_required' | 'approval_not_active';
+
+// Review 4 M10: only an operator changes a switch. Turning paypal_outbound ON also needs MFA and an
+// outbound_approvals row that is active (valid_until after now) for the given ref; the row is
+// checked in the same transaction as the update. Turning anything OFF needs only the operator.
 export async function setSwitch(
   db: Database,
   audit: AuditSink,
   clock: Clock,
   i: { name: SwitchName; on: boolean; by: Actor; reason: string; approval_ref: string | null },
-): Promise<Result<void, 'reason_required' | 'approval_ref_required'>> {
+): Promise<Result<void, SetSwitchError>> {
   const reason = i.reason.trim();
   if (reason === '') return err('reason_required');
+  if (i.by.kind !== 'operator') return err('operator_required');
   const ref = i.approval_ref === null ? null : i.approval_ref.trim();
-  if (i.name === 'paypal_outbound' && i.on && (ref === null || ref === '')) {
+  const needsApproval = i.name === 'paypal_outbound' && i.on;
+  if (needsApproval && (ref === null || ref === '')) {
     return err('approval_ref_required');
   }
+  if (needsApproval && !i.by.mfa) return err('operator_required');
   const at = clock.now().toISOString();
-  await db.transaction(async (tx) => {
+  const refused = await db.transaction(async (tx): Promise<boolean> => {
+    if (needsApproval) {
+      const active = await tx.query(
+        'SELECT 1 FROM outbound_approvals WHERE approval_ref = $1 AND valid_until > $2 FOR UPDATE',
+        [ref, at],
+      );
+      if (active.rows.length === 0) return true;
+    }
     await tx.query(
       `UPDATE safety_switches SET "on" = $2, changed_by = $3, changed_at = $4, reason = $5, updated_at = $4 WHERE name = $1`,
       [i.name, i.on, actorLabel(i.by), at, reason],
@@ -81,6 +97,7 @@ export async function setSwitch(
       reason,
       detail: { switch: i.name, on: i.on, approval_ref: ref },
     });
+    return false;
   });
-  return ok(undefined);
+  return refused ? err('approval_not_active') : ok(undefined);
 }

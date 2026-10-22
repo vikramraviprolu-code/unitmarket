@@ -1,7 +1,7 @@
 // Shared by the three guard scripts. No dependencies. Walks a directory tree, skipping
 // dependency, build and local-data directories and local env files (which may hold secrets and are
 // never read by a guard).
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 
 const SKIP_DIRS = new Set([
@@ -32,7 +32,10 @@ export function listFiles(root) {
   const visit = (dir) => {
     for (const name of readdirSync(dir)) {
       const abs = join(dir, name);
-      const st = statSync(abs);
+      // Review 4 M4: a symlink is never followed (it can lead out of the repository); the
+      // isolation guard reports every one through findSymlinks.
+      const st = lstatSync(abs);
+      if (st.isSymbolicLink()) continue;
       if (st.isDirectory()) {
         if (!SKIP_DIRS.has(name)) visit(abs);
         continue;
@@ -44,6 +47,21 @@ export function listFiles(root) {
   };
   visit(root);
   return out.sort((a, b) => (a.rel < b.rel ? -1 : 1));
+}
+
+/** Every symbolic link under root (outside the skipped directories), as repository paths. */
+export function findSymlinks(root) {
+  const out = [];
+  const visit = (dir) => {
+    for (const name of readdirSync(dir)) {
+      const abs = join(dir, name);
+      const st = lstatSync(abs);
+      if (st.isSymbolicLink()) out.push(relative(root, abs).split(sep).join('/'));
+      else if (st.isDirectory() && !SKIP_DIRS.has(name)) visit(abs);
+    }
+  };
+  visit(root);
+  return out.sort();
 }
 
 export function read(file) {

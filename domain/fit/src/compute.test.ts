@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ArticleFacts, Brief, FitCard, Offer } from '@umsbx/contracts';
-import { computeFit, rankFit } from './index';
+import { computeFit, formatMoney, rankFit } from './index';
 
 const NOW = new Date('2026-10-21T10:00:00.000Z');
 const day = 86_400_000;
@@ -129,6 +129,28 @@ describe('each dimension level from its rule with an evidence string', () => {
     expect(dim(fit(brief({ language: 'EN' })), 'language')).toMatchObject({ level: 3 });
     expect(dim(fit(brief({ language: 'de' })), 'language')).toMatchObject({ level: 0 });
     expect(dim(fit(brief({ language: null })), 'language')).toMatchObject({ level: null });
+    // review 4 L2: normalised (underscore, case, spaces) and bounded
+    expect(dim(fit(brief({ language: ' En ' })), 'language')).toMatchObject({ level: 3 });
+    expect(dim(fit(brief(), article({ language: 'en_GB' })), 'language')).toMatchObject({
+      level: 0,
+    });
+    expect(
+      dim(fit(brief({ language: 'en_GB' }), article({ language: 'en-gb' })), 'language'),
+    ).toMatchObject({ level: 3 });
+    for (const bad of [
+      'x'.repeat(36),
+      'en'.repeat(40),
+      'not a tag',
+      "en'; DROP",
+      '\u0000en',
+      '<b>',
+    ])
+      expect(dim(fit(brief({ language: bad })), 'language')).toMatchObject({
+        level: null,
+        evidence: 'Language not known',
+      });
+    const long = dim(fit(brief({ language: 'x'.repeat(5000) })), 'language');
+    expect(JSON.stringify(long).length).toBeLessThan(400);
     expect(dim(fit(brief(), article({ language: '' })), 'language')).toMatchObject({ level: null });
   });
 
@@ -380,5 +402,24 @@ describe('purity and honesty', () => {
       const { b, a, o, price } = randomCase(r);
       FitCardSchema.parse(computeFit(b, { offer: o, article: a, price_minor: price }, NOW));
     }
+  });
+});
+
+describe('formatMoney uses the corridor exponent (review 4 L3)', () => {
+  it('minor_units given wins over the built-in table; absent keeps the table', () => {
+    expect(formatMoney('USD', 1234)).toBe('$12.34');
+    expect(formatMoney('USD', 1234, 2)).toBe('$12.34');
+    expect(formatMoney('JPY', 1234)).toBe('JPY 1234');
+    expect(formatMoney('JPY', 1234, 2)).toBe('JPY 12.34');
+    expect(formatMoney('XYZ', 12345, 3)).toBe('XYZ 12.345');
+    expect(formatMoney('XYZ', 5, 0)).toBe('XYZ 5');
+  });
+  it('computeFit passes the corridor exponent into the budget evidence', () => {
+    const card = computeFit(
+      brief({ ceiling: { currency: 'USD', minor: 6000 } }),
+      { offer: offer(), article: article(), price_minor: 4000, minor_units: 3 },
+      NOW,
+    );
+    expect(card.dimensions.find((d) => d.key === 'budget')?.evidence).toBe('$4.000 of your $6.000');
   });
 });
