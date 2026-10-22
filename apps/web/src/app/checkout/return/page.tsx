@@ -14,7 +14,7 @@ const one = (v: string | string[] | undefined): string | undefined => (Array.isA
 
 // The buyer's return is a trigger, never evidence: onBuyerReturn reads the order back itself and
 // uses the stored provider order id, not anything in this URL (P6). Only a page navigation starts
-// it (return-guard.ts); anything else is shown a button, and the button is a POST.
+// it (return-guard.ts); anything else is shown a button (a GET form, itself a page navigation).
 export default async function CheckoutReturn({
   searchParams,
 }: {
@@ -26,15 +26,17 @@ export default async function CheckoutReturn({
   const sc = one(q['scenario']);
   const h = await headers();
   if (isBuyerNavigation((name) => h.get(name))) return finishReturn(ref, sc);
-  async function confirm(): Promise<void> {
-    'use server';
-    await finishReturn(ref as string, sc);
-  }
+  // Not a page navigation (an image, a frame, a fetch, a prefetch, or a client without Sec-Fetch
+  // headers): nothing starts. The button is a GET form, which the browser sends as a page
+  // navigation, so a real buyer is one click from the same place. (Server actions are not used:
+  // check:routes bars them.)
   return (
     <>
       <h1>Confirm your return</h1>
       <p>Press the button to go on to your order. Nothing is charged by this page itself.</p>
-      <form action={confirm}>
+      <form action="/checkout/return" method="get">
+        <input type="hidden" name="ref" value={ref} />
+        {sc === undefined ? null : <input type="hidden" name="scenario" value={sc} />}
         <button className="btn btn-primary" type="submit">
           Continue to your order
         </button>

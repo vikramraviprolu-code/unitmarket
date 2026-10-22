@@ -86,7 +86,7 @@ const offers = async (): Promise<string[]> =>
     .map((o) => o.offer_code);
 
 describe('the real payments engine behind the facade', () => {
-  it('a happy dry-run journey pays, unlocks the item and keeps all four invariants', async () => {
+  it('a happy dry-run journey pays, unlocks the item and keeps all six invariants', async () => {
     const [offer] = await offers();
     const order = await payWith(offer!, 'happy');
     const view = await app.engine.orderView({ order_ref: order.order_ref, actor });
@@ -99,7 +99,14 @@ describe('the real payments engine behind the facade', () => {
       operator_id: 'opr_demo',
       mfa: false,
     });
-    expect(ops?.invariants.map((v) => v.id)).toEqual(['INV1', 'INV2', 'INV3', 'INV4']);
+    expect(ops?.invariants.map((v) => v.id)).toEqual([
+      'INV1',
+      'INV2',
+      'INV3',
+      'INV4',
+      'INV5',
+      'INV6',
+    ]);
     expect(ops?.invariants.every((v) => v.ok)).toBe(true);
   });
 
@@ -205,7 +212,7 @@ describe('ops snapshot, jobs and health', () => {
     });
     expect(snap?.kill_switch.outbound_on).toBe(false);
     expect(snap?.kill_switch.changed_by).toBe('seed');
-    expect(snap?.invariants.length).toBe(4);
+    expect(snap?.invariants.length).toBe(6);
     expect(snap?.jobs.last_pass_at).toBeNull();
   });
 

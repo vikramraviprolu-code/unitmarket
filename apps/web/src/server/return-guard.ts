@@ -3,8 +3,9 @@
 // headers it controls and a page cannot forge: a page navigation has dest "document" and mode
 // "navigate". That is true for the buyer coming back from PayPal (a cross-site navigation), from
 // our own dry-run page and from a typed address. An image, a frame, a script, a fetch or a
-// prefetch is something else. A request with no such headers (an old client, a script) is asked to
-// confirm with a button, which is a POST (a server action, checked by Next for its origin).
+// prefetch is something else. Such a request is shown a button instead; the button is a GET form,
+// which the browser sends as a page navigation. A client that sends no Sec-Fetch headers at all
+// cannot pass (server actions are barred by check:routes, so there is no POST fallback).
 export function isBuyerNavigation(get: (name: string) => string | null): boolean {
   if (get('sec-fetch-dest') !== 'document' || get('sec-fetch-mode') !== 'navigate') return false;
   const purpose = get('sec-purpose') ?? get('purpose');
