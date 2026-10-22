@@ -3,7 +3,7 @@
 //
 //  - Live hosts are forbidden everywhere except in markdown under docs/design/, and only when that
 //    folder holds the marker file `.allow-live-hostnames`.
-//  - The sandbox API host may appear only in packages/paypal/src/endpoints.ts (the one constant
+//  - The sandbox API host may appear only in packages/transport/src/endpoints.ts (the one constant
 //    module) and in docs/design/. Other sandbox subdomains (for the approve link or certificate
 //    host) are not API hosts and are not flagged here.
 //
@@ -17,7 +17,7 @@ const ROOT = resolveRoot(process.argv, import.meta.url);
 
 const ALLOWED_DOCS_DIR = 'docs/design/';
 const MARKER = '.allow-live-hostnames';
-const SANDBOX_CONSTANT_MODULE = 'packages/paypal/src/endpoints.ts';
+const SANDBOX_CONSTANT_MODULE = 'packages/transport/src/endpoints.ts';
 
 // Built from parts so this file does not contain the strings it forbids.
 const P = 'paypal' + '.com';

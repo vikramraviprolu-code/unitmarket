@@ -1,5 +1,5 @@
 import { redact, redactString } from './redact';
-import type { Actor, AuditEntry, AuditSink, Clock, Ids } from './temp-contracts-f1';
+import type { Actor, AuditEntry, AuditSink, Clock, Ids } from '@umsbx/contracts';
 
 function actorColumns(actor: Actor): {
   kind: string;

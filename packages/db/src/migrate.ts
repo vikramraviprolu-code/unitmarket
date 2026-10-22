@@ -4,7 +4,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Clock, Database } from './temp-contracts-f1';
+import type { Clock, Database } from '@umsbx/contracts';
 
 export type MigrationSet = 'common' | 'supabase';
 

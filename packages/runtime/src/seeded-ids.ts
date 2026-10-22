@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { formatId, hex } from './ids-format';
-import type { Ids } from './temp-contracts-f1';
+import type { Ids } from '@umsbx/contracts';
 
 // Deterministic ids for tests only: sha256(seed, counter) truncated to 128 bits. Same seed, same
 // sequence. Never wire this into a production composition root.

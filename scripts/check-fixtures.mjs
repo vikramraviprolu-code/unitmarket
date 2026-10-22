@@ -32,7 +32,10 @@ const SECRET_KEYS = new Set([
 ]);
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/;
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/i;
-const REDACTED = new Set(['', '[REDACTED]', 'REDACTED', '***']);
+// Case-insensitive markers; lane 03 fixtures write "[redacted]" and "email-redacted".
+const REDACTED = new Set(['', '[redacted]', 'redacted', 'email-redacted', '***']);
+// Synthetic payer ids carry this prefix; docs-example fixtures keep PayPal's published example ids.
+const SYNTHETIC_ID = /^SBX[A-Z0-9]+$/;
 
 const i = process.argv.indexOf('--root');
 const ROOT = resolve(
@@ -47,20 +50,24 @@ function walk(dir, out = []) {
   for (const name of readdirSync(dir).sort()) {
     const abs = join(dir, name);
     if (statSync(abs).isDirectory()) walk(abs, out);
-    else if (name.endsWith('.json') && abs !== INDEX) out.push(abs);
+    else if (name.endsWith('.json') && abs !== INDEX && name.toLowerCase() !== 'index.json')
+      out.push(abs);
   }
   return out;
 }
 const relFix = (abs) => relative(FIXTURES, abs).split(sep).join('/');
 const sha = (text) => createHash('sha256').update(text).digest('hex');
 
-function scanValues(node, path, found) {
-  if (Array.isArray(node)) return node.forEach((v, k) => scanValues(v, `${path}[${k}]`, found));
+function scanValues(node, path, found, docsExample = false) {
+  if (Array.isArray(node))
+    return node.forEach((v, k) => scanValues(v, `${path}[${k}]`, found, docsExample));
   if (node !== null && typeof node === 'object') {
     for (const [k, v] of Object.entries(node)) {
-      if (SECRET_KEYS.has(k.toLowerCase()) && typeof v === 'string' && !REDACTED.has(v))
+      const lk = k.toLowerCase();
+      const okId = lk === 'payer_id' && (SYNTHETIC_ID.test(v) || docsExample);
+      if (SECRET_KEYS.has(lk) && typeof v === 'string' && !REDACTED.has(v.toLowerCase()) && !okId)
         found.push(`${path}.${k} holds an unredacted value`);
-      scanValues(v, `${path}.${k}`, found);
+      scanValues(v, `${path}.${k}`, found, docsExample);
     }
   }
 }
@@ -96,7 +103,7 @@ function main() {
     if (BEARER.test(text)) problems.push(`${rel}: contains a bearer token`);
     if (text.includes('CANARY_')) problems.push(`${rel}: contains a redaction canary marker`);
     const found = [];
-    scanValues(doc, '$', found);
+    scanValues(doc, '$', found, source === 'docs-example');
     for (const f of found) problems.push(`${rel}: ${f}`);
   }
 

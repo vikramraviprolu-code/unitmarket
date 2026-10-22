@@ -3,7 +3,7 @@
 // any lookup); the persona token is replaced by a signed session id.
 // Origin: AIC_Hackathon_UnitMarket@a36ddc03fd0b962000f686291c145b50ee337f90:apps/web/server/session.ts. Adapted; owned by SBX.
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { Actor, Id } from './contracts-stub';
+import type { Actor, Id } from '@umsbx/contracts';
 import { hashCsrfToken } from './csrf';
 import type { SecurityDeps } from './route';
 

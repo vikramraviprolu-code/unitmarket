@@ -9,7 +9,7 @@ import {
   resetDatabase,
   tablesInDependencyOrder,
 } from './index';
-import type { Database } from './temp-contracts-f1';
+import type { Database } from '@umsbx/contracts';
 
 const T = '2026-10-21T10:00:00Z';
 const T2 = '2026-10-21T11:00:00Z';

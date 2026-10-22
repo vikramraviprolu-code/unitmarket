@@ -77,25 +77,42 @@ importers:
       '@electric-sql/pglite':
         specifier: 0.5.10
         version: 0.5.10
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/jobs: {}
 
   packages/model:
     dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       zod:
         specifier: 4.6.7
         version: 4.6.7
 
-  packages/obs: {}
+  packages/obs:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/paypal: {}
 
-  packages/runtime: {}
+  packages/runtime:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/safety: {}
 
   packages/security:
     dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -104,6 +121,9 @@ importers:
 
   packages/transport:
     dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       zod:
         specifier: 4.6.7
         version: 4.6.7

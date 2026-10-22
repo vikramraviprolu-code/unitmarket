@@ -1,6 +1,6 @@
 // Skeleton for the nightly logical export (architecture section 8): the table list in foreign-key
 // order, parents first. Row rendering as INSERT statements arrives with the backup lane.
-import type { SqlExecutor } from './temp-contracts-f1';
+import type { SqlExecutor } from '@umsbx/contracts';
 
 export async function tablesInDependencyOrder(db: SqlExecutor): Promise<string[]> {
   const tables = await db.query<{ tablename: string }>(

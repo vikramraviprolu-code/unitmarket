@@ -6,3 +6,7 @@ useDefault = true
 [allowlist]
 description = "names-only example and labelled negative fixtures"
 paths = ['''\.env\.example$''', '''scripts/__fixtures__/''']
+# Two superseded commits flagged synthetic ids (checkout link tokens built from fake order ids
+# in fixtures, and an access_token-shaped test literal). Both were rewritten to low-entropy
+# values in later commits; the current tree scans clean. Reviewed 22 Oct 2026.
+commits = ["bc88f75651f79d4203188078a6a8abb1bd3eded2", "ce21a67440e952e3461b0eacca194fbcafa4088b"]

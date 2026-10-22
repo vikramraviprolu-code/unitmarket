@@ -1,5 +1,5 @@
 // Shared id formatting for cryptoIds and seededIds (Crockford base32, lowercase).
-import type { IdPrefix, Id } from './temp-contracts-f1';
+import type { IdPrefix, Id } from '@umsbx/contracts';
 
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 

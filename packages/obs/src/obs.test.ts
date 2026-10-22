@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { createAuditSink, createLogger, redact } from './index';
-import type { SqlExecutor } from './temp-contracts-f1';
+import type { SqlExecutor } from '@umsbx/contracts';
 
 const KEYS = [
   'authorization',

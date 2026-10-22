@@ -1,6 +1,6 @@
 // Adapted from AIC_Hackathon_UnitMarket simulation/consumers/src/model.ts at a36ddc03fd0b962000f686291c145b50ee337f90.
 // Deterministic ModelPort: no network, no clock, no randomness, no spend.
-import type { ModelPort, ModelRequest, ModelResponse } from './contracts-temp';
+import type { ModelPort, ModelRequest, ModelResponse } from '@umsbx/contracts';
 import { composePack } from './compose';
 import { parseBrief } from './parse-brief';
 import { ComposeInputSchema, MAX_BRIEF_CHARS, MAX_CANDIDATES } from './schemas';

@@ -1,7 +1,7 @@
 // Idempotency-Key handling on `api_idempotency`. A row is reserved before the handler runs
 // (response = {"pending":true}), completed on success and deleted on failure so a client can retry.
 import { sha256Hex } from './csrf';
-import type { Actor } from './contracts-stub';
+import type { Actor } from '@umsbx/contracts';
 import type { SecurityDeps } from './route';
 
 export const IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{8,128}$/;

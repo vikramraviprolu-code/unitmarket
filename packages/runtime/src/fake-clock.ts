@@ -1,4 +1,4 @@
-import type { Clock, IsoUtc } from './temp-contracts-f1';
+import type { Clock, IsoUtc } from '@umsbx/contracts';
 
 const ISO_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 

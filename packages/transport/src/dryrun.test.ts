@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDryRunTransport } from './dryrun';
 import type { FixtureFile } from './fixture-schema';
-import type { OutboundGate, TransportResult } from './temp-contracts';
+import type { OutboundGate, TransportResult } from '@umsbx/contracts';
 import { fixedClock, memoryLogger, openGate, req } from './test-support';
 
 const fx = (

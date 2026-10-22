@@ -1,5 +1,5 @@
 import { CERT_HOST_SUFFIX, CERT_PATH_PREFIX, ID_PATTERN, PATHS, SANDBOX_API } from './endpoints';
-import type { OutboundRequest } from './temp-contracts';
+import type { OutboundRequest } from '@umsbx/contracts';
 
 // Egress guard shared by the dry-run and the sandbox transport (architecture 7 point 6, nfr.md
 // P1 and SOP 18). Pure: no I/O. A refusal carries no detail so nothing about the rule leaks.

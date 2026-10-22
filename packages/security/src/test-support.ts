@@ -14,7 +14,7 @@ import type {
   Logger,
   Secret,
   SqlExecutor,
-} from './contracts-stub';
+} from '@umsbx/contracts';
 import type { SecurityDeps } from './route';
 
 export const ORIGIN = 'https://sandbox.example.test';

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { OPERATIONS, PATHS } from './endpoints';
-import type { IsoUtc, PayPalOperation } from './temp-contracts';
+import type { IsoUtc, PayPalOperation } from '@umsbx/contracts';
 
 // Fixture file format (lane 03 owns it). One file is one recorded or synthetic exchange:
 // the nth call of `operation` within `scenario`. Unknown fields are refused at every level.

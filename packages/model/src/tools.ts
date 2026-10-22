@@ -3,8 +3,8 @@
 import { AGENT_TOOLS } from './prompts';
 import { ComposeOutputSchema } from './schemas';
 import type { ComposeOutput } from './schemas';
-import { err, ok } from './contracts-temp';
-import type { Result } from './contracts-temp';
+import { err, ok } from '@umsbx/contracts';
+import type { Result } from '@umsbx/contracts';
 
 const ALLOWED: readonly string[] = AGENT_TOOLS;
 const FORBIDDEN_KEY = /price|payee|payer|amount|total|cents|minor|approval|email|secret|token/i;

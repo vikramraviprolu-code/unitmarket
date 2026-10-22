@@ -1,5 +1,5 @@
 import { redact } from './redact';
-import type { Clock, LogEvent, Logger } from './temp-contracts-f1';
+import type { Clock, LogEvent, Logger } from '@umsbx/contracts';
 
 // One JSON line per event: ts (only when a clock is injected), level, msg, then base, child and
 // event fields in that order of precedence (later wins), except that level, msg and ts cannot be

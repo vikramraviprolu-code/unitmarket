@@ -13,8 +13,8 @@ import type {
   Logger,
   Result,
   Secret,
-} from './contracts-stub';
-import { err, ok } from './contracts-stub';
+} from '@umsbx/contracts';
+import { err, ok } from '@umsbx/contracts';
 import { csrfTokenMatches, originMatches } from './csrf';
 import { GENERIC_MESSAGE, errorBody, fieldNames, supportCode } from './errors';
 import { securityHeaders } from './headers';

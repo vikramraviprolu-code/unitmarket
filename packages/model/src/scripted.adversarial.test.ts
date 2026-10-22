@@ -4,7 +4,7 @@ import { createScriptedModel } from './scripted';
 import { BriefParseOutputSchema } from './schemas';
 import { dispatchTool, sanitiseModelOutput } from './tools';
 import { AGENT_TOOLS, BRIEF_SYSTEM, COMPOSE_SYSTEM } from './prompts';
-import type { ModelPort } from './contracts-temp';
+import type { ModelPort } from '@umsbx/contracts';
 
 const model = createScriptedModel();
 const FORBIDDEN_KEY = /price|payee|amount|total|cents|minor|approval/i;

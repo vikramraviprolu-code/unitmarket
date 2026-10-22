@@ -1,6 +1,6 @@
 // Adapted from AIC_Hackathon_UnitMarket packages/db/src/database.ts (resetDatabase) at
 // a36ddc03fd0b962000f686291c145b50ee337f90, with the guard setting renamed ums.allow_reset.
-import type { Database } from './temp-contracts-f1';
+import type { Database } from '@umsbx/contracts';
 
 // Empties every application table (not schema_migrations) in one statement. TRUNCATE does not fire
 // the row-level append-only triggers, so migration 0001 guards those tables with BEFORE TRUNCATE

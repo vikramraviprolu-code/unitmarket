@@ -1,7 +1,7 @@
 // Token buckets in `rate_buckets` (bucket_key, tokens integer, refilled_at). One token returns
 // every window_ms / limit; the bucket holds at most `limit` tokens. Integer tokens only, so the
 // column type stays simple on PGlite and Postgres.
-import type { Clock, Database } from './contracts-stub';
+import type { Clock, Database } from '@umsbx/contracts';
 
 export interface RateRule {
   name: string;

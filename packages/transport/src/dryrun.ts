@@ -9,7 +9,7 @@ import type {
   PayPalOperation,
   Transport,
   TransportResult,
-} from './temp-contracts';
+} from '@umsbx/contracts';
 
 // Dry-run transport: answers PayPal-shaped responses from labelled fixtures. Opens no socket and
 // never calls fetch. Every request passes the egress guard and the outbound gate, so both are

@@ -1,6 +1,6 @@
 import { PGlite } from '@electric-sql/pglite';
 import type { SqlDriver, DbTarget } from './driver';
-import type { SqlExecutor } from './temp-contracts-f1';
+import type { SqlExecutor } from '@umsbx/contracts';
 
 function executor(q: Pick<PGlite, 'query' | 'exec'>): SqlExecutor {
   return {

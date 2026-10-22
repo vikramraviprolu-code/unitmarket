@@ -1,10 +1,9 @@
-import type { PayPalOperation } from './temp-contracts';
+import type { PayPalOperation } from '@umsbx/contracts';
 
-// The one place that names the sandbox API host. It is assembled from parts so that no source file
-// carries the literal hostname (scripts/check-no-live-host.mjs allows it only in
-// packages/paypal/src/endpoints.ts). The base URL is a code constant: no config value can change it.
-// There is no live value anywhere (architecture 7, nfr.md P15).
-export const SANDBOX_API: string = ['https://api-m', 'sandbox', 'paypal', 'com'].join('.');
+// The one place that names the sandbox API host (scripts/check-no-live-host.mjs allows it only here).
+// The base URL is a code constant: no config value can change it. There is no live value anywhere
+// (architecture 7, nfr.md P15).
+export const SANDBOX_API = 'https://api-m.sandbox.paypal.com' as const;
 
 /** Host label suffix a webhook certificate URL must end with (nfr.md P1). */
 export const CERT_HOST_SUFFIX = '.sandbox.paypal.com' as const;

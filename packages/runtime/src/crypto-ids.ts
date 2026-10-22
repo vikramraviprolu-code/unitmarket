@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { formatId, hex } from './ids-format';
-import type { Ids } from './temp-contracts-f1';
+import type { Ids } from '@umsbx/contracts';
 
 // Production ids: 128 random bits from node:crypto. This package is the only place allowed to
 // draw randomness (lint rule S6).

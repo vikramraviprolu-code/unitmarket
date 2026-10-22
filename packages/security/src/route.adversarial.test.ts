@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { err, ok } from './contracts-stub';
+import { err, ok } from '@umsbx/contracts';
 import { notFoundUnlessOwner } from './route';
 import { withRoute, type RouteMeta } from './route';
 import { createSession, resolveSession } from './session';

@@ -5,7 +5,7 @@ import type {
   OutboundGate,
   OutboundRequest,
   PayPalOperation,
-} from './temp-contracts';
+} from '@umsbx/contracts';
 
 // Host strings are assembled at runtime so no source file carries a live or sandbox hostname
 // literal (scripts/check-no-live-host.mjs).
