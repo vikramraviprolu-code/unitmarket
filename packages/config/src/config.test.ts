@@ -325,3 +325,35 @@ describe('Secret (P7)', () => {
     expect(JSON.stringify(c)).not.toContain(S1);
   });
 });
+
+describe('F-1: PayPal- and live-looking names (A-01)', () => {
+  it('unknown PayPal or live names are refused, whatever the value', () => {
+    for (const name of [
+      'PAYPAL_ENV',
+      'PAYPAL_MODE',
+      'PAYPAL_BASE_URL',
+      'UMS_LIVE',
+      'UMS_PAYPAL_ENV',
+      'FEATURE_LIVE',
+      'APP_PRODUCTION',
+      'live',
+    ]) {
+      expect(refusal(offline({ [name]: '1' })), name).toEqual({
+        code: 'live_not_available',
+        name,
+      });
+    }
+  });
+  it('legitimate names still boot, and words inside other words are safe', () => {
+    expect(
+      loadConfig(sandbox({ PAYPAL_WEBHOOK_ID: 'WH-1AB23', UMS_PAYPAL_CONNECT: 'off' })).ok,
+    ).toBe(true);
+    expect(loadConfig(offline({ DELIVERY_RETRIES: '3', NODE_ENV: 'test' })).ok).toBe(true);
+    expect(loadConfig(sandbox({ PAYPAL_CLIENT_ID: 'Alive-client-9' })).ok).toBe(true);
+  });
+  it('known identifiers with a live or production word are refused', () => {
+    for (const name of ['UMS_OUTBOUND_APPROVAL_REF', 'PAYPAL_CLIENT_ID', 'PAYPAL_WEBHOOK_ID']) {
+      expect(refusal(sandbox({ [name]: 'production-1' })).code, name).toBe('live_not_available');
+    }
+  });
+});

@@ -121,7 +121,7 @@ describe('A-01 boot_refuses_live', () => {
 
   // OPEN DEFECT F-1 (lane 02, medium): A-01 says any PayPal-related config value containing live or
   // production is refused. Only UMS_MODE, the public label and PayPal host names are checked.
-  it('OPEN DEFECT F-1: PayPal environment switches named PAYPAL_* or UMS_PAYPAL_* with live or production are refused', () => {
+  it('PayPal environment switches named PAYPAL_* or UMS_PAYPAL_* with live or production are refused', () => {
     const accepted: string[] = [];
     for (const name of [
       'PAYPAL_ENV',
@@ -137,7 +137,7 @@ describe('A-01 boot_refuses_live', () => {
     expect(accepted).toEqual([]);
   });
 
-  it('OPEN DEFECT F-1: PayPal identifier values that are exactly live or production are refused', () => {
+  it('PayPal identifier values that are exactly live or production are refused', () => {
     const accepted: string[] = [];
     for (const name of ['UMS_OUTBOUND_APPROVAL_REF', 'PAYPAL_CLIENT_ID', 'PAYPAL_WEBHOOK_ID']) {
       for (const value of ['live', 'production-1']) {
