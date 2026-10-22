@@ -13,5 +13,8 @@
     "@umsbx/contracts": "workspace:*",
     "@umsbx/obs": "workspace:*",
     "@umsbx/transport": "workspace:*"
+  },
+  "devDependencies": {
+    "@umsbx/testkit": "workspace:*"
   }
 }

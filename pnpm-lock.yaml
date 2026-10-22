@@ -249,6 +249,10 @@ importers:
       '@umsbx/transport':
         specifier: workspace:*
         version: link:../transport
+    devDependencies:
+      '@umsbx/testkit':
+        specifier: workspace:*
+        version: link:../testkit
 
   packages/runtime:
     dependencies:
@@ -288,7 +292,38 @@ importers:
         specifier: workspace:*
         version: link:../db
 
-  packages/testkit: {}
+  packages/testkit:
+    dependencies:
+      '@umsbx/catalogue':
+        specifier: workspace:*
+        version: link:../../domain/catalogue
+      '@umsbx/config':
+        specifier: workspace:*
+        version: link:../config
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../db
+      '@umsbx/model':
+        specifier: workspace:*
+        version: link:../model
+      '@umsbx/obs':
+        specifier: workspace:*
+        version: link:../obs
+      '@umsbx/paypal':
+        specifier: workspace:*
+        version: link:../paypal
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@umsbx/safety':
+        specifier: workspace:*
+        version: link:../safety
+      '@umsbx/transport':
+        specifier: workspace:*
+        version: link:../transport
 
   packages/transport:
     dependencies:
