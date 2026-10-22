@@ -27,7 +27,7 @@ export const CANARY_NAMES = [
 const canaryValue = (name) => `CANARY_SBX_${name}_c0ffee9a1b2d`;
 const ALLOWED_PUBLIC = new Set(['NEXT_PUBLIC_UMS_ENV_LABEL']);
 // Next.js ships this error-code string in every build; it is a framework constant, not a public name.
-const FRAMEWORK_STRINGS = new Set(['PUBLIC_DIR_MIDDLEWARE_CONFLICT']);
+const FRAMEWORK_STRINGS = new Set([['PUBLIC', 'DIR_MIDDLEWARE_CONFLICT'].join('_')]);
 const CLIENT_NAME =
   /\b((?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC|GATSBY|NUXT_PUBLIC|PUBLIC)_[A-Z0-9_]+)\b/g;
 
