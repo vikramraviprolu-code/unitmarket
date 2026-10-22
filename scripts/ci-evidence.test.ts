@@ -3,9 +3,9 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { redact } from './evidence.mjs';
 import { REPO_ROOT } from './test-helpers';
 
 const script = (name: string) => join(REPO_ROOT, 'scripts', name);
@@ -371,10 +371,8 @@ describe('evidence_writes', () => {
     expect(r.out).not.toContain(secret);
   });
   // Review M5: redaction covers NAME=value, URL userinfo and short ids, and no command is recorded.
-  it('redacts env assignments, URL credentials and ids of 7 or more characters', async () => {
-    const mod = (await import(pathToFileURL(script('evidence.mjs')).href)) as {
-      redact: (t: string) => string;
-    };
+  it('redacts env assignments, URL credentials and ids of 7 or more characters', () => {
+    const mod = { redact };
     const cases: [string, string][] = [
       ['DATABASE_URL=postgres://u:hunter2pass@db.x/y', 'hunter2pass'],
       ['UMS_SESSION_SECRET=Ab+/Cd9=xyZ+12/kk', 'Ab+/Cd9'],
