@@ -100,7 +100,32 @@ const val = (env: Env, name: string): string | undefined => {
   return v === undefined || v.trim() === '' ? undefined : v.trim();
 };
 
-export function loadConfig(env: Env): Result<Config, BootRefusal> {
+// FIX-BPREP M1. Variables that change where a connection goes or which certificates it trusts.
+// Refused in sandbox mode only: a proxy or a replaced CA store would see the client secret.
+const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
+  'NODE_USE_ENV_PROXY',
+  'NODE_TLS_REJECT_UNAUTHORIZED',
+  'NODE_EXTRA_CA_CERTS',
+  'NODE_OPTIONS',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+]);
+const OVERRIDE_FLAG = /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait)?)(?:=|$)/;
+function transportOverride(env: Env, execArgv: readonly string[]): string | null {
+  for (const [name, v] of Object.entries(env)) {
+    const up = name.toUpperCase();
+    if (OVERRIDE_NAMES.has(up) && v !== undefined && v.trim() !== '') return up;
+  }
+  return execArgv.some((a) => OVERRIDE_FLAG.test(a)) ? 'execArgv' : null;
+}
+
+export interface LoadOptions {
+  /** process.execArgv of the booting process; omitted in tests that do not care. */
+  execArgv?: readonly string[];
+}
+
+export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, BootRefusal> {
   // 1. mode words and unknown modes
   const rawMode = val(env, 'UMS_MODE');
   let mode: Mode = 'offline';
@@ -109,6 +134,10 @@ export function loadConfig(env: Env): Result<Config, BootRefusal> {
     if (m === 'offline' || m === 'sandbox') mode = m;
     else if (MODE_WORD.test(m)) return refuse('live_not_available', 'UMS_MODE');
     else return refuse('unknown_mode', 'UMS_MODE');
+  }
+  if (mode === 'sandbox') {
+    const o = transportOverride(env, opts.execArgv ?? []);
+    if (o !== null) return refuse('transport_env_override', o);
   }
   const label = val(env, 'NEXT_PUBLIC_UMS_ENV_LABEL');
   if (label !== undefined && MODE_WORD.test(label)) {
@@ -251,7 +280,7 @@ export function bootOrExit(
   exit: (code: number) => never,
   write: (line: string) => void,
 ): Config {
-  const r = loadConfig(env);
+  const r = loadConfig(env, { execArgv: process.execArgv });
   if (!r.ok) {
     write(refusalLine(r.error));
     return exit(BOOT_REFUSAL_EXIT_CODE);
@@ -266,5 +295,5 @@ export function terminalEnv(): Record<string, string | undefined> {
 
 /** The one place that hands the real environment to loadConfig. */
 export function loadConfigFromProcess(): Result<Config, BootRefusal> {
-  return loadConfig(process.env);
+  return loadConfig(process.env, { execArgv: process.execArgv });
 }
