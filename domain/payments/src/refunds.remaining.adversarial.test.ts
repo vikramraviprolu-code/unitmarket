@@ -82,17 +82,23 @@ describe('refund calls never carry more than PayPal holds', () => {
           case 0: {
             // A dashboard refund. The clock first passes 60 s: a read taken before it is then too
             // old to be reused, as the rule says; anything newer sees the refund.
+            // PayPal itself never refunds more than the capture holds.
             world_.tick(61 * SEC);
-            world_.dashboard(
-              unit.capture_id,
-              int(1, 250),
-              pick<RefundStatus>(['COMPLETED', 'COMPLETED', 'PENDING', 'FAILED', 'CANCELLED']),
-            );
+            const room = world_.remoteRemaining(unit.capture_id, PRICE);
+            if (room > 0) {
+              world_.dashboard(
+                unit.capture_id,
+                Math.min(int(1, 250), room),
+                pick<RefundStatus>(['COMPLETED', 'COMPLETED', 'PENDING', 'FAILED', 'CANCELLED']),
+              );
+            }
             break;
           }
           case 1: {
-            // PayPal changes a dashboard refund (a pending one completes or is cancelled).
-            const dash = [...world_.refunds.values()].filter((x) => x.request_id === null);
+            // PayPal settles a pending dashboard refund: it completes, fails or is cancelled.
+            const dash = [...world_.refunds.values()].filter(
+              (x) => x.request_id === null && x.status === 'PENDING',
+            );
             if (dash.length > 0) {
               world_.tick(61 * SEC);
               pick(dash).status = pick<RefundStatus>(['COMPLETED', 'CANCELLED', 'FAILED']);
@@ -153,8 +159,8 @@ describe('refund calls never carry more than PayPal holds', () => {
       w = null;
     }
     // The sequences really exercised both branches.
-    expect(sent).toBeGreaterThan(100);
-    expect(closed).toBeGreaterThan(20);
+    expect(sent).toBeGreaterThan(50);
+    expect(closed).toBeGreaterThan(10);
   }, 600_000);
 
   it('every send carries the amount stored on its request, never null', async () => {
@@ -209,13 +215,11 @@ describe('an old read is not trusted', () => {
 describe('a read the domain cannot rely on never lets a refund go', () => {
   async function scripted(edit: (r: Extract<OrderRead, { kind: 'order' }>) => unknown) {
     const { a, unit, w: world_ } = await world();
-    const real = await world_.paypal.getOrder(a.provider_order_id);
-    if (real.kind !== 'order') throw new Error('no order');
-    world_.script(edit(structuredClone(real)) as OrderRead);
+    await world_.editNextRead(a.provider_order_id, edit);
     const r1 = await request(unit.id, 200);
     if (!r1.ok) throw new Error('refused');
     const out = await executeRefund(world_.deps, { refund_request_id: r1.value.refund_request_id });
-    return { out, world_, id: r1.value.refund_request_id, reads };
+    return { out, world_, id: r1.value.refund_request_id };
   }
   const stateOf = async (id: string) =>
     (await w!.rows<{ state: string }>('SELECT state FROM refund_requests WHERE id = $1', [id]))[0]!

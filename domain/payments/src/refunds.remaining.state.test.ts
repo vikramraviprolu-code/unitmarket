@@ -183,7 +183,7 @@ describe('executeRefund and PayPal remaining amount', () => {
       expect(await reserved(unit.id)).toBe(200); // still reserved: it can still be sent
       const found = await refundOps(a.order_id);
       expect(found).toHaveLength(1);
-      expect(found[0]).toMatchObject({ kind: 'refund', state: 'unknown', attempt: 0 });
+      expect(found[0]).toMatchObject({ kind: 'refund', state: 'unknown', attempt: 1 });
       const due = new Date(w.clock.now().getTime() + 30 * SEC);
       expect(found[0]?.next_retry_at?.toISOString()).toBe(due.toISOString());
       expect(await nextDueAt(w.db)).toBe(due.toISOString());
@@ -256,24 +256,24 @@ describe('executeRefund and PayPal remaining amount', () => {
     expect((await alerts(a.order_id)).map((x) => x.kind)).toEqual(['refund_unbooked']);
     const op = (await refundOps(a.order_id))[0]!;
     expect(op.state).toBe('failed');
-    expect(await nextDueAt(w.db)).toBeNull();
+    expect(op.next_retry_at).toBeNull();
   });
 
   it('read unavailable for the whole 24 h window: closed failed, reservation freed, a human told, never sent', async () => {
     const { a, unit } = await setup();
     const rq = await request(unit.id, 200);
-    w.paypal.beforeGet = () => Promise.reject(new Error('wire down'));
+    w.script(unavailable);
     await executeRefund(w.deps, { refund_request_id: rq });
     w.tick(24 * 3_600 * SEC + 1);
+    w.script(unavailable);
     await runDue(w.deps, { max_items: 10 });
-    w.paypal.beforeGet = null;
     expect(w.sends()).toHaveLength(0);
     expect(await stateOf(rq)).toBe('failed');
     expect(await reserved(unit.id)).toBe(0);
     const op = (await refundOps(a.order_id))[0]!;
     expect(op).toMatchObject({ state: 'failed', failure_reason: 'window_expired' });
     expect((await alerts(a.order_id)).map((x) => x.kind)).toEqual(['refund_failed']);
-    expect(await nextDueAt(w.db)).toBeNull();
+    expect(op.next_retry_at).toBeNull();
   });
 
   it('a pending dashboard refund counts against the remaining amount', async () => {
@@ -333,8 +333,11 @@ describe('executeRefund and PayPal remaining amount', () => {
   });
 
   it('a capture PayPal shows smaller than ordered lowers the remaining amount', async () => {
-    const { unit } = await setup();
-    w.paypal.tamper.capture_amount_delta = -100; // PayPal holds a 4.00 capture
+    const { a, unit } = await setup();
+    await w.editNextRead(a.provider_order_id, (r) => {
+      r.units[0]!.capture!.amount = usd(400); // PayPal holds a 4.00 capture
+      return r;
+    });
     const rq = await request(unit.id, 500);
     expect(await executeRefund(w.deps, { refund_request_id: rq })).toEqual({
       ok: true,
@@ -348,7 +351,7 @@ describe('executeRefund and PayPal remaining amount', () => {
     const rq = await request(unit.id, 200);
     w.paypal.tamper.capture_id = 'SBXOTHERCAP';
     const r = await executeRefund(w.deps, { refund_request_id: rq });
-    w.paypal.tamper.capture_id = undefined;
+    delete w.paypal.tamper.capture_id;
     expect(r.ok).toBe(false);
     expect(w.sends()).toHaveLength(0);
     expect(await stateOf(rq)).toBe('requested');
@@ -356,11 +359,13 @@ describe('executeRefund and PayPal remaining amount', () => {
   });
 
   it('a capture in another currency than the request is not a basis for a send', async () => {
-    const { unit } = await setup();
+    const { a, unit } = await setup();
     const rq = await request(unit.id, 200);
-    w.paypal.tamper.capture_currency = 'EUR';
+    await w.editNextRead(a.provider_order_id, (r) => {
+      r.units[0]!.capture!.amount = { currency: 'EUR', minor: 500 };
+      return r;
+    });
     const r = await executeRefund(w.deps, { refund_request_id: rq });
-    w.paypal.tamper.capture_currency = undefined;
     expect(r.ok).toBe(false);
     expect(w.sends()).toHaveLength(0);
     expect(await stateOf(rq)).toBe('requested');

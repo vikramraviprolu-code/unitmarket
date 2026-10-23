@@ -22,6 +22,11 @@ export interface RemainingWorld extends OpsWorld {
   script(...reads: (OrderRead | 'real')[]): void;
   /** The next order reads are returned exactly as given, even when they are not an order read. */
   scriptRaw(...reads: unknown[]): void;
+  /** The next order read is the real one, edited by `edit` (the edit may return anything). */
+  editNextRead(
+    provider_order_id: string,
+    edit: (r: Extract<OrderRead, { kind: 'order' }>) => unknown,
+  ): Promise<void>;
 }
 
 export async function makeRemainingWorld(opts: WorldOptions = {}): Promise<RemainingWorld> {
@@ -48,6 +53,12 @@ export async function makeRemainingWorld(opts: WorldOptions = {}): Promise<Remai
             .map((x) => ({ refund_id: x.refund_id, status: x.status, amount: x.amount })),
       })),
     };
+  };
+  w.editNextRead = async (provider_order_id, edit) => {
+    const real = await w.paypal.getOrder(provider_order_id);
+    if (real.kind !== 'order') throw new Error('no order to edit');
+    w.paypal.calls.pop(); // building the edit is not a read the code under test made
+    raw.push(edit(structuredClone(real)));
   };
   w.scriptRaw = (...reads) => {
     raw.push(...reads);
