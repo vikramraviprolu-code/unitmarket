@@ -1,0 +1,27 @@
+# BU-6: owner-run sandbox conformance subject (B-L2), gated by the five locks
+
+Task: make the owner-run conformance suite usable and safe: real clock, the approval link shown to the owner, the transport built by the app's own outbound builder, and a runner that refuses outside a person's terminal.
+Package: `packages/testkit`, `tests/mvp-b`, `scripts/` Owner: Sonnet 5.5 builder, effort high (owner-run money calls) Reviewer: Opus 5.5 high; Sakthi merges
+Wave: W3, after BU-2 merges; parallel with BU-3 and CO-6. Assumptions: ASM-40 (option A), ASM-31, ASM-32, ASM-50, ASM-51.
+
+Goal: `sandboxSubject()` today uses a fixed clock (`T0`) against a real service, its approve hook only polls and never shows the owner the link, and it cannot build the approved transport. Change it to take `{ transport, clock }` from the caller; `hooks.approve(id, approve_url)` writes one line to stderr: "Open this link in a browser signed in as the sandbox Personal account, approve, then come back: <url>", then polls GET order every 3 s for up to 6 min. The owner-run file `tests/mvp-b/b-l2-sandbox.contract.test.ts` builds the transport with BU-2's `buildOutbound` (production Wire, real scoped gate over the owner's PGlite directory) and runs a short subset: create (B-01 start), create replay with the same key (B-02), capture before approval (B-04), approve, capture, capture replay with the same key (B-03), GET order, GET capture, and one lost answer (B-07: the subject discards the Wire's answer to one capture after it returned, then a read-back must show exactly one capture); at most 20 calls and 1.00 USD per order. `scripts/sandbox-conformance.mjs` is the only way to run it: it refuses unless stdin and stderr are TTYs, `CI` and every CI marker are unset, `CLAUDECODE` and `CLAUDE_CODE_REMOTE` are unset, and `UMS_SANDBOX_TESTS=1`; it then runs vitest on that one file with `--pool=forks`, an empty `execArgv` and a minimal child environment (the names `packages/config` reads, nothing else), so no runner flag trips `transport_env_override`. With any lock missing the suite stops at the first call with the blocked reason, before any Wire call. After a run it writes, outside the repository, `~/unitmarket-sandbox-run/<utc date>/calls.json` (the transport's redacted call log in the input format of `pnpm record:fixtures`) and `summary.md` (case, pass or fail, HTTP status, debug id, order and capture ids cut to their last 6 characters). `scripts/owner-secrets.mjs` (TTY only) prints `UMS_SESSION_SECRET`, `UMS_APPROVAL_SECRET`, `UMS_LINK_SECRET` (32 random bytes each) and `UMS_DEMO_PASSCODE_HASH` (from a passcode typed twice, `hashPasscode`) as `NAME=value` lines for the owner to paste into `.env.local`; it writes no file. `packages/paypal/src/paypal.sandbox.contract.test.ts` keeps only its offline guard. Finally re-check every command in `docs/owner/MVPB-OWNER-STEPS.md` against what merged and fix the doc.
+
+Inputs: `packages/testkit/src/{stack.ts, conformance.ts}`, BU-2 `apps/web/src/server/outbound.server.ts`, `packages/security` `hashPasscode`, `tools/spike-kit` refusal list (pattern), `docs/owner/MVPB-OWNER-STEPS.md`.
+
+Outputs: `packages/testkit/src/{stack.ts, conformance.ts}` (hook signature), `tests/mvp-b/b-l2-sandbox.contract.test.ts`, `packages/paypal/src/paypal.sandbox.contract.test.ts`, `scripts/{sandbox-conformance.mjs, owner-secrets.mjs}` and tests, root `package.json` (`sandbox:conformance`, `owner:secrets`), one `NAMED_EXEMPTIONS` entry (no-package-escape for the new test file only) and its pin, `docs/owner/MVPB-OWNER-STEPS.md` (commands only).
+
+Order: commit 1 is tests only, run red; then implement.
+
+Acceptance tests (all offline; none sets `UMS_SANDBOX_TESTS=1` with real values):
+
+- `corepack pnpm vitest run --project unit packages/testkit/src/sandbox-subject.test.ts scripts/owner-secrets.test.ts`: the hook prints the link once and polls; the subject refuses a missing transport; the secrets tool prints 4 names, values of the right length, and refuses without a TTY.
+- `corepack pnpm vitest run --project contract tests/mvp-b/b-l2-sandbox.contract.test.ts`: without `UMS_SANDBOX_TESTS=1` the owner part is skipped, the subject is never built and no socket opens.
+- `corepack pnpm vitest run --project integration scripts/sandbox-conformance.integration.test.ts`: refusals for no TTY, `CI=1`, `GITHUB_ACTIONS=true`, `CLAUDECODE=1`, missing flag; a run with a fake config and a fake Wire shows the child environment holds only the allowed names and the Wire self-check in the vitest worker reports `env_override false`.
+- `corepack pnpm vitest run --project adversarial packages/testkit/src/sandbox-subject.adversarial.test.ts`: each lock missing stops the suite at the first call with its reason and 0 Wire calls; more than 20 calls or an amount above 1.00 USD is refused by the subject.
+- `corepack pnpm ci`: exit 0.
+
+Do not: run the owner part; read real credentials; write secrets to any file; widen the scope or budget; let the runner pass `--require`, `--import` or `NODE_OPTIONS`; touch `docs/decision-log.md`.
+
+Evidence for the PR: red summary; pass counts; the child-environment name list; the updated owner steps diff.
+
+Branch: `feat/testkit-sandbox-subject` Commit: `feat(testkit): owner-run sandbox subject behind five locks, runner and secrets helper (BU-6)`
