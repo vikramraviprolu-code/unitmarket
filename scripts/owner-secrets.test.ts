@@ -157,3 +157,34 @@ describe('the hidden prompt', () => {
     expect(seen).not.toContain('hunter2');
   });
 });
+
+describe('the passcode length boundary', () => {
+  it('12 characters are accepted and 11 are refused', async () => {
+    const ok = rig({ answers: ['abcdefghijkl', 'abcdefghijkl'] });
+    expect((await runOwnerSecrets(ok.deps)).ok).toBe(true);
+    const short = rig({ answers: ['abcdefghijk', 'abcdefghijk'] });
+    expect(await runOwnerSecrets(short.deps)).toEqual({ ok: false, code: 'passcode_too_short' });
+  });
+});
+
+// A real terminal for the entry point, through script(1) when the machine has it: the command must
+// detect it (stdin and stderr are both the pty) and go on to ask, instead of refusing as not_a_tty.
+const hasScript = spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
+describe.skipIf(!hasScript)('on a pseudo-terminal', () => {
+  it('the command sees the terminal, asks for the passcode and prints no secret', () => {
+    const r = spawnSync(
+      'script',
+      [
+        '-qec',
+        `${process.execPath} ${join(REPO_ROOT, 'scripts', 'owner-secrets.mjs')}`,
+        '/dev/null',
+      ],
+      { cwd: REPO_ROOT, encoding: 'utf8', input: '', env: {}, timeout: 60_000 },
+    );
+    const out = `${r.stdout}${r.stderr}`;
+    // the terminal check passed: the first thing printed is the prompt, not a refusal
+    expect(out).toContain('Demo passcode');
+    expect(out).not.toContain('not_a_tty');
+    expect(out).not.toMatch(/^UMS_[A-Z_]+=/m);
+  }, 90_000);
+});

@@ -290,3 +290,21 @@ describe('--only payee-echo', () => {
     expect(run.r.status).toBe(1);
   });
 });
+
+// A real terminal for the entry point, through script(1) when the machine has it: with both streams
+// a terminal the command goes past the terminal check and stops at the next refusal (the flag).
+const hasScript = spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
+describe.skipIf(!hasScript)('refusals on a pseudo-terminal', () => {
+  it('the command sees the terminal: without the flag it refuses with flag_missing, not not_a_tty', () => {
+    const r = spawnSync('script', ['-qec', `${process.execPath} ${SCRIPT}`, '/dev/null'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      env: {},
+      timeout: 60_000,
+    });
+    const out = `${r.stdout}${r.stderr}`;
+    expect(out).toContain('flag_missing');
+    expect(out).not.toContain('not_a_tty');
+    expect(r.status).toBe(2);
+  }, 90_000);
+});
