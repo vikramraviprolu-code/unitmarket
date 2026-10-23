@@ -9,7 +9,7 @@
 import { applyMoneyEvent } from '@umsbx/entitlements';
 import { appendLedgerEntry, LedgerRuleError } from '@umsbx/ledger';
 import { issueReceiptIfChanged } from '@umsbx/receipts';
-import { IdSchema, RefundResSchema, err, ok } from '@umsbx/contracts';
+import { IdSchema, OrderReadSchema, RefundResSchema, err, ok } from '@umsbx/contracts';
 import type {
   Actor,
   CoreDeps,
@@ -214,12 +214,243 @@ const answerOf = (state: string): Executed => {
   return err({ code: state === 'rejected' ? ('rejected' as const) : ('unknown' as const) });
 };
 
+// ---------------------------------------------------------------------------------------------
+// What PayPal itself still holds (BU-4, ASM-53)
+//
+// A refund made at the PayPal dashboard is invisible to the local remaining amount. Before the
+// first send, the order is read and the stored request amount is compared with PayPal's own
+// remaining amount: the captured amount minus the refunds listed as COMPLETED or PENDING. Above it,
+// nothing is sent and the request is closed. Without a usable read, nothing is sent either.
+
+/** A read of the order at most this old is reused for the check. */
+const REMOTE_READ_REUSE_MS = 60_000;
+
+// Per PayPal port, so two apps in one process (or two tests) never share a read. A cache miss only
+// costs a read; no answer depends on it being filled.
+const recentReads = new WeakMap<object, Map<string, { at: number; read: OrderReadOk }>>();
+
+/** The order as PayPal shows it now, or a read taken within the last 60 s. Null when unusable. */
+async function readOrderForRefund(
+  d: PaymentsDeps,
+  provider_order_id: string,
+): Promise<OrderReadOk | null> {
+  const kept = recentReads.get(d.paypal) ?? new Map<string, { at: number; read: OrderReadOk }>();
+  recentReads.set(d.paypal, kept);
+  const now = d.clock.now().getTime();
+  const hit = kept.get(provider_order_id);
+  if (hit !== undefined && now - hit.at >= 0 && now - hit.at <= REMOTE_READ_REUSE_MS) {
+    return hit.read;
+  }
+  let raw: unknown;
+  try {
+    raw = await d.paypal.getOrder(provider_order_id);
+  } catch {
+    return null; // a read that fails is not a licence to send
+  }
+  const parsed = OrderReadSchema.safeParse(raw);
+  if (
+    !parsed.success ||
+    parsed.data.kind !== 'order' ||
+    parsed.data.provider_order_id !== provider_order_id
+  ) {
+    return null;
+  }
+  for (const [key, entry] of kept) {
+    if (now - entry.at > REMOTE_READ_REUSE_MS || now - entry.at < 0) kept.delete(key); // too old to be reused
+  }
+  kept.set(provider_order_id, { at: now, read: parsed.data });
+  return parsed.data;
+}
+
+/** What one read says: captured, remaining (negative when PayPal lists more than was captured), and the refund ids it lists. */
+interface RemoteOk {
+  kind: 'ok';
+  captured_minor: number;
+  remaining_minor: number;
+  listed: ReadonlySet<string>;
+}
+type Remote = RemoteOk | { kind: 'unavailable' };
+
+/** PayPal's remaining amount for the capture of a request. Negative when PayPal holds more refunds than captured. */
+async function remoteRemaining(d: PaymentsDeps, rq: RequestRow): Promise<Remote> {
+  const found = (
+    await d.db.query<{ provider_order_id: string | null }>(
+      `SELECT p.provider_order_id FROM order_units u JOIN provider_orders p ON p.order_id = u.order_id
+        WHERE u.id = $1 ORDER BY (p.id IS NOT DISTINCT FROM u.provider_order_ref) DESC, p.id LIMIT 1`,
+      [rq.unit_id],
+    )
+  ).rows[0]?.provider_order_id;
+  if (found === undefined || found === null) return { kind: 'unavailable' };
+  const read = await readOrderForRefund(d, found);
+  if (read === null) return { kind: 'unavailable' };
+  const unit = read.units.find((u) => u.capture?.capture_id === rq.capture_id);
+  const captured = unit?.capture?.amount;
+  if (unit === undefined || captured === undefined || captured.currency !== rq.currency) {
+    return { kind: 'unavailable' };
+  }
+  let held = 0;
+  const listed = new Set<string>();
+  for (const x of unit.refunds ?? []) {
+    if (x.amount.currency !== captured.currency) return { kind: 'unavailable' };
+    listed.add(x.refund_id);
+    // A refund id listed twice is counted twice: the conservative reading.
+    if (x.status === 'COMPLETED' || x.status === 'PENDING') held += x.amount.minor;
+  }
+  return {
+    kind: 'ok',
+    captured_minor: captured.minor,
+    remaining_minor: captured.minor - held,
+    listed,
+  };
+}
+
+/** The read that let a request through, kept for the check under the lock. */
+type Gate = RemoteOk;
+
+/**
+ * Closes a request that asks for more than PayPal holds: `failed` (reservation freed), its put-off
+ * operation closed, one refund_unbooked alert and an audit entry. Nothing was sent. When PayPal
+ * lists more refunds than it captured, the alert has its own reason and the real (negative)
+ * number: that is a fact for a human, not a case to clamp.
+ */
+async function closeOver(
+  tx: SqlExecutor,
+  d: PaymentsDeps,
+  unit: UnitFacts,
+  rq: RequestRow,
+  f: { remaining_minor: number; captured_minor: number; in_flight_minor: number },
+): Promise<void> {
+  const at = d.clock.now().toISOString();
+  await tx.query("UPDATE refund_requests SET state = 'failed', updated_at = $2 WHERE id = $1", [
+    rq.id,
+    at,
+  ]);
+  const op = await loadOperationByRequestId(tx, requestIdFor('refund', rq.id), { lock: true });
+  if (op !== null && op.state === 'unknown') {
+    await tx.query(
+      `UPDATE operations SET state = 'failed', failure_reason = 'invalid_request', lease_until = NULL, next_retry_at = NULL, updated_at = $2 WHERE id = $1`,
+      [op.id, at],
+    );
+  }
+  const exceeds = f.remaining_minor < 0;
+  await raiseOpsAlert(tx, d, {
+    kind: 'refund_unbooked',
+    order_id: unit.order_id,
+    unit_id: unit.id,
+    reason: exceeds ? 'remote_refunds_exceed_capture' : `over_refund_remote_${rq.id}`,
+    detail: {
+      refund_request_id: rq.id,
+      requested_minor: rq.amount_minor,
+      captured_minor: f.captured_minor,
+      remote_remaining_minor: f.remaining_minor,
+      ...(exceeds ? {} : { in_flight_minor: f.in_flight_minor }),
+    },
+  });
+  await d.audit.record(tx, {
+    actor: { kind: 'system' },
+    action: 'refund.failed',
+    target: rq.id,
+    reason: 'over_refund_remote',
+    detail: {
+      unit_id: unit.id,
+      requested_minor: rq.amount_minor,
+      remote_remaining_minor: f.remaining_minor,
+      in_flight_minor: f.in_flight_minor,
+    },
+  });
+}
+
+/**
+ * Our own refunds of the unit that PayPal's read may not show yet: sent, unknown, pending,
+ * unresolved or completed, whose refund id is missing or not in the read's list. They are
+ * subtracted from what the read says is left. A refund whose answer was lost has no id, so it is
+ * subtracted even when the read already lists it (the safe side: it can only close a request).
+ */
+async function inFlightMinor(
+  tx: SqlExecutor,
+  unit_id: Id,
+  except: Id,
+  listed: ReadonlySet<string>,
+): Promise<number> {
+  const rows = await tx.query<{ amount_minor: number; refund_id: string | null }>(
+    `SELECT amount_minor, refund_id FROM refund_requests
+      WHERE unit_id = $1 AND id <> $2 AND state IN ('sent', 'unknown', 'pending', 'unresolved', 'completed')`,
+    [unit_id, except],
+  );
+  return rows.rows
+    .filter((r) => r.refund_id === null || !listed.has(r.refund_id))
+    .reduce((sum, r) => sum + Number(r.amount_minor), 0);
+}
+
+/**
+ * The check before the first send, made outside any lock because it reads PayPal. `done` is set
+ * when nothing may be sent: `unavailable` leaves the request `requested` with a due operation (the
+ * due-work pass asks again); `over` closes it. Otherwise `gate` is the read that let it through
+ * (null when the request is not `requested`: the prepare transaction answers). The prepare
+ * transaction repeats the comparison under the order lock, with our refunds in flight subtracted
+ * (F1): two executions at once, or a lost answer that never landed, cannot both pass.
+ */
+async function checkRemote(
+  d: PaymentsDeps,
+  request_id: Id,
+): Promise<{ done: Executed } | { done: null; gate: Gate | null }> {
+  // Read outside any transaction: the port may use the database itself.
+  const peek = await loadRequest(d.db, request_id);
+  if (peek === null || peek.state !== 'requested') return { done: null, gate: null }; // the transaction below answers
+  const remote = await remoteRemaining(d, peek);
+  if (remote.kind === 'ok' && remote.remaining_minor >= peek.amount_minor) {
+    return { done: null, gate: remote };
+  }
+  const done = await d.db.transaction(async (tx): Promise<Executed> => {
+    // Lock order: the order and its operations, then the unit, then the request.
+    await lockOrderOfUnit(tx, peek.unit_id);
+    const unit = await loadUnitFacts(tx, peek.unit_id, true);
+    if (unit === null) return err({ code: 'rejected' });
+    const rq = await loadRequest(tx, request_id, true);
+    if (rq === null) return err({ code: 'rejected' });
+    if (rq.state !== 'requested') return answerOf(rq.state);
+    const at = d.clock.now().toISOString();
+    if (remote.kind === 'unavailable') {
+      const key = requestIdFor('refund', rq.id);
+      const op = await loadOperationByRequestId(tx, key, { lock: true });
+      if (op === null) {
+        await tx.query(
+          `INSERT INTO operations (id, order_id, unit_id, kind, state, attempt, request_id, first_sent_at,
+             idem_safe_until, lease_until, next_retry_at, reconcile_until, failure_reason, created_at, updated_at)
+           VALUES ($1, $2, $3, 'refund', 'unknown', 1, $4, NULL, NULL, NULL, $5, $6, NULL, $7, $7)`,
+          [
+            d.ids.next('opr'),
+            unit.order_id,
+            unit.id,
+            key,
+            addMs(at, backoffMs(d.config, 1)),
+            addMs(at, d.config.reconcile_window_ms),
+            at,
+          ],
+        );
+      }
+      return err({ code: 'unknown' });
+    }
+    await closeOver(tx, d, unit, rq, {
+      remaining_minor: remote.remaining_minor,
+      captured_minor: remote.captured_minor,
+      in_flight_minor: await inFlightMinor(tx, unit.id, rq.id, remote.listed),
+    });
+    return ok({ status: 'FAILED' as const });
+  });
+  return { done };
+}
+
 export async function executeRefund(
   d: PaymentsDeps,
   i: { refund_request_id: Id; scenario?: string | null },
 ): Promise<Executed> {
   // Read outside any transaction: the port may use the database itself.
   if (!(await d.switches.isOn('refunds_enabled'))) return err({ code: 'rejected' });
+  // BU-4: never send an amount PayPal does not hold, and never send blind.
+  const checked = await checkRemote(d, i.refund_request_id);
+  if (checked.done !== null) return checked.done;
+  const gate = checked.gate;
   type Prepared =
     { kind: 'done'; result: Executed } | { kind: 'send'; rq: RequestRow; key: string };
   const prepared = await d.db.transaction(async (tx): Promise<Prepared> => {
@@ -232,6 +463,18 @@ export async function executeRefund(
     const rq = await loadRequest(tx, i.refund_request_id, true);
     if (rq === null) return { kind: 'done', result: err({ code: 'rejected' }) };
     if (rq.state !== 'requested') return { kind: 'done', result: answerOf(rq.state) };
+    if (gate !== null) {
+      // Under the order lock: what the read said, less our own refunds it may not show yet.
+      const inFlight = await inFlightMinor(tx, unit.id, rq.id, gate.listed);
+      if (gate.remaining_minor - inFlight < rq.amount_minor) {
+        await closeOver(tx, d, unit, rq, {
+          remaining_minor: gate.remaining_minor,
+          captured_minor: gate.captured_minor,
+          in_flight_minor: inFlight,
+        });
+        return { kind: 'done', result: ok({ status: 'FAILED' as const }) };
+      }
+    }
     const at = d.clock.now().toISOString();
     const key = requestIdFor('refund', rq.id);
     await tx.query(
@@ -249,6 +492,13 @@ export async function executeRefund(
         addMs(at, d.config.operation_lease_ms),
       ],
     );
+    // A send that was put off (BU-4) already has its operation: it becomes the sent one.
+    await tx.query(
+      `UPDATE operations SET state = 'sent', attempt = 1, first_sent_at = $2, idem_safe_until = $3, lease_until = $4,
+         next_retry_at = NULL, reconcile_until = NULL, updated_at = $2
+       WHERE request_id = $1 AND state = 'unknown' AND first_sent_at IS NULL`,
+      [key, at, addMs(at, d.config.idem_safe_window_ms), addMs(at, d.config.operation_lease_ms)],
+    );
     await tx.query("UPDATE refund_requests SET state = 'sent', updated_at = $2 WHERE id = $1", [
       rq.id,
       at,
@@ -258,12 +508,18 @@ export async function executeRefund(
   if (prepared.kind === 'done') return prepared.result;
 
   // Outside any transaction (P14). A crash here leaves the operation `sent`; recovery reads.
-  const raw = await d.paypal.refundCapture({
-    capture_id: prepared.rq.capture_id,
-    request_id: prepared.key,
-    amount: { currency: prepared.rq.currency, minor: prepared.rq.amount_minor },
-    note: prepared.rq.reason,
-  });
+  let raw: unknown;
+  try {
+    raw = await d.paypal.refundCapture({
+      capture_id: prepared.rq.capture_id,
+      request_id: prepared.key,
+      amount: { currency: prepared.rq.currency, minor: prepared.rq.amount_minor },
+      note: prepared.rq.reason,
+    });
+  } finally {
+    // Whatever happened, the order at PayPal may have changed: the next check reads again.
+    recentReads.delete(d.paypal);
+  }
   const parsed = RefundResSchema.safeParse(raw);
   return recordCall(d, prepared.rq.id, parsed.success ? parsed.data : { kind: 'timeout' });
 }
@@ -563,12 +819,24 @@ export async function resumeRefund(d: PaymentsDeps, op: RefundOp, ended: boolean
   const request_id = requestOf(op);
   const rq = await loadRequest(d.db, request_id);
   if (rq === null) return;
+  if (op.kind === 'refund' && rq.state === 'requested' && rq.refund_id === null) {
+    // BU-4: the first send was put off because PayPal's remaining amount could not be read.
+    // Nothing was ever sent, so this is the whole first-send path again, check included.
+    await executeRefund(d, { refund_request_id: request_id });
+    if (ended) await closeUnsent(d, op, request_id);
+    return;
+  }
   if (op.kind === 'refund_readback' || rq.refund_id !== null) {
     const r = await readBack(d, request_id);
     if (r.ok && r.value.status !== 'PENDING') return;
     if (ended) await closeRefundUnknown(d, op, true);
     return;
   }
+  // The resend below is NOT checked against PayPal's remaining amount, on purpose: it carries the
+  // same PayPal-Request-Id and the same amount as the first call, so PayPal answers it from the
+  // first call's result and never refunds twice. A check here would see the refund the first call
+  // made (it may have landed) as money already gone and wrongly close a refund that exists.
+  // Pinned by a test ("the resend of a lost answer is not checked").
   const at = d.clock.now().toISOString();
   if (op.idem_safe_until === null || Date.parse(at) >= Date.parse(op.idem_safe_until)) {
     // PayPal may have forgotten the key: never send again.
@@ -589,6 +857,39 @@ export async function resumeRefund(d: PaymentsDeps, op: RefundOp, ended: boolean
   });
   const parsed = RefundResSchema.safeParse(raw);
   await recordCall(d, request_id, parsed.success ? parsed.data : { kind: 'timeout' });
+}
+
+/**
+ * The 24 h window of a put-off send ended and PayPal's remaining amount was never readable. The
+ * refund was never sent, so the request is provably not a refund: it is closed `failed`, its
+ * reservation is freed and a human is told.
+ */
+async function closeUnsent(d: PaymentsDeps, op: RefundOp, request_id: Id): Promise<void> {
+  const rq = await loadRequest(d.db, request_id);
+  if (rq === null || rq.state !== 'requested') return;
+  const unit = await loadUnitFacts(d.db, rq.unit_id, false);
+  if (unit === null) return;
+  await d.db.transaction(async (tx) => {
+    const at = d.clock.now().toISOString();
+    await lockOrderRows(tx, unit.order_id);
+    const closed = await tx.query(
+      "UPDATE refund_requests SET state = 'failed', updated_at = $2 WHERE id = $1 AND state = 'requested' RETURNING id",
+      [rq.id, at],
+    );
+    if (closed.rows.length === 0) return;
+    await tx.query(
+      `UPDATE operations SET state = 'failed', failure_reason = 'window_expired', lease_until = NULL, next_retry_at = NULL, updated_at = $2
+       WHERE id = $1 AND state = 'unknown'`,
+      [op.id, at],
+    );
+    await raiseOpsAlert(tx, d, {
+      kind: 'refund_failed',
+      order_id: unit.order_id,
+      unit_id: unit.id,
+      reason: `refund_not_sent_${rq.id}`,
+      detail: { refund_request_id: rq.id },
+    });
+  });
 }
 
 /**
