@@ -4,6 +4,7 @@ import { createCertificateSource } from './webhook-cert';
 import { mutableClock } from './test-support';
 import {
   HOUR,
+  MINUTE,
   certHost,
   certUrl,
   certificatePem,
@@ -59,7 +60,11 @@ describe('certificate source state over time (fake clock, fake transport)', () =
     const urls = Array.from({ length: 9 }, (_, i) =>
       certUrl({ path: `/v1/notifications/certs/CERT-SYN-${i + 1}` }),
     );
-    for (const u of urls) await source.get(u);
+    // 11 minutes apart: never more than the 6 fetches an hour the budget allows
+    for (const u of urls) {
+      await source.get(u);
+      clock.advance(11 * MINUTE);
+    }
     expect(t.calls).toHaveLength(9);
     for (const u of urls.slice(1)) await source.get(u);
     expect(t.calls).toHaveLength(9);
@@ -67,7 +72,10 @@ describe('certificate source state over time (fake clock, fake transport)', () =
     expect(t.calls).toHaveLength(10);
   });
 
-  it('a failure is not cached: the next lookup tries again and can succeed', async () => {
+  // H1 (review of CO-1): a failure IS cached, deliberately. An anonymous caller can name any
+  // allow-listed URL, and every fetch costs one of the approval's daily calls. Before this rule a
+  // URL that answers 404 was fetched again by every request. Successes are cached by URL as before.
+  it('a failure is cached for 10 minutes, then the URL is tried again and can succeed', async () => {
     const clock = mutableClock(T0);
     const answers: TransportResult[] = [
       { kind: 'timeout' },
@@ -76,17 +84,35 @@ describe('certificate source state over time (fake clock, fake transport)', () =
     ];
     const t = fakeTransport((_r, n) => answers[n - 1] as TransportResult);
     const source = createCertificateSource({ transport: t, clock });
-    expect((await source.get(certUrl())).kind).toBe('unavailable');
-    expect((await source.get(certUrl())).kind).toBe('unavailable');
+    expect(await source.get(certUrl())).toEqual({ kind: 'unavailable', why: 'fetch' });
+    clock.advance(10 * MINUTE - 1);
+    expect(await source.get(certUrl())).toEqual({ kind: 'unavailable', why: 'fetch' });
+    expect(t.calls).toHaveLength(1); // still inside the negative window: no call
+    clock.advance(1);
+    expect(await source.get(certUrl())).toEqual({ kind: 'unavailable', why: 'fetch' });
+    expect(t.calls).toHaveLength(2); // the window ended: one new try, which fails again
+    clock.advance(10 * MINUTE);
     expect((await source.get(certUrl())).kind).toBe('ok');
+    expect(t.calls).toHaveLength(3);
+    await source.get(certUrl()); // success is cached
     expect(t.calls).toHaveLength(3);
   });
 
-  it('a certificate that is expired when fetched is not cached', async () => {
+  it('every kind of failure is cached with its reason', async () => {
     const clock = mutableClock(T0);
     const t = fakeTransport(() => pemResponse(pemValidUntil('2026-10-01T00:00:00Z')));
     const source = createCertificateSource({ transport: t, clock });
     expect(await source.get(certUrl())).toEqual({ kind: 'unavailable', why: 'validity' });
+    expect(await source.get(certUrl())).toEqual({ kind: 'unavailable', why: 'validity' });
+    expect(t.calls).toHaveLength(1);
+  });
+
+  it('a certificate that is expired when fetched is not cached as a success', async () => {
+    const clock = mutableClock(T0);
+    const t = fakeTransport(() => pemResponse(pemValidUntil('2026-10-01T00:00:00Z')));
+    const source = createCertificateSource({ transport: t, clock });
+    expect(await source.get(certUrl())).toEqual({ kind: 'unavailable', why: 'validity' });
+    clock.advance(10 * MINUTE);
     await source.get(certUrl());
     expect(t.calls).toHaveLength(2);
   });
@@ -107,7 +133,7 @@ describe('certificate source state over time (fake clock, fake transport)', () =
     expect(t.calls).toHaveLength(1);
   });
 
-  it('simultaneous lookups of different URLs fetch each once; a failed flight is forgotten', async () => {
+  it('simultaneous lookups of different URLs fetch each once; a failed flight leaves no flight behind', async () => {
     const clock = mutableClock(T0);
     const t = fakeTransport((r) =>
       r.path.includes('CERT-A')
@@ -122,6 +148,9 @@ describe('certificate source state over time (fake clock, fake transport)', () =
     expect(ra2.kind).toBe('unavailable');
     expect(rb.kind).toBe('ok');
     expect(t.calls).toHaveLength(2);
+    await source.get(a); // the failed flight is in the negative cache, not in flight
+    expect(t.calls).toHaveLength(2);
+    clock.advance(10 * MINUTE);
     await source.get(a);
     expect(t.calls).toHaveLength(3);
   });

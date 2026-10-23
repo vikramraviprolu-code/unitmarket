@@ -5,6 +5,10 @@ import type { OutboundRequest } from '@umsbx/contracts';
 import {
   CERT_CACHE_MAX_AGE_MS,
   CERT_CACHE_MAX_ENTRIES,
+  CERT_FETCH_BUDGET_PER_HOUR,
+  CERT_FETCH_WINDOW_MS,
+  CERT_NEGATIVE_MAX_ENTRIES,
+  CERT_NEGATIVE_TTL_MS,
   EXPECTED_CERT_SUBJECTS,
   createCertCache,
   createCertificateSource,
@@ -35,6 +39,12 @@ describe('limits', () => {
   it('the cache keeps 8 entries for at most 24 hours', () => {
     expect(CERT_CACHE_MAX_ENTRIES).toBe(8);
     expect(CERT_CACHE_MAX_AGE_MS).toBe(24 * HOUR);
+  });
+  it('outbound fetches: at most 6 an hour, failures remembered 10 minutes, at most 32 of them', () => {
+    expect(CERT_FETCH_BUDGET_PER_HOUR).toBe(6);
+    expect(CERT_FETCH_WINDOW_MS).toBe(HOUR);
+    expect(CERT_NEGATIVE_TTL_MS).toBe(10 * 60_000);
+    expect(CERT_NEGATIVE_MAX_ENTRIES).toBe(32);
   });
   it('no certificate subject is pinned yet (recorded on the first owner run)', () => {
     expect(EXPECTED_CERT_SUBJECTS).toEqual([]);
@@ -152,6 +162,16 @@ describe('createCertCache', () => {
     expect(cache.get('u1')).toBeNull();
     for (const k of ['u2', 'u3', 'u4', 'u5', 'u6', 'u7', 'u8', 'u9'])
       expect(cache.get(k)).not.toBeNull();
+  });
+
+  it('is least-recently-used: a lookup keeps an entry, the 9th evicts the one unused longest', () => {
+    const cache = createCertCache(mutableClock(T0));
+    for (let i = 1; i <= 8; i++) cache.set(`u${i}`, cert());
+    expect(cache.get('u1')).not.toBeNull(); // u1 is now the newest, u2 the oldest
+    cache.set('u9', cert());
+    expect(cache.get('u2')).toBeNull();
+    expect(cache.get('u1')).not.toBeNull();
+    for (const k of ['u3', 'u4', 'u5', 'u6', 'u7', 'u8', 'u9']) expect(cache.get(k)).not.toBeNull();
   });
 
   it('re-setting a URL replaces it and does not evict another', () => {

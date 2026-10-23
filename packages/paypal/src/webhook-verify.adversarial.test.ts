@@ -148,6 +148,50 @@ describe('forgery attempts are bad_signature and cost nothing', () => {
     expect(certs.calls).toHaveLength(0);
   });
 
+  it('base64 must be canonical: padding bits must be zero (w== is a signature shape, x== is not)', async () => {
+    const d = deliver(f);
+    const sig = d.headers['paypal-transmission-sig'] as string;
+    // a 256-byte signature ends in two characters and ==; the second carries 4 bits that must be 0
+    expect(sig.endsWith('==')).toBe(true);
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const last = sig[sig.length - 3] as string;
+    const nonCanonical = alphabet[(alphabet.indexOf(last) + 1) % 64] as string;
+    const forged = sig.slice(0, -3) + nonCanonical + '==';
+    // Node decodes both to the same bytes, so without the check this would verify
+    const certs = okCertificates();
+    expect(
+      await run(
+        { ...d, headers: { ...d.headers, 'paypal-transmission-sig': forged } },
+        { certificates: certs },
+      ),
+    ).toEqual(bad('signature'));
+    expect(certs.calls).toHaveLength(0);
+    expect(await run(d)).toMatchObject({ kind: 'verified' });
+  });
+
+  it('the same rule at the other padding: AA== and AAA= pass the shape check, AB== and AAB= do not', async () => {
+    const d = deliver(f);
+    const at = async (s: string) => {
+      const certs = okCertificates();
+      await run(
+        { ...d, headers: { ...d.headers, 'paypal-transmission-sig': s } },
+        { certificates: certs },
+      );
+      return certs.calls.length;
+    };
+    expect(await at('AA==')).toBe(1);
+    expect(await at('AAAA' + 'AA==')).toBe(1);
+    expect(await at('AAA=')).toBe(1);
+    expect(await at('QQ==')).toBe(1); // Q = 010000: low 4 bits 0000
+    expect(await at('Qg==')).toBe(1); // g = 100000
+    expect(await at('AAE=')).toBe(1); // E = 000100: low 2 bits 00
+    expect(await at('AB==')).toBe(0);
+    expect(await at('QR==')).toBe(0); // R = 010001
+    expect(await at('AAB=')).toBe(0);
+    expect(await at('AAAA' + 'AB==')).toBe(0);
+    expect(await at('AAA=' + 'AAAA')).toBe(0); // padding only at the very end
+  });
+
   it('the signature length cap is 1368 characters: that long is looked at, one group of 4 more is not', async () => {
     const d = deliver(f);
     const at = async (length: number) => {
