@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { REPO_ROOT, materialize, runGuard } from './test-helpers';
 
@@ -115,6 +115,8 @@ const BAD: Array<[fixture: string, rule: string]> = [
   ['bad-service-scalar', 'service-shape'],
   ['bad-env-entry-scalar', 'service-shape'],
   ['bad-fixed-novalue', 'service-shape'],
+  ['bad-fixed-extra-field', 'service-shape'],
+  ['bad-disk-extra-key', 'disk'],
 ];
 
 describe('check-hosting', () => {
@@ -171,11 +173,10 @@ describe('check-hosting', () => {
     expect(new Set(BAD.map(([n]) => n)).size).toBe(BAD.length);
   });
 
-  it('allowed env names are the names packages/config reads plus the reviewed extras', () => {
-    const load = readFileSync(`${REPO_ROOT}/packages/config/src/load.ts`, 'utf8');
+  const names = (loadText: string): string[] => {
     const read = new Set(
-      [...load.matchAll(/'((?:UMS_|PAYPAL_|NEXT_PUBLIC_)[A-Z0-9_]+|DATABASE_URL)'/g)].map(
-        (m) => m[1],
+      [...loadText.matchAll(/'((?:UMS_|PAYPAL_|NEXT_PUBLIC_)[A-Z0-9_]+|DATABASE_URL)'/g)].map(
+        (m) => m[1] as string,
       ),
     );
     // Deliberately not allowed in the blueprint: the default corridor list is kept, and a database
@@ -188,16 +189,40 @@ describe('check-hosting', () => {
       'NODE_ENV',
       'NEXT_TELEMETRY_DISABLED',
     ];
-    const expected = [...read, ...extras].sort();
+    // A set: other lanes make load.ts read the extras too, and that must not break this test.
+    return [...new Set([...read, ...extras])].sort();
+  };
+
+  it('allowed env names are the names packages/config reads plus the reviewed extras', () => {
+    const load = readFileSync(`${REPO_ROOT}/packages/config/src/load.ts`, 'utf8');
     const r = spawnSync(
       process.execPath,
       [`${REPO_ROOT}/scripts/check-hosting.mjs`, '--print-names'],
-      {
-        encoding: 'utf8',
-      },
+      { encoding: 'utf8' },
     );
     expect(r.status).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual(expected);
+    expect(JSON.parse(r.stdout)).toEqual(names(load));
+  });
+
+  it('the names comparison tolerates a load.ts that already reads an extra name', () => {
+    const base = "val(env, 'UMS_MODE'); val(env, 'UMS_CORRIDORS'); val(env, 'DATABASE_URL');";
+    const withExtras = `${base} val(env, 'UMS_OUTBOUND_SCOPE'); val(env, 'UMS_OPERATOR_TOTP_KEYS');`;
+    expect(names(withExtras)).toEqual(names(base));
+    expect(new Set(names(withExtras)).size).toBe(names(withExtras).length);
+  });
+
+  it('refuses an upper-case PayPal host', () => {
+    const dir = materialize('hosting/bad-paypal-host');
+    const file = `${dir}/render.yaml`;
+    const text = readFileSync(file, 'utf8');
+    writeFileSync(
+      file,
+      text.replace(/api-m\.sandbox\.paypal\.com/, (h) => h.toUpperCase()),
+    );
+    expect(readFileSync(file, 'utf8')).toContain('API-M.SANDBOX.');
+    const r = runGuard(GUARD, dir);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('hosting: FAIL paypal-host');
   });
 
   it('the real render.yaml is printable ASCII plus LF only', () => {
