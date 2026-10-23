@@ -32,6 +32,8 @@ import { minorUnitsFor, toDecimalString } from './money';
 import { createTokenCache } from './oauth';
 import type { TokenCache } from './oauth';
 import { buildRecord } from './redact-call';
+import { createCertificateSource } from './webhook-cert';
+import type { CertificateSource } from './webhook-cert';
 import { verifyWebhook } from './webhook-verify';
 
 export interface ProviderCallRecord {
@@ -54,6 +56,13 @@ export interface AdapterDeps {
   /** null in dry-run: fixtures ignore the token, so no OAuth call is made. */
   credentials: { client_id: Secret; client_secret: Secret } | null;
   record: (c: ProviderCallRecord) => Promise<void>;
+  /**
+   * PAYPAL_WEBHOOK_ID. null or omitted: no webhook can be verified, every well-formed delivery is
+   * `unverifiable` (503). Optional so the callers written before MVP-C keep compiling.
+   */
+  webhook_id?: string | null;
+  /** Where signing certificates come from. Default: fetched through `transport` and cached. */
+  certificates?: CertificateSource;
 }
 
 // Placeholder bearer value for a dry-run transport without credentials. Not a credential.
@@ -229,6 +238,10 @@ export function createPayPalAdapter(d: AdapterDeps): PayPalPort {
     return out.result;
   }
 
+  const certificates =
+    d.certificates ??
+    createCertificateSource({ transport: d.transport, clock: d.clock, log: d.log });
+
   return {
     environment: d.transport.kind,
 
@@ -323,6 +336,7 @@ export function createPayPalAdapter(d: AdapterDeps): PayPalPort {
       }) as Promise<RefundRes>;
     },
 
-    verifyWebhook,
+    verifyWebhook: (w) =>
+      verifyWebhook({ clock: d.clock, webhook_id: d.webhook_id ?? null, certificates }, w),
   };
 }

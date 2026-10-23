@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "label": "synthetic",
+    "note": "Hand-written skeleton. The signature and certificate URL are made in the tests at run time; no key or certificate is stored here."
+  },
+  "headers": {
+    "paypal-transmission-id": "SYN-TRANS-0010",
+    "paypal-transmission-time": "2026-10-23T12:00:00Z",
+    "paypal-auth-algo": "SHA256withRSA",
+    "paypal-transmission-sig": "[redacted]"
+  },
+  "body": {
+    "id": "WH-SYN-OTHER-0001",
+    "event_version": "1.0",
+    "create_time": "2026-10-23T11:59:58Z",
+    "resource_type": "dispute",
+    "event_type": "CUSTOMER.DISPUTE.CREATED",
+    "summary": "Synthetic unhandled event type",
+    "resource": {
+      "dispute_id": "SBXDSP0000000001",
+      "status": "OPEN"
+    }
+  },
+  "expect": {
+    "event_id": "WH-SYN-OTHER-0001",
+    "transmission_id": "SYN-TRANS-0010",
+    "occurred_at": "2026-10-23T11:59:58.000Z",
+    "type": "OTHER",
+    "provider_order_id": null,
+    "capture_id": null,
+    "refund_id": null
+  }
+}

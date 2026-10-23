@@ -375,6 +375,66 @@
       "path": "paypal/synthetic/server_500__create_order__2.json",
       "sha256": "d0707a4251a3208f85b7a37ee442fe4336560f6032c1b47894e3d65e8ec0bb13",
       "source": "synthetic"
+    },
+    {
+      "path": "webhooks/golden/signed-messages.json",
+      "sha256": "76bffb7fbb7f5757fa5209496a418c19bbd7f0718f49d90f36a23dd124b2a0fa",
+      "source": "synthetic"
+    },
+    {
+      "path": "webhooks/synthetic/capture-completed-unicode.json",
+      "sha256": "34afe8991ad747b1a903ef8a0014aabf08de91c969bbe4b309a892881d324911",
+      "source": "synthetic"
+    },
+    {
+      "path": "webhooks/synthetic/capture-completed.json",
+      "sha256": "e3517502470464b6702dadd434c9fe41c50f85f8a426c11a98fd2381b7094db7",
+      "source": "synthetic"
+    },
+    {
+      "path": "webhooks/synthetic/capture-declined.json",
+      "sha256": "1ab1ff977e435a1267a08aa54798726d276e80a6ffde9f220c368ffd0150141f",
+      "source": "synthetic"
+    },
+    {
+      "path": "webhooks/synthetic/capture-denied.json",
+      "sha256": "a6c213fbf43db204c443af67431e37a46d3f6a3fecc3745aecdd119efa46f875",
+      "source": "synthetic"
+    },
+    {
+      "path": "webhooks/synthetic/capture-pending.json",
+      "sha256": "c885fe167b931740ba153b6487da19a951e85bcf145200c0e2376b77776b1c78",
+      "source": "synthetic"
+    },
+    {
+      "path": "webhooks/synthetic/capture-refunded.json",
+      "sha256": "032ad6303d668a161cabb00f9d2706014b1253360be0f8d7568c3e1f0a18ef3f",
+      "source": "synthetic"
+    },
+    {
+      "path": "webhooks/synthetic/capture-reversed.json",
+      "sha256": "be022bc9d5e6515fda85245f1b85ea505d4c2508f350007762cfbdb4aaa7b280",
+      "source": "synthetic"
+    },
+    {
+      "path": "webhooks/synthetic/order-approved.json",
+      "sha256": "a07cbcbb12b6bcf31d7a6843d5c17da0e4d0f9f78501c06c0ac6711f05422284",
+      "source": "synthetic"
+    },
+    {
+      "path": "webhooks/synthetic/other-event.json",
+      "sha256": "00484f30513117c91661bb6074ced2e038340f6ab58d1ab61236bf5ab3c77326",
+      "source": "synthetic"
+    },
+    {
+      "path": "webhooks/synthetic/parse-only.pem",
+      "sha256": "07df41c9b18fdc1caf99342c1363385dc229778442e60d05b75cae83e06823d4",
+      "source": null
+    },
+    {
+      "path": "webhooks/synthetic/payment-approval-reversed.json",
+      "sha256": "158e4de401cc5582628c80723b98bc0ae91956ce8527904450a19a22403278b2",
+      "source": "synthetic"
     }
   ]
 }

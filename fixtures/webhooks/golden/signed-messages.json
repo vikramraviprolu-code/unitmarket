@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "label": "synthetic",
+    "note": "Signed-message strings per synthetic webhook fixture: <transmission id>|<transmission time>|<webhook id>|<crc32 of the UTF-8 body, unsigned decimal>. The body is JSON.stringify(body, null, 2). The CRC was computed with Python zlib, independent of the code under test."
+  },
+  "webhook_id": "SYN-WEBHOOK-ID-0001",
+  "messages": {
+    "capture-completed-unicode": "SYN-TRANS-0002|2026-10-23T12:00:00Z|SYN-WEBHOOK-ID-0001|333637653",
+    "capture-completed": "SYN-TRANS-0001|2026-10-23T12:00:00Z|SYN-WEBHOOK-ID-0001|3045573333",
+    "capture-declined": "SYN-TRANS-0004|2026-10-23T12:00:00Z|SYN-WEBHOOK-ID-0001|508566810",
+    "capture-denied": "SYN-TRANS-0005|2026-10-23T12:00:00Z|SYN-WEBHOOK-ID-0001|486799281",
+    "capture-pending": "SYN-TRANS-0003|2026-10-23T12:00:00Z|SYN-WEBHOOK-ID-0001|2817568940",
+    "capture-refunded": "SYN-TRANS-0007|2026-10-23T12:00:00Z|SYN-WEBHOOK-ID-0001|647516379",
+    "capture-reversed": "SYN-TRANS-0006|2026-10-23T12:00:00Z|SYN-WEBHOOK-ID-0001|3297928723",
+    "order-approved": "SYN-TRANS-0008|2026-10-23T12:00:00Z|SYN-WEBHOOK-ID-0001|531042743",
+    "other-event": "SYN-TRANS-0010|2026-10-23T12:00:00Z|SYN-WEBHOOK-ID-0001|1575887590",
+    "payment-approval-reversed": "SYN-TRANS-0009|2026-10-23T12:00:00Z|SYN-WEBHOOK-ID-0001|900552446"
+  }
+}
