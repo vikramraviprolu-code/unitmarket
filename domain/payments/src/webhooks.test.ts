@@ -2,8 +2,9 @@
 // the order, and whether a read-back that is already queued is left alone (ASM-60). No database,
 // no clock, no network.
 import { describe, expect, it } from 'vitest';
-import type { ProviderEvent, ProviderEventType } from '@umsbx/contracts';
-import { COALESCE_MS, idsAreValid, planReadback, targetsOf } from './webhooks';
+import { OrderStatusSchema } from '@umsbx/contracts';
+import type { OrderStatus, ProviderEvent, ProviderEventType } from '@umsbx/contracts';
+import { COALESCE_MS, idsAreValid, planReadback, targetsOf, wantsReadback } from './webhooks';
 
 const NOW = '2026-10-22T10:00:00.000Z';
 const plus = (ms: number): string => new Date(Date.parse(NOW) + ms).toISOString();
@@ -101,16 +102,19 @@ describe('targetsOf: event type to the keys that name the order, in the order tr
   });
 });
 
-describe('idsAreValid: printable ASCII, 1 to 256 characters', () => {
+describe('idsAreValid: printable ASCII without space or pipe (as CO-1), 1 to 256 characters', () => {
   const ok = (o: Partial<ProviderEvent> = {}) => idsAreValid(event('PAYMENT.CAPTURE.COMPLETED', o));
   it('accepts ordinary ids and the 1 and 256 character limits', () => {
-    expect(ok({ capture_id: 'CAP-1_x.y', refund_id: 'a b', provider_order_id: 'ORD1' })).toBe(true);
+    expect(ok({ capture_id: 'CAP-1_x.y', refund_id: 'a-b', provider_order_id: 'ORD1' })).toBe(true);
     expect(
       ok({ event_id: 'x', transmission_id: 'y'.repeat(256), capture_id: 'z'.repeat(256) }),
     ).toBe(true);
     expect(ok()).toBe(true); // null ids are fine
   });
   it.each([
+    ['space in an id (CO-1 refuses it too)', { capture_id: 'a b' }],
+    ['space at the edge', { event_id: ' x' }],
+    ['pipe (the verifier refuses it)', { transmission_id: 'a|b' }],
     ['empty event id', { event_id: '' }],
     ['empty transmission id', { transmission_id: '' }],
     ['empty capture id', { capture_id: '' }],
@@ -165,5 +169,35 @@ describe('planReadback: coalescing within 60 s (ASM-60)', () => {
   it('an operation in flight (prepared, sent) is left alone', () => {
     expect(planReadback({ state: 'sent', next_retry_at: null }, NOW)).toBe('keep');
     expect(planReadback({ state: 'prepared', next_retry_at: null }, NOW)).toBe('keep');
+  });
+});
+
+describe('wantsReadback: which orders a webhook may wake (R2)', () => {
+  // An order nobody has captured is owned by the buyer-return path and the abandonment sweep: a
+  // webhook-started read-back there would poll for 24 h and end in a false payment_unresolved alert.
+  const cases: [OrderStatus, boolean, boolean][] = [
+    ['created', false, false],
+    ['created', true, true],
+    ['awaiting_buyer', false, false],
+    ['awaiting_buyer', true, true],
+    ['capture_requested', false, true],
+    ['capture_claimed', false, true],
+    ['unresolved', false, true],
+    ['paid', false, true],
+    ['paid_partial', false, true],
+    ['failed', false, false],
+    ['failed', true, false],
+    ['abandoned', false, false],
+    ['abandoned', true, false],
+    ['frozen', false, false],
+    ['frozen', true, false],
+  ];
+  it.each(cases)('%s, capture operation: %s -> %s', (status, hasCaptureOp, expected) => {
+    expect(wantsReadback(status, hasCaptureOp)).toBe(expected);
+  });
+  it('covers every order status', () => {
+    expect([...new Set(cases.map((c) => c[0]))].sort()).toEqual(
+      [...OrderStatusSchema.options].sort(),
+    );
   });
 });

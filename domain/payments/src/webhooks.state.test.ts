@@ -316,8 +316,8 @@ describe('a verified event makes the read-back due and does nothing else', () =>
     expect(await ent(a.order_id)).toEqual([{ money_state: 'captured', access_state: 'available' }]);
     expect(await ledger(a.order_id)).toEqual(ledgerBefore);
     expect(await count(w, 'ledger_entries', "kind = 'reversal'")).toBe(0);
-    // One alert, as a hint; the read-back is due.
-    expect(await alertKinds(w, a.order_id)).toEqual(['reversal']);
+    // One alert, as a hint (its own kind, so recovery opens no case from it); the read-back is due.
+    expect(await alertKinds(w, a.order_id)).toEqual(['reversal_hint']);
     const [alert] = await w.rows<{ detail: Record<string, unknown>; unit_id: string }>(
       'SELECT detail, unit_id FROM alerts WHERE order_id = $1',
       [a.order_id],
@@ -332,7 +332,8 @@ describe('a verified event makes the read-back due and does nothing else', () =>
 
     // Another delivery of a reversal for the same capture raises nothing new.
     await deliver(ev({ type: 'PAYMENT.CAPTURE.REVERSED', capture_id }));
-    expect(await count(w, 'alerts', "kind = 'reversal'")).toBe(1);
+    expect(await count(w, 'alerts', "kind = 'reversal_hint'")).toBe(1);
+    expect(await count(w, 'alerts', "kind = 'reversal'")).toBe(0);
     expect((await unitOf(a.order_id)).status).toBe('captured_verified');
 
     // The read-back runs, PayPal still shows the capture as completed: nothing moves.
@@ -393,7 +394,7 @@ describe('a verified event makes the read-back due and does nothing else', () =>
     expect((await unitOf(a.order_id)).status).toBe('reversal_suspected');
     expect(await count(w, 'ledger_entries', "kind = 'reversal'")).toBe(0);
     // the hint, and the alert the read evidence raised
-    expect(await alertKinds(w, a.order_id)).toEqual(['reversal', 'reversal']);
+    expect(await alertKinds(w, a.order_id)).toEqual(['reversal', 'reversal_hint']);
   });
 
   it('webhook_enabled off: 503 and nothing stored', async () => {
@@ -486,9 +487,9 @@ describe('finding the order', () => {
     );
   });
 
-  it('CHECKOUT.ORDER.APPROVED is found by the provider order id and creates the read-back', async () => {
+  it('CHECKOUT.ORDER.APPROVED is found by the provider order id and creates the read-back (capture in doubt)', async () => {
     await world();
-    const a = await approved(w); // awaiting the buyer, no read-back operation yet
+    const a = await lostResponse(w); // a capture operation is unknown, no read-back operation yet
     expect(await readback(a.order_id)).toBeNull();
     expect(
       await deliver(
@@ -504,8 +505,7 @@ describe('finding the order', () => {
       [a.order_id],
     );
     expect(created[0]!.reconcile_until.toISOString()).toBe(iso(86_400_000));
-    expect(await orderStatus(a.order_id)).toBe('awaiting_buyer');
-    expect(w.paypal.count('capture')).toBe(0);
+    expect(await orderStatus(a.order_id)).toBe('unresolved');
 
     // Not our order: stored, no_op.
     expect(
@@ -663,9 +663,9 @@ describe('a capture whose response was lost has no capture id stored (F4, C-12)'
     expect(await readback(b.order_id)).toBeNull();
   });
 
-  it('CHECKOUT.PAYMENT-APPROVAL.REVERSED with an order id wakes the read-back; without one it is no_op', async () => {
+  it('CHECKOUT.PAYMENT-APPROVAL.REVERSED with an order id wakes the read-back (capture in doubt); without one it is no_op', async () => {
     await world();
-    const a = await approved(w);
+    const a = await lostResponse(w);
     expect(
       await deliver(
         ev({
@@ -675,12 +675,129 @@ describe('a capture whose response was lost has no capture id stored (F4, C-12)'
       ),
     ).toEqual({ http: 200, outcome: 'enqueued' });
     expect((await readback(a.order_id))!.state).toBe('unknown');
-    expect(await orderStatus(a.order_id)).toBe('awaiting_buyer');
     expect(await count(w, 'alerts')).toBe(0);
     expect(await deliver(ev({ type: 'CHECKOUT.PAYMENT-APPROVAL.REVERSED' }))).toEqual({
       http: 200,
       outcome: 'no_op',
     });
+  });
+});
+
+describe('R2: a webhook only wakes an order somebody has captured', () => {
+  const addCaptureOp = (order_id: string, state: 'unknown' | 'confirmed' = 'unknown') =>
+    w.insert('operations', {
+      id: `opr_t${order_id.slice(-6)}`,
+      order_id,
+      kind: 'capture',
+      state,
+      attempt: 1,
+      request_id: `umsK-test-${order_id}`,
+      next_retry_at: state === 'unknown' ? iso(H) : null,
+      reconcile_until: state === 'unknown' ? iso(24 * H) : null,
+    });
+
+  it('awaiting_buyer without a capture operation: no_op, no operation, and no 24 h of polling', async () => {
+    await world();
+    const a = await approved(w);
+    const control = await approved(w, { offers: ['ofr_2'] });
+    const gets = w.paypal.count('get');
+    expect(
+      await deliver(ev({ capture_id: 'UNKNOWNCAP1', provider_order_id: a.provider_order_id })),
+    ).toEqual({ http: 200, outcome: 'no_op' });
+    expect(
+      await deliver(
+        ev({ type: 'CHECKOUT.ORDER.APPROVED', provider_order_id: a.provider_order_id }),
+      ),
+    ).toEqual({ http: 200, outcome: 'no_op' });
+    expect(
+      await deliver(
+        ev({ type: 'CHECKOUT.PAYMENT-APPROVAL.REVERSED', provider_order_id: a.provider_order_id }),
+      ),
+    ).toEqual({ http: 200, outcome: 'no_op' });
+    expect(await readback(a.order_id)).toBeNull();
+    expect((await events()).map((e) => e.outcome)).toEqual(['no_op', 'no_op', 'no_op']);
+    for (let k = 0; k < 26; k += 1) {
+      w.tick(H);
+      await runDue(w.deps, { max_items: 10 });
+    }
+    // Nothing woke it; the order behaves exactly like the control that never got a webhook.
+    expect(await readback(a.order_id)).toBeNull();
+    expect(w.paypal.count('get') - gets).toBe(0);
+    expect(await alertKinds(w, a.order_id)).toEqual(await alertKinds(w, control.order_id));
+    expect(await count(w, 'alerts', "kind = 'payment_unresolved'")).toBe(0);
+    expect(await ent(a.order_id)).toEqual(await ent(control.order_id));
+  });
+
+  it('awaiting_buyer with a capture operation unknown: enqueued', async () => {
+    await world();
+    const a = await approved(w);
+    await addCaptureOp(a.order_id);
+    expect(
+      await deliver(
+        ev({ type: 'CHECKOUT.ORDER.APPROVED', provider_order_id: a.provider_order_id }),
+      ),
+    ).toEqual({ http: 200, outcome: 'enqueued' });
+    expect((await readback(a.order_id))!.state).toBe('unknown');
+  });
+
+  it('paid: enqueued', async () => {
+    await world();
+    const a = await paid(w);
+    const capture_id = (await unitOf(a.order_id)).capture_id;
+    expect(await deliver(ev({ capture_id }))).toEqual({ http: 200, outcome: 'enqueued' });
+  });
+
+  it.each([
+    ['created', false, 'no_op'],
+    ['awaiting_buyer', false, 'no_op'],
+    ['awaiting_buyer', true, 'enqueued'],
+    ['capture_requested', false, 'enqueued'],
+    ['capture_claimed', false, 'enqueued'],
+    ['unresolved', false, 'enqueued'],
+    ['paid', false, 'enqueued'],
+    ['paid_partial', false, 'enqueued'],
+    ['failed', false, 'no_op'],
+    ['failed', true, 'no_op'],
+    ['abandoned', false, 'no_op'],
+    ['abandoned', true, 'no_op'],
+    ['frozen', false, 'no_op'],
+    ['frozen', true, 'no_op'],
+  ] as const)('order status %s, capture operation %s: %s', async (status, withOp, expected) => {
+    await world();
+    const a = await approved(w);
+    if (withOp) await addCaptureOp(a.order_id);
+    await w.rows('UPDATE orders SET status = $2 WHERE id = $1', [a.order_id, status]);
+    const before = await opRows(a.order_id);
+    expect(
+      await deliver(
+        ev({ type: 'CHECKOUT.ORDER.APPROVED', provider_order_id: a.provider_order_id }),
+      ),
+    ).toEqual({ http: 200, outcome: expected });
+    if (expected === 'no_op') expect(await opRows(a.order_id)).toEqual(before);
+    else expect((await readback(a.order_id))!.state).toBe('unknown');
+  });
+
+  it('a REVERSED for an order nobody captured raises no hint alert', async () => {
+    await world();
+    const a = await approved(w);
+    await deliver(
+      ev({
+        type: 'PAYMENT.CAPTURE.REVERSED',
+        capture_id: 'CAPX',
+        provider_order_id: a.provider_order_id,
+      }),
+    );
+    expect(await count(w, 'alerts')).toBe(0);
+  });
+
+  it('the lost-capture-id case still wakes: capture operation unknown, unit expected, capture_id NULL', async () => {
+    await world();
+    const a = await lostResponse(w);
+    expect((await unitOf(a.order_id)).capture_id).toBeNull();
+    expect((await ops(w, a.order_id)).find((o) => o.kind === 'capture')!.state).toBe('unknown');
+    expect(
+      await deliver(ev({ capture_id: 'SBXFAKECAP00002', provider_order_id: a.provider_order_id })),
+    ).toEqual({ http: 200, outcome: 'enqueued' });
   });
 });
 
