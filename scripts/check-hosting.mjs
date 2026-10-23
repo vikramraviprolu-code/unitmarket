@@ -6,7 +6,7 @@
 //
 // Rules: parse, duplicate-key, service-shape, unknown-name, secret-with-value, live-value,
 // paypal-host, public-name, instances, disk, pglite-dir, node-options, proxy-var, auto-deploy,
-// telemetry, fixed-value.
+// telemetry, fixed-value, value-type.
 //
 // The file must be printable ASCII plus LF. YAML also treats CR, NEL, LS and PS as line breaks; a
 // checker that splits on LF only would read a comment where Render reads settings, so any other
@@ -256,6 +256,9 @@ function checkService(svc) {
   else {
     if (disk.mountPath !== MOUNT) fail('disk', `mountPath must be ${MOUNT}`);
     else mount = disk.mountPath;
+    for (const k of Object.keys(disk))
+      if (!['name', 'mountPath', 'sizeGB'].includes(k))
+        fail('disk', `disk key ${k} is not in the reviewed set`);
     if (disk.sizeGB !== 1) fail('disk', 'sizeGB must be 1');
     if (disk.name !== 'pglite-data') fail('disk', 'disk name must be pglite-data');
   }
