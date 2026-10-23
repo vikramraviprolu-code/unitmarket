@@ -1,0 +1,14 @@
+# Webhook intake (CO-2): verdict and switch to the answer handleWebhook gives the route. Hand-written from the spec.
+# 200 stored (enqueued, no_op) or already seen (duplicate); 400 refused by the verifier; 503 PayPal retries (RLR-5).
+# webhook_enabled off answers 503 disabled for every verdict and stores nothing.
+verdict | webhook_enabled | http | outcome
+verified, capture not ours | on | 200 | no_op
+verified, capture ours | on | 200 | enqueued
+verified, same event again | on | 200 | duplicate
+bad_signature | on | 400 | rejected
+malformed | on | 400 | rejected
+unverifiable | on | 503 | unverifiable
+verified | off | 503 | disabled
+bad_signature | off | 503 | disabled
+malformed | off | 503 | disabled
+unverifiable | off | 503 | disabled

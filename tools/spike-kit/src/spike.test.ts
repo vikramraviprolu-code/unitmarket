@@ -1124,11 +1124,24 @@ describe('M1: proxy, certificate and Node-option overrides are refused in real m
     'ALL_PROXY',
     // FIX-MVPB-SEAL2 M3
     'NODE_USE_SYSTEM_CA',
+    // SEAL5 / BU-1 review F3
+    'NODE_PRESERVE_SYMLINKS',
     'OPENSSL_CONF',
     'SSL_CERT_FILE',
     'SSL_CERT_DIR',
   ];
   const real = () => harness({ env: realEnv(), stdinIsTTY: true });
+  // BU-1 re-review H1: pnpm's command shims export NODE_PATH on every start; it is not an override.
+  const PNPM_NODE_PATH =
+    '/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/dist/bin/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/dist/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules:/srv/app/node_modules/.pnpm/node_modules';
+  it('a pnpm-style NODE_PATH does not stop a real run, and NODE_OPTIONS next to it still does', () => {
+    const h = real();
+    h.deps.env['NODE_PATH'] = PNPM_NODE_PATH;
+    expect(preflight(h.deps).ok).toBe(true);
+    h.deps.env['NODE_OPTIONS'] = '--require ./x.cjs';
+    const r = preflight(h.deps);
+    expect(!r.ok && r.code).toBe('transport_env_override');
+  });
   it.each(names.flatMap((n) => [n, n.toLowerCase()]))('refuses %s with its name', (name) => {
     const h = real();
     h.deps.env[name] = '1';
@@ -1183,6 +1196,12 @@ describe('M1: proxy, certificate and Node-option overrides are refused in real m
     '--report-exclude-env',
     '--snapshot-blob',
     '--build-snapshot',
+    '--preserve-symlinks',
+    '--preserve-symlinks-main',
+    '--experimental-config-file',
+    '--experimental-config-file=./c.json',
+    '--experimental-default-config-file',
+    '--insecure-http-parser',
     '--snapshot-blob=/tmp/x.blob',
     '--report-dir=/tmp/r',
   ])('refuses execArgv %s', (flag) => {

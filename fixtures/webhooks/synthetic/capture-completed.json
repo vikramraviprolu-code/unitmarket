@@ -1,0 +1,45 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "label": "synthetic",
+    "note": "Hand-written skeleton. The signature and certificate URL are made in the tests at run time; no key or certificate is stored here."
+  },
+  "headers": {
+    "paypal-transmission-id": "SYN-TRANS-0001",
+    "paypal-transmission-time": "2026-10-23T12:00:00Z",
+    "paypal-auth-algo": "SHA256withRSA",
+    "paypal-transmission-sig": "[redacted]"
+  },
+  "body": {
+    "id": "WH-SYN-COMPLETED-0001",
+    "event_version": "1.0",
+    "create_time": "2026-10-23T11:59:58Z",
+    "resource_type": "capture",
+    "event_type": "PAYMENT.CAPTURE.COMPLETED",
+    "summary": "Synthetic PAYMENT.CAPTURE.COMPLETED",
+    "resource": {
+      "id": "SBXCAP0000000001",
+      "status": "COMPLETED",
+      "amount": {
+        "currency_code": "USD",
+        "value": "5.00"
+      },
+      "custom_id": "ord_synthetic_1",
+      "final_capture": true,
+      "supplementary_data": {
+        "related_ids": {
+          "order_id": "SBXORD0000000001"
+        }
+      }
+    }
+  },
+  "expect": {
+    "event_id": "WH-SYN-COMPLETED-0001",
+    "transmission_id": "SYN-TRANS-0001",
+    "occurred_at": "2026-10-23T11:59:58.000Z",
+    "type": "PAYMENT.CAPTURE.COMPLETED",
+    "provider_order_id": "SBXORD0000000001",
+    "capture_id": "SBXCAP0000000001",
+    "refund_id": null
+  }
+}

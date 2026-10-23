@@ -1,12 +1,24 @@
 // Proves the ESLint layering rules (architecture 2.2 and 2.3) with real lint runs on virtual files.
 import { ESLint } from 'eslint';
+import { execFileSync } from 'node:child_process';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { REPO_ROOT, TOKENS } from './test-helpers';
 
 // Built at run time: the transport package test bars any file outside the transport package from
 // naming the production Wire module, and this file lists its lint exemptions.
-const WIRE = ['wire', 'fetch'].join('-');
+const WIRE = ['wire', 'https'].join('-');
 
 let eslint: ESLint;
 beforeAll(() => {
@@ -1157,5 +1169,713 @@ describe('named exemptions (D-015)', () => {
         'tools/spike-kit/src/spike-cli.integration.test.ts -> no-restricted-imports,no-restricted-properties,sbx/no-global-alias',
       ].sort(),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// SEAL5 (a) to (d). Ways to reach the sealed names (createApprovedSandboxTransport, PRODUCTION_WIRE,
+// createScopedGate) without writing the package name: a package.json `imports` alias (`#ap`), a
+// node_modules alias whose real path is packages/transport or packages/safety, and the bundler
+// globs `import.meta.glob` / `import.meta.webpackContext`. The first two are proved real by the
+// Node resolver itself (require.resolve in a child Node process started inside the fixture package) before lint is asked to refuse them.
+// ---------------------------------------------------------------------------------------------
+describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () => {
+  const ALIAS = 'sbx/no-sealed-alias';
+  const GLOB = 'sbx/no-bundler-glob';
+  const NAMES = 'createApprovedSandboxTransport, PRODUCTION_WIRE';
+  let fx: string; // fixture package directory, inside the repository so the config applies
+  let fxRel: string;
+  const TRANSPORT = join(REPO_ROOT, 'packages', 'transport');
+  const SAFETY = join(REPO_ROOT, 'packages', 'safety');
+
+  beforeAll(() => {
+    const base = join(REPO_ROOT, 'scripts', '__fixtures__');
+    fx = mkdtempSync(join(base, 'seal5-'));
+    fxRel = relative(REPO_ROOT, fx);
+    writeFileSync(
+      join(fx, 'package.json'),
+      JSON.stringify({
+        name: 'seal5-fixture',
+        private: true,
+        type: 'module',
+        imports: {
+          '#ap': '@umsbx/transport',
+          '#ap-cond': { node: { import: './nothing.js', default: '@umsbx/transport' } },
+          '#ap-array': ['transport-alias'],
+          '#alias': 'transport-alias',
+          '#safety': 'safety-alias',
+          '#star/*': '@umsbx/transport/src/*',
+          '#ok': './ok.js',
+          '#okpkg': 'zod',
+        },
+      }),
+    );
+    mkdirSync(join(fx, 'node_modules', '@umsbx'), { recursive: true });
+    symlinkSync(TRANSPORT, join(fx, 'node_modules', '@umsbx', 'transport'), 'dir');
+    symlinkSync(TRANSPORT, join(fx, 'node_modules', 'transport-alias'), 'dir');
+    symlinkSync(SAFETY, join(fx, 'node_modules', 'safety-alias'), 'dir');
+  });
+  afterAll(() => rmSync(fx, { recursive: true, force: true }));
+
+  const only = async (file: string, code: string, rule: string) =>
+    (await lint(file, code)).filter((m) => m.ruleId === rule);
+  const inFx = (name: string) => join(fxRel, name);
+
+  describe('runtime proof: the Node resolver really lands in the sealed packages', () => {
+    it.each([
+      ['#ap', TRANSPORT],
+      ['#ap-cond', TRANSPORT],
+      ['#ap-array', TRANSPORT],
+      ['#alias', TRANSPORT],
+      ['#safety', SAFETY],
+      ['transport-alias', TRANSPORT],
+      ['safety-alias', SAFETY],
+    ])('%s resolves into %s', (spec, pkg) => {
+      const resolved = execFileSync(
+        process.execPath,
+        ['-e', 'process.stdout.write(require.resolve(process.argv[1]))', spec],
+        { cwd: fx, encoding: 'utf8', env: {} },
+      );
+      expect(realpathSync(resolved).startsWith(`${realpathSync(pkg)}/`), resolved).toBe(true);
+    });
+  });
+
+  describe('(a) # imports that map to a sealed package, and (b) bare aliases that resolve into one', () => {
+    const forms: [string, (s: string) => string][] = [
+      [
+        'named import',
+        (s) =>
+          `import { ${NAMES} } from '${s}';\nexport const x = [createApprovedSandboxTransport, PRODUCTION_WIRE];\n`,
+      ],
+      ['default import', (s) => `import T from '${s}';\nexport const x = T;\n`],
+      ['namespace import', (s) => `import * as T from '${s}';\nexport const x = T;\n`],
+      ['side-effect import', (s) => `import '${s}';\n`],
+      ['re-export', (s) => `export { PRODUCTION_WIRE } from '${s}';\n`],
+      ['export star', (s) => `export * from '${s}';\n`],
+      ['dynamic import', (s) => `export const x = (await import('${s}')).PRODUCTION_WIRE;\n`],
+      ['require', (s) => `export const x = require('${s}').PRODUCTION_WIRE;\n`],
+      ['importActual', (s) => `export const x = await vi.importActual('${s}');\n`],
+    ];
+    const specs = [
+      '#ap',
+      '#ap-cond',
+      '#ap-array',
+      '#alias',
+      '#safety',
+      '#star/sandbox',
+      'transport-alias',
+      'transport-alias/src/sandbox',
+      'safety-alias',
+    ];
+    const files = ['evil.ts', 'evil.mjs', 'evil.test.ts', 'src/deep/evil.ts'];
+    it.each(specs)(
+      '%s is refused in every file of the package, in every import form',
+      async (spec) => {
+        for (const f of files)
+          for (const [name, make] of forms)
+            expect((await only(inFx(f), make(spec), ALIAS)).length, `${f} ${name}`).toBeGreaterThan(
+              0,
+            );
+      },
+    );
+    it('a # import that maps elsewhere, a bare package and a relative path are not flagged', async () => {
+      for (const spec of ['#ok', '#okpkg', '#missing', 'zod', 'node:fs', './x', 'vitest'])
+        expect(
+          await only(inFx('evil.ts'), `import x from '${spec}';\nexport const y = x;\n`, ALIAS),
+          spec,
+        ).toEqual([]);
+    });
+    it('the official package name is not this rule (the sealed-transport rule handles it)', async () => {
+      expect(
+        await only(
+          inFx('evil.ts'),
+          "import { a } from '@umsbx/contracts';\nexport const b = a;\n",
+          ALIAS,
+        ),
+      ).toEqual([]);
+    });
+    it('type-only imports load nothing and stay allowed', async () => {
+      expect(
+        await only(
+          inFx('evil.ts'),
+          "import type { Wire } from '#ap';\nexport type W = Wire;\n",
+          ALIAS,
+        ),
+      ).toEqual([]);
+    });
+    it('no package.json in the repository declares an imports map (a new one needs a reviewed change here)', () => {
+      const found: string[] = [];
+      const walk = (dir: string) => {
+        for (const name of readdirSync(dir)) {
+          if (
+            ['node_modules', '.git', '.next', 'dist', '.data', '.pglite', '__fixtures__'].includes(
+              name,
+            )
+          )
+            continue;
+          const p = join(dir, name);
+          if (statSync(p).isDirectory()) walk(p);
+          else if (name === 'package.json') {
+            const j = JSON.parse(readFileSync(p, 'utf8')) as { imports?: unknown };
+            if (j.imports !== undefined) found.push(relative(REPO_ROOT, p));
+          }
+        }
+      };
+      walk(REPO_ROOT);
+      expect(found).toEqual([]);
+    });
+  });
+
+  describe('(c) import.meta.glob and import.meta.webpackContext are barred outright', () => {
+    const G = "'../../packages/transport/src/sandbox.ts'";
+    const bad: [string, string][] = [
+      ['import.meta.glob', `export const m = import.meta.glob(${G}, { eager: true });\n`],
+      ['import.meta.glob lazy', `export const m = import.meta.glob(${G});\n`],
+      ['import.meta.globEager', `export const m = import.meta.globEager(${G});\n`],
+      [
+        'import.meta.webpackContext',
+        `export const m = import.meta.webpackContext('../packages/transport/src');\n`,
+      ],
+      ['string-keyed glob', `export const m = import.meta['glob'](${G});\n`],
+      ['template-keyed glob', `export const m = import.meta[\`glob\`](${G});\n`],
+      ['string-keyed webpackContext', `export const m = import.meta['webpackContext']('.');\n`],
+      ['optional chain', `export const m = import.meta?.glob?.(${G});\n`],
+      ['computed key', `export const m = import.meta[['gl', 'ob'].join('')](${G});\n`],
+      ['aliased import.meta', `const meta = import.meta;\nexport const m = meta.glob(${G});\n`],
+      ['destructured glob', `const { glob } = import.meta;\nexport const m = glob(${G});\n`],
+      [
+        'destructured rest',
+        `const { url, ...rest } = import.meta;\nexport const m = [url, rest];\n`,
+      ],
+      ['passed as an argument', `export const m = [import.meta].map((x) => x);\n`],
+      [
+        'cast then glob',
+        `export const m = (import.meta as unknown as { glob(s: string): unknown }).glob(${G});\n`,
+      ],
+      ['non-null then glob', `export const m = import.meta!.glob(${G});\n`],
+    ];
+    const anywhere = [
+      'packages/paypal/src/evil.ts',
+      'apps/web/composition.server.ts',
+      'apps/web/src/app/page.tsx',
+      'tests/mvp-b/evil.test.ts',
+      'scripts/evil.mjs',
+      'evil.mjs',
+      // the pinned (exempt from other rules) files: no exemption reaches this rule
+      'tests/mvp-b/b09-logs-clean.integration.test.ts',
+      'tests/mvp-b/no-mint-by-path.test.ts',
+      'packages/safety/src/scoped-gate.ts',
+      'packages/transport/src/sandbox.ts',
+      `packages/transport/src/${WIRE}.ts`,
+      'tools/spike-kit/src/spike.ts',
+    ];
+    it.each(bad)('%s is refused everywhere', async (_n, code) => {
+      for (const f of anywhere) expect((await only(f, code, GLOB)).length, f).toBeGreaterThan(0);
+    });
+    it('the harmless uses of import.meta stay allowed', async () => {
+      const ok = [
+        "export const u = new URL('./x', import.meta.url);\n",
+        'export const d = import.meta.dirname;\n',
+        'export const f = import.meta.filename;\n',
+        "export const r = import.meta.resolve('./x');\n",
+        'export const e = import.meta.env;\n',
+        'export const e = (import.meta as { env?: Record<string, string | undefined> }).env;\n',
+        'export const p = new URL(import.meta.url).pathname;\n',
+      ];
+      for (const code of ok)
+        expect(await only('packages/paypal/src/x.ts', code, GLOB), code).toEqual([]);
+    });
+    it('no named exemption can switch these two rules off, and the config refuses to load one that does', async () => {
+      const { NAMED_EXEMPTIONS } = await import('../eslint.config.mjs');
+      const off = (NAMED_EXEMPTIONS as { off: string[] }[]).flatMap((e) => e.off);
+      expect(off).not.toContain(GLOB);
+      expect(off).not.toContain(ALIAS);
+    });
+    it('the config refuses to load an exemption that switches either rule off', async () => {
+      const { checkNamedExemptions } = await import('../eslint.config.mjs');
+      expect(() =>
+        checkNamedExemptions([{ files: ['x.ts'], off: ['no-restricted-syntax'] }]),
+      ).not.toThrow();
+      for (const rule of [GLOB, ALIAS])
+        expect(() =>
+          checkNamedExemptions([{ files: ['x.ts'], off: ['sbx/no-global-alias', rule] }]),
+        ).toThrow(rule);
+    });
+    it('no block of the FINAL exported config downgrades a sealing rule outside the pinned exemptions (BU-1 review L3)', async () => {
+      const { default: cfg, NAMED_EXEMPTIONS } = await import('../eslint.config.mjs');
+      const blocks = cfg as { rules?: Record<string, unknown>; files?: unknown }[];
+      expect(blocks.length).toBeGreaterThan(10);
+      const pinned = new Set(
+        (NAMED_EXEMPTIONS as { files: string[]; off: string[] }[]).flatMap((e) =>
+          e.off.flatMap((r) => e.files.map((f) => `${r}|${f}`)),
+        ),
+      );
+      const severity = (v: unknown): unknown => (Array.isArray(v) ? v[0] : v);
+      const SEALING = [
+        'sbx/sealed-transport',
+        'sbx/no-sealed-alias',
+        'sbx/no-bundler-glob',
+        'sbx/no-package-escape',
+      ];
+      const seen: Record<string, number> = {};
+      const bad: string[] = [];
+      for (const b of blocks)
+        for (const rule of SEALING) {
+          if (!b.rules || !Object.hasOwn(b.rules, rule)) continue;
+          seen[rule] = (seen[rule] ?? 0) + 1;
+          if (['error', 2].includes(severity(b.rules[rule]) as string | number)) continue;
+          // not an error: only a named exemption of exactly these files may say so, and never for
+          // the two SEAL5 rules
+          const files = Array.isArray(b.files) ? (b.files as string[]) : [];
+          const ok =
+            rule !== GLOB &&
+            rule !== ALIAS &&
+            files.length > 0 &&
+            files.every((f) => pinned.has(`${rule}|${f}`));
+          if (!ok)
+            bad.push(
+              `${rule} -> ${JSON.stringify(severity(b.rules[rule]))} in ${JSON.stringify(b.files)}`,
+            );
+        }
+      expect(bad).toEqual([]);
+      // each rule is set by every entry() block, so it is present many times
+      for (const rule of SEALING) expect(seen[rule] ?? 0, rule).toBeGreaterThan(20);
+    });
+    it('the lint script and ci fail on warnings', async () => {
+      const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')) as {
+        scripts: Record<string, string>;
+      };
+      expect(pkg.scripts['lint']).toMatch(/--max-warnings[ =]0\b/);
+      // ci runs the lint script, so it inherits the flag
+      expect(pkg.scripts['ci']).toMatch(/corepack pnpm lint\b/);
+    });
+    it('the config refuses to load an exemption that switches either rule off', async () => {
+      const { checkNamedExemptions } = await import('../eslint.config.mjs');
+      expect(() =>
+        checkNamedExemptions([{ files: ['x.ts'], off: ['no-restricted-syntax'] }]),
+      ).not.toThrow();
+      for (const rule of [GLOB, ALIAS])
+        expect(() =>
+          checkNamedExemptions([{ files: ['x.ts'], off: ['sbx/no-global-alias', rule] }]),
+        ).toThrow(rule);
+    });
+    it('no raw block of the FINAL exported config switches either rule off or weakens it (BU-1 review L3)', async () => {
+      const { default: cfg } = await import('../eslint.config.mjs');
+      const blocks = cfg as { rules?: Record<string, unknown>; files?: unknown }[];
+      expect(blocks.length).toBeGreaterThan(10);
+      const severity = (v: unknown): unknown => (Array.isArray(v) ? v[0] : v);
+      let seen = 0;
+      for (const b of blocks)
+        for (const rule of [GLOB, ALIAS])
+          if (b.rules && Object.hasOwn(b.rules, rule)) {
+            seen += 1;
+            expect(['error', 2], `${rule} in ${JSON.stringify(b.files)}`).toContain(
+              severity(b.rules[rule]),
+            );
+          }
+      // each rule is set by every entry() block, so it is present many times and never off
+      expect(seen).toBeGreaterThan(20);
+    });
+    it('both rules are errors in the config of every kind of file', async () => {
+      for (const f of [
+        'evil.mjs',
+        'packages/paypal/src/x.ts',
+        'apps/web/src/x.tsx',
+        'tests/mvp-a/x.test.ts',
+        'scripts/x.mjs',
+        inFx('x.ts'),
+      ]) {
+        const cfg = await eslint.calculateConfigForFile(join(REPO_ROOT, f));
+        expect(cfg.rules?.[GLOB]?.[0], `${f} ${GLOB}`).toBe(2);
+        expect(cfg.rules?.[ALIAS]?.[0], `${f} ${ALIAS}`).toBe(2);
+      }
+    });
+  });
+
+  describe('(F4) vi.mock, vi.doMock and jest.mock of a sealed module hand over the real module (BU-1 review)', () => {
+    const SEALED = 'sbx/sealed-transport';
+    const callees = ['vi.mock', 'vi.doMock', 'jest.mock', 'jest.doMock'];
+    const factories: [string, string][] = [
+      ['no factory', ''],
+      [
+        'a factory using importOriginal',
+        ', async (importOriginal) => ({ ...(await importOriginal()) })',
+      ],
+      ['a factory that ignores the original', ', () => ({})'],
+    ];
+    const repoSpecs = [
+      '@umsbx/transport',
+      '@umsbx/safety',
+      '@umsbx/transport/src/sandbox',
+      join(REPO_ROOT, 'packages/transport/src/sandbox'),
+      join(REPO_ROOT, 'packages/safety/src/scoped-gate'),
+      `file://${join(REPO_ROOT, 'packages/transport/src/sandbox.ts')}`,
+    ];
+    const outsiders = [
+      'tests/mvp-b/evil.test.ts',
+      'packages/paypal/src/evil.test.ts',
+      'packages/testkit/src/evil.test.ts',
+      'scripts/evil.test.ts',
+      'apps/web/src/evil.test.ts',
+    ];
+    it.each(callees)(
+      '%s of a sealed module is refused in an unpinned test file',
+      async (callee) => {
+        for (const file of outsiders)
+          for (const spec of [
+            ...repoSpecs,
+            relative(
+              dirname(join(REPO_ROOT, file)),
+              join(REPO_ROOT, 'packages/transport/src/sandbox'),
+            ),
+            relative(
+              dirname(join(REPO_ROOT, file)),
+              join(REPO_ROOT, 'packages/safety/src/scoped-gate'),
+            ),
+          ])
+            for (const [fname, f] of factories) {
+              const code = `${callee}('${spec}'${f});\n`;
+              expect(
+                (await only(file, code, SEALED)).length,
+                `${file} ${spec} ${fname}`,
+              ).toBeGreaterThan(0);
+            }
+      },
+    );
+    it.each(callees)(
+      '%s with a template-literal spec and with a computed spec is refused',
+      async (callee) => {
+        const tpl = `${callee}(\`@umsbx/transport\`);\n`;
+        const computed = `${callee}(['@umsbx', 'transport'].join('/'), async (importOriginal) => importOriginal());\n`;
+        for (const file of outsiders)
+          for (const code of [tpl, computed])
+            expect((await only(file, code, SEALED)).length, `${file} ${code}`).toBeGreaterThan(0);
+      },
+    );
+    it.each(callees)('%s of an alias that reaches a sealed module is refused', async (callee) => {
+      for (const spec of ['#ap', 'transport-alias', 'safety-alias', '#star/sandbox'])
+        for (const file of ['evil.test.ts', 'src/evil.test.ts']) {
+          const code = `${callee}('${spec}', async (importOriginal) => importOriginal());\n`;
+          expect((await only(inFx(file), code, ALIAS)).length, `${file} ${spec}`).toBeGreaterThan(
+            0,
+          );
+        }
+    });
+    // BU-1 re-review M1. The mocker is recognised by what it does (a call of mock, doMock,
+    // importMock, requireMock, requireActual or importActual with a sealed first argument), not by the
+    // name of the object, and renaming vi or jest is itself barred.
+    const SPEC = "'@umsbx/transport'";
+    const IMP = "import { vi } from 'vitest';\n";
+    const spellings: [string, string][] = [
+      [
+        'import { vi as v }, v.doMock',
+        `import { vi as v } from 'vitest';\nv.doMock(${SPEC}, async (importOriginal) => importOriginal());\n`,
+      ],
+      ['import { vi as v }, v.mock', `import { vi as v } from 'vitest';\nv.mock(${SPEC});\n`],
+      ['const { mock } = vi', `${IMP}const { mock } = vi;\nmock(${SPEC});\n`],
+      ['const { doMock: dm } = vi', `${IMP}const { doMock: dm } = vi;\ndm(${SPEC});\n`],
+      ['const v = vi', `${IMP}const v = vi;\nv.mock(${SPEC});\n`],
+      ['import * as V, V.vi.mock', `import * as V from 'vitest';\nV.vi.mock(${SPEC});\n`],
+      [
+        'default import, vitest.vi.doMock',
+        `import vitest from 'vitest';\nvitest.vi.doMock(${SPEC});\n`,
+      ],
+      ['vi.mock.call', `${IMP}vi.mock.call(vi, ${SPEC});\n`],
+      ['vi.doMock.call with a factory', `${IMP}vi.doMock.call(vi, ${SPEC}, async (o) => o());\n`],
+      ['vi.mock.apply', `${IMP}vi.mock.apply(vi, [${SPEC}]);\n`],
+      ['vi.mock.bind(...)()', `${IMP}vi.mock.bind(vi, ${SPEC})();\n`],
+      ['globalThis.vi.mock', `globalThis.vi.mock(${SPEC});\n`],
+      ['computed literal key', `${IMP}vi['doMock'](${SPEC});\n`],
+      ['computed variable key', `${IMP}const k = 'doMock';\nvi[k](${SPEC});\n`],
+      ['optional call', `${IMP}vi?.mock?.(${SPEC});\n`],
+      ['any object .mock', `declare const x: any;\nx.mock(${SPEC});\n`],
+      ['any object .doMock', `declare const x: any;\nx.doMock(${SPEC});\n`],
+      ['any object .importMock', `declare const x: any;\nawait x.importMock(${SPEC});\n`],
+      ['any object .requireMock', `declare const x: any;\nx.requireMock(${SPEC});\n`],
+      ['any object .requireActual', `declare const x: any;\nx.requireActual(${SPEC});\n`],
+      ['any object .importActual', `declare const x: any;\nawait x.importActual(${SPEC});\n`],
+      ['import { jest as j }', `import { jest as j } from '@jest/globals';\nj.mock(${SPEC});\n`],
+      ['jest.mock.call', `jest.mock.call(jest, ${SPEC});\n`],
+    ];
+    it.each(spellings)('is refused in an unpinned test file: %s', async (_n, code) => {
+      for (const file of outsiders)
+        expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+    });
+    it.each([
+      [
+        'V.vi.mock with a computed spec',
+        "import * as V from 'vitest';\nV.vi.mock(['@umsbx', 'transport'].join('/'));\n",
+      ],
+      [
+        'globalThis.jest.doMock with a computed spec',
+        "globalThis.jest.doMock(['@umsbx', 'safety'].join('/'));\n",
+      ],
+      [
+        'vi.mock.call with a computed spec',
+        "vi.mock.call(vi, ['@umsbx', 'transport'].join('/'));\n",
+      ],
+    ])('an unreadable specifier on a mocker is refused: %s', async (_n, code) => {
+      for (const file of outsiders)
+        expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+    });
+    it.each([
+      ['import { vi as v }', `import { vi as v } from 'vitest';\nv.fn();\n`],
+      ['import { jest as j }', `import { jest as j } from '@jest/globals';\nj.fn();\n`],
+      ['const v = vi', `${IMP}const v = vi;\nv.fn();\n`],
+      ['const { fn } = vi', `${IMP}const { fn } = vi;\nfn();\n`],
+      ['const { vi: v } = ns', `import * as ns from 'vitest';\nconst { vi: v } = ns;\nv.fn();\n`],
+      ['vi passed as an argument', `${IMP}export const m = [1].map(vi.fn).concat(register(vi));\n`],
+      ['vi in an array', `${IMP}export const m = [vi];\n`],
+      ['vi returned', `${IMP}export const m = () => vi;\n`],
+      ['vi[computed]', `${IMP}const k = 'fn';\nexport const m = vi[k];\n`],
+      ['export { vi }', `${IMP}export { vi };\n`],
+    ])('renaming, copying or destructuring vi or jest is itself refused: %s', async (_n, code) => {
+      for (const file of outsiders)
+        expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+    });
+    // BU-1b (Opus M1, still open after BU-1). Six spellings that were lint-clean and, with
+    // `await import('@umsbx/transport')` after them, handed over the real sealed module at run time.
+    const FACTORY = 'async (importOriginal) => importOriginal()';
+    const probes: [string, string][] = [
+      ['n08 stored doMock', `${IMP}const m = vi.doMock;\nm('@umsbx/transport', ${FACTORY});\n`],
+      ['n09 sequence-expression callee', `${IMP}(0, vi.doMock)('@umsbx/transport', ${FACTORY});\n`],
+      [
+        'n11 X.vi copied, template spec',
+        `import * as V from 'vitest';\nconst part = 'transport';\nconst x0 = V.vi;\nx0.doMock(\`@umsbx/\${part}\`, ${FACTORY});\n`,
+      ],
+      [
+        'n12 (await import()).vi copied, template spec',
+        `const part = 'transport';\nconst m = (await import('vitest')).vi;\nm.doMock(\`@umsbx/\${part}\`, ${FACTORY});\n`,
+      ],
+      [
+        'n13 cast vi, computed concatenated key',
+        `${IMP}(vi as unknown as Record<string, (s: string, f: unknown) => void>)['do' + 'Mock']('@umsbx/transport', ${FACTORY});\n`,
+      ],
+      [
+        'n24 cast vi, template spec with an expression',
+        `${IMP}(vi as typeof vi).doMock(\`@umsbx/\${'transport'}\`, ${FACTORY});\n`,
+      ],
+    ];
+    it.each(probes)('the probe is refused in every unpinned test file: %s', async (_n, code) => {
+      for (const file of outsiders)
+        expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+    });
+    it('each probe still fails the whole lint run of a product-test file, not only one rule', async () => {
+      for (const [n, code] of probes)
+        expect((await lint('packages/paypal/src/evil.test.ts', code)).length, n).toBeGreaterThan(0);
+    });
+    it.each([
+      ['stored in a variable', `${IMP}const m = vi.doMock;\nm('zod');\n`],
+      ['stored from jest', `const m = jest.mock;\nm('zod');\n`],
+      ['stored importActual', `${IMP}const f = vi.importActual;\nawait f('zod');\n`],
+      ['passed as an argument', `${IMP}register(vi.doMock);\n`],
+      ['in an array', `${IMP}export const fns = [vi.mock, vi.doMock];\n`],
+      ['returned', `${IMP}export const get = () => vi.requireMock;\n`],
+      [
+        'destructured doMock',
+        `${IMP}export const f = (o: any) => { const { doMock } = o; return doMock; };\n`,
+      ],
+      ['destructured importActual', `declare const o: any;\nconst { importActual } = o;\n`],
+      ['sequence-expression callee for mock', `${IMP}(0, vi.mock)('zod');\n`],
+      ['callee of a call inside a sequence', `${IMP}(0, vi.importMock)('zod');\n`],
+      ['cast then stored', `${IMP}const m = (vi as typeof vi).doMock;\n`],
+      ['optional member stored', `${IMP}const m = vi?.doMock;\n`],
+      ['stored through V.vi', `import * as V from 'vitest';\nconst m = V.vi.doMock;\n`],
+    ])(
+      'a read of a loader function that is not the callee of a call is refused: %s',
+      async (_n, code) => {
+        for (const file of outsiders)
+          expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+      },
+    );
+    it.each([
+      ['X.vi stored', `import * as V from 'vitest';\nexport const v = V.vi;\n`],
+      ['X.jest stored', `export const j = globalThis.jest;\n`],
+      ['(await import()).vi stored', `export const v = (await import('vitest')).vi;\n`],
+      ['X.vi passed', `import * as V from 'vitest';\nregister(V.vi);\n`],
+      ['X.vi in an object', `import * as V from 'vitest';\nexport const o = { v: V.vi };\n`],
+      ['cast X.vi stored', `import * as V from 'vitest';\nexport const v = V.vi as typeof V.vi;\n`],
+      [
+        'X.vi computed key',
+        `import * as V from 'vitest';\nexport const f = V.vi[['fn'].join('')];\n`,
+      ],
+    ])(
+      'X.vi and X.jest used as a value are treated like bare vi and jest: %s',
+      async (_n, code) => {
+        for (const file of outsiders)
+          expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+      },
+    );
+    it.each([
+      [
+        'a template spec with an expression, any object',
+        "declare const x: any;\nconst p = 't';\nx.doMock(`@umsbx/${p}`);\n",
+      ],
+      [
+        'a concatenated spec, any object',
+        "declare const x: any;\nx.mock('@umsbx/' + 'transport');\n",
+      ],
+      [
+        'a variable spec, any object',
+        'declare const x: any;\ndeclare const s: string;\nx.importMock(s);\n',
+      ],
+      [
+        'requireActual with a variable',
+        'declare const x: any;\ndeclare const s: string;\nx.requireActual(s);\n',
+      ],
+    ])(
+      'an unreadable specifier is refused for every loader member call, whatever the object: %s',
+      async (_n, code) => {
+        for (const file of outsiders)
+          expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+      },
+    );
+    it.each([
+      ['cast callee', `${IMP}(vi.doMock as any)('@umsbx/transport', ${FACTORY});\n`],
+      ['non-null callee', `${IMP}vi.doMock!('@umsbx/transport', ${FACTORY});\n`],
+      ['cast callee, .call', `${IMP}(vi.mock as any).call(undefined, '@umsbx/transport');\n`],
+      ['cast callee, .apply', `${IMP}(vi.doMock as any).apply(undefined, ['@umsbx/safety']);\n`],
+      ['cast then .mock stored', `${IMP}const m = (vi as typeof vi).mock;\n`],
+      ['non-null then .doMock stored', `${IMP}const m = vi!.doMock;\n`],
+      ['jest cast then .mock stored', `const m = (jest as typeof jest).mock;\n`],
+    ])(
+      'TypeScript wrappers around the callee, the object or the .call target are looked through: %s',
+      async (_n, code) => {
+        for (const file of outsiders)
+          expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+      },
+    );
+    it('.call and .apply of a loader with a non-vi this stay allowed when nothing sealed is named', async () => {
+      const ok = [
+        `${IMP}vi.mock.call(undefined, 'zod');\n`,
+        `${IMP}vi.doMock.apply(undefined, ['node:https']);\n`,
+        `${IMP}(vi.mock as any).call(undefined, 'zod');\n`,
+      ];
+      for (const code of ok)
+        for (const file of outsiders)
+          expect(await only(file, code, SEALED), `${file} ${code}`).toEqual([]);
+    });
+    it('the allowed uses stay allowed after BU-1b', async () => {
+      const ok = [
+        `${IMP}const spy = vi.fn();\nconst { calls } = spy.mock;\nexport const c = calls.length;\n`,
+        `${IMP}const spy = vi.fn();\nexpect(spy.mock.calls[0]).toEqual([1]);\nexpect(spy.mock.results.map((r) => r.value)).toEqual([]);\n`,
+        `${IMP}const spy = vi.fn();\nexport const last = spy.mock.lastCall;\nexport const inst = spy.mock.instances;\n`,
+        `${IMP}export const t = typeof vi;\nexport type M = ReturnType<typeof vi.fn>;\nexport type D = typeof vi.doMock;\n`,
+        `${IMP}(vi as typeof vi).fn();\n(vi as unknown as { fn(): void }).fn();\nvi!.fn();\n`,
+        `${IMP}vi.mock('zod');\nawait vi.doMock?.('node:https');\n`,
+        `${IMP}vi.mocked(console.log).mock.calls.push([1]);\n`,
+        `${IMP}export const s = vi.fn().mock.calls;\n`,
+        `import * as V from 'vitest';\nV.vi.fn();\nV.expect(1).toBe(1);\n`,
+        'export const f = (o: { mock: unknown }) => typeof o.mock;\n',
+      ];
+      for (const code of ok)
+        for (const file of outsiders) {
+          expect(await only(file, code, SEALED), `${file} ${code}`).toEqual([]);
+          expect(await only(file, code, ALIAS), `${file} ${code}`).toEqual([]);
+        }
+    });
+    it('the ordinary uses of vi and jest stay allowed', async () => {
+      const ok = [
+        `${IMP}vi.fn();\nvi.spyOn(globalThis, 'x' as never);\nvi.useFakeTimers();\nvi.stubEnv('A', 'b');\n`,
+        `${IMP}vi.mock('zod');\nvi.doMock('node:https', () => ({ default: {} }));\nvi.resetModules();\n`,
+        `${IMP}export type F = ReturnType<typeof vi.fn>;\nexport const t = typeof vi;\n`,
+        "const { vi } = await import('vitest');\nvi.fn();\n",
+        "import { vi, expect } from 'vitest';\nexpect(vi.fn()).toBeDefined();\n",
+        "import { jest } from '@jest/globals';\njest.fn();\n",
+        `${IMP}const spy = vi.fn();\nspy.mock.calls.push([1]);\nexport const n = spy.mock.calls.length;\n`,
+        'export const s = { mock: 1 }.mock;\n',
+      ];
+      for (const code of ok)
+        for (const file of outsiders) {
+          expect(await only(file, code, SEALED), `${file} ${code}`).toEqual([]);
+          expect(await only(file, code, ALIAS), `${file} ${code}`).toEqual([]);
+        }
+    });
+    it.each([
+      ['x.doMock on an alias', "declare const x: any;\nx.doMock('#ap', async (o) => o());\n"],
+      ['vi.mock.call on an alias', "vi.mock.call(vi, 'transport-alias');\n"],
+      ['vi.mock.apply on an alias', "vi.mock.apply(vi, ['safety-alias']);\n"],
+      [
+        'any object .importMock on an alias',
+        "declare const x: any;\nx.importMock('#star/sandbox');\n",
+      ],
+      ['bare mock on an alias', "mock('transport-alias');\n"],
+    ])('an alias that reaches a sealed module is refused through %s', async (_n, code) => {
+      for (const file of ['evil.test.ts', 'src/evil.test.ts'])
+        expect((await only(inFx(file), code, ALIAS)).length, file).toBeGreaterThan(0);
+    });
+    it('a pinned file keeps its exemption (the rule is off there by name)', async () => {
+      const code = "vi.mock('@umsbx/transport', async (importOriginal) => importOriginal());\n";
+      expect(await only('tests/mvp-b/b09-logs-clean.integration.test.ts', code, SEALED)).toEqual(
+        [],
+      );
+    });
+    it('mocking anything else is not flagged', async () => {
+      const ok = [
+        "vi.mock('zod');",
+        "vi.mock('./adapter', async (importOriginal) => importOriginal());",
+        "vi.doMock('node:https', () => ({ default: {} }));",
+        "vi.mock('@umsbx/contracts', async (importOriginal) => importOriginal());",
+        "jest.mock('../../paypal/src/adapter');",
+        'const s = vi.fn(); s.mock.calls.push(1);',
+      ];
+      for (const code of ok)
+        for (const file of outsiders) {
+          expect(await only(file, `${code}\n`, SEALED), `${file} ${code}`).toEqual([]);
+          expect(await only(file, `${code}\n`, ALIAS), `${file} ${code}`).toEqual([]);
+        }
+    });
+  });
+
+  describe('(d) a product file that is not pinned cannot obtain the sealed names by any of the probes', () => {
+    const probes: [string, string, string][] = [
+      [
+        'package.json imports alias #ap',
+        `import { ${NAMES} } from '#ap';\nexport const x = [createApprovedSandboxTransport, PRODUCTION_WIRE];\n`,
+        ALIAS,
+      ],
+      [
+        'node_modules alias with a bare specifier',
+        `import { ${NAMES} } from 'transport-alias';\nexport const x = [createApprovedSandboxTransport, PRODUCTION_WIRE];\n`,
+        ALIAS,
+      ],
+      [
+        'node_modules alias, deep path',
+        "import { createApprovedSandboxTransport } from 'transport-alias/src/sandbox';\nexport const x = createApprovedSandboxTransport;\n",
+        ALIAS,
+      ],
+      [
+        'import.meta.glob',
+        "const mods = import.meta.glob('../../packages/transport/src/sandbox.ts', { eager: true });\nexport const x = Object.values(mods).map((m) => (m as Record<string, unknown>)['createApprovedSandboxTransport']);\n",
+        GLOB,
+      ],
+      [
+        'import.meta.webpackContext',
+        "const ctx = import.meta.webpackContext('../../packages/transport/src', { recursive: false });\nexport const x = (ctx('./sandbox.ts') as Record<string, unknown>)['PRODUCTION_WIRE'];\n",
+        GLOB,
+      ],
+    ];
+    it.each(probes)('%s', async (_n, code, rule) => {
+      for (const f of [inFx('evil.ts'), inFx('src/product.ts'), inFx('product.server.ts')]) {
+        const hit = (await lint(f, code)).filter(
+          (m) => m.ruleId === rule || m.ruleId === 'sbx/sealed-transport',
+        );
+        expect(hit.length, f).toBeGreaterThan(0);
+      }
+      // the glob probes do not depend on the fixture package: they fail in any product file
+      if (rule === GLOB)
+        for (const f of [
+          'packages/paypal/src/evil.ts',
+          'apps/web/composition.server.ts',
+          'packages/jobs/src/evil.ts',
+        ])
+          expect((await only(f, code, GLOB)).length, f).toBeGreaterThan(0);
+    });
+    it('and the official name is still refused to the same files (the baseline these probes would bypass)', async () => {
+      const code = `import { ${NAMES} } from '@umsbx/transport';\nexport const x = [createApprovedSandboxTransport, PRODUCTION_WIRE];\n`;
+      expect(
+        (await only('packages/paypal/src/evil.ts', code, 'sbx/sealed-transport')).length,
+      ).toBeGreaterThan(0);
+    });
   });
 });

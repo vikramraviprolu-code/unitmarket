@@ -294,11 +294,14 @@ describe('transport outcomes', () => {
   });
 });
 
-describe('webhook verification (MVP-A)', () => {
-  it('returns unverifiable until MVP-C', async () => {
+describe('webhook verification (CO-1)', () => {
+  // CO-1 replaced the MVP-A stub that answered `unverifiable` to everything. A delivery without
+  // the five paypal-* headers is `malformed` (spec CO-1, first check); the full behaviour is
+  // covered by webhook-verify.{contract,adversarial,integration}.test.ts.
+  it('a delivery without the paypal-* headers is malformed', async () => {
     const { adapter } = harness(scriptedTransport(() => resp(200, {})));
     expect(await adapter.verifyWebhook({ headers: {}, raw_body: '{}' })).toEqual({
-      kind: 'unverifiable',
+      kind: 'malformed',
     });
   });
 });

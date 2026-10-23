@@ -37,3 +37,5 @@ export type { ApprovalCapability, GateTrust, MintApprovalCapability } from './ap
 export type { ApprovedSandboxOptions, SandboxCall, SandboxTransport } from './sandbox';
 export type { ScopedGate, Wire, WireErrorKind, WireRequest, WireResult } from './wire';
 export { MAX_RESPONSE_BYTES } from './wire-map';
+export { wireSelfCheck } from './wire-selfcheck';
+export type { WireSelfCheck } from './wire-selfcheck';
