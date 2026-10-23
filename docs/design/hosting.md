@@ -52,3 +52,15 @@ Needs: (1) one long-lived Node process, 30 s job loop; (2) persistent disk for P
 - Put PGlite on Cloud Storage FUSE or NFS.
 - Start any phase 3 sandbox hosting before Vikram's explicit go (repo rule: this phase is simulation only).
 - Prepay long terms for an 8-week need.
+
+## Deploying (Render blueprint, CO-7)
+
+`render.yaml` at the repository root describes the one web service: Node 22.22.0, one instance, auto-deploy off, a 1 GB disk at `/var/data`, `UMS_PGLITE_DIR=/var/data/pglite`, health check `/healthz`. It holds env variable names and safe fixed values only. `pnpm check:hosting` (part of `pnpm ci`) fails on any unsafe setting.
+
+1. The owner connects the repository to Render and imports the blueprint (a paid plan is needed for the disk).
+2. The owner enters a value in the dashboard for every `sync: false` name: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `UMS_OUTBOUND_APPROVAL_REF`, `UMS_SESSION_SECRET`, `UMS_APPROVAL_SECRET`, `UMS_LINK_SECRET`, `UMS_DEMO_PASSCODE_HASH`, `UMS_OPERATOR_TOTP_KEYS`, `UMS_PUBLIC_ORIGIN`. No value goes into the repository, a chat or a PR.
+3. `UMS_PAYPAL_CONNECT` stays `off` in the file. The owner flips it to `on` in the dashboard only after the approval row exists. The check refuses `on` in the file.
+4. Deploy manually from a reviewed tag (RLR-1). Never raise `numInstances`: two processes must not share one PGlite directory.
+5. After the first deploy, confirm `UMS_TRUSTED_PROXIES=1` against the real `X-Forwarded-For` (ASM-57).
+
+Render field names this blueprint relies on and the owner must confirm on import (not verifiable offline): `runtime: node`, `plan: starter`, `numInstances`, `autoDeploy: false`, `healthCheckPath`, `disk.name` / `disk.mountPath` / `disk.sizeGB`, `envVars[].sync: false`, `NODE_VERSION` as the Node version variable, and that `corepack` is available in the build image. No `region` is set (owner's choice at import).
