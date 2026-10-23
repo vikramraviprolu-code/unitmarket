@@ -309,4 +309,20 @@ describe('budgets by class', () => {
     await source.get(trusted);
     expect(t.calls.length - base).toBe(2); // and the third is refused
   });
+
+  it('stats forget a lone fetch once it is out of its window', async () => {
+    const { source, clock } = world();
+    const trusted = url('FAIL-TRUSTED');
+    await source.get(trusted); // one unknown fetch, while cold
+    source.trust(trusted);
+    clock.advance(HOUR);
+    await source.get(trusted); // one trusted fetch
+    expect(source.stats().fetches_in_window).toBe(1);
+    expect(source.stats().unknown_fetches_today).toBe(1);
+    clock.advance(HOUR);
+    expect(source.stats().fetches_in_window).toBe(0);
+    expect(source.stats().unknown_fetches_today).toBe(1);
+    clock.advance(DAY);
+    expect(source.stats().unknown_fetches_today).toBe(0);
+  });
 });
