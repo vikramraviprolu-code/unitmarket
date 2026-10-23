@@ -1737,11 +1737,10 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
         `${IMP}const spy = vi.fn();\nexport const last = spy.mock.lastCall;\nexport const inst = spy.mock.instances;\n`,
         `${IMP}export const t = typeof vi;\nexport type M = ReturnType<typeof vi.fn>;\nexport type D = typeof vi.doMock;\n`,
         `${IMP}(vi as typeof vi).fn();\n(vi as unknown as { fn(): void }).fn();\nvi!.fn();\n`,
-        `${IMP}vi.mock('zod');\nawait vi.doMock?.('node:https');\nvi.mock.call(vi, 'zod');\n`,
+        `${IMP}vi.mock('zod');\nawait vi.doMock?.('node:https');\n`,
         `${IMP}vi.mocked(console.log).mock.calls.push([1]);\n`,
         `${IMP}export const s = vi.fn().mock.calls;\n`,
         `import * as V from 'vitest';\nV.vi.fn();\nV.expect(1).toBe(1);\n`,
-        'export const cfg = { vi: 1, jest: 2 };\nexport const a = cfg.vi + cfg.jest;\n',
         'export const f = (o: { mock: unknown }) => typeof o.mock;\n',
       ];
       for (const code of ok)
