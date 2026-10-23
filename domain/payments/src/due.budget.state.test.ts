@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { PaymentsDeps } from '@umsbx/contracts';
 import { beginCheckout, executeRefund, nextDueAt, requestRefund, runDue } from './index';
 import {
-  BUYER_A,
   OPERATOR,
   awaiting,
   lostResponse,

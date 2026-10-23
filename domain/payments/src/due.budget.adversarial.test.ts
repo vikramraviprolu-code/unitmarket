@@ -87,11 +87,10 @@ describe('two passes at once', () => {
   it('two loops with an allowance of 1 each: no order is read by both', async () => {
     w = await makeWorld();
     const orders = await threeDue();
-    const base = gets();
+    const before = orders.map((o) => gets(o.provider_order_id));
     await Promise.all([runDue(w.deps, { max_items: 1 }), runDue(w.deps, { max_items: 1 })]);
-    expect(gets() - base).toBe(2);
-    const read = orders.filter((o) => gets(o.provider_order_id) === 2);
-    expect(read).toHaveLength(2); // two different orders (setup read + one re-read each)
+    const added = orders.map((o, i) => gets(o.provider_order_id) - before[i]!);
+    expect(added.sort()).toEqual([0, 1, 1]); // two different orders, one read each
   });
 
   it('a second pass that starts while the first is inside its read does not read that order again', async () => {

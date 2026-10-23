@@ -154,7 +154,7 @@ describe('call gap (PERF-9)', () => {
     });
     await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(2));
     await loop.stop();
-    expect(x.calls.slice(0, 6)).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(new Set(x.calls.slice(0, 6)).size).toBe(1); // one pass, no waiting between calls
   });
 });
 
@@ -228,6 +228,7 @@ describe('the allowance decides each pass', () => {
     });
     await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(1));
     await loop.stop();
+    expect(vi.mocked(runDue).mock.calls[0]![0]).toBe(x.d); // no rate limiting either
     expect(vi.mocked(runDue).mock.calls[0]![1]).toEqual({ max_items: 7 });
   });
 

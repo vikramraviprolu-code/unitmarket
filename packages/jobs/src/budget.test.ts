@@ -138,17 +138,23 @@ describe('rateLimited (PERF-9: at most 2 calls a second)', () => {
     expect(r.slept).toEqual([300]);
   });
 
-  it('concurrent callers take separate slots, one gap apart', async () => {
-    const r = rig(500);
-    await Promise.all([
-      r.limited.getOrder('a'),
-      r.limited.getOrder('b'),
-      r.limited.getCapture('c'),
-    ]);
-    const times = r.seen.map((s) => s.at).sort((x, y) => x - y);
-    expect(times).toHaveLength(3);
-    expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(500);
-    expect(times[2]! - times[1]!).toBeGreaterThanOrEqual(500);
+  it('concurrent callers take separate slots, one gap apart', () => {
+    // a sleeper that records the wait and does not move time: every caller sees the same "now"
+    const waits: number[] = [];
+    const l = rateLimited(
+      { ping: () => Promise.resolve(1) },
+      {
+        gap_ms: 500,
+        now: () => 7_000,
+        sleep: (ms) => {
+          waits.push(ms);
+          return Promise.resolve();
+        },
+      },
+    );
+    return Promise.all([l.ping(), l.ping(), l.ping(), l.ping()]).then(() => {
+      expect(waits).toEqual([500, 1000, 1500]);
+    });
   });
 
   it('methods keep their this, return their value, and plain properties pass through', async () => {
