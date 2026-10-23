@@ -141,6 +141,22 @@ describe('only the sandbox hosts are ever contacted (BU-1 review L6)', () => {
     expect((await wire.request(get({ url: cert }))).kind).toBe('response');
     expect(calls.map((c) => c.options['hostname'])).toEqual([SANDBOX_HOST, CERT_HOST]);
   });
+  it.each([
+    ['percent-encoded dot-dot', '/v1/notifications/certs/..%2f..%2fv2/checkout/orders/ABC123'],
+    ['percent-encoded slash', '/v1/notifications/certs/a%2fb'],
+    ['a plain dot-dot', '/v1/notifications/certs/../../v2/checkout/orders/ABC123'],
+    ['a sub-path', '/v1/notifications/certs/a/b'],
+    ['no file name', '/v1/notifications/certs/'],
+    ['a dot file', '/v1/notifications/certs/.hidden'],
+    ['a backslash', '/v1/notifications/certs/a\\\\b'],
+  ])(
+    'a certificate path with %s is refused with zero requests (the guard rule, BU-1 re-review L1)',
+    async (_n, path) => {
+      const { wire, calls } = build();
+      expect(await wire.request(get({ url: `https://${CERT_HOST}${path}` }))).toEqual(other);
+      expect(calls).toHaveLength(0);
+    },
+  );
   it('a certificate host is GET only', async () => {
     const { wire, calls } = build();
     const url = `https://${CERT_HOST}/v1/notifications/certs/CERT-1`;

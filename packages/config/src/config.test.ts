@@ -417,7 +417,6 @@ describe('transport environment overrides (M1)', () => {
     'NODE_USE_SYSTEM_CA',
     // SEAL5 / BU-1 review F3
     'NODE_PRESERVE_SYMLINKS',
-    'NODE_PATH',
     'OPENSSL_CONF',
     'SSL_CERT_FILE',
     'SSL_CERT_DIR',
@@ -433,6 +432,19 @@ describe('transport environment overrides (M1)', () => {
     expect(refusal(sandbox({ Https_Proxy: 'http://127.0.0.1:1' })).code).toBe(
       'transport_env_override',
     );
+  });
+  // BU-1 re-review H1. pnpm's command shims export NODE_PATH on every start (extendNodePath), so
+  // refusing it would make every normal `pnpm start` fail closed. It only affects CommonJS lookup.
+  const PNPM_NODE_PATH =
+    '/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/dist/bin/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/dist/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules:/srv/app/node_modules/.pnpm/node_modules';
+  it('a pnpm-style NODE_PATH is not an override: sandbox mode boots with it', () => {
+    expect(loadConfig(sandbox({ NODE_PATH: PNPM_NODE_PATH })).ok).toBe(true);
+    expect(loadConfig(sandbox({ node_path: PNPM_NODE_PATH })).ok).toBe(true);
+  });
+  it('NODE_OPTIONS is still refused next to a pnpm-style NODE_PATH', () => {
+    expect(
+      refusal(sandbox({ NODE_PATH: PNPM_NODE_PATH, NODE_OPTIONS: '--require ./x.cjs' })),
+    ).toEqual({ code: 'transport_env_override', name: 'NODE_OPTIONS' });
   });
   it('an empty value is not an override', () => {
     expect(loadConfig(sandbox({ HTTPS_PROXY: '', NODE_OPTIONS: '  ' })).ok).toBe(true);

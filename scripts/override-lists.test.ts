@@ -35,7 +35,6 @@ const REQUIRED_NAMES = [
   'HTTP_PROXY',
   'NODE_EXTRA_CA_CERTS',
   'NODE_OPTIONS',
-  'NODE_PATH',
   'NODE_PRESERVE_SYMLINKS',
   'NODE_TLS_REJECT_UNAUTHORIZED',
   'NODE_USE_ENV_PROXY',
@@ -100,6 +99,10 @@ describe('the three override lists are one list', () => {
     expect(c).toEqual(REQUIRED_NAMES);
     expect(namesOf(sources['wire'] as string)).toEqual(c);
     expect(namesOf(sources['spike'] as string)).toEqual(c);
+  });
+  it('NODE_PATH is deliberately in none of the three lists (pnpm shims always set it)', () => {
+    for (const k of ['config', 'wire', 'spike'])
+      expect(namesOf(sources[k] as string), k).not.toContain('NODE_PATH');
   });
   it('the flag expressions are identical in config, the production Wire and the spike kit', () => {
     const c = flagOf(sources['config'] as string);

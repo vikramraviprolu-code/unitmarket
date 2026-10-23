@@ -1401,6 +1401,64 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
           checkNamedExemptions([{ files: ['x.ts'], off: ['sbx/no-global-alias', rule] }]),
         ).toThrow(rule);
     });
+    it('no block of the FINAL exported config downgrades a sealing rule outside the pinned exemptions (BU-1 review L3)', async () => {
+      const { default: cfg, NAMED_EXEMPTIONS } = await import('../eslint.config.mjs');
+      const blocks = cfg as { rules?: Record<string, unknown>; files?: unknown }[];
+      expect(blocks.length).toBeGreaterThan(10);
+      const pinned = new Set(
+        (NAMED_EXEMPTIONS as { files: string[]; off: string[] }[]).flatMap((e) =>
+          e.off.flatMap((r) => e.files.map((f) => `${r}|${f}`)),
+        ),
+      );
+      const severity = (v: unknown): unknown => (Array.isArray(v) ? v[0] : v);
+      const SEALING = [
+        'sbx/sealed-transport',
+        'sbx/no-sealed-alias',
+        'sbx/no-bundler-glob',
+        'sbx/no-package-escape',
+      ];
+      const seen: Record<string, number> = {};
+      const bad: string[] = [];
+      for (const b of blocks)
+        for (const rule of SEALING) {
+          if (!b.rules || !Object.hasOwn(b.rules, rule)) continue;
+          seen[rule] = (seen[rule] ?? 0) + 1;
+          if (['error', 2].includes(severity(b.rules[rule]) as string | number)) continue;
+          // not an error: only a named exemption of exactly these files may say so, and never for
+          // the two SEAL5 rules
+          const files = Array.isArray(b.files) ? (b.files as string[]) : [];
+          const ok =
+            rule !== GLOB &&
+            rule !== ALIAS &&
+            files.length > 0 &&
+            files.every((f) => pinned.has(`${rule}|${f}`));
+          if (!ok)
+            bad.push(
+              `${rule} -> ${JSON.stringify(severity(b.rules[rule]))} in ${JSON.stringify(b.files)}`,
+            );
+        }
+      expect(bad).toEqual([]);
+      // each rule is set by every entry() block, so it is present many times
+      for (const rule of SEALING) expect(seen[rule] ?? 0, rule).toBeGreaterThan(20);
+    });
+    it('the lint script and ci fail on warnings', async () => {
+      const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')) as {
+        scripts: Record<string, string>;
+      };
+      expect(pkg.scripts['lint']).toMatch(/--max-warnings[ =]0\b/);
+      // ci runs the lint script, so it inherits the flag
+      expect(pkg.scripts['ci']).toMatch(/corepack pnpm lint\b/);
+    });
+    it('the config refuses to load an exemption that switches either rule off', async () => {
+      const { checkNamedExemptions } = await import('../eslint.config.mjs');
+      expect(() =>
+        checkNamedExemptions([{ files: ['x.ts'], off: ['no-restricted-syntax'] }]),
+      ).not.toThrow();
+      for (const rule of [GLOB, ALIAS])
+        expect(() =>
+          checkNamedExemptions([{ files: ['x.ts'], off: ['sbx/no-global-alias', rule] }]),
+        ).toThrow(rule);
+    });
     it('no raw block of the FINAL exported config switches either rule off or weakens it (BU-1 review L3)', async () => {
       const { default: cfg } = await import('../eslint.config.mjs');
       const blocks = cfg as { rules?: Record<string, unknown>; files?: unknown }[];
@@ -1502,6 +1560,91 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
             0,
           );
         }
+    });
+    // BU-1 re-review M1. The mocker is recognised by what it does (a call of mock, doMock,
+    // importMock, requireMock, requireActual or importActual with a sealed first argument), not by the
+    // name of the object, and renaming vi or jest is itself barred.
+    const SPEC = "'@umsbx/transport'";
+    const IMP = "import { vi } from 'vitest';\n";
+    const spellings: [string, string][] = [
+      [
+        'import { vi as v }, v.doMock',
+        `import { vi as v } from 'vitest';\nv.doMock(${SPEC}, async (importOriginal) => importOriginal());\n`,
+      ],
+      ['import { vi as v }, v.mock', `import { vi as v } from 'vitest';\nv.mock(${SPEC});\n`],
+      ['const { mock } = vi', `${IMP}const { mock } = vi;\nmock(${SPEC});\n`],
+      ['const { doMock: dm } = vi', `${IMP}const { doMock: dm } = vi;\ndm(${SPEC});\n`],
+      ['const v = vi', `${IMP}const v = vi;\nv.mock(${SPEC});\n`],
+      ['import * as V, V.vi.mock', `import * as V from 'vitest';\nV.vi.mock(${SPEC});\n`],
+      [
+        'default import, vitest.vi.doMock',
+        `import vitest from 'vitest';\nvitest.vi.doMock(${SPEC});\n`,
+      ],
+      ['vi.mock.call', `${IMP}vi.mock.call(vi, ${SPEC});\n`],
+      ['vi.doMock.call with a factory', `${IMP}vi.doMock.call(vi, ${SPEC}, async (o) => o());\n`],
+      ['vi.mock.apply', `${IMP}vi.mock.apply(vi, [${SPEC}]);\n`],
+      ['vi.mock.bind(...)()', `${IMP}vi.mock.bind(vi, ${SPEC})();\n`],
+      ['globalThis.vi.mock', `globalThis.vi.mock(${SPEC});\n`],
+      ['computed literal key', `${IMP}vi['doMock'](${SPEC});\n`],
+      ['computed variable key', `${IMP}const k = 'doMock';\nvi[k](${SPEC});\n`],
+      ['optional call', `${IMP}vi?.mock?.(${SPEC});\n`],
+      ['any object .mock', `declare const x: any;\nx.mock(${SPEC});\n`],
+      ['any object .doMock', `declare const x: any;\nx.doMock(${SPEC});\n`],
+      ['any object .importMock', `declare const x: any;\nawait x.importMock(${SPEC});\n`],
+      ['any object .requireMock', `declare const x: any;\nx.requireMock(${SPEC});\n`],
+      ['any object .requireActual', `declare const x: any;\nx.requireActual(${SPEC});\n`],
+      ['any object .importActual', `declare const x: any;\nawait x.importActual(${SPEC});\n`],
+      ['import { jest as j }', `import { jest as j } from '@jest/globals';\nj.mock(${SPEC});\n`],
+      ['jest.mock.call', `jest.mock.call(jest, ${SPEC});\n`],
+    ];
+    it.each(spellings)('is refused in an unpinned test file: %s', async (_n, code) => {
+      for (const file of outsiders)
+        expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+    });
+    it.each([
+      ['import { vi as v }', `import { vi as v } from 'vitest';\nv.fn();\n`],
+      ['import { jest as j }', `import { jest as j } from '@jest/globals';\nj.fn();\n`],
+      ['const v = vi', `${IMP}const v = vi;\nv.fn();\n`],
+      ['const { fn } = vi', `${IMP}const { fn } = vi;\nfn();\n`],
+      ['const { vi: v } = ns', `import * as ns from 'vitest';\nconst { vi: v } = ns;\nv.fn();\n`],
+      ['vi passed as an argument', `${IMP}export const m = [1].map(vi.fn).concat(register(vi));\n`],
+      ['vi in an array', `${IMP}export const m = [vi];\n`],
+      ['vi returned', `${IMP}export const m = () => vi;\n`],
+      ['vi[computed]', `${IMP}const k = 'fn';\nexport const m = vi[k];\n`],
+      ['export { vi }', `${IMP}export { vi };\n`],
+    ])('renaming, copying or destructuring vi or jest is itself refused: %s', async (_n, code) => {
+      for (const file of outsiders)
+        expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+    });
+    it('the ordinary uses of vi and jest stay allowed', async () => {
+      const ok = [
+        `${IMP}vi.fn();\nvi.spyOn(globalThis, 'x' as never);\nvi.useFakeTimers();\nvi.stubEnv('A', 'b');\n`,
+        `${IMP}vi.mock('zod');\nvi.doMock('node:https', () => ({ default: {} }));\nvi.resetModules();\n`,
+        `${IMP}export type F = ReturnType<typeof vi.fn>;\nexport const t = typeof vi;\n`,
+        "const { vi } = await import('vitest');\nvi.fn();\n",
+        "import { vi, expect } from 'vitest';\nexpect(vi.fn()).toBeDefined();\n",
+        "import { jest } from '@jest/globals';\njest.fn();\n",
+        `${IMP}const spy = vi.fn();\nspy.mock.calls.push([1]);\nexport const n = spy.mock.calls.length;\n`,
+        'export const s = { mock: 1 }.mock;\n',
+      ];
+      for (const code of ok)
+        for (const file of outsiders) {
+          expect(await only(file, code, SEALED), `${file} ${code}`).toEqual([]);
+          expect(await only(file, code, ALIAS), `${file} ${code}`).toEqual([]);
+        }
+    });
+    it.each([
+      ['x.doMock on an alias', "declare const x: any;\nx.doMock('#ap', async (o) => o());\n"],
+      ['vi.mock.call on an alias', "vi.mock.call(vi, 'transport-alias');\n"],
+      ['vi.mock.apply on an alias', "vi.mock.apply(vi, ['safety-alias']);\n"],
+      [
+        'any object .importMock on an alias',
+        "declare const x: any;\nx.importMock('#star/sandbox');\n",
+      ],
+      ['bare mock on an alias', "mock('transport-alias');\n"],
+    ])('an alias that reaches a sealed module is refused through %s', async (_n, code) => {
+      for (const file of ['evil.test.ts', 'src/evil.test.ts'])
+        expect((await only(inFx(file), code, ALIAS)).length, file).toBeGreaterThan(0);
     });
     it('a pinned file keeps its exemption (the rule is off there by name)', async () => {
       const code = "vi.mock('@umsbx/transport', async (importOriginal) => importOriginal());\n";

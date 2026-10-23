@@ -87,9 +87,9 @@ afterEach(() => {
 });
 
 describe('the environment is rechecked on every request (M3, SEAL2)', () => {
-  it('the override names include NODE_PRESERVE_SYMLINKS (SEAL5 item f) and NODE_PATH (BU-1 review F3)', () => {
+  it('the override names include NODE_PRESERVE_SYMLINKS (SEAL5 item f) and not NODE_PATH (BU-1 re-review H1)', () => {
     expect(OVERRIDE_ENV_NAMES).toContain('NODE_PRESERVE_SYMLINKS');
-    expect(OVERRIDE_ENV_NAMES).toContain('NODE_PATH');
+    expect(OVERRIDE_ENV_NAMES).not.toContain('NODE_PATH');
   });
   it('with a clean environment the request reaches the (fake) request function', async () => {
     const r = await loaded.createHttpsWire().request(request());
@@ -128,6 +128,20 @@ describe('the environment is rechecked on every request (M3, SEAL2)', () => {
       });
     }
     expect(loaded.world.calls).toHaveLength(0);
+  });
+  // pnpm's command shims export NODE_PATH on every start (extendNodePath); it only changes CommonJS
+  // lookup, so it must not make every request fail closed.
+  const PNPM_NODE_PATH =
+    '/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/dist/bin/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/dist/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules:/srv/app/node_modules/.pnpm/node_modules';
+  it('a pnpm-style NODE_PATH does not stop the request, and NODE_OPTIONS next to it still does', async () => {
+    vi.stubEnv('NODE_PATH', PNPM_NODE_PATH);
+    const wire = loaded.createHttpsWire();
+    expect((await wire.request(request())).kind).toBe('response');
+    expect(loaded.wireSelfCheck().env_override).toBe(false);
+    vi.stubEnv('NODE_OPTIONS', '--require ./x.cjs');
+    expect(await wire.request(request())).toEqual({ kind: 'error', error: 'other' });
+    expect(loaded.wireSelfCheck().env_override).toBe(true);
+    expect(loaded.world.calls).toHaveLength(1);
   });
   it('harmless flags do not stop the request', async () => {
     Object.defineProperty(process, 'execArgv', {
