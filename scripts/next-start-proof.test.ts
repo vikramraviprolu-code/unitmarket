@@ -37,8 +37,15 @@ const SELFCHECK = j({
   builtins_intact: true,
   global_fetch_changed: false,
 });
-const SEND = (operation: string, outcome: string): string =>
+const BUILT = j({
+  level: 'info',
+  msg: 'outbound.transport_built',
+  scope: 'mvp_b_polling',
+  wire_kind: 'production',
+});
+const SEND = (operation: string, outcome: string, reason?: string): string =>
   j({
+    ...(reason === undefined ? {} : { reason }),
     level: 'info',
     msg: 'sandbox.send',
     operation,
@@ -59,7 +66,7 @@ const AFTER_LOAD = {
 
 type StartInput = Parameters<typeof analyseStart>[0];
 const good = (over: Partial<StartInput> = {}): StartInput => ({
-  stdout: [...BANNER, SELFCHECK, GOOD_SEND, GOOD_SEND].join('\n'),
+  stdout: [...BANNER, SELFCHECK, BUILT, GOOD_SEND, GOOD_SEND].join('\n'),
   stderr: '',
   secrets: SECRETS,
   provider_calls: [
@@ -70,6 +77,7 @@ const good = (over: Partial<StartInput> = {}): StartInput => ({
   exit: { code: 0, signal: null },
   ops_selfcheck: AFTER_LOAD,
   checkout_status: 503,
+  static_hits: 0,
   ...over,
 });
 const failed = (r: ReturnType<typeof analyseStart>): string[] =>
@@ -135,17 +143,65 @@ describe('analyseStart: the details a reviewer reads', () => {
     );
   });
   it('one single blocked send line is enough to pass', () => {
-    const one = analyseStart(good({ stdout: [...BANNER, SELFCHECK, GOOD_SEND].join('\n') }));
+    const one = analyseStart(good({ stdout: [...BANNER, SELFCHECK, BUILT, GOOD_SEND].join('\n') }));
     expect(failed(one)).toEqual([]);
     expect(one.facts.sends).toBe(1);
   });
   it('says so when the gate was never reached, and when the server never listened', () => {
-    const none = analyseStart(good({ stdout: [...BANNER, SELFCHECK].join('\n') }));
+    const none = analyseStart(good({ stdout: [...BANNER, SELFCHECK, BUILT].join('\n') }));
     expect(detail(none, 'sends_blocked')).toBe('no sandbox.send line: the gate was never reached');
     expect(detail(analyseStart(good({ listened: false })), 'listened')).toBe(
       'no 200 from /healthz',
     );
     expect(detail(analyseStart(good()), 'listened')).toContain('answered 200');
+  });
+});
+
+describe('analyseStart: BU-3 review additions', () => {
+  const detail = (r: ReturnType<typeof analyseStart>, id: string): string =>
+    r.checks.find((c) => c.id === id)?.detail ?? '';
+  it('the approved transport was built on the production Wire (outbound.transport_built)', () => {
+    expect(failed(analyseStart(good()))).toEqual([]);
+    const none = analyseStart(good({ stdout: [...BANNER, SELFCHECK, GOOD_SEND].join('\n') }));
+    expect(failed(none)).toContain('transport_built');
+    const injected = JSON.stringify({ ...JSON.parse(BUILT), wire_kind: 'injected' });
+    const r = analyseStart(
+      good({ stdout: [...BANNER, SELFCHECK, injected, GOOD_SEND].join('\n') }),
+    );
+    expect(failed(r)).toContain('transport_built');
+    expect(detail(analyseStart(good()), 'transport_built')).toContain('production');
+  });
+  it('the built bundle holds none of the fake values (static_hits)', () => {
+    expect(failed(analyseStart(good({ static_hits: 1 })))).toContain('no_secret_in_bundle');
+    expect(failed(analyseStart(good({ static_hits: null })))).toContain('no_secret_in_bundle');
+    expect(failed(analyseStart(good({ static_hits: 0 })))).toEqual([]);
+  });
+  it('the send tally carries the reason when a line has one', () => {
+    const withReason = SEND('oauth_token', 'blocked:no_approval', 'operation_not_in_scope');
+    const r = analyseStart(
+      good({ stdout: [...BANNER, SELFCHECK, BUILT, GOOD_SEND, withReason].join('\n') }),
+    );
+    expect(detail(r, 'sends_blocked')).toBe(
+      '2 line(s): oauth_token:blocked:no_approval x1, oauth_token:blocked:no_approval (operation_not_in_scope) x1',
+    );
+  });
+  it('a send line whose reason is not the plain gate answer is still judged on operation and outcome', () => {
+    const r = analyseStart(
+      good({
+        stdout: [
+          ...BANNER,
+          SELFCHECK,
+          BUILT,
+          SEND('oauth_token', 'blocked:no_approval', 'schema'),
+        ].join('\n'),
+      }),
+    );
+    expect(failed(r)).toEqual([]);
+  });
+  it('the self-check detail says the line is logged at first transport use, not at startup', () => {
+    const d = detail(analyseStart(good()), 'global_fetch_recorded');
+    expect(d).toContain('first transport use');
+    expect(d).not.toContain('startup');
   });
 });
 
@@ -163,7 +219,7 @@ describe('analyseStart: bad runs', () => {
     );
   });
   it('no selfcheck line', () => {
-    const r = analyseStart(good({ stdout: [...BANNER, GOOD_SEND].join('\n') }));
+    const r = analyseStart(good({ stdout: [...BANNER, BUILT, GOOD_SEND].join('\n') }));
     expect(failed(r)).toContain('selfcheck_line');
     expect(r.facts.selfcheck).toBeNull();
   });
@@ -174,7 +230,7 @@ describe('analyseStart: bad runs', () => {
     ['wire_kind injected', { wire_kind: 'injected' }],
   ])('selfcheck line with %s', (_name, change) => {
     const line = JSON.stringify({ ...JSON.parse(SELFCHECK), ...change });
-    const r = analyseStart(good({ stdout: [...BANNER, line, GOOD_SEND].join('\n') }));
+    const r = analyseStart(good({ stdout: [...BANNER, line, BUILT, GOOD_SEND].join('\n') }));
     expect(failed(r)).toContain('selfcheck_line');
   });
   it('the selfcheck after Next loaded its modules is missing or dirty', () => {
@@ -190,14 +246,14 @@ describe('analyseStart: bad runs', () => {
     const line = JSON.stringify({ ...JSON.parse(SELFCHECK), global_fetch_changed: 'maybe' });
     const r = analyseStart(
       good({
-        stdout: [...BANNER, line, GOOD_SEND].join('\n'),
+        stdout: [...BANNER, line, BUILT, GOOD_SEND].join('\n'),
         ops_selfcheck: { ...AFTER_LOAD, global_fetch_changed_since_load: undefined as never },
       }),
     );
     expect(failed(r)).toContain('global_fetch_recorded');
   });
   it('no sandbox.send line at all proves nothing', () => {
-    const r = analyseStart(good({ stdout: [...BANNER, SELFCHECK].join('\n') }));
+    const r = analyseStart(good({ stdout: [...BANNER, SELFCHECK, BUILT].join('\n') }));
     expect(failed(r)).toContain('sends_blocked');
   });
   it.each([
@@ -209,7 +265,9 @@ describe('analyseStart: bad runs', () => {
     ['another operation', SEND('get_capture', 'blocked:no_approval')],
     ['a create_order', SEND('create_order', 'blocked:no_approval')],
   ])('one send line is %s', (_name, bad) => {
-    const r = analyseStart(good({ stdout: [...BANNER, SELFCHECK, GOOD_SEND, bad].join('\n') }));
+    const r = analyseStart(
+      good({ stdout: [...BANNER, SELFCHECK, BUILT, GOOD_SEND, bad].join('\n') }),
+    );
     expect(failed(r)).toContain('sends_blocked');
   });
   it('a send line with no outcome fails', () => {
@@ -220,7 +278,9 @@ describe('analyseStart: bad runs', () => {
     });
     expect(
       failed(
-        analyseStart(good({ stdout: [...BANNER, SELFCHECK, GOOD_SEND, noOutcome].join('\n') })),
+        analyseStart(
+          good({ stdout: [...BANNER, SELFCHECK, BUILT, GOOD_SEND, noOutcome].join('\n') }),
+        ),
       ),
     ).toContain('sends_blocked');
   });
