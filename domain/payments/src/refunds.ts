@@ -693,11 +693,25 @@ export async function ensureRefundReadbackOp(
  * leaves a refund_readback operation polling.
  */
 export async function readBack(d: PaymentsDeps, request_id: Id): Promise<Executed> {
+  return (await readBackChecked(d, request_id)).result;
+}
+
+/**
+ * readBack, and whether a read it needed was BLOCKED (call budget spent, kill switch, no approval,
+ * connect off). A blocked read is no evidence: the caller must not close a request at the end of the
+ * window on it, only try again later.
+ */
+async function readBackChecked(
+  d: PaymentsDeps,
+  request_id: Id,
+): Promise<{ result: Executed; blocked: boolean }> {
   const rq = await loadRequest(d.db, request_id);
-  if (rq === null || rq.refund_id === null) return err({ code: 'unknown' });
+  if (rq === null || rq.refund_id === null)
+    return { result: err({ code: 'unknown' }), blocked: false };
   const unit = await loadUnitFacts(d.db, rq.unit_id, false);
-  if (unit === null) return err({ code: 'unknown' });
+  if (unit === null) return { result: err({ code: 'unknown' }), blocked: false };
   const got = await d.paypal.getRefund(rq.refund_id);
+  let blocked = got.kind === 'blocked';
   let status: RefundStatus | null = null;
   let amount: Money | null = null;
   if (got.kind === 'refund') {
@@ -717,6 +731,7 @@ export async function readBack(d: PaymentsDeps, request_id: Id): Promise<Execute
     ).rows[0]?.provider_order_id;
     const read: OrderRead | null =
       provider === undefined || provider === null ? null : await d.paypal.getOrder(provider);
+    if (read !== null && read.kind === 'blocked') blocked = true;
     if (read !== null && read.kind === 'order') {
       const cap = read.units.find((u) => u.capture?.capture_id === rq.capture_id)?.capture;
       if (cap !== undefined && cap !== null) {
@@ -725,7 +740,7 @@ export async function readBack(d: PaymentsDeps, request_id: Id): Promise<Execute
       }
     }
   }
-  return d.db.transaction(async (tx): Promise<Executed> => {
+  const result = await d.db.transaction(async (tx): Promise<Executed> => {
     const at = d.clock.now().toISOString();
     // Lock order: the order and its operations, then the unit, then the request.
     await lockOrderRows(tx, unit.order_id);
@@ -781,6 +796,7 @@ export async function readBack(d: PaymentsDeps, request_id: Id): Promise<Execute
     await ensureRefundReadbackOp(tx, d, row.id, fresh.order_id, sent?.first_sent_at ?? at, at);
     return ok({ status: 'PENDING' as const });
   });
+  return { result, blocked };
 }
 
 /** What the ledger says is refunded for a unit: the sum of its refund entries (D-019). */
@@ -934,15 +950,21 @@ export async function resumeRefund(d: PaymentsDeps, op: RefundOp, ended: boolean
   if (rq === null) return;
   if (op.kind === 'refund' && rq.state === 'requested' && rq.refund_id === null) {
     // BU-4: the first send was put off because PayPal's remaining amount could not be read.
+    if (ended) {
+      // CO-4: the 24 h window is over. A refund that was never sent is not sent late (the operator
+      // asked a day ago, the books may have moved); it is closed unsent and a human is told.
+      await closeUnsent(d, op, request_id);
+      return;
+    }
     // Nothing was ever sent, so this is the whole first-send path again, check included.
     await executeRefund(d, { refund_request_id: request_id });
-    if (ended) await closeUnsent(d, op, request_id);
     return;
   }
   if (op.kind === 'refund_readback' || rq.refund_id !== null) {
-    const r = await readBack(d, request_id);
-    if (r.ok && r.value.status !== 'PENDING') return;
-    if (ended) await closeRefundUnknown(d, op, true);
+    const r = await readBackChecked(d, request_id);
+    if (r.result.ok && r.result.value.status !== 'PENDING') return;
+    // A blocked read is no evidence: try again later, whatever the window says.
+    if (ended && !r.blocked) await closeRefundUnknown(d, op, true);
     return;
   }
   // The resend below is NOT checked against PayPal's remaining amount, on purpose: it carries the
@@ -1034,6 +1056,9 @@ export async function closeRefundUnknown(
     ).rows[0]?.provider_order_id;
     if (provider !== undefined && provider !== null) {
       const read = await d.paypal.getOrder(provider);
+      // A blocked read (call budget spent, kill switch, no approval, connect off) is no evidence at
+      // all, not even "unreadable": the call never reached PayPal. Never close on it, window or not.
+      if (read.kind === 'blocked') return false;
       if (read.kind === 'order') {
         const cap = read.units.find((u) => u.capture?.capture_id === rq.capture_id)?.capture;
         if (cap !== undefined && cap !== null) {

@@ -960,7 +960,9 @@ describe('blocked reads and the end of the window', () => {
     await run(rq);
     w.tick(25 * 3_600 * SEC);
     // Two blocked reads in a row (two passes): nothing is closed, nothing is alerted.
-    w.script({ kind: 'blocked', by: 'budget' }, { kind: 'blocked', by: 'budget' });
+    w.script(
+      ...Array.from({ length: 10 }, () => ({ kind: 'blocked' as const, by: 'budget' as const })),
+    );
     await runDue(w.deps, { max_items: 10 });
     w.tick(3_600 * SEC);
     await runDue(w.deps, { max_items: 10 });
