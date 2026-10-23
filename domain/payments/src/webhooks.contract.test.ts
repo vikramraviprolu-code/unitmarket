@@ -15,7 +15,7 @@ import { handleWebhook } from './index';
 import type { WebhookInput, WebhookResponse } from './index';
 import { makeWorld, paid } from './ops/support';
 import type { OpsWorld } from './ops/support';
-import { COALESCE_MS, targetOf } from './webhooks';
+import { COALESCE_MS, idsAreValid, targetsOf } from './webhooks';
 import type { Target } from './webhooks';
 
 let w: OpsWorld;
@@ -51,9 +51,11 @@ describe('handleWebhook: types', () => {
     expect(Object.keys(api)).toEqual(expect.arrayContaining(['suspectReversal', 'runDue']));
   });
 
-  it('targetOf answers a key or null', () => {
-    expectTypeOf(targetOf).parameter(0).toEqualTypeOf<ProviderEvent>();
-    expectTypeOf(targetOf).returns.toEqualTypeOf<Target>();
+  it('targetsOf answers the keys to try, in order; idsAreValid answers a boolean', () => {
+    expectTypeOf(targetsOf).parameter(0).toEqualTypeOf<ProviderEvent>();
+    expectTypeOf(targetsOf).returns.toEqualTypeOf<NonNullable<Target>[]>();
+    expectTypeOf(idsAreValid).parameter(0).toEqualTypeOf<ProviderEvent>();
+    expectTypeOf(idsAreValid).returns.toEqualTypeOf<boolean>();
     expect(COALESCE_MS).toBe(60_000);
   });
 });
@@ -88,10 +90,10 @@ describe('event type to target (pinned)', () => {
     'PAYMENT.CAPTURE.REFUNDED': 'capture_id',
     'PAYMENT.CAPTURE.REVERSED': 'capture_id',
     'CHECKOUT.ORDER.APPROVED': 'provider_order_id',
-    'CHECKOUT.PAYMENT-APPROVAL.REVERSED': null,
+    'CHECKOUT.PAYMENT-APPROVAL.REVERSED': 'provider_order_id',
     OTHER: null,
   };
-  it.each(Object.entries(BY))('%s names its order by %s', (type, by) => {
+  it.each(Object.entries(BY))('%s names its order first by %s', (type, by) => {
     const e: ProviderEvent = {
       event_id: 'E1',
       transmission_id: 'T1',
@@ -101,7 +103,7 @@ describe('event type to target (pinned)', () => {
       refund_id: 'REF1',
       occurred_at: '2026-10-22T10:00:00.000Z',
     };
-    const t = targetOf(e);
+    const t = targetsOf(e)[0] ?? null;
     expect(t === null ? null : t.by).toBe(by);
     expect(t === null ? null : t.key).toBe(
       by === 'capture_id' ? 'CAP1' : by === 'provider_order_id' ? 'ORD1' : null,

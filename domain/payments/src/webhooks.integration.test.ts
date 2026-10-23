@@ -21,6 +21,7 @@ import {
   alertKinds,
   approved,
   count,
+  lostResponse,
   makeWorld,
   ops,
   paid,
@@ -232,19 +233,70 @@ describe('delivery to paid, invariants after each step', () => {
     expect((await unitRow(a.order_id)).status).toBe('refunded');
   });
 
-  it('REVERSED marks reversal_suspected and alerts; the poller pass does not make it reversed', async () => {
+  it('REVERSED is only a hint: the poller pass decides, and only read evidence marks the unit', async () => {
     await world();
     const a = await paid(w);
     const unit = await unitRow(a.order_id);
     expect(
       await deliver('REVERSED', verdict('capture_reversed', { capture_id: unit.capture_id })),
     ).toEqual({ http: 200, outcome: 'enqueued' });
-    expect((await unitRow(a.order_id)).status).toBe('reversal_suspected');
+    expect((await unitRow(a.order_id)).status).toBe('captured_verified');
     expect(await alertKinds(w, a.order_id)).toEqual(['reversal']);
     await runDue(w.deps, { max_items: 10 });
     await inv('poller pass after REVERSED');
-    expect((await unitRow(a.order_id)).status).not.toBe('reversed');
+    expect((await unitRow(a.order_id)).status).toBe('captured_verified');
     expect(await count(w, 'ledger_entries', "kind = 'reversal'")).toBe(0);
+
+    // PayPal now shows the capture as declined: the next read marks it, still never reversed.
+    w.forceStatus(unit.capture_id!, 'DECLINED');
+    await deliver('REVERSED again', verdict('capture_reversed', { capture_id: unit.capture_id }));
+    w.tick(60_000);
+    await runDue(w.deps, { max_items: 10 });
+    await inv('poller pass after DECLINED read');
+    expect((await unitRow(a.order_id)).status).toBe('reversal_suspected');
+    expect(await count(w, 'ledger_entries', "kind = 'reversal'")).toBe(0);
+  });
+
+  it('a capture whose answer was lost (no capture id stored): COMPLETED wakes the read-back by order id, the poller pays', async () => {
+    await world();
+    const a = await lostResponse(w);
+    expect((await unitRow(a.order_id)).capture_id).toBeNull();
+    await inv('capture answer lost');
+    const fakeCapture = [...w.paypal.orders.values()][0]!.capture!.capture_id;
+    w.tick(2 * H);
+    expect(
+      await deliver(
+        'COMPLETED, capture id unknown',
+        verdict('capture_completed', {
+          capture_id: fakeCapture,
+          provider_order_id: a.provider_order_id,
+        }),
+      ),
+    ).toEqual({ http: 200, outcome: 'enqueued' });
+    expect((await orderRow(a.order_id)).status).toBe('unresolved');
+    expect((await readbackOf(a.order_id)).state).toBe('unknown');
+    await runDue(w.deps, { max_items: 10 });
+    await inv('poller pass');
+    expect((await orderRow(a.order_id)).status).toBe('paid');
+    expect(await count(w, 'ledger_entries', "kind = 'sale'")).toBe(1);
+  });
+
+  it('ids the contract allows but intake refuses (NUL, lone surrogate) are rejected before any lookup', async () => {
+    await world();
+    const a = await paid(w);
+    const unit = await unitRow(a.order_id);
+    const poison = verdict('capture_completed', { capture_id: unit.capture_id });
+    if (poison.kind !== 'verified') throw new Error('fixture');
+    const bad: WebhookVerdict = {
+      kind: 'verified',
+      event: { ...poison.event, event_id: 'a\u0000b' },
+    };
+    expect(await deliver('NUL in event id', bad, 'tx-nul')).toEqual({
+      http: 400,
+      outcome: 'rejected',
+    });
+    expect(await count(w, 'webhook_events')).toBe(0);
+    expect(await count(w, 'audit_log', "action = 'webhook.rejected'")).toBe(1);
   });
 
   it('CHECKOUT.ORDER.APPROVED wakes an order waiting for its buyer; the read does not capture', async () => {

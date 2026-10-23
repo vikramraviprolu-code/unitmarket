@@ -10,6 +10,7 @@ import {
   alertKinds,
   approved,
   count,
+  lostResponse,
   makeWorld,
   ops,
   paid,
@@ -301,24 +302,98 @@ describe('a verified event makes the read-back due and does nothing else', () =>
     expect(await snap(c)).toEqual(sa);
   });
 
-  it('REVERSED gives reversal_suspected and one alert, not reversed', async () => {
+  it('REVERSED is a hint: read-back due and one alert, the unit and the money are untouched (ASM-63)', async () => {
     await world();
     const a = await paid(w);
     const { capture_id } = await unitOf(a.order_id).then((u) => ({ capture_id: u.capture_id! }));
+    const ledgerBefore = await ledger(a.order_id);
     expect(await deliver(ev({ type: 'PAYMENT.CAPTURE.REVERSED', capture_id }))).toEqual({
       http: 200,
       outcome: 'enqueued',
     });
-    expect((await unitOf(a.order_id)).status).toBe('reversal_suspected');
-    expect(await alertKinds(w, a.order_id)).toEqual(['reversal']);
+    // Nothing changed in the money state.
+    expect((await unitOf(a.order_id)).status).toBe('captured_verified');
     expect(await ent(a.order_id)).toEqual([{ money_state: 'captured', access_state: 'available' }]);
+    expect(await ledger(a.order_id)).toEqual(ledgerBefore);
     expect(await count(w, 'ledger_entries', "kind = 'reversal'")).toBe(0);
-    expect((await readback(a.order_id))!.state).toBe('unknown'); // the read-back is due as well
+    // One alert, as a hint; the read-back is due.
+    expect(await alertKinds(w, a.order_id)).toEqual(['reversal']);
+    const [alert] = await w.rows<{ detail: Record<string, unknown>; unit_id: string }>(
+      'SELECT detail, unit_id FROM alerts WHERE order_id = $1',
+      [a.order_id],
+    );
+    expect(alert!.detail).toEqual({
+      reason: 'reversal_hint',
+      source: 'webhook',
+      capture_id,
+    });
+    expect(alert!.unit_id).toBe((await unitOf(a.order_id)).id);
+    expect((await readback(a.order_id))!.state).toBe('unknown');
 
     // Another delivery of a reversal for the same capture raises nothing new.
     await deliver(ev({ type: 'PAYMENT.CAPTURE.REVERSED', capture_id }));
     expect(await count(w, 'alerts', "kind = 'reversal'")).toBe(1);
+    expect((await unitOf(a.order_id)).status).toBe('captured_verified');
+
+    // The read-back runs, PayPal still shows the capture as completed: nothing moves.
+    await runDue(w.deps, { max_items: 10 });
+    expect((await unitOf(a.order_id)).status).toBe('captured_verified');
+    expect(await ent(a.order_id)).toEqual([{ money_state: 'captured', access_state: 'available' }]);
+  });
+
+  it('P1: a forged REVERSED on a paid unit leaves it captured_verified, a refund is still allowed, the read-back runs', async () => {
+    await world();
+    const a = await paid(w);
+    const u = await unitOf(a.order_id);
+    await deliver(ev({ type: 'PAYMENT.CAPTURE.REVERSED', capture_id: u.capture_id }));
+    expect((await unitOf(a.order_id)).status).toBe('captured_verified');
+    const r = await requestRefund(w.deps, {
+      unit_id: u.id,
+      amount: null,
+      reason: 'goodwill',
+      actor: OPERATOR,
+    });
+    expect(r.ok).toBe(true);
+    const gets = w.paypal.count('get');
+    await runDue(w.deps, { max_items: 10 });
+    expect(w.paypal.count('get')).toBe(gets + 1);
+  });
+
+  it('P1b: a refund in flight (answer lost) then a forged REVERSED: the refund is booked, unit refunded, access revoked', async () => {
+    await world();
+    const a = await paid(w);
+    const u = await unitOf(a.order_id);
+    const r = await requestRefund(w.deps, {
+      unit_id: u.id,
+      amount: null,
+      reason: 'goodwill',
+      actor: OPERATOR,
+    });
+    if (!r.ok) throw new Error('refund refused');
+    w.refundNext.lose_response = true;
+    await executeRefund(w.deps, { refund_request_id: r.value.refund_request_id });
+    w.refundNext.lose_response = false;
+    await deliver(ev({ type: 'PAYMENT.CAPTURE.REVERSED', capture_id: u.capture_id }));
+    expect((await unitOf(a.order_id)).status).toBe('captured_verified');
+    w.tick(31_000);
+    await runDue(w.deps, { max_items: 10 });
+    expect(await unitOf(a.order_id)).toMatchObject({ status: 'refunded', refunded_minor: 400 });
+    expect(await ent(a.order_id)).toEqual([{ money_state: 'refunded', access_state: 'revoked' }]);
+    expect(await count(w, 'ledger_entries', "kind = 'refund'")).toBe(1);
+  });
+
+  it('a reversal that PayPal shows in the read (DECLINED) is what marks reversal_suspected', async () => {
+    await world();
+    const a = await paid(w);
+    const u = await unitOf(a.order_id);
+    await deliver(ev({ type: 'PAYMENT.CAPTURE.REVERSED', capture_id: u.capture_id }));
+    w.forceStatus(u.capture_id!, 'DECLINED');
+    w.tick(60_000);
+    await runDue(w.deps, { max_items: 10 });
     expect((await unitOf(a.order_id)).status).toBe('reversal_suspected');
+    expect(await count(w, 'ledger_entries', "kind = 'reversal'")).toBe(0);
+    // the hint, and the alert the read evidence raised
+    expect(await alertKinds(w, a.order_id)).toEqual(['reversal', 'reversal']);
   });
 
   it('webhook_enabled off: 503 and nothing stored', async () => {
@@ -545,5 +620,75 @@ describe('a webhook is not evidence (P1)', () => {
       outcome: 'unverifiable',
     });
     expect(await events()).toEqual([]);
+  });
+});
+
+describe('a capture whose response was lost has no capture id stored (F4, C-12)', () => {
+  it('COMPLETED with the provider order id wakes the read-back; the poller pass pays', async () => {
+    await world();
+    const a = await lostResponse(w); // PayPal captured, the answer was lost: unit expected, capture_id NULL
+    expect((await unitOf(a.order_id)).capture_id).toBeNull();
+    const fakeCapture = [...w.paypal.orders.values()][0]!.capture!.capture_id;
+    expect(await readback(a.order_id)).toBeNull();
+    expect(
+      await deliver(ev({ capture_id: fakeCapture, provider_order_id: a.provider_order_id })),
+    ).toEqual({ http: 200, outcome: 'enqueued' });
+    const op = (await readback(a.order_id))!;
+    expect(op).toMatchObject({ kind: 'readback', state: 'unknown' });
+    expect(op.next_retry_at!.toISOString()).toBe(iso());
+    // The webhook decided nothing.
+    expect(await orderStatus(a.order_id)).toBe('unresolved');
+    expect(await count(w, 'ledger_entries')).toBe(0);
+    await runDue(w.deps, { max_items: 10 });
+    expect(await orderStatus(a.order_id)).toBe('paid');
+    expect(await count(w, 'ledger_entries', "kind = 'sale'")).toBe(1);
+  });
+
+  it('a capture id that is not ours and an order id that is not ours: no_op', async () => {
+    await world();
+    await lostResponse(w);
+    expect(
+      await deliver(ev({ capture_id: 'NOTOURS1', provider_order_id: 'NOTOURSORDER' })),
+    ).toEqual({ http: 200, outcome: 'no_op' });
+  });
+
+  it('a known capture id is used first: the order id is not looked up', async () => {
+    await world();
+    const a = await paid(w);
+    const b = await approved(w, { offers: ['ofr_2'] });
+    const capture_id = (await unitOf(a.order_id)).capture_id!;
+    // The event names a's capture and b's order: only a's read-back moves.
+    await deliver(ev({ capture_id, provider_order_id: b.provider_order_id }));
+    expect((await readback(a.order_id))!.state).toBe('unknown');
+    expect(await readback(b.order_id)).toBeNull();
+  });
+
+  it('CHECKOUT.PAYMENT-APPROVAL.REVERSED with an order id wakes the read-back; without one it is no_op', async () => {
+    await world();
+    const a = await approved(w);
+    expect(
+      await deliver(
+        ev({
+          type: 'CHECKOUT.PAYMENT-APPROVAL.REVERSED',
+          provider_order_id: a.provider_order_id,
+        }),
+      ),
+    ).toEqual({ http: 200, outcome: 'enqueued' });
+    expect((await readback(a.order_id))!.state).toBe('unknown');
+    expect(await orderStatus(a.order_id)).toBe('awaiting_buyer');
+    expect(await count(w, 'alerts')).toBe(0);
+    expect(await deliver(ev({ type: 'CHECKOUT.PAYMENT-APPROVAL.REVERSED' }))).toEqual({
+      http: 200,
+      outcome: 'no_op',
+    });
+  });
+});
+
+describe('the environment label comes from data (CLAUDE.md rule 7)', () => {
+  it.each(['dryrun', 'sandbox'] as const)('a %s world stores %s', async (environment) => {
+    await world();
+    w.deps = { ...w.deps, environment };
+    await deliver(ev({ capture_id: 'NOTOURS1' }));
+    expect((await events()).map((e) => e.environment)).toEqual([environment]);
   });
 });

@@ -3,7 +3,7 @@
 // no clock, no network.
 import { describe, expect, it } from 'vitest';
 import type { ProviderEvent, ProviderEventType } from '@umsbx/contracts';
-import { COALESCE_MS, planReadback, targetOf } from './webhooks';
+import { COALESCE_MS, idsAreValid, planReadback, targetsOf } from './webhooks';
 
 const NOW = '2026-10-22T10:00:00.000Z';
 const plus = (ms: number): string => new Date(Date.parse(NOW) + ms).toISOString();
@@ -28,55 +28,102 @@ const CAPTURE_TYPES: ProviderEventType[] = [
   'PAYMENT.CAPTURE.REVERSED',
 ];
 
-describe('targetOf: event type to the key that names the order', () => {
+describe('targetsOf: event type to the keys that name the order, in the order tried', () => {
   it.each(CAPTURE_TYPES)('%s is found by its capture id', (type) => {
-    expect(targetOf(event(type, { capture_id: 'CAP1' }))).toEqual({
-      by: 'capture_id',
-      key: 'CAP1',
-    });
+    expect(targetsOf(event(type, { capture_id: 'CAP1' }))).toEqual([
+      { by: 'capture_id', key: 'CAP1' },
+    ]);
   });
 
   it.each(CAPTURE_TYPES)('%s without a capture id is found by the provider refund id', (type) => {
-    expect(targetOf(event(type, { refund_id: 'REF1' }))).toEqual({
-      by: 'refund_id',
-      key: 'REF1',
-    });
+    expect(targetsOf(event(type, { refund_id: 'REF1' }))).toEqual([
+      { by: 'refund_id', key: 'REF1' },
+    ]);
   });
 
-  it.each(CAPTURE_TYPES)('%s with neither id names nothing', (type) => {
-    expect(targetOf(event(type, { provider_order_id: 'ORD1' }))).toBeNull();
+  it.each(CAPTURE_TYPES)(
+    '%s falls back to the provider order id when the capture is not found (lost response)',
+    (type) => {
+      expect(targetsOf(event(type, { provider_order_id: 'ORD1' }))).toEqual([
+        { by: 'provider_order_id', key: 'ORD1' },
+      ]);
+      expect(targetsOf(event(type, { capture_id: 'CAP1', provider_order_id: 'ORD1' }))).toEqual([
+        { by: 'capture_id', key: 'CAP1' },
+        { by: 'provider_order_id', key: 'ORD1' },
+      ]);
+    },
+  );
+
+  it.each(CAPTURE_TYPES)('%s with no id at all names nothing', (type) => {
+    expect(targetsOf(event(type))).toEqual([]);
   });
 
   it('the capture id wins over the refund id (the up link names the capture)', () => {
     expect(
-      targetOf(event('PAYMENT.CAPTURE.REFUNDED', { capture_id: 'CAP1', refund_id: 'REF1' })),
-    ).toEqual({ by: 'capture_id', key: 'CAP1' });
+      targetsOf(event('PAYMENT.CAPTURE.REFUNDED', { capture_id: 'CAP1', refund_id: 'REF1' })),
+    ).toEqual([{ by: 'capture_id', key: 'CAP1' }]);
+    expect(
+      targetsOf(
+        event('PAYMENT.CAPTURE.REFUNDED', {
+          capture_id: 'CAP1',
+          refund_id: 'REF1',
+          provider_order_id: 'ORD1',
+        }),
+      ),
+    ).toEqual([
+      { by: 'capture_id', key: 'CAP1' },
+      { by: 'provider_order_id', key: 'ORD1' },
+    ]);
   });
 
   it('an empty capture id is not a key, the refund id is used', () => {
     expect(
-      targetOf(event('PAYMENT.CAPTURE.REFUNDED', { capture_id: '', refund_id: 'REF1' })),
-    ).toEqual({ by: 'refund_id', key: 'REF1' });
-    expect(targetOf(event('PAYMENT.CAPTURE.COMPLETED', { capture_id: '' }))).toBeNull();
+      targetsOf(event('PAYMENT.CAPTURE.REFUNDED', { capture_id: '', refund_id: 'REF1' })),
+    ).toEqual([{ by: 'refund_id', key: 'REF1' }]);
+    expect(targetsOf(event('PAYMENT.CAPTURE.COMPLETED', { capture_id: '' }))).toEqual([]);
   });
 
-  it('CHECKOUT.ORDER.APPROVED is found by the provider order id, and by nothing else', () => {
-    expect(
-      targetOf(
-        event('CHECKOUT.ORDER.APPROVED', {
-          provider_order_id: 'ORD1',
-          capture_id: 'CAP1',
-          refund_id: 'REF1',
-        }),
-      ),
-    ).toEqual({ by: 'provider_order_id', key: 'ORD1' });
-    expect(targetOf(event('CHECKOUT.ORDER.APPROVED', { capture_id: 'CAP1' }))).toBeNull();
-  });
+  it.each<ProviderEventType>(['CHECKOUT.ORDER.APPROVED', 'CHECKOUT.PAYMENT-APPROVAL.REVERSED'])(
+    '%s is found by the provider order id, and by nothing else',
+    (type) => {
+      expect(
+        targetsOf(
+          event(type, { provider_order_id: 'ORD1', capture_id: 'CAP1', refund_id: 'REF1' }),
+        ),
+      ).toEqual([{ by: 'provider_order_id', key: 'ORD1' }]);
+      expect(targetsOf(event(type, { capture_id: 'CAP1' }))).toEqual([]);
+    },
+  );
 
-  it('types that are not handled name nothing, whatever ids they carry', () => {
+  it('OTHER names nothing, whatever ids it carries', () => {
     const ids = { provider_order_id: 'ORD1', capture_id: 'CAP1', refund_id: 'REF1' };
-    expect(targetOf(event('OTHER', ids))).toBeNull();
-    expect(targetOf(event('CHECKOUT.PAYMENT-APPROVAL.REVERSED', ids))).toBeNull();
+    expect(targetsOf(event('OTHER', ids))).toEqual([]);
+  });
+});
+
+describe('idsAreValid: printable ASCII, 1 to 256 characters', () => {
+  const ok = (o: Partial<ProviderEvent> = {}) => idsAreValid(event('PAYMENT.CAPTURE.COMPLETED', o));
+  it('accepts ordinary ids and the 1 and 256 character limits', () => {
+    expect(ok({ capture_id: 'CAP-1_x.y', refund_id: 'a b', provider_order_id: 'ORD1' })).toBe(true);
+    expect(
+      ok({ event_id: 'x', transmission_id: 'y'.repeat(256), capture_id: 'z'.repeat(256) }),
+    ).toBe(true);
+    expect(ok()).toBe(true); // null ids are fine
+  });
+  it.each([
+    ['empty event id', { event_id: '' }],
+    ['empty transmission id', { transmission_id: '' }],
+    ['empty capture id', { capture_id: '' }],
+    ['257 characters', { event_id: 'x'.repeat(257) }],
+    ['NUL', { event_id: 'a\u0000b' }],
+    ['control character', { capture_id: 'a\nb' }],
+    ['DEL', { refund_id: 'a\u007fb' }],
+    ['non-ASCII letter', { provider_order_id: 'ORDé' }],
+    ['lone surrogate', { capture_id: 'CAP\ud800' }],
+    ['right-to-left override', { transmission_id: 'tx‮1' }],
+    ['zero-width space', { event_id: 'e​1' }],
+  ] satisfies [string, Partial<ProviderEvent>][])('refuses %s', (_name, o) => {
+    expect(ok(o)).toBe(false);
   });
 });
 

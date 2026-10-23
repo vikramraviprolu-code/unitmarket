@@ -1,14 +1,16 @@
-# Webhook intake (CO-2): which key of a verified event names the order. Hand-written from the spec.
-# Columns: the ids the event carries. Cells: the key used (capture_id, refund_id, provider_order_id) or - for none.
-# PAYMENT.CAPTURE.*: capture id first (a refund carries its up link there), else the refund id.
-# CHECKOUT.ORDER.APPROVED: provider order id only. Other types name nothing. A change here is a change to the rules.
+# Webhook intake (CO-2): which keys of a verified event name the order, in the order they are tried. Hand-written from the spec.
+# Columns: the ids the event carries. Cells: keys tried until an order is found (capture_id, refund_id, provider_order_id), or - for none.
+# PAYMENT.CAPTURE.*: capture id first (a refund carries its up link there), else the refund id; then the provider order id,
+# so a capture whose response was lost (no capture id stored) is still found (C-12).
+# CHECKOUT.ORDER.APPROVED and CHECKOUT.PAYMENT-APPROVAL.REVERSED: provider order id only. OTHER names nothing.
+# A change here is a change to the rules.
 type | capture_id only | refund_id only | capture_id and refund_id | provider_order_id only | all three
-PAYMENT.CAPTURE.COMPLETED | capture_id | refund_id | capture_id | - | capture_id
-PAYMENT.CAPTURE.PENDING | capture_id | refund_id | capture_id | - | capture_id
-PAYMENT.CAPTURE.DECLINED | capture_id | refund_id | capture_id | - | capture_id
-PAYMENT.CAPTURE.DENIED | capture_id | refund_id | capture_id | - | capture_id
-PAYMENT.CAPTURE.REFUNDED | capture_id | refund_id | capture_id | - | capture_id
-PAYMENT.CAPTURE.REVERSED | capture_id | refund_id | capture_id | - | capture_id
+PAYMENT.CAPTURE.COMPLETED | capture_id | refund_id | capture_id | provider_order_id | capture_id>provider_order_id
+PAYMENT.CAPTURE.PENDING | capture_id | refund_id | capture_id | provider_order_id | capture_id>provider_order_id
+PAYMENT.CAPTURE.DECLINED | capture_id | refund_id | capture_id | provider_order_id | capture_id>provider_order_id
+PAYMENT.CAPTURE.DENIED | capture_id | refund_id | capture_id | provider_order_id | capture_id>provider_order_id
+PAYMENT.CAPTURE.REFUNDED | capture_id | refund_id | capture_id | provider_order_id | capture_id>provider_order_id
+PAYMENT.CAPTURE.REVERSED | capture_id | refund_id | capture_id | provider_order_id | capture_id>provider_order_id
 CHECKOUT.ORDER.APPROVED | - | - | - | provider_order_id | provider_order_id
-CHECKOUT.PAYMENT-APPROVAL.REVERSED | - | - | - | - | -
+CHECKOUT.PAYMENT-APPROVAL.REVERSED | - | - | - | provider_order_id | provider_order_id
 OTHER | - | - | - | - | -

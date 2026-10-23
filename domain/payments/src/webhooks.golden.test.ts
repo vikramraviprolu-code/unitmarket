@@ -8,7 +8,7 @@ import type { ProviderEvent, SqlExecutor, WebhookVerdict } from '@umsbx/contract
 import { handleWebhook } from './index';
 import { makeWorld, paid } from './ops/support';
 import type { OpsWorld } from './ops/support';
-import { targetOf } from './webhooks';
+import { targetsOf } from './webhooks';
 
 const golden = (name: string): string[] =>
   readFileSync(new URL(`./golden/${name}`, import.meta.url), 'utf8')
@@ -34,7 +34,8 @@ const ev = (type: ProviderEvent['type'], o: Partial<ProviderEvent> = {}): Provid
 
 describe('webhook intake (golden)', () => {
   it('event type to target matches golden/webhook-targets.golden.txt', () => {
-    const cell = (t: ReturnType<typeof targetOf>): string => (t === null ? '-' : t.by);
+    const cell = (t: ReturnType<typeof targetsOf>): string =>
+      t.length === 0 ? '-' : t.map((x) => x.by).join('>');
     const ids = { capture_id: 'CAP1', refund_id: 'REF1', provider_order_id: 'ORD1' };
     const lines = [
       'type | capture_id only | refund_id only | capture_id and refund_id | provider_order_id only | all three',
@@ -43,11 +44,11 @@ describe('webhook intake (golden)', () => {
       lines.push(
         [
           type,
-          cell(targetOf(ev(type, { capture_id: ids.capture_id }))),
-          cell(targetOf(ev(type, { refund_id: ids.refund_id }))),
-          cell(targetOf(ev(type, { capture_id: ids.capture_id, refund_id: ids.refund_id }))),
-          cell(targetOf(ev(type, { provider_order_id: ids.provider_order_id }))),
-          cell(targetOf(ev(type, ids))),
+          cell(targetsOf(ev(type, { capture_id: ids.capture_id }))),
+          cell(targetsOf(ev(type, { refund_id: ids.refund_id }))),
+          cell(targetsOf(ev(type, { capture_id: ids.capture_id, refund_id: ids.refund_id }))),
+          cell(targetsOf(ev(type, { provider_order_id: ids.provider_order_id }))),
+          cell(targetsOf(ev(type, ids))),
         ].join(' | '),
       );
     }

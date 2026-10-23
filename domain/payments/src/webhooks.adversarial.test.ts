@@ -304,15 +304,15 @@ describe('rejected verdicts touch the audit log and nothing else', () => {
 });
 
 describe('hostile identifiers', () => {
-  it('SQL, unicode and very long ids are data: stored, no_op, no table dropped', async () => {
+  it('printable ASCII ids of 1 to 256 characters are data: stored, no_op, no table dropped', async () => {
     await world();
     await paid(w);
     const before = await tableCounts();
-    const nasty = ["'; DROP TABLE orders; --", '‮​' + 'x'.repeat(10_000), 'CAP%\\_', ''];
-    for (const s of nasty) {
+    const fine = ["'; DROP TABLE orders; --", 'CAP%\\_', 'x'.repeat(256), 'a b', '$1'];
+    for (const s of fine) {
       const r = await deliver(
         ev({
-          event_id: `EV-${s.slice(0, 50)}-${seq}`,
+          event_id: `EV-${seq}-${s.slice(0, 40)}`,
           capture_id: s,
           refund_id: s,
           provider_order_id: null,
@@ -320,7 +320,78 @@ describe('hostile identifiers', () => {
       );
       expect(r).toEqual({ http: 200, outcome: 'no_op' });
     }
-    expect(await tableCounts()).toEqual({ ...before, webhook_events: nasty.length });
+    expect(await tableCounts()).toEqual({ ...before, webhook_events: fine.length });
+  });
+
+  // F5: a poison delivery must be refused once (400, audited), never throw (PayPal would retry a 500
+  // for days) and never collapse two different ids into one row.
+  const chr = (...codes: number[]): string => String.fromCharCode(...codes);
+  const poison: [string, Partial<ProviderEvent>][] = [
+    ['NUL in the event id', { event_id: `a${chr(0)}b` }],
+    ['NUL in the transmission id', { transmission_id: `a${chr(0)}b` }],
+    ['lone surrogate in the capture id', { capture_id: `CAP${chr(0xd800)}` }],
+    ['lone surrogate in the refund id', { refund_id: `REF${chr(0xdc00)}` }],
+    ['lone surrogate in the provider order id', { provider_order_id: `ORD${chr(0xd83d)}` }],
+    ['257 characters in the event id', { event_id: 'x'.repeat(257) }],
+    ['257 characters in the transmission id', { transmission_id: 'x'.repeat(257) }],
+    ['257 characters in the capture id', { capture_id: 'x'.repeat(257) }],
+    ['257 characters in the refund id', { refund_id: 'x'.repeat(257) }],
+    ['257 characters in the provider order id', { provider_order_id: 'X'.repeat(257) }],
+    ['10 000 characters in the capture id', { capture_id: 'x'.repeat(10_000) }],
+    ['empty event id', { event_id: '' }],
+    ['empty transmission id', { transmission_id: '' }],
+    ['empty capture id', { capture_id: '' }],
+    ['empty refund id', { refund_id: '' }],
+    ['empty provider order id', { provider_order_id: '' }],
+    ['unicode letters in the event id', { event_id: 'EV-é中文' }],
+    ['right-to-left override and zero-width space', { capture_id: `${chr(0x202e, 0x200b)}CAP` }],
+    ['control characters', { refund_id: 'a\r\nb' }],
+    ['DEL', { event_id: `a${chr(0x7f)}` }],
+  ];
+
+  it.each(poison)('%s: 400 rejected, nothing stored, one audit row, no throw', async (_name, o) => {
+    await world();
+    await paid(w);
+    const before = await tableCounts();
+    const r = await deliver(ev({ type: 'PAYMENT.CAPTURE.COMPLETED', ...o }));
+    expect(r).toEqual({ http: 400, outcome: 'rejected' });
+    expect(await tableCounts()).toEqual({ ...before, audit_log: before['audit_log']! + 1 });
+    const rows = await w.rows<{ action: string; reason: string; detail: Record<string, unknown> }>(
+      "SELECT action, reason, detail FROM audit_log WHERE action LIKE 'webhook.%'",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      action: 'webhook.rejected',
+      reason: 'invalid_ids',
+      detail: { verdict: 'malformed' },
+    });
+    expect(rows[0]!.detail['transmission_sha256']).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('two different lone-surrogate event ids are two refusals, not one stored row and a false duplicate', async () => {
+    await world();
+    const a = await paid(w);
+    const capture_id = await captureOf(a.order_id);
+    const r1 = await deliver(ev({ capture_id, event_id: `E${chr(0xd800)}` }));
+    const r2 = await deliver(ev({ capture_id, event_id: `E${chr(0xd801)}` }));
+    expect([r1, r2]).toEqual([
+      { http: 400, outcome: 'rejected' },
+      { http: 400, outcome: 'rejected' },
+    ]);
+    expect(await count(w, 'webhook_events')).toBe(0);
+    expect(await count(w, 'audit_log', "action = 'webhook.rejected'")).toBe(2);
+    // a hostile header value is only hashed
+    expect(await verdict({ kind: 'malformed' }, `${chr(0)}${chr(0xd800)}‮`)).toEqual({
+      http: 400,
+      outcome: 'rejected',
+    });
+  });
+
+  it('a verified verdict that does not fit the contract is malformed too', async () => {
+    await world();
+    const odd = { kind: 'verified', event: { event_id: 'E1' } } as unknown as WebhookVerdict;
+    expect(await verdict(odd, 'tx-odd')).toEqual({ http: 400, outcome: 'rejected' });
+    expect(await count(w, 'webhook_events')).toBe(0);
   });
 
   it('a foreign capture id can only wake that order read, never change it', async () => {
@@ -379,7 +450,7 @@ function lockTarget(sql: string): string | null {
 }
 
 describe('lock order', () => {
-  it('lock order spy: orders, operations, order_units only, in D-020 order', async () => {
+  it('lock order spy: orders and operations only (REVERSED is a hint, no order_units lock), in D-020 order', async () => {
     await world();
     const pa = await paid(w);
     const pb = await paid(w, { offers: ['ofr_2'] });
@@ -436,7 +507,7 @@ describe('lock order', () => {
     const sent = [
       ev({ capture_id: capA }), // settled read-back reopened
       ev({ capture_id: capA }), // coalesced
-      ev({ type: 'PAYMENT.CAPTURE.REVERSED', capture_id: capA }), // reversal suspected
+      ev({ type: 'PAYMENT.CAPTURE.REVERSED', capture_id: capA }), // hint only: alert + read-back
       ev({ type: 'CHECKOUT.ORDER.APPROVED', provider_order_id: aw.provider_order_id }), // created
       ev({ type: 'PAYMENT.CAPTURE.REFUNDED', refund_id: ref }), // by refund id
       ev({ capture_id: 'NOTOURS1' }), // no_op
@@ -461,7 +532,7 @@ describe('lock order', () => {
       }
     }
     expect(bad).toEqual([]);
-    expect([...touched].sort()).toEqual(['operations', 'order_units', 'orders']);
+    expect([...touched].sort()).toEqual(['operations', 'orders']);
   });
 });
 
