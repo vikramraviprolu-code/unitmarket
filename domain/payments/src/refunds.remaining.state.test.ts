@@ -84,9 +84,9 @@ describe('executeRefund and PayPal remaining amount', () => {
     expect(await alertKinds(w, a.order_id)).toEqual([]);
   });
 
-  it('a null "refund the rest" request is stored at the LOCAL remaining 5.00, so after a dashboard refund it is closed over_refund_remote, never trimmed to 2.00 (carried to CO-4)', async () => {
-    // requestRefund fixes a null amount to the LOCAL remaining amount (5.00). PayPal holds 2.00.
-    // The send path never sends a different amount than the stored one, so nothing is sent.
+  it('a null "refund the rest" request is clamped to what PayPal holds (2.00), not stored at the local 5.00 (CO-4 closes the BU-4 carry)', async () => {
+    // BU-4 stored the LOCAL remaining (5.00) and closed the request over_refund_remote. CO-4
+    // (review note of BU-4) reads PayPal when the request is made and stores the smaller amount.
     const { a, unit } = await setup();
     w.dashboard(unit.capture_id, 300);
     const rq = await request(unit.id, null);
@@ -97,12 +97,12 @@ describe('executeRefund and PayPal remaining amount', () => {
           [rq],
         )
       )[0]!.amount_minor,
-    ).toBe(500);
+    ).toBe(200);
     const r = await executeRefund(w.deps, { refund_request_id: rq });
-    expect(r).toEqual({ ok: true, value: { status: 'FAILED' } });
-    expect(w.sends()).toHaveLength(0);
-    expect(await stateOf(rq)).toBe('failed');
-    expect(await alerts(a.order_id)).toHaveLength(1);
+    expect(r).toEqual({ ok: true, value: { status: 'COMPLETED' } });
+    expect(w.sends().map((s) => s.amount)).toEqual([usd(200)]);
+    expect(await stateOf(rq)).toBe('completed');
+    expect(await alerts(a.order_id)).toHaveLength(0);
   });
 
   it('PayPal shows nothing left: no call, request failed over_refund_remote, reservation freed, one refund_unbooked alert', async () => {

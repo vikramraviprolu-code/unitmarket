@@ -1,0 +1,12 @@
+# Receipt version 2 after a partial refund (CO-4). Hand-reviewed: a 2.00 refund of a 6.50 order of two
+# items. Version 1 shows no refund; version 2 lists it by refund id; both windows keep running (ASM-59).
+version: 2
+environment: dryrun
+total: USD 6.50
+line: art_1_1 | keep_retrieve | USD 4.00 | window=running
+line: art_1_2 | online_read | USD 2.50 | window=running
+refund: SBXGOLDENREF01 | USD 2.00 | at 2026-10-22T11:00:00.000Z
+debug_ids: 567890
+v1 refunds: 0
+v1 sha256: cca590f234f586b666161c8cc07afda159bdbdd0d77e1dbaf1f7e69d641f22ef
+v2 sha256: fbf63946dd99acfedd34743ef3e811b641a7ca50657be172fb8368e48e5622ff

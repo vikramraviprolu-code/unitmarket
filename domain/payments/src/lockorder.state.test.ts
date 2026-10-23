@@ -4,9 +4,10 @@
 // Postgres needs to be free of deadlocks between the capture, the poll, the refund and the sweeper.
 //
 // The order (docs/READINESS.md "Lock order"): 1 orders (and provider_orders) -> 2 operations ->
-// 3 order_units -> 4 refund_requests -> 5 entitlements (and their windows and events) ->
-// 6 ledger_entries and receipts. Alerts, audit and provider call rows are leaf inserts and are not
-// part of the order.
+// 3 order_units -> 4 refund_requests -> 4.5 recovery_cases -> 5 entitlements (and their windows and
+// events) -> 6 ledger_entries and receipts. Alerts, audit and provider call rows are leaf inserts
+// and are not part of the order. A recovery case (CO-4) locks the case, then the entitlement (credit),
+// so it sits between the refund request and the entitlement; recovery's own tests run the spy on it.
 import { afterEach, describe, expect, it } from 'vitest';
 import type { PaymentsDeps, SqlExecutor } from '@umsbx/contracts';
 import {
@@ -32,6 +33,7 @@ const RANK: Record<string, number> = {
   operations: 2,
   order_units: 3,
   refund_requests: 4,
+  recovery_cases: 4.5,
   entitlements: 5,
   access_windows: 5,
   access_events: 5,
