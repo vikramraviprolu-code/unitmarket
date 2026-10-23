@@ -792,6 +792,23 @@ describe('refunds in flight are subtracted, under the order lock (F1)', () => {
     expect(w.sends().map((x) => x.amount)).toEqual([usd(300), usd(100)]);
   });
 
+  it('the same over-asking request executed twice at once is closed and audited once', async () => {
+    const { a, unit } = await setup();
+    w.dashboard(unit.capture_id, 500);
+    const rq = await request(unit.id, 200);
+    const both = await Promise.all([
+      executeRefund(w.deps, { refund_request_id: rq }),
+      executeRefund(w.deps, { refund_request_id: rq }),
+    ]);
+    expect(both).toEqual([
+      { ok: true, value: { status: 'FAILED' } },
+      { ok: true, value: { status: 'FAILED' } },
+    ]);
+    expect(w.audits.filter((x) => x.action === 'refund.failed')).toHaveLength(1);
+    expect(await alerts(a.order_id)).toHaveLength(1);
+    expect(w.sends()).toHaveLength(0);
+  });
+
   it('a refund PayPal already lists is not subtracted twice', async () => {
     const { unit } = await setup();
     w.dashboard(unit.capture_id, 100);
