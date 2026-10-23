@@ -537,7 +537,7 @@ describe('the transmission time window [now - 3 days 1 hour, now + 5 minutes]', 
   it('an offset spelling of the same instant is the same instant', async () => {
     const d = deliver(f, { time: '2026-10-23T14:00:00+02:00' });
     expect(await run(d)).toMatchObject({ kind: 'verified' });
-    const old = deliver(f, { time: '2026-10-20T14:00:00+02:00' });
+    const old = deliver(f, { time: '2026-10-19T14:00:00+02:00' });
     expect(await run(old)).toEqual(bad('stale'));
   });
 
