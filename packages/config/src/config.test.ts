@@ -458,6 +458,18 @@ describe('transport environment overrides (M1)', () => {
     '--tls-min-v1.1',
     '--conditions',
     '-C',
+    '--report-signal',
+    '--report-on-signal',
+    '--report-on-fatalerror',
+    '--report-uncaught-exception',
+    '--report-compact',
+    '--report-dir',
+    '--report-directory',
+    '--report-filename',
+    '--report-exclude-network',
+    '--report-exclude-env',
+    '--snapshot-blob',
+    '--build-snapshot',
   ])('sandbox mode refuses execArgv %s', (flag) => {
     const r = loadConfig(sandbox(), { execArgv: ['--max-old-space-size=512', flag] });
     expect(!r.ok && r.error).toEqual({ code: 'transport_env_override', name: 'execArgv' });

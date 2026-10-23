@@ -521,6 +521,8 @@ const SEALED_PKG = {
       'createApprovedSandboxTransport',
       'claimApprovalMinter',
       'createApprovalMinter',
+      // SEAL4: the token that selects the production Wire; a string selects nothing.
+      'PRODUCTION_WIRE',
     ]),
   },
   '@umsbx/safety': { dir: 'packages/safety', names: new Set(['createScopedGate']) },
@@ -607,6 +609,13 @@ const sealedTransport = {
           name: nameOf(sp.imported ?? sp.local),
           whole: sp.type === 'ImportNamespaceSpecifier' || sp.type === 'ImportDefaultSpecifier',
         }));
+      // 0. A percent escape in a relative, file: or absolute specifier is decoded by the module
+      // loader but not by a string match (`transp%6Frt`): refuse it wherever it appears.
+      if (
+        (spec.startsWith('.') || spec.startsWith('file:') || path.isAbsolute(spec)) &&
+        spec.includes('%')
+      )
+        return report(node);
       // 1. the package name
       const base = Object.keys(SEALED_PKG).find((k) => spec === k || spec.startsWith(`${k}/`));
       if (base !== undefined) return byName(node, base, kind, names);
@@ -681,45 +690,12 @@ const sealedTransport = {
   },
 };
 
-// FIX-MVPB-SEAL2 H2: the production Wire is built only for the explicit sentinel
-// `wire: 'production'`. Only apps/web/composition.server.ts and the transport package's own tests
-// may write it (NAMED_EXEMPTIONS pins both).
-const TS_WRAP = new Set([
-  'TSAsExpression',
-  'TSSatisfiesExpression',
-  'TSNonNullExpression',
-  'TSTypeAssertion',
-]);
-const sealedWireSentinel = {
-  meta: { type: 'problem', schema: [], messages: { sentinel: '{{msg}}' } },
-  create(context) {
-    return {
-      Property(n) {
-        const k = n.key;
-        const name = k.type === 'Identifier' && !n.computed ? k.name : specOf(k);
-        if (name !== 'wire') return;
-        let v = n.value;
-        while (v && TS_WRAP.has(v.type)) v = v.expression;
-        if (specOf(v) === 'production')
-          context.report({
-            node: n,
-            messageId: 'sentinel',
-            data: {
-              msg: "SEAL2 H2: wire: 'production' selects the real network Wire; only apps/web/composition.server.ts may write it.",
-            },
-          });
-      },
-    };
-  },
-};
-
 const sbx = {
   rules: {
     'no-package-escape': noPackageEscape,
     'no-global-alias': noGlobalAlias,
     'no-restricted-dynamic-import': noRestrictedDynamicImport,
     'sealed-transport': sealedTransport,
-    'sealed-wire-sentinel': sealedWireSentinel,
   },
 };
 
@@ -786,7 +762,6 @@ function entry(files, { extra = [], paths = [], ignores = [], allow = {} } = {})
     rules: {
       'sbx/no-package-escape': 'error',
       'sbx/sealed-transport': 'error',
-      'sbx/sealed-wire-sentinel': 'error',
       'no-restricted-imports': ['error', { patterns, paths: [...basePaths, ...paths] }],
       'no-restricted-globals': allow.network ? 'off' : ['error', ...NO_FETCH_GLOBALS],
       'no-restricted-properties': ['error', ...props],
@@ -1187,10 +1162,10 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/sealed-transport'],
   },
   {
-    files: ['packages/transport/src/sandbox.test.ts'],
+    files: ['tests/mvp-b/no-mint-by-path.test.ts'],
     reason:
-      "FIX-MVPB-SEAL2 H2 (narrowed in SEAL3): the one test that exercises the 'production' Wire sentinel (construction only; fetch is stubbed and never reached). Composition has no exemption; the owner adds a pinned one when the transport is unsealed",
-    off: ['sbx/sealed-wire-sentinel'],
+      'FIX-MVPB-SEAL4 item 1: the runtime test that imports the transport and safety sources by plain and percent-encoded path, and shows none of them yields a minter (the safety package already holds the claim). It is the one file that spells those paths on purpose',
+    off: ['sbx/no-package-escape', 'sbx/sealed-transport'],
   },
 ];
 const namedExemptions = NAMED_EXEMPTIONS.map((e) => ({

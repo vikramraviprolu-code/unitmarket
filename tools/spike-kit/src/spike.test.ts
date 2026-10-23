@@ -1171,6 +1171,20 @@ describe('M1: proxy, certificate and Node-option overrides are refused in real m
     '--inspect-port=9230',
     '--secure-heap=1048576',
     '--conditions=dev',
+    '--report-signal',
+    '--report-on-signal',
+    '--report-on-fatalerror',
+    '--report-uncaught-exception',
+    '--report-compact',
+    '--report-dir',
+    '--report-directory',
+    '--report-filename',
+    '--report-exclude-network',
+    '--report-exclude-env',
+    '--snapshot-blob',
+    '--build-snapshot',
+    '--snapshot-blob=/tmp/x.blob',
+    '--report-dir=/tmp/r',
   ])('refuses execArgv %s', (flag) => {
     const h = real();
     h.deps.execArgv = ['--max-old-space-size=512', flag];

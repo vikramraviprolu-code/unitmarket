@@ -118,13 +118,24 @@ describe('the Wire is required (FIX-MVPB-SEAL2 H2)', () => {
     expect(sandbox).not.toMatch(/\bwire\?:/);
     expect(sandbox).not.toMatch(/\bwire\s*\?\?/);
     expect(sandbox).not.toMatch(/o\.wire\s*\?\?/);
-    expect(sandbox).toMatch(/wire: Wire \| 'production'/);
+    expect(sandbox).toMatch(/wire: Wire \| typeof PRODUCTION_WIRE/);
+    // The old string sentinel is gone from the factory.
+    expect(sandbox).not.toMatch(/=== 'production'|\| 'production'/);
   });
-  it("the 'production' sentinel is written by no non-test file at all, and by one transport test", () => {
-    const sentinel = /\bwire\s*:\s*['"`]production['"`]/;
-    const users = withText(sentinel, (f) => !f.endsWith('sealed-callers.test.ts'));
-    // SEAL3: composition no longer has a standing exemption either; unsealing adds a pinned one.
-    expect(users).toEqual(['packages/transport/src/sandbox.test.ts']);
+  it('the PRODUCTION_WIRE token is named only in the transport package (sandbox.ts, the index) and its sandbox test', () => {
+    const users = withText(/\bPRODUCTION_WIRE\b/, (f) => !f.endsWith('sealed-callers.test.ts'));
+    // Composition has no standing exemption; unsealing adds a pinned one in the same review.
+    expect(users).toEqual([
+      'packages/transport/src/index.ts',
+      'packages/transport/src/sandbox.test.ts',
+      'packages/transport/src/sandbox.ts',
+    ]);
+  });
+  it('no source passes a string where the production Wire token goes', () => {
+    const asString = /\bwire\s*:\s*['"`]production['"`]/;
+    const hits = withText(asString, (f) => !f.endsWith('sealed-callers.test.ts'));
+    // Only the test that proves a string is refused spells one.
+    expect(hits).toEqual(['packages/transport/src/sandbox.test.ts']);
   });
 });
 
@@ -139,16 +150,15 @@ describe('who may mint an approval capability', () => {
       'packages/transport/src/index.ts',
     ]);
   });
-  it('non-test code builds a minter only inside approval.ts; test code only in the transport package', () => {
-    expect(withText(new RegExp(`\\b${MAKE_MINTER}\\b`), (f) => !isTest(f))).toEqual([
-      'packages/transport/src/approval.ts',
-    ]);
-    expect(
-      withText(
-        new RegExp(`\\b${MAKE_MINTER}\\b`),
-        (f) => isTest(f) && !f.endsWith('sealed-callers.test.ts'),
-      ).filter((f) => !isTransportSrc(f)),
-    ).toEqual([]);
+  it('no minter factory exists: the old name is in no source file, and approval.ts exports only the claim and the check (SEAL4)', () => {
+    expect(withText(new RegExp(`\\b${MAKE_MINTER}\\b`))).toEqual([]);
+    const src = text.get('packages/transport/src/approval.ts') ?? '';
+    const exported = [
+      ...src.matchAll(/^export (?:async )?(?:function|const|class|let|var) (\w+)/gm),
+    ].map((m) => m[1]);
+    expect(exported.sort()).toEqual([CLAIM, 'isApprovalCapability']);
+    expect(src).not.toMatch(/^export (?:\{|\*|default)/m);
+    expect(src).toMatch(/^function makeMinter\(/m);
   });
   it('the only tests outside safety and transport that claim the minter are the pinned ones', () => {
     expect(
@@ -160,7 +170,11 @@ describe('who may mint an approval capability', () => {
           !f.startsWith('packages/safety/') &&
           !f.endsWith('sealed-callers.test.ts'),
       ),
-    ).toEqual(['packages/paypal/src/sandbox-wire.integration.test.ts']);
+    ).toEqual([
+      'packages/paypal/src/sandbox-wire.integration.test.ts',
+      // SEAL4: the runtime path-import probe calls the spent claim and expects it to throw.
+      'tests/mvp-b/no-mint-by-path.test.ts',
+    ]);
   });
   it('the transport factory requires a minted capability, not a structurally typed gate', () => {
     const sandbox = text.get('packages/transport/src/sandbox.ts') ?? '';
@@ -221,6 +235,8 @@ describe('no spelling of the package import hides the sealed names', () => {
 // The text scan below is the second fence behind lint (sbx/sealed-transport).
 describe('paths into the sealed packages (SEAL3 H-A)', () => {
   const PKG = /packages\/(transport|safety)\//;
+  // The runtime probe that spells these paths on purpose (a pinned lint exemption).
+  const PATH_PROBES = new Set(['tests/mvp-b/no-mint-by-path.test.ts']);
   const insideSealed = (f: string) => PKG.test(f);
   // Every quoted path in an import/export/require/import() that names a sealed package's files.
   const reachOf = (t: string): string[] => {
@@ -232,7 +248,9 @@ describe('paths into the sealed packages (SEAL3 H-A)', () => {
   };
   it('outside the two packages, only the package entry file is named by path; one test names the recorder corpus', () => {
     const hits = [...text.entries()]
-      .filter(([f]) => !insideSealed(f) && !f.endsWith('sealed-callers.test.ts'))
+      .filter(
+        ([f]) => !insideSealed(f) && !PATH_PROBES.has(f) && !f.endsWith('sealed-callers.test.ts'),
+      )
       .flatMap(([f, t]) => reachOf(t).map((p) => `${f} -> ${p.replace(/^(\.\.\/)+/, '')}`))
       .sort();
     expect(hits).toEqual(
@@ -243,18 +261,12 @@ describe('paths into the sealed packages (SEAL3 H-A)', () => {
       ].sort(),
     );
   });
-  it('no non-test file of the transport package imports test-support, and none but approval.ts names the test minter', () => {
+  it('no non-test file of the transport package imports test-support', () => {
     const offenders = [...text.entries()]
       .filter(([f]) => isTransportSrc(f) && !isTest(f))
       .filter(([, t]) => /from\s*['"]\.\/test-support['"]|import\(\s*['"]\.\/test-support/.test(t))
       .map(([f]) => f);
     expect(offenders).toEqual([]);
-    const minter = [...text.entries()]
-      .filter(
-        ([f, t]) => isTransportSrc(f) && !isTest(f) && new RegExp(`\\b${MAKE_MINTER}\\b`).test(t),
-      )
-      .map(([f]) => f);
-    expect(minter).toEqual(['packages/transport/src/approval.ts']);
   });
   it('in the safety package only scoped-gate.ts names the claimed minter and the issued-gate predicate', () => {
     const named = (name: string) =>
