@@ -38,10 +38,12 @@ Only the owner writes this row; no AI session adds it. Sakthi adds the row to `d
 - `scope` is `spike-read` (Part R) or `spike-write` (Part W; also allows read).
 - `operator` is `vikram` or `sakthi` and must match `SPIKE_OPERATOR`.
 - `valid_until` is the last day the go is valid (the kit compares it with today's date).
-- The whole Decision cell must be exactly the marker: text before or after it, quotation marks, a different letter case, or a marker in the notes cell all fail. A row that contains `not`, `revoked`, `withdrawn`, `superseded`, `template`, `example` or `e.g.` anywhere is refused, as is a row inside a code block or HTML comment, and an id that appears twice.
+- The row is checked against a strict **allow-list**, not a list of bad words. It must have exactly five cells: `D-nnn` (or `D-nnnn`), a real date `YYYY-MM-DD`, the Decision cell holding exactly the marker and nothing else (no quotation marks, no text before or after, upper case `SPIKE GO`), the Owner cell `Owner`, `Vikram` or `Sakthi`, and a Notes cell that is **empty, `PR #<number>` or `issue #<number>`** (up to six digits). No other note is accepted, so write the explanation in the pull request, not in the row.
+- The whole row must be plain printable ASCII: any other character (zero-width or invisible characters, look-alike letters from other alphabets, a non-breaking space) refuses the row, as do an escaped pipe `\|` and any HTML (`<` or `>`).
+- A row that sits inside a code fence (a closing fence must use the same character and be at least as long as the opener; an unclosed fence runs to the end of the file), an HTML comment, an HTML block such as `<pre>` or `<details>`, or a four-space indented block is not a table row and is refused. An id that appears twice is refused.
 - `approved in writing` must be today or earlier, `valid_until` must be today or later, and `valid_until` may be at most 14 days after the approval date. Ask for a new row rather than a long one.
 - `docs/decision-log.md` must be exactly the committed copy (`git show HEAD:docs/decision-log.md`, local git only). A row added in a working copy, or a machine without git, is refused with `decision_log_unverified`.
-- A row without the marker, with a bad date, or one that says it does not authorise outbound calls is refused.
+- The check that the log is committed proves only that the row is in this clone's `HEAD`. A commit made on the owner's own machine is not an approval by itself: the real barrier is that the sandbox credentials live only in the owner's environment. Whether to also require the commit to be on `origin/main` or signed is an open owner decision (see `docs/READINESS.md`).
 
 ## Part 1: dashboard checks (steps 1 and 2 of the runbook)
 

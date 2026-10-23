@@ -745,6 +745,12 @@ function entry(files, { extra = [], paths = [], ignores = [], allow = {} } = {})
     .map((p) =>
       allow.dbTesting && p === DEEP ? { ...DEEP, group: [...DEEP.group, '!@umsbx/db/testing'] } : p,
     )
+    // allow.childProcess: lift the node:child_process bar alone (vm, worker_threads, module stay barred).
+    .map((p) =>
+      allow.childProcess && p.message === MSG_PROC
+        ? { ...p, group: p.group.filter((g) => !/^(node:)?child_process$/.test(g)) }
+        : p,
+    )
     .concat(extra);
   const basePaths = BASE_PATHS.filter(
     (p) =>
@@ -1019,6 +1025,19 @@ const packageEntries = [
       ),
     ],
   }),
+  // FIX-MVPB-SEAL3: the one spike-kit file that may use node:child_process (a fixed git binary, local
+  // `git cat-file`). Only that one module restriction is lifted; the network, SIM and every other
+  // import rule still apply to it, and the rest of the kit stays barred from process modules.
+  entry(['tools/spike-kit/src/git-head.ts'], {
+    allow: { childProcess: true },
+    extra: [
+      pat(
+        others(['contracts', 'runtime', 'spike-kit']),
+        'spike-kit imports contracts and runtime only.',
+      ),
+      pat(pkg(['testkit']), 'testkit is for tests only.'),
+    ],
+  }),
 ];
 
 // apps/web: Z1 reaches the engine only through composition.server.ts (S2, S5, architecture 2).
@@ -1120,12 +1139,6 @@ export const NAMED_EXEMPTIONS = [
       'no-restricted-syntax',
       'sbx/no-global-alias',
     ],
-  },
-  {
-    files: ['tools/spike-kit/src/git-head.ts'],
-    reason:
-      'B-L6 / FIX-MVPB-SEAL2 M1: runs local `git show HEAD:<path>` through node:child_process with a minimal environment, to prove the decision log equals its committed copy; no network, loaded only for a real spike run',
-    off: ['no-restricted-imports', 'sbx/no-restricted-dynamic-import'],
   },
   {
     files: ['tools/spike-kit/src/spike.test.ts'],

@@ -610,10 +610,16 @@ function insideGitRepo(dir: string, exists: (p: string) => boolean): boolean {
  */
 const SPIKE_GO =
   /^SPIKE GO: scope=(spike-read|spike-write); operator=(vikram|sakthi); valid_until=(\d{4}-\d{2}-\d{2}); approved in writing (\d{4}-\d{2}-\d{2})$/;
-// Words that turn a row into something other than a grant, wherever they appear in the row
-// (the notes cell included): negations, withdrawals, templates and examples.
-const NON_GRANTING =
-  /\b(?:not|no longer|cannot|can't|won't|never|revok\w*|withdr[ae]w\w*|supersed\w*|templat\w*|example\w*|sample|placeholder)\b|n't\b|\be\.g\./i;
+// FIX-MVPB-SEAL3 M-B: the row is an ALLOW-LIST, not a deny-list. Five cells, every one of a fixed
+// shape, the whole row printable ASCII (so no zero-width, format or lookalike character can hide in
+// it), no escaped pipe and no HTML. A word list can be evaded by a lookalike letter or free text;
+// a grammar with no free text cannot.
+const ID_CELL = /^D-\d{3,4}$/;
+const DATE_CELL = /^\d{4}-\d{2}-\d{2}$/;
+const OWNER_CELL = /^(?:Owner|Vikram|Sakthi)$/;
+// Notes: empty, or a pull request or issue number. Nothing else (docs/owner/SPIKE-RUNBOOK.md).
+const NOTES_CELL = /^(?:|PR #\d{1,6}|issue #\d{1,6})$/;
+const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
 const MAX_GO_DAYS = 14;
 function realDate(iso: string): boolean {
   const t = Date.parse(`${iso}T00:00:00Z`);
@@ -626,8 +632,9 @@ export function parseSpikeGo(row: string): {
   validUntil: string;
   approved: string;
 } | null {
-  if (typeof row !== 'string' || NON_GRANTING.test(row)) return null;
+  if (typeof row !== 'string') return null;
   const t = row.trim();
+  if (!PRINTABLE_ASCII.test(t) || t.includes('\\|') || /[<>]/.test(t)) return null;
   if (!t.startsWith('|')) return null;
   // | Id | Date | Decision | Owner | Notes |
   const cells = t
@@ -635,8 +642,11 @@ export function parseSpikeGo(row: string): {
     .replace(/\|\s*$/, '')
     .split('|')
     .map((c) => c.trim());
-  if (cells.length < 4) return null;
-  const m = SPIKE_GO.exec(cells[2] as string);
+  if (cells.length !== 5) return null;
+  const [id, date, decision, owner, notes] = cells as [string, string, string, string, string];
+  if (!ID_CELL.test(id) || !DATE_CELL.test(date) || !realDate(date)) return null;
+  if (!OWNER_CELL.test(owner) || !NOTES_CELL.test(notes)) return null;
+  const m = SPIKE_GO.exec(decision);
   if (m === null) return null;
   if (!realDate(m[3] as string) || !realDate(m[4] as string)) return null;
   return {
@@ -647,36 +657,69 @@ export function parseSpikeGo(row: string): {
   };
 }
 
+// HTML elements whose content Markdown renders as code, a collapsed block or nothing: a table row
+// between their tags is not a decision a reader sees.
+const HTML_HIDERS = [
+  'pre',
+  'code',
+  'details',
+  'script',
+  'style',
+  'textarea',
+  'template',
+  'xmp',
+  'listing',
+  'plaintext',
+  'noscript',
+  'iframe',
+  'object',
+  'svg',
+  'math',
+];
+
 /**
  * The lines of the log that start the table row `ref`, and whether each sits where Markdown shows
- * code instead of a table: a ``` or ~~~ fence, an HTML comment, or a block indented four columns.
+ * something other than a table row: a CommonMark code fence (a closing fence uses the same
+ * character and is at least as long as the opener; an unclosed fence runs to the end of the file),
+ * an HTML comment, an HTML element such as <pre> or <details>, or a block indented four columns.
  */
 function findRows(log: string, ref: string): { line: string; hidden: boolean }[] {
   const out: { line: string; hidden: boolean }[] = [];
   const head = new RegExp(`^\\s*\\|\\s*${ref}\\s*\\|`);
-  let fence: string | null = null;
+  let fence: { ch: string; len: number } | null = null;
   let comment = false;
+  const open: Record<string, number> = {};
   for (const line of log.split('\n')) {
-    const opener = /^(```|~~~)/.exec(line.trimStart());
     if (fence !== null) {
-      if (opener !== null && opener[1] === fence) {
-        fence = null;
-        continue;
+      const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
+      if (close !== null) {
+        const run = close[1] as string;
+        if (run[0] === fence.ch && run.length >= fence.len) fence = null;
       }
-    } else if (opener !== null) {
-      fence = opener[1] as string;
+      if (fence !== null && head.test(line)) out.push({ line, hidden: true });
       continue;
     }
-    const opens = line.includes('<!--');
-    const closes = line.includes('-->');
+    const opener = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (
+      opener !== null &&
+      !((opener[1] as string)[0] === '`' && (opener[2] as string).includes('`'))
+    ) {
+      fence = { ch: (opener[1] as string)[0] as string, len: (opener[1] as string).length };
+      continue;
+    }
+    const lower = line.toLowerCase();
+    const opens = lower.includes('<!--');
     const inComment = comment || opens;
-    if (opens && !closes) comment = true;
-    else if (comment && closes) comment = false;
+    if (opens && !lower.includes('-->')) comment = true;
+    else if (comment && lower.includes('-->')) comment = false;
+    const inHtml = HTML_HIDERS.some((tag) => (open[tag] ?? 0) > 0);
     if (head.test(line))
-      out.push({
-        line,
-        hidden: fence !== null || inComment || /^(?: {4}|\t)/.test(line),
-      });
+      out.push({ line, hidden: inComment || inHtml || /^(?: {4}|\t)/.test(line) });
+    for (const tag of HTML_HIDERS) {
+      const starts = lower.match(new RegExp(`<${tag}(?=[\\s>/]|$)`, 'g'))?.length ?? 0;
+      const ends = lower.match(new RegExp(`</${tag}\\s*>`, 'g'))?.length ?? 0;
+      open[tag] = Math.max(0, (open[tag] ?? 0) + starts - ends);
+    }
   }
   return out;
 }
@@ -2111,9 +2154,7 @@ if (entry !== undefined && import.meta.url === pathToFileURL(resolve(entry)).hre
       exists: (p) => existsSync(p),
       realpath: (p) => realpathSync(p),
     },
-    ...(git === null
-      ? {}
-      : { gitShowHead: (rel: string) => git.gitShowHead(repoRoot, rel, process.env) }),
+    ...(git === null ? {} : { gitShowHead: (rel: string) => git.gitShowHead(repoRoot, rel) }),
     ...(dry ? {} : { fetchImpl: fetch as unknown as FetchLike }),
   };
   const code = await main(deps);

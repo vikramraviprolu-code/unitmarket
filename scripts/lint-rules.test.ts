@@ -1031,6 +1031,45 @@ describe('the production Wire sentinel (SEAL2 H2)', () => {
 // production Wire module, and this file lists its two lint exemptions.
 const WIRE = ['wire', 'fetch'].join('-');
 
+describe('spike-kit git-head.ts lifts only the process-module restriction (SEAL3 LOW)', () => {
+  const GH = 'tools/spike-kit/src/git-head.ts';
+  const proc =
+    "import { execFileSync } from 'node:child_process';\nexport const x = execFileSync;\n";
+  it('may import node:child_process, statically and dynamically', async () => {
+    expect(await lint(GH, proc)).toEqual([]);
+    expect(await lint(GH, "export const x = await import('node:child_process');\n")).toEqual([]);
+  });
+  it('still may not import any network client, process-adjacent module or workspace package', async () => {
+    for (const spec of [
+      'node:net',
+      'node:tls',
+      'node:https',
+      'node:http',
+      'node:dns',
+      'undici',
+      'node:vm',
+      'node:worker_threads',
+      'node:module',
+      '@umsbx/transport',
+      '@umsbx/config',
+      '@unitmarket/contracts',
+    ])
+      expect(
+        (await lint(GH, `import x from '${spec}';\nexport const y = x;\n`)).length,
+        spec,
+      ).toBeGreaterThan(0);
+    expect((await lint(GH, 'export const f = () => fetch("x");\n')).length).toBeGreaterThan(0);
+  });
+  it('no other spike-kit file, production or test helper, may import node:child_process', async () => {
+    for (const f of [
+      'tools/spike-kit/src/spike.ts',
+      'tools/spike-kit/src/other.ts',
+      'tools/spike-kit/src/index.ts',
+    ])
+      expect((await lint(f, proc)).length, f).toBeGreaterThan(0);
+  });
+});
+
 describe('named exemptions (D-015)', () => {
   it('the exemption list is pinned: adding a file or a rule needs a reviewed change here', async () => {
     const { NAMED_EXEMPTIONS } = await import('../eslint.config.mjs');
@@ -1062,7 +1101,6 @@ describe('named exemptions (D-015)', () => {
         'packages/transport/src/**/*.ts -> sbx/sealed-wire-sentinel',
         'apps/web/composition.server.ts -> sbx/sealed-wire-sentinel',
         'tools/spike-kit/src/spike.ts -> no-restricted-globals,no-restricted-properties,no-restricted-syntax,sbx/no-global-alias',
-        'tools/spike-kit/src/git-head.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'tools/spike-kit/src/spike.test.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'tools/spike-kit/src/spike-cli.integration.test.ts -> no-restricted-imports,no-restricted-properties,sbx/no-global-alias',
       ].sort(),

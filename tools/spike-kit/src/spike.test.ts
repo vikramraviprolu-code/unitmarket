@@ -81,55 +81,92 @@ const MARK = (o: { approved?: string; until?: string } = {}): string =>
   `SPIKE GO: scope=spike-read; operator=vikram; valid_until=${o.until ?? '2026-11-05'}; approved in writing ${o.approved ?? '2026-10-25'}`;
 const LOG = [
   '| Id | Date | Decision | Owner | Notes |',
-  '| D-023 | 2026-10-22 | Sandbox accounts. This decision does not authorise any outbound call. | Owner | x |',
-  '| D-004 | 2026-10-01 | Some unrelated decision about money handling. | Owner | x |',
-  '| D-011 | 2026-10-05 | Another unrelated decision. | Owner | x |',
-  '| D-013 | 2026-10-06 | The sandbox host constant lives in one module. | Owner | x |',
+  '| D-023 | 2026-10-22 | Sandbox accounts. This decision does not authorise any outbound call. | Owner | PR #1 |',
+  '| D-004 | 2026-10-01 | Some unrelated decision about money handling. | Owner | PR #1 |',
+  '| D-011 | 2026-10-05 | Another unrelated decision. | Owner | PR #1 |',
+  '| D-013 | 2026-10-06 | The sandbox host constant lives in one module. | Owner | PR #1 |',
   // Synthetic well-formed rows for tests only. They are NOT in docs/decision-log.md.
-  '| D-024 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | x |',
-  '| D-025 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=vikram; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | x |',
-  '| D-026 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=sakthi; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | x |',
-  '| D-027 | 2026-10-20 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-10-25; approved in writing 2026-10-20 | Owner | x |',
-  '| D-028 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-10-26; approved in writing 2026-10-25 | Owner | x |',
-  '| D-029 | 2026-10-25 | SPIKE GO: scope=everything; operator=vikram; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | x |',
-  '| D-030 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-13-45; approved in writing 2026-10-25 | Owner | x |',
-  '| D-031 | 2026-10-25 | Owner written go for the read-only spike. | Owner | x |',
-  '| D-032 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-12-31 | Owner | x |',
+  '| D-024 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | PR #1 |',
+  '| D-025 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=vikram; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | PR #1 |',
+  '| D-026 | 2026-10-25 | SPIKE GO: scope=spike-read; operator=sakthi; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | PR #1 |',
+  '| D-027 | 2026-10-20 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-10-25; approved in writing 2026-10-20 | Owner | PR #1 |',
+  '| D-028 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-10-26; approved in writing 2026-10-25 | Owner | PR #1 |',
+  '| D-029 | 2026-10-25 | SPIKE GO: scope=everything; operator=vikram; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | PR #1 |',
+  '| D-030 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-13-45; approved in writing 2026-10-25 | Owner | PR #1 |',
+  '| D-031 | 2026-10-25 | Owner written go for the read-only spike. | Owner | PR #1 |',
+  '| D-032 | 2026-10-25 | SPIKE GO: scope=spike-write; operator=vikram; valid_until=2026-12-31 | Owner | PR #1 |',
   // FIX-MVPB-SEAL2 M1: rows that quote, negate or only look like a grant. None may authorise.
-  `| D-040 | 2026-10-25 | Example only, NOT yet granted: "${MARK()}" | Owner | x |`,
-  `| D-041 | 2026-10-25 | ${MARK()} REVOKED | Owner | x |`,
-  `| D-042 | 2026-10-25 | This is not authorised: ${MARK()} | Owner | x |`,
-  `| D-043 | 2026-10-25 | ${MARK({ until: '9999-12-31' })} | Owner | x |`,
-  `| D-044 | 2026-10-25 | ${MARK({ until: '2026-10-24' })} | Owner | x |`,
+  `| D-040 | 2026-10-25 | Example only, NOT yet granted: "${MARK()}" | Owner | PR #1 |`,
+  `| D-041 | 2026-10-25 | ${MARK()} REVOKED | Owner | PR #1 |`,
+  `| D-042 | 2026-10-25 | This is not authorised: ${MARK()} | Owner | PR #1 |`,
+  `| D-043 | 2026-10-25 | ${MARK({ until: '9999-12-31' })} | Owner | PR #1 |`,
+  `| D-044 | 2026-10-25 | ${MARK({ until: '2026-10-24' })} | Owner | PR #1 |`,
   `| D-046 | 2026-10-25 | ${MARK()} | Owner | first |`,
   `| D-046 | 2026-10-25 | ${MARK()} | Owner | second |`,
-  `| D-047 | 2026-10-10 | ${MARK({ approved: '2026-10-10', until: '2026-10-20' })} | Owner | x |`,
+  `| D-047 | 2026-10-10 | ${MARK({ approved: '2026-10-10', until: '2026-10-20' })} | Owner | PR #1 |`,
   `| D-048 | 2026-10-25 | ${MARK()} | Owner | template |`,
   `| D-049 | 2026-10-25 | ${MARK()} | Owner | superseded by D-050 |`,
   `| D-051 | 2026-10-25 | ${MARK()} | Owner | withdrawn |`,
   `| D-052 | 2026-10-25 | ${MARK()} | Owner | e.g. a test run |`,
   `| D-053 | 2026-10-25 | ${MARK()} | Owner | see the runbook example |`,
-  `| D-054 | 2026-10-25 | ${MARK({ until: '2026-11-08' })} | Owner | exactly 14 days |`,
-  `| D-055 | 2026-10-25 | ${MARK({ until: '2026-11-09' })} | Owner | 15 days |`,
-  `| D-056 | 2026-10-30 | ${MARK({ approved: '2026-10-30', until: '2026-11-05' })} | Owner | starts later |`,
-  `| D-057 | 2026-10-25 | ${MARK()} and more | Owner | x |`,
-  `| D-058 | 2026-10-25 | Owner go: ${MARK()} | Owner | x |`,
+  `| D-054 | 2026-10-25 | ${MARK({ until: '2026-11-08' })} | Owner | PR #1 |`,
+  `| D-055 | 2026-10-25 | ${MARK({ until: '2026-11-09' })} | Owner | PR #1 |`,
+  `| D-056 | 2026-10-30 | ${MARK({ approved: '2026-10-30', until: '2026-11-05' })} | Owner | PR #1 |`,
+  `| D-057 | 2026-10-25 | ${MARK()} and more | Owner | PR #1 |`,
+  `| D-058 | 2026-10-25 | Owner go: ${MARK()} | Owner | PR #1 |`,
   `| D-059 | 2026-10-25 | spike go: scope=spike-read; operator=vikram; valid_until=2026-11-05; approved in writing 2026-10-25 | Owner | lower case |`,
   `| D-060 | 2026-10-25 | ${MARK()} | Owner | cannot be used |`,
+  // FIX-MVPB-SEAL3 M-B: the row is an allow-list, not a deny-list.
+  `| D-070 | 2026-10-25 | ${MARK().replace('operator', 'operat\u043er')} | Owner | PR #1 |`, // Cyrillic o
+  `| D-071 | 2026-10-25 | ${MARK()} | Owner | PR #1\u200b |`, // zero-width space
+  `| D-072 | 2026-10-25 | ${MARK()} | Owner | PR #1 \\| second |`, // escaped pipe
+  `| D-073 | 2026-10-25 | ${MARK()} | Owner | <b>PR #1</b> |`, // HTML in a cell
+  `| D-074 | 2026-10-25 | ${MARK()} | Owner | PR #12 |`, // allowed note
+  `| D-075 | 2026-10-25 | ${MARK()} | Owner | issue #7 |`, // allowed note
+  `| D-076 | 2026-10-25 | ${MARK()} | Owner | approved by the owner on a call |`, // free text
+  `| D-077 | 2026-10-25 | ${MARK()} | Mallory | PR #1 |`, // owner cell
+  `| D-078 | 2026-10-25 | ${MARK()} | Owner | PR #1 | extra |`, // six cells
+  `| D-079 | 2026-10-25 | ${MARK()} | Owner |`, // four cells
+  `| D-080 | 2026-10-25 | ${MARK()} | Owner | |`, // empty notes: allowed
+  `| D-081 | 2026-10-25 | ${MARK()} | Owner | \u0420R #1 |`, // Cyrillic P
+  `| D-082 | 26-10-25 | ${MARK()} | Owner | PR #1 |`, // date cell
 ].join('\n');
 // Rows inside a code fence, an HTML comment or an indented code block are not decisions.
 const FENCED_LOG = [
   LOG,
   '```',
-  `| D-045 | 2026-10-25 | ${MARK()} | Owner | x |`,
+  `| D-045 | 2026-10-25 | ${MARK()} | Owner | PR #1 |`,
   '```',
   '<!--',
-  `| D-061 | 2026-10-25 | ${MARK()} | Owner | x |`,
+  `| D-061 | 2026-10-25 | ${MARK()} | Owner | PR #1 |`,
   '-->',
-  `    | D-062 | 2026-10-25 | ${MARK()} | Owner | x |`,
+  `    | D-062 | 2026-10-25 | ${MARK()} | Owner | PR #1 |`,
   '~~~',
-  `| D-063 | 2026-10-25 | ${MARK()} | Owner | x |`,
+  `| D-063 | 2026-10-25 | ${MARK()} | Owner | PR #1 |`,
   '~~~',
+  // A closing fence must use the same character and be at least as long as the opener.
+  '````',
+  '```',
+  `| D-064 | 2026-10-25 | ${MARK()} | Owner | PR #1 |`,
+  '```',
+  '````',
+  '~~~~',
+  '~~~',
+  `| D-065 | 2026-10-25 | ${MARK()} | Owner | PR #1 |`,
+  '```',
+  '~~~~',
+  '<pre>',
+  `| D-067 | 2026-10-25 | ${MARK()} | Owner | PR #1 |`,
+  '</pre>',
+  '<DETAILS>',
+  `| D-068 | 2026-10-25 | ${MARK()} | Owner | PR #1 |`,
+  '</DETAILS>',
+  '   ```',
+  `| D-069 | 2026-10-25 | ${MARK()} | Owner | PR #1 |`,
+  '   ```',
+  // An opening fence that is never closed runs to the end of the file.
+  '```',
+  `| D-066 | 2026-10-25 | ${MARK()} | Owner | PR #1 |`,
 ].join('\n');
 
 let tmp: string;
@@ -407,7 +444,7 @@ describe('preflight refusals', () => {
       'decision_log_unverified',
       (h) =>
         void (h.deps.gitShowHead = () =>
-          LOG + '\n| D-099 | 2026-10-25 | an uncommitted line | Owner | x |'),
+          LOG + '\n| D-099 | 2026-10-25 | an uncommitted line | Owner | PR #1 |'),
     ], // working tree differs from HEAD
     ['decision_log_unverified', (h) => void (h.deps.gitShowHead = () => null)], // git unavailable
     ['decision_log_unverified', (h) => void delete h.deps.gitShowHead], // no git reader supplied
@@ -489,7 +526,18 @@ describe('M1 (SEAL2): SPIKE GO rows that only look like a grant never authorise'
     const h = harness({ env: realEnv({ SPIKE_APPROVAL_REF: ref }), stdinIsTTY: true, ...over });
     return preflight(h.deps);
   };
-  it.each(['D-045', 'D-061', 'D-062', 'D-063'])(
+  it.each([
+    'D-045',
+    'D-061',
+    'D-062',
+    'D-063',
+    'D-064',
+    'D-065',
+    'D-066',
+    'D-067',
+    'D-068',
+    'D-069',
+  ])(
     'a row in a code fence, an HTML comment or an indented block (%s) is not a decision',
     (ref) => {
       const r = real(ref, { log: FENCED_LOG });
@@ -498,6 +546,69 @@ describe('M1 (SEAL2): SPIKE GO rows that only look like a grant never authorise'
   );
   it('the same log still authorises a plain row outside every fence', () => {
     expect(real('D-024', { log: FENCED_LOG }).ok).toBe(true);
+  });
+  it('the same log still authorises a plain row after the closed fences and blocks (D-024)', () => {
+    expect(real('D-054', { log: FENCED_LOG }).ok).toBe(true);
+  });
+  it.each(['D-074', 'D-075', 'D-080'])('an allowed notes cell (%s) grants', (ref) => {
+    expect(real(ref).ok).toBe(true);
+  });
+  it.each([
+    ['D-070', 'a Cyrillic lookalike letter in the marker'],
+    ['D-071', 'a zero-width space in the notes'],
+    ['D-072', 'an escaped pipe'],
+    ['D-073', 'HTML in a cell'],
+    ['D-076', 'free text in the notes'],
+    ['D-077', 'an owner cell that is not Owner, Vikram or Sakthi'],
+    ['D-078', 'a sixth cell'],
+    ['D-079', 'only four cells'],
+    ['D-081', 'a Cyrillic letter in an otherwise allowed note'],
+    ['D-082', 'a malformed date cell'],
+  ])('%s (%s) never grants', (ref) => {
+    const r = real(ref);
+    expect(!r.ok && r.code).toBe('approval_ref_not_authorising');
+  });
+  it('a non-ASCII character anywhere in the row is refused, whatever the character', () => {
+    for (const ch of [
+      '\u200b',
+      '\u200d',
+      '\ufeff',
+      '\u202e',
+      '\u00a0',
+      '\u0430',
+      '\u03bf',
+      '\uff5c',
+      '\u2063',
+    ])
+      for (const where of ['id', 'decision', 'notes', 'owner']) {
+        const cells: Record<string, string> = {
+          id: 'D-024',
+          decision: MARK(),
+          owner: 'Owner',
+          notes: 'PR #1',
+        };
+        cells[where] = `${cells[where]}${ch}`;
+        const row = `| ${cells['id']} | 2026-10-25 | ${cells['decision']} | ${cells['owner']} | ${cells['notes']} |`;
+        expect(parseSpikeGo(row), `${where} U+${ch.codePointAt(0)?.toString(16)}`).toBeNull();
+      }
+  });
+  it('the notes allow-list is exactly empty, PR #n or issue #n', () => {
+    const row = (notes: string) => `| D-024 | 2026-10-25 | ${MARK()} | Owner | ${notes} |`;
+    for (const ok of ['', 'PR #1', 'PR #123456', 'issue #7'])
+      expect(parseSpikeGo(row(ok)), ok).not.toBeNull();
+    for (const bad of [
+      'pr #1',
+      'PR #1234567',
+      'PR 1',
+      'PR #1 ok',
+      'see PR #1',
+      'x',
+      'none',
+      '-',
+      'PR #',
+      'issue #a',
+    ])
+      expect(parseSpikeGo(row(bad)), bad).toBeNull();
   });
   it('accepts a window of exactly 14 days and refuses 15 (D-054, D-055)', () => {
     expect(real('D-054').ok).toBe(true);
@@ -519,12 +630,14 @@ describe('M1 (SEAL2): SPIKE GO rows that only look like a grant never authorise'
     expect(!r.ok && r.code).toBe('approval_window_invalid');
   });
   it('a duplicate id is refused even when one of the rows is a perfect grant', () => {
-    const log = [LOG, `| D-024 | 2026-10-25 | not a grant | Owner | x |`].join('\n');
+    const log = [LOG, `| D-024 | 2026-10-25 | not a grant | Owner | PR #1 |`].join('\n');
     const r = real('D-024', { log });
     expect(!r.ok && r.code).toBe('approval_ref_duplicate');
   });
   it('a duplicate id with one copy in a fence is refused as a duplicate too', () => {
-    const log = [LOG, '```', `| D-024 | 2026-10-25 | ${MARK()} | Owner | x |`, '```'].join('\n');
+    const log = [LOG, '```', `| D-024 | 2026-10-25 | ${MARK()} | Owner | PR #1 |`, '```'].join(
+      '\n',
+    );
     const r = real('D-024', { log });
     expect(!r.ok && r.code).toBe('approval_ref_duplicate');
   });
@@ -576,7 +689,7 @@ describe('M1 (SEAL2): SPIKE GO rows that only look like a grant never authorise'
     expect(!r.ok && r.code).toBe('approval_ref_pattern');
   });
   it('parseSpikeGo reads the marker only from the whole decision cell', () => {
-    const row = (cell: string, notes = 'x') =>
+    const row = (cell: string, notes = 'PR #1') =>
       `| D-024 | 2026-10-25 | ${cell} | Owner | ${notes} |`;
     expect(parseSpikeGo(row(MARK()))).toEqual({
       scope: 'spike-read',
