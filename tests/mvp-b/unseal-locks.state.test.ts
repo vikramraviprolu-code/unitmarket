@@ -379,13 +379,28 @@ describe('safety:resume refuses without TTY, in CI, without an active row, with 
     },
   );
 
-  it('refuses an empty reason', async () => {
+  it('refuses an empty reason before it asks anything', async () => {
     const t = await resumeRig();
     expect(await runResume({ ...t.base, reason: '   ' })).toEqual({
       ok: false,
       error: 'reason_required',
     });
+    expect(t.asked).toEqual([]);
     expect(await t.sw()).toBe(false);
+  });
+
+  it('a row that expires while the owner is typing is checked again by the switch change: refused, switch stays off', async () => {
+    const t = await resumeRig();
+    const res = await runResume({
+      ...t.base,
+      ask: async () => {
+        t.r.clock.set('2026-10-24T00:00:01Z');
+        return 'mvp_b_polling';
+      },
+    });
+    expect(res).toEqual({ ok: false, error: 'no_active_approval' });
+    expect(await t.sw()).toBe(false);
+    expect(await t.audits()).toBe(0);
   });
 
   it('with a terminal, an active row and the scope typed back: the switch goes on, with an audit row for an operator with mfa', async () => {
