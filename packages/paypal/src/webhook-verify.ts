@@ -16,6 +16,7 @@
 // The signed message is `<id>|<time>|<webhook id>|<crc32 of the raw UTF-8 bytes, unsigned decimal>`.
 // The raw body, the signature and the certificate are never logged and never put in a verdict.
 import { createVerify } from 'node:crypto';
+import type { KeyObject } from 'node:crypto';
 import { ProviderEventSchema, ProviderEventTypeSchema } from '@umsbx/contracts';
 import type { Clock, ProviderEvent, ProviderEventType, WebhookVerdict } from '@umsbx/contracts';
 import { guard } from '@umsbx/transport';
@@ -78,7 +79,7 @@ export function signedMessage(p: MessageParts): string {
 function instantOf(time: string): number | null {
   const m = TIME_RE.exec(time);
   if (m === null) return null;
-  const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number) as [
+  const [year, month, day, hour, minute, second] = m.slice(1).map(Number) as [
     number,
     number,
     number,
@@ -174,20 +175,24 @@ export async function verifyWebhook(
     webhook_id: d.webhook_id,
     raw_body: raw,
   });
-  let genuine = false;
-  try {
-    const v = createVerify('SHA256');
-    v.update(message, 'utf8');
-    v.end();
-    genuine = v.verify(cert.public_key, sig, 'base64');
-  } catch {
-    genuine = false;
-  }
+  const genuine = signatureHolds(cert.public_key, message, sig);
   if (!genuine) return bad('signature');
 
   // Only a signed body is parsed.
   const event = eventOf(raw, id);
   return event === null ? MALFORMED : { kind: 'verified', event };
+}
+
+/** SHA-256 with RSA PKCS#1 v1.5 over the message; any error from the crypto library is a mismatch. */
+function signatureHolds(key: KeyObject, message: string, signature: string): boolean {
+  try {
+    const v = createVerify('SHA256');
+    v.update(message, 'utf8');
+    v.end();
+    return v.verify(key, signature, 'base64');
+  } catch {
+    return false;
+  }
 }
 
 // ---------- the body, after the signature ----------

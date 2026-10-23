@@ -1,3 +1,4 @@
+import { createSecretKey } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { WebhookVerdict } from '@umsbx/contracts';
 import { createCertificateSource } from './webhook-cert';
@@ -236,6 +237,24 @@ describe('certificate URL: checked before any fetch (0 transport calls)', () => 
     });
   }
 
+  it('the URL length cap is 512 characters: 512 is used, 513 is refused unseen', async () => {
+    const stem = certUrl({ path: '/v1/notifications/certs/' });
+    const withLength = (n: number) => stem + 'A'.repeat(n - stem.length);
+    expect(withLength(512)).toHaveLength(512);
+    const ok = okCertificates();
+    expect(
+      await run(deliver(f, { cert_url: withLength(512) }), { certificates: ok }),
+    ).toMatchObject({
+      kind: 'verified',
+    });
+    expect(ok.calls).toEqual([withLength(512)]);
+    const refused = okCertificates();
+    expect(await run(deliver(f, { cert_url: withLength(513) }), { certificates: refused })).toEqual(
+      bad('cert_url'),
+    );
+    expect(refused.calls).toHaveLength(0);
+  });
+
   it('control: the same delivery with a good URL makes exactly one transport call and verifies', async () => {
     const { transport, source } = realSource();
     expect(await run(deliver(f), { certificates: source })).toMatchObject({ kind: 'verified' });
@@ -346,6 +365,12 @@ describe('certificate cannot be had: unverifiable (503), never a forgery', () =>
       cert: certificateOf(signer.publicKey, { valid_from: new Date(T + HOUR) }),
     });
     expect(await run(deliver(f), { certificates: early })).toEqual(unverifiable);
+  });
+
+  it('a certificate source that hands back a key which cannot verify (a secret key) is a bad signature, not a pass', async () => {
+    const secretKey = createSecretKey(Buffer.from('not-a-public-key-at-all-0123456789'));
+    const odd = fakeCertificates({ kind: 'ok', cert: certificateOf(secretKey) });
+    expect(await run(deliver(f), { certificates: odd })).toEqual(bad('signature'));
   });
 
   it('webhook id not configured is unverifiable, and nothing is fetched', async () => {
