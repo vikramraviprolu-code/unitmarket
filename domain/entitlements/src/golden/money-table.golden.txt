@@ -1,0 +1,8 @@
+# Money transition table (architecture 4.3 plus CO-5, ASM-59). Hand-written. = no-op, x refused.
+state | capture_verified | pending | declined | unknown | refund_verified | reversal_verified | partial_refund_verified
+pending | captured | = | denied | unknown | x | x | =
+captured | = | x | x | x | refunded | reversed | =
+denied | x | x | = | x | x | x | =
+refunded | x | x | x | x | = | x | =
+reversed | x | x | x | x | x | = | =
+unknown | captured | x | denied | = | x | x | =

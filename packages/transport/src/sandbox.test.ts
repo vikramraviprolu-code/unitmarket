@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createApprovedSandboxTransport,
   createSandboxTransport,
+  PRODUCTION_WIRE,
   SandboxSealedError,
 } from './sandbox';
 import {
@@ -10,12 +11,12 @@ import {
   fakeWire,
   fixedClock,
   memoryLogger,
+  mintForTests,
   netSpies,
   req,
   scopedGate,
 } from './test-support';
 import type { OutboundRequest, Transport } from '@umsbx/contracts';
-import { createApprovalMinter } from './approval';
 import type { FakeGate, FakeWire } from './test-support';
 import type { WireResult } from './wire';
 
@@ -116,9 +117,8 @@ describe('sealed by default', () => {
       await expect(p).rejects.toBeInstanceOf(SandboxSealedError);
       await expect(p).rejects.toMatchObject({ name: 'SandboxSealedError' });
     }
-    const mint = createApprovalMinter(() => true);
-    expect(() => mint({ scope: '', approval_ref: 'x', gate })).toThrow();
-    expect(() => mint({ scope: SCOPE, approval_ref: '', gate })).toThrow();
+    expect(() => mintForTests({ scope: '', approval_ref: 'x', gate })).toThrow();
+    expect(() => mintForTests({ scope: SCOPE, approval_ref: '', gate })).toThrow();
     expect(wire.requests).toHaveLength(0);
   });
 
@@ -128,7 +128,9 @@ describe('sealed by default', () => {
   });
 });
 
-describe('H2 (FIX-MVPB-SEAL2): the Wire is required; the production Wire needs the sentinel', () => {
+const PROD_STRING = 'production';
+
+describe('H2 (SEAL2) and SEAL4: the Wire is required; only the PRODUCTION_WIRE token selects the production Wire', () => {
   const make = async (over: Record<string, unknown>) => {
     const base = {
       approval: await approvalFrom(scopedGate()),
@@ -148,7 +150,13 @@ describe('H2 (FIX-MVPB-SEAL2): the Wire is required; the production Wire needs t
     ['an empty object', { wire: {} }],
     ['a request that is not a function', { wire: { request: 'yes' } }],
     ['a string that is not the sentinel', { wire: 'fetch' }],
-    ['the sentinel in another case', { wire: 'Production' }],
+    ['the old string sentinel', { wire: 'production' }],
+    ['the old string in another case', { wire: 'Production' }],
+    ['the old string built at run time', { wire: ['prod', 'uction'].join('') }],
+    ['the old string through a constant', { wire: PROD_STRING }],
+    ['a template literal of the old string', { wire: `${'prod'}uction` }],
+    ['Symbol.for with the token description', { wire: Symbol.for('production-wire') }],
+    ['a look-alike symbol with the same description', { wire: Symbol('production-wire') }],
     ['a function', { wire: () => undefined }],
   ])('refuses %s and never calls fetch', async (_n, over) => {
     // If the fix regressed and the production Wire were built, a send must still not reach a socket.
@@ -158,11 +166,11 @@ describe('H2 (FIX-MVPB-SEAL2): the Wire is required; the production Wire needs t
     await expect(make(over)).rejects.toBeInstanceOf(SandboxSealedError);
     expect(spies.counts()['global fetch']).toBe(0);
   });
-  it("the 'production' sentinel builds a transport without any network use", async () => {
+  it('the PRODUCTION_WIRE token builds a transport without any network use', async () => {
     spies.spies['global fetch'].mockImplementation(async () => {
       throw new Error('blocked by the test');
     });
-    const t = await make({ wire: 'production' });
+    const t = await make({ wire: PRODUCTION_WIRE });
     expect(t.kind).toBe('sandbox');
     expect(spies.counts()['global fetch']).toBe(0);
   });
