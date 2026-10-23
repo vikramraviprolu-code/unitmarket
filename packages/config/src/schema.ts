@@ -2,10 +2,21 @@ import type { Secret } from '@umsbx/contracts';
 
 export type Mode = 'offline' | 'sandbox';
 
+/** The approval scope the app serves (ASM-51): the MVP-B polling phase, or the later refunds phase. */
+export type OutboundScope = 'mvp_b_polling' | 'mvp_c_refunds';
+export const OUTBOUND_SCOPES: readonly OutboundScope[] = ['mvp_b_polling', 'mvp_c_refunds'];
+
 export interface Config {
   mode: Mode;
   connect: boolean;
   outbound_approval_ref: string | null;
+  /** UMS_OUTBOUND_SCOPE, default mvp_b_polling. Moving to mvp_c_refunds needs a new approval ref. */
+  outbound_scope: OutboundScope;
+  /**
+   * UMS_OWN_MERCHANT_ID (BU-7, D-028): our own sandbox merchant id. Not a secret. When a create unit's
+   * payee equals it exactly, the adapter leaves the payee out of the body. Null: never left out.
+   */
+  own_merchant_id: string | null;
   paypal: { client_id: Secret; client_secret: Secret; webhook_id: string | null } | null; // null in offline
   db:
     | { kind: 'pglite-memory' }
@@ -28,6 +39,8 @@ export const ENV_NAMES = [
   'UMS_MODE',
   'UMS_PAYPAL_CONNECT',
   'UMS_OUTBOUND_APPROVAL_REF',
+  'UMS_OUTBOUND_SCOPE',
+  'UMS_OWN_MERCHANT_ID',
   'PAYPAL_CLIENT_ID',
   'PAYPAL_CLIENT_SECRET',
   'PAYPAL_WEBHOOK_ID',
@@ -48,6 +61,9 @@ export const ENV_NAMES = [
 export const KNOWN_CORRIDORS: readonly string[] = ['us-usd'];
 
 export const MIN_SECRET_BYTES = 32;
+
+/** PayPal merchant ids are 13 characters, upper-case letters and digits (BU-7). Exact, no folding. */
+export const MERCHANT_ID_PATTERN = /^[A-Z0-9]{13}$/;
 
 // An origin is scheme://host[:port] with nothing else: https, or http on localhost. The value must
 // equal what URL parsing reads back as its origin, so userinfo (https://x@localhost), a path, a

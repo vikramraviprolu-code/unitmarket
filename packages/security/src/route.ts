@@ -46,6 +46,13 @@ export interface RouteMeta {
    * failed attempts on one target (a passcode persona, an account) never lock other targets.
    */
   rate_target?: string;
+  /**
+   * An operator POST needs an MFA session. A route that can only REDUCE what the system may do (the
+   * ops stop button) sets this so an operator without a second factor can still press it. It lifts
+   * the MFA rule for this route only; the role, session and CSRF rules still apply. Valid on an
+   * operator POST route only.
+   */
+  fail_safe_without_mfa?: boolean;
   max_body_bytes: number;
   idempotent: boolean;
   risk: 'low' | 'medium' | 'high';
@@ -113,6 +120,11 @@ function validateMeta(meta: RouteMeta): void {
   if (meta.rate !== null && !(meta.rate.limit >= 1 && meta.rate.window_ms >= 1)) bad('rate');
   if (meta.rate_target !== undefined && (meta.rate === null || meta.rate.per !== 'ip'))
     bad('rate_target needs an ip rate');
+  if (meta.fail_safe_without_mfa === true && (meta.auth !== 'operator' || meta.method !== 'POST'))
+    bad('fail_safe_without_mfa is for operator POST routes only');
+  // One route only (BU-2 review B3); scripts/route-inventory.mjs checks the same list statically.
+  if (meta.fail_safe_without_mfa === true && meta.path !== '/api/ops/stop')
+    bad('fail_safe_without_mfa is allowed on /api/ops/stop only');
 }
 
 const json = (status: number, body: unknown, headers: Headers): Response => {
@@ -250,7 +262,12 @@ export function withRoute<I, O>(
           if (record === null) return fail(401, 'unauthenticated', 'Sign in first.');
           if (record.actor.kind !== meta.auth)
             return fail(403, 'forbidden', 'This account cannot do that.');
-          if (record.actor.kind === 'operator' && !record.actor.mfa && meta.method !== 'GET')
+          if (
+            record.actor.kind === 'operator' &&
+            !record.actor.mfa &&
+            meta.method !== 'GET' &&
+            meta.fail_safe_without_mfa !== true
+          )
             return fail(403, 'mfa_required', 'Operator changes need a second factor.');
         }
         if (record !== null) actor = record.actor;

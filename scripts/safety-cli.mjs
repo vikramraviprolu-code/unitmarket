@@ -1,4 +1,4 @@
-// Operator entry points for pnpm safety:status, safety:stop and safety:approve (review 4 M11).
+// Operator entry points for pnpm safety:status, safety:stop, safety:approve and safety:resume (review 4 M11, BU-2).
 // This file is the composition: it joins config, db, runtime, obs and safety, which the packages
 // themselves may not do. Run through the TypeScript hooks:
 //   node --env-file-if-exists=.env.local --import ./scripts/lib/ts-register.mjs scripts/safety-cli.mjs <command>
@@ -8,13 +8,17 @@
 //   approve --operator <id> --ref <ref> --scope <name> --ops a,b --max-amount <minor>
 //           --max-calls <n> --valid-until <ISO> --approved-by <name>
 //                                           writes one append-only outbound_approvals row; terminal only
+//   resume  --operator <id> --reason <text> paypal_outbound on (BU-2, O-B6); terminal only, refuses in CI
+//                                           and AI sessions, needs an active approval row for the configured
+//                                           reference (UMS_OUTBOUND_APPROVAL_REF) and the scope typed back
+//                                           The app must be stopped first (single-opener lock): stop it, resume, restart.
 // The operator id names who is acting; the person at a TTY is the second factor the CLIs rely on.
 import { createInterface } from 'node:readline/promises';
 import { loadConfigFromProcess, terminalEnv } from '../packages/config/src/index.ts';
 import { migrate, openDatabase } from '../packages/db/src/index.ts';
 import { createAuditSink } from '../packages/obs/src/index.ts';
 import { cryptoIds, systemClock } from '../packages/runtime/src/index.ts';
-import { readSafetyStatus, runApprove, runStop } from '../packages/safety/src/index.ts';
+import { readSafetyStatus, runApprove, runResume, runStop } from '../packages/safety/src/index.ts';
 
 const [command, ...rest] = process.argv.slice(2);
 const flag = (name) => {
@@ -27,9 +31,9 @@ const fail = (line, code = 1) => {
   process.exit(code);
 };
 
-if (!['status', 'stop', 'approve'].includes(command ?? '')) {
+if (!['status', 'stop', 'approve', 'resume'].includes(command ?? '')) {
   fail(
-    'usage: safety-cli.mjs status | stop --operator <id> --reason <text> | approve --operator <id> --ref ...',
+    'usage: safety-cli.mjs status | stop --operator <id> --reason <text> | approve --operator <id> --ref ... | resume --operator <id> --reason <text>',
     2,
   );
 }
@@ -76,6 +80,27 @@ try {
     });
     if (!r.ok) fail(`refused: ${r.error}`);
     say('paypal_outbound is now off');
+  } else if (command === 'resume') {
+    if (!operator) fail('resume needs --operator <id> and --reason <text>', 2);
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      const r = await runResume({
+        db,
+        clock,
+        audit: createAuditSink(ids, clock),
+        tty,
+        ask: (prompt) => rl.question(prompt),
+        write: say,
+        operator_id: operator,
+        approval_ref: config.outbound_approval_ref,
+        scope: config.outbound_scope,
+        reason: flag('reason') ?? '',
+      });
+      if (!r.ok) fail(`refused: ${r.error}`);
+      say(`paypal_outbound is now on for ${r.value.scope} under approval ${r.value.approval_ref}`);
+    } finally {
+      rl.close();
+    }
   } else {
     if (!operator) fail('approve needs --operator <id>', 2);
     const rl = createInterface({ input: process.stdin, output: process.stdout });

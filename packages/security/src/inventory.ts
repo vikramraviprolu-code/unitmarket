@@ -59,7 +59,7 @@ export function parseRouteMeta(source: string): Partial<RouteMeta> | null {
     const v = str(field(body, k));
     if (v !== undefined) meta[k] = v;
   }
-  for (const k of ['csrf', 'idempotent']) {
+  for (const k of ['csrf', 'idempotent', 'fail_safe_without_mfa']) {
     const v = bool(field(body, k));
     if (v !== undefined) meta[k] = v;
   }
@@ -195,6 +195,12 @@ export function checkHandlers(source: string, method: string | undefined): strin
   return problems;
 }
 
+/**
+ * fail_safe_without_mfa lifts the MFA rule of an operator POST (BU-2). Exactly one route may carry
+ * it: the stop button, which can only turn the outbound switch off.
+ */
+export const FAIL_SAFE_WITHOUT_MFA_ROUTES: readonly string[] = ['/api/ops/stop'];
+
 export function checkEntry(file: string, relativeToApp: string, source: string): InventoryEntry {
   const meta = parseRouteMeta(source);
   const problems: string[] = [];
@@ -222,6 +228,14 @@ export function checkEntry(file: string, relativeToApp: string, source: string):
     problems.push('risk must be low, medium or high');
   if (meta.method === 'POST' && meta.auth !== 'webhook' && meta.csrf === false)
     problems.push('POST route needs csrf: true');
+  if (meta.fail_safe_without_mfa === true) {
+    if (meta.path === undefined || !FAIL_SAFE_WITHOUT_MFA_ROUTES.includes(meta.path))
+      problems.push(
+        `fail_safe_without_mfa is allowed only on ${FAIL_SAFE_WITHOUT_MFA_ROUTES.join(', ')}`,
+      );
+    if (meta.auth !== 'operator' || meta.method !== 'POST')
+      problems.push('fail_safe_without_mfa is for operator POST routes only');
+  }
   problems.push(...checkHandlers(source, meta.method));
   return { file, meta, problems };
 }
@@ -234,7 +248,7 @@ export function formatInventory(entries: InventoryEntry[]): string {
       const rate = m.rate
         ? `${m.rate.name} ${m.rate.limit}/${m.rate.window_ms}ms ${m.rate.per}`
         : 'none';
-      return `${m.method ?? '?'} ${m.path ?? '?'} auth=${m.auth ?? '?'} csrf=${m.csrf ?? '?'} rate=${rate} body<=${m.max_body_bytes ?? '?'} idem=${m.idempotent ?? '?'} risk=${m.risk ?? '?'}`;
+      return `${m.method ?? '?'} ${m.path ?? '?'} auth=${m.auth ?? '?'} csrf=${m.csrf ?? '?'} rate=${rate} body<=${m.max_body_bytes ?? '?'} idem=${m.idempotent ?? '?'} risk=${m.risk ?? '?'}${m.fail_safe_without_mfa === true ? ' failsafe_no_mfa=true' : ''}`;
     });
   return rows.sort().join('\n');
 }

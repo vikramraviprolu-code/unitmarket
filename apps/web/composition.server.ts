@@ -5,8 +5,11 @@
 // Everything here is lazy: importing this module opens nothing and reads no environment, so
 // `next build` and route-module loading never boot the app. The first request does.
 //
-// Dry-run only. UMS_MODE=sandbox builds the sealed sandbox transport stub (MVP-A): no byte leaves
-// the process either way.
+// UMS_MODE=offline (the default) is the dry run: no byte leaves the process. UMS_MODE=sandbox builds
+// the outbound through src/server/outbound.server.ts (BU-2), which answers `blocked` until all five
+// locks are open (mode, connect flag, active approval row, kill switch, credentials and Wire
+// self-check) and then serves the approved sandbox transport. This file names none of the sealed
+// identifiers; the test-only Wire is accepted only under NODE_ENV=test.
 import { getSingleton, setSingleton } from './src/server/singleton';
 import 'server-only';
 import { createHash } from 'node:crypto';
@@ -36,13 +39,15 @@ import type {
 } from '@umsbx/contracts';
 import { err, ok } from '@umsbx/contracts';
 import { BOOT_REFUSAL_EXIT_CODE, loadConfig, loadConfigFromProcess } from '@umsbx/config';
+export { BOOT_REFUSAL_EXIT_CODE };
 import type { Config } from '@umsbx/config';
 import { migrate, openDatabase } from '@umsbx/db';
 import type { SqlDriver } from '@umsbx/db';
 import { cryptoIds, systemClock } from '@umsbx/runtime';
 import { createAuditSink, createLogger } from '@umsbx/obs';
-import { createOutboundGate, createSwitchReader, readSafetyStatus } from '@umsbx/safety';
-import { createSandboxTransport, guard } from '@umsbx/transport';
+import { createOutboundGate, createSwitchReader, readSafetyStatus, runStop } from '@umsbx/safety';
+import { guard } from '@umsbx/transport';
+import type { Wire } from '@umsbx/transport';
 import { createPayPalAdapter } from '@umsbx/paypal';
 import { createScriptedModel } from '@umsbx/model';
 import { SEED_DATA, getOffer, seedCatalogue } from '@umsbx/catalogue';
@@ -70,21 +75,35 @@ import {
   requestRefund,
 } from '@umsbx/payments';
 import { health as jobsHealth, startLoop } from '@umsbx/jobs';
+import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
 import { SESSION_COOKIE, resolveSession, createSession, verifyPasscode } from '@umsbx/security';
 import type { SecurityDeps } from '@umsbx/security';
 import { DRYRUN_SCENARIOS, createDryRunModel, isScenarioId } from './src/server/dryrun-model';
+import { buildOutbound } from './src/server/outbound.server';
+import type { Outbound } from './src/server/outbound.server';
+import type { OpsGate } from './src/lib/gate-lines';
 
 type Env = Record<string, string | undefined>;
 export interface AppOptions {
   /** Switch cache lifetime; tests pass 0. */
   switch_cache_ms?: number;
   log_sink?: (line: string) => void;
+  /**
+   * A Wire standing in for PayPal (tests). createApp refuses it unless NODE_ENV is test; without it
+   * the sandbox outbound uses the production Wire.
+   */
+  test_wire?: Wire;
+  /** Overrides of the domain config (tests). Refused unless NODE_ENV is test. */
+  test_domain?: Partial<DomainConfig>;
 }
 
 // ---------------------------------------------------------------------------------------------
 // Personas (demo sign-in, A11Y-6: a passcode, no cognitive test).
 // ---------------------------------------------------------------------------------------------
+/** The one publisher of MVP-B (ASM-03): its payee is the owner's own sandbox account (BU-7). */
+const MVPB_PUBLISHER_SLUG = 'harbour-ledger';
+
 export const PERSONAS = ['buyer-a', 'buyer-b', 'publisher', 'operator'] as const;
 export type Persona = (typeof PERSONAS)[number];
 const BUYER_IDS: Record<'buyer-a' | 'buyer-b', Id> = {
@@ -201,7 +220,8 @@ export interface LibraryEntry {
 export interface OpsSnapshot {
   environment: EnvironmentLabel;
   switches: Record<SwitchName, boolean>;
-  gate: { mode: string; connect: boolean; approval_ref_set: boolean; transport: string };
+  /** The gate block: mode, connect flag and, in sandbox mode, the five locks and the Wire self-check. */
+  gate: OpsGate;
   orders: { order_ref: string; status: string; total_minor: number; currency: string }[];
   operations: { state: string; count: number }[];
   alerts: { kind: string; created_at: string }[];
@@ -264,6 +284,8 @@ export interface App {
   readonly db: Database;
   readonly engine: Engine;
   readonly security: SecurityDeps;
+  /** The sandbox outbound (the five locks); null in offline mode. */
+  readonly outbound: Outbound | null;
   close(): Promise<void>;
 }
 
@@ -327,6 +349,14 @@ export interface Engine {
     note?: string;
   }): Promise<Result<{ case_id: Id }, { code: 'not_found' | 'duplicate_open' }>>;
   opsSnapshot(actor: Actor): Promise<OpsSnapshot | null>;
+  /**
+   * The ops stop button (BU-2): paypal_outbound off, with a reason, by an operator session. It can
+   * only turn the switch off; turning it on is `pnpm safety:resume` at the owner's terminal.
+   */
+  stopOutbound(i: {
+    actor: Actor;
+    reason: string;
+  }): Promise<Result<void, 'operator_required' | 'reason_required'>>;
   health(): Promise<{
     ok: boolean;
     environment: EnvironmentLabel;
@@ -347,7 +377,11 @@ export interface Engine {
   }): ReturnType<typeof resolveRecoveryCase>;
 }
 
-const DOMAIN_CONFIG = (c: Config): DomainConfig => ({
+/** Sandbox polling cadence (ASM-52): a paid order is re-read every 6 h; at most 2 provider calls a second. */
+export const SANDBOX_REREAD_PAID_EVERY_MS = 21_600_000;
+export const SANDBOX_MIN_CALL_GAP_MS = 500;
+
+export const DOMAIN_CONFIG = (c: Config): DomainConfig => ({
   reconcile_window_ms: DAY_MS,
   reconcile_backoff_ms: [30_000, 120_000, 600_000, 3_600_000],
   idem_safe_window_ms: 18_000_000,
@@ -360,6 +394,12 @@ const DOMAIN_CONFIG = (c: Config): DomainConfig => ({
   link_secret: c.link_secret,
   rule_version: 'rules-1',
   pricing_rule_version: 'pricing-1',
+  ...(c.mode === 'sandbox'
+    ? {
+        reread_paid_every_ms: SANDBOX_REREAD_PAID_EVERY_MS,
+        min_call_gap_ms: SANDBOX_MIN_CALL_GAP_MS,
+      }
+    : {}),
 });
 
 export function createApp(env: Env, opts: AppOptions = {}): App {
@@ -369,6 +409,14 @@ export function createApp(env: Env, opts: AppOptions = {}): App {
 }
 
 function buildApp(config: Config, opts: AppOptions): App {
+  // Test doubles never reach a running server: a Wire standing in for PayPal, or a changed cadence,
+  // is accepted only when NODE_ENV is test.
+  if (config.node_env !== 'test') {
+    if (opts.test_wire !== undefined)
+      throw new Error('boot refused: test_wire outside NODE_ENV=test');
+    if (opts.test_domain !== undefined)
+      throw new Error('boot refused: test_domain outside NODE_ENV=test');
+  }
   const environment = envLabel(config);
   const clock: Clock = systemClock();
   const ids: Ids = cryptoIds();
@@ -421,6 +469,16 @@ function buildApp(config: Config, opts: AppOptions): App {
         [now],
       );
     }
+    if (config.mode === 'sandbox' && config.own_merchant_id !== null) {
+      // BU-7 (D-028): the one MVP-B publisher is paid into the owner's own sandbox account. The id
+      // comes from the owner's environment at setup time; none is committed. Only a publisher that has
+      // no merchant id yet is set, so a stored value is never overwritten by a later start.
+      await d.query(
+        `UPDATE publishers SET paypal_merchant_id = $2, payee_verified_at = $1, updated_at = $1
+          WHERE slug = $3 AND paypal_merchant_id IS NULL`,
+        [now, config.own_merchant_id, MVPB_PUBLISHER_SLUG],
+      );
+    }
     for (const [persona, id] of Object.entries(BUYER_IDS)) {
       await d.query(
         `INSERT INTO buyers (id, display_name, auth_subject, country, created_at, updated_at)
@@ -445,15 +503,49 @@ function buildApp(config: Config, opts: AppOptions): App {
   const content: ContentStore = createPgContentStore(db);
   const gate = createOutboundGate({ db, clock, switches, config });
 
-  // --- transport and adapter (dry-run only; the sandbox transport is the sealed MVP-A stub) ---
+  // --- sandbox outbound (BU-2): built only in sandbox mode; it answers blocked until all locks open ---
+  const outbound: Outbound | null =
+    config.mode === 'sandbox'
+      ? buildOutbound({
+          config,
+          db,
+          clock,
+          log,
+          switches,
+          wire: opts.test_wire === undefined ? null : opts.test_wire,
+        })
+      : null;
+  let selfcheckLogged = false;
+  const logSelfcheckOnce = (): void => {
+    if (selfcheckLogged || outbound === null) return;
+    selfcheckLogged = true;
+    const c = outbound.selfcheck();
+    log.log({
+      msg: 'transport.selfcheck',
+      level: c === null || (!c.env_override && c.builtins_intact) ? 'info' : 'warn',
+      fields:
+        c === null
+          ? { wire_kind: 'injected' }
+          : {
+              wire_kind: 'production',
+              impl: c.impl,
+              env_override: c.env_override,
+              builtins_intact: c.builtins_intact,
+              global_fetch_changed: c.global_fetch_changed_since_load,
+            },
+    });
+  };
+
+  // --- transport and adapter (dry run: the order model; sandbox: the outbound above) ---
   // Dry run: the order model answers (see src/server/dryrun-model.ts). Like the fixture transport it
   // passes the egress guard and asks the outbound gate once per request; it opens no socket.
-  const dryModel = createDryRunModel(clock);
+  const dryModel = createDryRunModel(clock, { own_merchant_id: config.own_merchant_id });
   let transport: Transport | null = null;
   const getTransport = async (): Promise<Transport> => {
     if (transport !== null) return transport;
-    if (config.mode === 'sandbox') {
-      transport = createSandboxTransport();
+    if (outbound !== null) {
+      logSelfcheckOnce();
+      transport = outbound.transport;
     } else {
       transport = {
         kind: 'dryrun',
@@ -491,6 +583,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     clock,
     log,
     credentials: config.paypal === null ? null : config.paypal,
+    own_merchant_id: config.own_merchant_id,
     record: async (c) => {
       await db.query(
         `INSERT INTO provider_calls (id, operation_id, operation, method, path_template, http_status, outcome, debug_id, duration_ms, transport_kind, request_redacted, response_redacted, environment, created_at, updated_at)
@@ -525,6 +618,22 @@ function buildApp(config: Config, opts: AppOptions): App {
   };
   const agent: AgentDeps = { ...core, model: createScriptedModel() };
   const paymentsDeps: PaymentsDeps = { ...core, paypal, content };
+  // The loop's deps carry the cadence (the domain config); test_domain changes it in tests only.
+  const loopDeps: PaymentsDeps = {
+    ...paymentsDeps,
+    config: { ...paymentsDeps.config, ...(opts.test_domain ?? {}) },
+  };
+  // The day's call budget for polling (BU-5), read from the active approval row. Never null in
+  // sandbox mode: no active approval reads as 0 calls remaining.
+  const callBudget: CallBudget = async () => {
+    const st = await readSafetyStatus(db, clock.now(), config.outbound_approval_ref);
+    return st.budget === null
+      ? { remaining_today: 0, max_calls_per_day: 0 }
+      : {
+          remaining_today: st.budget.remaining_today,
+          max_calls_per_day: st.budget.max_calls_per_day,
+        };
+  };
   // Lane 10 resolves cases; offering a refund goes through lane 05b's requestRefund (ASM-10-2).
   const recoveryDeps: ResolveDeps = {
     ...core,
@@ -922,8 +1031,9 @@ function buildApp(config: Config, opts: AppOptions): App {
         'SELECT kind, created_at FROM alerts ORDER BY created_at DESC, id LIMIT 20',
       );
       const safety = await readSafetyStatus(db, clock.now(), config.outbound_approval_ref);
-      const outbound = safety.switches.find((x) => x.name === 'paypal_outbound');
+      const outboundSwitch = safety.switches.find((x) => x.name === 'paypal_outbound');
       const jobs = await jobsHealth(core);
+      logSelfcheckOnce();
       return {
         environment,
         switches: sw,
@@ -931,7 +1041,12 @@ function buildApp(config: Config, opts: AppOptions): App {
           mode: config.mode,
           connect: config.connect,
           approval_ref_set: config.outbound_approval_ref !== null,
-          transport: config.mode === 'sandbox' ? 'sandbox (sealed stub)' : 'dry-run fixtures',
+          transport:
+            outbound === null
+              ? 'dry-run fixtures'
+              : 'sandbox, approved transport behind five locks',
+          outbound: outbound === null ? null : await outbound.status(),
+          selfcheck: outbound?.selfcheck() ?? null,
         },
         orders: orders.rows.map((o) => ({
           order_ref: o.order_ref,
@@ -947,10 +1062,10 @@ function buildApp(config: Config, opts: AppOptions): App {
           detail: v.detail,
         })),
         kill_switch: {
-          outbound_on: outbound?.on === true,
-          changed_by: outbound?.changed_by ?? 'unknown',
-          changed_at: outbound?.changed_at ?? '',
-          reason: outbound?.reason ?? 'no switch row (counts as off)',
+          outbound_on: outboundSwitch?.on === true,
+          changed_by: outboundSwitch?.changed_by ?? 'unknown',
+          changed_at: outboundSwitch?.changed_at ?? '',
+          reason: outboundSwitch?.reason ?? 'no switch row (counts as off)',
           budget:
             safety.budget === null
               ? null
@@ -962,6 +1077,21 @@ function buildApp(config: Config, opts: AppOptions): App {
         },
         jobs: { last_pass_at: jobs.last_pass_at, due: jobs.due },
       };
+    },
+
+    async stopOutbound({ actor, reason }) {
+      // The web button is an operator session with CSRF behind the route, not a terminal: the
+      // terminal rule of the CLI does not apply to a stop (it only makes the system safer).
+      const r = await runStop({
+        db,
+        clock,
+        audit,
+        tty: { isTTY: true, env: {} },
+        by: actor,
+        reason,
+      });
+      if (r.ok) return ok(undefined);
+      return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
     },
 
     newKey: () => ids.nonce(),
@@ -998,20 +1128,38 @@ function buildApp(config: Config, opts: AppOptions): App {
     db,
     engine,
     security,
+    outbound,
     startJobs: async () => {
       if (loop !== null) return loop;
       await open();
+      logSelfcheckOnce();
       // Recovery first, and awaited: a boot that returns has already read what was in flight. It
       // runs once per process: the loop is told not to recover again.
       await recoverOnStartup(paymentsDeps);
-      const running = startLoop(
-        { ...paymentsDeps, sweepWindows: sweepAll },
-        {
-          max_sleep_ms: config.node_env === 'test' ? 200 : 5_000,
-          max_items: 100,
-          recover_on_start: false,
-        },
-      );
+      // One loop per approval (ASM-67): `loop` above is the only one this app starts.
+      let running: { stop(): Promise<void> };
+      try {
+        running = startLoop(
+          { ...loopDeps, sweepWindows: sweepAll },
+          {
+            max_sleep_ms: config.node_env === 'test' ? 200 : 5_000,
+            max_items: 100,
+            recover_on_start: false,
+            // Sandbox: the loop spends the approval's own call budget, and never reads null (a
+            // missing approval is a reading of 0 remaining). Dry run counts nothing.
+            ...(config.mode === 'sandbox' ? { callBudget } : {}),
+          },
+        );
+      } catch (e) {
+        // A bad cadence must not take the whole app down, /ops included: the app starts with the
+        // loop off and says so loudly.
+        log.log({
+          msg: 'jobs.loop.not_started',
+          level: 'error',
+          fields: { error: e instanceof Error ? e.message : 'unknown' },
+        });
+        running = { stop: async () => undefined };
+      }
       loop = {
         stop: async () => {
           loop = null;
