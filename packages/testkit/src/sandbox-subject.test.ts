@@ -425,10 +425,15 @@ describe('call log and summary', () => {
 
 // ---- mutation survivors: failure paths of each step, and what the log must not hold ----
 
+interface Body {
+  status?: string;
+  purchase_units: { payments: { captures: { id?: string; status?: string }[] } }[];
+}
+
 describe('a failing step ends the run, with its reason, and nothing is sent after it', () => {
-  const patchBody = (r: OutboundRequest, res: TransportResult, patch: (b: any) => void) => {
+  const patchBody = (r: OutboundRequest, res: TransportResult, patch: (b: Body) => void) => {
     if (res.kind !== 'response') return res;
-    const b = JSON.parse(res.body);
+    const b = JSON.parse(res.body) as Body;
     patch(b);
     return { ...res, body: JSON.stringify(b) } as TransportResult;
   };
@@ -473,7 +478,8 @@ describe('a failing step ends the run, with its reason, and nothing is sent afte
       rewrite: (r, res) =>
         r.operation === 'capture_order' && res.kind === 'response' && res.status < 300
           ? patchBody(r, res, (b) => {
-              b.purchase_units[0].payments.captures[0].status = 'PENDING';
+              const cap = b.purchase_units[0]?.payments.captures[0];
+              if (cap !== undefined) cap.status = 'PENDING';
             })
           : res,
     });
@@ -532,8 +538,8 @@ describe('a failing step ends the run, with its reason, and nothing is sent afte
       rewrite: (r, res) =>
         r.operation === 'get_order' && res.kind === 'response' && res.body.includes('"COMPLETED"')
           ? patchBody(r, res, (b) => {
-              const u = b.purchase_units[0];
-              u.payments.captures.push({ ...u.payments.captures[0], id: 'SECONDCAP' });
+              const caps = b.purchase_units[0]?.payments.captures;
+              caps?.push({ ...caps[0], id: 'SECONDCAP' });
             })
           : res,
     });

@@ -55,7 +55,11 @@ export async function runOwnerSecrets(d) {
   return { ok: true };
 }
 
-/** Asks with the typed text hidden: the prompt and a final newline reach `io.output`, the answer never does. */
+/**
+ * Asks with the typed text hidden: the prompt and a final newline reach `io.output`, the answer never does.
+ * @param {string} prompt
+ * @param {{ input: NodeJS.ReadableStream, output: NodeJS.WritableStream }} [io]
+ */
 export async function askHiddenOnTerminal(
   prompt,
   io = { input: process.stdin, output: process.stderr },
