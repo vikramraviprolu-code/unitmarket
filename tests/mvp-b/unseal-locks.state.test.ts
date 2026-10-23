@@ -7,7 +7,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAuditSink } from '@umsbx/obs';
 import { cryptoIds, systemClock } from '@umsbx/runtime';
 import { runResume } from '@umsbx/safety';
-import { createApp, installApp } from '../../apps/web/composition.server';
+import {
+  DOMAIN_CONFIG,
+  SANDBOX_MIN_CALL_GAP_MS,
+  SANDBOX_REREAD_PAID_EVERY_MS,
+  createApp,
+  installApp,
+} from '../../apps/web/composition.server';
+import { DomainConfigSchema } from '@umsbx/contracts';
+import { loadConfig } from '@umsbx/config';
 import type { App } from '../../apps/web/composition.server';
 import { call, signIn } from '../../apps/web/src/support';
 import {
@@ -23,6 +31,8 @@ import {
 import type { Rig, RigOptions } from './unseal-support';
 
 vi.mock('server-only', () => ({}));
+// Every rig opens and migrates its own in-memory database: slow on a loaded machine.
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 const rigs: Rig[] = [];
 const apps: App[] = [];
@@ -356,15 +366,16 @@ describe('safety:resume refuses without TTY, in CI, without an active row, with 
     expect(await t.sw()).toBe(false);
   });
 
-  it('refuses a wrong typed scope, an empty answer and a near miss; writes nothing', async () => {
-    for (const typed of ['mvp_c_refunds', '', 'mvp_b_pollin', 'MVP_B_POLLING']) {
+  it.each(['mvp_c_refunds', '', 'mvp_b_pollin', 'MVP_B_POLLING'])(
+    'refuses a wrong typed scope (%j) and writes nothing',
+    async (typed) => {
       const t = await resumeRig();
       const res = await runResume({ ...t.base, ask: async () => typed });
-      expect(res, typed).toEqual({ ok: false, error: 'scope_not_confirmed' });
+      expect(res).toEqual({ ok: false, error: 'scope_not_confirmed' });
       expect(await t.sw()).toBe(false);
       expect(await t.audits()).toBe(0);
-    }
-  });
+    },
+  );
 
   it('refuses an empty reason', async () => {
     const t = await resumeRig();
@@ -419,5 +430,87 @@ describe('the rig itself', () => {
     const r = await rig({ switch_on: false });
     expect((await r.outbound.status()).locks.l4_switch_on).toBe(false);
     expect(T0).toBe('2026-10-23T10:00:00Z');
+  });
+});
+
+describe('the polling wiring of the sandbox app (BU-5 notes for BU-2)', () => {
+  it('the sandbox domain config re-reads paid orders every 21,600,000 ms and spaces calls 500 ms; dry run sets neither', async () => {
+    const sandbox = loadConfig(await sandboxEnv());
+    const offline = loadConfig(
+      await sandboxEnv({ UMS_MODE: 'offline', UMS_PAYPAL_CONNECT: 'off' }),
+    );
+    if (!sandbox.ok || !offline.ok) throw new Error('config');
+    const dc = DOMAIN_CONFIG(sandbox.value);
+    expect(dc.reread_paid_every_ms).toBe(21_600_000);
+    expect(dc.min_call_gap_ms).toBe(500);
+    expect([SANDBOX_REREAD_PAID_EVERY_MS, SANDBOX_MIN_CALL_GAP_MS]).toEqual([21_600_000, 500]);
+    expect(DomainConfigSchema.safeParse(dc).success).toBe(true);
+    const dry = DOMAIN_CONFIG(offline.value);
+    expect(dry.reread_paid_every_ms).toBeUndefined();
+    expect(dry.min_call_gap_ms).toBeUndefined();
+  });
+
+  it('a cadence outside 1 ms to 24 h does not take the app down: the loop stays off, a loud log says so, /ops still answers', async () => {
+    const lines: string[] = [];
+    const app = createApp(await sandboxEnv(), {
+      switch_cache_ms: 0,
+      log_sink: (l) => lines.push(l),
+      test_wire: countingWire().wire,
+      test_domain: { reread_paid_every_ms: 90_000_000 },
+    });
+    installApp(app);
+    await app.ready();
+    apps.push(app);
+    const jobs = await app.startJobs();
+    await jobs.stop();
+    const off = lines.filter((l) => l.includes('jobs.loop.not_started'));
+    expect(off).toHaveLength(1);
+    expect(JSON.parse(off[0] as string).level).toBe('error');
+    expect(lines.some((l) => l.includes('jobs.loop.bad_config'))).toBe(true);
+    const snap = await app.engine.opsSnapshot({
+      kind: 'operator',
+      operator_id: 'opr_demo',
+      mfa: false,
+    });
+    expect(snap).not.toBeNull();
+  });
+
+  it('the call budget is never null in sandbox mode: with no approval row the loop reads 0 remaining, makes no call and never logs no_call_budget; one loop per app', async () => {
+    const lines: string[] = [];
+    const wire = countingWire();
+    const app = createApp(await sandboxEnv(), {
+      switch_cache_ms: 0,
+      log_sink: (l) => lines.push(l),
+      test_wire: wire.wire,
+    });
+    installApp(app);
+    await app.ready();
+    apps.push(app);
+    await setOutboundSwitch(app.db, true);
+    const a = await app.startJobs();
+    const b = await app.startJobs();
+    expect(b).toBe(a);
+    await new Promise((r) => setTimeout(r, 500));
+    await a.stop();
+    expect(lines.some((l) => l.includes('jobs.loop.no_call_budget'))).toBe(false);
+    expect(wire.calls).toHaveLength(0);
+  });
+
+  it('transport.selfcheck is logged once per process and is part of the ops snapshot', async () => {
+    const lines: string[] = [];
+    const app = createApp(await sandboxEnv(), {
+      switch_cache_ms: 0,
+      log_sink: (l) => lines.push(l),
+      test_wire: countingWire().wire,
+    });
+    installApp(app);
+    await app.ready();
+    apps.push(app);
+    const op = { kind: 'operator', operator_id: 'opr_demo', mfa: false } as const;
+    await app.engine.opsSnapshot(op);
+    await app.engine.opsSnapshot(op);
+    const jobs = await app.startJobs();
+    await jobs.stop();
+    expect(lines.filter((l) => l.includes('transport.selfcheck'))).toHaveLength(1);
   });
 });

@@ -55,7 +55,7 @@ describe('fail_safe_without_mfa', () => {
     expect((await route(buyer.rig.deps)(post(buyer.h))).status).toBe(403);
     const op = await headers('operator-nomfa');
     expect((await route(op.rig.deps)(post({ origin: ORIGIN }))).status).toBe(401);
-    const { 'x-csrf-token': _drop, ...noCsrf } = op.h;
+    const noCsrf = { cookie: op.h.cookie, origin: op.h.origin };
     expect((await route(op.rig.deps)(post(noCsrf))).status).toBe(403);
   });
   it('the flag is only valid on an operator POST route', () => {

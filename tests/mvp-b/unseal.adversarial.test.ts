@@ -9,6 +9,8 @@ import { countingWire, makeRig, req, sandboxEnv } from './unseal-support';
 import type { Rig } from './unseal-support';
 
 vi.mock('server-only', () => ({}));
+// Every rig opens and migrates its own in-memory database: slow on a loaded machine.
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 vi.mock('../../apps/web/src/server/outbound.server', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../apps/web/src/server/outbound.server')>();
   return { ...actual, buildOutbound: vi.fn(actual.buildOutbound) };

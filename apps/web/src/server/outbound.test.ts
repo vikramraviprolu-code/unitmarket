@@ -108,27 +108,34 @@ describe('buildOutbound: the pre-build decision, in the order of the gate', () =
     });
     expect(await s.out.transport.send(REQ)).toEqual({ kind: 'blocked', by: 'kill_switch' });
   });
-  it('L5: no credentials in config answers egress; so does a failed self-check of the production Wire', async () => {
-    const a = setup({ credentials: false });
-    expect(await a.out.transport.send(REQ)).toEqual({ kind: 'blocked', by: 'egress' });
-    // wire null selects the production Wire, which the self-check then vets; an override blocks.
-    const b = setup({
-      wire: null,
-      selfcheck: () => ({
-        impl: 'node-https',
-        env_override: true,
-        builtins_intact: true,
-        global_fetch_changed_since_load: false,
+  it('L5: no credentials in config, or a failed self-check of the production Wire, reads as the lock missing', async () => {
+    // (the answer for a request is egress once L3 is open: tests/mvp-b/unseal-locks.state.test.ts)
+    const l5 = async (o: Parameters<typeof setup>[0]) =>
+      (await setup(o).out.status()).locks.l5_credentials_and_wire_ok;
+    expect(await l5({ credentials: false })).toBe(false);
+    // wire null selects the production Wire, which the self-check then vets
+    const check = (over: Partial<ReturnType<NonNullable<OutboundDeps['selfcheck']>>>) => () => ({
+      impl: 'node-https' as const,
+      env_override: false,
+      builtins_intact: true,
+      global_fetch_changed_since_load: false,
+      ...over,
+    });
+    expect(await l5({ wire: null, selfcheck: check({}) })).toBe(true);
+    expect(await l5({ wire: null, selfcheck: check({ env_override: true }) })).toBe(false);
+    expect(await l5({ wire: null, selfcheck: check({ builtins_intact: false }) })).toBe(false);
+    // a changed global fetch is a report only: the production Wire never uses it
+    expect(
+      await l5({ wire: null, selfcheck: check({ global_fetch_changed_since_load: true }) }),
+    ).toBe(true);
+    expect(
+      await l5({
+        wire: null,
+        selfcheck: () => {
+          throw new Error('probe broke');
+        },
       }),
-    });
-    expect(await b.out.transport.send(REQ)).toEqual({ kind: 'blocked', by: 'egress' });
-    const c = setup({
-      wire: null,
-      selfcheck: () => {
-        throw new Error('probe broke');
-      },
-    });
-    expect(await c.out.transport.send(REQ)).toEqual({ kind: 'blocked', by: 'egress' });
+    ).toBe(false);
   });
   it('an injected Wire is not vetted by the production Wire self-check', async () => {
     const s = setup({

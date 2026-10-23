@@ -1153,6 +1153,7 @@ describe('named exemptions (D-015)', () => {
         'tests/mvp-b/unseal-journey.integration.test.ts -> sbx/no-package-escape',
         'tests/mvp-b/unseal.adversarial.test.ts -> sbx/no-package-escape',
         'tests/mvp-b/unseal-ops.golden.test.ts -> sbx/no-package-escape',
+        'tests/mvp-b/unseal-support.ts -> sbx/no-package-escape',
         'apps/web/src/lib/client-api.ts -> no-restricted-globals',
         'packages/paypal/src/paypal.sandbox.contract.test.ts -> no-restricted-syntax,sbx/no-global-alias',
         'domain/library/src/world.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
@@ -1926,6 +1927,7 @@ describe('BU-2: the unseal file', () => {
       "import type { Config } from '@umsbx/config';",
       "import type { Clock } from '@umsbx/contracts';",
       'export const x = [wireSelfCheck, createSwitchReader];',
+      'export type T = [Wire, Config, Clock];',
     ].join('\n');
     expect(await lint(FILE, `${ok}\n`)).toEqual([]);
     for (const spec of [

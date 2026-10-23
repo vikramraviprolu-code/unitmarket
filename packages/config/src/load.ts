@@ -5,8 +5,8 @@ import type { Result } from '@umsbx/contracts';
 import type { BootRefusal } from './refusal';
 import { BOOT_REFUSAL_EXIT_CODE, refusalLine } from './refusal';
 import { makeSecret } from './secret';
-import { KNOWN_CORRIDORS, MIN_SECRET_BYTES, isPublicOrigin } from './schema';
-import type { Config, Mode } from './schema';
+import { KNOWN_CORRIDORS, MIN_SECRET_BYTES, OUTBOUND_SCOPES, isPublicOrigin } from './schema';
+import type { Config, Mode, OutboundScope } from './schema';
 
 type Env = Record<string, string | undefined>;
 
@@ -78,6 +78,7 @@ const MODE_WORD = /(?:^|[^a-z0-9])(?:live|production)(?:$|[^a-z0-9])/i;
 const KNOWN_PAYPAL_OR_MODE_NAMES: ReadonlySet<string> = new Set([
   'UMS_MODE',
   'UMS_OUTBOUND_APPROVAL_REF',
+  'UMS_OUTBOUND_SCOPE',
   'UMS_PAYPAL_CONNECT',
   'PAYPAL_CLIENT_ID',
   'PAYPAL_CLIENT_SECRET',
@@ -266,10 +267,18 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
   if (!/^[0-3]$/.test(rawProxies)) return refuse('invalid_value', 'UMS_TRUSTED_PROXIES');
   const trusted_proxies = Number(rawProxies);
 
+  // 12. the approval scope the app serves: a known value, nothing else (an unknown value must not
+  // fall back to something wider)
+  const rawScope = val(env, 'UMS_OUTBOUND_SCOPE') ?? 'mvp_b_polling';
+  if (!(OUTBOUND_SCOPES as readonly string[]).includes(rawScope))
+    return refuse('invalid_value', 'UMS_OUTBOUND_SCOPE');
+  const outbound_scope = rawScope as OutboundScope;
+
   return ok<Config>({
     mode,
     connect,
     outbound_approval_ref: approvalRef,
+    outbound_scope,
     paypal,
     db,
     session_secret: makeSecret(secretValues[0] ?? ''),
@@ -298,9 +307,17 @@ export function bootOrExit(
   return r.value;
 }
 
-/** The terminal facts the operator CLIs check (SOP 2): only the CI flag, never a value that could be a secret. */
+/**
+ * The terminal facts the operator CLIs check (SOP 2): the CI flags and the AI-session markers, never a
+ * value that could be a secret. safety:approve and safety:stop read CI; safety:resume (BU-2) reads all.
+ */
 export function terminalEnv(): Record<string, string | undefined> {
-  return { CI: process.env.CI };
+  return {
+    CI: process.env.CI,
+    GITHUB_ACTIONS: process.env.GITHUB_ACTIONS,
+    CLAUDECODE: process.env.CLAUDECODE,
+    CLAUDE_CODE_REMOTE: process.env.CLAUDE_CODE_REMOTE,
+  };
 }
 
 /** The one place that hands the real environment to loadConfig. */

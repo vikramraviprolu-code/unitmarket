@@ -13,6 +13,8 @@ import { countingWire } from './unseal-support';
 import { REF, insertApproval, sandboxEnv, setOutboundSwitch } from './unseal-support';
 
 vi.mock('server-only', () => ({}));
+// Every rig opens and migrates its own in-memory database: slow on a loaded machine.
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 const OK = {
   impl: 'node-https',
@@ -55,7 +57,7 @@ const sandbox = (
     transport: 'unused for sandbox',
     outbound: {
       scope: 'mvp_b_polling',
-      wire: o.wire ?? 'injected',
+      wire_kind: o.wire_kind ?? 'injected',
       locks: l,
       open,
       blocked_by,
@@ -77,29 +79,36 @@ const STATES: [string, OpsGate][] = [
       selfcheck: null,
     },
   ],
-  ['sandbox, all five locks open, transport built', sandbox({ selfcheck: OK, wire: 'production' })],
+  [
+    'sandbox, all five locks open, transport built',
+    sandbox({ selfcheck: OK, wire_kind: 'production' }),
+  ],
   [
     'sandbox, all open, nothing sent yet',
-    sandbox({ transport_built: false, selfcheck: OK, wire: 'production' }),
+    sandbox({ transport_built: false, selfcheck: OK, wire_kind: 'production' }),
   ],
   [
     'sandbox, L2 connect flag off',
-    sandbox({ locks: locks({ l2_connect_on: false }), selfcheck: OK, wire: 'production' }),
+    sandbox({ locks: locks({ l2_connect_on: false }), selfcheck: OK, wire_kind: 'production' }),
   ],
   [
     'sandbox, L3 no active approval',
-    sandbox({ locks: locks({ l3_approval_active: false }), selfcheck: OK, wire: 'production' }),
+    sandbox({
+      locks: locks({ l3_approval_active: false }),
+      selfcheck: OK,
+      wire_kind: 'production',
+    }),
   ],
   [
     'sandbox, L4 kill switch off',
-    sandbox({ locks: locks({ l4_switch_on: false }), selfcheck: OK, wire: 'production' }),
+    sandbox({ locks: locks({ l4_switch_on: false }), selfcheck: OK, wire_kind: 'production' }),
   ],
   [
     'sandbox, L5 environment override',
     sandbox({
       locks: locks({ l5_credentials_and_wire_ok: false }),
       selfcheck: { ...OK, env_override: true },
-      wire: 'production',
+      wire_kind: 'production',
     }),
   ],
 ];

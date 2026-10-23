@@ -2,10 +2,16 @@ import type { Secret } from '@umsbx/contracts';
 
 export type Mode = 'offline' | 'sandbox';
 
+/** The approval scope the app serves (ASM-51): the MVP-B polling phase, or the later refunds phase. */
+export type OutboundScope = 'mvp_b_polling' | 'mvp_c_refunds';
+export const OUTBOUND_SCOPES: readonly OutboundScope[] = ['mvp_b_polling', 'mvp_c_refunds'];
+
 export interface Config {
   mode: Mode;
   connect: boolean;
   outbound_approval_ref: string | null;
+  /** UMS_OUTBOUND_SCOPE, default mvp_b_polling. Moving to mvp_c_refunds needs a new approval ref. */
+  outbound_scope: OutboundScope;
   paypal: { client_id: Secret; client_secret: Secret; webhook_id: string | null } | null; // null in offline
   db:
     | { kind: 'pglite-memory' }
@@ -28,6 +34,7 @@ export const ENV_NAMES = [
   'UMS_MODE',
   'UMS_PAYPAL_CONNECT',
   'UMS_OUTBOUND_APPROVAL_REF',
+  'UMS_OUTBOUND_SCOPE',
   'PAYPAL_CLIENT_ID',
   'PAYPAL_CLIENT_SECRET',
   'PAYPAL_WEBHOOK_ID',

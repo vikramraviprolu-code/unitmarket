@@ -37,6 +37,7 @@
     "safety:status": "node --env-file-if-exists=.env.local --import ./scripts/lib/ts-register.mjs scripts/safety-cli.mjs status",
     "safety:stop": "node --env-file-if-exists=.env.local --import ./scripts/lib/ts-register.mjs scripts/safety-cli.mjs stop",
     "safety:approve": "node --env-file-if-exists=.env.local --import ./scripts/lib/ts-register.mjs scripts/safety-cli.mjs approve",
+    "safety:resume": "node --env-file-if-exists=.env.local --import ./scripts/lib/ts-register.mjs scripts/safety-cli.mjs resume",
     "perf:offline": "node --conditions=react-server --import ./scripts/lib/ts-register.mjs scripts/perf-offline.mjs",
     "log-scan:self-test": "node scripts/log-scan.mjs --self-test"
   },

@@ -1367,9 +1367,24 @@ const WEB_FORBIDDEN = pkg([
   'jobs',
   'model',
 ]);
+// BU-2: the unseal module sits beside composition. It may import the transport, safety, config and
+// contracts (it builds the approved transport from a real scoped gate); the domain, the database, the
+// PayPal adapter, the runtime, the jobs and the model stay barred. Its one sealed-transport exemption
+// is in NAMED_EXEMPTIONS below.
+const OUTBOUND_FILE = 'apps/web/src/server/outbound.server.ts';
+const OUTBOUND_FORBIDDEN = pkg([...DOMAIN, 'db', 'paypal', 'runtime', 'jobs', 'model']);
 const webEntries = [
   entry(['apps/web/composition.server.ts'], {
     extra: [pat(pkg(['testkit']), 'testkit is for tests only.')],
+  }),
+  entry([OUTBOUND_FILE], {
+    extra: [
+      pat(
+        OUTBOUND_FORBIDDEN,
+        'BU-2: the unseal module imports contracts, config, safety and transport only.',
+      ),
+      pat(pkg(['testkit']), 'testkit is for tests only.'),
+    ],
   }),
   ...pair('apps/web', {
     extra: [
@@ -1378,9 +1393,11 @@ const webEntries = [
         'Z1: route handlers and components reach the engine only through composition.server.ts.',
       ),
     ],
-    ignores: ['apps/web/composition.server.ts'],
+    ignores: ['apps/web/composition.server.ts', OUTBOUND_FILE],
   }).map((e, i) =>
-    i === 0 ? { ...e, ignores: [...e.ignores, 'apps/web/composition.server.ts'] } : e,
+    i === 0
+      ? { ...e, ignores: [...e.ignores, 'apps/web/composition.server.ts', OUTBOUND_FILE] }
+      : e,
   ),
 ];
 
@@ -1400,6 +1417,25 @@ export const NAMED_EXEMPTIONS = [
     files: ['apps/web/src/instrumentation.ts'],
     reason: 'reads the framework flag NEXT_RUNTIME, which is not application configuration',
     off: ['no-restricted-properties', 'sbx/no-global-alias'],
+  },
+  {
+    files: [OUTBOUND_FILE],
+    reason:
+      'BU-2 (the unseal): the one apps file that names the approved sandbox transport factory, the production Wire token and the scoped-gate factory. It builds the transport only from a capability the scoped gate mints from an active approval row, and answers blocked until then',
+    off: ['sbx/sealed-transport'],
+  },
+  {
+    files: [
+      'tests/mvp-b/unseal-locks.state.test.ts',
+      'tests/mvp-b/unseal-scope.contract.test.ts',
+      'tests/mvp-b/unseal-journey.integration.test.ts',
+      'tests/mvp-b/unseal.adversarial.test.ts',
+      'tests/mvp-b/unseal-ops.golden.test.ts',
+      'tests/mvp-b/unseal-support.ts',
+    ],
+    reason:
+      'BU-2: the unseal acceptance tests import the web composition and the unseal module by relative path (@umsbx/web exports no composition); they name no sealed identifier',
+    off: ['sbx/no-package-escape'],
   },
   {
     files: ['apps/web/src/lib/client-api.ts'],

@@ -151,7 +151,7 @@ async function boot(
   await setOutboundSwitch(app.db, true);
   const at = systemClock().now().toISOString();
   await app.db.query(
-    `UPDATE publishers SET paypal_merchant_id = 'SBXMERCHANT01', payee_verified_at = $1`,
+    `UPDATE publishers SET paypal_merchant_id = 'SBXM' || upper(left(md5(slug), 9)), payee_verified_at = $1`,
     [at],
   );
   const row = await app.db.query<{ id: string }>(

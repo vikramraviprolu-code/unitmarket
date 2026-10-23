@@ -4,6 +4,8 @@ import { app } from '../../server/access';
 import { currentActor } from '../../server/session';
 import { EnvLabel } from '../../ui/EnvLabel';
 import { formatMinor, formatDateTime } from '../../lib/format';
+import { gateLines } from '../../lib/gate-lines';
+import { StopButton } from './StopButton';
 
 export const metadata: Metadata = { title: 'Operations' };
 
@@ -17,7 +19,10 @@ export default async function Ops() {
       <h1>
         Operations <EnvLabel environment={snap.environment} />
       </h1>
-      <p className="muted">Read only. Changes are made with the operator command line.</p>
+      <p className="muted">
+        Read only, except the stop button below. Everything else is changed with the operator
+        command line.
+      </p>
 
       <h2>Switches</h2>
       <table>
@@ -64,16 +69,13 @@ export default async function Ops() {
       </dl>
 
       <h2>Outbound approval gate</h2>
-      <dl>
-        <dt>Mode</dt>
-        <dd>{snap.gate.mode}</dd>
-        <dt>Connect</dt>
-        <dd>{snap.gate.connect ? 'on' : 'off'}</dd>
-        <dt>Approval reference set</dt>
-        <dd>{snap.gate.approval_ref_set ? 'yes' : 'no'}</dd>
-        <dt>Transport</dt>
-        <dd>{snap.gate.transport}</dd>
-      </dl>
+      <ul data-testid="ops-gate">
+        {gateLines(snap.gate).map((line, i) => (
+          <li key={i}>{line}</li>
+        ))}
+      </ul>
+
+      <StopButton />
 
       <h2>Orders</h2>
       {snap.orders.length === 0 ? (
