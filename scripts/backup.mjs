@@ -1,6 +1,13 @@
 // Offline backup of the PGlite data directory (CO-10, nfr.md REL-5, REL-7).
 //
-//   node scripts/backup.mjs --dir <pglite dir> --out <folder outside the repo>
+//   node scripts/backup.mjs --dir <pglite dir> --out <folder outside the repo> --i-stopped-the-app
+//
+// STOP THE APP FIRST. Opening a PGlite data directory writes to it (recovery, checkpoint), so this is
+// not a read-only copy, and PGlite allows one process per directory. Until the single-opener lock
+// (CO-9) is in the app, nothing can detect a running app, so the command refuses unless you pass
+// --i-stopped-the-app to say you stopped it. The lock contract is in
+// docs/specs/db-single-opener-and-pg-waiver.md (notes): this command takes the same lock file with an
+// exclusive create for its whole run, and leaves it out of the tarball.
 //
 // Writes three files into the output folder: pglite-<utc>.tar.gz (PGlite dumpDataDir), export-<utc>.sql
 // (the logical export, schema version header, foreign-key order) and manifest.json (sha256 and size of
@@ -9,11 +16,10 @@
 //
 // Exit 0 done, 1 refused or failed, 2 bad arguments. Opens no network connection and reads no
 // environment variable: the time comes from the injected clock, the paths from the arguments.
-// Refuses while the app holds the directory (the CO-9 lock file `.ums-open.lock`), when the directory
-// is not a PGlite data directory, when the output folder is inside the repository or the data
-// directory, and when the output folder already holds a backup. The source directory is never
-// deleted. Backups hold whatever the database holds, so the folder and files are created private
-// (0700 and 0600); copying them off the host is the owner's job.
+// Refuses a running app (live lock), a directory that is not a PGlite data directory, an output
+// folder inside the repository or the data directory, and an output folder that already holds a
+// backup. The source directory is never deleted. A backup holds personal data and session data, so
+// the folder and files are created private (0700 and 0600); copying them off the host is the owner's job.
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
@@ -23,6 +29,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { register } from 'node:module';
@@ -33,7 +40,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const MANIFEST_FORMAT = 1;
 export const LOCK_FILE = '.ums-open.lock';
-export const USAGE = 'usage: backup.mjs --dir <pglite dir> --out <folder outside the repo>';
+export const USAGE = [
+  'usage: backup.mjs --dir <pglite dir> --out <folder outside the repo> --i-stopped-the-app',
+  'note: stop the UnitMarket app first. Opening the data directory writes to it, and PGlite allows one process per directory.',
+  'note: a backup holds personal data and session data (session ids, auth_subject, names, webhook payer data, idempotency responses). Keep it private, off shared storage.',
+  'note: restoring an old backup brings back sessions that were revoked after it was taken.',
+].join('\n');
 
 /** A refusal the operator can act on: printed as one line, exit 1. */
 export class Refused extends Error {}
@@ -41,7 +53,7 @@ export class Refused extends Error {}
 export const sha256Hex = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 // The real path of the nearest existing ancestor, plus the part that does not exist yet.
-function realLoose(p) {
+export function realLoose(p) {
   let head = resolve(p);
   const rest = [];
   while (!existsSync(head)) {
@@ -52,7 +64,7 @@ function realLoose(p) {
   }
   return join(realpathSync(head), ...rest);
 }
-const isInside = (child, parent) => child === parent || child.startsWith(parent + sep);
+export const isInside = (child, parent) => child === parent || child.startsWith(parent + sep);
 
 function isAlive(pid) {
   try {
@@ -70,7 +82,7 @@ function checkLock(dir, warn) {
   try {
     st = lstatSync(lock);
   } catch (e) {
-    if (e?.code === 'ENOENT') return;
+    if (e?.code === 'ENOENT') return 'none';
     throw new Refused(
       `the lock file ${LOCK_FILE} cannot be read (${e?.code ?? 'error'}); refusing`,
     );
@@ -96,9 +108,8 @@ function checkLock(dir, warn) {
       `The UnitMarket app (pid ${pid}) holds this database. Stop it first, or use the ops page Stop button.`,
     );
   }
-  warn(
-    `warning: the lock file names pid ${pid}, which is not running (stale lock); backing up anyway`,
-  );
+  warn(`warning: the lock file names pid ${pid}, which is not running (stale lock); replacing it`);
+  return 'stale';
 }
 
 export const stampOf = (iso) => iso.replace(/[-:]/g, '');
@@ -108,9 +119,21 @@ const isoOf = (clock) =>
     .toISOString()
     .replace(/\.\d+Z$/, 'Z');
 
-/** @param {{ dir: string, out: string, clock?: { now(): Date }, warn?: (message: string) => void }} options */
-export async function runBackup({ dir, out, clock, warn = (message) => void message }) {
+/** @param {{ dir: string, out: string, appStopped?: boolean, clock?: { now(): Date }, warn?: (message: string) => void, onLockHeld?: (lockPath: string) => void }} options */
+export async function runBackup({
+  dir,
+  out,
+  appStopped = false,
+  clock,
+  warn = (message) => void message,
+  onLockHeld,
+}) {
   if (!dir || !out) throw new Refused(USAGE);
+  if (!appStopped) {
+    throw new Refused(
+      'the app must be stopped first: opening the data directory writes to it and nothing here can see a running app. Stop it, then run again with --i-stopped-the-app',
+    );
+  }
   const dataDir = resolve(dir);
   const outDir = resolve(out);
   if (!existsSync(join(dataDir, 'PG_VERSION'))) {
@@ -125,26 +148,56 @@ export async function runBackup({ dir, out, clock, warn = (message) => void mess
   if (isInside(realOut, realLoose(dataDir))) {
     throw new Refused('the output folder is the data directory or inside it');
   }
-  checkLock(dataDir, warn);
   if (existsSync(join(outDir, 'manifest.json'))) {
     throw new Refused(`${outDir} already holds a backup (manifest.json); use a new folder`);
   }
 
   // Dynamic imports: the CLI registers the TypeScript hooks first (see the bottom of this file).
   const sqlLib = await import('../packages/db/src/export-sql.ts');
+  const dbLib = await import('../packages/db/src/index.ts');
   const now = clock ?? (await import('../packages/runtime/src/index.ts')).systemClock();
   const createdAt = isoOf(now);
   const stamp = stampOf(createdAt);
 
-  const handle = await sqlLib.openForBackup(dataDir);
+  // The lock: taken with an exclusive create for the whole run, so an opener that starts now is
+  // refused and a second backup cannot run beside this one.
+  const lock = join(dataDir, LOCK_FILE);
+  if (checkLock(dataDir, warn) === 'stale') unlinkSync(lock);
+  try {
+    writeFileSync(
+      lock,
+      JSON.stringify({ pid: process.pid, host: hostname(), started: createdAt }),
+      {
+        flag: 'wx',
+        mode: 0o600,
+      },
+    );
+  } catch (e) {
+    throw new Refused(
+      `the lock file ${LOCK_FILE} could not be created (${e?.code ?? 'error'}); refusing`,
+    );
+  }
   let tables, version, sql, tarball;
   try {
-    tables = await sqlLib.rowCounts(handle.db);
-    version = await sqlLib.latestMigrationVersion(handle.db);
-    sql = await sqlLib.exportSql(handle.db, { utc: createdAt });
-    tarball = await handle.tarball();
+    onLockHeld?.(lock);
+    const handle = await sqlLib.openForBackup(dataDir);
+    try {
+      tables = await sqlLib.rowCounts(handle.db);
+      version = await sqlLib.latestMigrationVersion(handle.db);
+      const expected = sqlLib.expectedTriggerNames(
+        dbLib.listMigrations(join(dbLib.MIGRATIONS_ROOT, 'common')).map((m) => m.sql),
+      );
+      for (const problem of await sqlLib.guardProblems(handle.db, expected)) {
+        warn(`warning: ${problem}; the tarball restore will refuse this backup, use --sql`);
+      }
+      sql = await sqlLib.exportSql(handle.db, { utc: createdAt });
+      // The lock file is ours (or stale): it never travels inside the backup.
+      tarball = sqlLib.stripFromTarball(await handle.tarball(), [LOCK_FILE]);
+    } finally {
+      await handle.close();
+    }
   } finally {
-    await handle.close();
+    rmSync(lock, { force: true });
   }
 
   const tarName = `pglite-${stamp}.tar.gz`;
@@ -186,6 +239,10 @@ export function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
+    if (flag === '--i-stopped-the-app') {
+      args.appStopped = true;
+      continue;
+    }
     if (flag !== '--dir' && flag !== '--out') return null;
     const value = argv[i + 1];
     if (value === undefined || value.startsWith('--')) return null;
@@ -205,6 +262,7 @@ export async function main(argv, io = { out: process.stdout, err: process.stderr
     const res = await runBackup({
       dir: args.dir,
       out: args.out,
+      appStopped: args.appStopped,
       warn: (m) => io.err.write(`${m}\n`),
     });
     const rows = Object.values(res.manifest.tables).reduce((a, b) => a + b, 0);

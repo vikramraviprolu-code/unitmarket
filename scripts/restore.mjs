@@ -8,15 +8,31 @@
 // inside that transaction). Either way it migrates, then compares the row count of every table with
 // the manifest and removes what it wrote if anything differs. The backup folder is only read.
 //
+// After either mode: paypal_outbound is forced OFF (changed_by 'restore') and the outbound approval
+// refs found are printed, because a restored approval must not come back live; any user trigger that is
+// switched off or missing refuses the restore; the stale lock file is never restored.
+//
 // Exit 0 done, 1 refused or failed, 2 bad arguments. Opens no network connection and reads no
 // environment variable.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { register } from 'node:module';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { MANIFEST_FORMAT, Refused, sha256Hex } from './backup.mjs';
+import {
+  LOCK_FILE,
+  MANIFEST_FORMAT,
+  REPO_ROOT,
+  Refused,
+  USAGE as BACKUP_NOTES,
+  isInside,
+  realLoose,
+  sha256Hex,
+} from './backup.mjs';
 
-export const USAGE = 'usage: restore.mjs --from <folder> --dir <empty dir> [--sql]';
+const NOTES = BACKUP_NOTES.split('\n').slice(2).join('\n');
+export const USAGE = `usage: restore.mjs --from <folder> --dir <empty dir> [--sql]\n${NOTES}`;
+export const OUTBOUND_NOTE =
+  'paypal_outbound is switched OFF after every restore, and outbound approvals are not carried live: re-approve with pnpm safety:approve before any sandbox call';
 
 const TAR_NAME = /^pglite-\d{8}T\d{6}Z\.tar\.gz$/;
 const SQL_NAME = /^export-\d{8}T\d{6}Z\.sql$/;
@@ -76,6 +92,7 @@ function compareCounts(expected, actual) {
 }
 
 /** @param {{ from: string, dir: string, sql?: boolean, clock?: { now(): Date }, warn?: (message: string) => void }} options */
+/** @param {{ from: string, dir: string, sql?: boolean, clock?: { now(): Date }, warn?: (message: string) => void }} options */
 export async function runRestore({
   from,
   dir,
@@ -89,6 +106,9 @@ export async function runRestore({
   if (!existsSync(source) || !statSync(source).isDirectory()) {
     throw new Refused(`${source} is not a folder`);
   }
+  if (isInside(realLoose(target), realLoose(REPO_ROOT))) {
+    throw new Refused('the target is inside the repository; choose a folder outside it');
+  }
   if (existsSync(target)) {
     if (!statSync(target).isDirectory()) throw new Refused(`${target} is not a directory`);
     if (readdirSync(target).length > 0) throw new Refused(`the target ${target} is not empty`);
@@ -101,24 +121,55 @@ export async function runRestore({
   const sqlLib = await import('../packages/db/src/export-sql.ts');
   const dbLib = await import('../packages/db/src/index.ts');
   const now = clock ?? (await import('../packages/runtime/src/index.ts')).systemClock();
+  const expectedTriggers = sqlLib.expectedTriggerNames(
+    dbLib.listMigrations(join(dbLib.MIGRATIONS_ROOT, 'common')).map((m) => m.sql),
+  );
 
   const createdTarget = !existsSync(target);
   mkdirSync(target, { recursive: true, mode: 0o700 });
   try {
-    if (!sql) await sqlLib.restoreDataDirTarball(target, tarball);
+    if (!sql) {
+      await sqlLib.restoreDataDirTarball(target, tarball);
+      // A lock file inside an old tarball is stale by definition.
+      rmSync(join(target, LOCK_FILE), { force: true });
+    }
     const db = await dbLib.openDatabase({ kind: 'pglite-disk', dir: target });
     let tables;
+    let outbound;
     try {
+      if (!sql) {
+        const have = await sqlLib.latestMigrationVersion(db);
+        if (have !== manifest.migration_version) {
+          throw new Refused(
+            `the tarball holds migration version ${have}, the manifest says ${manifest.migration_version}`,
+          );
+        }
+      }
       const applied = await dbLib.migrate(db, now);
-      if (applied.length > 0)
+      if (!sql && applied.length > 0) {
         warn(`note: applied ${applied.length} newer migration(s) after the restore`);
+      }
       if (sql) await sqlLib.importSql(db, sqlText);
+      const problems = await sqlLib.guardProblems(db, expectedTriggers);
+      if (problems.length > 0) {
+        throw new Refused(`the restored database has ${problems.join('; ')}`);
+      }
+      if (!sql) {
+        for (const line of await sqlLib.checkInvariants(db)) warn(`warning: ${line}`);
+      }
+      outbound = await db.transaction((tx) => sqlLib.disarmOutbound(tx, now.now().toISOString()));
       tables = await sqlLib.rowCounts(db);
     } finally {
       await db.close();
     }
     compareCounts(manifest.tables, tables);
-    return { mode: sql ? 'sql' : 'tarball', tables, migration_version: manifest.migration_version };
+    warn(outboundNotice(outbound));
+    return {
+      mode: sql ? 'sql' : 'tarball',
+      tables,
+      migration_version: manifest.migration_version,
+      outbound,
+    };
   } catch (e) {
     // The target was empty (or absent) when we started, so everything in it is ours.
     for (const name of readdirSync(target))
@@ -126,6 +177,19 @@ export async function runRestore({
     if (createdTarget) rmSync(target, { recursive: true, force: true });
     throw e;
   }
+}
+
+export function outboundNotice(outbound) {
+  const list =
+    outbound.approvals.length === 0
+      ? 'no outbound approval rows'
+      : `${outbound.approvals.length} outbound approval row(s), kept but inert: ${outbound.approvals
+          .map(
+            (a) =>
+              `${a.ref} (scope ${a.scope}, valid until ${a.valid_until}, approved by ${a.approved_by})`,
+          )
+          .join('; ')}`;
+  return `WARNING: paypal_outbound was ${outbound.switch_was_on ? 'ON' : 'off'} in the backup and is now switched OFF; ${list}. ${OUTBOUND_NOTE}`;
 }
 
 export function parseArgs(argv) {
@@ -160,7 +224,7 @@ export async function main(argv, io = { out: process.stdout, err: process.stderr
     });
     const rows = Object.values(res.tables).reduce((a, b) => a + b, 0);
     io.out.write(
-      `restore ok (${res.mode}): ${resolve(args.dir)}\n  ${Object.keys(res.tables).length} tables, ${rows} rows, row counts match the manifest\n`,
+      `restore ok (${res.mode}): ${resolve(args.dir)}\n  ${Object.keys(res.tables).length} tables, ${rows} rows, row counts match the manifest\n  ${outboundNotice(res.outbound)}\n`,
     );
     return 0;
   } catch (e) {

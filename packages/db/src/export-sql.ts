@@ -4,6 +4,7 @@
 // fresh, migrated database; it switches the user triggers off for that transaction only (the
 // append-only guards would refuse a bulk load) and on again before it commits. Nothing here reads
 // the environment, the clock or the network; the caller passes the time.
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { PGlite } from '@electric-sql/pglite';
 import type { Database, SqlExecutor } from '@umsbx/contracts';
 
@@ -101,9 +102,26 @@ export async function exportSql(db: SqlExecutor, options: ExportOptions): Promis
 // import replaces them with the exported rows.
 const SEED_TABLES = ['corridors', 'access_policies', 'safety_switches'] as const;
 const SEED_EPOCH = '1970-01-01T00:00:00Z';
+const SEED_DELETE_GUARD = 'safety_switches_no_delete';
 
-const STATEMENT =
-  /^INSERT INTO "([a-z_][a-z0-9_]*)" OVERRIDING SYSTEM VALUE SELECT \* FROM jsonb_populate_recordset\(NULL::"\1", '((?:[^']|'')*)'::jsonb\);$/;
+// One export statement is exactly: PREFIX(table) + the doubled-quote JSON literal + SUFFIX. It is
+// checked with a fixed prefix and suffix and one linear scan for a lone quote, never with a pattern
+// that backtracks over the literal (a table line can be tens of megabytes).
+const PREFIX =
+  /^INSERT INTO "([a-z_][a-z0-9_]*)" OVERRIDING SYSTEM VALUE SELECT \* FROM jsonb_populate_recordset\(NULL::"([a-z_][a-z0-9_]*)", '/;
+const SUFFIX = "'::jsonb);";
+
+function parseStatement(line: string): { table: string; json: string } | null {
+  const m = PREFIX.exec(line);
+  if (!m || m[1] !== m[2] || !line.endsWith(SUFFIX) || line.length < m[0].length + SUFFIX.length) {
+    return null;
+  }
+  const literal = line.slice(m[0].length, line.length - SUFFIX.length);
+  for (let i = literal.indexOf("'"); i >= 0; i = literal.indexOf("'", i + 2)) {
+    if (literal[i + 1] !== "'") return null; // a lone quote would end the literal early
+  }
+  return { table: m[1]!, json: literal.replace(/''/g, "'") };
+}
 
 interface ParsedExport {
   schemaVersion: string;
@@ -121,9 +139,9 @@ function parseExport(sql: string): ParsedExport {
       if (m && !header.has(m[1]!)) header.set(m[1]!, m[2]!);
       continue;
     }
-    const m = STATEMENT.exec(line);
-    if (!m) throw new Error('import refused: a line is not an export statement');
-    statements.push({ table: m[1]!, json: m[2]!.replace(/''/g, "'") });
+    const statement = parseStatement(line);
+    if (!statement) throw new Error('import refused: a line is not an export statement');
+    statements.push(statement);
   }
   const schemaVersion = header.get('schema-version');
   const tables = header.get('tables');
@@ -175,8 +193,10 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
       "SELECT 1 FROM pg_trigger WHERE NOT tgisinternal AND tgenabled <> 'O'",
     );
     if (off.rows.length > 0) throw new Error('import refused: a trigger is already switched off');
-    // Inside this transaction only. Foreign keys, checks and unique indexes stay enforced.
-    for (const t of order) await tx.exec(`ALTER TABLE ${quote(t)} DISABLE TRIGGER USER`);
+    // Inside this transaction only, and only the one guard that refuses to delete the seed switch
+    // rows. Every INSERT guard (ledger bounds, order currency and approval checks) stays on, so the
+    // import re-checks what it loads; foreign keys, checks and unique indexes stay enforced too.
+    await tx.exec(`ALTER TABLE safety_switches DISABLE TRIGGER ${quote(SEED_DELETE_GUARD)}`);
     for (const t of [...order].reverse()) {
       if ((SEED_TABLES as readonly string[]).includes(t)) await tx.exec(`DELETE FROM ${quote(t)}`);
     }
@@ -197,7 +217,11 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
         [quote(t), c],
       );
     }
-    for (const t of order) await tx.exec(`ALTER TABLE ${quote(t)} ENABLE TRIGGER USER`);
+    await tx.exec(`ALTER TABLE safety_switches ENABLE TRIGGER ${quote(SEED_DELETE_GUARD)}`);
+    const broken = await checkInvariants(tx);
+    if (broken.length > 0) {
+      throw new Error(`import refused: the loaded data breaks an invariant: ${broken.join('; ')}`);
+    }
   });
   return rowCounts(db);
 }
@@ -243,4 +267,155 @@ export async function restoreDataDirTarball(dir: string, bytes: Uint8Array): Pro
   const pg = new PGlite({ dataDir: dir, loadDataDir: new Blob([copy]) });
   await pg.waitReady;
   await pg.close();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Invariants, guards and the outbound switch after a restore
+
+const SHOWN = 5;
+const describe = (title: string, bad: string[]) =>
+  `${title}: ${bad.length} violation${bad.length === 1 ? '' : 's'}: ${bad.slice(0, SHOWN).join(', ')}${bad.length > SHOWN ? ', ...' : ''}`;
+
+/**
+ * Read-only checks over the loaded rows, the same ideas as the platform invariants (payments INV1
+ * and INV2) plus one environment per order chain. Returns one line per broken invariant.
+ */
+export async function checkInvariants(db: SqlExecutor): Promise<string[]> {
+  const out: string[] = [];
+  const ids = async (sql: string) => (await db.query<{ id: string }>(sql)).rows.map((r) => r.id);
+
+  const inv1 = await ids(
+    `SELECT u.id FROM order_units u LEFT JOIN ledger_entries l ON l.unit_id = u.id
+      GROUP BY u.id, u.amount_minor, u.refunded_minor, u.captured_verified_at
+     HAVING CASE WHEN u.captured_verified_at IS NOT NULL THEN
+              count(*) FILTER (WHERE l.kind = 'sale') <> 1
+              OR coalesce(sum(l.amount_minor) FILTER (WHERE l.kind = 'sale'), 0) <> u.amount_minor
+              OR coalesce(sum(l.amount_minor) FILTER (WHERE l.kind = 'refund'), 0) <> u.refunded_minor
+            ELSE count(l.id) FILTER (WHERE l.kind IN ('sale', 'refund')) > 0 END
+     ORDER BY u.id`,
+  );
+  if (inv1.length)
+    out.push(describe('INV1 ledger sale and refunds against each verified unit', inv1));
+
+  const inv2 = await ids(
+    `SELECT e.id FROM entitlements e JOIN order_units u ON u.id = e.unit_id
+      WHERE e.access_state = 'available'
+        AND NOT (e.money_state = 'captured' AND u.captured_verified_at IS NOT NULL AND u.capture_id IS NOT NULL
+                 AND u.status IN ('captured_verified', 'partially_refunded', 'reversal_suspected'))
+      ORDER BY e.id`,
+  );
+  if (inv2.length) out.push(describe('INV2 available items without a verified capture', inv2));
+
+  const env = await ids(
+    `SELECT l.id FROM ledger_entries l JOIN order_units u ON u.id = l.unit_id JOIN orders o ON o.id = u.order_id
+       WHERE l.environment <> o.environment
+     UNION ALL
+     SELECT e.id FROM entitlements e JOIN order_units u ON u.id = e.unit_id JOIN orders o ON o.id = u.order_id
+       WHERE e.environment <> o.environment
+     UNION ALL
+     SELECT r.id FROM receipts r JOIN orders o ON o.id = r.order_id WHERE r.environment <> o.environment
+     ORDER BY 1`,
+  );
+  if (env.length) out.push(describe('environment of a row differs from its order', env));
+  return out;
+}
+
+/** Names of the triggers the migrations create, read from the migration SQL text. */
+export function expectedTriggerNames(migrationSql: string[]): string[] {
+  const names = new Set<string>();
+  for (const sql of migrationSql) {
+    for (const m of sql.matchAll(/^\s*CREATE\s+TRIGGER\s+([a-z_][a-z0-9_]*)/gim)) names.add(m[1]!);
+  }
+  return [...names].sort();
+}
+
+/** Problems with the user triggers: any switched off, any expected one missing. Empty when sound. */
+export async function guardProblems(db: SqlExecutor, expected: string[]): Promise<string[]> {
+  const r = await db.query<{ tgname: string; tgenabled: string }>(
+    'SELECT tgname, tgenabled FROM pg_trigger WHERE NOT tgisinternal',
+  );
+  const have = new Map(r.rows.map((t) => [t.tgname, t.tgenabled]));
+  const problems: string[] = [];
+  const off = [...have].filter(([, e]) => e !== 'O').map(([n]) => n);
+  if (off.length) problems.push(`trigger(s) switched off: ${off.sort().join(', ')}`);
+  const missing = expected.filter((n) => !have.has(n));
+  if (missing.length) problems.push(`trigger(s) missing: ${missing.join(', ')}`);
+  return problems;
+}
+
+export interface OutboundState {
+  /** paypal_outbound was on in the data that was restored. */
+  switch_was_on: boolean;
+  /** Approval rows present, kept as they are (the table is append-only) and inert while the switch is off. */
+  approvals: { ref: string; scope: string; valid_until: string; approved_by: string }[];
+}
+
+/**
+ * After a restore: force paypal_outbound off (the switch is how an approval is revoked, so a
+ * restored approval row must not come back live) and report what was found. Call inside a transaction.
+ */
+export async function disarmOutbound(db: SqlExecutor, atIso: string): Promise<OutboundState> {
+  const was = await db.query<{ on: boolean }>(
+    `SELECT "on" FROM safety_switches WHERE name = 'paypal_outbound'`,
+  );
+  const reason =
+    'restore: outbound switched off; approvals are not carried live, re-approve before any sandbox call';
+  const upd = await db.query(
+    `UPDATE safety_switches SET "on" = false, changed_by = 'restore', changed_at = $1, reason = $2, updated_at = $1
+      WHERE name = 'paypal_outbound' RETURNING name`,
+    [atIso, reason],
+  );
+  if (upd.rows.length === 0) {
+    await db.query(
+      `INSERT INTO safety_switches (name, "on", changed_by, changed_at, reason, created_at, updated_at)
+       VALUES ('paypal_outbound', false, 'restore', $1, $2, $1, $1)`,
+      [atIso, reason],
+    );
+  }
+  const approvals = await db.query<{
+    approval_ref: string;
+    scope: string;
+    valid_until: string;
+    approved_by: string;
+  }>(
+    'SELECT approval_ref, scope, valid_until::text AS valid_until, approved_by FROM outbound_approvals ORDER BY created_at, approval_ref',
+  );
+  return {
+    switch_was_on: was.rows[0]?.on === true,
+    approvals: approvals.rows.map((a) => ({
+      ref: a.approval_ref,
+      scope: a.scope,
+      valid_until: a.valid_until,
+      approved_by: a.approved_by,
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tarball: leave host files out
+
+/** Returns the gzip tarball without the named files (matched on the last path segment). */
+export function stripFromTarball(gz: Uint8Array, names: string[]): Uint8Array {
+  const tar = gunzipSync(gz);
+  const keep: Buffer[] = [];
+  let removed = false;
+  let off = 0;
+  while (off + 512 <= tar.length) {
+    const head = tar.subarray(off, off + 512);
+    if (head.every((b) => b === 0)) break;
+    const nul = head.indexOf(0);
+    const name = head.toString('utf8', 0, nul < 0 || nul > 100 ? 100 : nul);
+    const size = Number.parseInt(
+      head.toString('ascii', 124, 136).replace(/\0/g, '').trim() || '0',
+      8,
+    );
+    if (!Number.isFinite(size) || size < 0) throw new Error('tarball: unreadable entry size');
+    const total = 512 + Math.ceil(size / 512) * 512;
+    if (names.includes(name.split('/').filter(Boolean).pop() ?? '')) removed = true;
+    else keep.push(tar.subarray(off, Math.min(off + total, tar.length)));
+    off += total;
+  }
+  if (!removed) return gz;
+  keep.push(tar.subarray(Math.min(off, tar.length))); // end-of-archive blocks
+  return new Uint8Array(gzipSync(Buffer.concat(keep)));
 }

@@ -501,7 +501,7 @@ describe('import keeps the INSERT guards on and re-checks the invariants (M1)', 
   it('refuses a ledger row from another environment than its order', () =>
     refusesAndRollsBack(async (src) => {
       await src.exec('ALTER TABLE ledger_entries DISABLE TRIGGER USER');
-      await src.exec("UPDATE ledger_entries SET environment = 'sandbox' WHERE id = 'led_1'");
+      await src.exec("UPDATE ledger_entries SET environment = 'sandbox' WHERE id = 'led_2'");
     }, /environment/));
 
   it('refuses an available entitlement without a verified capture (INV2)', () =>
