@@ -534,6 +534,34 @@ describe('alerts become cases', () => {
     ]);
   });
 
+  it('a reversal_hint alert (an unproven webhook, ASM-63) never becomes a case or a buyer message', async () => {
+    const c = await w.item(3);
+    await w.rawAlert({
+      kind: 'reversal_hint',
+      order_id: c.order_id,
+      unit_id: c.unit_id,
+      reason: 'reversal_hint',
+    });
+    expect(await applyAutomaticRules(w.deps, { max_items: 10 })).toEqual({
+      opened: 0,
+      restored: 0,
+    });
+    expect(await w.count('recovery_cases')).toBe(0);
+    expect(await listCasesForBuyer(w.db, { buyer_id: 'buy_1' })).toEqual([]);
+    // The read evidence (kind reversal) still opens the case.
+    await w.rawAlert({
+      kind: 'reversal',
+      order_id: c.order_id,
+      unit_id: c.unit_id,
+      reason: 'reversal_suspected',
+    });
+    expect(await applyAutomaticRules(w.deps, { max_items: 10 })).toEqual({
+      opened: 1,
+      restored: 0,
+    });
+    expect(await listCasesForBuyer(w.db, { buyer_id: 'buy_1' })).toHaveLength(1);
+  });
+
   it('a second alert for an order that already has an open case of that kind joins it', async () => {
     const a = await w.item(1);
     await w.rawAlert({ kind: 'frozen_order', order_id: a.order_id, reason: 'mismatch' });

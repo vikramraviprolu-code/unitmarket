@@ -241,7 +241,7 @@ describe('delivery to paid, invariants after each step', () => {
       await deliver('REVERSED', verdict('capture_reversed', { capture_id: unit.capture_id })),
     ).toEqual({ http: 200, outcome: 'enqueued' });
     expect((await unitRow(a.order_id)).status).toBe('captured_verified');
-    expect(await alertKinds(w, a.order_id)).toEqual(['reversal']);
+    expect(await alertKinds(w, a.order_id)).toEqual(['reversal_hint']);
     await runDue(w.deps, { max_items: 10 });
     await inv('poller pass after REVERSED');
     expect((await unitRow(a.order_id)).status).toBe('captured_verified');
@@ -299,20 +299,40 @@ describe('delivery to paid, invariants after each step', () => {
     expect(await count(w, 'audit_log', "action = 'webhook.rejected'")).toBe(1);
   });
 
-  it('CHECKOUT.ORDER.APPROVED wakes an order waiting for its buyer; the read does not capture', async () => {
+  it('CHECKOUT.ORDER.APPROVED for an order nobody captured is no_op: no read, nothing polls', async () => {
     await world();
     const a = await approved(w);
+    const gets = w.paypal.count('get');
     expect(
       await deliver(
-        'ORDER.APPROVED',
+        'ORDER.APPROVED on an awaiting order',
+        verdict('order_approved', { provider_order_id: a.provider_order_id }),
+      ),
+    ).toEqual({ http: 200, outcome: 'no_op' });
+    for (let k = 0; k < 20; k += 1) {
+      w.tick(H);
+      await runDue(w.deps, { max_items: 10 });
+    }
+    await inv('20 hours later');
+    expect(w.paypal.count('get')).toBe(gets);
+    expect(w.paypal.count('capture')).toBe(0);
+    expect(await count(w, 'alerts')).toBe(0);
+    expect((await orderRow(a.order_id)).status).not.toBe('paid');
+  });
+
+  it('CHECKOUT.ORDER.APPROVED with the capture in doubt wakes the read-back; the read does not capture', async () => {
+    await world();
+    const a = await lostResponse(w);
+    const captures = w.paypal.count('capture');
+    expect(
+      await deliver(
+        'ORDER.APPROVED, capture in doubt',
         verdict('order_approved', { provider_order_id: a.provider_order_id }),
       ),
     ).toEqual({ http: 200, outcome: 'enqueued' });
     await runDue(w.deps, { max_items: 10 });
     await inv('poller pass after ORDER.APPROVED');
-    expect(w.paypal.count('capture')).toBe(0);
-    expect((await orderRow(a.order_id)).status).not.toBe('paid');
-    expect(await count(w, 'ledger_entries')).toBe(0);
+    expect(w.paypal.count('capture')).toBe(captures);
   });
 });
 

@@ -12,7 +12,7 @@ import type {
 } from '@umsbx/contracts';
 import * as api from './index';
 import { handleWebhook } from './index';
-import type { WebhookInput, WebhookResponse } from './index';
+import type { AlertKind, WebhookInput, WebhookResponse } from './index';
 import { makeWorld, paid } from './ops/support';
 import type { OpsWorld } from './ops/support';
 import { COALESCE_MS, idsAreValid, targetsOf } from './webhooks';
@@ -57,6 +57,13 @@ describe('handleWebhook: types', () => {
     expectTypeOf(idsAreValid).parameter(0).toEqualTypeOf<ProviderEvent>();
     expectTypeOf(idsAreValid).returns.toEqualTypeOf<boolean>();
     expect(COALESCE_MS).toBe(60_000);
+  });
+});
+
+describe('alert kinds', () => {
+  it('the REVERSED hint has its own kind, which recovery does not turn into a case', () => {
+    expectTypeOf<'reversal_hint'>().toExtend<AlertKind>();
+    expectTypeOf<'reversal'>().toExtend<AlertKind>();
   });
 });
 
