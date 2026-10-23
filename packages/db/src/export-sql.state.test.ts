@@ -3,7 +3,16 @@
 // append-only triggers off only inside it, and refuses anything it cannot trust.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { migrate, openDatabase } from './index';
-import { exportSql, importSql, latestMigrationVersion, rowCounts } from './export-sql';
+import {
+  exportSql,
+  expectedTriggers,
+  importSql,
+  latestMigrationVersion,
+  rowCounts,
+} from './export-sql';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Database } from '@umsbx/contracts';
 
 // Each test migrates a fresh in-memory database; on a busy machine that can pass the 30 s default.
@@ -523,5 +532,53 @@ describe('import keeps the INSERT guards on and re-checks the invariants (M1)', 
     await expect(
       dst.query("DELETE FROM safety_switches WHERE name = 'ai_enabled'"),
     ).rejects.toThrow();
+  });
+});
+
+describe('ledger export order (R3)', () => {
+  it('orders ledger_entries by created_at, sale first, then id, so an updated row cannot break the insert order', async () => {
+    const src = await fresh();
+    await seed(src);
+    // A benign UPDATE (guards off for the statement) moves the sale row to a new tuple position.
+    await src.exec('ALTER TABLE ledger_entries DISABLE TRIGGER USER');
+    await src.exec("UPDATE ledger_entries SET updated_at = updated_at WHERE id = 'led_1'");
+    await src.exec('ALTER TABLE ledger_entries ENABLE TRIGGER USER');
+    const sql = await exportSql(src, { utc: T });
+    const line = sql.split('\n').find((l) => l.startsWith('INSERT INTO "ledger_entries"'))!;
+    expect(line.indexOf('"led_1"')).toBeLessThan(line.indexOf('"led_2"'));
+    const dst = await fresh();
+    await importSql(dst, sql);
+    expect(await rowCounts(dst)).toEqual(await rowCounts(src));
+  });
+});
+
+describe('expected triggers come from the migrated schema (nits)', () => {
+  const clock2 = { now: () => new Date(T) };
+
+  it('lists the real schema triggers', async () => {
+    const names = await expectedTriggers(clock2);
+    for (const n of ['ledger_entries_guard', 'receipts_immutable', 'safety_switches_no_delete']) {
+      expect(names).toContain(n);
+    }
+    expect(names.length).toBeGreaterThanOrEqual(24);
+  });
+
+  it('follows a migration that renames or drops a trigger and accepts quoted and OR REPLACE forms', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'co10-mig-'));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, '0001_a.sql'),
+      `CREATE TABLE t (id int);
+CREATE FUNCTION f() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
+CREATE TRIGGER tr_old BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION f();
+CREATE TRIGGER tr_gone BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION f();
+CREATE OR REPLACE TRIGGER "tr_quoted" BEFORE DELETE ON t FOR EACH ROW EXECUTE FUNCTION f();
+`,
+    );
+    writeFileSync(
+      join(dir, '0002_b.sql'),
+      'ALTER TRIGGER tr_old ON t RENAME TO tr_new;\nDROP TRIGGER tr_gone ON t;\n',
+    );
+    expect(await expectedTriggers(clock2, dir)).toEqual(['tr_new', 'tr_quoted']);
   });
 });

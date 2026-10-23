@@ -2,7 +2,7 @@
 // tarball and from the logical export into fresh directories. Row counts and ledger sums match, the
 // append-only triggers and the unique indexes hold after restore, a changed byte in either file
 // refuses, a non-empty target refuses, and the restore stays far inside the 30 s test budget.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   appendFileSync,
   existsSync,
@@ -14,7 +14,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { EventEmitter } from 'node:events';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrate, openDatabase } from '../packages/db/src/index';
 import { rowCounts } from '../packages/db/src/export-sql';
@@ -208,7 +209,8 @@ const target = () => join(fresh('t'), 'data');
 async function verifyRestored(dir: string) {
   const db = await openDatabase({ kind: 'pglite-disk', dir });
   try {
-    expect(await rowCounts(db)).toEqual(counts);
+    // The restore adds exactly one audit row of its own (the switch change).
+    expect(await rowCounts(db)).toEqual({ ...counts, audit_log: (counts['audit_log'] ?? 0) + 1 });
     expect(await ledgerSums(db)).toEqual(sums);
     // H1: a restore never leaves outbound PayPal switched on; the approval row is kept but inert.
     const sw = await db.query(
@@ -221,6 +223,19 @@ async function verifyRestored(dir: string) {
       { approval_ref: 'probe-ref-2099' },
     ]);
     expect(existsSync(join(dir, '.ums-open.lock'))).toBe(false);
+    // R2: the restore's own switch change is on the audit trail, ids only.
+    const audit = await db.query(
+      "SELECT actor_kind, actor_id, action, target, detail FROM audit_log WHERE action = 'restore.disarm_outbound'",
+    );
+    expect(audit.rows).toEqual([
+      {
+        actor_kind: 'system',
+        actor_id: 'restore',
+        action: 'restore.disarm_outbound',
+        target: 'paypal_outbound',
+        detail: { switch_was_on: true, approval_ids: ['oap_1'] },
+      },
+    ]);
     // Ledger append-only invariants.
     await expect(
       db.query("UPDATE ledger_entries SET amount_minor = 1 WHERE id = 'led_1'"),
@@ -318,7 +333,7 @@ describe('tarball restore', () => {
   it('gives identical row counts and ledger sums, with the guards intact, inside the budget', async () => {
     const dir = target();
     const t0 = wall.now().getTime();
-    const res = await runRestore({ from: backupDir, dir, clock });
+    const res = await runRestore({ from: backupDir, dir, clock, allowLiveApprovals: true });
     const seconds = (wall.now().getTime() - t0) / 1000;
     expect(res.mode).toBe('tarball');
     expect(res.outbound.switch_was_on).toBe(true);
@@ -335,7 +350,13 @@ describe('SQL restore', () => {
   it('imports the logical export into a fresh database with identical counts and ledger sums', async () => {
     const dir = target();
     const t0 = wall.now().getTime();
-    const res = await runRestore({ from: backupDir, dir, sql: true, clock });
+    const res = await runRestore({
+      from: backupDir,
+      dir,
+      sql: true,
+      clock,
+      allowLiveApprovals: true,
+    });
     const seconds = (wall.now().getTime() - t0) / 1000;
     expect(res.mode).toBe('sql');
     expect(res.outbound.switch_was_on).toBe(true);
@@ -397,7 +418,9 @@ describe('what the restore refuses', () => {
     writeFileSync(join(from, 'manifest.json'), JSON.stringify(m));
     for (const sql of [false, true]) {
       const dir = target();
-      await expect(runRestore({ from, dir, sql, clock })).rejects.toThrow(/row count|count/i);
+      await expect(runRestore({ from, dir, sql, clock, allowLiveApprovals: true })).rejects.toThrow(
+        /row count|count/i,
+      );
       expect(!existsSync(dir) || readdirSync(dir).length === 0).toBe(true);
     }
   }, 180_000);
@@ -429,13 +452,16 @@ describe('the command line', () => {
 
   it('restores end to end with exit 0, refuses a non-empty target with exit 1, exits 2 on bad arguments', () => {
     const dir = target();
-    const ok = cli(['--from', backupDir, '--dir', dir]);
+    const ok = cli(['--from', backupDir, '--dir', dir, '--allow-live-approvals']);
     expect(ok.status, ok.stderr).toBe(0);
-    expect(ok.stdout).toMatch(/restore ok/);
-    expect(ok.stdout).toContain('paypal_outbound');
-    expect(ok.stdout).toContain('probe-ref-2099');
-    expect(ok.stdout).toMatch(/not carried live|switched OFF/i);
-    const again = cli(['--from', backupDir, '--dir', dir]);
+    expect(ok.stdout).toMatch(/restore ok \(tarball\)/);
+    expect(ok.stdout).not.toMatch(/WITH WARNINGS/);
+    // Each warning is printed once, on stderr only.
+    expect(ok.stdout).not.toContain('probe-ref-2099');
+    expect(ok.stderr).toContain('probe-ref-2099');
+    expect(ok.stderr.match(/WARNING: paypal_outbound/g)).toHaveLength(1);
+    expect(ok.stderr).toMatch(/re-activates/);
+    const again = cli(['--from', backupDir, '--dir', dir, '--allow-live-approvals']);
     expect(again.status).toBe(1);
     expect(again.stderr).toMatch(/not empty/i);
     const bad = cli(['--from', backupDir]);
@@ -446,7 +472,7 @@ describe('the command line', () => {
 
   it('--sql restores from the logical export', () => {
     const dir = target();
-    const r = cli(['--from', backupDir, '--dir', dir, '--sql']);
+    const r = cli(['--from', backupDir, '--dir', dir, '--sql', '--allow-live-approvals']);
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).toMatch(/restore ok.*sql/i);
   }, 180_000);
@@ -514,6 +540,7 @@ describe('restore re-checks what it loads (M2, L2, L3)', () => {
       dir: target(),
       sql: true,
       clock,
+      allowLiveApprovals: true,
       warn: (m: string) => warnings.push(m),
     });
     expect(warnings.join('\n')).not.toMatch(/newer migration/i);
@@ -531,11 +558,289 @@ describe('restore re-checks what it loads (M2, L2, L3)', () => {
       from: backupDir,
       dir: target(),
       clock,
+      allowLiveApprovals: true,
       warn: (m: string) => warnings.push(m),
     });
     const text = warnings.join('\n');
     expect(text).toContain('probe-ref-2099');
     expect(text).toMatch(/paypal_outbound/);
-    expect(text).toMatch(/not carried live/i);
+    expect(text).toMatch(/re-activates/i);
+    expect(text).not.toMatch(/not carried live/i);
   }, 180_000);
+});
+
+describe('an interrupted restore never leaves an armed or half-written target (R1)', () => {
+  const partialsOf = (dir: string) =>
+    readdirSync(dirname(dir)).filter((n) => n.startsWith(`${basename(dir)}.partial-`));
+
+  it('restores into a sibling <dir>.partial-<stamp> and renames it into place at the end', async () => {
+    const dir = target();
+    let during: string[] = [];
+    let targetDuring = true;
+    await runRestore({
+      from: backupDir,
+      dir,
+      clock,
+      allowLiveApprovals: true,
+      onPoint: (p: string) => {
+        if (p === 'loaded') {
+          during = partialsOf(dir);
+          targetDuring = existsSync(dir);
+        }
+      },
+    });
+    expect(during).toHaveLength(1);
+    expect(during[0]).toMatch(/\.partial-\d{8}T\d{6}Z$/);
+    expect(targetDuring).toBe(false);
+    expect(partialsOf(dir)).toEqual([]);
+    expect(existsSync(join(dir, 'PG_VERSION'))).toBe(true);
+  }, 180_000);
+
+  for (const point of [
+    'partial-created',
+    'loaded',
+    'migrated',
+    'guards-checked',
+    'counts-ok',
+    'disarmed',
+  ]) {
+    for (const [sql, signal, code] of [
+      [false, 'SIGINT', 130],
+      [true, 'SIGTERM', 143],
+    ] as const) {
+      if (point === 'loaded' && sql) continue;
+      it(`a ${signal} at "${point}" (${sql ? 'sql' : 'tarball'}) leaves no target and no partial`, async () => {
+        const dir = target();
+        const signals = new EventEmitter();
+        const exits: number[] = [];
+        const run = runRestore({
+          from: backupDir,
+          dir,
+          sql,
+          clock,
+          allowLiveApprovals: true,
+          signals,
+          exit: (c: number) => {
+            exits.push(c);
+            throw new Error(`exit ${c}`);
+          },
+          onPoint: (p: string) => {
+            if (p === point) signals.emit(signal);
+          },
+        });
+        await expect(run).rejects.toThrow(`exit ${code}`);
+        expect(exits[0]).toBe(code);
+        expect(existsSync(dir)).toBe(false);
+        expect(partialsOf(dir)).toEqual([]);
+        expect(signals.listenerCount('SIGINT') + signals.listenerCount('SIGTERM')).toBe(0);
+      }, 180_000);
+    }
+  }
+
+  it('a real SIGINT to the command line ends with exit 130, no target and no partial', async () => {
+    const dir = target();
+    const child = spawn(
+      process.execPath,
+      ['scripts/restore.mjs', '--from', backupDir, '--dir', dir, '--allow-live-approvals'],
+      { cwd: ROOT, env: {}, stdio: 'ignore' },
+    );
+    const done = new Promise<number | null>((res) => child.once('exit', (c) => res(c)));
+    for (let i = 0; i < 2000 && partialsOf(dir).length === 0; i += 1) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(partialsOf(dir)).toHaveLength(1);
+    child.kill('SIGINT');
+    expect(await done).toBe(130);
+    expect(existsSync(dir)).toBe(false);
+    expect(partialsOf(dir)).toEqual([]);
+  }, 180_000);
+
+  it('a partial left by an earlier run (SIGKILL) is never touched or used, and the next run prints its path', async () => {
+    const dir = target();
+    mkdirSync(dirname(dir), { recursive: true });
+    const old = `${dir}.partial-20200101T000000Z`;
+    mkdirSync(old);
+    writeFileSync(join(old, 'PG_VERSION'), '17\n');
+    const warnings: string[] = [];
+    await runRestore({
+      from: backupDir,
+      dir,
+      clock,
+      allowLiveApprovals: true,
+      warn: (m: string) => warnings.push(m),
+    });
+    expect(warnings.join('\n')).toContain(old);
+    expect(warnings.join('\n')).toMatch(/never use|do not use/i);
+    expect(readFileSync(join(old, 'PG_VERSION'), 'utf8')).toBe('17\n');
+    expect(existsSync(join(dir, 'PG_VERSION'))).toBe(true);
+  }, 180_000);
+
+  it('refuses when the final target appeared and is not empty meanwhile; removes its partial; keeps theirs', async () => {
+    const dir = target();
+    await expect(
+      runRestore({
+        from: backupDir,
+        dir,
+        clock,
+        allowLiveApprovals: true,
+        onPoint: (p: string) => {
+          if (p === 'counts-ok') {
+            mkdirSync(dir, { recursive: true });
+            writeFileSync(join(dir, 'theirs.txt'), 'theirs');
+          }
+        },
+      }),
+    ).rejects.toThrow(/appeared|not empty/i);
+    expect(readdirSync(dir)).toEqual(['theirs.txt']);
+    expect(partialsOf(dir)).toEqual([]);
+  }, 180_000);
+});
+
+describe('live outbound approvals (R2)', () => {
+  async function backupWithApproval(validUntil: string): Promise<string> {
+    const src = fresh('appr-src');
+    const db = await openDatabase({ kind: 'pglite-disk', dir: src });
+    await migrate(db, clock);
+    await ins(db, 'outbound_approvals', {
+      id: 'oap_9',
+      approval_ref: 'ref-live-check',
+      scope: 'sandbox',
+      operations: ['create_order'],
+      max_amount_minor: 100,
+      max_calls_per_day: 5,
+      valid_until: validUntil,
+      approved_by: 'owner',
+    });
+    await db.query('UPDATE safety_switches SET "on" = true WHERE name = \'paypal_outbound\'');
+    await db.close();
+    const out = join(fresh('appr-out'), 'bk');
+    await runBackup({ appStopped: true, dir: src, out, clock, warn: () => {} });
+    return out;
+  }
+
+  it('refuses a backup with an approval valid in the future unless --allow-live-approvals, naming the refs', async () => {
+    const from = await backupWithApproval('2099-01-01T00:00:00Z');
+    for (const sql of [false, true]) {
+      const dir = target();
+      await expect(runRestore({ from, dir, sql, clock })).rejects.toThrow(/ref-live-check/);
+      await expect(runRestore({ from, dir, sql, clock })).rejects.toThrow(/--allow-live-approvals/);
+      expect(existsSync(dir)).toBe(false);
+      expect(readdirSync(dirname(dir)).filter((n) => n.includes('.partial-'))).toEqual([]);
+    }
+  }, 300_000);
+
+  it('the command line refuses it with exit 1 and accepts it with the flag', () => {
+    const dir = target();
+    const r = spawnSync(
+      process.execPath,
+      ['scripts/restore.mjs', '--from', backupDir, '--dir', dir],
+      {
+        cwd: ROOT,
+        encoding: 'utf8',
+        env: {},
+      },
+    );
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/--allow-live-approvals/);
+    expect(r.stderr).toContain('probe-ref-2099');
+    expect(existsSync(dir)).toBe(false);
+  }, 180_000);
+
+  it('an expired approval restores without the flag; the switch is still forced off', async () => {
+    const from = await backupWithApproval('2000-01-01T00:00:00Z');
+    const dir = target();
+    const res = await runRestore({ from, dir, clock });
+    expect(res.outbound.switch_was_on).toBe(true);
+    const db = await openDatabase({ kind: 'pglite-disk', dir });
+    try {
+      expect(
+        (await db.query('SELECT "on" FROM safety_switches WHERE name = \'paypal_outbound\'')).rows,
+      ).toEqual([{ on: false }]);
+    } finally {
+      await db.close();
+    }
+  }, 180_000);
+});
+
+describe('warnings are counted (nits)', () => {
+  it('the command line says WITH WARNINGS when the tarball restore found an invariant break', async () => {
+    const from = await (async () => {
+      const src = fresh('inv-src');
+      const db = await openDatabase({ kind: 'pglite-disk', dir: src });
+      await migrate(db, clock);
+      await ins(db, 'publishers', {
+        id: 'pub_1',
+        slug: 'p1',
+        display_name: 'P',
+        country: 'US',
+        paypal_merchant_id: 'M1',
+        payee_verified_at: T,
+      });
+      await ins(db, 'buyers', {
+        id: 'buy_1',
+        display_name: 'B',
+        auth_subject: 'sub1',
+        country: 'US',
+      });
+      await ins(db, 'approvals', {
+        id: 'apr_1',
+        buyer_id: 'buy_1',
+        snapshot: j({ v: 1 }),
+        content_hash: HASH,
+        nonce: 'n1',
+        expires_at: '2026-10-21T10:15:00Z',
+        used_at: null,
+        environment: 'dryrun',
+      });
+      await ins(db, 'orders', {
+        id: 'ord_1',
+        approval_id: 'apr_1',
+        buyer_id: 'buy_1',
+        content_hash: HASH,
+        order_ref: 'ref_1',
+        expected: j({}),
+        status: 'created',
+        mismatch: false,
+        corridor_id: 'us-usd',
+        currency: 'USD',
+        total_minor: 500,
+        environment: 'dryrun',
+      });
+      // Verified capture with no ledger sale: INV1 is broken in the source.
+      await ins(db, 'order_units', {
+        id: 'unt_1',
+        order_id: 'ord_1',
+        provider_order_ref: null,
+        publisher_id: 'pub_1',
+        reference_id: 'r1',
+        payee_merchant_id: 'M1',
+        amount_minor: 500,
+        platform_fee_minor: 0,
+        capture_id: 'CAPX',
+        status: 'captured_verified',
+        status_reason: null,
+        paypal_fee_minor: null,
+        refunded_minor: 0,
+        captured_verified_at: T,
+        mismatch_reason: null,
+      });
+      await db.close();
+      const out = join(fresh('inv-out'), 'bk');
+      await runBackup({ appStopped: true, dir: src, out, clock, warn: () => {} });
+      return out;
+    })();
+    const r = spawnSync(
+      process.execPath,
+      ['scripts/restore.mjs', '--from', from, '--dir', target()],
+      {
+        cwd: ROOT,
+        encoding: 'utf8',
+        env: {},
+      },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toMatch(/restore ok \(tarball\) WITH WARNINGS/);
+    expect(r.stderr).toMatch(/INV1/);
+    expect(r.stderr.match(/INV1/g)).toHaveLength(1);
+  }, 240_000);
 });

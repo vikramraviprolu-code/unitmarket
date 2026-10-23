@@ -264,11 +264,9 @@ describe('what the backup refuses', () => {
     expect(existsSync(out)).toBe(false);
   });
 
-  it('refuses a lock it cannot read, a lock held on another host, and a lock that is not a plain file', async () => {
+  it('refuses a lock it cannot read and a lock that is not a plain file', async () => {
     for (const make of [
       (lock: string) => writeFileSync(lock, 'not a lock'),
-      (lock: string) =>
-        writeFileSync(lock, j({ pid: 1, host: `${hostname()}-elsewhere`, started: T })),
       (lock: string) => mkdirSync(lock),
       (lock: string) => symlinkSync('/etc/hostname', lock),
     ]) {
@@ -477,5 +475,23 @@ describe('the lock never travels inside the tarball (M3)', () => {
     expect(tar.includes(Buffer.from('PG_VERSION'))).toBe(true);
     const manifest = JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8'));
     expect(manifest.files.tarball.sha256).toBe(sha(join(out, tarFile)));
+  }, 120_000);
+});
+
+describe('a lock from another host is replaced after a warning (ASM-72)', () => {
+  it('warns, replaces it, backs up, and leaves no lock', async () => {
+    const dir = fresh('otherhost');
+    const { cpSync } = await import('node:fs');
+    cpSync(srcDir, dir, { recursive: true });
+    writeFileSync(
+      join(dir, '.ums-open.lock'),
+      j({ pid: 1, host: `${hostname()}-elsewhere`, started: T }),
+    );
+    const out = join(fresh('o'), 'bk');
+    const warnings: string[] = [];
+    await runBackup({ appStopped: true, dir, out, clock, warn: (m: string) => warnings.push(m) });
+    expect(warnings.join('\n')).toMatch(/another host/i);
+    expect(existsSync(join(out, 'manifest.json'))).toBe(true);
+    expect(existsSync(join(dir, '.ums-open.lock'))).toBe(false);
   }, 120_000);
 });
