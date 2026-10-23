@@ -56,6 +56,8 @@ interface PlayedCall {
   path: string;
   operation: string;
 }
+// The body text of every create the fake Wire saw (BU-7: the payee must be absent).
+let sentBodies: { operation: string; body: string }[] = [];
 
 /** A Wire that plays PayPal with the dry-run order model. Nothing here opens a socket. */
 function paypalWire(model: ReturnType<typeof createDryRunModel>) {
@@ -84,6 +86,7 @@ function paypalWire(model: ReturnType<typeof createDryRunModel>) {
                 ? 'get_capture'
                 : 'unknown';
       played.push({ method: r.method, path, operation });
+      sentBodies.push({ operation, body: typeof r.body === 'string' ? r.body : '' });
       if (operation === 'unknown') return reply(404, { name: 'RESOURCE_NOT_FOUND' });
       const out = model.send({
         operation,
@@ -130,7 +133,11 @@ async function boot(
   approvalOver: Parameters<typeof insertApproval>[1] = {},
 ) {
   lines = [];
-  model = createDryRunModel(systemClock());
+  sentBodies = [];
+  // BU-7: the order model answers for our own account the way PayPal does, with the own merchant id
+  // as payee when the create body names none.
+  const own = over['UMS_OWN_MERCHANT_ID'] ?? null;
+  model = createDryRunModel(systemClock(), { own_merchant_id: own });
   const pw = paypalWire(model);
   played = pw.played;
   app = createApp(await sandboxEnv(over), {
@@ -154,6 +161,12 @@ async function boot(
     `UPDATE publishers SET paypal_merchant_id = 'SBXM' || upper(left(md5(slug), 9)), payee_verified_at = $1`,
     [at],
   );
+  if (own !== null) {
+    await app.db.query(
+      `UPDATE publishers SET paypal_merchant_id = $1 WHERE slug = 'harbour-ledger'`,
+      [own],
+    );
+  }
   const row = await app.db.query<{ id: string }>(
     `SELECT id FROM buyers WHERE auth_subject = 'persona:buyer-a'`,
   );
@@ -318,8 +331,47 @@ describe('the sandbox journey over a fake Wire (mvp_c_refunds scope: the order n
   }, 30_000);
 });
 
-describe('the default scope (mvp_b_polling) today', () => {
-  it('documented gap: an order always names its payee, and mvp_b_polling refuses a payee, so create_order never reaches the Wire', async () => {
+describe('the default scope (mvp_b_polling) with our own merchant id (BU-7, D-028)', () => {
+  // BU-7 spec change: this test was the "documented gap" for F1 (an order always names its payee and
+  // mvp_b_polling refuses a payee, so create never reached the Wire). F1 is resolved by D-028 option
+  // (c): the payee is left out of the body when it is our own merchant id. The gap test is replaced
+  // by the journey below.
+  const OWN = 'SBXOWNMERCH01';
+
+  it('create reaches the Wire without a payee; approve, return captures; the read-back matches our own id; paid once', async () => {
+    await boot({ UMS_OWN_MERCHANT_ID: OWN });
+    const order = await placeOrder();
+    const co = await app.engine.payments.beginCheckout({ order_id: order.order_id, actor });
+    expect(co.ok).toBe(true);
+    expect(ops()).toContain('create_order');
+    expect(lines.some((l) => l.includes('payee_not_allowed'))).toBe(false);
+    expect(model.approve(await providerOrderId(order.order_id), 'happy')).toBe(true);
+    const back = await app.engine.payments.onBuyerReturn({ order_ref: order.order_ref, actor });
+    expect(back.ok).toBe(true);
+    expect(await statusOf(order.order_ref)).toBe('paid');
+
+    const create = sentBodies.find((b) => b.operation === 'create_order');
+    expect(create?.body).toBeTruthy();
+    expect(create?.body).not.toContain('payee');
+    expect(create?.body).not.toContain(OWN);
+    // the read-back compared the payee and found our own id
+    expect(ops().filter((o) => o === 'create_order')).toHaveLength(1);
+    expect(ops().filter((o) => o === 'capture_order')).toHaveLength(1);
+    expect(played.length).toBeLessThanOrEqual(6);
+    expect(
+      await count(
+        "SELECT count(*) AS c FROM ledger_entries l JOIN order_units u ON u.id = l.unit_id WHERE u.order_id = $1 AND l.kind = 'sale'",
+        [order.order_id],
+      ),
+    ).toBe(1);
+    expect(await count('SELECT count(*) AS c FROM entitlements')).toBe(1);
+    expect(await count(`SELECT count(*) AS c FROM audit_log WHERE action = 'gate.reserve'`)).toBe(
+      played.length,
+    );
+    expect(trace.calls).toEqual([]);
+  }, 60_000);
+
+  it('own id unset: the same order still names its payee and create never reaches the Wire (fail closed)', async () => {
     await boot();
     const order = await placeOrder();
     const co = await app.engine.payments.beginCheckout({ order_id: order.order_id, actor });
