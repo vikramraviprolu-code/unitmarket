@@ -10,7 +10,7 @@ services:
     plan: starter
     numInstances: 1
     autoDeploy: false
-    buildCommand: corepack enable && corepack pnpm install --frozen-lockfile && corepack pnpm --filter @umsbx/web build
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm --filter @umsbx/web build
     startCommand: corepack pnpm --filter @umsbx/web start
     healthCheckPath: /
     disk:
