@@ -1,14 +1,27 @@
-// Webhook intake (lane CO-2, ASM-60, nfr.md P1 and P2). A verified webhook is never evidence of
-// payment. It becomes at most one stored event (idempotent on the event id and on the transmission
-// id) and at most one due read-back for the order it names, and nothing else, apart from marking a
-// suspected reversal. It never sets paid, books the ledger, touches an entitlement or a window, or
-// calls PayPal: the read-back decides, so the order in which events arrive does not matter.
+// Webhook intake (lane CO-2, ASM-60, ASM-63, nfr.md P1 and P2). A verified webhook is never evidence
+// of payment. It becomes at most one stored event (idempotent on the event id and on the transmission
+// id) and at most one due read-back for the order it names, and nothing else. It never sets paid,
+// books the ledger, touches an entitlement, a window or a unit, or calls PayPal: the read-back
+// decides, so the order in which events arrive does not matter. PAYMENT.CAPTURE.REVERSED is a hint
+// only (ASM-63: PayPal signs a CRC32, so a body can be forged): it makes the read-back due and
+// raises one alert; the unit changes only when a read shows the evidence (reconciler, observeReadback).
 //
 // Signature checks are not made here (lane CO-1 produces the verdict). The body is never stored or
-// logged: the event keeps the ids that name its target and nothing else.
+// logged: the event keeps the ids that name its target and nothing else. Ids must be printable
+// ASCII of 1 to 256 characters; any other delivery is `malformed` (400, one audit row, nothing
+// stored), so a poison delivery is refused once instead of failing in the database and being
+// retried for days.
 //
-// Lock order (D-020): orders, then operations (lockOrderRows), then order_units (suspectReversalTx).
-// The event row and the audit row are leaf inserts.
+// Cost: each distinct event costs one read-back per order, at most once per 60 s (COALESCE_MS). A
+// read is a money-kind call under the BU-5 poll budget (money_only).
+//
+// Lock order (D-020): orders, then operations (lockOrderRows). Nothing here takes an order_units lock.
+// The event insert is the first statement of the transaction: it holds a unique-index entry on
+// (event_id, transmission_id) while the order locks are taken, so a concurrent duplicate waits for
+// this transaction instead of racing it. Nothing writes webhook_events under a money lock in any
+// other lane, and a future lane must not set applied_at inside a money transaction. The audit and
+// alert rows are leaf inserts.
+import { WebhookVerdictSchema } from '@umsbx/contracts';
 import type {
   CoreDeps,
   Id,
@@ -19,7 +32,7 @@ import type {
   WebhookVerdict,
 } from '@umsbx/contracts';
 import { readbackKeyFor } from './keys';
-import { suspectReversalTx } from './refunds';
+import { raiseOpsAlert } from './refunds';
 import { addMs, insertOperation, loadOperation, lockOrderRows } from './store';
 import type { OperationRow, OrderRow } from './store';
 
@@ -58,20 +71,38 @@ const CAPTURE_EVENTS: ReadonlySet<ProviderEventType> = new Set<ProviderEventType
 const has = (v: string | null): v is string => v !== null && v !== '';
 
 /**
- * The key that names the order of an event. PAYMENT.CAPTURE.* by capture id (a refund resource
- * carries its `up` link to the capture there), else by the provider refund id kept on
- * refund_requests; CHECKOUT.ORDER.APPROVED by provider order id. Any other type names nothing.
+ * The keys that name the order of an event, in the order they are tried. PAYMENT.CAPTURE.*: the
+ * capture id (a refund resource carries its `up` link to the capture there), else the provider
+ * refund id kept on refund_requests; then the provider order id, so a capture whose response was
+ * lost (no capture id stored, C-12) is still found. CHECKOUT.ORDER.APPROVED and
+ * CHECKOUT.PAYMENT-APPROVAL.REVERSED (a deviation from the spec's CHECKOUT.ORDER.*): the provider
+ * order id only. Any other type names nothing.
  */
-export function targetOf(e: ProviderEvent): Target {
+export function targetsOf(e: ProviderEvent): NonNullable<Target>[] {
+  const order: NonNullable<Target>[] = has(e.provider_order_id)
+    ? [{ by: 'provider_order_id', key: e.provider_order_id }]
+    : [];
   if (CAPTURE_EVENTS.has(e.type)) {
-    if (has(e.capture_id)) return { by: 'capture_id', key: e.capture_id };
-    if (has(e.refund_id)) return { by: 'refund_id', key: e.refund_id };
-    return null;
+    if (has(e.capture_id)) return [{ by: 'capture_id', key: e.capture_id }, ...order];
+    if (has(e.refund_id)) return [{ by: 'refund_id', key: e.refund_id }, ...order];
+    return order;
   }
-  if (e.type === 'CHECKOUT.ORDER.APPROVED' && has(e.provider_order_id)) {
-    return { by: 'provider_order_id', key: e.provider_order_id };
+  if (e.type === 'CHECKOUT.ORDER.APPROVED' || e.type === 'CHECKOUT.PAYMENT-APPROVAL.REVERSED') {
+    return order;
   }
-  return null;
+  return [];
+}
+
+const PRINTABLE_ID = /^[\x20-\x7e]{1,256}$/;
+/** Every id of the event is printable ASCII of 1 to 256 characters (null ids are absent, not empty). */
+export function idsAreValid(e: ProviderEvent): boolean {
+  return (
+    PRINTABLE_ID.test(e.event_id) &&
+    PRINTABLE_ID.test(e.transmission_id) &&
+    [e.capture_id, e.refund_id, e.provider_order_id].every(
+      (v) => v === null || PRINTABLE_ID.test(v),
+    )
+  );
 }
 
 export type ReadbackPlan = 'create' | 'reopen' | 'advance' | 'keep';
@@ -103,6 +134,13 @@ async function findOrderId(tx: SqlExecutor, t: NonNullable<Target>): Promise<Id 
         : 'SELECT order_id FROM provider_orders WHERE provider_order_id = $1';
   const found = await tx.query<{ order_id: string }>(sql, [t.key]);
   return found.rows[0]?.order_id ?? null;
+}
+async function findOrderOf(tx: SqlExecutor, targets: NonNullable<Target>[]): Promise<Id | null> {
+  for (const t of targets) {
+    const id = await findOrderId(tx, t);
+    if (id !== null) return id;
+  }
+  return null;
 }
 
 /** Make the read-back due now, once. Returns 'coalesced' when nothing had to change. */
@@ -145,8 +183,9 @@ async function enqueueReadback(
   return 'enqueued';
 }
 
-// sha256 of the UTF-8 bytes, computed by the database so that no node module is needed. The id is
-// passed as hex, so any content (NUL, lone surrogates) is hashed instead of refused.
+// sha256 of the UTF-8 bytes of a header value that is only ever hashed (never stored), computed by the
+// database so that no node module is needed. It is passed as hex, so any content (NUL, lone
+// surrogates) can be hashed. Ids that are stored are held to printable ASCII by idsAreValid.
 async function sha256Hex(tx: SqlExecutor, text: string): Promise<string> {
   const hex = Array.from(new TextEncoder().encode(text), (b) => b.toString(16).padStart(2, '0'));
   const found = await tx.query<{ h: string }>(
@@ -176,7 +215,7 @@ async function refuse(
 async function intake(d: CoreDeps, i: WebhookInput, e: ProviderEvent): Promise<WebhookResponse> {
   return d.db.transaction(async (tx): Promise<WebhookResponse> => {
     const at = d.clock.now().toISOString();
-    const target = targetOf(e);
+    const targets = targetsOf(e);
     // Idempotency on the event id and on the transmission id: a conflict on either changes nothing.
     const stored = await tx.query(
       `INSERT INTO webhook_events (id, event_id, transmission_id, type, verified, outcome, resource,
@@ -202,14 +241,30 @@ async function intake(d: CoreDeps, i: WebhookInput, e: ProviderEvent): Promise<W
     const row = stored.rows[0] as { id: string } | undefined;
     if (row === undefined) return { http: 200, outcome: 'duplicate' };
 
-    const order_id = target === null ? null : await findOrderId(tx, target);
+    const order_id = await findOrderOf(tx, targets);
     const order = order_id === null ? null : await lockOrderRows(tx, order_id);
     let outcome: 'enqueued' | 'coalesced' | 'no_op' = 'no_op';
     if (order !== null) {
       outcome = await enqueueReadback(tx, d, order, at);
-      // Operations were locked first; the unit is locked inside (D-020).
-      if (e.type === 'PAYMENT.CAPTURE.REVERSED' && target?.by === 'capture_id') {
-        await suspectReversalTx(tx, d, { capture_id: target.key, source: 'webhook' });
+      // A reversal is a hint (ASM-63): one alert for a human, the unit is not touched. Only a read
+      // that shows the evidence moves it. The alert is unique per kind, order, unit and reason.
+      if (e.type === 'PAYMENT.CAPTURE.REVERSED') {
+        const unit =
+          e.capture_id === null
+            ? undefined
+            : (
+                await tx.query<{ id: string }>(
+                  'SELECT id FROM order_units WHERE capture_id = $1 AND order_id = $2',
+                  [e.capture_id, order.id],
+                )
+              ).rows[0];
+        await raiseOpsAlert(tx, d, {
+          kind: 'reversal',
+          order_id: order.id,
+          unit_id: unit?.id ?? null,
+          reason: 'reversal_hint',
+          detail: { source: 'webhook', capture_id: e.capture_id },
+        });
       }
     }
     await tx.query('UPDATE webhook_events SET outcome = $2, updated_at = $3 WHERE id = $1', [
@@ -240,7 +295,15 @@ export async function handleWebhook(d: CoreDeps, i: WebhookInput): Promise<Webho
     case 'unverifiable':
       await refuse(d, i, 'unverifiable', 'unverifiable');
       return { http: 503, outcome: 'unverifiable' };
-    case 'verified':
-      return intake(d, i, v.event);
+    case 'verified': {
+      // The verifier already parsed the verdict; a delivery that does not fit the contract or whose
+      // ids the database could not hold faithfully is refused once, never thrown at.
+      const parsed = WebhookVerdictSchema.safeParse(v);
+      if (!parsed.success || parsed.data.kind !== 'verified' || !idsAreValid(parsed.data.event)) {
+        await refuse(d, i, 'malformed', 'invalid_ids');
+        return { http: 400, outcome: 'rejected' };
+      }
+      return intake(d, i, parsed.data.event);
+    }
   }
 }
