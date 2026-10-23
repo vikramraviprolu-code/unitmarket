@@ -95,6 +95,34 @@ describe('refusals (nothing is loaded, no database is opened, no call is made)',
     expect(res.reason).toBe('ai_session');
     expect(r.run).not.toHaveBeenCalled();
   });
+  it.each([
+    [[], undefined],
+    [['--only', 'payee-echo'], 'payee-echo'],
+  ])('the arguments %j are accepted and reach the run as %s', async (argv, only) => {
+    const r = refusalRig({ homedir: join(tmpdir(), 'sbx-none') });
+    r.deps.argv = argv as string[];
+    const res = await runSandboxConformance(r.deps);
+    expect(res).toEqual({ code: 0 });
+    expect(r.run).toHaveBeenCalledWith({
+      outBase: join(tmpdir(), 'sbx-none', 'unitmarket-sandbox-run'),
+      only,
+    });
+  });
+  it.each([
+    [['--only']],
+    [['--only', 'other']],
+    [['payee-echo']],
+    [['--only', 'payee-echo', 'extra']],
+    [['--only=payee-echo']],
+    [['x', 'y']],
+    [['--only', 'payee-echo', '--only', 'payee-echo']],
+  ])('the arguments %j are refused as bad_args', async (argv) => {
+    const r = refusalRig({ homedir: join(tmpdir(), 'sbx-none') });
+    r.deps.argv = argv as string[];
+    const res = await runSandboxConformance(r.deps);
+    expect(res).toEqual({ code: 2, reason: 'bad_args' });
+    expect(r.run).not.toHaveBeenCalled();
+  });
   it('the marker lists hold the names the lane relies on', () => {
     for (const n of ['CI', 'GITHUB_ACTIONS']) expect(CI_MARKERS).toContain(n);
     for (const n of ['CLAUDECODE', 'CLAUDE_CODE_REMOTE']) expect(AI_MARKERS).toContain(n);

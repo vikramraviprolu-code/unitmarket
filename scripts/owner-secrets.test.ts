@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { verifyPasscode } from '../packages/security/src/index';
 import { REPO_ROOT } from './test-helpers';
-import { runOwnerSecrets } from './owner-secrets.mjs';
+import { PassThrough } from 'node:stream';
+import { askHiddenOnTerminal, runOwnerSecrets } from './owner-secrets.mjs';
 
 const PASSCODE = 'correct horse battery staple';
 const NAMES = [
@@ -128,7 +129,7 @@ describe('owner:secrets', () => {
       input: '',
       env: {},
     });
-    expect(r.status).not.toBe(0);
+    expect(r.status).toBe(2);
     expect(`${r.stdout}${r.stderr}`).toContain('not_a_tty');
     expect(`${r.stdout}${r.stderr}`).not.toMatch(/^UMS_[A-Z_]+=/m);
   }, 60_000);
@@ -139,5 +140,20 @@ describe('owner:secrets', () => {
     const cmd = pkg.scripts['owner:secrets'] as string;
     expect(cmd).toContain('scripts/owner-secrets.mjs');
     expect(cmd).not.toMatch(/--import|--require|--loader|NODE_OPTIONS|--conditions/);
+  });
+});
+
+describe('the hidden prompt', () => {
+  it('shows the prompt and a newline, never what is typed, and returns the answer', async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let seen = '';
+    output.on('data', (c) => (seen += String(c)));
+    const answer = askHiddenOnTerminal('Passcode: ', { input, output });
+    input.write('hunter2-hunter2-hunter2\n');
+    expect(await answer).toBe('hunter2-hunter2-hunter2');
+    expect(seen).toContain('Passcode: ');
+    expect(seen.endsWith('\n')).toBe(true);
+    expect(seen).not.toContain('hunter2');
   });
 });

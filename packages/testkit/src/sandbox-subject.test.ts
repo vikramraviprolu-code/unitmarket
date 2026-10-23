@@ -422,3 +422,163 @@ describe('call log and summary', () => {
     expect(md).not.toMatch(/PASS/);
   });
 });
+
+// ---- mutation survivors: failure paths of each step, and what the log must not hold ----
+
+describe('a failing step ends the run, with its reason, and nothing is sent after it', () => {
+  const patchBody = (r: OutboundRequest, res: TransportResult, patch: (b: any) => void) => {
+    if (res.kind !== 'response') return res;
+    const b = JSON.parse(res.body);
+    patch(b);
+    return { ...res, body: JSON.stringify(b) } as TransportResult;
+  };
+  const failed = (report: Awaited<ReturnType<typeof runSubset>>['report']) =>
+    report.cases.filter((c) => !c.pass).map((c) => c.id);
+
+  it('create replay answered with an error', async () => {
+    let creates = 0;
+    const { report, m } = await runSubset({
+      rewrite: (r, res) => {
+        if (r.operation !== 'create_order') return res;
+        creates += 1;
+        return creates === 2
+          ? json(500, { name: 'INTERNAL_SERVER_ERROR', message: 'x', debug_id: 'dbg500' })
+          : res;
+      },
+    });
+    expect(report.cases[0]?.pass).toBe(true);
+    expect(report.cases[1]?.pass).toBe(false);
+    expect(report.cases[1]?.detail).toMatch(/^answered /);
+    expect(report.cases.slice(2).every((c) => /^not run/.test(c.detail))).toBe(true);
+    expect(m.sent.some((r) => r.operation === 'capture_order')).toBe(false);
+  });
+  it('an early capture that PayPal accepts is a failure and stops the run before any approval link', async () => {
+    const { report, lines, m } = await runSubset({
+      rewrite: (r, res) =>
+        r.operation === 'capture_order' ? json(201, orderBody('ORDER00123456', 'COMPLETED')) : res,
+    });
+    expect(failed(report)).toEqual([
+      'capture_before_approval',
+      'approve_capture_replay',
+      'read_backs',
+      'lost_answer',
+    ]);
+    expect(report.cases[2]?.detail).toMatch(/expected 422 ORDER_NOT_APPROVED/);
+    expect(report.cases[3]?.detail).toBe('not run: capture_before_approval failed');
+    expect(lines.filter((l) => l.startsWith(LINK_LINE))).toHaveLength(0);
+    expect(m.sent.filter((r) => r.operation === 'capture_order')).toHaveLength(1);
+  });
+  it('a capture that is not one COMPLETED capture fails the approve step', async () => {
+    const { report, m } = await runSubset({
+      rewrite: (r, res) =>
+        r.operation === 'capture_order' && res.kind === 'response' && res.status < 300
+          ? patchBody(r, res, (b) => {
+              b.purchase_units[0].payments.captures[0].status = 'PENDING';
+            })
+          : res,
+    });
+    expect(report.cases[3]?.pass).toBe(false);
+    expect(report.cases[3]?.detail).toMatch(/not one COMPLETED capture/);
+    expect(m.sent.filter((r) => r.operation === 'capture_order')).toHaveLength(2);
+  });
+  it('the approve step reports the capture id; the read-back reports the same one', async () => {
+    const { report } = await runSubset();
+    const approve = report.cases[3];
+    const reads = report.cases[4];
+    expect(approve?.capture_id).not.toBeNull();
+    expect(approve?.capture_id).toBe(reads?.capture_id);
+    expect(approve?.order_id).toBe(report.cases[0]?.order_id);
+  });
+  it('a failing order read-back is reported as a read failure', async () => {
+    const { report } = await runSubset({
+      rewrite: (r, res) =>
+        r.operation === 'get_order' && res.kind === 'response' && res.body.includes('"COMPLETED"')
+          ? json(500, { name: 'INTERNAL_SERVER_ERROR', message: 'x', debug_id: 'dbg500' })
+          : res,
+    });
+    expect(report.cases[4]?.pass).toBe(false);
+    expect(report.cases[4]?.detail).toMatch(/^read answered /);
+    expect(report.cases[5]?.detail).toBe('not run: read_backs failed');
+  });
+  it('an order read-back that does not show the one capture fails', async () => {
+    const { report } = await runSubset({
+      rewrite: (r, res) =>
+        r.operation === 'get_order'
+          ? patchBody(r, res, (b) => {
+              if (b.status === 'COMPLETED') b.status = 'APPROVED';
+            })
+          : res,
+    });
+    expect(report.cases[4]?.pass).toBe(false);
+    expect(report.cases[4]?.detail).toMatch(/does not show the one capture/);
+  });
+  it('the lost-answer order cannot be created', async () => {
+    let creates = 0;
+    const { report } = await runSubset({
+      rewrite: (r, res) => {
+        if (r.operation !== 'create_order') return res;
+        creates += 1;
+        return creates === 3
+          ? json(500, { name: 'INTERNAL_SERVER_ERROR', message: 'x', debug_id: 'dbg500' })
+          : res;
+      },
+    });
+    expect(report.cases[4]?.pass).toBe(true);
+    expect(report.cases[5]?.pass).toBe(false);
+    expect(report.cases[5]?.detail).toMatch(/^create answered /);
+  });
+  it('a lost answer that is not lost, or a read-back with two captures, fails the last case', async () => {
+    const { report } = await runSubset({
+      rewrite: (r, res) =>
+        r.operation === 'get_order' && res.kind === 'response' && res.body.includes('"COMPLETED"')
+          ? patchBody(r, res, (b) => {
+              const u = b.purchase_units[0];
+              u.payments.captures.push({ ...u.payments.captures[0], id: 'SECONDCAP' });
+            })
+          : res,
+    });
+    // the first COMPLETED read (read_backs) already refuses two captures
+    expect(report.cases[4]?.pass).toBe(false);
+  });
+  it.each([
+    'create_replay',
+    'capture_before_approval',
+    'approve_capture_replay',
+    'read_backs',
+  ] as const)(
+    '%s alone, with no order from the first case, makes no call and fails',
+    async (id) => {
+      const s = scriptedOrders(['CREATED']);
+      const { subject } = subjectOver(s.transport);
+      const r = await ownerSubset(subject).steps[id]();
+      expect(r.pass).toBe(false);
+      expect(r.detail).toMatch(/^no (captured )?order from the (first|earlier) case/);
+      expect(s.sent).toEqual([]);
+    },
+  );
+  it('orderRequest without an own merchant id throws instead of inventing a payee', () => {
+    const s = scriptedOrders(['CREATED']);
+    const { subject } = subjectOver(s.transport, { own: null });
+    expect(() => subject.orderRequest()).toThrow(/own_merchant_id is not set/);
+  });
+});
+
+describe('the call log never holds the own merchant id', () => {
+  it('it is replaced by a placeholder everywhere, request and response', async () => {
+    const { subject } = await runSubset();
+    const text = JSON.stringify(subject.callLog());
+    expect(text).not.toContain(OWN);
+    expect(text).toContain('OWNMERCHANT01');
+  });
+  it('another merchant id is left alone', async () => {
+    const { subject } = await runSubset({
+      rewrite: (r, res) => {
+        if (r.operation !== 'get_order' || res.kind !== 'response') return res;
+        const b = JSON.parse(res.body);
+        b.purchase_units[0].payee = { merchant_id: OTHER };
+        return { ...res, body: JSON.stringify(b) };
+      },
+    });
+    expect(JSON.stringify(subject.callLog())).toContain(OTHER);
+  });
+});

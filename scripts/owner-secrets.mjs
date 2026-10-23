@@ -55,25 +55,29 @@ export async function runOwnerSecrets(d) {
   return { ok: true };
 }
 
-async function askHiddenOnTerminal(prompt) {
+/** Asks with the typed text hidden: the prompt and a final newline reach `io.output`, the answer never does. */
+export async function askHiddenOnTerminal(
+  prompt,
+  io = { input: process.stdin, output: process.stderr },
+) {
   const { createInterface } = await import('node:readline');
   const { Writable } = await import('node:stream');
   let muted = false;
   const out = new Writable({
     write(chunk, _enc, cb) {
-      if (!muted) process.stderr.write(chunk);
+      if (!muted) io.output.write(chunk);
       cb();
     },
   });
-  const rl = createInterface({ input: process.stdin, output: out, terminal: true });
-  process.stderr.write(prompt);
+  const rl = createInterface({ input: io.input, output: out, terminal: true });
+  io.output.write(prompt);
   muted = true;
   try {
     return await new Promise((resolve) => rl.question('', resolve));
   } finally {
     muted = false;
     rl.close();
-    process.stderr.write('\n');
+    io.output.write('\n');
   }
 }
 
