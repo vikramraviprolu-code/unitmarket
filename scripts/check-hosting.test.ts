@@ -101,6 +101,20 @@ const BAD: Array<[fixture: string, rule: string]> = [
   ['bad-ls-in-comment', 'parse'],
   ['bad-bom', 'parse'],
   ['bad-nonascii-comment', 'parse'],
+  // comment and quote handling
+  ['bad-hash-in-quoted-live', 'live-value'],
+  ['bad-hash-no-space', 'service-shape'],
+  ['bad-quote-unterminated', 'parse'],
+  ['bad-quote-inner', 'parse'],
+  ['bad-quote-mismatch', 'parse'],
+  ['bad-quote-single-char', 'parse'],
+  ['bad-escape', 'parse'],
+  ['bad-indent-odd', 'parse'],
+  ['bad-no-colon', 'parse'],
+  ['bad-comments-only', 'parse'],
+  ['bad-service-scalar', 'service-shape'],
+  ['bad-env-entry-scalar', 'service-shape'],
+  ['bad-fixed-novalue', 'service-shape'],
 ];
 
 describe('check-hosting', () => {
@@ -182,6 +196,7 @@ describe('check-hosting', () => {
         encoding: 'utf8',
       },
     );
+    expect(r.status).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual(expected);
   });
 
