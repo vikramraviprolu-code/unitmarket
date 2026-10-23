@@ -299,7 +299,7 @@ describe('delivery to paid, invariants after each step', () => {
     expect(await count(w, 'audit_log', "action = 'webhook.rejected'")).toBe(1);
   });
 
-  it('CHECKOUT.ORDER.APPROVED for an order nobody captured is no_op: no read, nothing polls for 24 h', async () => {
+  it('CHECKOUT.ORDER.APPROVED for an order nobody captured is no_op: no read, nothing polls', async () => {
     await world();
     const a = await approved(w);
     const gets = w.paypal.count('get');
@@ -309,11 +309,11 @@ describe('delivery to paid, invariants after each step', () => {
         verdict('order_approved', { provider_order_id: a.provider_order_id }),
       ),
     ).toEqual({ http: 200, outcome: 'no_op' });
-    for (let k = 0; k < 26; k += 1) {
+    for (let k = 0; k < 20; k += 1) {
       w.tick(H);
       await runDue(w.deps, { max_items: 10 });
     }
-    await inv('a day later');
+    await inv('20 hours later');
     expect(w.paypal.count('get')).toBe(gets);
     expect(w.paypal.count('capture')).toBe(0);
     expect(await count(w, 'alerts')).toBe(0);

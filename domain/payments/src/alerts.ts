@@ -12,6 +12,9 @@ export type AlertKind =
   | 'fee_above_amount'
   | 'payment_unresolved'
   | 'reversal'
+  // A PAYMENT.CAPTURE.REVERSED webhook, unproven until a read shows it (ASM-63). Ops see it; recovery
+  // keeps it out of ALERT_CASE_KINDS, so no case opens and the buyer is told nothing.
+  | 'reversal_hint'
   | 'refund_unbooked'
   | 'refund_failed'
   | 'refund_unresolved';

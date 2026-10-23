@@ -716,15 +716,25 @@ describe('R2: a webhook only wakes an order somebody has captured', () => {
     ).toEqual({ http: 200, outcome: 'no_op' });
     expect(await readback(a.order_id)).toBeNull();
     expect((await events()).map((e) => e.outcome)).toEqual(['no_op', 'no_op', 'no_op']);
-    for (let k = 0; k < 26; k += 1) {
+    // 20 hours: no read-back, no read, no alert (the old behaviour polled this order every hour).
+    for (let k = 0; k < 20; k += 1) {
       w.tick(H);
       await runDue(w.deps, { max_items: 10 });
     }
-    // Nothing woke it; the order behaves exactly like the control that never got a webhook.
     expect(await readback(a.order_id)).toBeNull();
     expect(w.paypal.count('get') - gets).toBe(0);
+    expect(await count(w, 'alerts')).toBe(0);
+    // Later the abandonment sweep owns the order, exactly as for the control that got no webhook.
+    for (let k = 0; k < 8; k += 1) {
+      w.tick(H);
+      await runDue(w.deps, { max_items: 10 });
+    }
+    const readsOf = (id: string) => w.paypal.calls.filter((c) => c.provider_order_id === id).length;
+    expect(readsOf(a.provider_order_id)).toBe(readsOf(control.provider_order_id));
     expect(await alertKinds(w, a.order_id)).toEqual(await alertKinds(w, control.order_id));
-    expect(await count(w, 'alerts', "kind = 'payment_unresolved'")).toBe(0);
+    const opPairs = async (id: string) =>
+      (await ops(w, id)).map((o) => `${o.kind}:${o.state}`).sort();
+    expect(await opPairs(a.order_id)).toEqual(await opPairs(control.order_id));
     expect(await ent(a.order_id)).toEqual(await ent(control.order_id));
   });
 
