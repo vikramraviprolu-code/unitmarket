@@ -204,14 +204,15 @@ describe('release', () => {
     const h = acquireLock(dir, { clock: clockAt(T0), warn: () => undefined });
     const added = process.listeners('exit').filter((l) => !before.includes(l));
     expect(added).toHaveLength(1);
-    added[0]?.call(process, 0); // what node does at exit
+    (added[0] as (code: number) => void)(0); // what node does at exit
     expect(existsSync(lockPath())).toBe(false);
     h.release();
     expect(process.listeners('exit').filter((l) => !before.includes(l))).toHaveLength(0);
   });
 });
 
-describe('openDatabase and the lock', () => {
+// PGlite start-up is slow on a loaded machine: a longer limit for the tests that open a database.
+describe('openDatabase and the lock', { timeout: 120_000 }, () => {
   it('a disk target holds the lock while open and removes it on close', async () => {
     const db = await openDatabase({ kind: 'pglite-disk', dir }, { clock: clockAt(T0) });
     expect(readLock()).toEqual({ pid: process.pid, host: hostname(), started: T0 });

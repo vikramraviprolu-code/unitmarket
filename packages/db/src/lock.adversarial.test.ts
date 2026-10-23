@@ -29,9 +29,10 @@ vi.mock('node:fs', async (importOriginal) => {
   };
   const patched = {
     ...actual,
-    openSync: ((p: never, ...rest: never[]) => {
-      deny(p);
-      return (actual.openSync as (...a: unknown[]) => number)(p, ...rest);
+    openSync: ((p: never, flags: never, ...rest: never[]) => {
+      // Only a read-only open is denied: creating the lock (O_EXCL) must still work.
+      if (flags === undefined || (Number(flags) & 3) === actual.constants.O_RDONLY) deny(p);
+      return (actual.openSync as (...a: unknown[]) => number)(p, flags, ...rest);
     }) as typeof actual.openSync,
     readFileSync: ((p: never, ...rest: never[]) => {
       deny(p);
@@ -173,7 +174,10 @@ describe('the printed warning cannot be used to inject text', () => {
     const warnings: string[] = [];
     const h = acquireLock(dir, { clock, warn: (m) => warnings.push(m) });
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).not.toMatch(/[\u0000-\u001f\u007f]/);
+    const odd = [...(warnings[0] ?? '')].filter(
+      (c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f,
+    );
+    expect(odd).toEqual([]);
     h.release();
   });
 });
@@ -211,7 +215,7 @@ describe('a lock held by a live process is never deleted', () => {
   });
 });
 
-describe('racing openers: exactly one wins', () => {
+describe('racing openers: exactly one wins', { timeout: 120_000 }, () => {
   const settle = async <T>(ps: Promise<T>[]): Promise<{ ok: T[]; err: unknown[] }> => {
     const r = await Promise.allSettled(ps);
     return {
@@ -271,9 +275,8 @@ describe('racing openers: exactly one wins', () => {
   it('a failed database open gives the lock back', async () => {
     // A PG_VERSION that is not a PGlite data directory makes the open fail after the lock was taken.
     writeFileSync(join(dir, 'PG_VERSION'), '99\n');
-    await openDatabase({ kind: 'pglite-disk', dir }, { clock }).then(
-      (db) => db.close(),
-      () => undefined,
+    await expect(openDatabase({ kind: 'pglite-disk', dir }, { clock })).rejects.toThrow(
+      /PGlite failed to initialize/,
     );
     expect(existsSync(lock)).toBe(false);
   });

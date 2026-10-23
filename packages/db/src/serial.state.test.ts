@@ -97,7 +97,7 @@ async function runPairs(db: SqlDriver, pairs: number): Promise<{ log: Event[]; s
   return { log, seen };
 }
 
-describe('PGlite runs one transaction at a time (memory target)', () => {
+describe('PGlite runs one transaction at a time (memory target)', { timeout: 120_000 }, () => {
   let db: SqlDriver;
   beforeAll(async () => {
     db = await openDatabase({ kind: 'pglite-memory' });
@@ -124,7 +124,7 @@ describe('PGlite runs one transaction at a time (memory target)', () => {
   });
 });
 
-describe('PGlite runs one transaction at a time (disk target)', () => {
+describe('PGlite runs one transaction at a time (disk target)', { timeout: 120_000 }, () => {
   let dir: string;
   let db: SqlDriver;
   beforeAll(async () => {
@@ -142,7 +142,7 @@ describe('PGlite runs one transaction at a time (disk target)', () => {
   });
 });
 
-describe('the spy is able to see interleaving (control)', () => {
+describe('the spy is able to see interleaving (control)', { timeout: 120_000 }, () => {
   it('two concurrent loops on plain query() calls (no transaction) do interleave', async () => {
     const db = await openDatabase({ kind: 'pglite-memory' });
     try {
