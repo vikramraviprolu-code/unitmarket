@@ -7,7 +7,14 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Clock } from '@umsbx/contracts';
 import * as db from './index';
-import { DbInUseError, DbLockRefusedError, LOCK_FILE, acquireLock, inspectLock } from './lock';
+import {
+  DbInUseError,
+  DbLockRefusedError,
+  LOCK_BREAK_FILE,
+  LOCK_FILE,
+  acquireLock,
+  inspectLock,
+} from './lock';
 
 const T0 = '2026-03-04T05:06:07.089Z';
 const clock: Clock = { now: () => new Date(T0) };
@@ -55,6 +62,31 @@ describe('lock file format', () => {
   });
 });
 
+describe('guard file', () => {
+  it('is named <dir>/.ums-open.lock.break and is the only other file the lock module writes', () => {
+    expect(LOCK_BREAK_FILE).toBe('.ums-open.lock.break');
+  });
+});
+
+describe('stale reasons', () => {
+  it('are dead_pid, other_host and previous_run', () => {
+    const reasons = new Set<string>();
+    writeFileSync(join(dir, LOCK_FILE), JSON.stringify({ pid: 5, host: hostname(), started: T0 }));
+    const dead = inspectLock(dir, { isAlive: () => false });
+    if (dead.state === 'stale') reasons.add(dead.reason);
+    writeFileSync(join(dir, LOCK_FILE), JSON.stringify({ pid: 5, host: 'x', started: T0 }));
+    const other = inspectLock(dir, { isAlive: () => true });
+    if (other.state === 'stale') reasons.add(other.reason);
+    writeFileSync(
+      join(dir, LOCK_FILE),
+      JSON.stringify({ pid: process.pid, host: hostname(), started: T0 }),
+    );
+    const own = inspectLock(dir);
+    if (own.state === 'stale') reasons.add(own.reason);
+    expect([...reasons].sort()).toEqual(['dead_pid', 'other_host', 'previous_run']);
+  });
+});
+
 describe('errors', () => {
   it('DbInUseError: name, pid and the exact spec message', () => {
     const e = new DbInUseError(4321);
@@ -77,7 +109,7 @@ describe('errors', () => {
     expect(caught).toBeInstanceOf(DbLockRefusedError);
     expect(caught).not.toBeInstanceOf(DbInUseError);
     expect((caught as DbLockRefusedError).name).toBe('DbLockRefusedError');
-    expect(['symlink', 'not_file', 'unreadable', 'malformed', 'io']).toContain(
+    expect(['symlink', 'not_file', 'unreadable', 'malformed', 'io', 'guard']).toContain(
       (caught as DbLockRefusedError).code,
     );
     expect((caught as Error).message).toContain(LOCK_FILE);
@@ -121,6 +153,7 @@ describe('public API of @umsbx/db for the lock', () => {
       'DbInUseError',
       'DbLockRefusedError',
       'LOCK_FILE',
+      'LOCK_BREAK_FILE',
       'acquireLock',
       'inspectLock',
       'releaseLock',

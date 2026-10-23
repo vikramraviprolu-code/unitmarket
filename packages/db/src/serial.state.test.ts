@@ -162,3 +162,40 @@ describe('the spy is able to see interleaving (control)', { timeout: 120_000 }, 
     }
   });
 });
+
+describe('a top-level query or exec waits for an open transaction', () => {
+  // PGlite 0.5.10 takes the same exclusive lock for query(), exec() and transaction().
+  const tick = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+  it.each([
+    ['query', (db: SqlDriver): Promise<unknown> => db.query("INSERT INTO c VALUES ('outer')")],
+    ['exec', (db: SqlDriver): Promise<unknown> => db.exec("INSERT INTO c VALUES ('outer')")],
+  ])(
+    '%s issued while a transaction is open runs after it, not inside it',
+    async (_n, outerCall) => {
+      const db = await openDatabase({ kind: 'pglite-memory' });
+      try {
+        await db.exec('CREATE TABLE c (v text)');
+        let open!: () => void;
+        const gate = new Promise<void>((r) => (open = r));
+        const tx = db.transaction(async (t) => {
+          await t.query("INSERT INTO c VALUES ('tx1')");
+          await gate;
+          await t.query("INSERT INTO c VALUES ('tx2')");
+        });
+        await tick(50); // the transaction is open and parked on the gate
+        let outerDone = false;
+        const outer = outerCall(db).then(() => {
+          outerDone = true;
+        });
+        await tick(100);
+        expect(outerDone).toBe(false); // waiting, not interleaved
+        open();
+        await Promise.all([tx, outer]);
+        const rows = await db.query<{ v: string }>('SELECT v FROM c');
+        expect(rows.rows.map((r) => r.v)).toEqual(['tx1', 'tx2', 'outer']);
+      } finally {
+        await db.close();
+      }
+    },
+  );
+});

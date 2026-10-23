@@ -20,6 +20,12 @@ import type { Clock } from '@umsbx/contracts';
 // Unreadable-file simulation: root ignores file modes, so a flagged path makes reads fail with
 // EACCES. Every other path reaches the real fs.
 const flagged = vi.hoisted(() => ({ paths: new Set<string>() }));
+// Hooks for the interleaving probes: run code just before the lock file is unlinked, or make the
+// next write a short write (nothing written), as a crash between create and write would.
+const hooks = vi.hoisted(() => ({
+  beforeLockUnlink: null as null | (() => void),
+  shortWrite: false,
+}));
 vi.mock('node:fs', async (importOriginal) => {
   const actual = (await importOriginal()) as typeof import('node:fs');
   const deny = (p: unknown): void => {
@@ -34,6 +40,18 @@ vi.mock('node:fs', async (importOriginal) => {
       if (flags === undefined || (Number(flags) & 3) === actual.constants.O_RDONLY) deny(p);
       return (actual.openSync as (...a: unknown[]) => number)(p, flags, ...rest);
     }) as typeof actual.openSync,
+    unlinkSync: ((p: never) => {
+      if (typeof p === 'string' && p.endsWith('.ums-open.lock') && hooks.beforeLockUnlink) {
+        const run = hooks.beforeLockUnlink;
+        hooks.beforeLockUnlink = null;
+        run();
+      }
+      return actual.unlinkSync(p);
+    }) as typeof actual.unlinkSync,
+    writeSync: ((fd: never, ...rest: never[]) => {
+      if (hooks.shortWrite) return 0;
+      return (actual.writeSync as (...a: unknown[]) => number)(fd, ...rest);
+    }) as typeof actual.writeSync,
     readFileSync: ((p: never, ...rest: never[]) => {
       deny(p);
       return (actual.readFileSync as (...a: unknown[]) => unknown)(p, ...rest);
@@ -42,7 +60,15 @@ vi.mock('node:fs', async (importOriginal) => {
   return { ...patched, default: patched };
 });
 
-import { DbInUseError, DbLockRefusedError, LOCK_FILE, acquireLock, inspectLock } from './lock';
+import {
+  DbInUseError,
+  DbLockRefusedError,
+  LOCK_BREAK_FILE,
+  LOCK_FILE,
+  acquireLock,
+  inspectLock,
+} from './lock';
+import type { LockHandle } from './lock';
 import { openDatabase } from './pglite';
 
 const T0 = '2026-03-04T05:06:07.089Z';
@@ -55,9 +81,13 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'ums-lock-adv-'));
   lock = join(dir, LOCK_FILE);
   flagged.paths.clear();
+  hooks.beforeLockUnlink = null;
+  hooks.shortWrite = false;
 });
 afterEach(() => {
   flagged.paths.clear();
+  hooks.beforeLockUnlink = null;
+  hooks.shortWrite = false;
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -151,6 +181,12 @@ describe('a malformed lock refuses and is left in place', () => {
     ['pid fractional', JSON.stringify({ ...good, pid: 1.5 })],
     ['pid a string', JSON.stringify({ ...good, pid: '123' })],
     ['pid beyond a safe integer', '{"pid":1e400,"host":"h","started":"' + T0 + '"}'],
+    ['pid above the largest Linux pid_max (4194304)', JSON.stringify({ ...good, pid: 4_194_305 })],
+    [
+      'pid 2^31 (process.kill would throw, not report dead)',
+      JSON.stringify({ ...good, pid: 2 ** 31 }),
+    ],
+    ['pid 1e10', JSON.stringify({ ...good, pid: 1e10 })],
     ['host missing', JSON.stringify({ pid: 5, started: T0 })],
     ['host empty', JSON.stringify({ ...good, host: '' })],
     ['host a number', JSON.stringify({ ...good, host: 7 })],
@@ -295,5 +331,137 @@ describe('racing openers: exactly one wins', { timeout: 120_000 }, () => {
       /PGlite failed to initialize/,
     );
     expect(existsSync(lock)).toBe(false);
+  });
+});
+
+const guardPath = (): string => join(dir, LOCK_BREAK_FILE);
+const stale = (): void =>
+  writeFileSync(lock, JSON.stringify({ pid: 999_999, host: hostname(), started: T0 }));
+const aliveSet =
+  (...pids: number[]) =>
+  (pid: number): boolean =>
+    pids.includes(pid);
+
+describe('R2: replacing a stale lock cannot produce two holders', () => {
+  it('another opener that runs a whole acquire just before our unlink is refused by the guard', () => {
+    stale();
+    const isAlive = aliveSet(7001, 7002);
+    let inner: unknown;
+    hooks.beforeLockUnlink = () => {
+      try {
+        acquireLock(dir, { clock, pid: 7002, isAlive, warn: () => undefined });
+      } catch (e) {
+        inner = e;
+      }
+    };
+    const b = acquireLock(dir, { clock, pid: 7001, isAlive, warn: () => undefined });
+    expect(inner).toBeInstanceOf(DbLockRefusedError);
+    expect((inner as DbLockRefusedError).code).toBe('guard');
+    expect(JSON.parse(readFileSync(lock, 'utf8')).pid).toBe(7001);
+    expect(existsSync(guardPath())).toBe(false);
+    b.release();
+  });
+
+  it('eight acquirers interleaved through the warning: exactly one holder, seven refused', () => {
+    stale();
+    const pids = Array.from({ length: 8 }, (_v, i) => 7000 + i);
+    const isAlive = aliveSet(...pids);
+    const outcomes: Array<LockHandle | unknown> = [];
+    const attempt = (i: number): void => {
+      try {
+        outcomes.push(
+          acquireLock(dir, {
+            clock,
+            pid: pids[i] as number,
+            isAlive,
+            warn: () => {
+              if (i + 1 < pids.length) attempt(i + 1); // the next opener runs inside this one
+            },
+          }),
+        );
+      } catch (e) {
+        outcomes.push(e);
+      }
+    };
+    attempt(0);
+    const won = outcomes.filter(
+      (o): o is LockHandle => typeof (o as LockHandle).release === 'function',
+    );
+    expect(won).toHaveLength(1);
+    expect(outcomes.filter((o) => o instanceof DbLockRefusedError)).toHaveLength(7);
+    expect(JSON.parse(readFileSync(lock, 'utf8')).pid).toBe(won[0]?.info.pid);
+    expect(existsSync(guardPath())).toBe(false);
+    won[0]?.release();
+  });
+
+  it('a guard file left behind refuses with removal instructions and changes nothing', () => {
+    stale();
+    writeFileSync(guardPath(), JSON.stringify({ pid: 31337, host: hostname(), started: T0 }));
+    const guardBefore = readFileSync(guardPath(), 'utf8');
+    const lockBefore = readFileSync(lock, 'utf8');
+    const e = refusal(() => acquireLock(dir, { ...quiet, isAlive: () => false }));
+    expect(e.code).toBe('guard');
+    expect(e.message).toContain(LOCK_BREAK_FILE);
+    expect(e.message).toMatch(/remove/i);
+    expect(readFileSync(guardPath(), 'utf8')).toBe(guardBefore);
+    expect(readFileSync(lock, 'utf8')).toBe(lockBefore);
+  });
+
+  it('the guard is a plain file only: a symlink or a directory in its place refuses', () => {
+    stale();
+    mkdirSync(guardPath());
+    expect(refusal(() => acquireLock(dir, { ...quiet, isAlive: () => false })).code).toBe('guard');
+    rmSync(guardPath(), { recursive: true });
+    symlinkSync(join(dir, 'nowhere'), guardPath());
+    expect(refusal(() => acquireLock(dir, { ...quiet, isAlive: () => false })).code).toBe('guard');
+  });
+
+  it('the guard is given back when the replace ends in a refusal too', () => {
+    stale();
+    const winner = JSON.stringify({ pid: 8123, host: hostname(), started: T0 });
+    expect(() =>
+      acquireLock(dir, {
+        clock,
+        isAlive: aliveSet(8123),
+        warn: () => writeFileSync(lock, winner),
+      }),
+    ).toThrow(DbInUseError);
+    expect(existsSync(guardPath())).toBe(false);
+  });
+
+  it('no guard is created when there is nothing stale to replace', () => {
+    const h = acquireLock(dir, quiet);
+    expect(existsSync(guardPath())).toBe(false);
+    h.release();
+  });
+});
+
+describe('R8: a lock cut short by a crash', () => {
+  it('an empty lock file is refused as malformed and the message says how to remove it', () => {
+    writeFileSync(lock, '');
+    const e = refusal(() => acquireLock(dir, { ...quiet, isAlive: () => false }));
+    expect(e.code).toBe('malformed');
+    expect(e.message).toMatch(/empty/);
+    expect(e.message).toMatch(/remove the file by hand/);
+    expect(readFileSync(lock, 'utf8')).toBe('');
+  });
+
+  it('a short write (nothing written) removes the file again and refuses', () => {
+    hooks.shortWrite = true;
+    const e = refusal(() => acquireLock(dir, quiet));
+    expect(e.code).toBe('io');
+    hooks.shortWrite = false;
+    expect(existsSync(lock)).toBe(false);
+    acquireLock(dir, quiet).release(); // and the directory is usable afterwards
+  });
+});
+
+describe('R6: pid bounds', () => {
+  it('4194304 (the largest Linux pid_max) is still a valid pid', () => {
+    writeFileSync(lock, JSON.stringify({ pid: 4_194_304, host: hostname(), started: T0 }));
+    expect(inspectLock(dir, { isAlive: () => false })).toMatchObject({
+      state: 'stale',
+      reason: 'dead_pid',
+    });
   });
 });

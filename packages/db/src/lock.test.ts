@@ -251,3 +251,98 @@ describe('openDatabase and the lock', { timeout: 120_000 }, () => {
     await b.close();
   });
 });
+
+describe('R1: a lock naming this very pid is a previous run unless this process holds it', () => {
+  it('own pid, own host, not held by this process: stale, warned about and replaced', () => {
+    plant({ pid: process.pid, host: hostname(), started: '2026-01-01T00:00:00.000Z' });
+    const warnings: string[] = [];
+    const h = acquireLock(dir, { clock: clockAt(T0), warn: (m) => warnings.push(m) });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(String(process.pid));
+    expect(readLock()).toEqual({ pid: process.pid, host: hostname(), started: T0 });
+    h.release();
+  });
+
+  it('the same for a container whose pid is 1 (pid 1 restarts as pid 1)', () => {
+    plant({ pid: 1, host: hostname(), started: '2026-01-01T00:00:00.000Z' });
+    const warnings: string[] = [];
+    const h = acquireLock(dir, { clock: clockAt(T0), pid: 1, warn: (m) => warnings.push(m) });
+    expect(warnings).toHaveLength(1);
+    expect(readLock().pid).toBe(1);
+    h.release();
+  });
+
+  it('held by this process: a second open is refused and names this pid', () => {
+    const first = acquireLock(dir, { clock: clockAt(T0), warn: () => undefined });
+    expect(() => acquireLock(dir, { clock: clockAt(T0), warn: () => undefined })).toThrowError(
+      IN_USE(process.pid),
+    );
+    expect(readLock().started).toBe(T0); // untouched
+    first.release();
+  });
+
+  it('after release the same process may open again', () => {
+    acquireLock(dir, { clock: clockAt(T0), warn: () => undefined }).release();
+    acquireLock(dir, { clock: clockAt(T0), warn: () => undefined }).release();
+  });
+
+  it('inspectLock: own pid not held is stale (previous_run); held is live', () => {
+    plant({ pid: process.pid, host: hostname(), started: T0 });
+    expect(inspectLock(dir)).toEqual({
+      state: 'stale',
+      reason: 'previous_run',
+      info: { pid: process.pid, host: hostname(), started: T0 },
+    });
+    rmSync(lockPath());
+    const h = acquireLock(dir, { clock: clockAt(T0), warn: () => undefined });
+    expect(inspectLock(dir).state).toBe('live');
+    h.release();
+  });
+
+  it('OOM restart: openDatabase on a directory whose lock was left by this pid opens after a warning', async () => {
+    plant({ pid: process.pid, host: hostname(), started: '2026-01-01T00:00:00.000Z' });
+    const warnings: string[] = [];
+    const db = await openDatabase(
+      { kind: 'pglite-disk', dir },
+      { clock: clockAt(T0), warn: (m) => warnings.push(m) },
+    );
+    expect(warnings).toHaveLength(1);
+    expect(readLock().started).toBe(T0);
+    await db.close();
+    expect(existsSync(lockPath())).toBe(false);
+  }, 120_000);
+});
+
+describe('R7: one exit listener for any number of locks', () => {
+  it('12 held locks add at most one exit listener and raise no MaxListeners warning', () => {
+    const warnings: string[] = [];
+    const onWarning = (w: Error): void => void warnings.push(w.name);
+    process.on('warning', onWarning);
+    const before = process.listenerCount('exit');
+    const dirs = Array.from({ length: 12 }, () => mkdtempSync(join(tmpdir(), 'ums-lock-many-')));
+    const handles = dirs.map((d) => acquireLock(d, { clock: clockAt(T0), warn: () => undefined }));
+    expect(process.listenerCount('exit') - before).toBe(1);
+    handles.slice(0, 11).forEach((h) => h.release());
+    expect(process.listenerCount('exit') - before).toBe(1); // still one lock held
+    handles[11]?.release();
+    expect(process.listenerCount('exit')).toBe(before);
+    process.off('warning', onWarning);
+    expect(warnings).not.toContain('MaxListenersExceededWarning');
+    dirs.forEach((d) => rmSync(d, { recursive: true, force: true }));
+  });
+
+  it('the exit listener releases every held lock', () => {
+    const before = process.listeners('exit');
+    const other = mkdtempSync(join(tmpdir(), 'ums-lock-two-'));
+    const a = acquireLock(dir, { clock: clockAt(T0), warn: () => undefined });
+    const b = acquireLock(other, { clock: clockAt(T0), warn: () => undefined });
+    const added = process.listeners('exit').filter((l) => !before.includes(l));
+    expect(added).toHaveLength(1);
+    (added[0] as (code: number) => void)(0);
+    expect(existsSync(a.path)).toBe(false);
+    expect(existsSync(b.path)).toBe(false);
+    a.release();
+    b.release();
+    rmSync(other, { recursive: true, force: true });
+  });
+});
