@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { OrderRead, PaymentsDeps, SqlExecutor } from '@umsbx/contracts';
 import {
+  cancelRefundRequest,
   checkInvariants,
   executeRefund,
   reconcileOrder,
@@ -549,6 +550,14 @@ describe('D-020: every refund transaction follows the lock order', () => {
     const closed = await ask(ub.id, 200);
     await executeRefund(d, { refund_request_id: closed });
     await reconcileOrder(d, { order_id: b.order_id, trigger: 'poll' });
+    // 2b. A request that is cancelled before it is executed, and a put-off one cancelled with its operation.
+    const e = await paid(w, { offers: ['ofr_1'] });
+    const ue = await cap(e.order_id);
+    await cancelRefundRequest(d, await ask(ue.id, 100), OPERATOR);
+    w.script({ kind: 'unavailable', retry_after_ms: null });
+    const putOff = await ask(ue.id, 100);
+    await executeRefund(d, { refund_request_id: putOff });
+    await cancelRefundRequest(d, putOff, OPERATOR);
     // 3. A pending refund read back later, and a lost answer resent.
     w.refundNext.status = 'PENDING';
     const c = await paid(w, { offers: ['ofr_2'] });

@@ -15,7 +15,7 @@ export type { ApplyGates, ApplyReport, OrderView, PlaceError, ReadinessEvidence 
 export { reconcileOrder } from './reconcile';
 export { nextDueAt, nextPollAt, runDue } from './due';
 export { recoverOnStartup } from './recover';
-export { executeRefund, requestRefund, suspectReversal } from './refunds';
+export { cancelRefundRequest, executeRefund, requestRefund, suspectReversal } from './refunds';
 export type { OpsAlertKind } from './refunds';
 export { checkInvariants } from './invariants';
 export { handleWebhook } from './webhooks';

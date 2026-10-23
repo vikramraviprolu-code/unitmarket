@@ -67,8 +67,22 @@ export type RefundRequester = (i: {
   actor: Actor;
 }) => Promise<Result<{ refund_request_id: Id }, { code: string }>>;
 
-/** resolve needs the content store (restore probes it) and, for offer_refund, the refund path. */
-export type ResolveDeps = CoreDeps & { content: ContentStore; requestRefund?: RefundRequester };
+/** Lane 05b's cancelRefundRequest, bound to its deps by the composition root. Absent: no undo. */
+export type RefundCanceller = (i: {
+  refund_request_id: Id;
+  actor: Actor;
+}) => Promise<Result<unknown, { code: string }>>;
+
+/**
+ * resolve needs the content store (restore probes it) and, for offer_refund, the refund path and the
+ * way to undo it: an offer over several units is all or none, so a refused later unit cancels the
+ * requests already made.
+ */
+export type ResolveDeps = CoreDeps & {
+  content: ContentStore;
+  requestRefund?: RefundRequester;
+  cancelRefund?: RefundCanceller;
+};
 
 type Opener = 'system' | 'buyer' | 'operator';
 interface CaseRow {
@@ -591,7 +605,12 @@ async function creditCase(
   });
 }
 
-/** Offer a refund through lane 05b's requestRefund (operator only). The read-back closes it later. */
+/**
+ * Offer a refund through lane 05b's requestRefund (operator only). The follow-up closes it later.
+ * All units or none: if a later unit is refused, or the case moved meanwhile, the requests made in
+ * this call are cancelled, so no request is left blocking a unit. A case of several units needs the
+ * cancel path; without it the offer is refused before any request is made.
+ */
 async function offerRefund(
   d: ResolveDeps,
   c: CaseRow,
@@ -601,13 +620,31 @@ async function offerRefund(
   if (d.requestRefund === undefined) return WRONG;
   const units = await verifiedUnits(d.db, c);
   if (units.length === 0) return WRONG;
+  if (units.length > 1 && d.cancelRefund === undefined) return WRONG;
   const requested: string[] = [];
-  for (const unit_id of units) {
-    const r = await d.requestRefund({ unit_id, amount: null, reason, actor: by });
-    if (!r.ok) return WRONG;
-    requested.push(r.value.refund_request_id);
+  const undo = async (): Promise<void> => {
+    for (const refund_request_id of requested) {
+      try {
+        await d.cancelRefund?.({ refund_request_id, actor: by });
+      } catch {
+        // The others are still cancelled; a request that stays is visible to an operator.
+      }
+    }
+  };
+  try {
+    for (const unit_id of units) {
+      const r = await d.requestRefund({ unit_id, amount: null, reason, actor: by });
+      if (!r.ok) {
+        await undo();
+        return WRONG;
+      }
+      requested.push(r.value.refund_request_id);
+    }
+  } catch (e) {
+    await undo();
+    throw e;
   }
-  return d.db.transaction(async (tx) => {
+  const done = await d.db.transaction(async (tx) => {
     const locked = await loadCase(tx, c.id, true);
     if (locked === null || !RESOLVABLE_STATES.includes(locked.state)) return WRONG;
     return finish(
@@ -619,6 +656,8 @@ async function offerRefund(
       { refund_request_ids: requested.join(',') },
     );
   });
+  if (!done.ok) await undo();
+  return done;
 }
 
 // ---------------------------------------------------------------------------------------------

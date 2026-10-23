@@ -7,6 +7,10 @@
 // follows the ledger sums (D-019): below the captured amount it is partially_refunded and access
 // continues (ASM-59); equal, it is refunded and the entitlements revoke the window. A reversal is
 // only ever suspected here; `reversed` needs an operator's confirmation (architecture 4.2).
+// A refund list that does not add up FREEZES the order (orders.mismatch plus a frozen_order alert):
+// requestRefund then answers unit_frozen. Nothing here ever clears the flag, not even a later clean
+// read; a human does. Access is never changed by a freeze. A request that was never executed can be
+// cancelled (cancelRefundRequest), which frees the unit.
 // Adapted from AIC_Hackathon_UnitMarket packages/core/payments/reconcile.ts (refund and reversal
 // steps) at a36ddc03fd0b962000f686291c145b50ee337f90. Owned by SBX lane 05b.
 import { applyMoneyEvent } from '@umsbx/entitlements';
@@ -129,7 +133,8 @@ export async function requestRefund(
         | 'over_refund'
         | 'not_operator'
         | 'mfa_required'
-        | 'refund_in_flight';
+        | 'refund_in_flight'
+        | 'unit_frozen';
     }
   >
 > {
@@ -151,6 +156,11 @@ export async function requestRefund(
     if (unit === null || !unit.verified || unit.capture_id === null || !BOOKABLE.has(unit.status)) {
       return err({ code: 'not_captured' as const });
     }
+    // A frozen order (a refund list that did not add up) takes no new request until a human clears it.
+    const frozen = await tx.query('SELECT 1 FROM orders WHERE id = $1 AND mismatch = true', [
+      unit.order_id,
+    ]);
+    if (frozen.rows.length > 0) return err({ code: 'unit_frozen' as const });
     // One open request per unit: a double click and a partial-then-remainder sequence cannot overlap.
     const inFlight = await tx.query(
       `SELECT 1 FROM refund_requests WHERE unit_id = $1 AND state IN ${IN_FLIGHT} LIMIT 1`,
@@ -163,7 +173,9 @@ export async function requestRefund(
         [unit.id],
       )
     ).rows[0];
-    const remaining = unit.amount_minor - unit.refunded_minor - Number(open?.n ?? 0);
+    // D-019: the ledger decides what is refunded, not the column.
+    const remaining =
+      unit.amount_minor - (await ledgerRefunded(tx, unit.id)) - Number(open?.n ?? 0);
     let minor: number;
     if (i.amount !== null) {
       minor = i.amount.minor;
@@ -208,6 +220,62 @@ export async function requestRefund(
       detail: { unit_id: unit.id, amount_minor: minor, currency: unit.currency },
     });
     return ok({ refund_request_id: id });
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// cancelRefundRequest
+
+/**
+ * Withdraws a request that was never executed (state `requested`, no refund id): it becomes
+ * `cancelled`, its reservation is freed, the operation that waits to send it (a put-off send) is
+ * closed so the due pass never sends it late, and the audit log says who. Operator with MFA only. It
+ * needs no switch: an operator must be able to clear a request while refunds are paused. A request
+ * that was sent, is pending, unknown or settled is not touched (wrong_state).
+ */
+export async function cancelRefundRequest(
+  d: PaymentsDeps,
+  request_id: string,
+  actor: Actor,
+): Promise<
+  Result<
+    { refund_request_id: Id },
+    { code: 'not_operator' | 'mfa_required' | 'not_found' | 'wrong_state' }
+  >
+> {
+  if (actor.kind !== 'operator') return err({ code: 'not_operator' });
+  if (actor.mfa !== true) return err({ code: 'mfa_required' });
+  if (!IdSchema.safeParse(request_id).success) return err({ code: 'not_found' });
+  const peek = await loadRequest(d.db, request_id);
+  if (peek === null) return err({ code: 'not_found' });
+  return d.db.transaction(async (tx) => {
+    // Lock order: the order and its operations, then the unit, then the request.
+    await lockOrderOfUnit(tx, peek.unit_id);
+    const unit = await loadUnitFacts(tx, peek.unit_id, true);
+    const rq = await loadRequest(tx, request_id, true);
+    if (unit === null || rq === null) return err({ code: 'not_found' as const });
+    if (rq.state !== 'requested' || rq.refund_id !== null)
+      return err({ code: 'wrong_state' as const });
+    const at = d.clock.now().toISOString();
+    await tx.query(
+      "UPDATE refund_requests SET state = 'cancelled', updated_at = $2 WHERE id = $1",
+      [rq.id, at],
+    );
+    const op = await loadOperationByRequestId(tx, requestIdFor('refund', rq.id), { lock: true });
+    if (op !== null && op.state === 'unknown') {
+      await tx.query(
+        `UPDATE operations SET state = 'failed', failure_reason = 'invalid_request', lease_until = NULL, next_retry_at = NULL, updated_at = $2 WHERE id = $1`,
+        [op.id, at],
+      );
+    }
+    await d.audit.record(tx, {
+      actor,
+      action: 'refund.cancelled',
+      target: rq.id,
+      reason: null,
+      detail: { unit_id: unit.id, amount_minor: rq.amount_minor, currency: rq.currency },
+    });
+    return ok({ refund_request_id: rq.id });
   });
 }
 
@@ -948,6 +1016,7 @@ export async function resumeRefund(d: PaymentsDeps, op: RefundOp, ended: boolean
   const request_id = requestOf(op);
   const rq = await loadRequest(d.db, request_id);
   if (rq === null) return;
+  if (rq.state === 'cancelled' && rq.refund_id === null) return; // withdrawn by an operator, never sent
   if (op.kind === 'refund' && rq.state === 'requested' && rq.refund_id === null) {
     // BU-4: the first send was put off because PayPal's remaining amount could not be read.
     if (ended) {
@@ -1158,6 +1227,13 @@ export function suspectReversal(
 const REFUND_STATUSES: ReadonlySet<string> = new Set(RefundStatusSchema.options);
 
 /**
+ * Refund ids are compared ignoring case and surrounding whitespace, for MATCHING only (a stored id
+ * is always the one listed or returned, never this form). ASM-53 still needs the real ids to be
+ * byte-identical; this only keeps a case change from booking one refund twice.
+ */
+const idKey = (id: string): string => id.trim().toLowerCase();
+
+/**
  * A refund list that does not add up cannot be trusted to book anything: the unit is frozen the way
  * a mismatch freezes a paid order (the order keeps its status and gets `mismatch`, a frozen_order
  * alert names the unit and the reason, and a recovery case opens from it). Nothing is booked, no
@@ -1214,15 +1290,15 @@ async function bookListed(
     ) {
       return freezeOnList(tx, d, unit, `refund_list_amount_${x.refund_id}`);
     }
-    const seen = byId.get(x.refund_id);
+    const seen = byId.get(idKey(x.refund_id));
     if (seen !== undefined) {
       // An id listed twice counts once, when both entries say the same thing.
       if (seen.status !== x.status || seen.amount.minor !== x.amount.minor) {
-        return freezeOnList(tx, d, unit, `refund_list_conflict_${x.refund_id}`);
+        return freezeOnList(tx, d, unit, `refund_list_conflict_${seen.refund_id}`);
       }
       continue;
     }
-    byId.set(x.refund_id, x);
+    byId.set(idKey(x.refund_id), x);
   }
   const completed = [...byId.values()].filter((x) => x.status === 'COMPLETED');
   const listedTotal = completed.reduce((sum, x) => sum + x.amount.minor, 0);
@@ -1238,7 +1314,7 @@ async function bookListed(
       [unit.id],
     )
   ).rows) {
-    ours.set(r.refund_id, r.state);
+    ours.set(idKey(r.refund_id), r.state);
   }
   const booked = new Set(
     (
@@ -1246,11 +1322,11 @@ async function bookListed(
         "SELECT refund_id FROM ledger_entries WHERE capture_id = $1 AND kind = 'refund'",
         [unit.capture_id],
       )
-    ).rows.map((r) => r.refund_id),
+    ).rows.map((r) => idKey(r.refund_id)),
   );
   const fresh: OrderReadRefund[] = [];
   for (const x of completed) {
-    const state = ours.get(x.refund_id);
+    const state = ours.get(idKey(x.refund_id));
     if (state !== undefined) {
       // Ours: its read-back books it. If our books closed it as not refunded while PayPal lists it
       // COMPLETED, money moved that we think did not: a human decides, nothing is booked here.
@@ -1265,7 +1341,7 @@ async function bookListed(
       }
       continue;
     }
-    if (!booked.has(x.refund_id)) fresh.push(x);
+    if (!booked.has(idKey(x.refund_id))) fresh.push(x);
   }
   if (fresh.length === 0) return;
 
@@ -1276,7 +1352,20 @@ async function bookListed(
         AND state IN ('sent', 'unknown', 'unresolved') LIMIT 1`,
     [unit.id],
   );
-  if (lost.rows.length > 0) return;
+  if (lost.rows.length > 0) {
+    // Silence here would leave a refunded buyer with access and nobody told: one alert per listed
+    // refund id (the index dedupes a repeat), with the ids and amounts only.
+    for (const x of fresh) {
+      await raiseOpsAlert(tx, d, {
+        kind: 'refund_unbooked',
+        order_id: unit.order_id,
+        unit_id: unit.id,
+        reason: `listed_held_${x.refund_id}`,
+        detail: { shown_minor: x.amount.minor, held_by: 'request_without_refund_id' },
+      });
+    }
+    return;
+  }
 
   // 4. The sums must still fit the captured amount, and the unit must be one we can book on.
   const already = await ledgerRefunded(tx, unit.id);
