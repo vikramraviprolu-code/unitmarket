@@ -69,12 +69,12 @@ describe('buildCreateBody: payee left out only on our own merchant id', () => {
     ['own id with a suffix', `${OWN}X`],
     ['own id as a prefix of a longer id', `${OWN}0`],
     ['zero for letter O', OWN.replace('O', '0')],
-    ['Cyrillic S look-alike', `Ѕ${OWN.slice(1)}`],
-    ['Cyrillic X look-alike', `SBХ${OWN.slice(3)}`],
-    ['fullwidth letter', `Ｓ${OWN.slice(1)}`],
-    ['zero-width space inside', `SBX​OWNMERCH01`],
-    ['combining mark', `${OWN}́`],
-    ['NFD form of a precomposed id', 'É'],
+    ['Cyrillic S look-alike', `\u0405${OWN.slice(1)}`],
+    ['Cyrillic X look-alike', `SB\u0425${OWN.slice(3)}`],
+    ['fullwidth letter', `\uFF33${OWN.slice(1)}`],
+    ['zero-width space inside', `SBX${String.fromCharCode(0x200b)}OWNMERCH01`],
+    ['combining mark', `${OWN}\u0301`],
+    ['NFD form of a precomposed id', 'E\u0301'],
   ])('%s: the payee is kept', (_name, other) => {
     expect(payeeOf(req(other), OWN)).toEqual([{ merchant_id: other }]);
   });

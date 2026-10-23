@@ -1,7 +1,8 @@
 // BU-2 acceptance (state): the five locks decide every call at the time of the call. Real in-memory
 // database, real scoped gate (through buildOutbound), real approval rows (in-memory only), a
 // counting fake Wire. Nothing reaches a network; the production Wire is never built here.
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAuditSink } from '@umsbx/obs';
@@ -17,7 +18,7 @@ import {
 import { DomainConfigSchema } from '@umsbx/contracts';
 import { loadConfig } from '@umsbx/config';
 import type { App } from '../../apps/web/composition.server';
-import { call, signIn } from '../../apps/web/src/support';
+import { call, signIn, testEnv } from '../../apps/web/src/support';
 import {
   REF,
   T0,
@@ -549,5 +550,110 @@ describe('the polling wiring of the sandbox app (BU-5 notes for BU-2)', () => {
     const jobs = await app.startJobs();
     await jobs.stop();
     expect(lines.filter((l) => l.includes('transport.selfcheck'))).toHaveLength(1);
+  });
+});
+
+// ---- BU-7 (D-028): the sandbox seed of the one MVP-B publisher ----
+describe('BU-7 own payee seed (D-028)', () => {
+  const OWN_ID = 'SBXOWNMERCH01';
+  const OTHER_ID = 'SBXOWNMERCH02';
+  const live: App[] = [];
+  const dirs: string[] = [];
+
+  async function boot(env: Record<string, string>, sandbox = true): Promise<App> {
+    const counting = countingWire();
+    const full = sandbox ? await sandboxEnv(env) : await testEnv(env);
+    const app = createApp(full, { switch_cache_ms: 0, test_wire: counting.wire });
+    installApp(app);
+    live.push(app);
+    await app.ready();
+    expect(counting.calls).toHaveLength(0);
+    return app;
+  }
+  const publishers = async (app: App) =>
+    (
+      await app.db.query<{
+        slug: string;
+        paypal_merchant_id: string | null;
+        payee_verified_at: unknown;
+      }>('SELECT slug, paypal_merchant_id, payee_verified_at FROM publishers ORDER BY slug')
+    ).rows;
+
+  afterEach(async () => {
+    while (live.length > 0) await live.pop()!.close();
+    while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
+  });
+
+  describe('sandbox seed of the MVP-B publisher payee', () => {
+    it('own id set: harbour-ledger gets it, verified now; the other publisher stays unset', async () => {
+      const app = await boot({ UMS_OWN_MERCHANT_ID: OWN_ID });
+      const rows = await publishers(app);
+      const harbour = rows.find((r) => r.slug === 'harbour-ledger');
+      expect(harbour?.paypal_merchant_id).toBe(OWN_ID);
+      expect(harbour?.payee_verified_at).not.toBeNull();
+      const rest = rows.filter((r) => r.slug !== 'harbour-ledger');
+      expect(rest.length).toBeGreaterThan(0);
+      for (const r of rest) {
+        expect(r.paypal_merchant_id).toBeNull();
+        expect(r.payee_verified_at).toBeNull();
+      }
+    });
+
+    it('own id unset: every publisher stays without a merchant id (approval refuses, as today)', async () => {
+      const app = await boot({});
+      for (const r of await publishers(app)) {
+        expect(r.paypal_merchant_id).toBeNull();
+        expect(r.payee_verified_at).toBeNull();
+      }
+    });
+
+    it('offline mode keeps its synthetic labels, never the own id', async () => {
+      const app = await boot({ UMS_OWN_MERCHANT_ID: OWN_ID }, false);
+      const rows = await publishers(app);
+      expect(rows.length).toBeGreaterThan(0);
+      for (const r of rows) {
+        expect(r.paypal_merchant_id).toMatch(/^DRYRUN/);
+        expect(r.paypal_merchant_id).not.toBe(OWN_ID);
+      }
+    });
+
+    it('a value already stored is never overwritten by a later start with another own id', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'bu7-seed-'));
+      dirs.push(dir);
+      const disk = { UMS_DB: 'pglite-disk', UMS_PGLITE_DIR: dir };
+
+      let app = await boot({ ...disk });
+      expect((await publishers(app)).every((r) => r.paypal_merchant_id === null)).toBe(true);
+      await app.close();
+      live.pop();
+
+      app = await boot({ ...disk, UMS_OWN_MERCHANT_ID: OWN_ID });
+      expect(
+        (await publishers(app)).find((r) => r.slug === 'harbour-ledger')?.paypal_merchant_id,
+      ).toBe(OWN_ID);
+      await app.close();
+      live.pop();
+
+      app = await boot({ ...disk, UMS_OWN_MERCHANT_ID: OTHER_ID });
+      expect(
+        (await publishers(app)).find((r) => r.slug === 'harbour-ledger')?.paypal_merchant_id,
+      ).toBe(OWN_ID);
+    }, 60_000);
+
+    it('the value is not written to any log line or audit row', async () => {
+      const lines: string[] = [];
+      const counting = countingWire();
+      const app = createApp(await sandboxEnv({ UMS_OWN_MERCHANT_ID: OWN_ID }), {
+        switch_cache_ms: 0,
+        log_sink: (l) => lines.push(l),
+        test_wire: counting.wire,
+      });
+      installApp(app);
+      live.push(app);
+      await app.ready();
+      expect(lines.join('\n')).not.toContain(OWN_ID);
+      const audit = await app.db.query<Record<string, unknown>>('SELECT * FROM audit_log');
+      expect(JSON.stringify(audit.rows)).not.toContain(OWN_ID);
+    });
   });
 });

@@ -364,7 +364,9 @@ describe('the default scope (mvp_b_polling) with our own merchant id (BU-7, D-02
         [order.order_id],
       ),
     ).toBe(1);
-    expect(await count('SELECT count(*) AS c FROM entitlements')).toBe(1);
+    expect(
+      await count("SELECT count(*) AS c FROM entitlements WHERE access_state = 'available'"),
+    ).toBe(1);
     expect(await count(`SELECT count(*) AS c FROM audit_log WHERE action = 'gate.reserve'`)).toBe(
       played.length,
     );
