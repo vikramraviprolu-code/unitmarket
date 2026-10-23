@@ -1370,12 +1370,16 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/no-package-escape', 'sbx/sealed-transport'],
   },
 ];
-for (const e of NAMED_EXEMPTIONS)
-  for (const r of e.off)
-    if (NON_EXEMPTABLE.includes(r))
-      throw new Error(
-        `SEAL5: ${r} cannot be switched off by a named exemption (${e.files.join(', ')})`,
-      );
+/** Throws when an exemption tries to switch off a rule in NON_EXEMPTABLE. Run on the real list below. */
+export function checkNamedExemptions(list) {
+  for (const e of list)
+    for (const r of e.off)
+      if (NON_EXEMPTABLE.includes(r))
+        throw new Error(
+          `SEAL5: ${r} cannot be switched off by a named exemption (${e.files.join(', ')})`,
+        );
+}
+checkNamedExemptions(NAMED_EXEMPTIONS);
 const namedExemptions = NAMED_EXEMPTIONS.map((e) => ({
   files: e.files,
   rules: Object.fromEntries(e.off.map((r) => [r, 'off'])),

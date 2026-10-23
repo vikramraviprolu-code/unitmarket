@@ -17,8 +17,11 @@ export type Step =
       status?: number;
       headers?: Record<string, string | string[]>;
       chunks?: Chunk[];
-      /** 'end' (default) ends the body; 'reset' destroys the response with ECONNRESET instead. */
-      then?: 'end' | 'reset';
+      /**
+       * 'end' (default) ends the body; 'reset' destroys the response with an ECONNRESET error;
+       * 'close' destroys it with no error (the connection just closes before the end).
+       */
+      then?: 'end' | 'reset' | 'close';
     }
   /** Connects and answers the head, then never sends the rest of the body. */
   | { kind: 'stall-body'; status?: number; chunks?: Chunk[] }
@@ -139,6 +142,7 @@ function play(
     await Promise.resolve();
     if (res.destroyed) return;
     if (step.then === 'reset') res.destroy(nodeError('ECONNRESET', 'aborted'));
+    else if (step.then === 'close') res.destroy();
     else res.push(null);
   })();
 }

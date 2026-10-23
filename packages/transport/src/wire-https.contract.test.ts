@@ -155,6 +155,17 @@ describe('the Wire built by createHttpsWire (against fake node:https, node:tls, 
     expect(loaded.world.connect).toHaveBeenCalledTimes(1);
     expect(loaded.world.connect.mock.calls[0]).toContainEqual(opts);
   });
+  it('a tls.connect swapped in after load is not what the agent connects with', async () => {
+    await loaded.createHttpsWire().request(wireReq());
+    const agent = loaded.world.calls[0]?.options['agent'] as unknown as {
+      createConnection(o: object, cb?: () => void): unknown;
+    };
+    const replacement = vi.fn(() => ({}));
+    loaded.world.tls['connect'] = replacement;
+    agent.createConnection({ host: SANDBOX_HOST, port: 443 }, () => undefined);
+    expect(replacement).not.toHaveBeenCalled();
+    expect(loaded.world.connect).toHaveBeenCalledTimes(1);
+  });
   it('two Wires do not share an agent (each owns its connections)', async () => {
     const a = loaded.createHttpsWire();
     const b = loaded.createHttpsWire();

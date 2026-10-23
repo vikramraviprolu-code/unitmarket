@@ -122,7 +122,7 @@ describe('non-https, userinfo, port and fragment refused before any request', ()
 });
 
 describe('3xx is returned as a response and its Location is never requested', () => {
-  it.each([301, 302, 303, 307, 308])('status %i', async (status) => {
+  it.each([300, 301, 302, 303, 304, 307, 308, 399])('status %i', async (status) => {
     const { wire, calls } = build({
       kind: 'response',
       status,
@@ -209,10 +209,30 @@ describe('total deadline gives timeout', () => {
     expect(calls[0]?.reqDestroyed).toBe(true);
   });
   it('the connect timer stops once the handshake is done: a slow body is not cut at 3 s', async () => {
-    const { wire } = build({ kind: 'response', chunks: ['ok'] });
+    const { wire } = build({ kind: 'stall-body', chunks: ['{"par'] });
     const p = wire.request(get());
-    await vi.advanceTimersByTimeAsync(0);
-    expect(await p).toMatchObject({ kind: 'response', body: 'ok' });
+    let settled = false;
+    void p.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(CONNECT_TIMEOUT_MS + 2000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(TOTAL_DEADLINE_MS);
+    expect(await p).toEqual({ kind: 'error', error: 'timeout' });
+  });
+  it('no timer is left behind after a response, an error or a redirect', async () => {
+    const scripts: Script[] = [
+      { kind: 'response', chunks: ['ok'] },
+      { kind: 'request-error', code: 'ECONNREFUSED' },
+      { kind: 'response', status: 302 },
+    ];
+    for (const script of scripts) {
+      const { wire } = build(script);
+      const p = wire.request(get());
+      await vi.advanceTimersByTimeAsync(0);
+      await p;
+      expect(vi.getTimerCount(), JSON.stringify(script)).toBe(0);
+    }
   });
   it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
     'a timeout of %s is refused before any request',
@@ -256,6 +276,10 @@ describe('error codes map: ENOTFOUND dns, ECONNREFUSED connect, CERT_* and ERR_T
   });
   it('a response that is cut off before its end gives reset', async () => {
     const { wire } = build({ kind: 'response', chunks: ['{"par'], then: 'reset' });
+    expect(await wire.request(get())).toEqual({ kind: 'error', error: 'reset' });
+  });
+  it('a connection that closes before the end of the body, with no error, also gives reset', async () => {
+    const { wire } = build({ kind: 'response', chunks: ['{"par'], then: 'close' });
     expect(await wire.request(get())).toEqual({ kind: 'error', error: 'reset' });
   });
 });

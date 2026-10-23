@@ -1391,6 +1391,16 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
       expect(off).not.toContain(GLOB);
       expect(off).not.toContain(ALIAS);
     });
+    it('the config refuses to load an exemption that switches either rule off', async () => {
+      const { checkNamedExemptions } = await import('../eslint.config.mjs');
+      expect(() =>
+        checkNamedExemptions([{ files: ['x.ts'], off: ['no-restricted-syntax'] }]),
+      ).not.toThrow();
+      for (const rule of [GLOB, ALIAS])
+        expect(() =>
+          checkNamedExemptions([{ files: ['x.ts'], off: ['sbx/no-global-alias', rule] }]),
+        ).toThrow(rule);
+    });
     it('both rules are errors in the config of every kind of file', async () => {
       for (const f of [
         'evil.mjs',
