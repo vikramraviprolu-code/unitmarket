@@ -446,3 +446,168 @@ describe('lock order with recovery cases (D-020)', () => {
     expect(bad).toEqual([]);
   });
 });
+
+// LOW-3: the offer is all units or none. A refused later unit cancels the requests made for the
+// earlier ones in the same call, so nothing is left blocking a unit.
+describe('offer_refund is atomic over the units of a case', () => {
+  async function twoUnitCase() {
+    const it1 = await w.item(1);
+    await w.insert('order_units', {
+      id: 'unt_1b',
+      order_id: 'ord_1',
+      provider_order_ref: null,
+      publisher_id: 'pub_1',
+      reference_id: 'refid_1b',
+      payee_merchant_id: 'MERCH1',
+      amount_minor: 300,
+      platform_fee_minor: 0,
+      capture_id: 'CAP1B',
+      status: 'captured_verified',
+      status_reason: null,
+      paypal_fee_minor: null,
+      refunded_minor: 0,
+      captured_verified_at: w.clock.now().toISOString(),
+      mismatch_reason: null,
+    });
+    const c = await openCase(w.deps, {
+      kind: 'refund_requested',
+      order_id: it1.order_id,
+      opened_by: 'operator',
+      actor: operator,
+    });
+    if (!c.ok) throw new Error(`open failed ${c.error.code}`);
+    return c.value.case_id;
+  }
+  const requestStates = async () =>
+    (
+      await w.db.query<{ unit_id: string; state: string }>(
+        'SELECT unit_id, state FROM refund_requests ORDER BY unit_id',
+      )
+    ).rows;
+  const offerActions = async (case_id: string) =>
+    (
+      await w.db.query('SELECT 1 FROM recovery_actions WHERE case_id = $1 AND action = $2', [
+        case_id,
+        'offer_refund',
+      ])
+    ).rows.length;
+  const cancelling =
+    (cancelled: string[], ok = true) =>
+    (i: { refund_request_id: string }) => {
+      cancelled.push(i.refund_request_id);
+      return Promise.resolve(
+        ok
+          ? { ok: true as const, value: {} }
+          : { ok: false as const, error: { code: 'wrong_state' } },
+      );
+    };
+
+  it('every unit gets a request: the case goes to refund_pending with all ids', async () => {
+    const case_id = await twoUnitCase();
+    const made: string[] = [];
+    const r = await resolve(
+      {
+        ...w.deps,
+        requestRefund: requester(w, made) as never,
+        cancelRefund: cancelling([]) as never,
+      },
+      { case_id, action: 'offer_refund', by: operator, reason: 'x' },
+    );
+    expect(r.ok && r.value.state).toBe('refund_pending');
+    expect(made).toHaveLength(2);
+  });
+
+  it('a refused later unit cancels the earlier requests and the case stays as it was', async () => {
+    const case_id = await twoUnitCase();
+    const made: string[] = [];
+    const inner = requester(w, made);
+    let n = 0;
+    const second = (i: Parameters<typeof inner>[0]) => {
+      n += 1;
+      return n === 1
+        ? inner(i)
+        : Promise.resolve({ ok: false as const, error: { code: 'refund_in_flight' } });
+    };
+    const cancelled: string[] = [];
+    const r = await resolve(
+      { ...w.deps, requestRefund: second as never, cancelRefund: cancelling(cancelled) as never },
+      { case_id, action: 'offer_refund', by: operator, reason: 'x' },
+    );
+    expect(r).toEqual({ ok: false, error: { code: 'wrong_state' } });
+    expect(cancelled).toEqual(made);
+    expect(made).toHaveLength(1);
+    expect(await offerActions(case_id)).toBe(0);
+    expect(
+      (
+        await w.db.query<{ state: string }>('SELECT state FROM recovery_cases WHERE id = $1', [
+          case_id,
+        ])
+      ).rows[0]!.state,
+    ).toBe('open');
+  });
+
+  it('the cancel is made as the operator who offered', async () => {
+    const case_id = await twoUnitCase();
+    const inner = requester(w, []);
+    let n = 0;
+    const second = (i: Parameters<typeof inner>[0]) => {
+      n += 1;
+      return n === 1
+        ? inner(i)
+        : Promise.resolve({ ok: false as const, error: { code: 'unit_frozen' } });
+    };
+    const seen: unknown[] = [];
+    await resolve(
+      {
+        ...w.deps,
+        requestRefund: second as never,
+        cancelRefund: ((i: unknown) => {
+          seen.push(i);
+          return Promise.resolve({ ok: true, value: {} });
+        }) as never,
+      },
+      { case_id, action: 'offer_refund', by: operator, reason: 'x' },
+    );
+    expect(seen).toEqual([{ refund_request_id: expect.any(String), actor: operator }]);
+  });
+
+  it('a cancel that fails does not stop the others from being cancelled; the offer is still refused', async () => {
+    const case_id = await twoUnitCase();
+    const inner = requester(w, []);
+    let n = 0;
+    const third = (i: Parameters<typeof inner>[0]) => {
+      n += 1;
+      return n <= 1
+        ? inner(i)
+        : Promise.resolve({ ok: false as const, error: { code: 'over_refund' } });
+    };
+    const cancelled: string[] = [];
+    const r = await resolve(
+      {
+        ...w.deps,
+        requestRefund: third as never,
+        cancelRefund: cancelling(cancelled, false) as never,
+      },
+      { case_id, action: 'offer_refund', by: operator, reason: 'x' },
+    );
+    expect(r).toEqual({ ok: false, error: { code: 'wrong_state' } });
+    expect(cancelled).toHaveLength(1);
+  });
+
+  it('without a way to cancel, a case of several units is refused before any request is made', async () => {
+    const case_id = await twoUnitCase();
+    const made: string[] = [];
+    const r = await resolve(
+      { ...w.deps, requestRefund: requester(w, made) as never },
+      { case_id, action: 'offer_refund', by: operator, reason: 'x' },
+    );
+    expect(r).toEqual({ ok: false, error: { code: 'wrong_state' } });
+    expect(made).toEqual([]);
+    expect(await requestStates()).toEqual([]);
+  });
+
+  it('a case of one unit needs no cancel path', async () => {
+    const c = await pendingCase([2]);
+    expect(await stateOf(c.case_id)).toBe('refund_pending');
+  });
+});

@@ -13,6 +13,7 @@ import {
 import { listLedger } from '@umsbx/ledger';
 import { getReceiptForBuyer } from '@umsbx/receipts';
 import { MAX_REQUEST_ID_LENGTH, executeRefund, reconcileOrder, requestRefund } from './index';
+import { cancelRefundRequest } from './refunds';
 import { OPERATOR, paid } from './ops/support';
 import { makeRemainingWorld } from './remaining-world';
 import type { RemainingWorld } from './remaining-world';
@@ -60,6 +61,9 @@ describe('requestRefund answers', () => {
     await ask({ unit_id: 'unt_unknown' });
     await ask({ amount: usd(9_999) });
     await ask({ amount: { currency: 'EUR', minor: 100 } });
+    await w.rows('UPDATE orders SET mismatch = true');
+    await ask({}); // a frozen unit
+    await w.rows('UPDATE orders SET mismatch = false');
     w.switches.refunds_enabled = false;
     await ask({});
     w.switches.refunds_enabled = true;
@@ -73,6 +77,7 @@ describe('requestRefund answers', () => {
         'over_refund',
         'refund_in_flight',
         'refunds_off',
+        'unit_frozen',
       ].sort(),
     );
   });
@@ -89,6 +94,36 @@ describe('requestRefund answers', () => {
       ok: true,
       value: { refund_request_id: expect.stringMatching(/^rfr_[0-9a-z]{26}$/) },
     });
+  });
+});
+
+describe('cancelRefundRequest answers', () => {
+  it('has exactly the documented refusal codes and the success shape', async () => {
+    const { unit } = await setup();
+    const rq = await requestRefund(w.deps, {
+      unit_id: unit.id,
+      amount: usd(100),
+      reason: 'x',
+      actor: OPERATOR,
+    });
+    if (!rq.ok) throw new Error('refused');
+    const id = rq.value.refund_request_id;
+    const codes = new Set<string>();
+    const ask = async (request: string, actor: Parameters<typeof cancelRefundRequest>[2]) => {
+      const r = await cancelRefundRequest(w.deps, request, actor);
+      if (!r.ok) {
+        expect(Object.keys(r)).toEqual(['ok', 'error']);
+        expect(Object.keys(r.error)).toEqual(['code']);
+        codes.add(r.error.code);
+      }
+      return r;
+    };
+    await ask(id, { kind: 'buyer', buyer_id: 'buy_A' });
+    await ask(id, { kind: 'operator', operator_id: 'opr_1', mfa: false });
+    await ask('rfr_unknown', OPERATOR);
+    expect(await ask(id, OPERATOR)).toEqual({ ok: true, value: { refund_request_id: id } });
+    await ask(id, OPERATOR); // already cancelled
+    expect([...codes].sort()).toEqual(['mfa_required', 'not_found', 'not_operator', 'wrong_state']);
   });
 });
 
