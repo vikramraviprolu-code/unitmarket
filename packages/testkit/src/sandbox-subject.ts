@@ -374,10 +374,9 @@ export function sandboxSubject(o: SandboxSubjectOptions): SandboxSubject {
         log: quietLog,
         credentials,
         record: async () => undefined,
-        // BU-7 (D-028): the adapter leaves the payee out when it equals our own merchant id. An
-        // adapter without that option ignores the field.
-        ...({ own_merchant_id: own } as object),
-      } as Parameters<typeof createPayPalAdapter>[0]);
+        // D-028: the adapter leaves the payee out of create_order when it equals our own merchant id.
+        own_merchant_id: own,
+      });
       const links = new Map<string, string>();
       const port: PayPalPort = {
         ...adapter,

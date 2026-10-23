@@ -69,7 +69,7 @@ export async function runOwnerSuite(d, ctx) {
       transport: outbound.transport,
       clock,
       credentials: { client_id: credentials.client_id, client_secret: credentials.client_secret },
-      own_merchant_id: config.own_merchant_id ?? null,
+      own_merchant_id: config.own_merchant_id,
       stderr: d.err,
     });
     const run = ownerSubset(subject);

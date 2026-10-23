@@ -18,15 +18,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { REPO_ROOT } from './test-helpers';
-import { ENV_NAMES } from '../packages/config/src/schema';
 import { CI_MARKERS, AI_MARKERS, runSandboxConformance } from './sandbox-conformance.mjs';
 
-// UMS_OWN_MERCHANT_ID is read by packages/config from BU-7 on (D-028). Until that lane is merged the
-// config does not know the name, the subject has no payee, and the run stops before its first call
-// with a different reason. Both are a STOP with no Wire call; once BU-7 is in, the closed lock
-// (no approval row, switch off) is what stops it.
-const CONFIG_KNOWS_OWN_ID = (ENV_NAMES as readonly string[]).includes('UMS_OWN_MERCHANT_ID');
-const STOP_REASON = CONFIG_KNOWS_OWN_ID ? /kill_switch/ : /UMS_OWN_MERCHANT_ID is not set/;
+// With the fake config below the locks are closed (no approval row, switch off): the first call is
+// blocked by the kill switch, before any Wire call.
+const STOP_REASON = /kill_switch/;
 
 const SCRIPT = join(REPO_ROOT, 'scripts', 'sandbox-conformance.mjs');
 const tmps: string[] = [];

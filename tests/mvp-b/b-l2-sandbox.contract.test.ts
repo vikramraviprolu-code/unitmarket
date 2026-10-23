@@ -70,8 +70,16 @@ const opOf = (method: string, path: string): PayPalOperation | null => {
 };
 
 /** A Wire that plays PayPal with the order model of the testkit. It opens no socket. */
-async function modelWire(rig: { clock: Parameters<typeof createDryRunStack>[0]['clock'] }) {
-  const stack = await createDryRunStack({ clock: rig.clock, default_scenario: null });
+type Tamper = (operation: PayPalOperation, body: Record<string, unknown>) => void;
+async function modelWire(
+  rig: { clock: Parameters<typeof createDryRunStack>[0]['clock'] },
+  tamper?: Tamper,
+) {
+  const stack = await createDryRunStack({
+    clock: rig.clock,
+    default_scenario: null,
+    own_merchant_id: OWN,
+  });
   const created: string[] = [];
   const seen: WireRequest[] = [];
   const wire: Wire = {
@@ -104,7 +112,17 @@ async function modelWire(rig: { clock: Parameters<typeof createDryRunStack>[0]['
         const id = (JSON.parse(res.body) as { id?: string }).id;
         if (id !== undefined) created.push(id);
       }
-      return { kind: 'response', status: res.status, headers: res.headers, body: res.body };
+      if (tamper === undefined) {
+        return { kind: 'response', status: res.status, headers: res.headers, body: res.body };
+      }
+      const b = JSON.parse(res.body) as Record<string, unknown>;
+      tamper(operation, b);
+      return {
+        kind: 'response',
+        status: res.status,
+        headers: res.headers,
+        body: JSON.stringify(b),
+      };
     },
   };
   return { wire, stack, created, seen };
@@ -115,15 +133,15 @@ afterEach(async () => {
   for (const r of rigs.splice(0)) await r.close();
 });
 
-async function rehearse(o: RigOptions = {}) {
+async function rehearse(o: RigOptions = {}, tamper?: Tamper) {
   // The Wire is built after the rig (it shares the rig's clock), so the rig gets a forwarding Wire.
   const holder: { m?: Awaited<ReturnType<typeof modelWire>> } = {};
   const lateWire: Wire = {
     request: (r) => (holder.m as NonNullable<typeof holder.m>).wire.request(r),
   };
-  const rig = await makeRig({ scope: 'mvp_c_refunds', ...o, wire: lateWire });
+  const rig = await makeRig({ ...o, wire: lateWire });
   rigs.push(rig);
-  holder.m = await modelWire(rig);
+  holder.m = await modelWire(rig, tamper);
   const m = holder.m;
   const lines: string[] = [];
   const subject = sandboxSubject({
@@ -175,6 +193,48 @@ describe('rehearsal through the real five locks (fake Wire, order model)', () =>
       expect(await r.rig.reservations()).toBe(0);
       expect(r.report.cases.every((c) => !c.pass)).toBe(true);
       expect(r.lines).toContain('payee echo: STOP');
+    },
+  );
+});
+
+describe('D-028 end to end through the real gate under mvp_b_polling', () => {
+  it('the create goes out without a payee and the read-back echoes our own id: payee echo: own id', async () => {
+    const r = await rehearse();
+    const create = r.m.seen.find((w) => new URL(w.url).pathname === '/v2/checkout/orders');
+    expect(create?.body).not.toBeNull();
+    expect(create?.body).not.toContain('payee');
+    expect(r.lines).toContain('payee echo: own id');
+    expect(r.report.payee_echo).toBe('own id');
+  });
+  const units = (b: Record<string, unknown>) => b.purchase_units as Record<string, unknown>[];
+  it.each([
+    [
+      'another merchant id is echoed',
+      (op: PayPalOperation, b: Record<string, unknown>) => {
+        if (op === 'get_order')
+          (units(b)[0] as Record<string, unknown>).payee = { merchant_id: 'SBXOTHERMERC2' };
+      },
+    ],
+    [
+      'no payee is echoed',
+      (op: PayPalOperation, b: Record<string, unknown>) => {
+        if (op === 'get_order') delete (units(b)[0] as Record<string, unknown>).payee;
+      },
+    ],
+  ])(
+    '%s: STOP, exactly token + create + read reach the Wire, no retry, no second create',
+    async (_n, tamper) => {
+      const r = await rehearse({}, tamper);
+      expect(r.report.payee_echo).toBe('STOP');
+      expect(r.lines).toContain('payee echo: STOP');
+      expect(r.lines.some((l) => l.includes(OWN) || l.includes('SBXOTHERMERC2'))).toBe(false);
+      const paths = r.m.seen.map((w) => `${w.method} ${new URL(w.url).pathname}`);
+      expect(paths).toEqual([
+        'POST /v1/oauth2/token',
+        'POST /v2/checkout/orders',
+        expect.stringMatching(/^GET \/v2\/checkout\/orders\/[A-Z0-9]+$/),
+      ]);
+      expect(r.report.cases.slice(1).every((c) => /^not run/.test(c.detail))).toBe(true);
     },
   );
 });
