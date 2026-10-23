@@ -23,7 +23,7 @@ async function fresh(): Promise<Db> {
 }
 
 async function ins(db: Database, table: string, row: Record<string, unknown>) {
-  const r = { created_at: T, updated_at: T, ...row };
+  const r: Record<string, unknown> = { created_at: T, updated_at: T, ...row };
   const cols = Object.keys(r);
   await db.query(
     `INSERT INTO ${table} (${cols.map((c) => (c === 'on' ? '"on"' : c)).join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')})`,

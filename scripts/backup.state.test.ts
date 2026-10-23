@@ -44,7 +44,7 @@ async function ins(
   table: string,
   row: Record<string, unknown>,
 ) {
-  const r = { created_at: T, updated_at: T, ...row };
+  const r: Record<string, unknown> = { created_at: T, updated_at: T, ...row };
   const cols = Object.keys(r);
   await db.query(
     `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')})`,
@@ -319,7 +319,9 @@ describe('what the backup refuses', () => {
     for (const args of [[], ['--dir', srcDir], ['--out', '/tmp/x'], ['--dir']]) {
       const r = cli(args);
       expect(r.status).toBe(2);
-      expect(r.stderr).toMatch(/usage: .*backup\.mjs --dir <pglite dir> --out <folder>/);
+      expect(r.stderr).toMatch(
+        /usage: .*backup\.mjs --dir <pglite dir> --out <folder outside the repo>/,
+      );
       expect(r.stderr).not.toMatch(/\n\s+at /);
     }
   });

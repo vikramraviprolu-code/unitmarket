@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrate, openDatabase } from '../packages/db/src/index';
 import { rowCounts } from '../packages/db/src/export-sql';
+import { systemClock } from '../packages/runtime/src/index';
 import { runBackup } from './backup.mjs';
 import { runRestore } from './restore.mjs';
 
@@ -25,6 +26,7 @@ const ROOT = join(__dirname, '..');
 const T = '2026-10-21T10:00:00Z';
 const HASH = 'a'.repeat(64);
 const clock = { now: () => new Date(T) };
+const wall = systemClock(); // real time, only to measure how long a restore takes
 const made: string[] = [];
 const fresh = (p: string) => {
   const d = mkdtempSync(join(tmpdir(), `co10r-${p}-`));
@@ -41,7 +43,7 @@ type Q = {
   exec: (s: string) => Promise<void>;
 };
 async function ins(db: Q, table: string, row: Record<string, unknown>) {
-  const r = { created_at: T, updated_at: T, ...row };
+  const r: Record<string, unknown> = { created_at: T, updated_at: T, ...row };
   const cols = Object.keys(r);
   await db.query(
     `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')})`,
@@ -292,9 +294,9 @@ async function verifyRestored(dir: string) {
 describe('tarball restore', () => {
   it('gives identical row counts and ledger sums, with the guards intact, inside the budget', async () => {
     const dir = target();
-    const t0 = process.hrtime.bigint();
+    const t0 = wall.now().getTime();
     const res = await runRestore({ from: backupDir, dir, clock });
-    const seconds = Number(process.hrtime.bigint() - t0) / 1e9;
+    const seconds = (wall.now().getTime() - t0) / 1000;
     expect(res.mode).toBe('tarball');
     expect(res.tables).toEqual(counts);
     expect(seconds).toBeLessThan(30);
@@ -305,9 +307,9 @@ describe('tarball restore', () => {
 describe('SQL restore', () => {
   it('imports the logical export into a fresh database with identical counts and ledger sums', async () => {
     const dir = target();
-    const t0 = process.hrtime.bigint();
+    const t0 = wall.now().getTime();
     const res = await runRestore({ from: backupDir, dir, sql: true, clock });
-    const seconds = Number(process.hrtime.bigint() - t0) / 1e9;
+    const seconds = (wall.now().getTime() - t0) / 1000;
     expect(res.mode).toBe('sql');
     expect(res.tables).toEqual(counts);
     expect(seconds).toBeLessThan(30);
@@ -325,7 +327,7 @@ describe('what the restore refuses', () => {
       const from = copyBackup();
       const p = join(from, tarName(from));
       const buf = readFileSync(p);
-      buf[Math.floor(buf.length / 2)] ^= 0x01;
+      buf[Math.floor(buf.length / 2)] = buf[Math.floor(buf.length / 2)]! ^ 0x01;
       writeFileSync(p, buf);
       const dir = target();
       await expect(runRestore({ from, dir, sql: mode, clock })).rejects.toThrow(
