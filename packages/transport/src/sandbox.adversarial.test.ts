@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApprovedSandboxTransport } from './sandbox';
-import { createFetchWire } from './wire-fetch';
+import { createHttpsWire } from './wire-https';
 import {
   LIVE_HOST,
   approvalFrom,
@@ -122,7 +122,7 @@ describe('guard bypass attempts never reach the wire or the gate', () => {
 
 describe('no real network in this package', () => {
   it('constructing the production Wire, and a full sealed + approved run, opens nothing', async () => {
-    const prod = createFetchWire();
+    const prod = createHttpsWire();
     expect(typeof prod.request).toBe('function');
     const { t } = await build();
     await t.send(req('get_order', '/v2/checkout/orders/ABC123'));

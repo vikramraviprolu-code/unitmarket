@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { REPO_ROOT } from './test-helpers';
 
 // The Wire's file name is built at run time: a transport test bars other code from naming it.
-const WIRE = ['wire', 'fetch'].join('-');
+const WIRE = ['wire', 'https'].join('-');
 const FILES = {
   config: 'packages/config/src/load.ts',
   wire: `packages/transport/src/${WIRE}.ts`,
@@ -35,6 +35,7 @@ const REQUIRED_NAMES = [
   'HTTP_PROXY',
   'NODE_EXTRA_CA_CERTS',
   'NODE_OPTIONS',
+  'NODE_PRESERVE_SYMLINKS',
   'NODE_TLS_REJECT_UNAUTHORIZED',
   'NODE_USE_ENV_PROXY',
   'NODE_USE_SYSTEM_CA',
@@ -66,6 +67,8 @@ const REFUSED_FLAGS = [
   '--tls-min-v1.1',
   '--conditions',
   '-C',
+  '--preserve-symlinks',
+  '--preserve-symlinks-main',
   '--report-signal',
   '--report-on-signal',
   '--report-on-fatalerror',

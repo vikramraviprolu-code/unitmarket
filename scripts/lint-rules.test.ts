@@ -1,12 +1,24 @@
 // Proves the ESLint layering rules (architecture 2.2 and 2.3) with real lint runs on virtual files.
 import { ESLint } from 'eslint';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { REPO_ROOT, TOKENS } from './test-helpers';
 
 // Built at run time: the transport package test bars any file outside the transport package from
 // naming the production Wire module, and this file lists its lint exemptions.
-const WIRE = ['wire', 'fetch'].join('-');
+const WIRE = ['wire', 'https'].join('-');
 
 let eslint: ESLint;
 beforeAll(() => {
@@ -1157,5 +1169,289 @@ describe('named exemptions (D-015)', () => {
         'tools/spike-kit/src/spike-cli.integration.test.ts -> no-restricted-imports,no-restricted-properties,sbx/no-global-alias',
       ].sort(),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// SEAL5 (a) to (d). Ways to reach the sealed names (createApprovedSandboxTransport, PRODUCTION_WIRE,
+// createScopedGate) without writing the package name: a package.json `imports` alias (`#ap`), a
+// node_modules alias whose real path is packages/transport or packages/safety, and the bundler
+// globs `import.meta.glob` / `import.meta.webpackContext`. The first two are proved real by the
+// Node resolver itself (createRequire().resolve) before lint is asked to refuse them.
+// ---------------------------------------------------------------------------------------------
+describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () => {
+  const ALIAS = 'sbx/no-sealed-alias';
+  const GLOB = 'sbx/no-bundler-glob';
+  const NAMES = 'createApprovedSandboxTransport, PRODUCTION_WIRE';
+  let fx: string; // fixture package directory, inside the repository so the config applies
+  let fxRel: string;
+  const TRANSPORT = join(REPO_ROOT, 'packages', 'transport');
+  const SAFETY = join(REPO_ROOT, 'packages', 'safety');
+
+  beforeAll(() => {
+    const base = join(REPO_ROOT, 'scripts', '__fixtures__');
+    fx = mkdtempSync(join(base, 'seal5-'));
+    fxRel = relative(REPO_ROOT, fx);
+    writeFileSync(
+      join(fx, 'package.json'),
+      JSON.stringify({
+        name: 'seal5-fixture',
+        private: true,
+        type: 'module',
+        imports: {
+          '#ap': '@umsbx/transport',
+          '#ap-cond': { node: { import: './nothing.js', default: '@umsbx/transport' } },
+          '#ap-array': ['./nothing.js', 'transport-alias'],
+          '#alias': 'transport-alias',
+          '#safety': 'safety-alias',
+          '#star/*': '@umsbx/transport/src/*',
+          '#ok': './ok.js',
+          '#okpkg': 'zod',
+        },
+      }),
+    );
+    mkdirSync(join(fx, 'node_modules', '@umsbx'), { recursive: true });
+    symlinkSync(TRANSPORT, join(fx, 'node_modules', '@umsbx', 'transport'), 'dir');
+    symlinkSync(TRANSPORT, join(fx, 'node_modules', 'transport-alias'), 'dir');
+    symlinkSync(SAFETY, join(fx, 'node_modules', 'safety-alias'), 'dir');
+  });
+  afterAll(() => rmSync(fx, { recursive: true, force: true }));
+
+  const only = async (file: string, code: string, rule: string) =>
+    (await lint(file, code)).filter((m) => m.ruleId === rule);
+  const inFx = (name: string) => join(fxRel, name);
+
+  describe('runtime proof: the Node resolver really lands in the sealed packages', () => {
+    it.each([
+      ['#ap', TRANSPORT],
+      ['#ap-cond', TRANSPORT],
+      ['#ap-array', TRANSPORT],
+      ['#alias', TRANSPORT],
+      ['#safety', SAFETY],
+      ['transport-alias', TRANSPORT],
+      ['safety-alias', SAFETY],
+    ])('%s resolves into %s', (spec, pkg) => {
+      const resolved = createRequire(join(fx, 'package.json')).resolve(spec);
+      expect(realpathSync(resolved).startsWith(`${realpathSync(pkg)}/`), resolved).toBe(true);
+    });
+  });
+
+  describe('(a) # imports that map to a sealed package, and (b) bare aliases that resolve into one', () => {
+    const forms: [string, (s: string) => string][] = [
+      [
+        'named import',
+        (s) =>
+          `import { ${NAMES} } from '${s}';\nexport const x = [createApprovedSandboxTransport, PRODUCTION_WIRE];\n`,
+      ],
+      ['default import', (s) => `import T from '${s}';\nexport const x = T;\n`],
+      ['namespace import', (s) => `import * as T from '${s}';\nexport const x = T;\n`],
+      ['side-effect import', (s) => `import '${s}';\n`],
+      ['re-export', (s) => `export { PRODUCTION_WIRE } from '${s}';\n`],
+      ['export star', (s) => `export * from '${s}';\n`],
+      ['dynamic import', (s) => `export const x = (await import('${s}')).PRODUCTION_WIRE;\n`],
+      ['require', (s) => `export const x = require('${s}').PRODUCTION_WIRE;\n`],
+      ['importActual', (s) => `export const x = await vi.importActual('${s}');\n`],
+    ];
+    const specs = [
+      '#ap',
+      '#ap-cond',
+      '#ap-array',
+      '#alias',
+      '#safety',
+      '#star/sandbox',
+      'transport-alias',
+      'transport-alias/src/sandbox',
+      'safety-alias',
+    ];
+    const files = ['evil.ts', 'evil.mjs', 'evil.test.ts', 'src/deep/evil.ts'];
+    it.each(specs)(
+      '%s is refused in every file of the package, in every import form',
+      async (spec) => {
+        for (const f of files)
+          for (const [name, make] of forms)
+            expect((await only(inFx(f), make(spec), ALIAS)).length, `${f} ${name}`).toBeGreaterThan(
+              0,
+            );
+      },
+    );
+    it('a # import that maps elsewhere, a bare package and a relative path are not flagged', async () => {
+      for (const spec of ['#ok', '#okpkg', '#missing', 'zod', 'node:fs', './x', 'vitest'])
+        expect(
+          await only(inFx('evil.ts'), `import x from '${spec}';\nexport const y = x;\n`, ALIAS),
+          spec,
+        ).toEqual([]);
+    });
+    it('the official package name is not this rule (the sealed-transport rule handles it)', async () => {
+      expect(
+        await only(
+          inFx('evil.ts'),
+          "import { a } from '@umsbx/contracts';\nexport const b = a;\n",
+          ALIAS,
+        ),
+      ).toEqual([]);
+    });
+    it('type-only imports load nothing and stay allowed', async () => {
+      expect(
+        await only(
+          inFx('evil.ts'),
+          "import type { Wire } from '#ap';\nexport type W = Wire;\n",
+          ALIAS,
+        ),
+      ).toEqual([]);
+    });
+    it('no package.json in the repository declares an imports map (a new one needs a reviewed change here)', () => {
+      const found: string[] = [];
+      const walk = (dir: string) => {
+        for (const name of readdirSync(dir)) {
+          if (
+            ['node_modules', '.git', '.next', 'dist', '.data', '.pglite', '__fixtures__'].includes(
+              name,
+            )
+          )
+            continue;
+          const p = join(dir, name);
+          if (statSync(p).isDirectory()) walk(p);
+          else if (name === 'package.json') {
+            const j = JSON.parse(readFileSync(p, 'utf8')) as { imports?: unknown };
+            if (j.imports !== undefined) found.push(relative(REPO_ROOT, p));
+          }
+        }
+      };
+      walk(REPO_ROOT);
+      expect(found).toEqual([]);
+    });
+  });
+
+  describe('(c) import.meta.glob and import.meta.webpackContext are barred outright', () => {
+    const G = "'../../packages/transport/src/sandbox.ts'";
+    const bad: [string, string][] = [
+      ['import.meta.glob', `export const m = import.meta.glob(${G}, { eager: true });\n`],
+      ['import.meta.glob lazy', `export const m = import.meta.glob(${G});\n`],
+      ['import.meta.globEager', `export const m = import.meta.globEager(${G});\n`],
+      [
+        'import.meta.webpackContext',
+        `export const m = import.meta.webpackContext('../packages/transport/src');\n`,
+      ],
+      ['string-keyed glob', `export const m = import.meta['glob'](${G});\n`],
+      ['template-keyed glob', `export const m = import.meta[\`glob\`](${G});\n`],
+      ['string-keyed webpackContext', `export const m = import.meta['webpackContext']('.');\n`],
+      ['optional chain', `export const m = import.meta?.glob?.(${G});\n`],
+      ['computed key', `export const m = import.meta[['gl', 'ob'].join('')](${G});\n`],
+      ['aliased import.meta', `const meta = import.meta;\nexport const m = meta.glob(${G});\n`],
+      ['destructured glob', `const { glob } = import.meta;\nexport const m = glob(${G});\n`],
+      [
+        'destructured rest',
+        `const { url, ...rest } = import.meta;\nexport const m = [url, rest];\n`,
+      ],
+      ['passed as an argument', `export const m = [import.meta].map((x) => x);\n`],
+      [
+        'cast then glob',
+        `export const m = (import.meta as unknown as { glob(s: string): unknown }).glob(${G});\n`,
+      ],
+      ['non-null then glob', `export const m = import.meta!.glob(${G});\n`],
+    ];
+    const anywhere = [
+      'packages/paypal/src/evil.ts',
+      'apps/web/composition.server.ts',
+      'apps/web/src/app/page.tsx',
+      'tests/mvp-b/evil.test.ts',
+      'scripts/evil.mjs',
+      'evil.mjs',
+      // the pinned (exempt from other rules) files: no exemption reaches this rule
+      'tests/mvp-b/b09-logs-clean.integration.test.ts',
+      'tests/mvp-b/no-mint-by-path.test.ts',
+      'packages/safety/src/scoped-gate.ts',
+      'packages/transport/src/sandbox.ts',
+      `packages/transport/src/${WIRE}.ts`,
+      'tools/spike-kit/src/spike.ts',
+    ];
+    it.each(bad)('%s is refused everywhere', async (_n, code) => {
+      for (const f of anywhere) expect((await only(f, code, GLOB)).length, f).toBeGreaterThan(0);
+    });
+    it('the harmless uses of import.meta stay allowed', async () => {
+      const ok = [
+        "export const u = new URL('./x', import.meta.url);\n",
+        'export const d = import.meta.dirname;\n',
+        'export const f = import.meta.filename;\n',
+        "export const r = import.meta.resolve('./x');\n",
+        'export const e = import.meta.env;\n',
+        'export const e = (import.meta as { env?: Record<string, string | undefined> }).env;\n',
+        'export const p = new URL(import.meta.url).pathname;\n',
+      ];
+      for (const code of ok)
+        expect(await only('packages/paypal/src/x.ts', code, GLOB), code).toEqual([]);
+    });
+    it('no named exemption can switch these two rules off, and the config refuses to load one that does', async () => {
+      const { NAMED_EXEMPTIONS } = await import('../eslint.config.mjs');
+      const off = (NAMED_EXEMPTIONS as { off: string[] }[]).flatMap((e) => e.off);
+      expect(off).not.toContain(GLOB);
+      expect(off).not.toContain(ALIAS);
+    });
+    it('both rules are errors in the config of every kind of file', async () => {
+      for (const f of [
+        'evil.mjs',
+        'packages/paypal/src/x.ts',
+        'apps/web/src/x.tsx',
+        'tests/mvp-a/x.test.ts',
+        'scripts/x.mjs',
+        inFx('x.ts'),
+      ]) {
+        const cfg = await eslint.calculateConfigForFile(join(REPO_ROOT, f));
+        expect(cfg.rules?.[GLOB]?.[0], `${f} ${GLOB}`).toBe(2);
+        expect(cfg.rules?.[ALIAS]?.[0], `${f} ${ALIAS}`).toBe(2);
+      }
+    });
+  });
+
+  describe('(d) a product file that is not pinned cannot obtain the sealed names by any of the probes', () => {
+    const probes: [string, string, string][] = [
+      [
+        'package.json imports alias #ap',
+        `import { ${NAMES} } from '#ap';\nexport const x = [createApprovedSandboxTransport, PRODUCTION_WIRE];\n`,
+        ALIAS,
+      ],
+      [
+        'node_modules alias with a bare specifier',
+        `import { ${NAMES} } from 'transport-alias';\nexport const x = [createApprovedSandboxTransport, PRODUCTION_WIRE];\n`,
+        ALIAS,
+      ],
+      [
+        'node_modules alias, deep path',
+        "import { createApprovedSandboxTransport } from 'transport-alias/src/sandbox';\nexport const x = createApprovedSandboxTransport;\n",
+        ALIAS,
+      ],
+      [
+        'import.meta.glob',
+        "const mods = import.meta.glob('../../packages/transport/src/sandbox.ts', { eager: true });\nexport const x = Object.values(mods).map((m) => (m as Record<string, unknown>)['createApprovedSandboxTransport']);\n",
+        GLOB,
+      ],
+      [
+        'import.meta.webpackContext',
+        "const ctx = import.meta.webpackContext('../../packages/transport/src', { recursive: false });\nexport const x = (ctx('./sandbox.ts') as Record<string, unknown>)['PRODUCTION_WIRE'];\n",
+        GLOB,
+      ],
+    ];
+    it.each(probes)('%s', async (_n, code, rule) => {
+      for (const f of [inFx('evil.ts'), inFx('src/product.ts'), inFx('product.server.ts')]) {
+        const hit = (await lint(f, code)).filter(
+          (m) => m.ruleId === rule || m.ruleId === 'sbx/sealed-transport',
+        );
+        expect(hit.length, f).toBeGreaterThan(0);
+      }
+      // the glob probes do not depend on the fixture package: they fail in any product file
+      if (rule === GLOB)
+        for (const f of [
+          'packages/paypal/src/evil.ts',
+          'apps/web/composition.server.ts',
+          'packages/jobs/src/evil.ts',
+        ])
+          expect((await only(f, code, GLOB)).length, f).toBeGreaterThan(0);
+    });
+    it('and the official name is still refused to the same files (the baseline these probes would bypass)', async () => {
+      const code = `import { ${NAMES} } from '@umsbx/transport';\nexport const x = [createApprovedSandboxTransport, PRODUCTION_WIRE];\n`;
+      expect(
+        (await only('packages/paypal/src/evil.ts', code, 'sbx/sealed-transport')).length,
+      ).toBeGreaterThan(0);
+    });
   });
 });
