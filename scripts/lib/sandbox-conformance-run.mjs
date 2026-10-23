@@ -2,7 +2,7 @@
 // refused outside a person's terminal and registered the TypeScript hooks in this process. Plain node,
 // empty execArgv. It reads no environment variable itself: packages/config reads the real environment
 // (and refuses overrides), the launcher reads the flag and the CI and AI markers.
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadConfigFromProcess, makeSecret } from '../../packages/config/src/index.ts';
 import { migrate, openDatabase } from '../../packages/db/src/index.ts';
@@ -83,8 +83,16 @@ export async function runOwnerSuite(d, ctx) {
     const date = now.toISOString().slice(0, 10);
     let dir = join(ctx.outBase, date);
     for (let i = 2; existsSync(dir); i += 1) dir = join(ctx.outBase, `${date}-${i}`);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'summary.md'), renderOwnerSummary(report, { date }), { flag: 'wx' });
+    // Private to the owner: the folder 0700, the files 0600 (the mode is applied again after creation
+    // because the process umask can only narrow a mode, never widen it, and an old folder may differ).
+    mkdirSync(ctx.outBase, { recursive: true, mode: 0o700 });
+    chmodSync(ctx.outBase, 0o700);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    chmodSync(dir, 0o700);
+    writeFileSync(join(dir, 'summary.md'), renderOwnerSummary(report, { date }), {
+      flag: 'wx',
+      mode: 0o600,
+    });
     const exchanges = subject.callLog();
     // The recorder's own residue check is the second opinion on the redaction.
     const built = await buildRecordings(exchanges, {
@@ -94,12 +102,13 @@ export async function runOwnerSuite(d, ctx) {
     if (exchanges.length === 0 || built.ok) {
       writeFileSync(join(dir, 'calls.json'), `${JSON.stringify(exchanges, null, 2)}\n`, {
         flag: 'wx',
+        mode: 0o600,
       });
     } else {
       d.err(
         `calls.json NOT written: the recorder refused the log (${built.refusal.code}: ${built.refusal.where}). Tell Sakthi; do not edit the log by hand.`,
       );
-      writeFileSync(join(dir, 'calls.json'), '[]\n', { flag: 'wx' });
+      writeFileSync(join(dir, 'calls.json'), '[]\n', { flag: 'wx', mode: 0o600 });
     }
     d.say(`wrote ${dir} (summary.md and calls.json)`);
     return report.cases.every((c) => c.pass) && report.stopped === null ? 0 : 1;

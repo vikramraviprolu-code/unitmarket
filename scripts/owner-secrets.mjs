@@ -2,16 +2,16 @@
 // NAME=value lines to paste into .env.local:
 //   UMS_SESSION_SECRET, UMS_APPROVAL_SECRET, UMS_LINK_SECRET   32 random bytes each (base64url)
 //   UMS_DEMO_PASSCODE_HASH                                     scrypt hash of a passcode typed twice
-// It writes no file, reads no environment value other than the terminal markers, and prints the
+// It writes no file, reads no environment value other than the CI and AI markers (the runner's lists), and prints the
 // passcode never. It refuses without a terminal, in CI and in an AI session, before it asks anything.
 //
 // A plain node process: the TypeScript hooks are registered in-process, so no --import flag appears
 // in process.execArgv (see scripts/lib/register-ts.mjs).
 import { pathToFileURL } from 'node:url';
+// The same marker lists, and the same reader of those names, as the runner: one list to keep right.
+import { AI_MARKERS, CI_MARKERS, markerEnv } from './sandbox-conformance.mjs';
 
 export const MIN_PASSCODE_LENGTH = 12;
-const CI_NAMES = ['CI', 'GITHUB_ACTIONS'];
-const AI_NAMES = ['CLAUDECODE', 'CLAUDE_CODE_REMOTE'];
 const set = (v) => v !== undefined && v !== '';
 
 async function loadLibs() {
@@ -36,8 +36,8 @@ const secret32 = (ids) => Buffer.from(ids.nonce() + ids.nonce(), 'hex').toString
  */
 export async function runOwnerSecrets(d) {
   if (!d.stdinIsTTY || !d.stderrIsTTY) return { ok: false, code: 'not_a_tty' };
-  if (CI_NAMES.some((n) => set(d.env[n]))) return { ok: false, code: 'ci_set' };
-  if (AI_NAMES.some((n) => set(d.env[n]))) return { ok: false, code: 'ai_session' };
+  if (CI_MARKERS.some((n) => set(d.env[n]))) return { ok: false, code: 'ci_set' };
+  if (AI_MARKERS.some((n) => set(d.env[n]))) return { ok: false, code: 'ai_session' };
   const note = d.note ?? (() => undefined);
   const first = await d.askHidden(
     'Demo passcode (at least 12 characters, you will type it to sign in): ',
@@ -88,11 +88,10 @@ export async function askHiddenOnTerminal(
 async function main() {
   const { registerTs } = await import('./lib/register-ts.mjs');
   registerTs();
-  const { terminalEnv } = await import('../packages/config/src/index.ts');
   const r = await runOwnerSecrets({
     stdinIsTTY: process.stdin.isTTY === true,
     stderrIsTTY: process.stderr.isTTY === true,
-    env: terminalEnv(),
+    env: markerEnv(),
     askHidden: askHiddenOnTerminal,
     write: (l) => process.stdout.write(`${l}\n`),
     note: (l) => process.stderr.write(`${l}\n`),

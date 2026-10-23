@@ -397,6 +397,8 @@ export function sandboxSubject(o: SandboxSubjectOptions): SandboxSubject {
               const read = await port.getOrder(id);
               if (stop !== null) throw new Error(`suite stopped: ${stop.detail}`);
               if (read.kind === 'order' && read.status === 'APPROVED') return;
+              if (read.kind === 'order' && read.status === 'VOIDED')
+                throw new Error('the order was voided; create a new one');
               if (i < SANDBOX_LIMITS.max_polls - 1) await sleep(SANDBOX_LIMITS.poll_interval_ms);
             }
           } finally {
@@ -515,7 +517,10 @@ export function ownerSubset(subject: SandboxSubject) {
       order_id: ids.order ?? null,
       capture_id: ids.capture ?? null,
       detail:
-        !pass && stopped !== null && !detail.includes(stopped.detail)
+        !pass &&
+        stopped !== null &&
+        !detail.includes(stopped.detail) &&
+        !detail.includes(stopped.code)
           ? `${detail} (${stopped.detail})`
           : detail,
     };
