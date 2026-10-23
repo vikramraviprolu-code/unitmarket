@@ -1,0 +1,14 @@
+{
+  "name": "@umsbx/mvp-c-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MVP-C offline checks (lane CO-9: Postgres refused until the race tests exist). Tests only; offline.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@umsbx/config": "workspace:*",
+    "server-only": "0.0.1"
+  }
+}
