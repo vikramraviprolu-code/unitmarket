@@ -1,0 +1,16 @@
+# R1 to R6 window table (CO-5, ASM-59). Hand-written from the spec; hours after T0; window 120 h.
+# id | money | window | ends_at | credit | paused_at | access
+R1-credit-running | captured | running | ends_at=T+122h | credit=2h | paused_at=- | access=available
+R1-paused | captured | paused | ends_at=T+120h | credit=0h | paused_at=T+24h | access=available
+R2-refunded-running | refunded | revoked | ends_at=T+120h | credit=0h | paused_at=- | access=revoked
+R2-reversed-paused | reversed | revoked | ends_at=T+120h | credit=0h | paused_at=- | access=revoked
+R2-refunded-not-started | refunded | revoked | ends_at=- | credit=0h | paused_at=- | access=revoked
+R2-refunded-ended | refunded | revoked | ends_at=T+120h | credit=0h | paused_at=- | access=revoked
+R3-credit-after-revoke | refunded | revoked | ends_at=T+120h | credit=0h | paused_at=- | access=revoked
+R3-credit-before-revoke | refunded | revoked | ends_at=T+124h | credit=4h | paused_at=- | access=revoked
+R3-credit-after-end | captured | ended | ends_at=T+120h | credit=0h | paused_at=- | access=ended
+R4-pending-refund | captured | running | ends_at=T+120h | credit=0h | paused_at=- | access=available
+R5-starts-after-partial | captured | running | ends_at=T+144h | credit=0h | paused_at=- | access=available
+R5-never-starts-after-full | refunded | not_started | ends_at=- | credit=0h | paused_at=- | access=revoked
+R6-paused-revoked-restored | refunded | revoked | ends_at=T+120h | credit=0h | paused_at=- | access=revoked
+R6-credit-before-pause | refunded | revoked | ends_at=T+123h | credit=3h | paused_at=- | access=revoked
