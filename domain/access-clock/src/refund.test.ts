@@ -375,3 +375,26 @@ describe('R5: access follows money for a window that has not started', () => {
     }
   });
 });
+
+describe('window_ended only ends a running window', () => {
+  it('a stale window_ended does not end a paused window or start a window that never started', () => {
+    const paused = win(
+      [ev('access_ready', T0), ev('delivery_failed', T0 + D), ev('window_ended', T0 + 2 * D)],
+      T0 + 3 * D,
+    );
+    expect(paused).toMatchObject({ state: 'paused', paused_at: iso(T0 + D) });
+    const none = win([ev('window_ended', T0)], T0 + D);
+    expect(none).toMatchObject({ state: 'not_started', started_at: null, ends_at: null });
+    // The paused window still earns its restoration credit afterwards.
+    const restored = win(
+      [
+        ev('access_ready', T0),
+        ev('delivery_failed', T0 + D),
+        ev('window_ended', T0 + 2 * D),
+        ev('delivery_restored', T0 + 2 * D + H),
+      ],
+      T0 + 3 * D,
+    );
+    expect(restored).toMatchObject({ state: 'running', credit_ms: D + H });
+  });
+});
