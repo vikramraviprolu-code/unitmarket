@@ -1,0 +1,7 @@
+# Webhook intake (CO-2): the audit_log row of a refused delivery. Hand-written from the spec.
+# One row per refused delivery: the reason, and the sha256 of the transmission id (hex, UTF-8 bytes). Never the body.
+# transmission ids hashed: tx-bad-1, tx-malformed-1, tx-unverifiable-1.
+action | actor_kind | target | reason | detail
+webhook.rejected | system | null | crc_mismatch | {"verdict":"bad_signature","transmission_sha256":"450a7e5ec5e8a6a2d854f01b44b0f278a3d1305ae02ce24d5b545c7d19129e69"}
+webhook.rejected | system | null | malformed | {"verdict":"malformed","transmission_sha256":"7af259d02e39cafa6584fdfd6f81a774019b52442ee7bf7063bf293ad4966867"}
+webhook.unverifiable | system | null | unverifiable | {"verdict":"unverifiable","transmission_sha256":"a15a4cb6c0106e922ee1917e911f10691803f3bd7e4de95399f9bf22d18b7f7b"}

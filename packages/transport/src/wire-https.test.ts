@@ -157,6 +157,22 @@ describe('only the sandbox hosts are ever contacted (BU-1 review L6)', () => {
       expect(calls).toHaveLength(0);
     },
   );
+  it.each([
+    ['a certificate url with a query', `https://${CERT_HOST}/v1/notifications/certs/x?y=1`],
+    [
+      'a certificate url with an empty-looking query',
+      `https://${CERT_HOST}/v1/notifications/certs/x?`,
+    ],
+    ['an API url with a query', `https://${SANDBOX_HOST}/v2/checkout/orders/ABC123?x=1`],
+    [
+      'an API url with a query and a fragment',
+      `https://${SANDBOX_HOST}/v2/checkout/orders/ABC123?x=1#f`,
+    ],
+  ])('%s is refused with zero requests (the guard refuses any query, BU-1b)', async (_n, url) => {
+    const { wire, calls } = build();
+    expect(await wire.request(get({ url }))).toEqual(other);
+    expect(calls).toHaveLength(0);
+  });
   it('a certificate host is GET only', async () => {
     const { wire, calls } = build();
     const url = `https://${CERT_HOST}/v1/notifications/certs/CERT-1`;

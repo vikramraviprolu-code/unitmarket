@@ -1,0 +1,72 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "label": "synthetic",
+    "note": "Verdicts as the CO-1 verifier (feat/paypal-webhook-verify, fixtures/webhooks/synthetic expect objects) returns them for a genuine delivery. Hand-copied shapes with synthetic ids; no body, no signature, no certificate. The integration test replaces the capture, refund and order ids with the ones of its own order."
+  },
+  "verdicts": {
+    "capture_completed": {
+      "kind": "verified",
+      "event": {
+        "event_id": "WH-SYN-COMPLETED-0001",
+        "transmission_id": "SYN-TRANS-0001",
+        "occurred_at": "2026-10-22T10:00:00.000Z",
+        "type": "PAYMENT.CAPTURE.COMPLETED",
+        "provider_order_id": "SBXORD0000000001",
+        "capture_id": "SBXCAP0000000001",
+        "refund_id": null
+      }
+    },
+    "capture_refunded": {
+      "kind": "verified",
+      "event": {
+        "event_id": "WH-SYN-REFUNDED-0001",
+        "transmission_id": "SYN-TRANS-0007",
+        "occurred_at": "2026-10-22T10:00:00.000Z",
+        "type": "PAYMENT.CAPTURE.REFUNDED",
+        "provider_order_id": "SBXORD0000000001",
+        "capture_id": "SBXCAP0000000001",
+        "refund_id": "SBXREF0000000001"
+      }
+    },
+    "capture_reversed": {
+      "kind": "verified",
+      "event": {
+        "event_id": "WH-SYN-REVERSED-0001",
+        "transmission_id": "SYN-TRANS-0006",
+        "occurred_at": "2026-10-22T10:00:00.000Z",
+        "type": "PAYMENT.CAPTURE.REVERSED",
+        "provider_order_id": "SBXORD0000000001",
+        "capture_id": "SBXCAP0000000001",
+        "refund_id": null
+      }
+    },
+    "order_approved": {
+      "kind": "verified",
+      "event": {
+        "event_id": "WH-SYN-ORDAPPR-0001",
+        "transmission_id": "SYN-TRANS-0008",
+        "occurred_at": "2026-10-22T10:00:00.000Z",
+        "type": "CHECKOUT.ORDER.APPROVED",
+        "provider_order_id": "SBXORD0000000001",
+        "capture_id": null,
+        "refund_id": null
+      }
+    },
+    "other_event": {
+      "kind": "verified",
+      "event": {
+        "event_id": "WH-SYN-OTHER-0001",
+        "transmission_id": "SYN-TRANS-0010",
+        "occurred_at": "2026-10-22T10:00:00.000Z",
+        "type": "OTHER",
+        "provider_order_id": null,
+        "capture_id": null,
+        "refund_id": null
+      }
+    },
+    "forged": { "kind": "bad_signature", "why": "signature" },
+    "unparseable": { "kind": "malformed" },
+    "no_webhook_id": { "kind": "unverifiable" }
+  }
+}

@@ -1633,6 +1633,147 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
       for (const file of outsiders)
         expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
     });
+    // BU-1b (Opus M1, still open after BU-1). Six spellings that were lint-clean and, with
+    // `await import('@umsbx/transport')` after them, handed over the real sealed module at run time.
+    const FACTORY = 'async (importOriginal) => importOriginal()';
+    const probes: [string, string][] = [
+      ['n08 stored doMock', `${IMP}const m = vi.doMock;\nm('@umsbx/transport', ${FACTORY});\n`],
+      ['n09 sequence-expression callee', `${IMP}(0, vi.doMock)('@umsbx/transport', ${FACTORY});\n`],
+      [
+        'n11 X.vi copied, template spec',
+        `import * as V from 'vitest';\nconst part = 'transport';\nconst x0 = V.vi;\nx0.doMock(\`@umsbx/\${part}\`, ${FACTORY});\n`,
+      ],
+      [
+        'n12 (await import()).vi copied, template spec',
+        `const part = 'transport';\nconst m = (await import('vitest')).vi;\nm.doMock(\`@umsbx/\${part}\`, ${FACTORY});\n`,
+      ],
+      [
+        'n13 cast vi, computed concatenated key',
+        `${IMP}(vi as unknown as Record<string, (s: string, f: unknown) => void>)['do' + 'Mock']('@umsbx/transport', ${FACTORY});\n`,
+      ],
+      [
+        'n24 cast vi, template spec with an expression',
+        `${IMP}(vi as typeof vi).doMock(\`@umsbx/\${'transport'}\`, ${FACTORY});\n`,
+      ],
+    ];
+    it.each(probes)('the probe is refused in every unpinned test file: %s', async (_n, code) => {
+      for (const file of outsiders)
+        expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+    });
+    it('each probe still fails the whole lint run of a product-test file, not only one rule', async () => {
+      for (const [n, code] of probes)
+        expect((await lint('packages/paypal/src/evil.test.ts', code)).length, n).toBeGreaterThan(0);
+    });
+    it.each([
+      ['stored in a variable', `${IMP}const m = vi.doMock;\nm('zod');\n`],
+      ['stored from jest', `const m = jest.mock;\nm('zod');\n`],
+      ['stored importActual', `${IMP}const f = vi.importActual;\nawait f('zod');\n`],
+      ['passed as an argument', `${IMP}register(vi.doMock);\n`],
+      ['in an array', `${IMP}export const fns = [vi.mock, vi.doMock];\n`],
+      ['returned', `${IMP}export const get = () => vi.requireMock;\n`],
+      [
+        'destructured doMock',
+        `${IMP}export const f = (o: any) => { const { doMock } = o; return doMock; };\n`,
+      ],
+      ['destructured importActual', `declare const o: any;\nconst { importActual } = o;\n`],
+      ['sequence-expression callee for mock', `${IMP}(0, vi.mock)('zod');\n`],
+      ['callee of a call inside a sequence', `${IMP}(0, vi.importMock)('zod');\n`],
+      ['cast then stored', `${IMP}const m = (vi as typeof vi).doMock;\n`],
+      ['optional member stored', `${IMP}const m = vi?.doMock;\n`],
+      ['stored through V.vi', `import * as V from 'vitest';\nconst m = V.vi.doMock;\n`],
+    ])(
+      'a read of a loader function that is not the callee of a call is refused: %s',
+      async (_n, code) => {
+        for (const file of outsiders)
+          expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+      },
+    );
+    it.each([
+      ['X.vi stored', `import * as V from 'vitest';\nexport const v = V.vi;\n`],
+      ['X.jest stored', `export const j = globalThis.jest;\n`],
+      ['(await import()).vi stored', `export const v = (await import('vitest')).vi;\n`],
+      ['X.vi passed', `import * as V from 'vitest';\nregister(V.vi);\n`],
+      ['X.vi in an object', `import * as V from 'vitest';\nexport const o = { v: V.vi };\n`],
+      ['cast X.vi stored', `import * as V from 'vitest';\nexport const v = V.vi as typeof V.vi;\n`],
+      [
+        'X.vi computed key',
+        `import * as V from 'vitest';\nexport const f = V.vi[['fn'].join('')];\n`,
+      ],
+    ])(
+      'X.vi and X.jest used as a value are treated like bare vi and jest: %s',
+      async (_n, code) => {
+        for (const file of outsiders)
+          expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+      },
+    );
+    it.each([
+      [
+        'a template spec with an expression, any object',
+        "declare const x: any;\nconst p = 't';\nx.doMock(`@umsbx/${p}`);\n",
+      ],
+      [
+        'a concatenated spec, any object',
+        "declare const x: any;\nx.mock('@umsbx/' + 'transport');\n",
+      ],
+      [
+        'a variable spec, any object',
+        'declare const x: any;\ndeclare const s: string;\nx.importMock(s);\n',
+      ],
+      [
+        'requireActual with a variable',
+        'declare const x: any;\ndeclare const s: string;\nx.requireActual(s);\n',
+      ],
+    ])(
+      'an unreadable specifier is refused for every loader member call, whatever the object: %s',
+      async (_n, code) => {
+        for (const file of outsiders)
+          expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+      },
+    );
+    it.each([
+      ['cast callee', `${IMP}(vi.doMock as any)('@umsbx/transport', ${FACTORY});\n`],
+      ['non-null callee', `${IMP}vi.doMock!('@umsbx/transport', ${FACTORY});\n`],
+      ['cast callee, .call', `${IMP}(vi.mock as any).call(undefined, '@umsbx/transport');\n`],
+      ['cast callee, .apply', `${IMP}(vi.doMock as any).apply(undefined, ['@umsbx/safety']);\n`],
+      ['cast then .mock stored', `${IMP}const m = (vi as typeof vi).mock;\n`],
+      ['non-null then .doMock stored', `${IMP}const m = vi!.doMock;\n`],
+      ['jest cast then .mock stored', `const m = (jest as typeof jest).mock;\n`],
+    ])(
+      'TypeScript wrappers around the callee, the object or the .call target are looked through: %s',
+      async (_n, code) => {
+        for (const file of outsiders)
+          expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+      },
+    );
+    it('.call and .apply of a loader with a non-vi this stay allowed when nothing sealed is named', async () => {
+      const ok = [
+        `${IMP}vi.mock.call(undefined, 'zod');\n`,
+        `${IMP}vi.doMock.apply(undefined, ['node:https']);\n`,
+        `${IMP}(vi.mock as any).call(undefined, 'zod');\n`,
+      ];
+      for (const code of ok)
+        for (const file of outsiders)
+          expect(await only(file, code, SEALED), `${file} ${code}`).toEqual([]);
+    });
+    it('the allowed uses stay allowed after BU-1b', async () => {
+      const ok = [
+        `${IMP}const spy = vi.fn();\nconst { calls } = spy.mock;\nexport const c = calls.length;\n`,
+        `${IMP}const spy = vi.fn();\nexpect(spy.mock.calls[0]).toEqual([1]);\nexpect(spy.mock.results.map((r) => r.value)).toEqual([]);\n`,
+        `${IMP}const spy = vi.fn();\nexport const last = spy.mock.lastCall;\nexport const inst = spy.mock.instances;\n`,
+        `${IMP}export const t = typeof vi;\nexport type M = ReturnType<typeof vi.fn>;\nexport type D = typeof vi.doMock;\n`,
+        `${IMP}(vi as typeof vi).fn();\n(vi as unknown as { fn(): void }).fn();\nvi!.fn();\n`,
+        `${IMP}vi.mock('zod');\nawait vi.doMock?.('node:https');\n`,
+        `${IMP}vi.mocked(console.log).mock.calls.push([1]);\n`,
+        `${IMP}export const s = vi.fn().mock.calls;\n`,
+        `import * as V from 'vitest';\nV.vi.fn();\nV.expect(1).toBe(1);\n`,
+        'export const f = (o: { mock: unknown }) => typeof o.mock;\n',
+      ];
+      for (const code of ok)
+        for (const file of outsiders) {
+          expect(await only(file, code, SEALED), `${file} ${code}`).toEqual([]);
+          expect(await only(file, code, ALIAS), `${file} ${code}`).toEqual([]);
+        }
+    });
     it('the ordinary uses of vi and jest stay allowed', async () => {
       const ok = [
         `${IMP}vi.fn();\nvi.spyOn(globalThis, 'x' as never);\nvi.useFakeTimers();\nvi.stubEnv('A', 'b');\n`,

@@ -18,3 +18,5 @@ export { recoverOnStartup } from './recover';
 export { executeRefund, requestRefund, suspectReversal } from './refunds';
 export type { OpsAlertKind } from './refunds';
 export { checkInvariants } from './invariants';
+export { handleWebhook } from './webhooks';
+export type { WebhookInput, WebhookResponse } from './webhooks';

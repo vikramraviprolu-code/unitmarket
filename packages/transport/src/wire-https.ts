@@ -154,6 +154,9 @@ export interface HttpsWireDeps {
 // on the certificate path, GET only. An IP literal matches neither.
 const SANDBOX_HOST = new URL(SANDBOX_API).hostname;
 function hostAllowed(url: URL, method: string): boolean {
+  // The guard refuses any query and any fragment on every host; the Wire does the same.
+  // (An empty query, `x?`, leaves search empty but stays in the href, so look at the href.)
+  if (url.search !== '' || url.hash !== '' || /[?#]/.test(url.href)) return false;
   if (url.hostname === SANDBOX_HOST) return true;
   // The certificate download rule is the guard's own (host and path), so the Wire cannot be looser.
   return method === 'GET' && CERT_HOST_RE.test(url.hostname) && CERT_PATH_RE.test(url.pathname);
