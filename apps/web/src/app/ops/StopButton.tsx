@@ -43,7 +43,7 @@ export function StopButton() {
       </button>
       <div aria-live="polite" data-testid="ops-stop-result">
         {state === 'done'
-          ? 'PayPal calls are stopped. To turn them on again, the owner runs pnpm safety:resume at their terminal.'
+          ? 'PayPal calls are stopped (in force within 5 seconds). To turn them on again, the owner runs pnpm safety:resume at their terminal.'
           : null}
       </div>
       {error ? <ErrorState title="Could not stop">{error}</ErrorState> : null}

@@ -15,7 +15,7 @@ test.describe('stop button', () => {
     await op.getByLabel('Who are you testing as?').selectOption('operator');
     await op.getByLabel('Demo passcode').fill(PASSCODE);
     await op.getByRole('button', { name: 'Sign in' }).click();
-    await expect(op.getByRole('heading', { name: /Operations/ })).toBeVisible();
+    await expect(op.getByRole('heading', { level: 1, name: /Operations/ })).toBeVisible();
     await expect(op.getByTestId('ops-kill-switch')).toContainText('On');
 
     await op.getByLabel('Why are you stopping PayPal calls?').fill('e2e drill');
@@ -25,12 +25,20 @@ test.describe('stop button', () => {
     await expect(op.getByTestId('ops-kill-switch')).toContainText('Off');
     await expect(op.getByTestId('ops-kill-switch')).toContainText('e2e drill');
 
+    // The switch reader caches for up to 5 s (MAX_SWITCH_CACHE_MS, RLR-3), so a stop is in force
+    // within 5 s; wait that long before the buyer tries.
+    await op.waitForTimeout(5500);
     // A buyer now tries to pay: checkout is paused and nothing is charged.
     const buyer = await buyerPage(browser, 'b');
     await askPrice(buyer, { offer: 'tide-tables' });
     await toApproval(buyer);
-    await buyer.getByLabel(/I confirm the price and terms above/).check();
-    await buyer.getByRole('button', { name: 'Continue to payment' }).click();
+    // The box may be ticked before the page has hydrated, which resets it: tick until the button enables.
+    const pay = buyer.getByRole('button', { name: 'Continue to payment' });
+    await expect(async () => {
+      await buyer.getByLabel(/I confirm the price and terms above/).check();
+      await expect(pay).toBeEnabled({ timeout: 1000 });
+    }).toPass({ timeout: 20_000 });
+    await pay.click();
     await expect(buyer.getByText(/Checkout is paused/)).toBeVisible();
     await expect(buyer.getByText(/Nothing was charged/)).toBeVisible();
     await expect(buyer).not.toHaveURL(/\/checkout\/dry-run\//);
