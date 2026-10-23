@@ -1602,6 +1602,23 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
         expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
     });
     it.each([
+      [
+        'V.vi.mock with a computed spec',
+        "import * as V from 'vitest';\nV.vi.mock(['@umsbx', 'transport'].join('/'));\n",
+      ],
+      [
+        'globalThis.jest.doMock with a computed spec',
+        "globalThis.jest.doMock(['@umsbx', 'safety'].join('/'));\n",
+      ],
+      [
+        'vi.mock.call with a computed spec',
+        "vi.mock.call(vi, ['@umsbx', 'transport'].join('/'));\n",
+      ],
+    ])('an unreadable specifier on a mocker is refused: %s', async (_n, code) => {
+      for (const file of outsiders)
+        expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+    });
+    it.each([
       ['import { vi as v }', `import { vi as v } from 'vitest';\nv.fn();\n`],
       ['import { jest as j }', `import { jest as j } from '@jest/globals';\nj.fn();\n`],
       ['const v = vi', `${IMP}const v = vi;\nv.fn();\n`],
