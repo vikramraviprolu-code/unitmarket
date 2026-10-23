@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.10",
-    "@umsbx/contracts": "workspace:*"
+    "@umsbx/contracts": "workspace:*",
+    "@umsbx/runtime": "workspace:*"
   }
 }
