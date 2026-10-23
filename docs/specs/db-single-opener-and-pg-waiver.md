@@ -35,7 +35,7 @@ CO-10 (`scripts/backup.mjs`, `scripts/restore.mjs`) is written against this exac
 - File: `<dir>/.ums-open.lock`, inside the PGlite data directory.
 - Created with an exclusive create (`O_EXCL`, `wx`), mode `0600`. A symlink, a directory or an unreadable file is never trusted (fail closed).
 - Content: JSON `{"pid": <int>, "host": <os.hostname()>, "started": "<ISO 8601 UTC>"}`.
-- Live pid on this host: refuse (the message in the goal above). Another host: refuse, since liveness cannot be told. Dead pid on this host: print a warning, remove, take a new lock.
+- Live pid on this host: refuse (the message in the goal above). A dead pid, or a lock written on another host (ASM-72): print a warning, remove it, take a new lock.
 - `backup.mjs` takes this same lock for its whole run and removes it at the end, also on failure. `restore.mjs` removes a lock found inside a restored tarball, then lets `openDatabase` take its own.
 - The lock file is excluded from every dump: `backup.mjs` strips it from the tarball, the logical export never holds it.
 - Until CO-9 is merged nothing writes this lock, so a running app is invisible to `backup.mjs`. Therefore `backup.mjs` refuses unless `--i-stopped-the-app` is passed, and it does not call itself a read-only copy: opening a PGlite directory writes to it.

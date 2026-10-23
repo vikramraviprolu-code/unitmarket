@@ -99,9 +99,11 @@ function checkLock(dir, warn) {
     throw new Refused(`the lock file ${LOCK_FILE} is malformed; refusing`);
   }
   if (info.host !== hostname()) {
-    throw new Refused(
-      `the lock file ${LOCK_FILE} names another host; cannot tell if the app runs; refusing`,
+    // ASM-72: a lock written on another host cannot be a process of this host: replace it, loudly.
+    warn(
+      `warning: the lock file ${LOCK_FILE} was written on another host (${info.host}); replacing it`,
     );
+    return 'stale';
   }
   if (isAlive(pid)) {
     throw new Refused(
@@ -154,7 +156,6 @@ export async function runBackup({
 
   // Dynamic imports: the CLI registers the TypeScript hooks first (see the bottom of this file).
   const sqlLib = await import('../packages/db/src/export-sql.ts');
-  const dbLib = await import('../packages/db/src/index.ts');
   const now = clock ?? (await import('../packages/runtime/src/index.ts')).systemClock();
   const createdAt = isoOf(now);
   const stamp = stampOf(createdAt);
@@ -184,9 +185,7 @@ export async function runBackup({
     try {
       tables = await sqlLib.rowCounts(handle.db);
       version = await sqlLib.latestMigrationVersion(handle.db);
-      const expected = sqlLib.expectedTriggerNames(
-        dbLib.listMigrations(join(dbLib.MIGRATIONS_ROOT, 'common')).map((m) => m.sql),
-      );
+      const expected = await sqlLib.expectedTriggers(now);
       for (const problem of await sqlLib.guardProblems(handle.db, expected)) {
         warn(`warning: ${problem}; the tarball restore will refuse this backup, use --sql`);
       }

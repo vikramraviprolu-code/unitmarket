@@ -1,22 +1,37 @@
 // Offline restore of a backup made by scripts/backup.mjs (CO-10, nfr.md REL-5, REL-7).
 //
-//   node scripts/restore.mjs --from <backup folder> --dir <empty dir> [--sql]
+//   node scripts/restore.mjs --from <backup folder> --dir <empty dir> [--sql] [--allow-live-approvals]
 //
 // Refuses a target that is not empty, checks the size and sha256 of both files against the manifest,
 // then either loads the tarball into the target (default) or, with --sql, migrates a fresh PGlite
 // there and imports the logical export in one transaction (the append-only triggers are off only
 // inside that transaction). Either way it migrates, then compares the row count of every table with
-// the manifest and removes what it wrote if anything differs. The backup folder is only read.
+// the manifest. The backup folder is only read.
 //
-// After either mode: paypal_outbound is forced OFF (changed_by 'restore') and the outbound approval
-// refs found are printed, because a restored approval must not come back live; any user trigger that is
-// switched off or missing refuses the restore; the stale lock file is never restored.
+// Everything is built in a sibling directory <dir>.partial-<utc> and renamed to <dir> only after the
+// counts, the trigger check and the outbound switch-off all passed. SIGINT and SIGTERM remove the
+// partial directory. A partial left by SIGKILL is never opened by this command and must never be used
+// as an app directory; the next run prints its path.
+//
+// After either mode: paypal_outbound is forced OFF (changed_by 'restore', one audit_log row). The
+// approval rows are kept, and switching paypal_outbound on with one of their refs re-activates them
+// (setSwitch needs MFA and any approval with valid_until in the future), so a backup that holds an
+// approval still valid is refused unless --allow-live-approvals is passed; the refs are printed. Any
+// user trigger switched off or missing refuses the restore; the stale lock file is never restored.
 //
 // Exit 0 done, 1 refused or failed, 2 bad arguments. Opens no network connection and reads no
 // environment variable.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
 import { register } from 'node:module';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   LOCK_FILE,
@@ -27,12 +42,13 @@ import {
   isInside,
   realLoose,
   sha256Hex,
+  stampOf,
 } from './backup.mjs';
 
 const NOTES = BACKUP_NOTES.split('\n').slice(2).join('\n');
-export const USAGE = `usage: restore.mjs --from <folder> --dir <empty dir> [--sql]\n${NOTES}`;
+export const USAGE = `usage: restore.mjs --from <folder> --dir <empty dir> [--sql] [--allow-live-approvals]\n${NOTES}`;
 export const OUTBOUND_NOTE =
-  'paypal_outbound is switched OFF after every restore, and outbound approvals are not carried live: re-approve with pnpm safety:approve before any sandbox call';
+  'kept; switching paypal_outbound on with one of these refs re-activates it';
 
 const TAR_NAME = /^pglite-\d{8}T\d{6}Z\.tar\.gz$/;
 const SQL_NAME = /^export-\d{8}T\d{6}Z\.sql$/;
@@ -91,14 +107,20 @@ function compareCounts(expected, actual) {
   }
 }
 
-/** @param {{ from: string, dir: string, sql?: boolean, clock?: { now(): Date }, warn?: (message: string) => void }} options */
-/** @param {{ from: string, dir: string, sql?: boolean, clock?: { now(): Date }, warn?: (message: string) => void }} options */
+/** @param {{ from: string, dir: string, sql?: boolean, allowLiveApprovals?: boolean, clock?: { now(): Date }, warn?: (message: string) => void, onPoint?: (point: string) => void | Promise<void>, signals?: { once(sig: string, fn: () => void): unknown, off(sig: string, fn: () => void): unknown }, exit?: (code: number) => void }} options */
 export async function runRestore({
   from,
   dir,
   sql = false,
+  allowLiveApprovals = false,
   clock,
   warn = (message) => void message,
+  onPoint = () => {},
+  signals = {
+    once: (sig, fn) => process.once(sig, fn),
+    off: (sig, fn) => process.off(sig, fn),
+  },
+  exit = (code) => process.exit(code),
 }) {
   if (!from || !dir) throw new Refused(USAGE);
   const source = resolve(from);
@@ -121,19 +143,52 @@ export async function runRestore({
   const sqlLib = await import('../packages/db/src/export-sql.ts');
   const dbLib = await import('../packages/db/src/index.ts');
   const now = clock ?? (await import('../packages/runtime/src/index.ts')).systemClock();
-  const expectedTriggers = sqlLib.expectedTriggerNames(
-    dbLib.listMigrations(join(dbLib.MIGRATIONS_ROOT, 'common')).map((m) => m.sql),
-  );
+  const nowIso = now.now().toISOString();
+  const stamp = stampOf(nowIso.replace(/\.\d+Z$/, 'Z'));
+  const expectedTriggers = await sqlLib.expectedTriggers(now);
 
-  const createdTarget = !existsSync(target);
-  mkdirSync(target, { recursive: true, mode: 0o700 });
-  try {
-    if (!sql) {
-      await sqlLib.restoreDataDirTarball(target, tarball);
-      // A lock file inside an old tarball is stale by definition.
-      rmSync(join(target, LOCK_FILE), { force: true });
+  // Counted warnings (the command says WITH WARNINGS); each is passed to warn once.
+  const warnings = [];
+  const note = (m) => {
+    warnings.push(m);
+    warn(m);
+  };
+
+  const parent = dirname(target);
+  const partial = `${target}.partial-${stamp}`;
+  mkdirSync(parent, { recursive: true });
+  for (const name of readdirSync(parent)) {
+    if (name.startsWith(`${basename(target)}.partial-`) && join(parent, name) !== partial) {
+      warn(
+        `note: ${join(parent, name)} is a partial restore left by an earlier run; do not use it as a data directory, delete it`,
+      );
     }
-    const db = await dbLib.openDatabase({ kind: 'pglite-disk', dir: target });
+  }
+  if (existsSync(partial))
+    throw new Refused(`${partial} already exists; wait a second and run again`);
+
+  const cleanup = () => rmSync(partial, { recursive: true, force: true });
+  const handlers = [
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ].map(([sig, code]) => {
+    const handler = () => {
+      cleanup();
+      exit(code);
+    };
+    signals.once(sig, handler);
+    return [sig, handler];
+  });
+  try {
+    mkdirSync(partial, { mode: 0o700 });
+    await onPoint('partial-created');
+    if (!sql) {
+      await sqlLib.restoreDataDirTarball(partial, tarball);
+      // A lock file inside an old tarball is stale by definition.
+      rmSync(join(partial, LOCK_FILE), { force: true });
+    }
+    await onPoint('loaded');
+    const db = await dbLib.openDatabase({ kind: 'pglite-disk', dir: partial });
     let tables;
     let outbound;
     try {
@@ -147,35 +202,53 @@ export async function runRestore({
       }
       const applied = await dbLib.migrate(db, now);
       if (!sql && applied.length > 0) {
-        warn(`note: applied ${applied.length} newer migration(s) after the restore`);
+        note(`note: applied ${applied.length} newer migration(s) after the restore`);
       }
       if (sql) await sqlLib.importSql(db, sqlText);
+      await onPoint('migrated');
       const problems = await sqlLib.guardProblems(db, expectedTriggers);
       if (problems.length > 0) {
         throw new Refused(`the restored database has ${problems.join('; ')}`);
       }
       if (!sql) {
-        for (const line of await sqlLib.checkInvariants(db)) warn(`warning: ${line}`);
+        for (const line of await sqlLib.checkInvariants(db)) note(`warning: ${line}`);
       }
-      outbound = await db.transaction((tx) => sqlLib.disarmOutbound(tx, now.now().toISOString()));
+      const live = await sqlLib.liveApprovals(db, nowIso);
+      if (live.length > 0 && !allowLiveApprovals) {
+        throw new Refused(
+          `the backup holds ${live.length} outbound approval(s) still valid: ${live.join(', ')}. Restoring keeps them, and switching paypal_outbound on with one of these refs re-activates it. Pass --allow-live-approvals to restore anyway`,
+        );
+      }
+      await onPoint('guards-checked');
+      // Counts first: the switch-off below adds one audit row.
       tables = await sqlLib.rowCounts(db);
+      compareCounts(manifest.tables, tables);
+      await onPoint('counts-ok');
+      outbound = await db.transaction((tx) =>
+        sqlLib.disarmOutbound(tx, nowIso, `aud_restore_${stamp}`),
+      );
+      await onPoint('disarmed');
     } finally {
       await db.close();
     }
-    compareCounts(manifest.tables, tables);
+    // The final target may not have appeared meanwhile; rename is atomic on one file system.
+    if (existsSync(target) && readdirSync(target).length > 0) {
+      throw new Refused(`the target ${target} appeared while restoring and is not empty`);
+    }
+    renameSync(partial, target);
     warn(outboundNotice(outbound));
     return {
       mode: sql ? 'sql' : 'tarball',
       tables,
       migration_version: manifest.migration_version,
       outbound,
+      warnings,
     };
   } catch (e) {
-    // The target was empty (or absent) when we started, so everything in it is ours.
-    for (const name of readdirSync(target))
-      rmSync(join(target, name), { recursive: true, force: true });
-    if (createdTarget) rmSync(target, { recursive: true, force: true });
+    cleanup();
     throw e;
+  } finally {
+    for (const [sig, handler] of handlers) signals.off(sig, handler);
   }
 }
 
@@ -183,7 +256,7 @@ export function outboundNotice(outbound) {
   const list =
     outbound.approvals.length === 0
       ? 'no outbound approval rows'
-      : `${outbound.approvals.length} outbound approval row(s), kept but inert: ${outbound.approvals
+      : `${outbound.approvals.length} outbound approval row(s): ${outbound.approvals
           .map(
             (a) =>
               `${a.ref} (scope ${a.scope}, valid until ${a.valid_until}, approved by ${a.approved_by})`,
@@ -198,6 +271,10 @@ export function parseArgs(argv) {
     const flag = argv[i];
     if (flag === '--sql') {
       args.sql = true;
+      continue;
+    }
+    if (flag === '--allow-live-approvals') {
+      args.allowLiveApprovals = true;
       continue;
     }
     if (flag !== '--from' && flag !== '--dir') return null;
@@ -220,11 +297,12 @@ export async function main(argv, io = { out: process.stdout, err: process.stderr
       from: args.from,
       dir: args.dir,
       sql: args.sql,
+      allowLiveApprovals: args.allowLiveApprovals,
       warn: (m) => io.err.write(`${m}\n`),
     });
     const rows = Object.values(res.tables).reduce((a, b) => a + b, 0);
     io.out.write(
-      `restore ok (${res.mode}): ${resolve(args.dir)}\n  ${Object.keys(res.tables).length} tables, ${rows} rows, row counts match the manifest\n  ${outboundNotice(res.outbound)}\n`,
+      `restore ok (${res.mode})${res.warnings.length > 0 ? ' WITH WARNINGS' : ''}: ${resolve(args.dir)}\n  ${Object.keys(res.tables).length} tables, ${rows} rows, row counts match the manifest\n`,
     );
     return 0;
   } catch (e) {

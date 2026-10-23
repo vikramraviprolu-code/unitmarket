@@ -4,9 +4,12 @@
 // fresh, migrated database; it switches the user triggers off for that transaction only (the
 // append-only guards would refuse a bulk load) and on again before it commits. Nothing here reads
 // the environment, the clock or the network; the caller passes the time.
+import { join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { PGlite } from '@electric-sql/pglite';
-import type { Database, SqlExecutor } from '@umsbx/contracts';
+import type { Clock, Database, SqlExecutor } from '@umsbx/contracts';
+import { applyMigrations, MIGRATIONS_ROOT } from './migrate';
+import { openDatabase } from './pglite';
 
 export async function tablesInDependencyOrder(db: SqlExecutor): Promise<string[]> {
   const tables = await db.query<{ tablename: string }>(
@@ -83,8 +86,11 @@ export async function exportSql(db: SqlExecutor, options: ExportOptions): Promis
   ];
   for (const t of tables) {
     // jsonb text keeps numbers and timestamps exactly as the database prints them.
+    // Insertion order (ctid) except the one self-referencing table: the ledger goes by time, a sale
+    // before its refunds, then id, so an updated row (a new tuple position) cannot reorder it.
+    const order = t === 'ledger_entries' ? "x.created_at, (x.kind <> 'sale'), x.id" : 'x.ctid';
     const r = await db.query<{ rows: string }>(
-      `SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.ctid), '[]'::jsonb)::text AS rows FROM ${quote(t)} x`,
+      `SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY ${order}), '[]'::jsonb)::text AS rows FROM ${quote(t)} x`,
     );
     const json = r.rows[0]!.rows;
     if (json === '[]') continue;
@@ -320,13 +326,35 @@ export async function checkInvariants(db: SqlExecutor): Promise<string[]> {
   return out;
 }
 
-/** Names of the triggers the migrations create, read from the migration SQL text. */
-export function expectedTriggerNames(migrationSql: string[]): string[] {
-  const names = new Set<string>();
-  for (const sql of migrationSql) {
-    for (const m of sql.matchAll(/^\s*CREATE\s+TRIGGER\s+([a-z_][a-z0-9_]*)/gim)) names.add(m[1]!);
+const triggerCache = new Map<string, Promise<string[]>>();
+
+/**
+ * The user triggers a correctly migrated schema has: apply the migrations to an empty in-memory
+ * database and read pg_trigger, so renames and drops in later migrations are followed. Cached per
+ * migration directory for the life of the process.
+ */
+export function expectedTriggers(
+  clock: Clock,
+  dir: string = join(MIGRATIONS_ROOT, 'common'),
+): Promise<string[]> {
+  let found = triggerCache.get(dir);
+  if (!found) {
+    found = (async () => {
+      const db = await openDatabase({ kind: 'pglite-memory' });
+      try {
+        await applyMigrations(db, clock, dir);
+        const r = await db.query<{ tgname: string }>(
+          'SELECT tgname FROM pg_trigger WHERE NOT tgisinternal ORDER BY tgname',
+        );
+        return r.rows.map((t) => t.tgname);
+      } finally {
+        await db.close();
+      }
+    })();
+    triggerCache.set(dir, found);
+    found.catch(() => triggerCache.delete(dir));
   }
-  return [...names].sort();
+  return found;
 }
 
 /** Problems with the user triggers: any switched off, any expected one missing. Empty when sound. */
@@ -346,20 +374,36 @@ export async function guardProblems(db: SqlExecutor, expected: string[]): Promis
 export interface OutboundState {
   /** paypal_outbound was on in the data that was restored. */
   switch_was_on: boolean;
-  /** Approval rows present, kept as they are (the table is append-only) and inert while the switch is off. */
-  approvals: { ref: string; scope: string; valid_until: string; approved_by: string }[];
+  /** Approval rows present. They are kept as they are (the table is append-only). */
+  approvals: { id: string; ref: string; scope: string; valid_until: string; approved_by: string }[];
+}
+
+/** Approval rows whose valid_until is after the given time (ISO UTC), refs only. */
+export async function liveApprovals(db: SqlExecutor, nowIso: string): Promise<string[]> {
+  const r = await db.query<{ approval_ref: string }>(
+    'SELECT approval_ref FROM outbound_approvals WHERE valid_until > $1 ORDER BY approval_ref',
+    [nowIso],
+  );
+  return r.rows.map((a) => a.approval_ref);
 }
 
 /**
- * After a restore: force paypal_outbound off (the switch is how an approval is revoked, so a
- * restored approval row must not come back live) and report what was found. Call inside a transaction.
+ * After a restore: force paypal_outbound off, write one audit row for that change (ids only), and
+ * report what was found. Approval rows are kept: setSwitch turns the switch on with MFA and ANY
+ * approval row whose valid_until is in the future, so a kept row re-activates when the switch is
+ * turned on with its ref. Call inside a transaction, after the row counts were compared (this adds
+ * one audit_log row).
  */
-export async function disarmOutbound(db: SqlExecutor, atIso: string): Promise<OutboundState> {
+export async function disarmOutbound(
+  db: SqlExecutor,
+  atIso: string,
+  auditId: string,
+): Promise<OutboundState> {
   const was = await db.query<{ on: boolean }>(
     `SELECT "on" FROM safety_switches WHERE name = 'paypal_outbound'`,
   );
   const reason =
-    'restore: outbound switched off; approvals are not carried live, re-approve before any sandbox call';
+    'restore: outbound switched off; approval rows were kept and switching paypal_outbound on with one of these refs re-activates it';
   const upd = await db.query(
     `UPDATE safety_switches SET "on" = false, changed_by = 'restore', changed_at = $1, reason = $2, updated_at = $1
       WHERE name = 'paypal_outbound' RETURNING name`,
@@ -373,22 +417,38 @@ export async function disarmOutbound(db: SqlExecutor, atIso: string): Promise<Ou
     );
   }
   const approvals = await db.query<{
+    id: string;
     approval_ref: string;
     scope: string;
     valid_until: string;
     approved_by: string;
   }>(
-    'SELECT approval_ref, scope, valid_until::text AS valid_until, approved_by FROM outbound_approvals ORDER BY created_at, approval_ref',
+    'SELECT id, approval_ref, scope, valid_until::text AS valid_until, approved_by FROM outbound_approvals ORDER BY created_at, approval_ref',
   );
-  return {
+  const state: OutboundState = {
     switch_was_on: was.rows[0]?.on === true,
     approvals: approvals.rows.map((a) => ({
+      id: a.id,
       ref: a.approval_ref,
       scope: a.scope,
       valid_until: a.valid_until,
       approved_by: a.approved_by,
     })),
   };
+  await db.query(
+    `INSERT INTO audit_log (id, actor_kind, actor_id, action, target, reason, detail, created_at, updated_at)
+     VALUES ($1, 'system', 'restore', 'restore.disarm_outbound', 'paypal_outbound', $2, $3::jsonb, $4, $4)`,
+    [
+      auditId,
+      reason,
+      JSON.stringify({
+        switch_was_on: state.switch_was_on,
+        approval_ids: state.approvals.map((a) => a.id),
+      }),
+      atIso,
+    ],
+  );
+  return state;
 }
 
 // ---------------------------------------------------------------------------------------------
