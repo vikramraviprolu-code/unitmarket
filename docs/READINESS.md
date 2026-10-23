@@ -223,3 +223,15 @@ Still offline: no network, no credentials, no approval row. Every test of the ne
 - **Wire certificate path (re-review L1).** The certificate host and path rule is the guard's own (`CERT_HOST_RE`, `CERT_PATH_RE`, exported from `guard.ts`): no `%`, no sub-path, no dot file.
 - **Sticky trust-store refusal (P2b), for BU-3 and the owner.** Any call of `tls.setDefaultCACertificates` after the Wire loaded, even one that restores the same list, makes every request fail closed until the process restarts. Checked on real Node 22.22: the default store reported 123 certificates before and 122 after setting that same list, so its digest differs. Nothing in this application calls it; if a framework or a diagnostic does, the Wire refuses (`other`) rather than trusting a changed store.
 - **Still open: `diagnostics_channel` (L1 of the Opus review).** A subscriber to a diagnostics channel sees HTTP client request and response objects; the Wire does not block or detect subscribers. Not fixed in this branch.
+
+## Seal residuals after BU-1b (Opus final round, 2026-10-23)
+
+The lint seal is a review aid, not a sandbox. Known residuals, all bounded by the run-time facts below:
+
+- `eval` and `new Function` are covered only by `no-eval` and `no-restricted-syntax`. Bundler or TypeScript `paths` aliases are not read by lint (the repo has none). A relative `imports` target through a symlinked directory is matched lexically; the pin test "no package.json declares `imports`" is the control.
+- Mock bar edges: `X.vi` read as a value is flagged on purpose (`cfg.vi`; rename the key if it bites); `{ mock }` destructured from a non-vi object is not flagged.
+- Any test-file bypass is bounded at run time: under vitest the Wire refuses (execArgv carries `--require` and `--conditions`) and the gate needs an approval row the owner inserted.
+- Code in the same process can still observe or wrap the Wire: `diagnostics_channel` (`http.client.request.start`) shows request headers; a `Module._load` or `registerHooks` patch applied before the transport loads is captured as if it were the real module; any `setDefaultCACertificates` call, even a restore, makes the Wire refuse until restart.
+- NODE_PATH is deliberately allowed (pnpm shims export it on every start).
+- Unverified until the owner's window: that the PayPal sandbox chain validates against Node 22.22's pinned bundled roots; real handshake time against the 3 s connect deadline; the BU-3 `next start` self-check line (`env_override false`, `builtins_intact true`).
+- Seal freeze: further seal changes only for a demonstrated defect with a runtime proof (ASM-70, owner to confirm).
