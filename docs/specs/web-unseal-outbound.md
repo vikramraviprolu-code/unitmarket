@@ -1,0 +1,29 @@
+# BU-2: unseal, composition builds the approved transport behind the five locks
+
+Task: in sandbox mode, build the approved sandbox transport from a real scoped gate, fail closed whenever any lock is missing, and give the owner a resume command and a stop button.
+Package: `apps/web` (plus the small edits listed) Owner: Sonnet 5.5 builder, effort high (wires the real transport) Reviewer: Opus 5.5 high, second review if any FIX; Sakthi merges
+Wave: W2, after BU-1 and BU-5 merge. **Merge needs the owner's unseal row (O-B1, with O-B6) in `docs/decision-log.md`; build may start before.** Assumptions: ASM-30 to ASM-35, ASM-51 (new), ASM-31.
+
+Goal: the five locks of `docs/design/mvpb-unseal-and-mvpc-offline.md` section 2 decide every call at the time of the call. A new module `apps/web/src/server/outbound.server.ts` exports `buildOutbound({ config, db, clock, log, switches, wire })` and is the only file in `apps/` that names `createApprovedSandboxTransport`, `PRODUCTION_WIRE` (from `@umsbx/transport`) and `createScopedGate` (from `@umsbx/safety`). Its `transport.send(r)` asks `createScopedGate(...).approvalCapability()` until it gets one; while it is null it answers `blocked` with `connect_off` (L1, L2), `kill_switch` (L4) or `no_approval` (L3), and never builds anything. With a capability it builds the approved transport once per process (single-flight) and from then on the gate decides each request (expiry, switch, budget). `status()` returns which lock is open or missing (booleans and the scope, never a value). Composition calls `buildOutbound` only when `config.mode === 'sandbox'`, passes `wire: PRODUCTION_WIRE` unless `AppOptions.test_wire` is set, and `createApp` refuses `test_wire` unless `config.node_env === 'test'`. Composition also passes `callBudget` (BU-5) from `readSafetyStatus`, logs `transport.selfcheck` (BU-1) once per process and in `opsSnapshot`, and shows the lock state on `/ops`. New: `UMS_OUTBOUND_SCOPE` (`mvp_b_polling` default, `mvp_c_refunds`) in `packages/config`; `POST /api/ops/stop` (operator, CSRF, reason; calls `runStop`) and a "Stop PayPal now" button on `/ops`; `pnpm safety:resume` (`packages/safety/src/cli-resume.ts`): TTY only, refuses in CI and AI sessions, needs an active approval row for the configured ref, asks the owner to type the scope, then `setSwitch(paypal_outbound, on)` as an operator with `mfa: true` per O-B6, with an audit row.
+
+Inputs: S4 shape (`PRODUCTION_WIRE`), BU-1 `wireSelfCheck`, BU-5 `callBudget` option, `packages/safety` (`createScopedGate`, `runStop`, `setSwitch`, `readSafetyStatus`), `apps/web/composition.server.ts`, `eslint.config.mjs` `NAMED_EXEMPTIONS`, `tests/mvp-b/*`.
+
+Outputs: the files above; one `NAMED_EXEMPTIONS` entry for `apps/web/src/server/outbound.server.ts` that allows exactly the three names (pinned in `scripts/lint-rules.test.ts`); `tests/mvp-b/sealed-callers.test.ts` amended (this spec changes the pins: composition still names none of the sealed identifiers; `outbound.server.ts` is the one apps file that does; `PRODUCTION_WIRE` appears there and in the transport tests only); `.env.example` (name only); root `package.json` (`safety:resume`).
+
+Order: commit 1 is tests only, run red; the amended pins go in commit 1 too, and the PR says which pins changed and why.
+
+Acceptance tests:
+
+- `corepack pnpm vitest run --project state tests/mvp-b/unseal-locks.state.test.ts`: `each lock missing alone (L1 to L5) gives blocked with its reason and 0 Wire calls`; `all five present: one Wire call per allowed request`; `approval row expires mid-session: next request blocked no_approval, 0 Wire calls`; `stop via /api/ops/stop: next request blocked kill_switch`; `budget spent: blocked budget`; `safety:resume refuses without TTY, in CI, without an active row, with a wrong typed scope`.
+- `corepack pnpm vitest run --project contract tests/mvp-b/unseal-scope.contract.test.ts`: under `mvp_b_polling`, `refund_capture` is blocked `operation_not_in_scope`; a EUR body, a payee and a body over 64 KB are blocked before the gate.
+- `corepack pnpm vitest run --project integration tests/mvp-b/unseal-journey.integration.test.ts`: full single-publisher journey through `createApp` with `test_wire` playing PayPal: create, approve, capture times out, the job loop's read-back resolves it, item unlocked once, at most 6 Wire calls for the happy order (B-08), no seeded token or email in any log line or `provider_calls` row (B-09).
+- `corepack pnpm vitest run --project adversarial tests/mvp-b/unseal.adversarial.test.ts`: `test_wire outside node_env test refuses boot`; `two concurrent first requests build one transport`; `a capability minted in another module registry is refused and the call is blocked`; `offline mode never calls buildOutbound`.
+- `corepack pnpm vitest run --project golden tests/mvp-b/unseal-ops.golden.test.ts`: the `/ops` gate block for each lock state matches the golden text.
+- `corepack pnpm test:e2e -- ops-stop.spec.ts` (offline): operator presses Stop; checkout then shows "Payments paused".
+- `corepack pnpm ci` exit 0; `corepack pnpm check:routes` lists `/api/ops/stop` as operator.
+
+Do not: connect to anything; read real credentials (tests build obviously fake names at run time); name a sealed identifier in `composition.server.ts`; widen any scope, budget or guard; let `/api/ops/stop` turn anything on; touch `docs/decision-log.md` or `tests/mvp-a/repo-a23-a27.integration.test.ts`; add a dependency.
+
+Evidence for the PR: red summary; each command's pass counts; the lock-state golden; the pin diffs with reasons; the unseal row id quoted (merge blocker).
+
+Branch: `feat/web-unseal-outbound` Commit: `feat(web): approved sandbox transport behind five locks, resume and stop (BU-2)`
