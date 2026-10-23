@@ -101,6 +101,9 @@ export interface AppOptions {
 // ---------------------------------------------------------------------------------------------
 // Personas (demo sign-in, A11Y-6: a passcode, no cognitive test).
 // ---------------------------------------------------------------------------------------------
+/** The one publisher of MVP-B (ASM-03): its payee is the owner's own sandbox account (BU-7). */
+const MVPB_PUBLISHER_SLUG = 'harbour-ledger';
+
 export const PERSONAS = ['buyer-a', 'buyer-b', 'publisher', 'operator'] as const;
 export type Persona = (typeof PERSONAS)[number];
 const BUYER_IDS: Record<'buyer-a' | 'buyer-b', Id> = {
@@ -466,6 +469,16 @@ function buildApp(config: Config, opts: AppOptions): App {
         [now],
       );
     }
+    if (config.mode === 'sandbox' && config.own_merchant_id !== null) {
+      // BU-7 (D-028): the one MVP-B publisher is paid into the owner's own sandbox account. The id
+      // comes from the owner's environment at setup time; none is committed. Only a publisher that has
+      // no merchant id yet is set, so a stored value is never overwritten by a later start.
+      await d.query(
+        `UPDATE publishers SET paypal_merchant_id = $2, payee_verified_at = $1, updated_at = $1
+          WHERE slug = $3 AND paypal_merchant_id IS NULL`,
+        [now, config.own_merchant_id, MVPB_PUBLISHER_SLUG],
+      );
+    }
     for (const [persona, id] of Object.entries(BUYER_IDS)) {
       await d.query(
         `INSERT INTO buyers (id, display_name, auth_subject, country, created_at, updated_at)
@@ -526,7 +539,7 @@ function buildApp(config: Config, opts: AppOptions): App {
   // --- transport and adapter (dry run: the order model; sandbox: the outbound above) ---
   // Dry run: the order model answers (see src/server/dryrun-model.ts). Like the fixture transport it
   // passes the egress guard and asks the outbound gate once per request; it opens no socket.
-  const dryModel = createDryRunModel(clock);
+  const dryModel = createDryRunModel(clock, { own_merchant_id: config.own_merchant_id });
   let transport: Transport | null = null;
   const getTransport = async (): Promise<Transport> => {
     if (transport !== null) return transport;
@@ -570,6 +583,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     clock,
     log,
     credentials: config.paypal === null ? null : config.paypal,
+    own_merchant_id: config.own_merchant_id,
     record: async (c) => {
       await db.query(
         `INSERT INTO provider_calls (id, operation_id, operation, method, path_template, http_status, outcome, debug_id, duration_ms, transport_kind, request_redacted, response_redacted, environment, created_at, updated_at)

@@ -49,6 +49,7 @@ UMS_MODE=sandbox
 UMS_PAYPAL_CONNECT=on
 UMS_OUTBOUND_APPROVAL_REF=D-026
 UMS_OUTBOUND_SCOPE=mvp_b_polling
+UMS_OWN_MERCHANT_ID=<merchant id of your sandbox Business account, 13 characters A-Z and 0-9>
 UMS_DB=pglite-disk
 UMS_PGLITE_DIR=/home/<you>/unitmarket-sbx-data
 UMS_PUBLIC_ORIGIN=http://localhost:3000
@@ -58,7 +59,13 @@ PAYPAL_CLIENT_ID=<paste from the Sandbox tab of Apps & Credentials>
 PAYPAL_CLIENT_SECRET=<paste, after clicking Show>
 ```
 
-4. Save and close the editor. Never print this file (`cat`, screenshots) and never paste it anywhere.
+4. `UMS_OWN_MERCHANT_ID` (D-028) is the payee of the one MVP-B publisher: your own sandbox Business
+   account (Account details in the developer dashboard). It is
+   not a secret, but it is never committed and never pasted into a chat or a document except its last 4
+   characters. On first start the app gives the publisher "Harbour Ledger" this id; the order then
+   goes to PayPal without a payee, so PayPal pays the account of your app. If you change the value
+   later, use a fresh data folder: a stored id is never overwritten.
+5. Save and close the editor. Never print this file (`cat`, screenshots) and never paste it anywhere.
    Clear the clipboard.
 
 ## Step 2: approval row and switch (app not running) (5 min)
@@ -80,6 +87,23 @@ corepack pnpm safety:status
 
 `safety:resume` (like `safety:approve` and `safety:stop`) opens the database, and the app holds it with the
 single-opener lock: stop the app, run the command, restart the app.
+
+## Step 2b: payee check, before anything else is created (D-028, 5 min)
+
+This is the first create of the whole window and it runs before the purchase in step 4. App not
+running. Lane BU-7 left the payee out of `create_order` because the payee is our own account, so the
+only proof that PayPal treats the order as ours is to read the created order back:
+
+1. Create one order for the MVP-B publisher with the same body the app sends (the payee left out).
+2. GET that order and look at `purchase_units[].payee.merchant_id`.
+3. It must equal your `UMS_OWN_MERCHANT_ID`, exactly (compare the last 4 characters on screen; the
+   program compares the whole value and prints only "payee echo: own id" or "payee echo: STOP").
+
+Pass condition: `payee echo: own id`. Anything else (no payee, another id, an error) means STOP: do
+not go on to step 3, do not retry with another body, do not edit the settings to make it pass. Write
+down the printed line and tell Sakthi. Lane BU-6 provides the command (the first case of
+`sandbox:conformance`, run alone) and fills it in here when it merges; this step and its stop rule
+are fixed by D-028.
 
 ## Step 3: build and start the app (5 min)
 
@@ -140,7 +164,7 @@ Close the terminal. Clear the clipboard. Leave `.env.local` in place or delete i
 
 ## What to bring back to Sakthi
 
-1. `summary.md` and `calls.json` from `~/unitmarket-sandbox-run/<date>/`. Open each once and check:
+1. The line printed by step 2b (`payee echo: own id`). `summary.md` and `calls.json` from `~/unitmarket-sandbox-run/<date>/`. Open each once and check:
    no email address, no name, no long random string that looks like a token.
 2. The screenshots from steps 4, 5 and the dashboard row.
 3. The text output of the two `safety:status` runs (it holds no secret).

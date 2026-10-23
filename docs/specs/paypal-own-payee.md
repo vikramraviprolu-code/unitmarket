@@ -10,14 +10,14 @@ Sandbox seed: `seed()` in composition, in `sandbox` mode only and only when `UMS
 
 Inputs: `packages/paypal/src/{build-create.ts, adapter.ts}`, `packages/config/src/{schema.ts, load.ts}`, `apps/web/composition.server.ts`, `apps/web/src/server/dryrun-model.ts`, `packages/testkit/src/stack.ts` (the order models echo the configured own id when a unit names no payee, as PayPal does for the app's account).
 
-Outputs: those files; `.env.example` (name only); `docs/owner/MVPB-OWNER-STEPS.md` and `docs/specs/testkit-sandbox-subject.md` (the first-run check below); the tests listed; two BU-2 review nits (below).
+Outputs: those files; `.env.example` (name only); `scripts/{check-hosting.mjs, route-inventory.mjs}` (the allowed-name list; `routeMeta` literal check); `docs/owner/MVPB-OWNER-STEPS.md` and `docs/specs/testkit-sandbox-subject.md` (the first-run check below); the tests listed; two BU-2 review nits (below).
 
 Acceptance tests:
 
 - `corepack pnpm vitest run packages/paypal/src/own-payee.test.ts`: omit on exact own id only; unset never; case, whitespace, prefix, suffix and look-alike variants keep the payee; other payee kept; mixed units omit per unit.
 - `corepack pnpm vitest run packages/config/src/own-merchant-id.contract.test.ts`: optional; bad charset or length refused naming only the variable; the name is in `.env.example` with no value.
 - `corepack pnpm vitest run packages/testkit/src/own-payee.state.test.ts tests/mvp-b/own-payee.state.test.ts`: create, approve, capture, read-back match with own id echoed (order model and fixtures); the seed sets the one publisher from the config value.
-- `corepack pnpm vitest run tests/mvp-b/own-payee.adversarial.test.ts`: another payee under `mvp_b_polling` is blocked before the gate, 0 Wire calls, 0 reservations; echo missing or different freezes the order with one create, one capture and no entitlement; own id copied into another publisher's unit does not omit it.
+- `corepack pnpm vitest run tests/mvp-b/own-payee.adversarial.test.ts`: another payee under `mvp_b_polling` is blocked before the gate, 0 Wire calls, 0 reservations; echo missing or different freezes the order with one create, no capture sent and no access; own id copied into another publisher's unit does not omit it.
 - `corepack pnpm vitest run tests/mvp-b/unseal-journey.integration.test.ts`: under `mvp_b_polling` the create now reaches the Wire; the old "documented gap" test (a spec change: F1 is resolved) is replaced by a passing journey.
 - `corepack pnpm vitest run tests/mvp-b/sealed-callers.test.ts scripts/lint-rules.test.ts scripts/route-inventory.failsafe.test.ts`: pins unchanged and green, plus the nits.
 - `corepack pnpm lint && corepack pnpm typecheck && corepack pnpm format:check && corepack pnpm check:isolation && corepack pnpm check:no-live-host && corepack pnpm check:secrets-names && corepack pnpm check:routes && corepack pnpm check:fixtures && corepack pnpm check:provenance`: exit 0.
