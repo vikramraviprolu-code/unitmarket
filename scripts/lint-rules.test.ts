@@ -1401,6 +1401,23 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
           checkNamedExemptions([{ files: ['x.ts'], off: ['sbx/no-global-alias', rule] }]),
         ).toThrow(rule);
     });
+    it('no raw block of the FINAL exported config switches either rule off or weakens it (BU-1 review L3)', async () => {
+      const { default: cfg } = await import('../eslint.config.mjs');
+      const blocks = cfg as { rules?: Record<string, unknown>; files?: unknown }[];
+      expect(blocks.length).toBeGreaterThan(10);
+      const severity = (v: unknown): unknown => (Array.isArray(v) ? v[0] : v);
+      let seen = 0;
+      for (const b of blocks)
+        for (const rule of [GLOB, ALIAS])
+          if (b.rules && Object.hasOwn(b.rules, rule)) {
+            seen += 1;
+            expect(['error', 2], `${rule} in ${JSON.stringify(b.files)}`).toContain(
+              severity(b.rules[rule]),
+            );
+          }
+      // each rule is set by every entry() block, so it is present many times and never off
+      expect(seen).toBeGreaterThan(20);
+    });
     it('both rules are errors in the config of every kind of file', async () => {
       for (const f of [
         'evil.mjs',
@@ -1414,6 +1431,88 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
         expect(cfg.rules?.[GLOB]?.[0], `${f} ${GLOB}`).toBe(2);
         expect(cfg.rules?.[ALIAS]?.[0], `${f} ${ALIAS}`).toBe(2);
       }
+    });
+  });
+
+  describe('(F4) vi.mock, vi.doMock and jest.mock of a sealed module hand over the real module (BU-1 review)', () => {
+    const SEALED = 'sbx/sealed-transport';
+    const callees = ['vi.mock', 'vi.doMock', 'jest.mock', 'jest.doMock'];
+    const factories: [string, string][] = [
+      ['no factory', ''],
+      [
+        'a factory using importOriginal',
+        ', async (importOriginal) => ({ ...(await importOriginal()) })',
+      ],
+      ['a factory that ignores the original', ', () => ({})'],
+    ];
+    const repoSpecs = [
+      '@umsbx/transport',
+      '@umsbx/safety',
+      '@umsbx/transport/src/sandbox',
+      '../../packages/transport/src/sandbox',
+      '../../packages/safety/src/scoped-gate',
+      `file://${join(REPO_ROOT, 'packages/transport/src/sandbox.ts')}`,
+    ];
+    const outsiders = [
+      'tests/mvp-b/evil.test.ts',
+      'packages/paypal/src/evil.test.ts',
+      'packages/testkit/src/evil.test.ts',
+      'scripts/evil.test.ts',
+      'apps/web/src/evil.test.ts',
+    ];
+    it.each(callees)(
+      '%s of a sealed module is refused in an unpinned test file',
+      async (callee) => {
+        for (const spec of repoSpecs)
+          for (const [fname, f] of factories)
+            for (const file of outsiders) {
+              const code = `${callee}('${spec}'${f});\n`;
+              expect(
+                (await only(file, code, SEALED)).length,
+                `${file} ${spec} ${fname}`,
+              ).toBeGreaterThan(0);
+            }
+      },
+    );
+    it.each(callees)(
+      '%s with a template-literal spec and with a computed spec is refused',
+      async (callee) => {
+        const tpl = `${callee}(\`@umsbx/transport\`);\n`;
+        const computed = `${callee}(['@umsbx', 'transport'].join('/'), async (importOriginal) => importOriginal());\n`;
+        for (const file of outsiders)
+          for (const code of [tpl, computed])
+            expect((await only(file, code, SEALED)).length, `${file} ${code}`).toBeGreaterThan(0);
+      },
+    );
+    it.each(callees)('%s of an alias that reaches a sealed module is refused', async (callee) => {
+      for (const spec of ['#ap', 'transport-alias', 'safety-alias', '#star/sandbox'])
+        for (const file of ['evil.test.ts', 'src/evil.test.ts']) {
+          const code = `${callee}('${spec}', async (importOriginal) => importOriginal());\n`;
+          expect((await only(inFx(file), code, ALIAS)).length, `${file} ${spec}`).toBeGreaterThan(
+            0,
+          );
+        }
+    });
+    it('a pinned file keeps its exemption (the rule is off there by name)', async () => {
+      const code = "vi.mock('@umsbx/transport', async (importOriginal) => importOriginal());\n";
+      expect(await only('tests/mvp-b/b09-logs-clean.integration.test.ts', code, SEALED)).toEqual(
+        [],
+      );
+    });
+    it('mocking anything else is not flagged', async () => {
+      const ok = [
+        "vi.mock('zod');",
+        "vi.mock('./adapter', async (importOriginal) => importOriginal());",
+        "vi.doMock('node:https', () => ({ default: {} }));",
+        "vi.mock('@umsbx/contracts', async (importOriginal) => importOriginal());",
+        "jest.mock('../../paypal/src/adapter');",
+        'const s = vi.fn(); s.mock.calls.push(1);',
+      ];
+      for (const code of ok)
+        for (const file of outsiders) {
+          expect(await only(file, `${code}\n`, SEALED), `${file} ${code}`).toEqual([]);
+          expect(await only(file, `${code}\n`, ALIAS), `${file} ${code}`).toEqual([]);
+        }
     });
   });
 

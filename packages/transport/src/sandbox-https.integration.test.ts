@@ -1,6 +1,5 @@
-import https from 'node:https';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fakeRequest } from './https-fake';
+import { fakeRequest, testDeps } from './https-fake';
 import type { Script } from './https-fake';
 import { createApprovedSandboxTransport } from './sandbox';
 import {
@@ -27,16 +26,9 @@ afterEach(() => {
   spies.spies['global fetch'].mockRestore();
 });
 
-const lookup = (() => undefined) as unknown as typeof import('node:dns').lookup;
 async function build(script?: Script, gateOver: Parameters<typeof scopedGate>[0] = {}) {
   const f = fakeRequest(script);
-  const wire = makeHttpsWire({
-    request: f.request as unknown as typeof https.request,
-    agent: new https.Agent({ keepAlive: false }),
-    lookup,
-    builtinsIntact: () => true,
-    envOverridden: () => false,
-  });
+  const wire = makeHttpsWire(testDeps(f.request));
   const gate = scopedGate(gateOver);
   const log = memoryLogger();
   const t = await createApprovedSandboxTransport({

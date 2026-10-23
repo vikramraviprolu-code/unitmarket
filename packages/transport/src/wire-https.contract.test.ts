@@ -1,6 +1,13 @@
 import https from 'node:https';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanProcess, fakeRequest, loadHttpsWire, unloadHttpsWire } from './https-fake';
+import {
+  BUNDLED_ROOTS,
+  cleanProcess,
+  fakeRequest,
+  loadHttpsWire,
+  testDeps,
+  unloadHttpsWire,
+} from './https-fake';
 import { CERT_HOST, SANDBOX_HOST } from './test-support';
 import { makeHttpsWire } from './wire-https';
 import type { WireRequest } from './wire';
@@ -20,15 +27,13 @@ const wireReq = (over: Partial<WireRequest> = {}): WireRequest => ({
 
 describe('the options handed to the request function (makeHttpsWire)', () => {
   const agent = new https.Agent({ keepAlive: false });
+  const identity = (() => undefined) as unknown as typeof import('node:tls').checkServerIdentity;
+  const ca = ['ROOT-A', 'ROOT-B'];
+  const deps = (request: never) =>
+    testDeps(request, { agent, lookup, checkServerIdentity: identity, ca });
   const make = () => {
     const f = fakeRequest();
-    const wire = makeHttpsWire({
-      request: f.request as unknown as typeof https.request,
-      agent,
-      lookup,
-      builtinsIntact: () => true,
-      envOverridden: () => false,
-    });
+    const wire = makeHttpsWire(deps(f.request));
     return { wire, calls: f.calls };
   };
 
@@ -44,6 +49,8 @@ describe('the options handed to the request function (makeHttpsWire)', () => {
       headers: { authorization: 'Bearer placeholder', accept: 'application/json' },
       agent,
       lookup,
+      checkServerIdentity: identity,
+      ca,
       servername: SANDBOX_HOST,
       rejectUnauthorized: true,
       minVersion: 'TLSv1.2',
@@ -94,16 +101,12 @@ describe('the options handed to the request function (makeHttpsWire)', () => {
   });
   it('the request function is called once per Wire call, with the options and a response callback', async () => {
     let args: unknown[] = [];
-    const wire = makeHttpsWire({
-      request: ((...a: unknown[]) => {
+    const wire = makeHttpsWire(
+      deps(((...a: unknown[]) => {
         args = a;
         return fakeRequest().request(a[0] as Record<string, unknown>, a[1] as never);
-      }) as unknown as typeof https.request,
-      agent,
-      lookup,
-      builtinsIntact: () => true,
-      envOverridden: () => false,
-    });
+      }) as never),
+    );
     await wire.request(wireReq());
     expect(args).toHaveLength(2);
     expect(typeof args[0]).toBe('object');
@@ -134,6 +137,36 @@ describe('the Wire built by createHttpsWire (against fake node:https, node:tls, 
     expect(o['rejectUnauthorized']).toBe(true);
     expect(o['minVersion']).toBe('TLSv1.2');
     expect(o['servername']).toBe(SANDBOX_HOST);
+  });
+  it('carries the checkServerIdentity captured at load (BU-1 review F1)', async () => {
+    await loaded.createHttpsWire().request(wireReq());
+    const o = loaded.world.calls[0]?.options as Record<string, unknown>;
+    expect(o['checkServerIdentity']).toBe(loaded.world.checkServerIdentity);
+    // the Wire hands it to the TLS layer; it never calls it itself
+    expect(loaded.world.checkServerIdentity).not.toHaveBeenCalled();
+  });
+  it('pins the trust store to the bundled roots captured at load (BU-1 review F2)', async () => {
+    await loaded.createHttpsWire().request(wireReq());
+    const o = loaded.world.calls[0]?.options as Record<string, unknown>;
+    expect(o['ca']).toEqual(BUNDLED_ROOTS);
+    expect(loaded.world.getCACertificates).toHaveBeenCalledWith('bundled');
+  });
+  it('system or extra CAs in the default store at load are not trusted: ca is the bundled list only', async () => {
+    unloadHttpsWire();
+    const withExtra = await loadHttpsWire(undefined, {
+      extraDefaultCAs: ['SYSTEM-CA', 'EXTRA-CA'],
+    });
+    await withExtra.createHttpsWire().request(wireReq());
+    const ca = withExtra.world.calls[0]?.options['ca'] as string[];
+    expect(ca).toEqual(BUNDLED_ROOTS);
+    expect(ca).not.toContain('SYSTEM-CA');
+    expect(ca).not.toContain('EXTRA-CA');
+  });
+  it('on a Node without getCACertificates the roots are tls.rootCertificates', async () => {
+    unloadHttpsWire();
+    const old = await loadHttpsWire(undefined, { noGetCACertificates: true });
+    await old.createHttpsWire().request(wireReq());
+    expect(old.world.calls[0]?.options['ca']).toEqual(BUNDLED_ROOTS);
   });
   it('the agent keeps no connections alive and caches no TLS sessions', async () => {
     await loaded.createHttpsWire().request(wireReq());

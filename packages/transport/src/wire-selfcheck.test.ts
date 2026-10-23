@@ -62,6 +62,8 @@ describe('selfcheck makes no I/O and names node-https', () => {
       [world.https, 'request'],
       [world.tls, 'connect'],
       [world.dns, 'lookup'],
+      [world.tls, 'checkServerIdentity'],
+      [world.tls, 'getCACertificates'],
     ] as const) {
       const original = mod[key];
       mod[key] = () => undefined;

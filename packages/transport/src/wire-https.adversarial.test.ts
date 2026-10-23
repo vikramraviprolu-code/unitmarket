@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanProcess, loadHttpsWire, setExecArgv, unloadHttpsWire } from './https-fake';
+import {
+  BUNDLED_ROOTS,
+  cleanProcess,
+  loadHttpsWire,
+  setExecArgv,
+  unloadHttpsWire,
+} from './https-fake';
 import { SANDBOX_HOST } from './test-support';
 import type { WireRequest } from './wire';
 
@@ -74,6 +80,9 @@ describe('https.request, tls.connect or dns.lookup replaced after load: refused 
     ['https.request', 'https', 'request'],
     ['tls.connect', 'tls', 'connect'],
     ['dns.lookup', 'dns', 'lookup'],
+    // BU-1 review F1 and F2
+    ['tls.checkServerIdentity', 'tls', 'checkServerIdentity'],
+    ['tls.getCACertificates', 'tls', 'getCACertificates'],
   ] as const)('%s', async (_name, mod, key) => {
     const wire = loaded.createHttpsWire();
     expect((await wire.request(request())).kind).toBe('response');
@@ -97,6 +106,39 @@ describe('https.request, tls.connect or dns.lookup replaced after load: refused 
     expect(await loaded.createHttpsWire().request(request())).toEqual(refused);
     expect(replacement).toHaveBeenCalledTimes(0);
     expect(loaded.world.calls).toHaveLength(0);
+  });
+});
+
+describe('the trust store cannot be changed after load (BU-1 review F2)', () => {
+  it('a CA added to the default store after load: refused, and never in the ca the Wire sends', async () => {
+    const wire = loaded.createHttpsWire();
+    expect((await wire.request(request())).kind).toBe('response');
+    (loaded.world.tls['setDefaultCACertificates'] as (c: string[]) => void)([
+      ...BUNDLED_ROOTS,
+      'EVIL-CA',
+    ]);
+    expect(await wire.request(request())).toEqual(refused);
+    expect(loaded.wireSelfCheck().builtins_intact).toBe(false);
+    for (const c of loaded.world.calls)
+      expect(c.options['ca'], 'EVIL-CA must never be trusted').not.toContain('EVIL-CA');
+    expect(loaded.world.calls).toHaveLength(1);
+    // putting the store back lets the next request through
+    (loaded.world.tls['setDefaultCACertificates'] as (c: string[]) => void)([...BUNDLED_ROOTS]);
+    expect((await wire.request(request())).kind).toBe('response');
+    expect(loaded.wireSelfCheck().builtins_intact).toBe(true);
+  });
+  it('a default store that was swapped for fewer CAs is refused too', async () => {
+    const wire = loaded.createHttpsWire();
+    (loaded.world.tls['setDefaultCACertificates'] as (c: string[]) => void)(['ONLY-ONE']);
+    expect(await wire.request(request())).toEqual(refused);
+    expect(loaded.world.calls).toHaveLength(0);
+  });
+  it('NODE_EXTRA_CA_CERTS style extras present in the default store at load do not make the Wire refuse, and are not trusted', async () => {
+    unloadHttpsWire();
+    const extra = await loadHttpsWire(undefined, { extraDefaultCAs: ['EXTRA-AT-LOAD'] });
+    const r = await extra.createHttpsWire().request(request());
+    expect(r.kind).toBe('response');
+    expect(extra.world.calls[0]?.options['ca']).toEqual(BUNDLED_ROOTS);
   });
 });
 

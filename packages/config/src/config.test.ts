@@ -415,6 +415,9 @@ describe('transport environment overrides (M1)', () => {
     'ALL_PROXY',
     // FIX-MVPB-SEAL2 M3: more ways to change which certificates or OpenSSL settings a connection uses.
     'NODE_USE_SYSTEM_CA',
+    // SEAL5 / BU-1 review F3
+    'NODE_PRESERVE_SYMLINKS',
+    'NODE_PATH',
     'OPENSSL_CONF',
     'SSL_CERT_FILE',
     'SSL_CERT_DIR',
@@ -470,6 +473,12 @@ describe('transport environment overrides (M1)', () => {
     '--report-exclude-env',
     '--snapshot-blob',
     '--build-snapshot',
+    '--preserve-symlinks',
+    '--preserve-symlinks-main',
+    '--experimental-config-file',
+    '--experimental-config-file=./c.json',
+    '--experimental-default-config-file',
+    '--insecure-http-parser',
   ])('sandbox mode refuses execArgv %s', (flag) => {
     const r = loadConfig(sandbox(), { execArgv: ['--max-old-space-size=512', flag] });
     expect(!r.ok && r.error).toEqual({ code: 'transport_env_override', name: 'execArgv' });

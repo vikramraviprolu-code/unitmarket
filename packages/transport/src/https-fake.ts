@@ -157,19 +157,49 @@ function lower(h: Record<string, string | string[]>): Record<string, string | st
  * Fake `node:https`, `node:tls` and `node:dns` module objects. `Agent` is the real class (building
  * one opens nothing); `request`, `tls.connect` and `dns.lookup` are fakes that count calls.
  */
-export function fakeWorld(script?: Script) {
+export interface WorldOptions {
+  /** Extra CAs that the fake default trust store holds at load (system or extra CAs). */
+  extraDefaultCAs?: string[];
+  /** The fake tls module has no getCACertificates (an older Node): the roots are tls.rootCertificates. */
+  noGetCACertificates?: boolean;
+}
+
+export const BUNDLED_ROOTS = ['BUNDLED-ROOT-1', 'BUNDLED-ROOT-2', 'BUNDLED-ROOT-3'];
+
+export function fakeWorld(script?: Script, opts: WorldOptions = {}) {
   const { request, calls } = fakeRequest(script);
   const lookup = vi.fn((_host: string, _o: unknown, cb: (...a: unknown[]) => void) =>
     cb(null, '192.0.2.1', 4),
   );
   const connect = vi.fn(() => new EventEmitter());
+  const checkServerIdentity = vi.fn(() => undefined);
+  // The default trust store, as getCACertificates('default') reports it; setDefaultCACertificates
+  // replaces it, as Node 22.22 does.
+  const store = { default: [...BUNDLED_ROOTS, ...(opts.extraDefaultCAs ?? [])] };
+  const getCACertificates = vi.fn((kind: string = 'default') =>
+    kind === 'bundled' ? [...BUNDLED_ROOTS] : [...store.default],
+  );
+  const setDefaultCACertificates = vi.fn((certs: string[]) => {
+    store.default = [...certs];
+  });
+  const tls: Record<string, unknown> = {
+    connect,
+    checkServerIdentity,
+    rootCertificates: [...BUNDLED_ROOTS],
+    setDefaultCACertificates,
+  };
+  if (opts.noGetCACertificates !== true) tls['getCACertificates'] = getCACertificates;
   return {
     calls,
     request,
     lookup,
     connect,
+    checkServerIdentity,
+    getCACertificates,
+    setDefaultCACertificates,
+    store,
     https: { request, get: request, Agent: https.Agent } as Record<string, unknown>,
-    tls: { connect } as Record<string, unknown>,
+    tls,
     dns: { lookup } as Record<string, unknown>,
   };
 }
@@ -179,8 +209,8 @@ export type FakeWorld = ReturnType<typeof fakeWorld>;
  * Loads a fresh copy of wire-https.ts (and wire-selfcheck.ts) whose captured `https.request`,
  * `tls.connect` and `dns.lookup` are the fake world's. Call `unloadHttpsWire()` in afterEach.
  */
-export async function loadHttpsWire(script?: Script) {
-  const world = fakeWorld(script);
+export async function loadHttpsWire(script?: Script, opts: WorldOptions = {}) {
+  const world = fakeWorld(script, opts);
   vi.resetModules();
   vi.doMock('node:https', () => ({ default: world.https, ...world.https }));
   vi.doMock('node:tls', () => ({ default: world.tls, ...world.tls }));
@@ -208,6 +238,7 @@ export const OVERRIDE_ENV_NAMES = [
   'ALL_PROXY',
   'NODE_USE_SYSTEM_CA',
   'NODE_PRESERVE_SYMLINKS',
+  'NODE_PATH',
   'OPENSSL_CONF',
   'SSL_CERT_FILE',
   'SSL_CERT_DIR',
@@ -236,4 +267,26 @@ export function cleanProcess(): () => void {
     vi.stubEnv(n.toLowerCase(), '');
   }
   return setExecArgv([]);
+}
+
+// ---- full dependency sets for makeHttpsWire -------------------------------------------------
+
+const noLookup = (() => undefined) as unknown as typeof import('node:dns').lookup;
+const noIdentity = (() => undefined) as unknown as typeof import('node:tls').checkServerIdentity;
+
+/** A complete HttpsWireDeps around a fake request function; `over` replaces any field. */
+export function testDeps(
+  request: ReturnType<typeof fakeRequest>['request'],
+  over: Record<string, unknown> = {},
+) {
+  return {
+    request: request as unknown as typeof https.request,
+    agent: new https.Agent({ keepAlive: false }),
+    lookup: noLookup,
+    checkServerIdentity: noIdentity,
+    ca: [...BUNDLED_ROOTS],
+    builtinsIntact: () => true,
+    envOverridden: () => false,
+    ...over,
+  };
 }

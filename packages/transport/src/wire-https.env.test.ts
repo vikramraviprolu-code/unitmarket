@@ -59,6 +59,11 @@ const FLAGS = [
   '--preserve-symlinks-main',
   '--preserve-symlinks=1',
   '--preserve-symlinks-main=1',
+  // BU-1 review F3
+  '--experimental-config-file',
+  '--experimental-config-file=./c.json',
+  '--experimental-default-config-file',
+  '--insecure-http-parser',
 ];
 
 const request = (): WireRequest => ({
@@ -82,8 +87,9 @@ afterEach(() => {
 });
 
 describe('the environment is rechecked on every request (M3, SEAL2)', () => {
-  it('the override names include NODE_PRESERVE_SYMLINKS (SEAL5 item f)', () => {
+  it('the override names include NODE_PRESERVE_SYMLINKS (SEAL5 item f) and NODE_PATH (BU-1 review F3)', () => {
     expect(OVERRIDE_ENV_NAMES).toContain('NODE_PRESERVE_SYMLINKS');
+    expect(OVERRIDE_ENV_NAMES).toContain('NODE_PATH');
   });
   it('with a clean environment the request reaches the (fake) request function', async () => {
     const r = await loaded.createHttpsWire().request(request());

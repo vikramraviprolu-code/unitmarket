@@ -1,11 +1,10 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import https from 'node:https';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fakeRequest } from './https-fake';
+import { fakeRequest, testDeps } from './https-fake';
 import type { Script } from './https-fake';
-import { SANDBOX_HOST, netSpies } from './test-support';
+import { CERT_HOST, SANDBOX_HOST, netSpies } from './test-support';
 import { CONNECT_TIMEOUT_MS, TOTAL_DEADLINE_MS, makeHttpsWire } from './wire-https';
 import { MAX_RESPONSE_BYTES } from './wire-map';
 import type { WireRequest } from './wire';
@@ -22,16 +21,9 @@ afterEach(() => {
   spies.spies['global fetch'].mockRestore();
 });
 
-const lookup = (() => undefined) as unknown as typeof import('node:dns').lookup;
 function build(script?: Script) {
   const { request, calls } = fakeRequest(script);
-  const wire = makeHttpsWire({
-    request: request as unknown as typeof https.request,
-    agent: new https.Agent({ keepAlive: false }),
-    lookup,
-    builtinsIntact: () => true,
-    envOverridden: () => false,
-  });
+  const wire = makeHttpsWire(testDeps(request));
   return { wire, calls };
 }
 const get = (over: Partial<WireRequest> = {}): WireRequest => ({
@@ -118,6 +110,65 @@ describe('non-https, userinfo, port and fragment refused before any request', ()
     const { wire, calls } = build();
     expect(await wire.request(get({ url }))).toEqual(other);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('only the sandbox hosts are ever contacted (BU-1 review L6)', () => {
+  const refusedUrls: [string, string][] = [
+    ['another host', 'https://evil.example/v2/checkout/orders/ABC123'],
+    ['an IPv4 literal', 'https://192.0.2.1/v2/checkout/orders/ABC123'],
+    ['an IPv6 literal', 'https://[2001:db8::1]/v2/checkout/orders/ABC123'],
+    ['a decimal IPv4 spelling', 'https://3221225985/v2/checkout/orders/ABC123'],
+    ['a look-alike prefix', `https://${SANDBOX_HOST}.evil.example/v2/checkout/orders/ABC123`],
+    ['a look-alike suffix', `https://evil-${SANDBOX_HOST}/v2/checkout/orders/ABC123`],
+    ['a trailing-dot host', `https://${SANDBOX_HOST}./v2/checkout/orders/ABC123`],
+    ['the certificate host on an API path', `https://${CERT_HOST}/v2/checkout/orders/ABC123`],
+    [
+      'a certificate-style host two labels deep',
+      `https://a.b.${CERT_HOST}/v1/notifications/certs/C1`,
+    ],
+    ['the API host on a certificate path', `https://${SANDBOX_HOST}/v1/notifications/certs/C1`],
+    ['a certificate path under another domain', 'https://certs.example/v1/notifications/certs/C1'],
+  ];
+  it.each(refusedUrls)('%s is refused before any request', async (_n, url) => {
+    const { wire, calls } = build();
+    expect(await wire.request(get({ url }))).toEqual(other);
+    expect(calls).toHaveLength(0);
+  });
+  it('the API host and a one-label sandbox certificate host on the certificate path are allowed', async () => {
+    const { wire, calls } = build();
+    expect((await wire.request(get())).kind).toBe('response');
+    const cert = `https://${CERT_HOST}/v1/notifications/certs/CERT-1`;
+    expect((await wire.request(get({ url: cert }))).kind).toBe('response');
+    expect(calls.map((c) => c.options['hostname'])).toEqual([SANDBOX_HOST, CERT_HOST]);
+  });
+  it('a certificate host is GET only', async () => {
+    const { wire, calls } = build();
+    const url = `https://${CERT_HOST}/v1/notifications/certs/CERT-1`;
+    expect(await wire.request(get({ url, method: 'POST', body: '{}' }))).toEqual(other);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe('duplicate header names are refused, not resolved by order (BU-1 review L5)', () => {
+  it.each([
+    [
+      'authorization twice, different case',
+      { Authorization: 'Bearer a', authorization: 'Bearer b' },
+    ],
+    ['accept twice, upper case', { Accept: 'a', ACCEPT: 'b' }],
+    ['a dropped header twice (still ambiguous)', { Cookie: 'a=b', cookie: 'c=d' }],
+  ])('%s', async (_n, headers) => {
+    const { wire, calls } = build();
+    expect(await wire.request(get({ headers }))).toEqual(other);
+    expect(calls).toHaveLength(0);
+  });
+  it('the same header spelled once in any case is fine', async () => {
+    const { wire, calls } = build();
+    expect((await wire.request(get({ headers: { AUTHORIZATION: 'Bearer a' } }))).kind).toBe(
+      'response',
+    );
+    expect(Object.keys(calls[0]?.options['headers'] as object)).toEqual(['authorization']);
   });
 });
 
@@ -342,13 +393,9 @@ describe('the gates the Wire asks before every request', () => {
     const { request, calls } = fakeRequest();
     let intact = true;
     let overridden = false;
-    const wire = makeHttpsWire({
-      request: request as unknown as typeof https.request,
-      agent: new https.Agent({ keepAlive: false }),
-      lookup,
-      builtinsIntact: () => intact,
-      envOverridden: () => overridden,
-    });
+    const wire = makeHttpsWire(
+      testDeps(request, { builtinsIntact: () => intact, envOverridden: () => overridden }),
+    );
     expect((await wire.request(get())).kind).toBe('response');
     intact = false;
     expect(await wire.request(get())).toEqual(other);
@@ -361,28 +408,22 @@ describe('the gates the Wire asks before every request', () => {
   });
   it('a gate that throws is a refusal', async () => {
     const { request, calls } = fakeRequest();
-    const wire = makeHttpsWire({
-      request: request as unknown as typeof https.request,
-      agent: new https.Agent({ keepAlive: false }),
-      lookup,
-      builtinsIntact: () => {
-        throw new Error('boom');
-      },
-      envOverridden: () => false,
-    });
+    const wire = makeHttpsWire(
+      testDeps(request, {
+        builtinsIntact: () => {
+          throw new Error('boom');
+        },
+      }),
+    );
     expect(await wire.request(get())).toEqual(other);
     expect(calls).toHaveLength(0);
   });
   it('a request function that throws is an error result, not an exception', async () => {
-    const wire = makeHttpsWire({
-      request: (() => {
+    const wire = makeHttpsWire(
+      testDeps((() => {
         throw new Error('boom');
-      }) as unknown as typeof https.request,
-      agent: new https.Agent({ keepAlive: false }),
-      lookup,
-      builtinsIntact: () => true,
-      envOverridden: () => false,
-    });
+      }) as never),
+    );
     expect(await wire.request(get())).toEqual(other);
   });
 });

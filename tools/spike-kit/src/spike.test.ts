@@ -1124,6 +1124,9 @@ describe('M1: proxy, certificate and Node-option overrides are refused in real m
     'ALL_PROXY',
     // FIX-MVPB-SEAL2 M3
     'NODE_USE_SYSTEM_CA',
+    // SEAL5 / BU-1 review F3
+    'NODE_PRESERVE_SYMLINKS',
+    'NODE_PATH',
     'OPENSSL_CONF',
     'SSL_CERT_FILE',
     'SSL_CERT_DIR',
@@ -1183,6 +1186,12 @@ describe('M1: proxy, certificate and Node-option overrides are refused in real m
     '--report-exclude-env',
     '--snapshot-blob',
     '--build-snapshot',
+    '--preserve-symlinks',
+    '--preserve-symlinks-main',
+    '--experimental-config-file',
+    '--experimental-config-file=./c.json',
+    '--experimental-default-config-file',
+    '--insecure-http-parser',
     '--snapshot-blob=/tmp/x.blob',
     '--report-dir=/tmp/r',
   ])('refuses execArgv %s', (flag) => {
