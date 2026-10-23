@@ -198,6 +198,14 @@ describe('analyseStart: BU-3 review additions', () => {
     );
     expect(failed(r)).toEqual([]);
   });
+  it('the secret scan says how many lines hold a fake value, never which', () => {
+    expect(detail(analyseStart(good()), 'no_secret_in_output')).toBe(
+      '0 lines hold any of 3 fake values',
+    );
+    const leak = j({ level: 'info', msg: 'oops', note: FAKE_ID });
+    const r = analyseStart(good({ stderr: leak }));
+    expect(detail(r, 'no_secret_in_output')).toBe('1 line(s) hold a fake value');
+  });
   it('the self-check detail says the line is logged at first transport use, not at startup', () => {
     const d = detail(analyseStart(good()), 'global_fetch_recorded');
     expect(d).toContain('first transport use');

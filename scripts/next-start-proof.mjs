@@ -801,12 +801,15 @@ async function main(argv) {
       );
       return 2;
     }
-    say(`waiting for ${LOCK_FILE} (flock), then building and starting`);
+    say(
+      `waiting for ${LOCK_FILE} (flock), then building and starting (flock --no-fork: a signal reaches the run itself)`,
+    );
     // The inner run reads no environment: the temp base (TMPDIR) is handed down as an argument.
     const base = tmpdir();
     const child = spawn(
       'flock',
       [
+        '--no-fork',
         LOCK_FILE,
         process.execPath,
         ...process.execArgv,
