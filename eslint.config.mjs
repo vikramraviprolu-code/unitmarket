@@ -541,15 +541,63 @@ const IN_PKG_INTERNAL = new Set([
 ]);
 const TESTY = /\.test\.[cm]?[jt]sx?$/;
 const MOCK_OBJECTS = new Set(['vi', 'jest']);
-const MOCK_FNS = new Set(['mock', 'doMock']);
 const MSG_SEALED =
   'SEAL2/SEAL3: the approved sandbox transport, the approval minter and the scoped-gate factory are reachable only from packages/safety (and pinned test files). Import the plain public names from the package; a namespace import, re-export, import(), require(), importActual or a path into packages/transport or packages/safety reaches them too, and test-only minters and test-support.ts are for test files.';
+const MSG_MOCKER =
+  'BU-1 re-review M1: use vi and jest only as the object of a call such as vi.fn() or vi.mock(...); renaming, copying, passing or destructuring them could hide a mock of a sealed module.';
 const MSG_REQUIRE_ALIAS =
   'SEAL3 H-A: require may only be called directly; aliasing or passing it hides what is loaded.';
 const specOf = (n) => {
   if (n?.type === 'Literal' && typeof n.value === 'string') return n.value;
   if (n?.type === 'TemplateLiteral' && n.expressions.length === 0) return n.quasis[0].value.cooked;
   return null;
+};
+// BU-1 review F4 and re-review M1. A call that loads or mocks a module by specifier is recognised by
+// WHAT it does, not by the name of the object: X.mock, X.doMock, X.importMock, X.requireMock,
+// X.requireActual, X.importActual for any X (vi, jest, a renamed or copied one), the same through
+// .call, .apply or .bind, and a bare destructured mock(...). vi.mock(spec, async (importOriginal) =>
+// ...) loads the real module for the factory, so mocking a sealed module hands it over like
+// importActual does. Renaming, copying or destructuring vi and jest is barred separately, so this
+// cannot be hidden behind another name.
+const ACTUAL_FNS = new Set(['importActual', 'importMock', 'requireActual', 'requireMock']);
+const LOADER_FNS = new Set([...ACTUAL_FNS, 'mock', 'doMock']);
+const WRAP_FNS = new Set(['call', 'apply', 'bind']);
+const memberName = (m) => (m.computed ? specOf(m.property) : m.property.name);
+const isMockerObject = (o) =>
+  o?.type === 'MemberExpression'
+    ? MOCK_OBJECTS.has(memberName(o))
+    : o?.type === 'Identifier' && MOCK_OBJECTS.has(o.name);
+/**
+ * undefined when the call is not a loader call; otherwise { spec, strict }: the specifier string (null
+ * when it cannot be read) and whether an unreadable specifier must be refused.
+ */
+const loaderCall = (n) => {
+  const c = n.callee;
+  if (c.type === 'Identifier')
+    return c.name !== 'require' && LOADER_FNS.has(c.name)
+      ? { spec: specOf(n.arguments[0]), strict: false }
+      : undefined;
+  if (c.type !== 'MemberExpression') return undefined;
+  const name = memberName(c);
+  if (typeof name !== 'string') return undefined;
+  if (LOADER_FNS.has(name))
+    return {
+      spec: specOf(n.arguments[0]),
+      strict: ACTUAL_FNS.has(name) || isMockerObject(c.object),
+    };
+  if (WRAP_FNS.has(name) && c.object.type === 'MemberExpression') {
+    const inner = memberName(c.object);
+    if (typeof inner === 'string' && LOADER_FNS.has(inner)) {
+      const arg =
+        name === 'apply'
+          ? n.arguments[1]?.type === 'ArrayExpression'
+            ? n.arguments[1].elements[0]
+            : null
+          : n.arguments[1];
+      return { spec: specOf(arg), strict: true };
+    }
+  }
+  return undefined;
 };
 const posix = (p) => p.split(path.sep).join('/');
 const stripExt = (p) => p.replace(/\.[cm]?[jt]sx?$/, '');
@@ -644,13 +692,27 @@ const sealedTransport = {
         return;
       }
     };
-    const IMPORT_ACTUAL = new Set(['importActual', 'importMock', 'requireActual', 'requireMock']);
-    // BU-1 review F4: vi.mock(spec, async (importOriginal) => ...) and jest.mock/doMock load the real
-    // module for the factory, so mocking a sealed module hands it over as importActual does.
-    const isMockerCall = (c) =>
-      c.object.type === 'Identifier' &&
-      MOCK_OBJECTS.has(c.object.name) &&
-      MOCK_FNS.has(c.property.name ?? c.property.value);
+    // BU-1 re-review M1: vi and jest may only be used as the object of a member access (vi.fn(),
+    // vi.mock(...)). Copying, renaming, passing or destructuring them would hide a mock of a sealed
+    // module from the loader-call check.
+    const checkMockerUse = (n) => {
+      const p = n.parent;
+      if (/^TS/.test(p.type)) return; // types: typeof vi.fn
+      if (p.type === 'UnaryExpression' && p.operator === 'typeof') return;
+      if (p.type === 'MemberExpression') {
+        if (p.object === n) {
+          if (!p.computed || specOf(p.property) !== null) return;
+          return report(n, MSG_MOCKER);
+        }
+        if (p.property === n && !p.computed) return; // x.vi
+      }
+      if (/^Import/.test(p.type)) return; // import { vi }, import vi, import * as vi
+      if (p.type === 'VariableDeclarator' && p.id === n) return; // const vi = ...
+      if (/Function/.test(p.type) && p.params.includes(n)) return; // (vi) => ...
+      if (p.type === 'Property' && p.parent.type === 'ObjectPattern') return; // { vi } = x, { x: vi } = y
+      if (p.type === 'Property' && p.key === n && !p.computed && !p.shorthand) return; // { vi: 1 }
+      report(n, MSG_MOCKER);
+    };
     return {
       ImportDeclaration(n) {
         if (n.importKind !== 'type') check(n, n.source.value, 'import', n.specifiers);
@@ -668,22 +730,35 @@ const sealedTransport = {
       CallExpression(n) {
         const c = n.callee;
         if (c.type === 'Identifier' && c.name === 'require')
-          check(n, specOf(n.arguments[0]), 'whole');
-        else if (
-          c.type === 'MemberExpression' &&
-          (IMPORT_ACTUAL.has(c.property.name ?? c.property.value) || isMockerCall(c))
-        ) {
-          const spec = specOf(n.arguments[0]);
-          // A specifier that cannot be read statically could be anything: refuse it too.
-          if (spec === null) report(n);
-          else check(n, spec, 'whole');
-        }
+          return check(n, specOf(n.arguments[0]), 'whole');
+        const lc = loaderCall(n);
+        if (lc === undefined) return;
+        // A specifier that cannot be read statically could be anything: refuse it too.
+        if (lc.spec === null) {
+          if (lc.strict) report(n);
+        } else check(n, lc.spec, 'whole');
       },
       TSImportEqualsDeclaration(n) {
         const ref = n.moduleReference;
         if (ref?.type === 'TSExternalModuleReference') check(n, specOf(ref.expression), 'whole');
       },
+      ImportSpecifier(n) {
+        const imported = nameOf(n.imported);
+        if (n.importKind !== 'type' && MOCK_OBJECTS.has(imported) && n.local.name !== imported)
+          report(n, MSG_MOCKER);
+      },
+      Property(n) {
+        if (
+          n.parent.type === 'ObjectPattern' &&
+          !n.computed &&
+          n.key.type === 'Identifier' &&
+          MOCK_OBJECTS.has(n.key.name) &&
+          !(n.value.type === 'Identifier' && n.value.name === n.key.name)
+        )
+          report(n, MSG_MOCKER);
+      },
       Identifier(n) {
+        if (MOCK_OBJECTS.has(n.name)) return checkMockerUse(n);
         if (n.name !== 'require') return;
         const p = n.parent;
         if (p.type === 'CallExpression' && p.callee === n) return;
@@ -841,17 +916,10 @@ const noSealedAlias = {
       },
       CallExpression(n) {
         const c = n.callee;
-        if (c.type === 'Identifier' && c.name === 'require') check(n, specOf(n.arguments[0]));
-        else if (
-          c.type === 'MemberExpression' &&
-          (['importActual', 'importMock', 'requireActual', 'requireMock'].includes(
-            c.property.name ?? c.property.value,
-          ) ||
-            (c.object.type === 'Identifier' &&
-              MOCK_OBJECTS.has(c.object.name) &&
-              MOCK_FNS.has(c.property.name ?? c.property.value)))
-        )
-          check(n, specOf(n.arguments[0]));
+        if (c.type === 'Identifier' && c.name === 'require')
+          return check(n, specOf(n.arguments[0]));
+        const lc = loaderCall(n);
+        if (lc !== undefined) check(n, lc.spec);
       },
       TSImportEqualsDeclaration(n) {
         const ref = n.moduleReference;

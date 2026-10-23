@@ -122,7 +122,8 @@ describe('the trust store cannot be changed after load (BU-1 review F2)', () => 
     for (const c of loaded.world.calls)
       expect(c.options['ca'], 'EVIL-CA must never be trusted').not.toContain('EVIL-CA');
     expect(loaded.world.calls).toHaveLength(1);
-    // putting the store back lets the next request through
+    // In this fake the store comes back identical, so the next request passes. Real Node does not
+    // restore the digest after any setDefaultCACertificates call (READINESS: sticky refusal).
     (loaded.world.tls['setDefaultCACertificates'] as (c: string[]) => void)([...BUNDLED_ROOTS]);
     expect((await wire.request(request())).kind).toBe('response');
     expect(loaded.wireSelfCheck().builtins_intact).toBe(true);

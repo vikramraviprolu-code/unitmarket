@@ -4,7 +4,8 @@ import https from 'node:https';
 import tls from 'node:tls';
 import type { ClientRequest, IncomingHttpHeaders, IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
-import { CERT_HOST_SUFFIX, CERT_PATH_PREFIX, SANDBOX_API } from './endpoints';
+import { SANDBOX_API } from './endpoints';
+import { CERT_HOST_RE, CERT_PATH_RE } from './guard';
 import { MAX_RESPONSE_BYTES, mapFetchError } from './wire-map';
 import { registerWireProbe } from './wire-selfcheck';
 import type { Wire, WireErrorKind, WireRequest, WireResult } from './wire';
@@ -58,7 +59,8 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   'ALL_PROXY',
   'NODE_USE_SYSTEM_CA',
   'NODE_PRESERVE_SYMLINKS',
-  'NODE_PATH',
+  // NODE_PATH is deliberately absent: pnpm's command shims export it on every start, and it only
+  // changes CommonJS lookup (BU-1 re-review H1).
   'OPENSSL_CONF',
   'SSL_CERT_FILE',
   'SSL_CERT_DIR',
@@ -151,14 +153,10 @@ export interface HttpsWireDeps {
 // the sandbox API host, and a one-label host under the sandbox domain for the certificate download,
 // on the certificate path, GET only. An IP literal matches neither.
 const SANDBOX_HOST = new URL(SANDBOX_API).hostname;
-const CERT_HOST = new RegExp(
-  `^[a-z0-9-]+${CERT_HOST_SUFFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
-);
 function hostAllowed(url: URL, method: string): boolean {
   if (url.hostname === SANDBOX_HOST) return true;
-  return (
-    method === 'GET' && CERT_HOST.test(url.hostname) && url.pathname.startsWith(CERT_PATH_PREFIX)
-  );
+  // The certificate download rule is the guard's own (host and path), so the Wire cannot be looser.
+  return method === 'GET' && CERT_HOST_RE.test(url.hostname) && CERT_PATH_RE.test(url.pathname);
 }
 
 interface Prepared {

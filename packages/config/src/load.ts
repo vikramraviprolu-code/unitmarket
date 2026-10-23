@@ -113,7 +113,6 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   // FIX-MVPB-SEAL2 M3: more ways to change which certificates or OpenSSL settings a connection uses.
   'NODE_USE_SYSTEM_CA',
   'NODE_PRESERVE_SYMLINKS',
-  'NODE_PATH',
   'OPENSSL_CONF',
   'SSL_CERT_FILE',
   'SSL_CERT_DIR',

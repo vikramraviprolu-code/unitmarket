@@ -554,7 +554,6 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   'ALL_PROXY',
   'NODE_USE_SYSTEM_CA',
   'NODE_PRESERVE_SYMLINKS',
-  'NODE_PATH',
   'OPENSSL_CONF',
   'SSL_CERT_FILE',
   'SSL_CERT_DIR',
