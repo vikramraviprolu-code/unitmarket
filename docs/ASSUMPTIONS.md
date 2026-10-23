@@ -1,0 +1,103 @@
+# Assumptions register
+
+Status date: 2026-10-23. Owner: Vikram. This file lists what the sandbox track assumes today, why,
+what it touches, and what happens if the assumption changes. An assumption is meant to be changed
+when the facts change. It is never a locked decision. Locked decisions live in
+`docs/decision-log.md`; this file points to them.
+
+## How to change an assumption or requirement
+
+1. Find the ID below (ASM-nn). If none fits, add one.
+2. Check the "If it changes" column. It names the parts that must move and the plug point that
+   absorbs the change.
+3. Add one row to `docs/decision-log.md` that names the ASM ID, the new value and who approved it.
+   Safety-relevant changes (anything in the Safety section) need the owner's written approval.
+4. Update the row here: new statement, new date, status `changed`. Keep the old value in "History".
+5. Make the code change on a branch through the normal spec, test-first, review path. No assumption
+   change goes straight to `main`.
+
+Status values: `held` (believed true), `unverified` (not yet checked against PayPal or the owner),
+`open` (needs a decision), `changed` (replaced, see History).
+
+## Architecture principles
+
+These hold whatever the assumptions say. A change that breaks one of them is a design change and
+goes through architecture review first.
+
+| Principle     | What it means here                                                                                                                    | How it is enforced                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Modular       | One package, one job. A package exposes only its root. Domain code never imports adapters.                                            | Lint rules S1 to S6 in `eslint.config.mjs`; `pnpm check:isolation`.                                |
+| Plug and play | Each outside system sits behind a port. A new provider, source or store is a new adapter, not an edit to the core.                    | Contracts in `packages/contracts`; composition (`composition.server.ts`) is the only wiring point. |
+| Scalable      | Stateless request handling, state in the database, background work as jobs, idempotent operations, no in-process singletons of state. | Lane specs; state tests; the lock order in D-020.                                                  |
+| Secured       | Fail closed. Five locks before any outbound call. Secrets server-side only. Least data in logs.                                       | `packages/safety`, `packages/transport`, boot refusals, the adversarial suite, gitleaks.           |
+| Reliable      | Money moves once. Access follows a verified capture and a read-back. Append-only ledger. Every retry reuses its request id.           | Domain rules in `docs/design/architecture.md`; D-014; migration 0009 unique entitlement.           |
+
+### Plug points: what can be swapped without touching the core
+
+| Plug point                      | Today                                  | Next                                          | Where it plugs in                         | Affected by            |
+| ------------------------------- | -------------------------------------- | --------------------------------------------- | ----------------------------------------- | ---------------------- |
+| Payment provider                | Dry-run transport, then PayPal sandbox | Another provider or live PayPal (not planned) | `packages/paypal` behind the payment port | ASM-10, ASM-11, ASM-20 |
+| Transport                       | Sealed dry-run stub                    | Approved sandbox transport (MVP-B)            | `packages/transport`, composition         | ASM-30 to ASM-34       |
+| Database                        | PGlite                                 | Supabase Postgres                             | `packages/db` (RLS already written)       | ASM-05                 |
+| Content source                  | Seeded fictional catalogue             | WordPress entry, then other publishers        | `domain/offer-entry`, `domain/catalogue`  | ASM-03, ASM-04         |
+| Model (fit, discovery)          | Scripted model                         | A real model behind the same interface        | `packages/model`                          | ASM-14                 |
+| Currency and region             | USD, US                                | UK, then India labelled fixtures              | `packages/config`, catalogue data         | ASM-02                 |
+| Hosting                         | Local                                  | Render (recommended), decided by MVP-C        | Deployment config only                    | ASM-08                 |
+| Operator (who runs owner steps) | Owner on their own machine             | Possibly the assistant, if the owner decides  | Decision log and safety docs              | ASM-40                 |
+
+## Product and scope
+
+| ID     | Assumption                                                                                          | Why                                                                 | Affects                       | If it changes                                                                                 | Status       |
+| ------ | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------- | ------------ |
+| ASM-01 | The sandbox track is a separate repository from the simulation. Copy with provenance, never import. | Keeps the simulation finished and the sandbox free to change.       | Repo layout, lint, provenance | Merging them needs a design change and a new isolation story.                                 | held (D-001) |
+| ASM-02 | US and USD first, then UK, then India as config and labelled fixtures only.                         | PayPal does not list INR; domestic India payments ended 1 Apr 2021. | Config, catalogue, copy       | Add a region by adding config and data. No domain code should change.                         | held         |
+| ASM-03 | MVP-B uses one publisher. MVP-D adds a second.                                                      | Smallest real flow first.                                           | Catalogue data, offer-entry   | A second publisher in MVP-B means catalogue data only; check payee rules (ASM-32).            | held         |
+| ASM-04 | WordPress entry comes after the first real MVP and is the first item cut under time pressure.       | Not on the critical path to a PayPal sandbox submission.            | MVP-E                         | Pull it forward only by dropping something else from MVP-D or F.                              | held         |
+| ASM-05 | PGlite now, Supabase later. Row-level security is written for Supabase from the start.              | Offline development with a real SQL engine.                         | `packages/db`, migrations     | Moving earlier needs a hosted database and secrets handling; PORT-1 covers stock Postgres CI. | held         |
+| ASM-06 | Payouts are out of scope.                                                                           | The hackathon needs buy and refund, not seller settlement.          | Ledger, scope text            | Adding payouts is a new lane with its own safety review.                                      | held         |
+| ASM-07 | MVP-B reads state by polling. Webhooks arrive in MVP-C.                                             | Webhooks need a hosted public URL.                                  | Jobs, reconcile, hosting      | Webhooks earlier need hosting earlier (ASM-08).                                               | held         |
+| ASM-08 | Hosting is undecided. Render is the recommendation, needed by MVP-C.                                | Webhooks and a public demo need a URL.                              | MVP-C, trusted proxy setting  | Another host works if it supports Node 22.22.0 and env secrets. Check D-022.                  | open         |
+| ASM-09 | Access lasts five days with lost-time credit. An approval snapshot lives 15 minutes.                | Product design in the architecture document.                        | Access clock, approval        | Change the constants in config and tests; the logic should not need edits.                    | held         |
+
+## PayPal account and facts
+
+| ID     | Assumption                                                                                                                                                  | Why                                                                                                           | Affects                     | If it changes                                                                             | Status     |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------- | ---------- |
+| ASM-10 | The owner has Default Application in Sandbox mode, a Business (Germany) and a Personal (Germany) test account, the Business one linked, and no webhooks.    | Owner's 21 Oct screenshots (`SANDBOX-BASELINE.md`).                                                           | Spike, MVP-B, MVP-C         | Re-check before the spike; update the baseline.                                           | unverified |
+| ASM-11 | USD works end to end on the German Business account. Receiving preference and held currencies are not yet known.                                            | D-023. A payment in a currency the receiver does not hold stays pending unless a receiving preference is set. | Spike Part R and W          | If USD cannot complete, create a new US pair (needs owner approval, D-023).               | unverified |
+| ASM-12 | Orders v2 is the API. Capture can return 200, 201, 202 or 207. Capture status is one of COMPLETED, DECLINED, PARTIALLY_REFUNDED, PENDING, REFUNDED, FAILED. | Earlier verification against PayPal documentation.                                                            | `packages/paypal`, payments | Treat any new status as unknown and fail closed. Record the fixture, then extend the map. | held       |
+| ASM-13 | PayPal keeps a `PayPal-Request-Id` for 6 hours. Retry with the same id within 5 hours; use a new id only after a read-back shows APPROVED and no capture.   | PayPal docs; D-014.                                                                                           | Payments, retry rules       | Shorter retention means a shorter retry window.                                           | held       |
+| ASM-14 | The model is scripted in MVP-A and MVP-B.                                                                                                                   | No outbound call to a model is needed for the demo path.                                                      | `packages/model`            | A real model is a new adapter plus a key and a safety review.                             | held       |
+
+## Safety
+
+| ID     | Assumption                                                                                                                                                       | Why                                                     | Affects                     | If it changes                                                                                                                         | Status |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| ASM-30 | Credentials live only in the owner's local env file and the host's settings. Never in the repo, logs, chats or PRs.                                              | Absolute rule 4.                                        | Everything outbound         | Moving credentials anywhere else needs a decision-log row and a safety review.                                                        | held   |
+| ASM-31 | Approval policy is credentials-only (owner decision, 2026-10-23). A `SPIKE GO` row that matches `HEAD` is enough for the kit, plus the owner's two-key approval. | Fastest path; credentials stay on the owner's machine.  | Spike kit, `safety:approve` | Stricter options: signed commit, or a row merged to `origin/main` through a reviewed PR. The parser and git check are the plug point. | held   |
+| ASM-32 | MVP-B outbound is limited to five operations (token, create order, get order, capture, get capture), USD only, no payee override, with call and amount budgets.  | Smallest surface that proves the flow.                  | Transport, gate             | Refunds arrive in MVP-C. Each new operation needs its own scope, cap and tests.                                                       | held   |
+| ASM-33 | Only the sandbox host constant exists. There is no live value and no configurable host.                                                                          | Absolute rule 3; D-013.                                 | Transport, lint, guards     | Not planned to change. Live would be a new product decision.                                                                          | held   |
+| ASM-34 | The approved transport is not wired into the app until a separate reviewed unseal pull request.                                                                  | Opus review round 4 verdict: merge yes, unseal not yet. | Composition                 | Wiring earlier skips the unseal conditions in `docs/READINESS.md`.                                                                    | held   |
+| ASM-35 | The sealing is lint and test based for code inside the repo. It does not stop hostile code running in the same process.                                          | Documented residuals in `docs/READINESS.md`.            | Threat model                | If third-party code is added, review it as a new risk.                                                                                | held   |
+
+## Process and people
+
+| ID     | Assumption                                                                                                                                                                        | Why                                                        | Affects                | If it changes                                                                                                                                                                     | Status |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| ASM-40 | Today the owner runs every step that touches a PayPal account or credentials. On 2026-10-23 the owner said they want the assistant to do the hands-on work, "later".              | Absolute rules 1 and 2; D-023 does not authorise outbound. | Operator model, safety | This is an open requirement change. It needs a design for how the assistant would hold or use credentials without breaking rule 4, an owner decision row, and a review. Not done. | open   |
+| ASM-41 | Sonnet builds and Opus reviews. Nobody merges their own work.                                                                                                                     | CLAUDE.md roles.                                           | Process                | Change the roles in CLAUDE.md and record a decision.                                                                                                                              | held   |
+| ASM-42 | Submission target is 9 November 2026. The official deadline is 12 November at 12:00 PT. The final entry must use the PayPal sandbox.                                              | Hackathon rules.                                           | Plan                   | Re-plan the MVP sequence in `docs/design/mvp-plan.md`.                                                                                                                            | held   |
+| ASM-43 | Node 22.22.0 and pnpm 10.34.7. Dependencies are limited to the approved list (D-008).                                                                                             | Reproducible builds.                                       | Tooling                | New dependency needs an approval row (for example axe-core, `@vitest/coverage-v8`).                                                                                               | held   |
+| ASM-44 | `docs/design/mvp-plan.md` sequence holds: A offline (done), B sandbox with one publisher, C hosted with webhooks and refunds, D two publishers, E WordPress, F harden and submit. | Planning baseline.                                         | Dates and lanes        | Move scope between MVPs by editing the plan and recording the change.                                                                                                             | held   |
+
+## Open items that could change this register
+
+- The Next.js `fetch` patch may stop the production wire (ASM-34 follow-up). Test under `next start`.
+- A-26 amendment (spike kit holds a second copy of the sandbox address). Decision recorded by the
+  owner on 2026-10-23.
+- `CLAUDE.md` rule 3 still names `packages/paypal/src/endpoints.ts` as the host constant location;
+  D-013 moved it to `packages/transport/src/endpoints.ts`. Fix the sentence in a docs commit.
+
+## History
+
+- 2026-10-23: first version.
