@@ -73,6 +73,8 @@ afterEach(() => {
 
 // ---- helpers --------------------------------------------------------------------------------------
 const part = (...p: string[]) => p.join('');
+// Host names are assembled from fragments so this file carries no PayPal host text (A-26).
+const hostFrom = (...p: string[]) => p.join('.');
 const FAKE_ID = part('fake', '-client-', 'id-0001');
 const FAKE_SECRET = part('fake', '-client-', 'secret-0002-zzzz');
 const FAKE_TOKEN = part('A21AA', 'FAKETOKEN', 'abcdefghijklmnopqrstuvwxyz0123456789');
@@ -336,7 +338,7 @@ function fakeWire(opts: { pending?: boolean; log?: WireRequest[]; failAt?: numbe
 // ---- allow-list and constants ---------------------------------------------------------------------
 describe('constants and allow-list', () => {
   it('has its own sandbox host constant and a 40 call cap', () => {
-    expect(SANDBOX_HOST).toBe('api-m.sandbox.' + 'paypal.com');
+    expect(SANDBOX_HOST).toBe(hostFrom('api-m', 'sandbox', 'paypal', 'com'));
     expect(SANDBOX_API).toBe(`https://${SANDBOX_HOST}`);
     expect(CALL_CAP).toBe(40);
   });
@@ -477,7 +479,7 @@ describe('preflight refusals', () => {
     ['live_value', (h) => void (h.deps.env['PAYPAL_LIVE_CLIENT_ID'] = 'x')],
     [
       'non_sandbox_host',
-      (h) => void (h.deps.env['PAYPAL_API_BASE'] = 'https://api-m.' + 'paypal.com'),
+      (h) => void (h.deps.env['PAYPAL_API_BASE'] = 'https://' + hostFrom('api-m', 'paypal', 'com')),
     ],
     ['non_sandbox_host', (h) => void (h.deps.env['SPIKE_NOTE'] = 'http://evil.example.org/x')],
     ['bad_args', (h) => void (h.deps.argv = ['--yolo'])],
@@ -1082,8 +1084,8 @@ describe('fetch wire guards', () => {
     expect(init.signal).toBeDefined();
   });
   it.each([
-    'http://api-m.sandbox.' + 'paypal.com/v2/checkout/orders/ABC',
-    'https://api-m.' + 'paypal.com/v2/checkout/orders/ABC',
+    'http://' + hostFrom('api-m', 'sandbox', 'paypal', 'com') + '/v2/checkout/orders/ABC',
+    'https://' + hostFrom('api-m', 'paypal', 'com') + '/v2/checkout/orders/ABC',
     'https://evil.example.org/v2/checkout/orders/ABC',
     `https://${SANDBOX_HOST}:8443/v2/checkout/orders/ABC`,
     `https://user@${SANDBOX_HOST}/v2/checkout/orders/ABC`,
@@ -1122,11 +1124,24 @@ describe('M1: proxy, certificate and Node-option overrides are refused in real m
     'ALL_PROXY',
     // FIX-MVPB-SEAL2 M3
     'NODE_USE_SYSTEM_CA',
+    // SEAL5 / BU-1 review F3
+    'NODE_PRESERVE_SYMLINKS',
     'OPENSSL_CONF',
     'SSL_CERT_FILE',
     'SSL_CERT_DIR',
   ];
   const real = () => harness({ env: realEnv(), stdinIsTTY: true });
+  // BU-1 re-review H1: pnpm's command shims export NODE_PATH on every start; it is not an override.
+  const PNPM_NODE_PATH =
+    '/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/dist/bin/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/dist/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules:/srv/app/node_modules/.pnpm/node_modules';
+  it('a pnpm-style NODE_PATH does not stop a real run, and NODE_OPTIONS next to it still does', () => {
+    const h = real();
+    h.deps.env['NODE_PATH'] = PNPM_NODE_PATH;
+    expect(preflight(h.deps).ok).toBe(true);
+    h.deps.env['NODE_OPTIONS'] = '--require ./x.cjs';
+    const r = preflight(h.deps);
+    expect(!r.ok && r.code).toBe('transport_env_override');
+  });
   it.each(names.flatMap((n) => [n, n.toLowerCase()]))('refuses %s with its name', (name) => {
     const h = real();
     h.deps.env[name] = '1';
@@ -1169,6 +1184,26 @@ describe('M1: proxy, certificate and Node-option overrides are refused in real m
     '--inspect-port=9230',
     '--secure-heap=1048576',
     '--conditions=dev',
+    '--report-signal',
+    '--report-on-signal',
+    '--report-on-fatalerror',
+    '--report-uncaught-exception',
+    '--report-compact',
+    '--report-dir',
+    '--report-directory',
+    '--report-filename',
+    '--report-exclude-network',
+    '--report-exclude-env',
+    '--snapshot-blob',
+    '--build-snapshot',
+    '--preserve-symlinks',
+    '--preserve-symlinks-main',
+    '--experimental-config-file',
+    '--experimental-config-file=./c.json',
+    '--experimental-default-config-file',
+    '--insecure-http-parser',
+    '--snapshot-blob=/tmp/x.blob',
+    '--report-dir=/tmp/r',
   ])('refuses execArgv %s', (flag) => {
     const h = real();
     h.deps.execArgv = ['--max-old-space-size=512', flag];

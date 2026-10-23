@@ -113,7 +113,7 @@ re-checks every command in it against what merged.
 
 | Id | Spec | Owns (paths) | Depends on | Effort, why | Parallel |
 | -- | ---- | ------------ | ---------- | ----------- | -------- |
-| CO-1 | `docs/specs/paypal-webhook-verify.md` | `packages/paypal/src/{webhook-verify.ts, crc32.ts, webhook-cert.ts, adapter.ts (verifyWebhook only)}`, `fixtures/paypal/webhooks/**`, `scripts/check-fixtures.mjs` (webhooks dir) | none | high: P1 forgery path | now |
+| CO-1 | `docs/specs/paypal-webhook-verify.md` | `packages/paypal/src/{webhook-verify.ts, crc32.ts, webhook-cert.ts, adapter.ts (verifyWebhook only)}`, `fixtures/webhooks/**` (not under `fixtures/paypal/`, whose loader reads every JSON file beneath it), `scripts/check-fixtures.mjs` (needs no change: it already scans the folder) | none | high: P1 forgery path | now |
 | CO-2 | `docs/specs/payments-webhook-intake.md` | `domain/payments/src/webhooks.ts` (new), `domain/payments/src/index.ts` | none (uses the existing `WebhookVerdict` contract) | high: P2, out-of-order, replay | now |
 | CO-3 | `docs/specs/web-webhook-route.md` | `apps/web/src/app/api/webhooks/paypal/route.ts`, `apps/web/src/server/webhook.ts`, `apps/web/composition.server.ts` (wiring), `packages/security/src/route.ts` (raw-body option), `scripts/route-inventory.mjs` pin | CO-1, CO-2, CO-6 | high: public money-adjacent route | no (composition) |
 | CO-4 | `docs/specs/payments-refunds-complete.md` | `domain/payments/src/refunds.ts`, `domain/recovery/src/rules.ts` (refund case transitions), tests | BU-4 | high: money | after BU-4 |

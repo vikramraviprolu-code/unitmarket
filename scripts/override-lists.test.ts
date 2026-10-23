@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { REPO_ROOT } from './test-helpers';
 
 // The Wire's file name is built at run time: a transport test bars other code from naming it.
-const WIRE = ['wire', 'fetch'].join('-');
+const WIRE = ['wire', 'https'].join('-');
 const FILES = {
   config: 'packages/config/src/load.ts',
   wire: `packages/transport/src/${WIRE}.ts`,
@@ -35,6 +35,7 @@ const REQUIRED_NAMES = [
   'HTTP_PROXY',
   'NODE_EXTRA_CA_CERTS',
   'NODE_OPTIONS',
+  'NODE_PRESERVE_SYMLINKS',
   'NODE_TLS_REJECT_UNAUTHORIZED',
   'NODE_USE_ENV_PROXY',
   'NODE_USE_SYSTEM_CA',
@@ -66,6 +67,23 @@ const REFUSED_FLAGS = [
   '--tls-min-v1.1',
   '--conditions',
   '-C',
+  '--preserve-symlinks',
+  '--preserve-symlinks-main',
+  '--experimental-config-file',
+  '--experimental-default-config-file',
+  '--insecure-http-parser',
+  '--report-signal',
+  '--report-on-signal',
+  '--report-on-fatalerror',
+  '--report-uncaught-exception',
+  '--report-compact',
+  '--report-dir',
+  '--report-directory',
+  '--report-filename',
+  '--report-exclude-network',
+  '--report-exclude-env',
+  '--snapshot-blob',
+  '--build-snapshot',
 ];
 const ALLOWED_FLAGS = [
   '--max-old-space-size=512',
@@ -81,6 +99,10 @@ describe('the three override lists are one list', () => {
     expect(c).toEqual(REQUIRED_NAMES);
     expect(namesOf(sources['wire'] as string)).toEqual(c);
     expect(namesOf(sources['spike'] as string)).toEqual(c);
+  });
+  it('NODE_PATH is deliberately in none of the three lists (pnpm shims always set it)', () => {
+    for (const k of ['config', 'wire', 'spike'])
+      expect(namesOf(sources[k] as string), k).not.toContain('NODE_PATH');
   });
   it('the flag expressions are identical in config, the production Wire and the spike kit', () => {
     const c = flagOf(sources['config'] as string);

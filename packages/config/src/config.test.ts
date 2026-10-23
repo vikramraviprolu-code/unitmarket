@@ -415,6 +415,8 @@ describe('transport environment overrides (M1)', () => {
     'ALL_PROXY',
     // FIX-MVPB-SEAL2 M3: more ways to change which certificates or OpenSSL settings a connection uses.
     'NODE_USE_SYSTEM_CA',
+    // SEAL5 / BU-1 review F3
+    'NODE_PRESERVE_SYMLINKS',
     'OPENSSL_CONF',
     'SSL_CERT_FILE',
     'SSL_CERT_DIR',
@@ -430,6 +432,19 @@ describe('transport environment overrides (M1)', () => {
     expect(refusal(sandbox({ Https_Proxy: 'http://127.0.0.1:1' })).code).toBe(
       'transport_env_override',
     );
+  });
+  // BU-1 re-review H1. pnpm's command shims export NODE_PATH on every start (extendNodePath), so
+  // refusing it would make every normal `pnpm start` fail closed. It only affects CommonJS lookup.
+  const PNPM_NODE_PATH =
+    '/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/dist/bin/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/dist/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules/next/node_modules:/srv/app/node_modules/.pnpm/next@15.5.4_react-dom@19.1.1_react@19.1.1/node_modules:/srv/app/node_modules/.pnpm/node_modules';
+  it('a pnpm-style NODE_PATH is not an override: sandbox mode boots with it', () => {
+    expect(loadConfig(sandbox({ NODE_PATH: PNPM_NODE_PATH })).ok).toBe(true);
+    expect(loadConfig(sandbox({ node_path: PNPM_NODE_PATH })).ok).toBe(true);
+  });
+  it('NODE_OPTIONS is still refused next to a pnpm-style NODE_PATH', () => {
+    expect(
+      refusal(sandbox({ NODE_PATH: PNPM_NODE_PATH, NODE_OPTIONS: '--require ./x.cjs' })),
+    ).toEqual({ code: 'transport_env_override', name: 'NODE_OPTIONS' });
   });
   it('an empty value is not an override', () => {
     expect(loadConfig(sandbox({ HTTPS_PROXY: '', NODE_OPTIONS: '  ' })).ok).toBe(true);
@@ -458,6 +473,24 @@ describe('transport environment overrides (M1)', () => {
     '--tls-min-v1.1',
     '--conditions',
     '-C',
+    '--report-signal',
+    '--report-on-signal',
+    '--report-on-fatalerror',
+    '--report-uncaught-exception',
+    '--report-compact',
+    '--report-dir',
+    '--report-directory',
+    '--report-filename',
+    '--report-exclude-network',
+    '--report-exclude-env',
+    '--snapshot-blob',
+    '--build-snapshot',
+    '--preserve-symlinks',
+    '--preserve-symlinks-main',
+    '--experimental-config-file',
+    '--experimental-config-file=./c.json',
+    '--experimental-default-config-file',
+    '--insecure-http-parser',
   ])('sandbox mode refuses execArgv %s', (flag) => {
     const r = loadConfig(sandbox(), { execArgv: ['--max-old-space-size=512', flag] });
     expect(!r.ok && r.error).toEqual({ code: 'transport_env_override', name: 'execArgv' });

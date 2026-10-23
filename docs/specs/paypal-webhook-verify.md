@@ -8,7 +8,7 @@ Goal: `verifyWebhook({ headers, raw_body })` returns a `WebhookVerdict` (contrac
 
 Inputs: `packages/paypal/src/{webhook-verify.ts, adapter.ts}`, `packages/contracts` `WebhookVerdict`, `ProviderEventSchema`, `packages/transport` (`fetch_webhook_cert`, guard rule), `node:crypto` (`createVerify`, `X509Certificate`), architecture 9.1, nfr.md P1.
 
-Outputs: `packages/paypal/src/{webhook-verify.ts, crc32.ts, webhook-cert.ts}`, `adapter.ts` (`verifyWebhook` wiring; `AdapterDeps.webhook_id: string | null` and an optional `certificates` source), `fixtures/paypal/webhooks/synthetic/*.json` (body and header skeletons, `label: synthetic`; signatures are made in the tests with a key pair generated at run time, so no private key is ever committed), one public test certificate PEM (`fixtures/paypal/webhooks/synthetic/parse-only.pem`, its key discarded, used only for parsing and date tests), `scripts/check-fixtures.mjs` (accepts the webhooks folder).
+Outputs: `packages/paypal/src/{webhook-verify.ts, crc32.ts, webhook-cert.ts}`, `adapter.ts` (`verifyWebhook` wiring; `AdapterDeps.webhook_id: string | null` and an optional `certificates` source), `fixtures/webhooks/synthetic/*.json` (body and header skeletons, `label: synthetic`; signatures are made in the tests with a key pair generated at run time, so no private key is ever committed), one public test certificate PEM (`fixtures/webhooks/synthetic/parse-only.pem`, its key discarded, used only for parsing and date tests), `scripts/check-fixtures.mjs` (needs no change: it already accepts the folder). The folder is `fixtures/webhooks/`, not `fixtures/paypal/webhooks/`: `loadFixtures` walks `fixtures/paypal/` recursively with a strict schema and would reject these files.
 
 Order: commit 1 is tests and fixtures only, run red; then implement.
 
@@ -26,3 +26,8 @@ Do not: call the postback API (`verify_webhook_postback`); fetch a certificate o
 Evidence for the PR: red summary; pass counts; mutation score; a list of what stays unverified until a real delivery (header names, algorithm value, cert host and subject, time format).
 
 Branch: `feat/paypal-webhook-verify` Commit: `feat(paypal): webhook self-verification with cert allow-list and cache (CO-1)`
+
+CO-3 notes (what the route must do for this verifier to be safe):
+
+- Raw bytes. CO-3 reads the request body as raw bytes, stops reading at 64 KiB while streaming (it does not buffer an oversized body first), and decodes with `new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })`. A body that is not valid UTF-8 is `malformed` and is never repaired: `verifyWebhook` computes the CRC over the UTF-8 bytes of the string it is given, so a lossy decode (`request.text()` replacing bad bytes, or a BOM stripped) would sign different bytes than PayPal did.
+- Certificate fetch cost (review H1). Each certificate fetch is one outbound call against the approval's daily budget. The certificate source makes at most 6 fetches per rolling hour over all URLs, remembers a failed URL for 10 minutes and keeps an LRU cache of 8 certificates. CO-3 must count every `unverifiable` caused by a certificate failure in the per-IP limiter for invalid webhook traffic (COST-3), like a bad signature. A separate safety budget (its own scope or counter) for these fetches is recommended, so that exhausting it cannot block captures, refunds and read-backs. After the first recorded delivery, tighten the allow-list to the one certificate URL (ASM-54).

@@ -4,7 +4,8 @@
 // spike.ts itself imports no process-spawning module; spike.ts loads it only for a real run.
 //
 // The git binary is an ABSOLUTE path from a fixed allow-list (never looked up on PATH), and the
-// child gets exactly two variables: GIT_CONFIG_NOSYSTEM=1 and GIT_CONFIG_GLOBAL=/dev/null. No PATH,
+// child gets exactly three variables: GIT_CONFIG_NOSYSTEM=1, GIT_CONFIG_GLOBAL=/dev/null and
+// GIT_NO_REPLACE_OBJECTS=1 (with --no-replace-objects: a replace ref cannot swap the committed blob). No PATH,
 // no HOME, nothing inherited, so GIT_DIR, GIT_WORK_TREE, GIT_OBJECT_DIRECTORY, GIT_EXEC_PATH, config
 // includes and proxy variables cannot redirect it.
 //
@@ -34,14 +35,22 @@ export function gitShowHead(
   const git = GIT_ALLOW_LIST.filter((p) => candidates.includes(p)).find((p) => existsSync(p));
   if (git === undefined) return null;
   try {
-    return execFileSync(git, ['-C', repoRoot, 'cat-file', 'blob', `HEAD:${relPath}`], {
-      encoding: 'utf8',
-      env: { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' },
-      stdio: ['ignore', 'pipe', 'ignore'],
-      maxBuffer: 4 * 1024 * 1024,
-      timeout: 10_000,
-      windowsHide: true,
-    });
+    return execFileSync(
+      git,
+      ['--no-replace-objects', '-C', repoRoot, 'cat-file', 'blob', `HEAD:${relPath}`],
+      {
+        encoding: 'utf8',
+        env: {
+          GIT_CONFIG_NOSYSTEM: '1',
+          GIT_CONFIG_GLOBAL: '/dev/null',
+          GIT_NO_REPLACE_OBJECTS: '1',
+        },
+        stdio: ['ignore', 'pipe', 'ignore'],
+        maxBuffer: 4 * 1024 * 1024,
+        timeout: 10_000,
+        windowsHide: true,
+      },
+    );
   } catch {
     return null;
   }

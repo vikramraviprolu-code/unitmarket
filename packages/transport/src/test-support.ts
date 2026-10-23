@@ -4,7 +4,7 @@ import http from 'node:http';
 import https from 'node:https';
 import dns from 'node:dns';
 import { vi } from 'vitest';
-import { createApprovalMinter } from './approval';
+import { claimApprovalMinter } from './approval';
 import type { ApprovalCapability } from './approval';
 import type { ScopedGate, Wire, WireRequest, WireResult } from './wire';
 import type {
@@ -93,9 +93,10 @@ export interface FakeGate extends ScopedGate {
   }[];
 }
 
-// Test-only minter that vouches for every gate. The real minter is claimed once by @umsbx/safety
-// and vouches only for gates its own factory built (FIX-MVPB-SEAL2 H1).
-const mintForTests = createApprovalMinter(() => true);
+// Test-only minter that vouches for every gate. It is the ONE claim of this test file's module
+// registry (the real minter is claimed once by @umsbx/safety and vouches only for gates its own
+// factory built), so a test file that imports this module cannot also claim the minter itself.
+export const mintForTests = claimApprovalMinter(() => true);
 
 /**
  * Test-only: mint a capability from a fake gate's own report. Production code gets one only from

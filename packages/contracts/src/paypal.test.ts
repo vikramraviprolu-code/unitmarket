@@ -5,7 +5,9 @@ import {
   CaptureStatusSchema,
   CreateOrderReqSchema,
   CreateOrderResSchema,
+  OrderReadRefundSchema,
   OrderReadSchema,
+  OrderReadUnitSchema,
   PayPalFailSchema,
   ProviderEventSchema,
   ProviderEventTypeSchema,
@@ -268,5 +270,65 @@ describe('payer URLs (M2)', () => {
     expect(isUrlUnderOrigin('https://example.test:8443/x', 'https://example.test')).toBe(false);
     expect(isUrlUnderOrigin('http://example.test/x', 'https://example.test')).toBe(false);
     expect(isUrlUnderOrigin('not a url', 'https://example.test')).toBe(false);
+  });
+});
+
+describe('BU-4: the refund list of an order read unit', () => {
+  const part = {
+    capture_id: 'CAP1',
+    status: 'PARTIALLY_REFUNDED',
+    status_reason: null,
+    amount: usd(500),
+    paypal_fee_minor: null,
+    refunded_minor: 0,
+  };
+  const refund = { refund_id: 'R1', status: 'COMPLETED', amount: usd(300) };
+  const withRefunds = (refunds: unknown) => ({
+    ...unit,
+    capture: part,
+    ...(refunds === undefined ? {} : { refunds }),
+  });
+
+  it('a unit may carry a list of refunds, and may still omit it (additive)', () => {
+    expect(OrderReadUnitSchema.safeParse(withRefunds([refund])).success).toBe(true);
+    expect(OrderReadUnitSchema.safeParse(withRefunds([])).success).toBe(true);
+    expect(OrderReadUnitSchema.safeParse(withRefunds(undefined)).success).toBe(true);
+  });
+  it('a refund is id, status and amount; every refund status PayPal uses is accepted', () => {
+    for (const status of ['CANCELLED', 'FAILED', 'PENDING', 'COMPLETED']) {
+      expect(OrderReadRefundSchema.safeParse({ ...refund, status }).success).toBe(true);
+    }
+  });
+  it('an unknown status, a bad amount, an empty id or an extra field is refused', () => {
+    const bad: unknown[] = [
+      { ...refund, status: 'REVERSED' },
+      { ...refund, status: 'completed' },
+      { ...refund, amount: { currency: 'USD', minor: -1 } },
+      { ...refund, amount: { currency: 'USD', minor: 1.5 } },
+      { ...refund, amount: { currency: 'usd', minor: 1 } },
+      { ...refund, amount: null },
+      { ...refund, refund_id: '' },
+      { ...refund, extra: 1 },
+      { status: 'COMPLETED', amount: usd(1) },
+    ];
+    for (const b of bad)
+      expect(OrderReadRefundSchema.safeParse(b).success, JSON.stringify(b)).toBe(false);
+    expect(
+      OrderReadUnitSchema.safeParse(withRefunds([{ ...refund, status: 'REVERSED' }])).success,
+    ).toBe(false);
+    expect(OrderReadUnitSchema.safeParse(withRefunds('x')).success).toBe(false);
+  });
+  it('an order read with refunds on its units parses', () => {
+    expect(
+      OrderReadSchema.safeParse({
+        kind: 'order',
+        provider_order_id: 'ABC',
+        status: 'COMPLETED',
+        custom_id: null,
+        read_at: '2026-10-21T10:00:00Z',
+        debug_id: null,
+        units: [withRefunds([refund])],
+      }).success,
+    ).toBe(true);
   });
 });
