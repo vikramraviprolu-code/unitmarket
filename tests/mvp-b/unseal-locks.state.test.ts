@@ -106,6 +106,8 @@ describe('each lock missing alone (L1 to L5) gives blocked with its reason and 0
     expect(await r.outbound.transport.send(req.getOrder())).toEqual({ kind: 'blocked', by });
     expect(r.counting.calls).toHaveLength(0);
     expect(builtLines(r)).toHaveLength(0);
+    // a lock that is missing means no build attempt at all, not an attempt that fails
+    expect(r.log.events.some((e) => e.msg === 'outbound.build_failed')).toBe(false);
     expect(await r.reservations()).toBe(0);
     const st = await r.outbound.status();
     expect(st.open).toBe(false);

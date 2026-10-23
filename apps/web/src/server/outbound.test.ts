@@ -93,6 +93,8 @@ describe('buildOutbound: the pre-build decision, in the order of the gate', () =
     const s = setup();
     expect(await s.out.transport.send(REQ)).toEqual({ kind: 'blocked', by: 'no_approval' });
     expect(s.log.events.some((e) => e.msg === 'outbound.transport_built')).toBe(false);
+    // no capability means no build attempt at all (not an attempt that fails)
+    expect(s.log.events.some((e) => e.msg === 'outbound.build_failed')).toBe(false);
   });
   it('connect_off wins over kill_switch, kill_switch over no_approval', async () => {
     const s = setup({ connect: false, switch_on: false });
@@ -136,6 +138,20 @@ describe('buildOutbound: the pre-build decision, in the order of the gate', () =
         },
       }),
     ).toBe(false);
+  });
+  it('a self-check that throws reads as the worst case: override present and builtins not intact', () => {
+    const s = setup({
+      wire: null,
+      selfcheck: () => {
+        throw new Error('probe broke');
+      },
+    });
+    expect(s.out.selfcheck()).toEqual({
+      impl: 'node-https',
+      env_override: true,
+      builtins_intact: false,
+      global_fetch_changed_since_load: false,
+    });
   });
   it('an injected Wire is not vetted by the production Wire self-check', async () => {
     const s = setup({
