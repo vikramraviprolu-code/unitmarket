@@ -371,6 +371,9 @@ describe('a refund list that does not add up books nothing and freezes with an a
     const kinds = (await alerts(a.order_id)).map((x) => x.kind);
     expect(kinds).toContain('reversal');
     expect(kinds).toContain('refund_unresolved');
+    const reasons = (await alerts(a.order_id)).map((x) => x.detail.reason);
+    expect(reasons.some((r) => r.startsWith('listed_refund_on_reversal_suspected_'))).toBe(true);
+    expect(reasons.some((r) => r.startsWith('cannot_book_'))).toBe(false);
   });
 
   it('a refund id that looks like SQL is data', async () => {
