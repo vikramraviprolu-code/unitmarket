@@ -404,3 +404,124 @@ describe('importSql', () => {
     expect((await dst.query('SELECT id FROM buyers')).rows).toEqual([{ id: 'buy_x' }]);
   });
 });
+
+describe('large exports (H2)', () => {
+  it('loads a table whose export line is over 10 MB, quotes and all', async () => {
+    const src = await fresh();
+    await seed(src);
+    await src.exec("UPDATE articles SET abstract = repeat(E'a\\'b ', 3000000)");
+    const sql = await exportSql(src, { utc: T });
+    const longest = sql.split('\n').reduce((m, l) => Math.max(m, l.length), 0);
+    expect(longest).toBeGreaterThan(10_000_000);
+    const dst = await fresh();
+    await importSql(dst, sql);
+    const probe =
+      "SELECT length(abstract)::int AS n, md5(abstract) AS h FROM articles WHERE id = 'art_1'";
+    expect((await dst.query(probe)).rows).toEqual((await src.query(probe)).rows);
+  });
+
+  it('loads many small rows', async () => {
+    const src = await fresh();
+    await seed(src);
+    await src.exec(
+      `INSERT INTO buyers SELECT 'buy_m' || g, 'B', 'subm' || g, 'US', '${T}', '${T}' FROM generate_series(1, 5000) g`,
+    );
+    const dst = await fresh();
+    const counts = await importSql(dst, await exportSql(src, { utc: T }));
+    expect(counts['buyers']).toBe(5001);
+    expect(counts).toEqual(await rowCounts(src));
+  });
+
+  it('a huge line that is not an export statement is refused cleanly, not with a stack overflow', async () => {
+    const src = await fresh();
+    await seed(src);
+    const sql = await exportSql(src, { utc: T });
+    const dst = await fresh();
+    const junk = `INSERT INTO "buyers" OVERRIDING SYSTEM VALUE SELECT * FROM jsonb_populate_recordset(NULL::"buyers", '${"x'".repeat(6_000_000)}'::jsonb);`;
+    await expect(importSql(dst, `${sql}${junk}\n`)).rejects.toThrow(/not an export statement/);
+    const injected = `INSERT INTO "buyers" OVERRIDING SYSTEM VALUE SELECT * FROM jsonb_populate_recordset(NULL::"buyers", '[]' ; DROP TABLE buyers; --'::jsonb);`;
+    await expect(importSql(dst, `${sql}${injected}\n`)).rejects.toThrow(/not an export statement/);
+    expect((await dst.query('SELECT count(*)::int AS n FROM buyers')).rows).toEqual([{ n: 0 }]);
+  });
+});
+
+describe('import keeps the INSERT guards on and re-checks the invariants (M1)', () => {
+  const addLedger = (src: Database, over: Record<string, unknown>) =>
+    ins(src, 'ledger_entries', {
+      id: 'led_9',
+      unit_id: 'unt_1',
+      capture_id: 'CAP1',
+      kind: 'refund',
+      amount_minor: 100,
+      currency: 'USD',
+      refund_id: 'RF9',
+      ref_entry_id: null,
+      environment: 'dryrun',
+      ...over,
+    });
+
+  async function refusesAndRollsBack(prep: (src: Database) => Promise<void>, message: RegExp) {
+    const src = await fresh();
+    await seed(src);
+    await prep(src);
+    const sql = await exportSql(src, { utc: T });
+    const dst = await fresh();
+    const before = await rowCounts(dst);
+    await expect(importSql(dst, sql)).rejects.toThrow(message);
+    expect(await rowCounts(dst)).toEqual(before);
+    const off = await dst.query(
+      "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgenabled <> 'O'",
+    );
+    expect(off.rows).toEqual([]);
+  }
+
+  it('refuses a refund of 900 against a sale of 500', () =>
+    refusesAndRollsBack(async (src) => {
+      await src.exec('ALTER TABLE ledger_entries DISABLE TRIGGER USER');
+      await addLedger(src, { amount_minor: 900 });
+    }, /exceed/));
+
+  it('refuses a EUR refund on a USD order', () =>
+    refusesAndRollsBack(async (src) => {
+      await src.exec('ALTER TABLE ledger_entries DISABLE TRIGGER USER');
+      await addLedger(src, { currency: 'EUR' });
+    }, /currency/));
+
+  it('refuses a sandbox order that consumed a dryrun approval', () =>
+    refusesAndRollsBack(async (src) => {
+      await src.exec('ALTER TABLE orders DISABLE TRIGGER USER');
+      await src.exec("UPDATE orders SET environment = 'sandbox' WHERE id = 'ord_1'");
+    }, /environment/));
+
+  it('refuses a unit whose refunded amount disagrees with the ledger (INV1)', () =>
+    refusesAndRollsBack(async (src) => {
+      await src.exec("UPDATE order_units SET refunded_minor = 0 WHERE id = 'unt_1'");
+    }, /INV1/));
+
+  it('refuses a ledger row from another environment than its order', () =>
+    refusesAndRollsBack(async (src) => {
+      await src.exec('ALTER TABLE ledger_entries DISABLE TRIGGER USER');
+      await src.exec("UPDATE ledger_entries SET environment = 'sandbox' WHERE id = 'led_1'");
+    }, /environment/));
+
+  it('refuses an available entitlement without a verified capture (INV2)', () =>
+    refusesAndRollsBack(async (src) => {
+      await src.exec(
+        "UPDATE order_units SET status = 'expected', captured_verified_at = NULL WHERE id = 'unt_1'",
+      );
+      await src.exec('ALTER TABLE ledger_entries DISABLE TRIGGER USER');
+      await src.exec('DELETE FROM ledger_entries');
+      await src.exec("UPDATE order_units SET refunded_minor = 0 WHERE id = 'unt_1'");
+      await src.exec("UPDATE entitlements SET access_state = 'available' WHERE id = 'ent_1'");
+    }, /INV2/));
+
+  it('the safety_switches delete guard is lifted only for the seed rows, then back on', async () => {
+    const src = await fresh();
+    await seed(src);
+    const dst = await fresh();
+    await importSql(dst, await exportSql(src, { utc: T }));
+    await expect(
+      dst.query("DELETE FROM safety_switches WHERE name = 'ai_enabled'"),
+    ).rejects.toThrow();
+  });
+});

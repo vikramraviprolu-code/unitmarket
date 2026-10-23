@@ -176,12 +176,24 @@ beforeAll(async () => {
     evidence: j({}),
     environment: 'dryrun',
   });
+  // The H1 probe: outbound switched on and an approval valid to 2099 at backup time.
+  await ins(db, 'outbound_approvals', {
+    id: 'oap_1',
+    approval_ref: 'probe-ref-2099',
+    scope: 'sandbox',
+    operations: ['create_order'],
+    max_amount_minor: 100000,
+    max_calls_per_day: 50,
+    valid_until: '2099-01-01T00:00:00Z',
+    approved_by: 'attacker',
+  });
+  await db.query('UPDATE safety_switches SET "on" = true WHERE name = \'paypal_outbound\'');
   counts = await rowCounts(db);
   sums = await ledgerSums(db);
   await db.close();
   backupDir = fresh('bk');
   rmSync(backupDir, { recursive: true });
-  await runBackup({ dir: src, out: backupDir, clock });
+  await runBackup({ appStopped: true, dir: src, out: backupDir, clock });
 }, 180_000);
 
 // Copy the backup so a test can damage it without touching the others.
@@ -198,6 +210,17 @@ async function verifyRestored(dir: string) {
   try {
     expect(await rowCounts(db)).toEqual(counts);
     expect(await ledgerSums(db)).toEqual(sums);
+    // H1: a restore never leaves outbound PayPal switched on; the approval row is kept but inert.
+    const sw = await db.query(
+      'SELECT "on", changed_by, reason FROM safety_switches WHERE name = \'paypal_outbound\'',
+    );
+    expect(sw.rows).toEqual([
+      { on: false, changed_by: 'restore', reason: expect.stringMatching(/restore/i) },
+    ]);
+    expect((await db.query('SELECT approval_ref FROM outbound_approvals')).rows).toEqual([
+      { approval_ref: 'probe-ref-2099' },
+    ]);
+    expect(existsSync(join(dir, '.ums-open.lock'))).toBe(false);
     // Ledger append-only invariants.
     await expect(
       db.query("UPDATE ledger_entries SET amount_minor = 1 WHERE id = 'led_1'"),
@@ -298,6 +321,10 @@ describe('tarball restore', () => {
     const res = await runRestore({ from: backupDir, dir, clock });
     const seconds = (wall.now().getTime() - t0) / 1000;
     expect(res.mode).toBe('tarball');
+    expect(res.outbound.switch_was_on).toBe(true);
+    expect(res.outbound.approvals).toEqual([
+      expect.objectContaining({ ref: 'probe-ref-2099', scope: 'sandbox' }),
+    ]);
     expect(res.tables).toEqual(counts);
     expect(seconds).toBeLessThan(30);
     await verifyRestored(dir);
@@ -311,6 +338,10 @@ describe('SQL restore', () => {
     const res = await runRestore({ from: backupDir, dir, sql: true, clock });
     const seconds = (wall.now().getTime() - t0) / 1000;
     expect(res.mode).toBe('sql');
+    expect(res.outbound.switch_was_on).toBe(true);
+    expect(res.outbound.approvals).toEqual([
+      expect.objectContaining({ ref: 'probe-ref-2099', scope: 'sandbox' }),
+    ]);
     expect(res.tables).toEqual(counts);
     expect(seconds).toBeLessThan(30);
     await verifyRestored(dir);
@@ -401,6 +432,9 @@ describe('the command line', () => {
     const ok = cli(['--from', backupDir, '--dir', dir]);
     expect(ok.status, ok.stderr).toBe(0);
     expect(ok.stdout).toMatch(/restore ok/);
+    expect(ok.stdout).toContain('paypal_outbound');
+    expect(ok.stdout).toContain('probe-ref-2099');
+    expect(ok.stdout).toMatch(/not carried live|switched OFF/i);
     const again = cli(['--from', backupDir, '--dir', dir]);
     expect(again.status).toBe(1);
     expect(again.stderr).toMatch(/not empty/i);
@@ -422,4 +456,86 @@ describe('the command line', () => {
     expect(src).not.toMatch(/process\.env/);
     expect(src).not.toMatch(/\bfetch\s*\(|node:(net|tls|http|https|dns|dgram)/);
   });
+});
+
+describe('restore re-checks what it loads (M2, L2, L3)', () => {
+  async function backupOf(prep: (db: Q) => Promise<void>): Promise<string> {
+    const src = fresh('guard-src');
+    const db = await openDatabase({ kind: 'pglite-disk', dir: src });
+    await migrate(db, clock);
+    await prep(db);
+    await db.close();
+    const out = join(fresh('guard-out'), 'bk');
+    await runBackup({ appStopped: true, dir: src, out, clock, warn: () => {} });
+    return out;
+  }
+
+  it('a source with the ledger guards switched off: the tarball restore refuses, the SQL restore re-enables them', async () => {
+    const from = await backupOf((db) => db.exec('ALTER TABLE ledger_entries DISABLE TRIGGER USER'));
+    const bad = target();
+    await expect(runRestore({ from, dir: bad, clock })).rejects.toThrow(/trigger/i);
+    expect(!existsSync(bad) || readdirSync(bad).length === 0).toBe(true);
+    const good = target();
+    await runRestore({ from, dir: good, sql: true, clock });
+    const db = await openDatabase({ kind: 'pglite-disk', dir: good });
+    try {
+      const off = await db.query(
+        "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgenabled <> 'O'",
+      );
+      expect(off.rows).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  }, 240_000);
+
+  it('a source with a guard trigger missing: the tarball restore refuses and names it', async () => {
+    const from = await backupOf((db) => db.exec('DROP TRIGGER receipts_immutable ON receipts'));
+    const bad = target();
+    await expect(runRestore({ from, dir: bad, clock })).rejects.toThrow(
+      /missing.*receipts_immutable/is,
+    );
+    expect(!existsSync(bad) || readdirSync(bad).length === 0).toBe(true);
+  }, 240_000);
+
+  it('a tarball whose migration version differs from the manifest refuses', async () => {
+    const from = copyBackup();
+    const m = JSON.parse(readFileSync(join(from, 'manifest.json'), 'utf8'));
+    m.migration_version = '0001_core';
+    writeFileSync(join(from, 'manifest.json'), JSON.stringify(m));
+    const bad = target();
+    await expect(runRestore({ from, dir: bad, clock })).rejects.toThrow(/migration version/i);
+    expect(!existsSync(bad) || readdirSync(bad).length === 0).toBe(true);
+  }, 180_000);
+
+  it('--sql prints no "newer migrations" note (every migration is new on a fresh database)', async () => {
+    const warnings: string[] = [];
+    await runRestore({
+      from: backupDir,
+      dir: target(),
+      sql: true,
+      clock,
+      warn: (m: string) => warnings.push(m),
+    });
+    expect(warnings.join('\n')).not.toMatch(/newer migration/i);
+  }, 180_000);
+
+  it('a target inside the repository is refused, like the backup output folder', async () => {
+    const dir = join(ROOT, '.sbx-local', 'co10-restore-should-not-exist');
+    await expect(runRestore({ from: backupDir, dir, clock })).rejects.toThrow(/repository/i);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it('prints the outbound warning through warn as well: switch was on, approval refs, not carried live', async () => {
+    const warnings: string[] = [];
+    await runRestore({
+      from: backupDir,
+      dir: target(),
+      clock,
+      warn: (m: string) => warnings.push(m),
+    });
+    const text = warnings.join('\n');
+    expect(text).toContain('probe-ref-2099');
+    expect(text).toMatch(/paypal_outbound/);
+    expect(text).toMatch(/not carried live/i);
+  }, 180_000);
 });

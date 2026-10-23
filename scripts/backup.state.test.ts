@@ -178,7 +178,7 @@ const cli = (args: string[], env: Record<string, string> = {}) =>
 describe('backup of a seeded database', () => {
   it('writes the tarball, the logical export and a manifest whose counts and hashes match', async () => {
     const out = fresh('out');
-    const res = await runBackup({ dir: srcDir, out, clock });
+    const res = await runBackup({ appStopped: true, dir: srcDir, out, clock });
     const names = readdirSync(out).sort();
     expect(names).toEqual([
       'export-20261021T100000Z.sql',
@@ -223,7 +223,7 @@ describe('backup of a seeded database', () => {
 
   it('leaves the source directory in place and its data unchanged', async () => {
     const out = fresh('out');
-    await runBackup({ dir: srcDir, out, clock });
+    await runBackup({ appStopped: true, dir: srcDir, out, clock });
     expect(existsSync(join(srcDir, 'PG_VERSION'))).toBe(true);
     const db = await openDatabase({ kind: 'pglite-disk', dir: srcDir });
     expect(await rowCounts(db)).toEqual(counts);
@@ -232,16 +232,18 @@ describe('backup of a seeded database', () => {
 
   it('creates private files: the output folder 0700, the files 0600', async () => {
     const out = join(fresh('parent'), 'nested');
-    await runBackup({ dir: srcDir, out, clock });
+    await runBackup({ appStopped: true, dir: srcDir, out, clock });
     expect(statSync(out).mode & 0o777).toBe(0o700);
     for (const f of readdirSync(out)) expect(statSync(join(out, f)).mode & 0o777).toBe(0o600);
   }, 120_000);
 
   it('refuses to overwrite an earlier backup in the same folder', async () => {
     const out = fresh('out');
-    await runBackup({ dir: srcDir, out, clock });
+    await runBackup({ appStopped: true, dir: srcDir, out, clock });
     const before = readFileSync(join(out, 'manifest.json'), 'utf8');
-    await expect(runBackup({ dir: srcDir, out, clock })).rejects.toThrow(/already holds a backup/);
+    await expect(runBackup({ appStopped: true, dir: srcDir, out, clock })).rejects.toThrow(
+      /already holds a backup/,
+    );
     expect(readFileSync(join(out, 'manifest.json'), 'utf8')).toBe(before);
   }, 120_000);
 });
@@ -256,7 +258,7 @@ describe('what the backup refuses', () => {
       j({ pid: process.pid, host: hostname(), started: T }),
     );
     const out = join(fresh('o'), 'bk');
-    const r = cli(['--dir', dir, '--out', out]);
+    const r = cli(['--dir', dir, '--out', out, '--i-stopped-the-app']);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/holds this database|in use|Stop it first/i);
     expect(existsSync(out)).toBe(false);
@@ -274,7 +276,7 @@ describe('what the backup refuses', () => {
       writeFileSync(join(dir, 'PG_VERSION'), '17\n');
       make(join(dir, '.ums-open.lock'));
       const out = join(fresh('o'), 'bk');
-      await expect(runBackup({ dir, out, clock })).rejects.toThrow(/lock/i);
+      await expect(runBackup({ appStopped: true, dir, out, clock })).rejects.toThrow(/lock/i);
       expect(existsSync(out)).toBe(false);
     }
   });
@@ -289,7 +291,7 @@ describe('what the backup refuses', () => {
     );
     const out = join(fresh('o'), 'bk');
     const warnings: string[] = [];
-    await runBackup({ dir, out, clock, warn: (m: string) => warnings.push(m) });
+    await runBackup({ appStopped: true, dir, out, clock, warn: (m: string) => warnings.push(m) });
     expect(warnings.join('\n')).toMatch(/stale|dead|not running/i);
     expect(existsSync(join(out, 'manifest.json'))).toBe(true);
   }, 120_000);
@@ -297,22 +299,30 @@ describe('what the backup refuses', () => {
   it('refuses a directory that is not a PGlite data directory, without creating one', async () => {
     const empty = fresh('empty');
     const out = join(fresh('o'), 'bk');
-    await expect(runBackup({ dir: empty, out, clock })).rejects.toThrow(/PG_VERSION|not a PGlite/i);
+    await expect(runBackup({ appStopped: true, dir: empty, out, clock })).rejects.toThrow(
+      /PG_VERSION|not a PGlite/i,
+    );
     expect(readdirSync(empty)).toEqual([]);
     const missing = join(fresh('m'), 'nope');
-    await expect(runBackup({ dir: missing, out, clock })).rejects.toThrow();
+    await expect(runBackup({ appStopped: true, dir: missing, out, clock })).rejects.toThrow();
     expect(existsSync(missing)).toBe(false);
   });
 
   it('refuses an output folder inside the repository', async () => {
     const out = join(ROOT, '.sbx-local', 'co10-should-not-exist');
-    await expect(runBackup({ dir: srcDir, out, clock })).rejects.toThrow(/repository/i);
+    await expect(runBackup({ appStopped: true, dir: srcDir, out, clock })).rejects.toThrow(
+      /repository/i,
+    );
     expect(existsSync(out)).toBe(false);
   });
 
   it('refuses an output folder that is the data directory or sits inside it', async () => {
-    await expect(runBackup({ dir: srcDir, out: srcDir, clock })).rejects.toThrow();
-    await expect(runBackup({ dir: srcDir, out: join(srcDir, 'bk'), clock })).rejects.toThrow();
+    await expect(
+      runBackup({ appStopped: true, dir: srcDir, out: srcDir, clock }),
+    ).rejects.toThrow();
+    await expect(
+      runBackup({ appStopped: true, dir: srcDir, out: join(srcDir, 'bk'), clock }),
+    ).rejects.toThrow();
   });
 
   it('exits 2 with a usage line when --dir or --out is missing, and never prints a stack trace', () => {
@@ -330,7 +340,7 @@ describe('what the backup refuses', () => {
 describe('the command line', () => {
   it('backs up a real directory end to end, prints names and counts only, exits 0', () => {
     const out = join(fresh('o'), 'bk');
-    const r = cli(['--dir', srcDir, '--out', out]);
+    const r = cli(['--dir', srcDir, '--out', out, '--i-stopped-the-app']);
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).toMatch(/backup ok/);
     expect(r.stdout).toContain('manifest.json');
@@ -346,7 +356,7 @@ describe('no secret and no personal data beyond what the database holds', () => 
       PAYPAL_FAKE_PLACEHOLDER: `${PLANTED}-b`,
       NODE_ENV: 'test',
     };
-    const r = cli(['--dir', srcDir, '--out', out], env);
+    const r = cli(['--dir', srcDir, '--out', out, '--i-stopped-the-app'], env);
     expect(r.status, r.stderr).toBe(0);
     const seeds = [PLANTED, `${PLANTED}-b`];
     const manifest = readFileSync(join(out, 'manifest.json'), 'utf8');
@@ -384,4 +394,88 @@ describe('no secret and no personal data beyond what the database holds', () => 
       expect(src).not.toMatch(/\bfetch\s*\(|node:(net|tls|http|https|dns|dgram)/);
     }
   });
+});
+
+describe('the app must be stopped (H3)', () => {
+  it('refuses without --i-stopped-the-app, says why, and writes nothing (library and command line)', async () => {
+    const out = join(fresh('o'), 'bk');
+    await expect(runBackup({ dir: srcDir, out, clock })).rejects.toThrow(/--i-stopped-the-app/);
+    expect(existsSync(out)).toBe(false);
+    const r = cli(['--dir', srcDir, '--out', out]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/--i-stopped-the-app/);
+    expect(r.stderr).toMatch(/stop/i);
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it('the usage text names the flag and warns that a backup holds personal and session data', () => {
+    const r = cli([]);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/--i-stopped-the-app/);
+    expect(r.stderr).toMatch(/personal data/i);
+    expect(r.stderr).toMatch(/session/i);
+    expect(r.stderr).toMatch(/private/i);
+  });
+
+  it('holds the lock for its whole run (exclusive create, 0600, pid, host, start time) and removes it at the end', async () => {
+    const dir = fresh('own');
+    const { cpSync } = await import('node:fs');
+    cpSync(srcDir, dir, { recursive: true });
+    const out = join(fresh('o'), 'bk');
+    let seen: { mode: number; body: Record<string, unknown> } | undefined;
+    await runBackup({
+      appStopped: true,
+      dir,
+      out,
+      clock,
+      onLockHeld: (lock: string) => {
+        seen = { mode: statSync(lock).mode & 0o777, body: JSON.parse(readFileSync(lock, 'utf8')) };
+      },
+    });
+    expect(seen?.mode).toBe(0o600);
+    expect(seen?.body).toMatchObject({ pid: process.pid, host: hostname() });
+    expect(typeof seen?.body.started).toBe('string');
+    expect(existsSync(join(dir, '.ums-open.lock'))).toBe(false);
+  }, 120_000);
+
+  it('removes its lock even when the backup fails', async () => {
+    const dir = fresh('own');
+    const { cpSync } = await import('node:fs');
+    cpSync(srcDir, dir, { recursive: true });
+    const out = join(fresh('o'), 'bk');
+    await expect(
+      runBackup({
+        appStopped: true,
+        dir,
+        out,
+        clock,
+        onLockHeld: () => {
+          throw new Error('boom');
+        },
+      }),
+    ).rejects.toThrow('boom');
+    expect(existsSync(join(dir, '.ums-open.lock'))).toBe(false);
+    expect(existsSync(join(out, 'manifest.json'))).toBe(false);
+  }, 120_000);
+});
+
+describe('the lock never travels inside the tarball (M3)', () => {
+  it('a stale lock in the source and the backup own lock are both absent from the tarball', async () => {
+    const dir = fresh('stale');
+    const { cpSync } = await import('node:fs');
+    cpSync(srcDir, dir, { recursive: true });
+    writeFileSync(
+      join(dir, '.ums-open.lock'),
+      j({ pid: 2 ** 22 + 777, host: hostname(), started: T }),
+    );
+    const out = join(fresh('o'), 'bk');
+    await runBackup({ appStopped: true, dir, out, clock, warn: () => {} });
+    const tarFile = readdirSync(out).find((f) => f.endsWith('.tar.gz'))!;
+    const tar = gunzipSync(readFileSync(join(out, tarFile)));
+    expect(tar.includes(Buffer.from('.ums-open.lock'))).toBe(false);
+    // The rest of the data directory is still there.
+    expect(tar.includes(Buffer.from('PG_VERSION'))).toBe(true);
+    const manifest = JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8'));
+    expect(manifest.files.tarball.sha256).toBe(sha(join(out, tarFile)));
+  }, 120_000);
 });
