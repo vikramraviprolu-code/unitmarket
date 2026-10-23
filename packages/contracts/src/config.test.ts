@@ -72,4 +72,40 @@ describe('DomainConfig', () => {
       expect(ok(bad), bad).toBe(false);
     }
   });
+  it('BU-5: the poll budget fields are optional (older configs stay valid) and keep their documented values', () => {
+    const parsed = DomainConfigSchema.safeParse({
+      ...cfg,
+      poll_budget_share: 0.5,
+      capture_reserve_calls: 30,
+      reread_paid_every_ms: 21_600_000,
+      min_call_gap_ms: 500,
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.poll_budget_share).toBe(0.5);
+      expect(parsed.data.capture_reserve_calls).toBe(30);
+      expect(parsed.data.reread_paid_every_ms).toBe(21_600_000);
+      expect(parsed.data.min_call_gap_ms).toBe(500);
+    }
+    // absent: no default is invented here, the consumers apply theirs
+    const bare = DomainConfigSchema.safeParse(cfg);
+    expect(bare.success).toBe(true);
+    if (bare.success) expect(bare.data.poll_budget_share).toBeUndefined();
+  });
+  it('BU-5: the poll budget fields refuse values that would starve or flood the budget', () => {
+    const ok = (o: object) => DomainConfigSchema.safeParse({ ...cfg, ...o }).success;
+    expect(ok({ poll_budget_share: 0 })).toBe(true);
+    expect(ok({ poll_budget_share: 1 })).toBe(true);
+    expect(ok({ poll_budget_share: 1.01 })).toBe(false);
+    expect(ok({ poll_budget_share: -0.1 })).toBe(false);
+    expect(ok({ poll_budget_share: Number.NaN })).toBe(false);
+    expect(ok({ capture_reserve_calls: 0 })).toBe(true);
+    expect(ok({ capture_reserve_calls: -1 })).toBe(false);
+    expect(ok({ capture_reserve_calls: 1.5 })).toBe(false);
+    expect(ok({ reread_paid_every_ms: 3_600_000 })).toBe(true);
+    expect(ok({ reread_paid_every_ms: 0 })).toBe(false);
+    expect(ok({ reread_paid_every_ms: -1 })).toBe(false);
+    expect(ok({ min_call_gap_ms: 0 })).toBe(true);
+    expect(ok({ min_call_gap_ms: -1 })).toBe(false);
+  });
 });
