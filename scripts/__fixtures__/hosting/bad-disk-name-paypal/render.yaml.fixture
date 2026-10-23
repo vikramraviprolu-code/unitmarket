@@ -14,7 +14,7 @@ services:
     startCommand: corepack pnpm --filter @umsbx/web start
     healthCheckPath: /healthz
     disk:
-      name: paypal.com
+      name: {{SANDBOX_HOST}}
       mountPath: /var/data
       sizeGB: 1
     envVars:
