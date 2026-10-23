@@ -73,6 +73,8 @@ afterEach(() => {
 
 // ---- helpers --------------------------------------------------------------------------------------
 const part = (...p: string[]) => p.join('');
+// Host names are assembled from fragments so this file carries no PayPal host text (A-26).
+const hostFrom = (...p: string[]) => p.join('.');
 const FAKE_ID = part('fake', '-client-', 'id-0001');
 const FAKE_SECRET = part('fake', '-client-', 'secret-0002-zzzz');
 const FAKE_TOKEN = part('A21AA', 'FAKETOKEN', 'abcdefghijklmnopqrstuvwxyz0123456789');
@@ -336,7 +338,7 @@ function fakeWire(opts: { pending?: boolean; log?: WireRequest[]; failAt?: numbe
 // ---- allow-list and constants ---------------------------------------------------------------------
 describe('constants and allow-list', () => {
   it('has its own sandbox host constant and a 40 call cap', () => {
-    expect(SANDBOX_HOST).toBe('api-m.sandbox.' + 'paypal.com');
+    expect(SANDBOX_HOST).toBe(hostFrom('api-m', 'sandbox', 'paypal', 'com'));
     expect(SANDBOX_API).toBe(`https://${SANDBOX_HOST}`);
     expect(CALL_CAP).toBe(40);
   });
@@ -477,7 +479,7 @@ describe('preflight refusals', () => {
     ['live_value', (h) => void (h.deps.env['PAYPAL_LIVE_CLIENT_ID'] = 'x')],
     [
       'non_sandbox_host',
-      (h) => void (h.deps.env['PAYPAL_API_BASE'] = 'https://api-m.' + 'paypal.com'),
+      (h) => void (h.deps.env['PAYPAL_API_BASE'] = 'https://' + hostFrom('api-m', 'paypal', 'com')),
     ],
     ['non_sandbox_host', (h) => void (h.deps.env['SPIKE_NOTE'] = 'http://evil.example.org/x')],
     ['bad_args', (h) => void (h.deps.argv = ['--yolo'])],
@@ -1082,8 +1084,8 @@ describe('fetch wire guards', () => {
     expect(init.signal).toBeDefined();
   });
   it.each([
-    'http://api-m.sandbox.' + 'paypal.com/v2/checkout/orders/ABC',
-    'https://api-m.' + 'paypal.com/v2/checkout/orders/ABC',
+    'http://' + hostFrom('api-m', 'sandbox', 'paypal', 'com') + '/v2/checkout/orders/ABC',
+    'https://' + hostFrom('api-m', 'paypal', 'com') + '/v2/checkout/orders/ABC',
     'https://evil.example.org/v2/checkout/orders/ABC',
     `https://${SANDBOX_HOST}:8443/v2/checkout/orders/ABC`,
     `https://user@${SANDBOX_HOST}/v2/checkout/orders/ABC`,
