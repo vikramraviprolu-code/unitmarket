@@ -1730,6 +1730,31 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
           expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
       },
     );
+    it.each([
+      ['cast callee', `${IMP}(vi.doMock as any)('@umsbx/transport', ${FACTORY});\n`],
+      ['non-null callee', `${IMP}vi.doMock!('@umsbx/transport', ${FACTORY});\n`],
+      ['cast callee, .call', `${IMP}(vi.mock as any).call(undefined, '@umsbx/transport');\n`],
+      ['cast callee, .apply', `${IMP}(vi.doMock as any).apply(undefined, ['@umsbx/safety']);\n`],
+      ['cast then .mock stored', `${IMP}const m = (vi as typeof vi).mock;\n`],
+      ['non-null then .doMock stored', `${IMP}const m = vi!.doMock;\n`],
+      ['jest cast then .mock stored', `const m = (jest as typeof jest).mock;\n`],
+    ])(
+      'TypeScript wrappers around the callee, the object or the .call target are looked through: %s',
+      async (_n, code) => {
+        for (const file of outsiders)
+          expect((await only(file, code, SEALED)).length, file).toBeGreaterThan(0);
+      },
+    );
+    it('.call and .apply of a loader with a non-vi this stay allowed when nothing sealed is named', async () => {
+      const ok = [
+        `${IMP}vi.mock.call(undefined, 'zod');\n`,
+        `${IMP}vi.doMock.apply(undefined, ['node:https']);\n`,
+        `${IMP}(vi.mock as any).call(undefined, 'zod');\n`,
+      ];
+      for (const code of ok)
+        for (const file of outsiders)
+          expect(await only(file, code, SEALED), `${file} ${code}`).toEqual([]);
+    });
     it('the allowed uses stay allowed after BU-1b', async () => {
       const ok = [
         `${IMP}const spy = vi.fn();\nconst { calls } = spy.mock;\nexport const c = calls.length;\n`,
