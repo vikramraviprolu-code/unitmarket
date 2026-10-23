@@ -1,0 +1,98 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "scenario": "refunds_listed",
+    "operation": "get_order",
+    "step": 2,
+    "recorded_at": null,
+    "origin": "synthetic: hand-written for BU-4 from the Orders v2 payment_collection schema (purchase_units[].payments.refunds[]) in github.com/paypal/paypal-rest-api-specifications checkout_orders_v2.json; the refund list is not yet seen in the sandbox (ASM-53); not PayPal evidence",
+    "redactions": []
+  },
+  "request": {
+    "method": "GET",
+    "path_template": "/v2/checkout/orders/{id}",
+    "headers": {
+      "authorization": "[redacted]"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "paypal-debug-id": "sbxdebug0102"
+    },
+    "body": {
+      "id": "SBXREFLISTORD00001",
+      "status": "COMPLETED",
+      "intent": "CAPTURE",
+      "purchase_units": [
+        {
+          "reference_id": "unit-1",
+          "custom_id": "ord_SBX0001",
+          "amount": {
+            "currency_code": "USD",
+            "value": "5.00"
+          },
+          "payee": {
+            "merchant_id": "SBXMERCHANT01"
+          },
+          "payments": {
+            "captures": [
+              {
+                "id": "SBXREFLISTCAP00001",
+                "status": "COMPLETED",
+                "amount": {
+                  "currency_code": "USD",
+                  "value": "5.00"
+                },
+                "final_capture": true,
+                "create_time": "2026-01-01T10:00:00Z",
+                "update_time": "2026-01-01T10:00:00Z",
+                "seller_receivable_breakdown": {
+                  "gross_amount": {
+                    "currency_code": "USD",
+                    "value": "5.00"
+                  },
+                  "paypal_fee": {
+                    "currency_code": "USD",
+                    "value": "0.45"
+                  },
+                  "net_amount": {
+                    "currency_code": "USD",
+                    "value": "4.55"
+                  }
+                }
+              }
+            ],
+            "refunds": [
+              {
+                "id": "SBXREFLISTREF00002",
+                "status": "PENDING",
+                "amount": {
+                  "currency_code": "USD",
+                  "value": "2.00"
+                },
+                "note_to_payer": "synthetic pending dashboard refund",
+                "create_time": "2026-01-01T11:00:00Z",
+                "update_time": "2026-01-01T11:00:00Z"
+              }
+            ]
+          }
+        }
+      ],
+      "payer": {
+        "payer_id": "SBXPAYER00001"
+      },
+      "create_time": "2026-01-01T09:59:00Z",
+      "update_time": "2026-01-01T10:00:00Z",
+      "links": [
+        {
+          "href": "/v2/checkout/orders/SBXREFLISTORD00001",
+          "rel": "self",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+}
