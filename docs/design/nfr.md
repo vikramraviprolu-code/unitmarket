@@ -112,6 +112,22 @@ Targets apply to the hosted sandbox demo. PayPal sandbox latency is outside our 
 | PERF-8 | Webhook acknowledgement (verify plus enqueue only) | p95 <= 500 ms | Logs |
 | PERF-9 | Reconciler budget | A pass over <= 500 open operations finishes in <= 60 s; <= 2 PayPal requests per second overall; <= 1 read per operation per schedule step; CPU <= 20 percent of one core averaged over a pass | Load test with fixture provider; rate counter in logs |
 
+PERF-9 notes (BU-5, `packages/jobs`, `domain/payments/src/due.ts`):
+
+- The polling allowance is counted in calls, the unit the outbound gate counts. Before each pass the job loop sets a quota on the provider port it hands to payments; the port answers `blocked` (by `budget`) once the pass has used it, and payments pauses and retries on a later pass. One item costs 1 to 4 calls (a re-read 2; an abandoned-but-approved order 4: get, get, capture, get; an unknown capture with the P3 retry 3), so a quota in items would overdraw the budget.
+- Known limit (ASM-BU5-5): two loops that share one `callBudget` are not capped together; each reads the same remaining count. The design is one loop per approval and composition starts one. The claim on a paid re-read only stops the same order being read twice by passes at once.
+- Known limit: a process that dies between claiming a paid re-read and reading the order postpones that re-read by one cadence (6 h in sandbox mode); the next unknown-operation sweep does not repair it.
+- The call gap (`min_call_gap_ms`, default 500) spaces port methods, not HTTP requests: a retry inside one transport call is not spaced. Startup recovery that composition runs itself and the return route's own capture go through neither the gap nor the quota; the gate alone decides them. Recovery run by the loop (`recover_on_start`) is gap-limited but not quota-limited.
+- Sandbox mode fails closed: a loop without a `callBudget` runs money passes only (`jobs.loop.no_call_budget`); a `reread_paid_every_ms` outside 1 ms to 24 h refuses to start (`jobs.loop.bad_config`); under 6 h it warns (`jobs.loop.reread_too_frequent`).
+
+BU-2 wiring (composition) for the BU-5 loop:
+
+- `callBudget` must never return `null` in sandbox mode; build it from `readSafetyStatus`, and treat a missing approval as a reading of 0 remaining. In sandbox a `null` reading is handled as no budget (money passes only, `jobs.loop.no_call_budget`); `null` means unlimited in dry run only.
+- A `reread_paid_every_ms` outside 1 ms to 24 h makes `startLoop` throw. Called inside `startJobs`, that would take the whole app down, `/ops` included: validate the cadence at config load, and catch the throw so the app starts with the loop off and a loud log.
+- BU-2 needs a test that the sandbox config gives `reread_paid_every_ms` 21,600,000 (and `min_call_gap_ms` 500).
+- A `money_only` pass is bounded by the calls left, so it can spend the capture reserve. That is a product decision: the reserve exists for captures and their read-backs. Record it as an ASM.
+- `money_only` never sends: it reads unknown captures and read-backs, and closes work that needs no resend (a create past its key window, a refund that was sent and whose 24 h window ended). A put-off refund (never sent) waits for a full pass.
+
 ### 2.2 Reliability and availability
 
 | Id | Requirement | Target | Verification |
