@@ -26,3 +26,5 @@ Do not: give buyers a refund button (refunds are operator decisions, P9); comput
 Evidence for the PR: red summary; pass counts; screenshots of the five buyer states and the ops form; the route inventory diff.
 
 Branch: `feat/web-refund-states` Commit: `feat(web): operator refunds with MFA, refund and pending states, offline journey (CO-8)`
+
+Review notes (CO-5 review, 2026-10-23): copy for a partial refund must say that access to every item in the unit continues (ASM-61, open). Do not show a per-item refund state.
