@@ -30,7 +30,7 @@ test.describe('stop button', () => {
     await op.waitForTimeout(5500);
     // A buyer now tries to pay: checkout is paused and nothing is charged.
     const buyer = await buyerPage(browser, 'b');
-    await askPrice(buyer, { offer: 'tide-tables' });
+    await askPrice(buyer, { offer: 'ferry-timetables' });
     await toApproval(buyer);
     // The box may be ticked before the page has hydrated, which resets it: tick until the button enables.
     const pay = buyer.getByRole('button', { name: 'Continue to payment' });
