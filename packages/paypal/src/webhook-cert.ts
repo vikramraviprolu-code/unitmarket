@@ -131,11 +131,9 @@ export function createCertCache(clock: Clock): CertCache {
       entries.delete(url);
       if (now > expires_at) return;
       purge(now);
-      while (entries.size >= CERT_CACHE_MAX_ENTRIES) {
-        const oldest = entries.keys().next();
-        if (oldest.done === true) break;
-        entries.delete(oldest.value);
-      }
+      // the map is not empty here (size >= 8), so the first key is the least recently used
+      while (entries.size >= CERT_CACHE_MAX_ENTRIES)
+        entries.delete(entries.keys().next().value as string);
       entries.set(url, { cert, expires_at });
     },
     size() {
@@ -203,11 +201,8 @@ export function createCertificateSource(d: CertificateSourceDeps): CertificateSo
     const now = d.clock.now().getTime();
     purgeFailures(now);
     failures.delete(url);
-    while (failures.size >= failuresMax) {
-      const oldest = failures.keys().next();
-      if (oldest.done === true) break;
-      failures.delete(oldest.value);
-    }
+    // failuresMax is at least 1, so the map is not empty here and the first key is the oldest
+    while (failures.size >= failuresMax) failures.delete(failures.keys().next().value as string);
     failures.set(url, { result, until: now + CERT_NEGATIVE_TTL_MS });
   };
 

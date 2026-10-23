@@ -127,6 +127,13 @@ describe('parseCertificate: certificates built in the test around generated keys
     });
   });
 
+  it('the size cap is 64 KiB of text: exactly that is read, one byte more is refused', () => {
+    const exact = PARSE_ONLY.padEnd(64 * 1024, '\n');
+    expect(Buffer.byteLength(exact)).toBe(64 * 1024);
+    expect(parseCertificate(exact, inside).kind).toBe('ok');
+    expect(parseCertificate(exact + '\n', inside)).toEqual({ kind: 'unavailable', why: 'parse' });
+  });
+
   it('refuses text that is not a certificate', () => {
     for (const bad of [
       '',

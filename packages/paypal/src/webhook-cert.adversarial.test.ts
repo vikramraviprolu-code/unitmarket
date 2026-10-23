@@ -116,6 +116,17 @@ describe('the global budget: 6 fetches per rolling hour of the injected clock', 
     expect(t.calls).toHaveLength(7);
   });
 
+  it('one old fetch is forgotten after the hour: six more are then allowed', async () => {
+    const clock = mutableClock(NOW_ISO);
+    const t = fakeTransport(() => NOT_FOUND);
+    const source = createCertificateSource({ transport: t, clock });
+    await source.get(urlN(0));
+    clock.advance(2 * HOUR);
+    for (let i = 1; i <= 7; i++) await source.get(urlN(i));
+    expect(t.calls).toHaveLength(7); // 1 + 6, the 7th new URL was refused
+    expect(source.stats().fetches_in_window).toBe(6);
+  });
+
   it('a refused lookup is not remembered as a failure: it can be fetched once the budget is back', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport((r) => (r.path.includes('GOOD') ? pemResponse(pem()) : NOT_FOUND));
