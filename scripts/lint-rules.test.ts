@@ -1145,6 +1145,14 @@ describe('named exemptions (D-015)', () => {
       [
         'apps/web/src/server/singleton.ts -> no-restricted-syntax,sbx/no-global-alias',
         'apps/web/src/instrumentation.ts -> no-restricted-properties,sbx/no-global-alias',
+        // BU-2 (the unseal): the one apps file that may name the three sealed identifiers.
+        'apps/web/src/server/outbound.server.ts -> sbx/sealed-transport',
+        // BU-2: its tests import the composition and the unseal module by relative path.
+        'tests/mvp-b/unseal-locks.state.test.ts -> sbx/no-package-escape',
+        'tests/mvp-b/unseal-scope.contract.test.ts -> sbx/no-package-escape',
+        'tests/mvp-b/unseal-journey.integration.test.ts -> sbx/no-package-escape',
+        'tests/mvp-b/unseal.adversarial.test.ts -> sbx/no-package-escape',
+        'tests/mvp-b/unseal-ops.golden.test.ts -> sbx/no-package-escape',
         'apps/web/src/lib/client-api.ts -> no-restricted-globals',
         'packages/paypal/src/paypal.sandbox.contract.test.ts -> no-restricted-syntax,sbx/no-global-alias',
         'domain/library/src/world.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
@@ -1877,5 +1885,93 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
         (await only('packages/paypal/src/evil.ts', code, 'sbx/sealed-transport')).length,
       ).toBeGreaterThan(0);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// BU-2 (the unseal). apps/web/src/server/outbound.server.ts is the one apps file that may name the
+// approved factory, the production Wire token and the scoped-gate factory. The exemption switches
+// off sbx/sealed-transport for that file only; the web layering (Z1) still bars it from the domain,
+// the database, the PayPal adapter, the runtime and the jobs, and every other apps file keeps every bar.
+// ---------------------------------------------------------------------------------------------
+describe('BU-2: the unseal file', () => {
+  const SEALED = 'sbx/sealed-transport';
+  const FILE = 'apps/web/src/server/outbound.server.ts';
+  const factory = ['create', 'Approved', 'Sandbox', 'Transport'].join('');
+  const token = ['PRODUCTION', 'WIRE'].join('_');
+  const gateFn = ['create', 'Scoped', 'Gate'].join('');
+  const code = `import { ${factory}, ${token} } from '@umsbx/transport';\nimport { ${gateFn} } from '@umsbx/safety';\nexport const x = [${factory}, ${token}, ${gateFn}];\n`;
+  const only = async (file: string, c: string, rule: string) =>
+    (await lint(file, c)).filter((m) => m.ruleId === rule);
+
+  it('may name the three sealed identifiers', async () => {
+    expect(await only(FILE, code, SEALED)).toEqual([]);
+  });
+  it('no other apps file may, composition included', async () => {
+    for (const f of [
+      'apps/web/composition.server.ts',
+      'apps/web/src/server/other.server.ts',
+      'apps/web/src/server/outbound.ts',
+      'apps/web/src/server/outbound.server.tsx',
+      'apps/web/src/app/api/ops/stop/route.ts',
+      'apps/web/src/server/outbound.test.ts',
+    ])
+      expect((await only(f, code, SEALED)).length, f).toBeGreaterThan(0);
+  });
+  it('the file may import the transport, safety, config and contracts, and nothing deeper or wider', async () => {
+    const ok = [
+      "import type { Wire } from '@umsbx/transport';",
+      "import { wireSelfCheck } from '@umsbx/transport';",
+      "import { createSwitchReader } from '@umsbx/safety';",
+      "import type { Config } from '@umsbx/config';",
+      "import type { Clock } from '@umsbx/contracts';",
+      'export const x = [wireSelfCheck, createSwitchReader];',
+    ].join('\n');
+    expect(await lint(FILE, `${ok}\n`)).toEqual([]);
+    for (const spec of [
+      '@umsbx/paypal',
+      '@umsbx/payments',
+      '@umsbx/db',
+      '@umsbx/runtime',
+      '@umsbx/jobs',
+      '@umsbx/testkit',
+      '@umsbx/transport/src/sandbox',
+      'node:https',
+      'node:net',
+    ])
+      expect(
+        (await lint(FILE, `import { a } from '${spec}';\nexport const b = a;\n`)).length,
+        spec,
+      ).toBeGreaterThan(0);
+  });
+  it('every other apps/web file is still barred from the transport, safety and config', async () => {
+    for (const f of ['apps/web/src/server/other.server.ts', 'apps/web/src/app/ops/page.tsx'])
+      for (const spec of ['@umsbx/transport', '@umsbx/safety', '@umsbx/config'])
+        expect(
+          (
+            await only(
+              f,
+              `import { a } from '${spec}';\nexport const b = a;\n`,
+              'no-restricted-imports',
+            )
+          ).length,
+          `${f} ${spec}`,
+        ).toBeGreaterThan(0);
+  });
+  it('the file keeps the time, randomness, environment and network bars', async () => {
+    for (const c of [
+      'export const t = Date.now();\n',
+      'export const t = new Date();\n',
+      'export const r = Math.random();\n',
+      'export const e = process.env;\n',
+      "export const f = fetch('x');\n",
+    ])
+      expect((await lint(FILE, c)).length, c).toBeGreaterThan(0);
+  });
+  it('the exemption does not reach the two SEAL5 rules', async () => {
+    expect(
+      (await only(FILE, "export const g = import.meta.glob('./*.ts');\n", 'sbx/no-bundler-glob'))
+        .length,
+    ).toBeGreaterThan(0);
   });
 });

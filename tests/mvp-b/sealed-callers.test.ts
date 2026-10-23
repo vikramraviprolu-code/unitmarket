@@ -63,33 +63,61 @@ const TRANSPORT_PKG = '@umsbx/transport';
 const isTransportSrc = (f: string) => f.startsWith('packages/transport/src/');
 
 describe('who may build the approved sandbox transport', () => {
-  it('non-test code calls the approved factory only in the factory itself and the package index', () => {
+  it('non-test code calls the approved factory only in the factory itself, the package index and the one unseal file (BU-2)', () => {
     const callers = withText(new RegExp(`\\b${FACTORY}\\b`), (f) => !isTest(f));
     expect(callers).toEqual([
+      'apps/web/src/server/outbound.server.ts',
       'packages/transport/src/index.ts',
       'packages/transport/src/sandbox.ts',
     ]);
   });
-  it('composition builds only the sealed zero-argument stub and never touches the approval pieces', () => {
+  it('composition builds the outbound only through buildOutbound and names none of the sealed identifiers (BU-2)', () => {
     const composition = text.get('apps/web/composition.server.ts') ?? '';
-    expect(composition).toContain('createSandboxTransport()');
+    expect(composition).toContain("from './src/server/outbound.server'");
+    expect(composition).toMatch(/\bbuildOutbound\(/);
+    // one call with one object argument: composition never passes the test-only seam
+    expect(callArgs(composition, 'buildOutbound')).toHaveLength(1);
+    expect(callArgs(composition, 'buildOutbound')[0]).not.toMatch(/\},\s*\{/);
     for (const banned of [
       FACTORY,
       CLAIM,
       OLD_MINTER,
+      MAKE_MINTER,
       'createScopedGate',
+      'PRODUCTION_WIRE',
       FETCH_WIRE_FN,
       FETCH_WIRE_FILE,
     ])
       expect(composition, banned).not.toContain(banned);
   });
-  it('apps/web contains no reference to the approved transport at all', () => {
+  it('outbound.server.ts is the one apps file that names the factory, the production Wire token and the scoped-gate factory (BU-2)', () => {
+    const users = (re: RegExp) => withText(re, (f) => f.startsWith('apps/'));
+    expect(users(new RegExp(`\\b${FACTORY}\\b`))).toEqual([
+      'apps/web/src/server/outbound.server.ts',
+    ]);
+    expect(users(/\bPRODUCTION_WIRE\b/)).toEqual(['apps/web/src/server/outbound.server.ts']);
+    expect(users(/\bcreateScopedGate\b/)).toEqual(['apps/web/src/server/outbound.server.ts']);
+    // never the minter, its claim, the old minter name, or the production Wire module
     expect(
-      withText(
-        new RegExp(`${FACTORY}|${CLAIM}|${OLD_MINTER}|createScopedGate|${FETCH_WIRE_FN}`),
-        (f) => f.startsWith('apps/'),
+      users(
+        new RegExp(
+          `\\b(${CLAIM}|${MAKE_MINTER}|${OLD_MINTER}|${FETCH_WIRE_FN})\\b|${FETCH_WIRE_FILE}`,
+        ),
       ),
     ).toEqual([]);
+  });
+  it('outbound.server.ts passes its wire to the factory and selects the production Wire only for an explicit null (BU-2)', () => {
+    const src = text.get('apps/web/src/server/outbound.server.ts') ?? '';
+    const calls = callArgs(src, FACTORY);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatch(/\bwire\b/);
+    expect(src).toMatch(/PRODUCTION_WIRE/);
+    expect(src).not.toMatch(/\bwire\s*\?\?/);
+    expect(src).toMatch(/wire === null/);
+    // no namespace, default, dynamic or require spelling of the sealed packages
+    expect(src).not.toMatch(/import\s+\*\s+as/);
+    expect(src).not.toMatch(/import\s*\(/);
+    expect(src).not.toMatch(/require\s*\(/);
   });
   it('every test call passes an explicit wire: a fake, never absent and never undefined', () => {
     const missing: string[] = [];
@@ -124,8 +152,9 @@ describe('the Wire is required (FIX-MVPB-SEAL2 H2)', () => {
   });
   it('the PRODUCTION_WIRE token is named only in the transport package (sandbox.ts, the index) and its sandbox test', () => {
     const users = withText(/\bPRODUCTION_WIRE\b/, (f) => !f.endsWith('sealed-callers.test.ts'));
-    // Composition has no standing exemption; unsealing adds a pinned one in the same review.
+    // Composition has no standing exemption. BU-2 (the unseal) adds exactly one pinned file.
     expect(users).toEqual([
+      'apps/web/src/server/outbound.server.ts',
       'packages/transport/src/index.ts',
       'packages/transport/src/sandbox.test.ts',
       'packages/transport/src/sandbox.ts',
@@ -284,7 +313,7 @@ describe('paths into the sealed packages (SEAL3 H-A)', () => {
       'packages/safety/src/scoped-gate.ts',
     ]);
   });
-  it('the scoped-gate factory is named only inside safety and the pinned b09 test', () => {
+  it('the scoped-gate factory is named only inside safety, the unseal file (BU-2) and the pinned b09 test', () => {
     const fn = ['create', 'Scoped', 'Gate'].join('');
     // An actual import or re-export of the name; a comment that mentions it does not count.
     const users = withText(
@@ -292,6 +321,7 @@ describe('paths into the sealed packages (SEAL3 H-A)', () => {
       (f) => !f.endsWith('sealed-callers.test.ts'),
     );
     expect(users.filter((f) => !f.startsWith('packages/safety/'))).toEqual([
+      'apps/web/src/server/outbound.server.ts',
       'tests/mvp-b/b09-logs-clean.integration.test.ts',
     ]);
   });

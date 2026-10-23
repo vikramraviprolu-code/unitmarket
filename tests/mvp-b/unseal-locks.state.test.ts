@@ -1,0 +1,423 @@
+// BU-2 acceptance (state): the five locks decide every call at the time of the call. Real in-memory
+// database, real scoped gate (through buildOutbound), real approval rows (in-memory only), a
+// counting fake Wire. Nothing reaches a network; the production Wire is never built here.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createAuditSink } from '@umsbx/obs';
+import { cryptoIds, systemClock } from '@umsbx/runtime';
+import { runResume } from '@umsbx/safety';
+import { createApp, installApp } from '../../apps/web/composition.server';
+import type { App } from '../../apps/web/composition.server';
+import { call, signIn } from '../../apps/web/src/support';
+import {
+  REF,
+  T0,
+  countingWire,
+  insertApproval,
+  makeRig,
+  req,
+  sandboxEnv,
+  setOutboundSwitch,
+} from './unseal-support';
+import type { Rig, RigOptions } from './unseal-support';
+
+vi.mock('server-only', () => ({}));
+
+const rigs: Rig[] = [];
+const apps: App[] = [];
+afterEach(async () => {
+  for (const r of rigs.splice(0)) await r.close();
+  for (const a of apps.splice(0)) await a.close();
+});
+async function rig(o: RigOptions = {}): Promise<Rig> {
+  const r = await makeRig(o);
+  rigs.push(r);
+  return r;
+}
+const builtLines = (r: Rig) => r.log.events.filter((e) => e.msg === 'outbound.transport_built');
+
+describe('each lock missing alone (L1 to L5) gives blocked with its reason and 0 Wire calls', () => {
+  const cases: [
+    string,
+    RigOptions,
+    string,
+    keyof Awaited<ReturnType<Rig['outbound']['status']>>['locks'],
+  ][] = [
+    ['L1 mode is offline', { mode: 'offline' }, 'connect_off', 'l1_mode_sandbox'],
+    ['L2 connect flag off', { connect: false }, 'connect_off', 'l2_connect_on'],
+    ['L3 no approval row', { approval: false }, 'no_approval', 'l3_approval_active'],
+    [
+      'L3 approval row for another scope',
+      { approval: { scope: 'mvp_c_refunds' } },
+      'no_approval',
+      'l3_approval_active',
+    ],
+    ['L3 approval ref not configured', { ref: null }, 'no_approval', 'l3_approval_active'],
+    [
+      'L3 approval row already expired',
+      { approval: { valid_until: '2026-10-23T09:00:00Z' } },
+      'no_approval',
+      'l3_approval_active',
+    ],
+    ['L4 kill switch off', { switch_on: false }, 'kill_switch', 'l4_switch_on'],
+    ['L5 no credentials', { credentials: false }, 'egress', 'l5_credentials_and_wire_ok'],
+    [
+      'L5 production Wire with an override in the environment',
+      {
+        wire: null,
+        selfcheck: () => ({
+          impl: 'node-https' as const,
+          env_override: true,
+          builtins_intact: true,
+          global_fetch_changed_since_load: false,
+        }),
+      },
+      'egress',
+      'l5_credentials_and_wire_ok',
+    ],
+    [
+      'L5 production Wire with changed builtins',
+      {
+        wire: null,
+        selfcheck: () => ({
+          impl: 'node-https' as const,
+          env_override: false,
+          builtins_intact: false,
+          global_fetch_changed_since_load: false,
+        }),
+      },
+      'egress',
+      'l5_credentials_and_wire_ok',
+    ],
+  ];
+  it.each(cases)('%s', async (_name, o, by, lock) => {
+    const r = await rig(o);
+    expect(await r.outbound.transport.send(req.getOrder())).toEqual({ kind: 'blocked', by });
+    expect(r.counting.calls).toHaveLength(0);
+    expect(builtLines(r)).toHaveLength(0);
+    expect(await r.reservations()).toBe(0);
+    const st = await r.outbound.status();
+    expect(st.open).toBe(false);
+    expect(st.transport_built).toBe(false);
+    expect(st.locks[lock]).toBe(false);
+    // every other lock reads open (mode L1 and connect L2 are config; the rest come from the rows)
+    for (const [k, v] of Object.entries(st.locks)) if (k !== lock) expect(v, k).toBe(true);
+  });
+});
+
+describe('all five present', () => {
+  it('all five present: one Wire call per allowed request', async () => {
+    const r = await rig();
+    const out = [];
+    for (let i = 0; i < 3; i += 1) out.push(await r.outbound.transport.send(req.getOrder()));
+    expect(out.map((x) => x.kind)).toEqual(['response', 'response', 'response']);
+    expect(r.counting.calls).toHaveLength(3);
+    expect(await r.reservations()).toBe(3);
+    expect(builtLines(r)).toHaveLength(1);
+    const st = await r.outbound.status();
+    expect(st.open).toBe(true);
+    expect(st.blocked_by).toBeNull();
+    expect(st.transport_built).toBe(true);
+    // the Wire saw only the sandbox host, over https
+    for (const c of r.counting.calls) expect(c.url.startsWith('https://')).toBe(true);
+  });
+});
+
+describe('the gate decides each request after the build', () => {
+  it('approval row expires mid-session: next request blocked no_approval, 0 Wire calls', async () => {
+    const r = await rig();
+    expect((await r.outbound.transport.send(req.getOrder())).kind).toBe('response');
+    expect(r.counting.calls).toHaveLength(1);
+    r.clock.set('2026-10-24T00:00:01Z');
+    expect(await r.outbound.transport.send(req.getOrder())).toEqual({
+      kind: 'blocked',
+      by: 'no_approval',
+    });
+    expect(r.counting.calls).toHaveLength(1);
+    expect((await r.outbound.status()).locks.l3_approval_active).toBe(false);
+  });
+
+  it('switch turned off mid-session: next request blocked kill_switch, 0 Wire calls', async () => {
+    const r = await rig();
+    await r.outbound.transport.send(req.getOrder());
+    await setOutboundSwitch(r.db, false);
+    expect(await r.outbound.transport.send(req.getOrder())).toEqual({
+      kind: 'blocked',
+      by: 'kill_switch',
+    });
+    expect(r.counting.calls).toHaveLength(1);
+    // and back on: the same built transport serves again, no second build
+    await setOutboundSwitch(r.db, true);
+    expect((await r.outbound.transport.send(req.getOrder())).kind).toBe('response');
+    expect(builtLines(r)).toHaveLength(1);
+  });
+
+  it('budget spent: blocked budget', async () => {
+    const r = await rig({ approval: { max_calls: 2 } });
+    expect((await r.outbound.transport.send(req.getOrder())).kind).toBe('response');
+    expect((await r.outbound.transport.send(req.getOrder())).kind).toBe('response');
+    expect(await r.outbound.transport.send(req.getOrder())).toEqual({
+      kind: 'blocked',
+      by: 'budget',
+    });
+    expect(r.counting.calls).toHaveLength(2);
+  });
+
+  it('an amount above the approval cap is blocked budget before the Wire', async () => {
+    const r = await rig({ approval: { max_amount_minor: 50 } });
+    expect(await r.outbound.transport.send(req.createOrder({ value: '1.00', minor: 100 }))).toEqual(
+      { kind: 'blocked', by: 'budget' },
+    );
+    expect(r.counting.calls).toHaveLength(0);
+  });
+
+  it('an operation outside the approval row is blocked no_approval', async () => {
+    const r = await rig({ approval: { ops: ['oauth_token'] } });
+    expect(await r.outbound.transport.send(req.getOrder())).toEqual({
+      kind: 'blocked',
+      by: 'no_approval',
+    });
+    expect(r.counting.calls).toHaveLength(0);
+  });
+});
+
+describe('stop via /api/ops/stop', () => {
+  async function sandboxApp(): Promise<{
+    app: App;
+    wire: ReturnType<typeof countingWire>;
+    stop: (typeof import('../../apps/web/src/app/api/ops/stop/route'))['POST'];
+    session: { POST: Parameters<typeof signIn>[0] };
+  }> {
+    const wire = countingWire();
+    const app = createApp(await sandboxEnv(), { switch_cache_ms: 0, test_wire: wire.wire });
+    installApp(app);
+    await app.ready();
+    apps.push(app);
+    await insertApproval(app.db, { ref: REF });
+    await setOutboundSwitch(app.db, true);
+    const stop = (await import('../../apps/web/src/app/api/ops/stop/route')).POST;
+    const session = await import('../../apps/web/src/app/api/session/route');
+    return { app, wire, stop, session };
+  }
+
+  it('stop via /api/ops/stop: next request blocked kill_switch', async () => {
+    const { app, wire, stop, session } = await sandboxApp();
+    const out = app.outbound;
+    expect(out).not.toBeNull();
+    expect((await out!.transport.send(req.getOrder())).kind).toBe('response');
+    const op = await signIn(session.POST, 'operator');
+    expect(op).not.toBeNull();
+    const res = await call(stop, {
+      url: '/api/ops/stop',
+      method: 'POST',
+      session: op,
+      body: { reason: 'drill from the ops page' },
+    });
+    expect(res.status).toBe(200);
+    expect(await out!.transport.send(req.getOrder())).toEqual({
+      kind: 'blocked',
+      by: 'kill_switch',
+    });
+    expect(wire.calls).toHaveLength(1);
+    const audit = await app.db.query<{ action: string; reason: string }>(
+      `SELECT action, reason FROM audit_log WHERE action = 'switch.paypal_outbound.off'`,
+    );
+    expect(audit.rows).toEqual([
+      { action: 'switch.paypal_outbound.off', reason: 'drill from the ops page' },
+    ]);
+  });
+
+  it('the route is guarded: no session 401, a buyer 403, no CSRF token 403, no reason refused; nothing turns on', async () => {
+    const { app, stop, session } = await sandboxApp();
+    const buyer = await signIn(session.POST, 'buyer-a');
+    const op = await signIn(session.POST, 'operator');
+    const body = { reason: 'x reason' };
+    expect((await call(stop, { url: '/api/ops/stop', method: 'POST', body })).status).toBe(401);
+    expect(
+      (await call(stop, { url: '/api/ops/stop', method: 'POST', session: buyer, body })).status,
+    ).toBe(403);
+    expect(
+      (await call(stop, { url: '/api/ops/stop', method: 'POST', session: op, body, csrf: false }))
+        .status,
+    ).toBe(403);
+    for (const bad of [{}, { reason: '' }, { reason: '   ' }, { reason: 'ok', on: true }]) {
+      const r = await call(stop, { url: '/api/ops/stop', method: 'POST', session: op, body: bad });
+      expect(r.status, JSON.stringify(bad)).toBeGreaterThanOrEqual(400);
+      expect(r.status).toBeLessThan(500);
+    }
+    const sw = await app.db.query<{ on: boolean }>(
+      `SELECT "on" FROM safety_switches WHERE name = 'paypal_outbound'`,
+    );
+    expect(sw.rows[0]?.on).toBe(true);
+  });
+
+  it('the route can only turn the switch off: a second press keeps it off and never turns anything on', async () => {
+    const { app, stop, session } = await sandboxApp();
+    const op = await signIn(session.POST, 'operator');
+    for (let i = 0; i < 2; i += 1) {
+      const r = await call(stop, {
+        url: '/api/ops/stop',
+        method: 'POST',
+        session: op,
+        body: { reason: `press ${i}` },
+      });
+      expect(r.status).toBe(200);
+    }
+    const sw = await app.db.query<{ name: string; on: boolean }>(
+      `SELECT name, "on" FROM safety_switches WHERE name = 'paypal_outbound'`,
+    );
+    expect(sw.rows).toEqual([{ name: 'paypal_outbound', on: false }]);
+  });
+});
+
+describe('safety:resume refuses without TTY, in CI, without an active row, with a wrong typed scope', () => {
+  async function resumeRig(o: RigOptions = {}) {
+    const r = await rig({ switch_on: false, ...o });
+    const asked: string[] = [];
+    const said: string[] = [];
+    const base = {
+      db: r.db,
+      clock: r.clock,
+      audit: createAuditSink(cryptoIds(), systemClock()),
+      tty: { isTTY: true as boolean | undefined, env: {} as Record<string, string | undefined> },
+      ask: async (p: string) => {
+        asked.push(p);
+        return 'mvp_b_polling';
+      },
+      write: (l: string) => void said.push(l),
+      operator_id: 'owner-1',
+      approval_ref: REF as string | null,
+      scope: 'mvp_b_polling',
+      reason: 'owner resumes after the drill',
+    };
+    const sw = async () =>
+      (
+        await r.db.query<{ on: boolean }>(
+          `SELECT "on" FROM safety_switches WHERE name = 'paypal_outbound'`,
+        )
+      ).rows[0]?.on;
+    const audits = async () =>
+      Number(
+        (
+          await r.db.query<{ n: string }>(
+            `SELECT count(*) AS n FROM audit_log WHERE action = 'switch.paypal_outbound.on'`,
+          )
+        ).rows[0]?.n,
+      );
+    return { r, base, asked, said, sw, audits };
+  }
+
+  it.each([
+    ['no TTY', { isTTY: false, env: {} }, 'not_a_tty'],
+    ['stdin TTY unknown', { isTTY: undefined, env: {} }, 'not_a_tty'],
+    ['CI set', { isTTY: true, env: { CI: 'true' } }, 'ci_set'],
+    ['GITHUB_ACTIONS set', { isTTY: true, env: { GITHUB_ACTIONS: 'true' } }, 'ci_set'],
+    ['an AI session (CLAUDECODE)', { isTTY: true, env: { CLAUDECODE: '1' } }, 'ai_session'],
+    [
+      'an AI session (CLAUDE_CODE_REMOTE)',
+      { isTTY: true, env: { CLAUDE_CODE_REMOTE: 'true' } },
+      'ai_session',
+    ],
+  ])('refuses: %s, asks nothing, changes nothing', async (_n, tty, code) => {
+    const t = await resumeRig();
+    const res = await runResume({ ...t.base, tty });
+    expect(res).toEqual({ ok: false, error: code });
+    expect(t.asked).toEqual([]);
+    expect(await t.sw()).toBe(false);
+    expect(await t.audits()).toBe(0);
+  });
+
+  it('refuses without an active approval row for the configured ref (none, expired, other ref, no ref)', async () => {
+    for (const o of [
+      { approval: false as const },
+      { approval: { valid_until: '2026-10-23T09:00:00Z' } },
+    ]) {
+      const t = await resumeRig(o);
+      expect(await runResume(t.base)).toEqual({ ok: false, error: 'no_active_approval' });
+      expect(t.asked).toEqual([]);
+      expect(await t.sw()).toBe(false);
+    }
+    const t = await resumeRig();
+    expect(await runResume({ ...t.base, approval_ref: 'some-other-ref' })).toEqual({
+      ok: false,
+      error: 'no_active_approval',
+    });
+    expect(await runResume({ ...t.base, approval_ref: null })).toEqual({
+      ok: false,
+      error: 'no_active_approval',
+    });
+    expect(await t.sw()).toBe(false);
+  });
+
+  it('refuses when the row is for another scope than the app serves', async () => {
+    const t = await resumeRig({ approval: { scope: 'mvp_c_refunds' } });
+    expect(await runResume(t.base)).toEqual({ ok: false, error: 'scope_mismatch' });
+    expect(await t.sw()).toBe(false);
+  });
+
+  it('refuses a wrong typed scope, an empty answer and a near miss; writes nothing', async () => {
+    for (const typed of ['mvp_c_refunds', '', 'mvp_b_pollin', 'MVP_B_POLLING']) {
+      const t = await resumeRig();
+      const res = await runResume({ ...t.base, ask: async () => typed });
+      expect(res, typed).toEqual({ ok: false, error: 'scope_not_confirmed' });
+      expect(await t.sw()).toBe(false);
+      expect(await t.audits()).toBe(0);
+    }
+  });
+
+  it('refuses an empty reason', async () => {
+    const t = await resumeRig();
+    expect(await runResume({ ...t.base, reason: '   ' })).toEqual({
+      ok: false,
+      error: 'reason_required',
+    });
+    expect(await t.sw()).toBe(false);
+  });
+
+  it('with a terminal, an active row and the scope typed back: the switch goes on, with an audit row for an operator with mfa', async () => {
+    const t = await resumeRig();
+    const res = await runResume(t.base);
+    expect(res).toEqual({ ok: true, value: { approval_ref: REF, scope: 'mvp_b_polling' } });
+    expect(t.asked).toHaveLength(1);
+    expect(t.asked[0]).toContain('mvp_b_polling');
+    expect(await t.sw()).toBe(true);
+    const rows = await t.r.db.query<{
+      actor_kind: string;
+      actor_id: string;
+      reason: string;
+      detail: unknown;
+    }>(
+      `SELECT actor_kind, actor_id, reason, detail FROM audit_log WHERE action = 'switch.paypal_outbound.on'`,
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]).toMatchObject({
+      actor_kind: 'operator',
+      actor_id: 'owner-1',
+      reason: 'owner resumes after the drill',
+    });
+    // and the lock reads open now
+    expect((await t.r.outbound.status()).locks.l4_switch_on).toBe(true);
+  });
+
+  it('the CLI command is wired in package.json and the script knows resume', () => {
+    const pkg = JSON.parse(
+      readFileSync(join(import.meta.dirname, '../../package.json'), 'utf8'),
+    ) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts['safety:resume']).toContain('scripts/safety-cli.mjs');
+    expect(pkg.scripts['safety:resume']).toMatch(/safety-cli\.mjs resume$/);
+    const cli = readFileSync(join(import.meta.dirname, '../../scripts/safety-cli.mjs'), 'utf8');
+    expect(cli).toContain("'resume'");
+    expect(cli).toContain('runResume');
+  });
+});
+
+describe('the rig itself', () => {
+  it('starts with the paypal_outbound switch off in a fresh database (the migration seeds it off)', async () => {
+    const r = await rig({ switch_on: false });
+    expect((await r.outbound.status()).locks.l4_switch_on).toBe(false);
+    expect(T0).toBe('2026-10-23T10:00:00Z');
+  });
+});

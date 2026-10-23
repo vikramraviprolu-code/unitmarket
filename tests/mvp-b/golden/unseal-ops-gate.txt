@@ -1,0 +1,90 @@
+## offline
+Mode: offline
+Connect flag: off
+Approval reference set: no
+Transport: dry-run fixtures
+No PayPal contact in this mode.
+
+## sandbox, all five locks open, transport built
+Mode: sandbox
+Connect flag: on
+Approval reference set: yes
+Scope served: mvp_b_polling
+L1 mode is sandbox: yes
+L2 connect flag is on: yes
+L3 active approval for this scope: yes
+L4 kill switch is on: yes
+L5 credentials present and Wire self-check clean: yes
+PayPal calls: allowed by the five locks
+Transport: approved sandbox transport, built
+Wire self-check: impl node-https, override no, builtins intact yes, global fetch changed no
+
+## sandbox, all open, nothing sent yet
+Mode: sandbox
+Connect flag: on
+Approval reference set: yes
+Scope served: mvp_b_polling
+L1 mode is sandbox: yes
+L2 connect flag is on: yes
+L3 active approval for this scope: yes
+L4 kill switch is on: yes
+L5 credentials present and Wire self-check clean: yes
+PayPal calls: allowed by the five locks
+Transport: sealed, not built yet (every call is answered blocked until a request finds all locks open)
+Wire self-check: impl node-https, override no, builtins intact yes, global fetch changed no
+
+## sandbox, L2 connect flag off
+Mode: sandbox
+Connect flag: off
+Approval reference set: yes
+Scope served: mvp_b_polling
+L1 mode is sandbox: yes
+L2 connect flag is on: NO
+L3 active approval for this scope: yes
+L4 kill switch is on: yes
+L5 credentials present and Wire self-check clean: yes
+PayPal calls: blocked (connect_off)
+Transport: sealed, not built yet (every call is answered blocked until a request finds all locks open)
+Wire self-check: impl node-https, override no, builtins intact yes, global fetch changed no
+
+## sandbox, L3 no active approval
+Mode: sandbox
+Connect flag: on
+Approval reference set: yes
+Scope served: mvp_b_polling
+L1 mode is sandbox: yes
+L2 connect flag is on: yes
+L3 active approval for this scope: NO
+L4 kill switch is on: yes
+L5 credentials present and Wire self-check clean: yes
+PayPal calls: blocked (no_approval)
+Transport: sealed, not built yet (every call is answered blocked until a request finds all locks open)
+Wire self-check: impl node-https, override no, builtins intact yes, global fetch changed no
+
+## sandbox, L4 kill switch off
+Mode: sandbox
+Connect flag: on
+Approval reference set: yes
+Scope served: mvp_b_polling
+L1 mode is sandbox: yes
+L2 connect flag is on: yes
+L3 active approval for this scope: yes
+L4 kill switch is on: NO
+L5 credentials present and Wire self-check clean: yes
+PayPal calls: blocked (kill_switch)
+Transport: sealed, not built yet (every call is answered blocked until a request finds all locks open)
+Wire self-check: impl node-https, override no, builtins intact yes, global fetch changed no
+
+## sandbox, L5 environment override
+Mode: sandbox
+Connect flag: on
+Approval reference set: yes
+Scope served: mvp_b_polling
+L1 mode is sandbox: yes
+L2 connect flag is on: yes
+L3 active approval for this scope: yes
+L4 kill switch is on: yes
+L5 credentials present and Wire self-check clean: NO
+PayPal calls: blocked (egress)
+Transport: sealed, not built yet (every call is answered blocked until a request finds all locks open)
+Wire self-check: impl node-https, override yes, builtins intact yes, global fetch changed no
