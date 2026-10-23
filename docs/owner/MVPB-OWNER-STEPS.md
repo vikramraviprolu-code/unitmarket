@@ -27,6 +27,7 @@ never share or paste anywhere", machine rules, refusal table) apply here too.
 ## Step 0: machine check (5 min)
 
 ```
+eval "$(fnm env)" && fnm use 22.22.0
 node -v                                  # v22.22.0
 corepack pnpm -v                         # 10.34.7
 cd path/to/unitmarket-sandbox
@@ -36,6 +37,10 @@ corepack pnpm ci                         # ends without an error (takes several 
 ```
 
 Off any VPN. A normal terminal window, not an editor panel. No proxy variables set.
+
+**Run the first line (`eval "$(fnm env)" && fnm use 22.22.0`) in every NEW terminal window.** A new
+window starts without it and would use the wrong Node version. You open new windows for steps 2, 3, 6
+and 7, so type it first in each of them, then `cd` to the repository folder.
 
 ## Step 1: settings file (10 min)
 
@@ -52,21 +57,23 @@ UMS_OUTBOUND_APPROVAL_REF=D-026
 UMS_OUTBOUND_SCOPE=mvp_b_polling
 UMS_OWN_MERCHANT_ID=<merchant id of your sandbox Business account, 13 characters A-Z and 0-9>
 UMS_DB=pglite-disk
-UMS_PGLITE_DIR=/home/<you>/unitmarket-sbx-data
+UMS_PGLITE_DIR=/Users/<you>/unitmarket-sbx-data
 UMS_PUBLIC_ORIGIN=http://localhost:3000
 NEXT_PUBLIC_UMS_ENV_LABEL=Sandbox
 NEXT_TELEMETRY_DISABLED=1
 PAYPAL_CLIENT_ID=<paste from the Sandbox tab of Apps & Credentials>
-PAYPAL_CLIENT_SECRET=<paste, after clicking Show>
+PAYPAL_CLIENT_SECRET=<the ROTATED secret, pasted after clicking Show>
 ```
 
-4. `UMS_OWN_MERCHANT_ID` (D-028) is the payee of the one MVP-B publisher: your own sandbox Business
+4. `PAYPAL_CLIENT_SECRET` must be the ROTATED (new) client secret, not the one from before the
+   rotation. The old one no longer works and a wrong secret only shows up as a refusal from PayPal.
+5. `UMS_OWN_MERCHANT_ID` (D-028) is the payee of the one MVP-B publisher: your own sandbox Business
    account (Account details in the developer dashboard). It is
    not a secret, but it is never committed and never pasted into a chat or a document except its last 4
    characters. On first start the app gives the publisher "Harbour Ledger" this id; the order then
    goes to PayPal without a payee, so PayPal pays the account of your app. If you change the value
    later, use a fresh data folder: a stored id is never overwritten.
-5. Save and close the editor. Never print this file (`cat`, screenshots) and never paste it anywhere.
+6. Save and close the editor. Never print this file (`cat`, screenshots) and never paste it anywhere.
    Clear the clipboard.
 
 ## Step 2: approval row and switch (app not running) (5 min)
@@ -103,9 +110,20 @@ only proof that PayPal treats the order as ours is to read the created order bac
 
 Pass condition: `payee echo: own id`. Anything else (no payee, another id, an error) means STOP: do
 not go on to step 3, do not retry with another body, do not edit the settings to make it pass. Write
-down the printed line and tell Sakthi. Lane BU-6 provides the command (the first case of
-`sandbox:conformance`, run alone) and fills it in here when it merges; this step and its stop rule
-are fixed by D-028.
+down the printed line and tell Sakthi. This step and its stop rule are fixed by D-028.
+
+The command (the first case of the conformance run, alone). In a new terminal window: the `fnm` line
+of step 0, `cd` to the repository folder, then:
+
+```
+UMS_SANDBOX_TESTS=1 corepack pnpm sandbox:conformance --only payee-echo
+```
+
+It needs: your complete `.env.local` (step 1, with the rotated client secret and
+`UMS_OWN_MERCHANT_ID`), the approval row and the switch on (step 2), the app NOT running, and a real
+terminal (it refuses in CI, in an AI session, or without `UMS_SANDBOX_TESTS=1`). It sends the token
+request, one create and one read, prints `payee echo: own id` or `payee echo: STOP`, and writes its
+folder under `~/unitmarket-sandbox-run/<date>/` (so step 6 writes `<date>-2`).
 
 ## Step 3: build and start the app (5 min)
 
@@ -143,7 +161,7 @@ missing, stop (Ctrl-C) and tell Sakthi.
 2. On `/ops` press "Stop PayPal now" (reason: "B-06 test").
 3. Now let PayPal return you. The page must say "Payments paused". Nothing was captured.
 4. Stop the app (Ctrl-C), run `corepack pnpm safety:resume --operator vikram --reason "B-06 resume"`,
-   start it again (step 3). Within a minute the order completes with one capture. Screenshot the
+   start it again with only the second command of step 3 (`start`; no rebuild is needed). Within a minute the order completes with one capture. Screenshot the
    library entry.
 
 ## Step 6: conformance run (B-02, B-03, B-04, B-07) (20 min)
@@ -159,9 +177,11 @@ session. It reads `.env.local` (the same file as the app) and uses the same five
 any lock missing it stops at the first call and says which one, before anything is sent.
 
 When it prints "Open this link in a browser signed in as the sandbox Personal account, approve, then
-come back", open that link and approve. It does this twice (two orders). It waits up to 6 minutes
-for each. At the end it prints the folder it wrote (`~/unitmarket-sandbox-run/<date>/`) with
-`summary.md` and `calls.json`. The first case alone (the payee check of step 2b) is
+come back", open that link and approve. It does this twice (two orders). Approve promptly: it waits
+up to 6 minutes for each and reads the order every 3 seconds, and every one of those reads counts
+toward the 300 calls a day of the gate budget (the suite stops with `budget` if it runs out). At the end it prints the folder it wrote (`~/unitmarket-sandbox-run/<date>/`) with
+`summary.md` and `calls.json`. If you ran step 2b today, that folder already exists, so this run's
+folder is `<date>-2`. The first case alone (the payee check of step 2b) is
 `UMS_SANDBOX_TESTS=1 corepack pnpm sandbox:conformance --only payee-echo`.
 
 ## Step 7: finish (5 min)
