@@ -45,7 +45,9 @@ describe('safety CLI entry points', () => {
       expect(r.status, r.out).toBe(1);
       expect(r.out).toContain('not_a_tty');
     }
-  });
+    // SEAL5 item g: two child Node processes, each loading the TypeScript hooks; under a loaded
+    // machine the default 30 s was not enough. The assertions are unchanged.
+  }, 90_000);
   it('an unknown command prints usage and exits 2', () => {
     expect(run('wat').status).toBe(2);
   });

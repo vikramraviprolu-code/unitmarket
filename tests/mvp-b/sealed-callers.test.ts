@@ -21,8 +21,8 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 // Built at run time so this file does not itself name the production wire module.
-const FETCH_WIRE_FN = ['create', 'Fetch', 'Wire'].join('');
-const FETCH_WIRE_FILE = ['wire', 'fetch'].join('-');
+const FETCH_WIRE_FN = ['create', 'Https', 'Wire'].join('');
+const FETCH_WIRE_FILE = ['wire', 'https'].join('-');
 const files = walk(ROOT);
 const rel = (p: string) => relative(ROOT, p);
 // Files that name the sealed identifiers as data and are reviewed as such: the lint configuration
