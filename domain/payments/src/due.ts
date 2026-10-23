@@ -30,7 +30,8 @@ const earlier = (a: string, b: string): string => (Date.parse(a) <= Date.parse(b
 /**
  * The next poll of an unknown operation: the schedule is counted from `anchor` (the first send),
  * +30 s, +2 min, +10 min, +1 h, +1 h ... cumulatively, and the next poll is the first scheduled
- * time after `now`, so a late run does not stack delays. Never later than `until`.
+ * time after `now`, so a late run does not stack delays. Never later than `until`; once `until` has
+ * passed, one last backoff step after `now` (never a time in the past).
  */
 export function nextPollAt(
   config: Pick<DomainConfig, 'reconcile_backoff_ms'>,
@@ -41,6 +42,13 @@ export function nextPollAt(
   const list = config.reconcile_backoff_ms;
   const start = Date.parse(anchor);
   const at = Date.parse(now);
+  // The window is over and the operation is still open (the read was blocked, the provider was
+  // down): its end is in the past, so capping at it would make the operation due again at once,
+  // on every pass. Try again one last backoff step from now.
+  if (Date.parse(until) <= at) {
+    const last = list[list.length - 1] ?? 30_000;
+    return new Date(at + Math.max(1, last)).toISOString();
+  }
   let offset = 0;
   for (let step = 0; ; step += 1) {
     offset += Math.max(1, list[Math.min(step, list.length - 1)] ?? 30_000);
@@ -197,7 +205,9 @@ const MONEY_KINDS = "('capture', 'readback')";
 // What a money_only pass may also pick up: work that closes without sending again. A create whose
 // order moved on, or whose 5 h key ran out, is closed with no call; a refund that was sent and whose
 // 24 h window ended is closed after one read of the order and never sent again. A put-off refund
-// (never sent: no first_sent_at) is not touched: closing it would send it.
+// (never sent: no first_sent_at) is left to a full pass. Since CO-4 an ended put-off refund is
+// closed unsent, so it could be picked up here too; the clause stays as it is until a test with
+// that closing in place shows a money_only pass needs it (the close costs a read of the order).
 const MONEY_OR_CALL_FREE = `(kind IN ${MONEY_KINDS}
           OR (kind = 'create' AND ((idem_safe_until IS NOT NULL AND idem_safe_until <= $1)
                 OR EXISTS (SELECT 1 FROM orders o WHERE o.id = operations.order_id AND o.status <> 'created')))

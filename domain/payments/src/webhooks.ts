@@ -12,8 +12,13 @@
 // stored), so a poison delivery is refused once instead of failing in the database and being
 // retried for days.
 //
-// Cost: each distinct event costs one read-back per order, at most once per 60 s (COALESCE_MS). A
-// read is a money-kind call under the BU-5 poll budget (money_only).
+// Cost: each distinct event costs one read-back per order, at most once per 60 s (COALESCE_MS), and
+// only for an order somebody has captured (wantsReadback); an order still waiting for its buyer
+// answers no_op (it used to start a 24 h poll, about 24 reads per event, ending in a false
+// payment_unresolved alert). A read is a money-kind call under the BU-5 poll budget (money_only).
+//
+// The REVERSED hint is alert kind reversal_hint, which recovery keeps out of its case kinds: ops see
+// it, no case opens and the buyer is told nothing until a read shows the evidence (kind reversal).
 //
 // Lock order (D-020): orders, then operations (lockOrderRows). Nothing here takes an order_units lock.
 // The event insert is the first statement of the transaction: it holds a unique-index entry on
@@ -26,6 +31,7 @@ import type {
   CoreDeps,
   Id,
   IsoUtc,
+  OrderStatus,
   ProviderEvent,
   ProviderEventType,
   SqlExecutor,
@@ -93,8 +99,9 @@ export function targetsOf(e: ProviderEvent): NonNullable<Target>[] {
   return [];
 }
 
-const PRINTABLE_ID = /^[\x20-\x7e]{1,256}$/;
-/** Every id of the event is printable ASCII of 1 to 256 characters (null ids are absent, not empty). */
+// The charset of CO-1's ID_RE (packages/paypal webhook-verify): printable ASCII without space or pipe.
+const PRINTABLE_ID = /^[\x21-\x7b\x7d-\x7e]{1,256}$/;
+/** Every id of the event is printable ASCII (no space, no pipe, as CO-1) of 1 to 256 characters (null ids are absent, not empty). */
 export function idsAreValid(e: ProviderEvent): boolean {
   return (
     PRINTABLE_ID.test(e.event_id) &&
@@ -103,6 +110,25 @@ export function idsAreValid(e: ProviderEvent): boolean {
       (v) => v === null || PRINTABLE_ID.test(v),
     )
   );
+}
+
+const SETTLED_AWAY: ReadonlySet<OrderStatus> = new Set(['failed', 'abandoned', 'frozen']);
+const CAPTURE_STARTED: ReadonlySet<OrderStatus> = new Set([
+  'capture_requested',
+  'capture_claimed',
+  'unresolved',
+  'paid',
+  'paid_partial',
+]);
+/**
+ * Only an order somebody has captured (or tried to capture) is woken. An order still waiting for
+ * its buyer belongs to the buyer-return path and the abandonment sweep: a webhook-started read-back
+ * there would poll for 24 h and end in a false payment_unresolved alert. Orders that are over
+ * (failed, abandoned, frozen) are never read.
+ */
+export function wantsReadback(status: OrderStatus, hasCaptureOp: boolean): boolean {
+  if (SETTLED_AWAY.has(status)) return false;
+  return CAPTURE_STARTED.has(status) || hasCaptureOp;
 }
 
 export type ReadbackPlan = 'create' | 'reopen' | 'advance' | 'keep';
@@ -244,7 +270,18 @@ async function intake(d: CoreDeps, i: WebhookInput, e: ProviderEvent): Promise<W
     const order_id = await findOrderOf(tx, targets);
     const order = order_id === null ? null : await lockOrderRows(tx, order_id);
     let outcome: 'enqueued' | 'coalesced' | 'no_op' = 'no_op';
-    if (order !== null) {
+    const captured =
+      order !== null &&
+      wantsReadback(
+        order.status,
+        (
+          await tx.query(
+            "SELECT 1 FROM operations WHERE order_id = $1 AND kind = 'capture' LIMIT 1",
+            [order.id],
+          )
+        ).rows.length > 0,
+      );
+    if (order !== null && captured) {
       outcome = await enqueueReadback(tx, d, order, at);
       // A reversal is a hint (ASM-63): one alert for a human, the unit is not touched. Only a read
       // that shows the evidence moves it. The alert is unique per kind, order, unit and reason.
@@ -259,7 +296,7 @@ async function intake(d: CoreDeps, i: WebhookInput, e: ProviderEvent): Promise<W
                 )
               ).rows[0];
         await raiseOpsAlert(tx, d, {
-          kind: 'reversal',
+          kind: 'reversal_hint',
           order_id: order.id,
           unit_id: unit?.id ?? null,
           reason: 'reversal_hint',

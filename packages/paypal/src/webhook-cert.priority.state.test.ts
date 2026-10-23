@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import type { OutboundRequest, TransportResult } from '@umsbx/contracts';
 import {
-  CERT_TRUSTED_FETCHES_PER_HOUR,
+  CERT_TRUSTED_FETCHES_PER_URL_PER_DAY,
+  CERT_TRUSTED_FETCHES_PER_URL_PER_HOUR,
   CERT_TRUSTED_MAX_AGE_MS,
   CERT_TRUSTED_MAX_URLS,
   CERT_UNKNOWN_FETCHES_PER_DAY,
@@ -44,10 +45,11 @@ function world(validUntil = '2036-01-01T00:00:00Z') {
 }
 
 describe('constants', () => {
-  it('4 trusted URLs for 7 days, 2 reserved fetches an hour; unknown: 1 an hour and 12 a day', () => {
+  it('4 trusted URLs for 7 days, each with 1 fetch an hour and 4 a day; unknown: 1 an hour and 12 a day', () => {
     expect(CERT_TRUSTED_MAX_URLS).toBe(4);
     expect(CERT_TRUSTED_MAX_AGE_MS).toBe(7 * DAY);
-    expect(CERT_TRUSTED_FETCHES_PER_HOUR).toBe(2);
+    expect(CERT_TRUSTED_FETCHES_PER_URL_PER_HOUR).toBe(1);
+    expect(CERT_TRUSTED_FETCHES_PER_URL_PER_DAY).toBe(4);
     expect(CERT_UNKNOWN_FETCHES_PER_HOUR).toBe(1);
     expect(CERT_UNKNOWN_FETCHES_PER_DAY).toBe(12);
   });
@@ -173,7 +175,7 @@ describe('budgets by class', () => {
     expect(t.calls.length - before).toBe(2);
   });
 
-  it('trusted URLs have 2 fetches an hour that unknown URLs cannot use, and the reverse', async () => {
+  it('a trusted URL has a fetch of its own each hour that unknown URLs cannot use, and the reverse', async () => {
     const { t, source, clock } = world();
     // the trusted URL fails (so it must be fetched again) and is remembered as failed for 10 minutes
     const trusted = url('FAIL-TRUSTED');
@@ -185,39 +187,144 @@ describe('budgets by class', () => {
     await source.get(url('FAIL-ATTACK-1'));
     await source.get(url('FAIL-ATTACK-2'));
     expect(t.calls.length - base).toBe(1);
-    // the trusted URL still has both of its slots, 11 minutes apart (past the failure memory)
+    // the trusted URL still has its slot (past the failure memory)
     clock.advance(11 * MINUTE);
     await source.get(trusted);
+    expect(t.calls.length - base).toBe(2);
     clock.advance(11 * MINUTE);
-    await source.get(trusted);
-    expect(t.calls.length - base).toBe(3);
-    clock.advance(11 * MINUTE);
-    await source.get(trusted); // third in the hour: refused without a call
-    expect(t.calls.length - base).toBe(3);
-    // and trusted fetches did not take the unknown slot back: still only the one unknown fetch
+    await source.get(trusted); // second in the hour: refused without a call
+    expect(t.calls.length - base).toBe(2);
+    // and the trusted fetch did not take the unknown slot back: still only the one unknown fetch
     await source.get(url('FAIL-ATTACK-3'));
-    expect(t.calls.length - base).toBe(3);
+    expect(t.calls.length - base).toBe(2);
   });
 
-  it('the reserved hour rolls at exactly one hour', async () => {
+  it("each trusted URL has its own budget: one URL's fetches never use another's", async () => {
+    const { t, source, clock } = world();
+    const urls = ['FAIL-T1', 'FAIL-T2', 'FAIL-T3', 'FAIL-T4'].map(url);
+    for (const u of urls) {
+      await source.get(u); // cold fetches
+      source.trust(u);
+    }
+    clock.advance(DAY); // the cold fetches and the failure memory are gone
+    const base = t.calls.length;
+    for (const u of urls) await source.get(u);
+    expect(t.calls.length - base).toBe(4); // one each, in the same hour
+    clock.advance(11 * MINUTE);
+    for (const u of urls) await source.get(u);
+    expect(t.calls.length - base).toBe(4); // and no second one for any of them
+  });
+
+  it('a trusted URL: 1 fetch per rolling hour and 4 per rolling 24 hours, rolling at exactly those lengths', async () => {
     const { t, source, clock } = world();
     const trusted = url('FAIL-TRUSTED');
     await source.get(trusted);
     source.trust(trusted);
-    clock.advance(HOUR);
+    clock.advance(DAY); // free of the cold fetch
     const base = t.calls.length;
-    await source.get(trusted); // slot 1 at t
-    clock.advance(11 * MINUTE);
-    await source.get(trusted); // slot 2
-    clock.advance(11 * MINUTE);
-    await source.get(trusted); // refused
-    expect(t.calls.length - base).toBe(2);
-    clock.advance(HOUR - 22 * MINUTE - 1); // 1 ms before the first slot leaves the window
+    await source.get(trusted); // fetch 1 at T
+    expect(t.calls.length - base).toBe(1);
+    clock.advance(HOUR - 1);
     await source.get(trusted);
-    expect(t.calls.length - base).toBe(2);
+    expect(t.calls.length - base).toBe(1); // 1 ms before the hour is over
+    clock.advance(1);
+    await source.get(trusted); // fetch 2
+    clock.advance(HOUR);
+    await source.get(trusted); // fetch 3
+    clock.advance(HOUR);
+    await source.get(trusted); // fetch 4
+    expect(t.calls.length - base).toBe(4);
+    clock.advance(HOUR);
+    await source.get(trusted);
+    expect(t.calls.length - base).toBe(4); // 4 inside 24 hours: refused
+    // fetch 1 was at T; it leaves the 24-hour window at T + 24 h exactly
+    clock.advance(DAY - 4 * HOUR - 1);
+    await source.get(trusted);
+    expect(t.calls.length - base).toBe(4);
     clock.advance(1);
     await source.get(trusted);
-    expect(t.calls.length - base).toBe(3);
+    expect(t.calls.length - base).toBe(5);
+  });
+
+  it('a dead trusted URL attempted every minute for 3 days costs at most 4 a day and 1 an hour', async () => {
+    const { stamps, source, clock } = world();
+    const trusted = url('FAIL-TRUSTED');
+    await source.get(trusted);
+    source.trust(trusted);
+    clock.advance(DAY);
+    stamps.length = 0;
+    for (let i = 0; i < 3 * 24 * 60; i++) {
+      await source.get(trusted);
+      clock.advance(MINUTE);
+    }
+    for (const s of stamps) {
+      expect(stamps.filter((o) => o.at > s.at - HOUR && o.at <= s.at).length).toBeLessThanOrEqual(
+        1,
+      );
+      expect(stamps.filter((o) => o.at > s.at - DAY && o.at <= s.at).length).toBeLessThanOrEqual(4);
+    }
+    expect(stamps.length).toBeGreaterThanOrEqual(11); // 4 a day, not stricter
+  }, 60_000);
+
+  it('the records are bounded: at most 4 per trusted URL, and a URL that leaves the list takes its record with it', async () => {
+    const { source, clock } = world();
+    const dead = ['FAIL-T1', 'FAIL-T2', 'FAIL-T3', 'FAIL-T4'].map(url);
+    for (const u of dead) {
+      await source.get(u);
+      source.trust(u);
+    }
+    clock.advance(DAY);
+    for (let i = 0; i < 3 * 24 * 6; i++) {
+      for (const u of dead) await source.get(u);
+      clock.advance(10 * MINUTE);
+    }
+    expect(source.stats().trusted_fetch_records).toBeLessThanOrEqual(16);
+    expect(source.stats().trusted_fetch_records).toBeGreaterThan(0);
+    // rotation: a fifth URL replaces the oldest, whose record goes
+    await source.get(url('E'));
+    source.trust(url('E'));
+    expect(source.stats().trusted_urls).toHaveLength(4);
+    expect(source.stats().trusted_fetch_records).toBeLessThanOrEqual(12);
+    // expiry of all trust empties the records
+    clock.advance(8 * DAY);
+    expect(source.stats().trusted_urls).toEqual([]);
+    expect(source.stats().trusted_fetch_records).toBe(0);
+  }, 60_000);
+
+  describe('a clock that goes backwards fails closed', () => {
+    it('a trusted URL does not get its hour back', async () => {
+      const { t, source, clock } = world();
+      const trusted = url('FAIL-TRUSTED');
+      await source.get(trusted);
+      source.trust(trusted);
+      clock.advance(DAY);
+      await source.get(trusted);
+      const base = t.calls.length;
+      clock.set(new Date(clock.now().getTime() - 3 * HOUR).toISOString());
+      await source.get(trusted);
+      clock.set(new Date(clock.now().getTime() - 3 * DAY).toISOString());
+      await source.get(trusted);
+      expect(t.calls.length - base).toBe(0);
+    });
+
+    it('unknown URLs do not get their hour or their day back', async () => {
+      const { t, source, clock } = world();
+      for (let i = 0; i < 10; i++) await source.get(url(`FAIL-COLD-${i}`));
+      expect(t.calls).toHaveLength(6);
+      clock.set(new Date(clock.now().getTime() - 5 * DAY).toISOString());
+      for (let i = 0; i < 10; i++) await source.get(url(`FAIL-BACK-${i}`));
+      expect(t.calls).toHaveLength(6);
+    });
+
+    it('stats never report negative numbers after a step back', async () => {
+      const { source, clock } = world();
+      await source.get(url('A'));
+      source.trust(url('A'));
+      clock.set(new Date(clock.now().getTime() - HOUR).toISOString());
+      const s = source.stats();
+      expect(s.fetches_in_window).toBeGreaterThanOrEqual(0);
+      expect(s.trusted_fetch_records).toBeGreaterThanOrEqual(0);
+    });
   });
 
   it('unknown fetches: never more than 12 in any rolling 24 hours, never more than 1 in any hour', async () => {
@@ -292,7 +399,7 @@ describe('budgets by class', () => {
     expect(t.calls).toHaveLength(13); // the first fetch has left
   });
 
-  it('an old trusted fetch is forgotten: two more are allowed after the hour', async () => {
+  it('an old trusted fetch is forgotten after the hour', async () => {
     const { t, source, clock } = world();
     const trusted = url('FAIL-TRUSTED');
     await source.get(trusted);
@@ -302,12 +409,10 @@ describe('budgets by class', () => {
     clock.advance(2 * HOUR);
     const base = t.calls.length;
     await source.get(trusted);
+    expect(t.calls.length - base).toBe(1);
     clock.advance(11 * MINUTE);
     await source.get(trusted);
-    expect(t.calls.length - base).toBe(2);
-    clock.advance(11 * MINUTE);
-    await source.get(trusted);
-    expect(t.calls.length - base).toBe(2); // and the third is refused
+    expect(t.calls.length - base).toBe(1); // and a second inside the hour is refused
   });
 
   it('stats forget a lone fetch once it is out of its window', async () => {

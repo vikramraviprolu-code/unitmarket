@@ -34,15 +34,20 @@ import {
   ACTION_STATE,
   ALERT_CASE_KINDS,
   BUYER_KINDS,
+  MAX_FOLLOWED_REFUNDS,
+  REFUND_CASE_STATE,
   RESOLVABLE_STATES,
   RESUME_KINDS,
   UNRESOLVED_STATES,
   VERIFIED_UNIT_STATUSES,
+  refundCaseOutcome,
   slaDueAt,
 } from './rules';
 import type { ResolveAction } from './rules';
 import {
   NOT_CHARGED_MESSAGE,
+  REFUNDED_MESSAGE,
+  REFUND_FAILED_MESSAGE,
   REFUND_PENDING_MESSAGE,
   creditMessage,
   noFaultMessage,
@@ -62,8 +67,22 @@ export type RefundRequester = (i: {
   actor: Actor;
 }) => Promise<Result<{ refund_request_id: Id }, { code: string }>>;
 
-/** resolve needs the content store (restore probes it) and, for offer_refund, the refund path. */
-export type ResolveDeps = CoreDeps & { content: ContentStore; requestRefund?: RefundRequester };
+/** Lane 05b's cancelRefundRequest, bound to its deps by the composition root. Absent: no undo. */
+export type RefundCanceller = (i: {
+  refund_request_id: Id;
+  actor: Actor;
+}) => Promise<Result<unknown, { code: string }>>;
+
+/**
+ * resolve needs the content store (restore probes it) and, for offer_refund, the refund path and the
+ * way to undo it: an offer over several units is all or none, so a refused later unit cancels the
+ * requests already made.
+ */
+export type ResolveDeps = CoreDeps & {
+  content: ContentStore;
+  requestRefund?: RefundRequester;
+  cancelRefund?: RefundCanceller;
+};
 
 type Opener = 'system' | 'buyer' | 'operator';
 interface CaseRow {
@@ -586,7 +605,12 @@ async function creditCase(
   });
 }
 
-/** Offer a refund through lane 05b's requestRefund (operator only). The read-back closes it later. */
+/**
+ * Offer a refund through lane 05b's requestRefund (operator only). The follow-up closes it later.
+ * All units or none: if a later unit is refused, or the case moved meanwhile, the requests made in
+ * this call are cancelled, so no request is left blocking a unit. A case of several units needs the
+ * cancel path; without it the offer is refused before any request is made.
+ */
 async function offerRefund(
   d: ResolveDeps,
   c: CaseRow,
@@ -596,13 +620,31 @@ async function offerRefund(
   if (d.requestRefund === undefined) return WRONG;
   const units = await verifiedUnits(d.db, c);
   if (units.length === 0) return WRONG;
+  if (units.length > 1 && d.cancelRefund === undefined) return WRONG;
   const requested: string[] = [];
-  for (const unit_id of units) {
-    const r = await d.requestRefund({ unit_id, amount: null, reason, actor: by });
-    if (!r.ok) return WRONG;
-    requested.push(r.value.refund_request_id);
+  const undo = async (): Promise<void> => {
+    for (const refund_request_id of requested) {
+      try {
+        await d.cancelRefund?.({ refund_request_id, actor: by });
+      } catch {
+        // The others are still cancelled; a request that stays is visible to an operator.
+      }
+    }
+  };
+  try {
+    for (const unit_id of units) {
+      const r = await d.requestRefund({ unit_id, amount: null, reason, actor: by });
+      if (!r.ok) {
+        await undo();
+        return WRONG;
+      }
+      requested.push(r.value.refund_request_id);
+    }
+  } catch (e) {
+    await undo();
+    throw e;
   }
-  return d.db.transaction(async (tx) => {
+  const done = await d.db.transaction(async (tx) => {
     const locked = await loadCase(tx, c.id, true);
     if (locked === null || !RESOLVABLE_STATES.includes(locked.state)) return WRONG;
     return finish(
@@ -614,6 +656,8 @@ async function offerRefund(
       { refund_request_ids: requested.join(',') },
     );
   });
+  if (!done.ok) await undo();
+  return done;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -693,6 +737,81 @@ async function autoRestore(d: CoreDeps, c: CaseRow): Promise<boolean> {
 }
 
 /**
+ * A case in refund_pending follows the refund requests of its latest offer (CO-4). Recovery only
+ * reads the refund rows of payments (payments is never imported). One transaction per case: the case
+ * is locked first (rank 4.5 of the lock order, D-020), the refund rows are read without locks, and
+ * the case moves by compare-and-set, so two sweeps at once settle it once. Only the requests of the
+ * case's own units count; ids that are not ids, name nothing, or number more than a case can hold
+ * are not followed (the case waits for a human).
+ */
+async function settleRefundCase(d: CoreDeps, c: CaseRow): Promise<boolean> {
+  return d.db.transaction(async (tx) => {
+    const locked = await loadCase(tx, c.id, true);
+    if (locked === null || locked.state !== 'refund_pending') return false;
+    const offer = await tx.query<{ ids: string | null }>(
+      `SELECT detail ->> 'refund_request_ids' AS ids FROM recovery_actions
+        WHERE case_id = $1 AND action = 'offer_refund' ORDER BY at DESC, created_at DESC, id DESC LIMIT 1`,
+      [c.id],
+    );
+    const entries = (offer.rows[0]?.ids ?? '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter((x) => x !== '');
+    if (entries.length === 0 || entries.length > MAX_FOLLOWED_REFUNDS) return false;
+    const ids = [...new Set(entries.filter(isId))];
+    if (ids.length === 0) return false;
+    const found = await tx.query<{ id: string; unit_id: string; state: string }>(
+      'SELECT id, unit_id, state FROM refund_requests WHERE id = ANY($1::text[])',
+      [ids],
+    );
+    if (found.rows.length !== ids.length) return false; // a named request does not exist
+    const units = await tx.query<{ id: string }>(
+      locked.entitlement_id !== null
+        ? 'SELECT unit_id AS id FROM entitlements WHERE id = $1'
+        : 'SELECT id FROM order_units WHERE order_id = $1',
+      [locked.entitlement_id ?? locked.order_id],
+    );
+    const own = new Set(units.rows.map((u) => u.id));
+    const followed = found.rows.filter((r) => own.has(r.unit_id));
+    const outcome = refundCaseOutcome(followed.map((r) => r.state));
+    if (outcome === 'wait') return false;
+    const detail: Detail = { refund_request_ids: followed.map((r) => r.id).join(',') };
+    const moved = await moveCase(tx, d, locked, {
+      state: REFUND_CASE_STATE[outcome],
+      message: outcome === 'refunded' ? REFUNDED_MESSAGE : REFUND_FAILED_MESSAGE,
+    });
+    if (moved === null) return false;
+    await addAction(tx, d, {
+      case_id: c.id,
+      action: outcome === 'refunded' ? 'refund_completed' : 'refund_failed',
+      actor: SYSTEM,
+      detail,
+    });
+    if (outcome === 'diagnosing' && locked.order_id !== null) {
+      const bad = followed.find((r) => r.state !== 'completed');
+      // One alert per case: a repeat of the same sweep raises nothing new (the alerts index).
+      const at = d.clock.now().toISOString();
+      await tx.query(
+        `INSERT INTO alerts (id, kind, order_id, unit_id, detail, created_at, updated_at)
+         VALUES ($1, 'refund_failed', $2, $3, $4::jsonb, $5, $5) ON CONFLICT DO NOTHING`,
+        [
+          d.ids.next('alr'),
+          locked.order_id,
+          bad?.unit_id ?? null,
+          JSON.stringify({
+            reason: `refund_case_${c.id}`,
+            case_id: c.id,
+            request_id: bad?.id ?? null,
+          }),
+          at,
+        ],
+      );
+    }
+    return true;
+  });
+}
+
+/**
  * Opens one case per new alert (frozen_order, payment_unresolved, partial_composite, reversal) and per
  * delivery_failed event, then closes the delivery cases whose clock has resumed. Each run handles
  * at most `max_items` pieces of evidence and never handles one twice.
@@ -756,6 +875,18 @@ export async function applyAutomaticRules(
       if (budget <= 0) break;
       budget -= 1;
       if (await autoRestore(d, c)) restored += 1;
+    }
+  }
+
+  if (budget > 0) {
+    const pending = await d.db.query<CaseRow>(
+      `SELECT ${CASE_COLUMNS} FROM recovery_cases WHERE state = 'refund_pending' ORDER BY created_at, id LIMIT $1`,
+      [budget],
+    );
+    for (const c of pending.rows) {
+      if (budget <= 0) break;
+      budget -= 1;
+      await settleRefundCase(d, c);
     }
   }
   return { opened, restored };

@@ -158,3 +158,61 @@ describe('trust is earned by a genuine signature only', () => {
     expect(t.calls.length - base).toBe(6);
   });
 });
+
+describe('F1: a dead trusted URL can only burn its own budget', () => {
+  const B = certUrl({ path: '/v1/notifications/certs/CERT-B' });
+
+  it('probe: A (trusted, live) verifies at every refresh while the attacker posts the dead trusted B every 10 minutes', async () => {
+    let bDead = false;
+    const { clock, stamps, post, source } = setup((r) =>
+      r.path === B && bDead ? pemResponse('', 404) : pemResponse(pem()),
+    );
+    expect((await post(LEGIT)).kind).toBe('verified');
+    clock.advance(HOUR + 1); // B is unknown now: 1 fetch an hour, and the first fetch used this hour
+    expect((await post(B)).kind).toBe('verified'); // the same certificate served at a second URL
+    expect(source.stats().trusted_urls).toEqual([LEGIT, B]);
+    bDead = true;
+    clock.advance(25 * HOUR); // both cache entries are gone
+    stamps.length = 0;
+    let aVerified = 0;
+    let aTotal = 0;
+    for (let step = 0; step < 3 * 24 * 6; step++) {
+      clock.advance(10 * 60_000);
+      await post(B);
+      if (step % 6 === 0) {
+        aTotal += 1;
+        if ((await post(LEGIT)).kind === 'verified') aVerified += 1;
+      }
+    }
+    expect(aVerified).toBe(aTotal);
+    expect(stamps.filter((s) => s.path === LEGIT).length).toBeGreaterThanOrEqual(3);
+    const bCalls = stamps.filter((s) => s.path === B);
+    for (const s of bCalls) {
+      expect(callsIn(bCalls, s.at - DAY, s.at)).toBeLessThanOrEqual(4);
+      expect(callsIn(bCalls, s.at - HOUR, s.at)).toBeLessThanOrEqual(1);
+    }
+    expect(bCalls.length).toBeGreaterThanOrEqual(10); // not stricter than 4 a day
+    // worst case with a trusted URL: 12 unknown + 4 x 4 trusted = 28 calls in any rolling day
+    for (const s of stamps) expect(callsIn(stamps, s.at - DAY, s.at)).toBeLessThanOrEqual(28);
+  }, 120_000);
+
+  it('three dead trusted URLs and a live fourth: the live one is still fetched', async () => {
+    const dead = [1, 2, 3].map((n) => certUrl({ path: `/v1/notifications/certs/CERT-DEAD-${n}` }));
+    let allDead = false;
+    const { clock, post, stamps } = setup((r) =>
+      allDead && dead.includes(r.path) ? pemResponse('', 404) : pemResponse(pem()),
+    );
+    for (const u of [...dead, LEGIT]) {
+      expect((await post(u)).kind).toBe('verified');
+      clock.advance(HOUR + 1); // each is unknown when it first appears: 1 fetch an hour
+    }
+    allDead = true;
+    clock.advance(25 * HOUR);
+    stamps.length = 0;
+    for (let step = 0; step < 24 * 6; step++) {
+      clock.advance(10 * 60_000);
+      for (const u of dead) await post(u);
+    }
+    expect((await post(LEGIT)).kind).toBe('verified');
+  }, 120_000);
+});

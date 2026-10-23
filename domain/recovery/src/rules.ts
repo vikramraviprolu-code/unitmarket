@@ -64,3 +64,31 @@ export const ACTION_STATE: Record<ResolveAction, CaseState> = {
   offer_refund: 'refund_pending',
   close_no_fault: 'closed_no_fault',
 };
+
+/** Where a case in refund_pending goes when its refund settles (refundCaseOutcome). */
+export const REFUND_CASE_STATE: Record<'refunded' | 'diagnosing', CaseState> = {
+  refunded: 'refunded',
+  diagnosing: 'diagnosing',
+};
+
+/** Refund request states a case may rest on. `unresolved` is not settled: a human decides it. */
+const REFUND_DONE = 'completed';
+const REFUND_NOT_DONE: ReadonlySet<string> = new Set(['failed', 'cancelled', 'rejected']);
+
+/** A case follows a handful of refund requests (one per unit); a longer list is not followed. */
+export const MAX_FOLLOWED_REFUNDS = 20;
+
+export type RefundCaseOutcome = 'refunded' | 'diagnosing' | 'wait';
+
+/**
+ * What a case in refund_pending does, from the states of the refund requests its offer made
+ * (CO-4, architecture 4.5): every request completed moves it to `refunded`; once every request is
+ * settled and any of them failed, was cancelled or was rejected, it goes back to `diagnosing`; while
+ * any request is still open (requested, sent, unknown, pending) or unresolved, or there is nothing
+ * to follow, it waits.
+ */
+export function refundCaseOutcome(states: readonly string[]): RefundCaseOutcome {
+  if (states.length === 0) return 'wait';
+  if (!states.every((s) => s === REFUND_DONE || REFUND_NOT_DONE.has(s))) return 'wait';
+  return states.every((s) => s === REFUND_DONE) ? 'refunded' : 'diagnosing';
+}

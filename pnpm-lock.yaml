@@ -399,6 +399,9 @@ importers:
       '@umsbx/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../runtime
 
   packages/jobs:
     dependencies:

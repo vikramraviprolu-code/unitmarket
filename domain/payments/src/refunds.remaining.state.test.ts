@@ -84,9 +84,9 @@ describe('executeRefund and PayPal remaining amount', () => {
     expect(await alertKinds(w, a.order_id)).toEqual([]);
   });
 
-  it('a null "refund the rest" request is stored at the LOCAL remaining 5.00, so after a dashboard refund it is closed over_refund_remote, never trimmed to 2.00 (carried to CO-4)', async () => {
-    // requestRefund fixes a null amount to the LOCAL remaining amount (5.00). PayPal holds 2.00.
-    // The send path never sends a different amount than the stored one, so nothing is sent.
+  it('a null "refund the rest" request is clamped to what PayPal holds (2.00), not stored at the local 5.00 (CO-4 closes the BU-4 carry)', async () => {
+    // BU-4 stored the LOCAL remaining (5.00) and closed the request over_refund_remote. CO-4
+    // (review note of BU-4) reads PayPal when the request is made and stores the smaller amount.
     const { a, unit } = await setup();
     w.dashboard(unit.capture_id, 300);
     const rq = await request(unit.id, null);
@@ -97,12 +97,12 @@ describe('executeRefund and PayPal remaining amount', () => {
           [rq],
         )
       )[0]!.amount_minor,
-    ).toBe(500);
+    ).toBe(200);
     const r = await executeRefund(w.deps, { refund_request_id: rq });
-    expect(r).toEqual({ ok: true, value: { status: 'FAILED' } });
-    expect(w.sends()).toHaveLength(0);
-    expect(await stateOf(rq)).toBe('failed');
-    expect(await alerts(a.order_id)).toHaveLength(1);
+    expect(r).toEqual({ ok: true, value: { status: 'COMPLETED' } });
+    expect(w.sends().map((s) => s.amount)).toEqual([usd(200)]);
+    expect(await stateOf(rq)).toBe('completed');
+    expect(await alerts(a.order_id)).toHaveLength(0);
   });
 
   it('PayPal shows nothing left: no call, request failed over_refund_remote, reservation freed, one refund_unbooked alert', async () => {
@@ -708,7 +708,7 @@ describe('refunds in flight are subtracted, under the order lock (F1)', () => {
     const { a, unit } = await setup();
     w.dashboard(unit.capture_id, 300);
     const A = await request(unit.id, 200);
-    const B = await request(unit.id, 200); // the local check allows both
+    const B = await w.coexisting(unit.id, 200); // requestRefund allows one open request since CO-4
     const [ra, rb] = await Promise.all([
       executeRefund(w.deps, { refund_request_id: A }),
       executeRefund(w.deps, { refund_request_id: B }),
@@ -728,7 +728,7 @@ describe('refunds in flight are subtracted, under the order lock (F1)', () => {
     const { a, unit } = await setup();
     w.dashboard(unit.capture_id, 300);
     const A = await request(unit.id, 200);
-    const B = await request(unit.id, 200);
+    const B = await w.coexisting(unit.id, 200);
     // B reads the order (PayPal holds 2.00) and then stalls; A runs through, sent and booked.
     const inner = w.paypal.getOrder.bind(w.paypal);
     let release!: () => void;
@@ -765,7 +765,7 @@ describe('refunds in flight are subtracted, under the order lock (F1)', () => {
     const A = await request(unit.id, 300);
     expect((await executeRefund(w.deps, { refund_request_id: A })).ok).toBe(false);
     expect(await stateOf(A)).toBe('unknown');
-    const B = await request(unit.id, 200); // local: 5.00 - 3.00 reserved = 2.00
+    const B = await w.coexisting(unit.id, 200); // local: 5.00 - 3.00 reserved = 2.00
     expect(await executeRefund(w.deps, { refund_request_id: B })).toEqual({
       ok: true,
       value: { status: 'FAILED' },
@@ -787,7 +787,7 @@ describe('refunds in flight are subtracted, under the order lock (F1)', () => {
     noLanding();
     const A = await request(unit.id, 300);
     await executeRefund(w.deps, { refund_request_id: A });
-    const B = await request(unit.id, 100); // 4.00 - 3.00 = 1.00 left, exactly
+    const B = await w.coexisting(unit.id, 100); // 4.00 - 3.00 = 1.00 left, exactly
     expect((await executeRefund(w.deps, { refund_request_id: B })).ok).toBe(true);
     expect(w.sends().map((x) => x.amount)).toEqual([usd(300), usd(100)]);
   });

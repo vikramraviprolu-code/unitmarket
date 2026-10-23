@@ -47,6 +47,10 @@ export const NOT_CHARGED_MESSAGE = 'You were not charged. Nothing more is needed
 export const REFUND_PENDING_MESSAGE =
   'We offered you a refund. It shows on your receipt once PayPal confirms it.';
 
+export const REFUNDED_MESSAGE = 'Your refund went through. It shows on your receipt.';
+export const REFUND_FAILED_MESSAGE =
+  'The refund did not go through. We are looking into it and will write to you.';
+
 /** The operator's reason is shown to the buyer, so it is trimmed and capped. */
 export function noFaultMessage(reason: string): string {
   const clean = reason.replace(/\s+/g, ' ').trim().slice(0, 300);

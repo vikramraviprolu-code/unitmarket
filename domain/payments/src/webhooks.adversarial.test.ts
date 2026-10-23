@@ -12,7 +12,16 @@ import {
   requestRefund,
   runDue,
 } from './index';
-import { BUYER_A, OPERATOR, approved, count, makeWorld, ops, paid } from './ops/support';
+import {
+  BUYER_A,
+  OPERATOR,
+  approved,
+  count,
+  lostResponse,
+  makeWorld,
+  ops,
+  paid,
+} from './ops/support';
 import type { OpsWorld } from './ops/support';
 
 let w: OpsWorld;
@@ -146,13 +155,27 @@ describe('replay and concurrency', () => {
 
   it('50 concurrent deliveries of one event for an order with no read-back: one operation row', async () => {
     await world();
-    const a = await approved(w);
+    const a = await lostResponse(w); // capture in doubt, no read-back operation yet
     const e = ev({ type: 'CHECKOUT.ORDER.APPROVED', provider_order_id: a.provider_order_id });
     const results = await Promise.all(Array.from({ length: 50 }, () => deliver(e)));
     expect(results.filter((r) => r.outcome === 'enqueued')).toHaveLength(1);
     expect(results.filter((r) => r.outcome === 'duplicate')).toHaveLength(49);
     expect(await readbacks(a.order_id)).toHaveLength(1);
     expect(await count(w, 'webhook_events')).toBe(1);
+  });
+
+  it('50 different events for an order nobody captured: 50 rows, no operation at all', async () => {
+    await world();
+    const a = await approved(w);
+    const before = await ops(w, a.order_id);
+    const results = await Promise.all(
+      Array.from({ length: 50 }, () =>
+        deliver(ev({ type: 'CHECKOUT.ORDER.APPROVED', provider_order_id: a.provider_order_id })),
+      ),
+    );
+    expect(results.every((r) => r.http === 200 && r.outcome === 'no_op')).toBe(true);
+    expect(await count(w, 'webhook_events')).toBe(50);
+    expect(await ops(w, a.order_id)).toEqual(before);
   });
 
   it('50 different events for one order at once: 50 rows, still one read-back change', async () => {
@@ -308,7 +331,7 @@ describe('hostile identifiers', () => {
     await world();
     await paid(w);
     const before = await tableCounts();
-    const fine = ["'; DROP TABLE orders; --", 'CAP%\\_', 'x'.repeat(256), 'a b', '$1'];
+    const fine = ["';DROP-TABLE-orders;--", 'CAP%\\_', 'x'.repeat(256), 'a-b', '$1'];
     for (const s of fine) {
       const r = await deliver(
         ev({
@@ -346,6 +369,8 @@ describe('hostile identifiers', () => {
     ['unicode letters in the event id', { event_id: 'EV-é中文' }],
     ['right-to-left override and zero-width space', { capture_id: `${chr(0x202e, 0x200b)}CAP` }],
     ['control characters', { refund_id: 'a\r\nb' }],
+    ['space inside an id (CO-1 refuses it too)', { capture_id: 'CAP 1' }],
+    ['pipe (CO-1 refuses it too)', { event_id: 'a|b' }],
     ['DEL', { event_id: `a${chr(0x7f)}` }],
   ];
 
@@ -454,7 +479,7 @@ describe('lock order', () => {
     await world();
     const pa = await paid(w);
     const pb = await paid(w, { offers: ['ofr_2'] });
-    const aw = await approved(w, { offers: ['ofr_3'] });
+    const aw = await lostResponse(w, { offers: ['ofr_3'] });
     const ref = await (async () => {
       const unit = (
         await w.rows<{ id: string }>('SELECT id FROM order_units WHERE order_id = $1', [

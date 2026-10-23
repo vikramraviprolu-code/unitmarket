@@ -127,7 +127,12 @@ describe('requestRefund', () => {
     const ask = (minor: number) =>
       requestRefund(w.deps, { unit_id: u.id, amount: usd(minor), reason: 'x', actor: OPERATOR });
     expect(await ask(401)).toEqual({ ok: false, error: { code: 'over_refund' } });
-    expect((await ask(400)).ok).toBe(true); // the whole amount, requested, not yet executed
+    const whole = await ask(400); // the whole amount, requested, not yet executed
+    expect(whole.ok).toBe(true);
+    // One open request per unit (CO-4): while it is open the answer is refund_in_flight.
+    expect(await ask(1)).toEqual({ ok: false, error: { code: 'refund_in_flight' } });
+    // A request nobody could settle (`unresolved`) no longer blocks, but its amount stays counted.
+    await w.rows("UPDATE refund_requests SET state = 'unresolved'");
     expect(await ask(1)).toEqual({ ok: false, error: { code: 'over_refund' } });
     expect(await count(w, 'refund_requests')).toBe(1);
   });

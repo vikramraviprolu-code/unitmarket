@@ -7,6 +7,9 @@ import { createHash } from 'node:crypto';
 import { requestApproval } from '@umsbx/approval';
 import type { ApprovalGranted } from '@umsbx/approval';
 import { migrate, openDatabase } from '@umsbx/db';
+import { createPayPalAdapter } from '@umsbx/paypal';
+import { createDryRunTransport, loadFixtures } from '@umsbx/transport';
+import type { FixtureFile } from '@umsbx/transport';
 import { resetDatabase } from '@umsbx/db/testing';
 import { afterAll } from 'vitest';
 import { fakeClock, seededIds } from '@umsbx/runtime';
@@ -656,3 +659,40 @@ export const count = async (w: World, table: string, where = 'true'): Promise<nu
   Number(
     (await w.rows<{ n: string }>(`SELECT count(*)::int AS n FROM ${table} WHERE ${where}`))[0]!.n,
   );
+
+// ---------- the real adapter over the dry-run transport (CO-4 integration) ----------
+export type DryRunFixture = FixtureFile;
+/**
+ * The real PayPal adapter over the dry-run transport and the synthetic fixtures under `root`, for
+ * the integration tests. `derive` may add or drop fixtures in memory (nothing on disk changes).
+ * The scenario named is the default of every call. Nothing is sent anywhere.
+ */
+export async function dryRunDeps(
+  w: World,
+  o: {
+    root: string;
+    scenario: string;
+    derive?: (all: DryRunFixture[]) => DryRunFixture[];
+  },
+) {
+  const loaded = await loadFixtures(o.root);
+  const transport = createDryRunTransport({
+    fixtures: o.derive === undefined ? loaded : o.derive(loaded),
+    gate: { check: () => Promise.resolve({ allowed: true, approval_ref: 'test-approval' }) },
+    clock: w.clock,
+    default_scenario: o.scenario,
+    log: {
+      log: () => undefined,
+      child: () => ({ log: () => undefined, child: () => undefined as never }),
+    },
+  });
+  const adapter = createPayPalAdapter({
+    transport,
+    clock: w.clock,
+    log: { log: () => undefined, child: () => undefined as never },
+    credentials: null,
+    record: () => Promise.resolve(),
+  });
+  const deps: PaymentsDeps = { ...w.deps, paypal: adapter };
+  return { transport, deps };
+}
