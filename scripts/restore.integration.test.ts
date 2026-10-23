@@ -207,6 +207,9 @@ function copyBackup(): string {
 const target = () => join(fresh('t'), 'data');
 
 async function verifyRestored(dir: string) {
+  // The restore itself leaves no opener lock behind. Checked before opening: since CO-9 an open
+  // database holds the lock while it is open.
+  expect(existsSync(join(dir, '.ums-open.lock'))).toBe(false);
   const db = await openDatabase({ kind: 'pglite-disk', dir });
   try {
     // The restore adds exactly one audit row of its own (the switch change).
@@ -222,7 +225,6 @@ async function verifyRestored(dir: string) {
     expect((await db.query('SELECT approval_ref FROM outbound_approvals')).rows).toEqual([
       { approval_ref: 'probe-ref-2099' },
     ]);
-    expect(existsSync(join(dir, '.ums-open.lock'))).toBe(false);
     // R2: the restore's own switch change is on the audit trail, ids only.
     const audit = await db.query(
       "SELECT actor_kind, actor_id, action, target, detail FROM audit_log WHERE action = 'restore.disarm_outbound'",

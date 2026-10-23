@@ -8,8 +8,10 @@ nfr.md). Decisions are in `docs/decision-log.md`. Package scope: `@umsbx/*`.
 
 1. **Nothing connects to PayPal** (or any payment API) without the owner's explicit written approval,
    recorded as a row in `docs/decision-log.md`. Default mode is `offline`: dry-run transport,
-   recorded or synthetic fixtures, scripted model. Workers never create accounts, never hold
-   credentials, never run sandbox calls.
+   recorded or synthetic fixtures, scripted model. Builder and reviewer agents never create
+   accounts, never hold credentials, never run sandbox calls. Under D-029 (option B) only the
+   coordinating session may use the owner's sandbox credentials, which live in the cloud
+   environment variables, and only through the sealed transport and the five locks.
 2. **Two-key outbound approval** (architecture 7): reaching the sandbox needs `UMS_PAYPAL_CONNECT=on`
    AND an active `outbound_approvals` row inserted by the owner with `pnpm safety:approve` (TTY only,
    refuses in CI), whose scope, amount cap and call budget cover the call. Plus the kill switches.

@@ -5,7 +5,13 @@ import type { Result } from '@umsbx/contracts';
 import type { BootRefusal } from './refusal';
 import { BOOT_REFUSAL_EXIT_CODE, refusalLine } from './refusal';
 import { makeSecret } from './secret';
-import { KNOWN_CORRIDORS, MIN_SECRET_BYTES, OUTBOUND_SCOPES, isPublicOrigin } from './schema';
+import {
+  KNOWN_CORRIDORS,
+  MERCHANT_ID_PATTERN,
+  MIN_SECRET_BYTES,
+  OUTBOUND_SCOPES,
+  isPublicOrigin,
+} from './schema';
 import type { Config, Mode, OutboundScope } from './schema';
 
 type Env = Record<string, string | undefined>;
@@ -79,6 +85,7 @@ const KNOWN_PAYPAL_OR_MODE_NAMES: ReadonlySet<string> = new Set([
   'UMS_MODE',
   'UMS_OUTBOUND_APPROVAL_REF',
   'UMS_OUTBOUND_SCOPE',
+  'UMS_OWN_MERCHANT_ID',
   'UMS_PAYPAL_CONNECT',
   'PAYPAL_CLIENT_ID',
   'PAYPAL_CLIENT_SECRET',
@@ -274,11 +281,18 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
     return refuse('invalid_value', 'UMS_OUTBOUND_SCOPE');
   const outbound_scope = rawScope as OutboundScope;
 
+  // 13. our own merchant id (D-028): optional, non-secret, exact charset. The error names the
+  // variable, never the value.
+  const rawOwn = val(env, 'UMS_OWN_MERCHANT_ID') ?? null;
+  if (rawOwn !== null && !MERCHANT_ID_PATTERN.test(rawOwn))
+    return refuse('invalid_value', 'UMS_OWN_MERCHANT_ID');
+
   return ok<Config>({
     mode,
     connect,
     outbound_approval_ref: approvalRef,
     outbound_scope,
+    own_merchant_id: rawOwn,
     paypal,
     db,
     session_secret: makeSecret(secretValues[0] ?? ''),

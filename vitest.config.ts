@@ -5,6 +5,10 @@ import { configDefaults, defineConfig } from 'vitest/config';
 // state (*.state.test.ts), contract (*.contract.test.ts), integration (*.integration.test.ts),
 // adversarial (*.adversarial.test.ts) and golden (*.golden.test.ts). Each runs as its own project.
 const exclude = [...configDefaults.exclude, '**/.next/**', '**/dist/**', 'scripts/__fixtures__/**'];
+// BU-3: the next start proof builds and starts the real server (minutes, and it expects a clean git
+// tree), so it is opt-in: the integration project skips it unless the command line names the file.
+const NEXT_PROOF = 'scripts/next-start-proof.integration.test.ts';
+const proofNamed = process.argv.some((a) => a.includes('next-start-proof.integration'));
 const roots = ['apps/**', 'domain/**', 'packages/**', 'tools/**', 'tests/**', 'scripts'];
 
 const forms = (suffix: string) =>
@@ -29,7 +33,7 @@ export default defineConfig({
       ]),
       project('state', forms('.state')),
       project('contract', forms('.contract')),
-      project('integration', forms('.integration')),
+      project('integration', forms('.integration'), proofNamed ? [] : [NEXT_PROOF]),
       project('adversarial', forms('.adversarial')),
       project('golden', forms('.golden')),
     ],

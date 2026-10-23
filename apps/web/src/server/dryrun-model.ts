@@ -81,7 +81,21 @@ export interface DryRunModel {
   send(r: OutboundRequest): TransportResult;
 }
 
-export function createDryRunModel(clock: Clock): DryRunModel {
+export interface DryRunModelOptions {
+  /**
+   * BU-7 (D-028): the merchant id of the account the app's credentials belong to. A create unit that
+   * names no payee is answered with this id as its payee, the way PayPal names the seller's own
+   * account. Null or omitted: such a unit has no payee in any answer (so a setup that leaves the
+   * payee out without an own id shows up as a payee mismatch at read-back).
+   */
+  own_merchant_id?: string | null;
+}
+
+export function createDryRunModel(clock: Clock, opts: DryRunModelOptions = {}): DryRunModel {
+  const ownPayee =
+    typeof opts.own_merchant_id === 'string' && opts.own_merchant_id !== ''
+      ? { merchant_id: opts.own_merchant_id }
+      : null;
   const orders = new Map<string, ModelOrder>();
   const replays = new Map<string, Stored>();
   let n = 0;
@@ -217,7 +231,7 @@ export function createDryRunModel(clock: Clock): DryRunModel {
             currency_code: String(amount.currency_code ?? ''),
             value: String(amount.value ?? ''),
           },
-          payee: payee === null ? null : { merchant_id: String(payee.merchant_id) },
+          payee: payee === null ? ownPayee : { merchant_id: String(payee.merchant_id) },
           capture: null,
         };
       }),

@@ -88,7 +88,12 @@ class ModelPayPal {
   private n = 0;
   private debug = 0;
 
-  constructor(private readonly clock: Clock) {}
+  // own: the account the credentials belong to. A unit created without a payee is answered with it
+  // as payee, the way PayPal names the seller's own account (BU-7, D-028). null: no payee echoed.
+  constructor(
+    private readonly clock: Clock,
+    private readonly own: { merchant_id: string } | null = null,
+  ) {}
 
   private stamp(): string {
     return this.clock
@@ -214,7 +219,7 @@ class ModelPayPal {
             currency_code: String(amount.currency_code ?? ''),
             value: String(amount.value ?? ''),
           },
-          payee: payee === null ? null : { merchant_id: String(payee.merchant_id) },
+          payee: payee === null ? this.own : { merchant_id: String(payee.merchant_id) },
           capture: null,
         };
       }),
@@ -322,10 +327,13 @@ const quietLog: Logger = { log: () => undefined, child: () => quietLog };
 /**
  * @param default_scenario scenario for requests that carry none. A fixture scenario name
  *   (for example `happy`) plays the recorded exchange; null uses the order model.
+ * @param own_merchant_id BU-7: the merchant id the order model echoes as payee for a unit created
+ *   without one. Null or omitted: nothing is echoed. The fixtures echo the payee they name.
  */
 export async function createDryRunStack(o: {
   clock: Clock;
   default_scenario?: string | null;
+  own_merchant_id?: string | null;
 }): Promise<DryRunStack> {
   const fixtures = await loadFixtures(FIXTURE_ROOT);
   const names = new Set(fixtures.map((f) => f.meta.scenario));
@@ -337,7 +345,11 @@ export async function createDryRunStack(o: {
     default_scenario: fallback ?? 'happy',
     log: quietLog,
   });
-  const model = new ModelPayPal(o.clock);
+  const own =
+    typeof o.own_merchant_id === 'string' && o.own_merchant_id !== ''
+      ? { merchant_id: o.own_merchant_id }
+      : null;
+  const model = new ModelPayPal(o.clock, own);
   const calls: OutboundRequest[] = [];
   const urls: string[] = [];
   const transport: DryRunStack['transport'] = {

@@ -65,7 +65,19 @@ export function checkCreate(r: CreateOrderReq): PayPalFail | null {
   return null;
 }
 
-export function buildCreateBody(r: CreateOrderReq): CreateBody {
+/**
+ * D-028 (option c). `ownMerchantId` is our own sandbox merchant id (a non-secret config value). A unit
+ * whose payee equals it exactly is sent without `payee`: PayPal then answers with the account the
+ * credentials belong to, and the read-back expects that same id (the stored payee). Strict equality,
+ * no folding, trimming or prefix match. Unset, null or empty: every payee stays in the body.
+ */
+export const leavesPayeeOut = (payee: string | null, ownMerchantId: string | null | undefined) =>
+  payee !== null &&
+  typeof ownMerchantId === 'string' &&
+  ownMerchantId !== '' &&
+  payee === ownMerchantId;
+
+export function buildCreateBody(r: CreateOrderReq, ownMerchantId?: string | null): CreateBody {
   return {
     intent: 'CAPTURE',
     purchase_units: r.units.map((u, i) => ({
@@ -76,7 +88,9 @@ export function buildCreateBody(r: CreateOrderReq): CreateBody {
         currency_code: u.amount.currency,
         value: toDecimalString(u.amount, minorUnitsFor(u.amount.currency)),
       },
-      ...(u.payee_merchant_id === null ? {} : { payee: { merchant_id: u.payee_merchant_id } }),
+      ...(u.payee_merchant_id === null || leavesPayeeOut(u.payee_merchant_id, ownMerchantId)
+        ? {}
+        : { payee: { merchant_id: u.payee_merchant_id } }),
     })),
     payment_source: {
       paypal: {
