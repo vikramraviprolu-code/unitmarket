@@ -283,6 +283,7 @@ describe('read', () => {
             paypal_fee_minor: 45,
             refunded_minor: 0,
           },
+          refunds: [],
         },
       ],
     });
