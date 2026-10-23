@@ -61,11 +61,19 @@ const head = async (id: string) =>
   ).rows[0]!;
 const win = async (id: string) =>
   (
-    await w.db.query(
+    await w.db.query<{
+      state: string;
+      started_at: Date | null;
+      base_ends_at: Date | null;
+      ends_at: Date;
+      paused_at: Date | null;
+      credit_ms: number;
+      updated_at: Date;
+    }>(
       'SELECT state, started_at, base_ends_at, ends_at, paused_at, credit_ms, updated_at FROM access_windows WHERE entitlement_id = $1',
       [id],
     )
-  ).rows[0];
+  ).rows[0]!;
 const kinds = async (id: string) =>
   (
     await w.db.query<{ kind: string }>(

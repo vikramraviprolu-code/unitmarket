@@ -78,7 +78,14 @@ describe('refund and credit interplay, random sequences', () => {
         updated_at: r.updated_at,
       };
     };
-    const plain = ({ updated_at: _u, ...rest }: Snap & { updated_at: Date }): Snap => rest;
+    const plain = (r: Snap & { updated_at: Date }): Snap => ({
+      state: r.state,
+      started_at: r.started_at,
+      base_ends_at: r.base_ends_at,
+      ends_at: r.ends_at,
+      paused_at: r.paused_at,
+      credit_ms: r.credit_ms,
+    });
 
     for (let i = 0; i < 1000; i++) {
       w.clock.set(START);
