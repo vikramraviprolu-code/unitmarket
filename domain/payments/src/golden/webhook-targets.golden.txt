@@ -1,0 +1,14 @@
+# Webhook intake (CO-2): which key of a verified event names the order. Hand-written from the spec.
+# Columns: the ids the event carries. Cells: the key used (capture_id, refund_id, provider_order_id) or - for none.
+# PAYMENT.CAPTURE.*: capture id first (a refund carries its up link there), else the refund id.
+# CHECKOUT.ORDER.APPROVED: provider order id only. Other types name nothing. A change here is a change to the rules.
+type | capture_id only | refund_id only | capture_id and refund_id | provider_order_id only | all three
+PAYMENT.CAPTURE.COMPLETED | capture_id | refund_id | capture_id | - | capture_id
+PAYMENT.CAPTURE.PENDING | capture_id | refund_id | capture_id | - | capture_id
+PAYMENT.CAPTURE.DECLINED | capture_id | refund_id | capture_id | - | capture_id
+PAYMENT.CAPTURE.DENIED | capture_id | refund_id | capture_id | - | capture_id
+PAYMENT.CAPTURE.REFUNDED | capture_id | refund_id | capture_id | - | capture_id
+PAYMENT.CAPTURE.REVERSED | capture_id | refund_id | capture_id | - | capture_id
+CHECKOUT.ORDER.APPROVED | - | - | - | provider_order_id | provider_order_id
+CHECKOUT.PAYMENT-APPROVAL.REVERSED | - | - | - | - | -
+OTHER | - | - | - | - | -
