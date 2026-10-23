@@ -85,7 +85,7 @@ async function modelTransport(
   created: string[];
   sent: OutboundRequest[];
 }> {
-  const stack = await createDryRunStack({ clock, default_scenario: null });
+  const stack = await createDryRunStack({ clock, default_scenario: null, own_merchant_id: OWN });
   const created: string[] = [];
   const sent: OutboundRequest[] = [];
   const transport: Transport = {
