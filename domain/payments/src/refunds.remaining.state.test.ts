@@ -475,6 +475,50 @@ describe('executeRefund and PayPal remaining amount', () => {
       });
       expect(w.sends()).toHaveLength(1);
     });
+    // Two paid orders, both fully refunded at the dashboard, so every request below is closed.
+    async function twoClosedOrders() {
+      const { unit } = await setup();
+      const second = await paid(w, { buyer_id: 'buy_B' });
+      w.markReads();
+      const unit2 = (
+        await w.rows<{ id: string; capture_id: string }>(
+          'SELECT id, capture_id FROM order_units WHERE order_id = $1',
+          [second.order_id],
+        )
+      )[0]!;
+      w.dashboard(unit.capture_id, 500);
+      w.dashboard(unit2.capture_id, 500);
+      const closeOne = async (u: { id: string }) =>
+        executeRefund(w.deps, { refund_request_id: await request(u.id, 200) });
+      return { unit, unit2, closeOne };
+    }
+    it('a read taken a moment ago is reused, also for the same instant and with another order read between', async () => {
+      const { unit, unit2, closeOne } = await twoClosedOrders();
+      await closeOne(unit); // read of order 1
+      await closeOne(unit2); // read of order 2, at the same instant
+      expect(w.reads()).toBe(2);
+      await closeOne(unit); // order 1 again, same instant: the first read is still there
+      await closeOne(unit2);
+      expect(w.reads()).toBe(2);
+      expect(w.sends()).toHaveLength(0);
+    });
+    it('a read exactly 60 s old is still there when another order is read', async () => {
+      const { unit, unit2, closeOne } = await twoClosedOrders();
+      await closeOne(unit); // read of order 1
+      w.tick(60 * SEC);
+      await closeOne(unit2); // read of order 2; order 1 is exactly 60 s old
+      expect(w.reads()).toBe(2);
+      await closeOne(unit);
+      expect(w.reads()).toBe(2);
+    });
+    it('a read older than 60 s is dropped when another order is read, and read again later', async () => {
+      const { unit, unit2, closeOne } = await twoClosedOrders();
+      await closeOne(unit);
+      w.tick(60 * SEC + 1);
+      await closeOne(unit2);
+      await closeOne(unit);
+      expect(w.reads()).toBe(3);
+    });
     it('a read of another order is not reused', async () => {
       const { unit } = await setup();
       const second = await paid(w, { buyer_id: 'buy_B' });
@@ -495,5 +539,147 @@ describe('executeRefund and PayPal remaining amount', () => {
       });
       expect(w.sends().map((s) => s.capture_id)).toEqual([unit.capture_id]);
     });
+  });
+});
+
+describe('which order is read, and the locks the check takes', () => {
+  it('an order of two publishers: each unit is checked against its own capture', async () => {
+    w = await makeRemainingWorld({ price: 400 });
+    const a = await paid(w, { offers: ['ofr_1', 'ofr_3'] });
+    w.markReads();
+    const units = await w.rows<{ id: string; capture_id: string }>(
+      'SELECT id, capture_id FROM order_units WHERE order_id = $1 ORDER BY reference_id',
+      [a.order_id],
+    );
+    expect(units).toHaveLength(2);
+    // The dashboard refunded the whole second unit and nothing of the first.
+    w.dashboard(units[1]!.capture_id, 400);
+    const first = await request(units[0]!.id, 400);
+    expect((await executeRefund(w.deps, { refund_request_id: first })).ok).toBe(true);
+    const second = await request(units[1]!.id, 400);
+    expect(await executeRefund(w.deps, { refund_request_id: second })).toEqual({
+      ok: true,
+      value: { status: 'FAILED' },
+    });
+    expect(w.sends().map((x) => x.capture_id)).toEqual([units[0]!.capture_id]);
+  });
+
+  it('an order without a PayPal order id gives no read at all and a put-off send', async () => {
+    const { a, unit } = await setup();
+    await w.db.query('UPDATE provider_orders SET provider_order_id = NULL WHERE order_id = $1', [
+      a.order_id,
+    ]);
+    const rq = await request(unit.id, 200);
+    const r = await executeRefund(w.deps, { refund_request_id: rq });
+    expect(r.ok).toBe(false);
+    expect(w.reads()).toBe(0);
+    expect(w.sends()).toHaveLength(0);
+    expect(await stateOf(rq)).toBe('requested');
+  });
+
+  // The rows a transaction locks, in the order it locks them (FIX-PAY2 M-3): orders, operations,
+  // order_units, refund_requests. A spy on the executor of every transaction records the statements.
+  const RANK: [RegExp, number, string][] = [
+    [/FROM orders\b.*FOR UPDATE/i, 1, 'orders'],
+    [/FROM operations\b.*FOR UPDATE/i, 2, 'operations'],
+    [/FROM order_units\b.*FOR UPDATE|FOR UPDATE OF u\b/i, 3, 'order_units'],
+    [/FROM refund_requests\b.*FOR UPDATE/i, 4, 'refund_requests'],
+  ];
+  function spied(): { log: string[][] } {
+    const log: string[][] = [];
+    const d = w.deps;
+    w.deps = {
+      ...d,
+      db: {
+        ...d.db,
+        transaction: (fn) => {
+          const locks: string[] = [];
+          log.push(locks);
+          return d.db.transaction((tx) =>
+            fn({
+              query: (sql, params) => {
+                const text = sql.replace(/\s+/g, ' ');
+                const hit = RANK.find(([re]) => re.test(text));
+                if (hit !== undefined) locks.push(hit[2]);
+                return tx.query(sql, params);
+              },
+              exec: (sql) => tx.exec(sql),
+            }),
+          );
+        },
+      },
+    };
+    return { log };
+  }
+  const rank = (name: string) => RANK.find(([, , n]) => n === name)![1];
+  // As in lockorder.state.test.ts: the first lock of a class is an event; a later statement on a
+  // class that is already held takes no new lock.
+  const inOrder = (locks: string[]) => {
+    const held = new Set<number>();
+    for (const name of locks) {
+      const r = rank(name);
+      if (held.has(r)) continue;
+      if ([...held].some((h) => h > r)) return false;
+      held.add(r);
+    }
+    return true;
+  };
+
+  it('closing an over-asking request locks order, operations, unit and request, in that order', async () => {
+    const { unit } = await setup();
+    const rq = await request(unit.id, 200);
+    w.dashboard(unit.capture_id, 500);
+    const { log } = spied();
+    await executeRefund(w.deps, { refund_request_id: rq });
+    const closing = log[0]; // the first transaction closes the request
+    expect(closing).toBeDefined();
+    expect(closing!.slice(0, 4)).toEqual([
+      'orders',
+      'operations',
+      'order_units',
+      'refund_requests',
+    ]);
+    expect(closing!.includes('operations')).toBe(true);
+    expect(inOrder(closing!)).toBe(true);
+    for (const l of log) expect(inOrder(l)).toBe(true);
+  });
+
+  it('putting a send off locks order, operations, unit and request, in that order', async () => {
+    const { unit } = await setup();
+    const rq = await request(unit.id, 200);
+    w.script(unavailable);
+    const { log } = spied();
+    await executeRefund(w.deps, { refund_request_id: rq });
+    const putOff = log[0]; // the first transaction puts the send off
+    expect(putOff).toBeDefined();
+    expect(putOff!.slice(0, 4)).toEqual(['orders', 'operations', 'order_units', 'refund_requests']);
+    expect(putOff!.includes('operations')).toBe(true);
+    for (const l of log) expect(inOrder(l)).toBe(true);
+  });
+
+  it('the first send locks order, operations, unit and request, in that order', async () => {
+    const { unit } = await setup();
+    const rq = await request(unit.id, 200);
+    const { log } = spied();
+    await executeRefund(w.deps, { refund_request_id: rq });
+    const preparing = log[0]; // the first transaction of executeRefund prepares the send
+    expect(preparing).toEqual(['orders', 'operations', 'order_units', 'refund_requests']);
+    for (const l of log) expect(inOrder(l)).toBe(true);
+    // The statement that takes the request row must be the locking one.
+    expect(w.sends()).toHaveLength(1);
+  });
+
+  it('closing a request whose window ended locks the order first, then the operations', async () => {
+    const { unit } = await setup();
+    const rq = await request(unit.id, 200);
+    w.script(unavailable);
+    await executeRefund(w.deps, { refund_request_id: rq });
+    w.tick(24 * 3_600 * SEC + 1);
+    w.script(unavailable);
+    const { log } = spied();
+    await runDue(w.deps, { max_items: 10 });
+    expect(await stateOf(rq)).toBe('failed');
+    expect(log.some((l) => l.includes('operations'))).toBe(true);
+    for (const l of log) expect(inOrder(l)).toBe(true);
   });
 });
