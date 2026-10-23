@@ -330,7 +330,7 @@ describe('hostile identifiers', () => {
     const snapshot = async (id: string) => ({
       status: await statusOf(id),
       ledger: await w.rows(
-        'SELECT kind, amount_minor FROM ledger_entries l JOIN order_units u ON u.id = l.unit_id WHERE u.order_id = $1 ORDER BY kind',
+        'SELECT l.kind, l.amount_minor FROM ledger_entries l JOIN order_units u ON u.id = l.unit_id WHERE u.order_id = $1 ORDER BY l.kind',
         [id],
       ),
       ent: await w.rows(
