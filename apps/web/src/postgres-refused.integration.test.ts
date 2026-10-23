@@ -3,9 +3,8 @@
 // start with a clear message and opens no socket (net, tls, dns, http, https, fetch all traced).
 // Offline; the connection string is a placeholder with no credentials.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadConfig } from '@umsbx/config';
-import { createApp } from '../../apps/web/composition.server';
-import { testEnv } from '../../apps/web/src/support';
+import { createApp } from '../composition.server';
+import { testEnv } from './support';
 
 vi.mock('server-only', () => ({}));
 
@@ -54,9 +53,8 @@ describe('CO-9: UMS_DB=postgres is refused', () => {
   });
 
   it('config accepts the postgres value, so the refusal below is the composition', async () => {
-    const loaded = loadConfig(await testEnv({ UMS_DB: 'postgres', DATABASE_URL: POSTGRES_URL }));
-    expect(loaded.ok).toBe(true);
-    if (loaded.ok) expect(loaded.value.db.kind).toBe('postgres');
+    const app = createApp(await testEnv({ UMS_DB: 'postgres', DATABASE_URL: POSTGRES_URL }));
+    expect(app.config.db.kind).toBe('postgres');
   });
 
   it('the app does not start: ready() rejects with a clear message', async () => {

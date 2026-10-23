@@ -20,6 +20,11 @@
 // same stale lock in the same instant are narrowed by re-reading the file right before the unlink,
 // not excluded; the consequence is a refused open, never two holders (the loser's O_EXCL fails).
 //
+// Other host, CO-10: openDatabase REPLACES a lock that names another host, after the warning (a
+// restarted container gets a new host name, so the pid cannot be checked there). Backup and restore
+// (scripts/backup.mjs, scripts/restore.mjs, CO-10) are stricter and REFUSE an other-host lock. Once
+// CO-9 and CO-10 are both on main, CO-10 calls acquireLock for its whole run, so the two tools and
+// the app exclude each other through this one file.
 // The module has no dependency on the app. Time comes from the injected Clock, the process id, host
 // name and liveness check can be injected for tests. backup and restore reuse acquireLock,
 // inspectLock and releaseLock from the package root.
