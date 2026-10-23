@@ -101,4 +101,34 @@ describe('R1: money_only does not send a put-off refund', () => {
     )[0]!;
     expect(op.state).toBe('failed');
   });
+
+  it('a refund read-back still PENDING when its 24 h window ends is closed by a money_only pass (one read, no send)', async () => {
+    w = await makeRemainingWorld({ price: 500 });
+    const a = await paid(w);
+    const unit = (
+      await w.rows<{ id: string }>('SELECT id FROM order_units WHERE order_id = $1', [a.order_id])
+    )[0]!;
+    w.refundNext.read_status = 'PENDING'; // PayPal keeps saying PENDING
+    const r = await requestRefund(w.deps, {
+      unit_id: unit.id,
+      amount: { currency: 'USD', minor: 200 },
+      reason: 'goodwill',
+      actor: OPERATOR,
+    });
+    if (!r.ok) throw new Error('refused');
+    await executeRefund(w.deps, { refund_request_id: r.value.refund_request_id });
+    const sent = w.sends().length;
+    const readbackState = async () =>
+      (
+        await w.rows<{ state: string }>(
+          "SELECT state FROM operations WHERE order_id = $1 AND kind = 'refund_readback'",
+          [a.order_id],
+        )
+      )[0]!.state;
+    expect(await readbackState()).toBe('unknown');
+    w.tick(DAY + 1000);
+    await runDue(w.deps, { max_items: 10, allow: 'money_only' });
+    expect(await readbackState()).toBe('failed'); // closed at the end of its window
+    expect(w.sends()).toHaveLength(sent);
+  });
 });
