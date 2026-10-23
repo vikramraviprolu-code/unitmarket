@@ -168,6 +168,7 @@ describe('F1: a dead trusted URL can only burn its own budget', () => {
       r.path === B && bDead ? pemResponse('', 404) : pemResponse(pem()),
     );
     expect((await post(LEGIT)).kind).toBe('verified');
+    clock.advance(HOUR + 1); // B is unknown now: 1 fetch an hour, and the first fetch used this hour
     expect((await post(B)).kind).toBe('verified'); // the same certificate served at a second URL
     expect(source.stats().trusted_urls).toEqual([LEGIT, B]);
     bDead = true;
@@ -201,8 +202,10 @@ describe('F1: a dead trusted URL can only burn its own budget', () => {
     const { clock, post, stamps } = setup((r) =>
       allDead && dead.includes(r.path) ? pemResponse('', 404) : pemResponse(pem()),
     );
-    for (const u of dead) expect((await post(u)).kind).toBe('verified');
-    expect((await post(LEGIT)).kind).toBe('verified');
+    for (const u of [...dead, LEGIT]) {
+      expect((await post(u)).kind).toBe('verified');
+      clock.advance(HOUR + 1); // each is unknown when it first appears: 1 fetch an hour
+    }
     allDead = true;
     clock.advance(25 * HOUR);
     stamps.length = 0;
