@@ -63,9 +63,13 @@ describe('gitShowHead', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
-  it('the source hands the child exactly two variables and uses cat-file, not a PATH lookup', () => {
+  it('the source hands the child exactly three variables and uses cat-file, not a PATH lookup', () => {
     expect(HERE).toContain("'cat-file', 'blob'");
-    expect(HERE).toContain("env: { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' }");
+    expect(HERE.replace(/\s+/g, ' ')).toMatch(
+      /env: \{ GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '\/dev\/null', GIT_NO_REPLACE_OBJECTS: '1',? \}/,
+    );
+    // Replace refs could swap the committed blob for another; both the flag and the variable say no.
+    expect(HERE).toContain("'--no-replace-objects'");
     expect(HERE).not.toMatch(/process\.env|\bPATH\b|\bHOME\b|\bshow\b/);
     expect(HERE).not.toMatch(/execFileSync\(\s*['"]git['"]/);
   });

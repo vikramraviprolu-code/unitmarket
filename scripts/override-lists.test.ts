@@ -66,6 +66,18 @@ const REFUSED_FLAGS = [
   '--tls-min-v1.1',
   '--conditions',
   '-C',
+  '--report-signal',
+  '--report-on-signal',
+  '--report-on-fatalerror',
+  '--report-uncaught-exception',
+  '--report-compact',
+  '--report-dir',
+  '--report-directory',
+  '--report-filename',
+  '--report-exclude-network',
+  '--report-exclude-env',
+  '--snapshot-blob',
+  '--build-snapshot',
 ];
 const ALLOWED_FLAGS = [
   '--max-old-space-size=512',

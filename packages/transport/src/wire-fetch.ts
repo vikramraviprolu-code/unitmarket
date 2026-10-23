@@ -32,7 +32,7 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   'SSL_CERT_DIR',
 ]);
 const OVERRIDE_FLAG =
-  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait|-port|-publish-uid)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config|--tls-keylog|--tls-min-v1\.[01]|--heapsnapshot-signal|--heapsnapshot-near-heap-limit|--experimental-network-inspection|--secure-heap(?:-min)?|--conditions|-C)(?:=|$)/;
+  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait|-port|-publish-uid)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config|--tls-keylog|--tls-min-v1\.[01]|--heapsnapshot-signal|--heapsnapshot-near-heap-limit|--experimental-network-inspection|--secure-heap(?:-min)?|--conditions|-C|--report-[a-z-]+|--snapshot-blob|--build-snapshot)(?:=|$)/;
 // FIX-MVPB-SEAL3 M-C. Swapping the global fetch, or installing another undici global dispatcher (a
 // proxy agent, a custom TLS agent), redirects the next request without touching any variable. The
 // Wire remembers both as they were when this module loaded and refuses on any change.

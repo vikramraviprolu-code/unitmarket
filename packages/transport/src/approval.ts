@@ -44,12 +44,12 @@ const minted = new WeakSet<object>();
 const isMinted = (x: object): boolean => apply(wsHas, minted, [x]) === true;
 
 /**
- * Builds a minter that mints only for gates `trust` vouches for. Not exported from the package
- * index: this package's own tests build throw-away minters with it, and `claimApprovalMinter`
- * builds the one real minter.
+ * Builds a minter that mints only for gates `trust` vouches for. NOT exported (SEAL4): the only way
+ * to get a minter is `claimApprovalMinter`, once per module registry, so no path import can build
+ * a second one. Tests claim it in their own registry (a test file that imports test-support.ts has
+ * used its claim there).
  */
-export function createApprovalMinter(trust: GateTrust): MintApprovalCapability {
-  if (typeof trust !== 'function') throw new TypeError('gate trust predicate missing');
+function makeMinter(trust: GateTrust): MintApprovalCapability {
   return (i) => {
     if (typeof i !== 'object' || i === null) throw new TypeError('mint input missing');
     if (typeof i.scope !== 'string' || i.scope === '')
@@ -77,8 +77,9 @@ let claimed = false;
  * from anywhere throws, so no later module can obtain a minter.
  */
 export function claimApprovalMinter(trust: GateTrust): MintApprovalCapability {
+  if (typeof trust !== 'function') throw new TypeError('gate trust predicate missing');
   if (claimed) throw new Error('the approval minter has already been claimed');
-  const mint = createApprovalMinter(trust);
+  const mint = makeMinter(trust);
   claimed = true;
   return mint;
 }
