@@ -1,18 +1,22 @@
 // CO-10: the logical export and its import. A seeded in-memory database is exported, imported into
 // a fresh migrated database and compared; the import runs in one transaction, switches the
 // append-only triggers off only inside it, and refuses anything it cannot trust.
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { migrate, openDatabase } from './index';
 import { exportSql, importSql, latestMigrationVersion, rowCounts } from './export-sql';
 import type { Database } from '@umsbx/contracts';
+
+// Each test migrates a fresh in-memory database; on a busy machine that can pass the 30 s default.
+vi.setConfig({ testTimeout: 180_000, hookTimeout: 180_000 });
 
 const T = '2026-10-21T10:00:00Z';
 const HASH = 'a'.repeat(64);
 const clock = { now: () => new Date(T) };
 type Db = Database & { close(): Promise<void> };
 const toClose: Db[] = [];
-afterAll(async () => {
-  for (const d of toClose) await d.close();
+// Close every database after each test: an open in-memory PGlite holds hundreds of megabytes.
+afterEach(async () => {
+  while (toClose.length > 0) await toClose.pop()!.close();
 });
 
 async function fresh(): Promise<Db> {
