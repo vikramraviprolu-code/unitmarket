@@ -41,7 +41,11 @@ if (config.db.kind === 'postgres') fail('the postgres target is not supported by
 
 const clock = systemClock();
 const ids = cryptoIds();
-const db = await openDatabase(config.db);
+// A live holder of the data directory (CO-9 lock) is one line and exit 1, not a stack trace.
+const db = await openDatabase(config.db).catch((e) => {
+  fail(e instanceof Error ? e.message : String(e));
+  throw e; // not reached: fail() exits
+});
 try {
   await migrate(db, clock);
   const tty = { isTTY: process.stdin.isTTY, env: terminalEnv() };

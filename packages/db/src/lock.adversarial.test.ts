@@ -40,13 +40,13 @@ vi.mock('node:fs', async (importOriginal) => {
       if (flags === undefined || (Number(flags) & 3) === actual.constants.O_RDONLY) deny(p);
       return (actual.openSync as (...a: unknown[]) => number)(p, flags, ...rest);
     }) as typeof actual.openSync,
-    unlinkSync: ((p: never) => {
+    unlinkSync: ((p: unknown) => {
       if (typeof p === 'string' && p.endsWith('.ums-open.lock') && hooks.beforeLockUnlink) {
         const run = hooks.beforeLockUnlink;
         hooks.beforeLockUnlink = null;
         run();
       }
-      return actual.unlinkSync(p);
+      return actual.unlinkSync(p as string);
     }) as typeof actual.unlinkSync,
     writeSync: ((fd: never, ...rest: never[]) => {
       if (hooks.shortWrite) return 0;
@@ -367,29 +367,28 @@ describe('R2: replacing a stale lock cannot produce two holders', () => {
     const pids = Array.from({ length: 8 }, (_v, i) => 7000 + i);
     const isAlive = aliveSet(...pids);
     const outcomes: Array<LockHandle | unknown> = [];
-    const attempt = (i: number): void => {
+    const attempt = (i: number, warn: () => void): void => {
       try {
-        outcomes.push(
-          acquireLock(dir, {
-            clock,
-            pid: pids[i] as number,
-            isAlive,
-            warn: () => {
-              if (i + 1 < pids.length) attempt(i + 1); // the next opener runs inside this one
-            },
-          }),
-        );
+        outcomes.push(acquireLock(dir, { clock, pid: pids[i] as number, isAlive, warn }));
       } catch (e) {
         outcomes.push(e);
       }
     };
-    attempt(0);
+    // The first opener is inside its replace (warning printed, guard held) when the other seven run
+    // a whole acquire each; two of them also run inside the unlink hook of the first.
+    hooks.beforeLockUnlink = () => {
+      attempt(6, () => undefined);
+      attempt(7, () => undefined);
+    };
+    attempt(0, () => {
+      for (let i = 1; i <= 5; i += 1) attempt(i, () => undefined);
+    });
     const won = outcomes.filter(
       (o): o is LockHandle => typeof (o as LockHandle).release === 'function',
     );
     expect(won).toHaveLength(1);
     expect(outcomes.filter((o) => o instanceof DbLockRefusedError)).toHaveLength(7);
-    expect(JSON.parse(readFileSync(lock, 'utf8')).pid).toBe(won[0]?.info.pid);
+    expect(JSON.parse(readFileSync(lock, 'utf8')).pid).toBe(7000);
     expect(existsSync(guardPath())).toBe(false);
     won[0]?.release();
   });

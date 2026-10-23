@@ -1,4 +1,4 @@
-// Owned by SBX (CO-9). The single-opener lock for a PGlite data directory (nfr REL-8, ASM-55).
+// Owned by SBX (CO-9). The single-opener lock for a PGlite data directory (nfr REL-8, ASM-55, ASM-72).
 //
 // PGlite runs one transaction at a time inside one process, so the app is safe only while ONE process
 // owns the directory. A CLI (safety:*, backup, restore) opened while the app runs would be a second
@@ -8,26 +8,41 @@
 //   {"pid":<int>,"host":"<os.hostname()>","started":"<ISO UTC from the injected clock>"}
 // followed by a newline. Rules (fail closed):
 //   - no lock: create it. A lock naming a live pid on this host: DbInUseError, nothing is changed.
-//   - a lock naming a dead pid, or another host (a pid cannot be checked there; a restarted container
-//     gets a new host name), is replaced, but only after a warning has been printed.
-//   - a symbolic link, a directory or any other non-file, an unreadable file, a file over 4 KiB or one
-//     that is not the JSON above: DbLockRefusedError. Nothing is deleted and nothing is followed.
+//   - a lock naming a dead pid is a previous run: replaced, but only after a warning has been printed.
+//   - a lock naming ANOTHER HOST is replaced the same way (ASM-72): the deployment is one instance on
+//     one disk (Render), so a lock with another host name can only be a previous incarnation.
+//     A shared volume with several live instances is unsupported and unsafe: this lock cannot tell a
+//     live instance on another host from a dead one.
+//   - a lock naming THIS pid (and this host) that this process does not hold is a previous run too
+//     (SIGKILL or OOM, then a restart that gets the same pid, pid 1 in a container). The in-process
+//     registry `held` says what this process holds: a lock it holds is live and refuses a second open.
+//   - a symbolic link, a directory or any other non-file, an unreadable file, an EMPTY file (a crash
+//     between creating and writing it), a file over 4 KiB, a pid above 4194304 or a file that is not
+//     the JSON above: DbLockRefusedError. Nothing is deleted and nothing is followed. The message says
+//     to check that no UnitMarket process runs and then remove the file by hand.
 //   - release removes the file only if it still holds OUR pid, host and start time. A lock someone
 //     else wrote, replaced by a link or a directory, or already gone, is left alone.
-//   - process exit releases every lock this module holds (a 'exit' listener, removed on release).
-//     A process killed by a signal leaves the file; the next opener sees a dead pid and replaces it.
-// Limit: replacing a stale lock is a check followed by an unlink. Two processes that both find the
-// same stale lock in the same instant are narrowed by re-reading the file right before the unlink,
-// not excluded; the consequence is a refused open, never two holders (the loser's O_EXCL fails).
+//   - process exit releases every lock this module holds: one 'exit' listener for all of them, added
+//     with the first lock and removed with the last. A process killed by a signal leaves the file; the
+//     next opener replaces it after the warning.
 //
-// Other host, CO-10: openDatabase REPLACES a lock that names another host, after the warning (a
-// restarted container gets a new host name, so the pid cannot be checked there). Backup and restore
-// (scripts/backup.mjs, scripts/restore.mjs, CO-10) are stricter and REFUSE an other-host lock. Once
-// CO-9 and CO-10 are both on main, CO-10 calls acquireLock for its whole run, so the two tools and
-// the app exclude each other through this one file.
-// The module has no dependency on the app. Time comes from the injected Clock, the process id, host
-// name and liveness check can be injected for tests. backup and restore reuse acquireLock,
-// inspectLock and releaseLock from the package root.
+// Replacing a stale lock is guarded. Check then unlink then create is not atomic, so two openers that
+// both judge the same lock stale could end up with the second one deleting the first one's fresh lock.
+// The replace therefore runs inside a second O_EXCL file, `<dir>/.ums-open.lock.break` (JSON of the
+// breaker, mode 0600): take it, warn, re-read the lock and unlink it only if it still holds what was
+// judged stale, create the new lock, give the guard back. An opener that finds the guard refuses
+// (code 'guard'): either another process is replacing the lock right now, or one died in the few
+// microseconds it held the guard, in which case the message says to remove the file by hand. The guard
+// is never replaced automatically. A fresh create needs no guard: its O_EXCL fails while any lock file
+// exists, and the breaker deletes only the exact stale content it re-read.
+//
+// CO-10 (backup and restore) calls acquireLock for its whole run once this lane is on main, so it
+// replaces an other-host lock like openDatabase does; the 'another host: refuse' note in the CO-10
+// work is superseded by ASM-72.
+//
+// The module has no dependency on the app. Time comes from the injected Clock; the process id, host
+// name and liveness check can be injected for tests. Backup and restore reuse acquireLock, inspectLock
+// and releaseLock from the package root.
 import {
   closeSync,
   constants,
@@ -36,16 +51,20 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  realpathSync,
   unlinkSync,
   writeSync,
 } from 'node:fs';
 import { hostname } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { Clock } from '@umsbx/contracts';
 import { systemClock } from '@umsbx/runtime';
 
 export const LOCK_FILE = '.ums-open.lock';
+export const LOCK_BREAK_FILE = '.ums-open.lock.break';
 const MAX_LOCK_BYTES = 4096;
+/** The largest pid_max on Linux (2^22). A larger number is not a pid; process.kill would throw on it. */
+const MAX_PID = 4_194_304;
 const NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/;
 
@@ -55,7 +74,7 @@ export interface LockInfo {
   readonly started: string;
 }
 
-export type LockRefusalCode = 'symlink' | 'not_file' | 'unreadable' | 'malformed' | 'io';
+export type LockRefusalCode = 'symlink' | 'not_file' | 'unreadable' | 'malformed' | 'io' | 'guard';
 
 /** A live process on this host holds the directory. The message is the one in the CO-9 spec. */
 export class DbInUseError extends Error {
@@ -94,7 +113,7 @@ export interface LockDeps {
 export type LockInspection =
   | { state: 'absent' }
   | { state: 'live'; info: LockInfo }
-  | { state: 'stale'; info: LockInfo; reason: 'dead_pid' | 'other_host' }
+  | { state: 'stale'; info: LockInfo; reason: 'dead_pid' | 'other_host' | 'previous_run' }
   | { state: 'refused'; code: LockRefusalCode; message: string };
 
 export interface LockHandle {
@@ -120,13 +139,37 @@ const printable = (s: string): string =>
     .map((c) => (c.charCodeAt(0) < 0x20 || c.charCodeAt(0) > 0x7e ? '?' : c))
     .join('');
 
-const messageFor = (code: LockRefusalCode, dir: string, detail: string): string =>
-  `The database lock file ${LOCK_FILE} in ${dir} ${detail}; refusing to open. ` +
+const messageFor = (
+  code: LockRefusalCode,
+  dir: string,
+  detail: string,
+  file: string = LOCK_FILE,
+): string =>
+  `The database lock file ${file} in ${dir} ${detail}; refusing to open. ` +
   (code === 'io'
     ? 'Check the directory and its permissions.'
     : 'Check that no UnitMarket process runs, then remove the file by hand.');
 
-// ---- reading -----------------------------------------------------------------------------------
+// ---- what this process holds -----------------------------------------------------------------------
+
+/** Locks held by THIS process, by real path. A lock file naming our pid that is not in here is old. */
+const held = new Map<string, LockHandle>();
+
+function keyFor(dir: string): string {
+  let real: string;
+  try {
+    real = realpathSync(dir);
+  } catch {
+    real = resolve(dir);
+  }
+  return join(real, LOCK_FILE);
+}
+
+function exitAll(): void {
+  for (const handle of [...held.values()]) handle.release();
+}
+
+// ---- reading ---------------------------------------------------------------------------------------
 
 type Read =
   | { kind: 'absent' }
@@ -142,7 +185,9 @@ function parseLock(raw: string): LockInfo | null {
   }
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
   const { pid, host, started } = v as Record<string, unknown>;
-  if (typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid <= 0) return null;
+  if (typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid <= 0 || pid > MAX_PID) {
+    return null;
+  }
   if (typeof host !== 'string' || host.length === 0 || host.length > 255) return null;
   if (typeof started !== 'string' || !ISO_UTC.test(started) || Number.isNaN(Date.parse(started))) {
     return null;
@@ -177,6 +222,9 @@ function readAt(dir: string, path: string): Read {
   try {
     const fst = fstatSync(fd);
     if (!fst.isFile()) return refuse('not_file', 'is not a plain file');
+    if (fst.size === 0) {
+      return refuse('malformed', 'is empty (left by a crash while it was written)');
+    }
     if (fst.size > MAX_LOCK_BYTES) return refuse('malformed', 'is too large to be a lock');
     const raw = readFileSync(fd, 'utf8');
     const info = parseLock(raw);
@@ -193,7 +241,7 @@ type Look = LockInspection & { raw?: string };
 
 function look(
   dir: string,
-  deps: Pick<LockDeps, 'isAlive' | 'host'>,
+  deps: Pick<LockDeps, 'isAlive' | 'host' | 'pid'>,
   path: string = join(dir, LOCK_FILE),
 ): Look {
   const r = readAt(dir, path);
@@ -201,6 +249,13 @@ function look(
   if (r.kind === 'refused') return { state: 'refused', code: r.code, message: r.message };
   if (r.info.host !== (deps.host ?? hostname())) {
     return { state: 'stale', info: r.info, reason: 'other_host', raw: r.raw };
+  }
+  if (r.info.pid === (deps.pid ?? process.pid)) {
+    // Our own pid: live only if this process really holds the lock; otherwise a previous run that got
+    // the same pid (a restarted container, pid 1) and never released it.
+    return held.has(keyFor(dir))
+      ? { state: 'live', info: r.info, raw: r.raw }
+      : { state: 'stale', info: r.info, reason: 'previous_run', raw: r.raw };
   }
   const alive = deps.isAlive ?? processIsAlive;
   return alive(r.info.pid)
@@ -211,14 +266,14 @@ function look(
 /** Reads the lock in `dir` and says what it means. Creates, changes and removes nothing. */
 export function inspectLock(
   dir: string,
-  deps: Pick<LockDeps, 'isAlive' | 'host'> = {},
+  deps: Pick<LockDeps, 'isAlive' | 'host' | 'pid'> = {},
 ): LockInspection {
   const { raw: _raw, ...result } = look(dir, deps);
   void _raw;
   return result;
 }
 
-// ---- acquiring and releasing ---------------------------------------------------------------------
+// ---- acquiring and releasing -----------------------------------------------------------------------
 
 function sameLock(a: LockInfo, b: LockInfo): boolean {
   return a.pid === b.pid && a.host === b.host && a.started === b.started;
@@ -235,7 +290,13 @@ function removeIfOurs(dir: string, path: string, ours: LockInfo): boolean {
   }
 }
 
-function create(dir: string, path: string, body: string): boolean {
+/** Creates `path` exclusively with `body`. False when it already exists. Throws on anything else. */
+function createExclusive(
+  dir: string,
+  path: string,
+  body: string,
+  existsMeans: (() => never) | null = null,
+): boolean {
   let fd: number;
   try {
     fd = openSync(
@@ -244,21 +305,27 @@ function create(dir: string, path: string, body: string): boolean {
       0o600,
     );
   } catch (e) {
-    if (codeOf(e) === 'EEXIST') return false;
+    if (codeOf(e) === 'EEXIST') {
+      if (existsMeans !== null) existsMeans();
+      return false;
+    }
     throw new DbLockRefusedError('io', messageFor('io', dir, `cannot be created (${codeOf(e)})`));
   }
+  let written = -1;
   try {
-    writeSync(fd, body);
-  } catch (e) {
-    closeSync(fd);
-    try {
-      unlinkSync(path);
-    } catch {
-      // nothing more to do; the next opener refuses on a malformed file
-    }
-    throw new DbLockRefusedError('io', messageFor('io', dir, `cannot be written (${codeOf(e)})`));
+    written = writeSync(fd, body);
+  } catch {
+    written = -1;
   }
   closeSync(fd);
+  if (written !== Buffer.byteLength(body)) {
+    try {
+      unlinkSync(path); // never leave a short or empty file behind
+    } catch {
+      // nothing more to do; the next opener refuses on an empty or malformed file
+    }
+    throw new DbLockRefusedError('io', messageFor('io', dir, 'cannot be written completely'));
+  }
   return true;
 }
 
@@ -274,7 +341,6 @@ export function acquireLock(dir: string, deps: LockDeps = {}): LockHandle {
     ((m: string): void => {
       process.stderr.write(`${m}\n`);
     });
-  const path = join(dir, LOCK_FILE);
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   } catch (e) {
@@ -283,58 +349,91 @@ export function acquireLock(dir: string, deps: LockDeps = {}): LockHandle {
       messageFor('io', dir, `cannot be created, the directory is unusable (${codeOf(e)})`),
     );
   }
+  const path = join(dir, LOCK_FILE);
+  const guard = join(dir, LOCK_BREAK_FILE);
   const info: LockInfo = {
     pid,
     host,
     started: (deps.clock ?? systemClock()).now().toISOString(),
   };
   const body = `${JSON.stringify({ pid: info.pid, host: info.host, started: info.started })}\n`;
+  const guardRefusal = (): never => {
+    throw new DbLockRefusedError(
+      'guard',
+      messageFor(
+        'guard',
+        dir,
+        'exists: another process is replacing a stale lock, or one was interrupted',
+        LOCK_BREAK_FILE,
+      ),
+    );
+  };
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    if (create(dir, path, body)) return handleFor(dir, path, info);
-    const seen = look(dir, deps.isAlive === undefined ? { host } : { host, isAlive: deps.isAlive });
+    if (createExclusive(dir, path, body)) return register(dir, path, info);
+    const seen = look(
+      dir,
+      deps.isAlive === undefined ? { host, pid } : { host, pid, isAlive: deps.isAlive },
+    );
     if (seen.state === 'absent') continue; // vanished between the two calls: try again
     if (seen.state === 'live') throw new DbInUseError(seen.info.pid);
     if (seen.state === 'refused') throw new DbLockRefusedError(seen.code, seen.message);
-    warn(
-      seen.reason === 'dead_pid'
-        ? `warning: replacing a stale database lock in ${dir}: pid ${seen.info.pid} on host ${printable(seen.info.host)} is not running`
-        : `warning: replacing a database lock in ${dir} that names another host (${printable(seen.info.host)}, this host is ${printable(host)}): cannot tell whether it runs`,
-    );
-    // Narrow the window: only remove the file if it still holds exactly what was judged stale.
-    const again = readAt(dir, path);
-    if (again.kind === 'info' && again.raw === seen.raw) {
-      try {
-        unlinkSync(path);
-      } catch (e) {
-        if (codeOf(e) !== 'ENOENT') {
-          throw new DbLockRefusedError(
-            'io',
-            messageFor('io', dir, `cannot be replaced (${codeOf(e)})`),
-          );
+
+    // Stale: replace it inside the guard, so that no second breaker can delete the new lock.
+    createExclusive(dir, guard, body, guardRefusal);
+    let created = false;
+    try {
+      const who = printable(seen.info.host);
+      warn(
+        seen.reason === 'dead_pid'
+          ? `warning: replacing a stale database lock in ${dir}: pid ${seen.info.pid} on host ${who} is not running`
+          : seen.reason === 'previous_run'
+            ? `warning: replacing a stale database lock in ${dir}: pid ${seen.info.pid} on host ${who} names this process, which does not hold it (left by a previous run)`
+            : `warning: replacing a database lock in ${dir} that names another host (${who}, this host is ${printable(host)}): cannot tell whether it runs`,
+      );
+      // Only remove the file if it still holds exactly what was judged stale.
+      const again = readAt(dir, path);
+      if (again.kind === 'info' && again.raw === seen.raw) {
+        try {
+          unlinkSync(path);
+        } catch (e) {
+          if (codeOf(e) !== 'ENOENT') {
+            throw new DbLockRefusedError(
+              'io',
+              messageFor('io', dir, `cannot be replaced (${codeOf(e)})`),
+            );
+          }
         }
       }
+      created = createExclusive(dir, path, body);
+    } finally {
+      try {
+        unlinkSync(guard);
+      } catch {
+        // already gone
+      }
     }
+    if (created) return register(dir, path, info);
   }
   throw new DbLockRefusedError('io', messageFor('io', dir, 'could not be taken after retries'));
 }
 
-function handleFor(dir: string, path: string, info: LockInfo): LockHandle {
+function register(dir: string, path: string, info: LockInfo): LockHandle {
+  const key = keyFor(dir);
   let released = false;
-  const onExit = (): void => {
-    handle.release();
-  };
   const handle: LockHandle = {
     path,
     info,
     release(): boolean {
       if (released) return false;
       released = true;
-      process.off('exit', onExit);
+      if (held.get(key) === handle) held.delete(key);
+      if (held.size === 0) process.off('exit', exitAll);
       return removeIfOurs(dir, path, info);
     },
   };
-  process.on('exit', onExit);
+  held.set(key, handle);
+  if (held.size === 1) process.on('exit', exitAll);
   return handle;
 }
 

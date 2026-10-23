@@ -5,6 +5,7 @@ export { openDatabase } from './pglite';
 export type { OpenOptions } from './pglite';
 export {
   LOCK_FILE,
+  LOCK_BREAK_FILE,
   DbInUseError,
   DbLockRefusedError,
   acquireLock,

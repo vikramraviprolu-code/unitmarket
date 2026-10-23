@@ -56,9 +56,12 @@ describe('lock file format', () => {
   it('a lock with extra keys is still read (forward compatible); the known keys decide', () => {
     writeFileSync(
       join(dir, LOCK_FILE),
-      JSON.stringify({ pid: process.pid, host: hostname(), started: T0, note: 'future' }),
+      JSON.stringify({ pid: 4242, host: hostname(), started: T0, note: 'future' }),
     );
-    expect(inspectLock(dir)).toMatchObject({ state: 'live', info: { pid: process.pid } });
+    expect(inspectLock(dir, { isAlive: () => true })).toMatchObject({
+      state: 'live',
+      info: { pid: 4242 },
+    });
   });
 });
 
