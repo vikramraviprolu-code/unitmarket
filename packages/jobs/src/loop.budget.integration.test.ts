@@ -22,7 +22,11 @@ const zero = { processed: 0, still_unknown: 0, expired: 0, abandoned: 0 };
 type Snapshot = { remaining_today: number; max_calls_per_day: number } | null;
 
 /** A port that counts every call against a daily budget and remembers when it was made. */
-function world(config: Record<string, unknown> = {}, max_calls_per_day = 300) {
+function world(
+  config: Record<string, unknown> = {},
+  max_calls_per_day = 300,
+  environment: 'sandbox' | 'dryrun' = 'sandbox',
+) {
   const clock = fakeClock(START);
   const start = clock.now().getTime();
   const calls: number[] = [];
@@ -53,7 +57,7 @@ function world(config: Record<string, unknown> = {}, max_calls_per_day = 300) {
     audit: { record: () => Promise.resolve() },
     switches: { isOn: () => Promise.resolve(true) },
     config: { abandoned_checkout_ms: 86_400_000, ...config },
-    environment: 'sandbox',
+    environment,
     paypal,
     content: {},
     sweepWindows,
@@ -76,16 +80,35 @@ function world(config: Record<string, unknown> = {}, max_calls_per_day = 300) {
   };
 }
 
-/** A pass of re-reads: items x (GET order + GET capture), as many items as it is allowed. */
-function spendingPass(advance_ms = 0) {
+/**
+ * A pass of re-reads: items x `per_item` calls (2 for a plain re-read; an abandoned-but-approved
+ * order costs 4, an unknown capture with the P3 retry 3), as many items as it is allowed. It stops
+ * at the first call the port refuses, as payments does with a blocked answer.
+ */
+function spendingPass(advance_ms = 0, per_item = 2) {
   return vi.fn(async (d: PaymentsDeps, i: { max_items: number; allow?: string }) => {
     if (advance_ms > 0) (d.clock as unknown as { advance(ms: number): void }).advance(advance_ms);
     if (i.allow === 'money_only') return zero;
+    let done = 0;
     for (let n = 0; n < i.max_items; n += 1) {
-      await d.paypal.getOrder('ORDER');
-      await d.paypal.getCapture('CAPTURE');
+      for (let c = 0; c < per_item; c += 1) {
+        const r: unknown = await d.paypal.getOrder('ORDER');
+        if (r !== 'ok') return { ...zero, processed: done };
+      }
+      done += 1;
     }
-    return { ...zero, processed: i.max_items };
+    return { ...zero, processed: done };
+  });
+}
+/** Tries `n` calls the way a money pass does; returns how many the port let through. */
+function tryCalls(n: number) {
+  return vi.fn(async (d: PaymentsDeps) => {
+    let ok = 0;
+    for (let c = 0; c < n; c += 1) {
+      const r: unknown = await d.paypal.getOrder('ORDER');
+      if (r === 'ok') ok += 1;
+    }
+    return { ...zero, processed: ok };
   });
 }
 
@@ -175,8 +198,8 @@ describe('the allowance decides each pass', () => {
     });
     await loop.stop();
     expect(x.remaining()).toBeGreaterThanOrEqual(30);
-    // polling stopped at its share: it used at most half the day plus one pass of overshoot
-    expect(x.used()).toBeLessThanOrEqual(150 + 2 * 10);
+    // polling stopped at its share, exactly: the allowance counts calls, so there is no overshoot
+    expect(x.used()).toBeLessThanOrEqual(150);
     expect(x.used()).toBeGreaterThan(100); // and it did poll until then
     // the buyer's capture at hour 23 goes through the same port
     await x.d.paypal.captureOrder({
@@ -206,6 +229,80 @@ describe('the allowance decides each pass', () => {
     expect(vi.mocked(runDue).mock.calls[0]![1]).toEqual({ max_items: 7, allow: 'all' });
   });
 
+  it('the allowance counts CALLS: items that cost 3 or 4 calls stop at the allowance, not after it', async () => {
+    for (const per_item of [1, 2, 3, 4]) {
+      vi.mocked(runDue).mockReset().mockImplementation(spendingPass(0, per_item));
+      const x = world();
+      const loop = startLoop(x.d, {
+        max_sleep_ms: 60_000,
+        max_items: 100,
+        recover_on_start: false,
+        // line 150, remaining 160: the allowance is 10 calls
+        callBudget: () => Promise.resolve({ remaining_today: 160, max_calls_per_day: 300 }),
+      });
+      await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(1));
+      await loop.stop();
+      expect(x.used(), `${per_item} calls an item`).toBe(10);
+    }
+  });
+
+  it('every pass of a day with 4-call items stays inside the allowance: remaining never goes below the line by more than 0', async () => {
+    const x = world({ poll_budget_share: 0.5, capture_reserve_calls: 30 });
+    vi.mocked(runDue).mockImplementation(spendingPass(600_000, 4));
+    const loop = startLoop(x.d, {
+      max_sleep_ms: 1,
+      max_items: 100,
+      callBudget: x.budget,
+      gap_sleep: x.gap_sleep,
+    });
+    const hour23 = Date.parse(START) + 23 * HOUR;
+    await vi.waitFor(() => expect(x.clock.now().getTime()).toBeGreaterThanOrEqual(hour23), {
+      timeout: 20_000,
+    });
+    await loop.stop();
+    expect(x.used()).toBeLessThanOrEqual(150);
+    expect(x.remaining()).toBeGreaterThanOrEqual(150);
+  });
+
+  it('a spent allowance leaves a money_only pass bounded by the calls LEFT, not by the reserve line', async () => {
+    const x = world();
+    vi.mocked(runDue).mockImplementation(tryCalls(500));
+    const loop = startLoop(x.d, {
+      max_sleep_ms: 60_000,
+      max_items: 7,
+      recover_on_start: false,
+      callBudget: () => Promise.resolve({ remaining_today: 20, max_calls_per_day: 300 }),
+    });
+    await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(1));
+    await loop.stop();
+    expect(vi.mocked(runDue).mock.calls[0]![1]).toEqual({ max_items: 7, allow: 'money_only' });
+    expect(x.used()).toBe(20); // the reserve (30) is for exactly this work, so it may be used
+  });
+
+  it('KNOWN LIMIT: two loops sharing one callBudget are not capped together (single loop per approval)', async () => {
+    // Each loop reads the same snapshot, so each is allowed 10 calls: 20 in all, with 10 allowed.
+    // The gate still stops the day at the approval's budget; the reserve is what suffers. One loop
+    // per approval is the design; composition starts one.
+    const x = world();
+    vi.mocked(runDue).mockImplementation(spendingPass(0, 1));
+    const snapshot = () => Promise.resolve({ remaining_today: 160, max_calls_per_day: 300 });
+    const a = startLoop(x.d, {
+      max_sleep_ms: 60_000,
+      max_items: 100,
+      recover_on_start: false,
+      callBudget: snapshot,
+    });
+    const b = startLoop(x.d, {
+      max_sleep_ms: 60_000,
+      max_items: 100,
+      recover_on_start: false,
+      callBudget: snapshot,
+    });
+    await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(2));
+    await Promise.all([a.stop(), b.stop()]);
+    expect(x.used()).toBe(20);
+  });
+
   it('an allowance of 0 still runs the pass, with money_only and the full max_items', async () => {
     const x = world();
     const loop = startLoop(x.d, {
@@ -232,8 +329,8 @@ describe('the allowance decides each pass', () => {
     expect(vi.mocked(runDue).mock.calls[0]![1]).toEqual({ max_items: 7 });
   });
 
-  it('with no callBudget option nothing changes: same deps, same arguments', async () => {
-    const x = world();
+  it('dry run with no callBudget option nothing changes: same deps, same arguments', async () => {
+    const x = world({}, 300, 'dryrun');
     const loop = startLoop(x.d, { max_sleep_ms: 1, max_items: 7 });
     await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(1));
     await loop.stop();
@@ -322,7 +419,7 @@ describe('a budget that cannot be trusted', () => {
       {} as never,
     ];
     for (const snapshot of bad) {
-      vi.mocked(runDue).mockReset().mockResolvedValue(zero);
+      vi.mocked(runDue).mockReset().mockImplementation(tryCalls(5));
       const x = world();
       const loop = startLoop(x.d, {
         max_sleep_ms: 1,
@@ -331,6 +428,7 @@ describe('a budget that cannot be trusted', () => {
       });
       await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(1));
       await loop.stop();
+      expect(x.used(), JSON.stringify(snapshot)).toBe(0); // and not one call is allowed
       expect(vi.mocked(runDue).mock.calls[0]![1], JSON.stringify(snapshot)).toEqual({
         max_items: 4,
         allow: 'money_only',
@@ -340,23 +438,47 @@ describe('a budget that cannot be trusted', () => {
 });
 
 describe('a spent allowance does not make the loop spin', () => {
-  it('with allowance 0 the loop waits at least a second even when work is overdue', async () => {
+  it('with allowance 0 the loop sleeps max_sleep_ms even when work is overdue', async () => {
     vi.useFakeTimers();
     const x = world();
+    const callBudget = vi.fn(() =>
+      Promise.resolve({ remaining_today: 100, max_calls_per_day: 300 }),
+    );
     vi.mocked(nextDueAt).mockResolvedValue('2000-01-01T00:00:00.000Z');
     const loop = startLoop(x.d, {
-      max_sleep_ms: 30_000,
+      max_sleep_ms: 5_000,
       max_items: 3,
       recover_on_start: false,
-      callBudget: () => Promise.resolve({ remaining_today: 100, max_calls_per_day: 300 }),
+      callBudget,
     });
     await vi.advanceTimersByTimeAsync(0);
     expect(passes()).toBe(1);
-    await vi.advanceTimersByTimeAsync(900);
+    await vi.advanceTimersByTimeAsync(4_900);
     expect(passes()).toBe(1);
     await vi.advanceTimersByTimeAsync(200);
     expect(passes()).toBe(2);
     await loop.stop();
+  });
+
+  it('with the allowance spent for the rest of the day the loop does not run callBudget or runDue every second', async () => {
+    vi.useFakeTimers();
+    const x = world();
+    const callBudget = vi.fn(() =>
+      Promise.resolve({ remaining_today: 100, max_calls_per_day: 300 }),
+    );
+    vi.mocked(nextDueAt).mockResolvedValue('2000-01-01T00:00:00.000Z');
+    const loop = startLoop(x.d, {
+      max_sleep_ms: 5_000,
+      max_items: 3,
+      recover_on_start: false,
+      callBudget,
+    });
+    await vi.advanceTimersByTimeAsync(HOUR);
+    await loop.stop();
+    // one pass every 5 s: 720 in the hour (a pass a second would be 3600)
+    expect(passes()).toBeLessThanOrEqual(721);
+    expect(callBudget.mock.calls.length).toBeLessThanOrEqual(721);
+    expect(passes()).toBeGreaterThan(700);
   });
 
   it('with an allowance the old rhythm stays: overdue work wakes the loop after 100 ms', async () => {
@@ -372,6 +494,119 @@ describe('a spent allowance does not make the loop spin', () => {
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(350);
     expect(passes()).toBeGreaterThanOrEqual(3);
+    await loop.stop();
+  });
+});
+
+describe('a sandbox loop without a call budget (F3)', () => {
+  it('logs jobs.loop.no_call_budget and runs money_only passes only', async () => {
+    const x = world({ reread_paid_every_ms: 21_600_000 });
+    const loop = startLoop(x.d, { max_sleep_ms: 1, max_items: 7, recover_on_start: false });
+    await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(2));
+    await loop.stop();
+    expect(logs.filter((l) => l.msg === 'jobs.loop.no_call_budget').length).toBeGreaterThanOrEqual(
+      1,
+    );
+    expect(logs.find((l) => l.msg === 'jobs.loop.no_call_budget')!.level).toBe('error');
+    for (const call of vi.mocked(runDue).mock.calls) {
+      expect(call[1]).toEqual({ max_items: 7, allow: 'money_only' });
+    }
+    expect(x.sweepWindows).toHaveBeenCalled(); // access windows still end
+  });
+
+  it('a dry-run loop without a call budget says nothing and runs everything', async () => {
+    const x = world({}, 300, 'dryrun');
+    const loop = startLoop(x.d, { max_sleep_ms: 1, max_items: 7, recover_on_start: false });
+    await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(1));
+    await loop.stop();
+    expect(logs.filter((l) => l.msg.startsWith('jobs.loop.'))).toEqual([]);
+    expect(vi.mocked(runDue).mock.calls[0]![1]).toEqual({ max_items: 7 });
+  });
+
+  it('a sandbox loop with a call budget does not log it', async () => {
+    const x = world({ reread_paid_every_ms: 21_600_000 });
+    const loop = startLoop(x.d, {
+      max_sleep_ms: 1,
+      max_items: 7,
+      recover_on_start: false,
+      callBudget: x.budget,
+    });
+    await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(1));
+    await loop.stop();
+    expect(logs.filter((l) => l.msg === 'jobs.loop.no_call_budget')).toEqual([]);
+  });
+});
+
+describe('a sandbox loop that re-reads too often (F3)', () => {
+  const warned = async (config: Record<string, unknown>, env: 'sandbox' | 'dryrun' = 'sandbox') => {
+    logs.length = 0;
+    const x = world(config, 300, env);
+    const loop = startLoop(x.d, {
+      max_sleep_ms: 1,
+      max_items: 7,
+      recover_on_start: false,
+      callBudget: x.budget,
+    });
+    await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(1));
+    await loop.stop();
+    vi.mocked(runDue).mockClear();
+    return logs.filter((l) => l.msg === 'jobs.loop.reread_too_frequent');
+  };
+
+  it('warns once at start when reread_paid_every_ms is under 6 h, or unset (hourly)', async () => {
+    expect(await warned({ reread_paid_every_ms: 3_600_000 })).toHaveLength(1);
+    expect(await warned({ reread_paid_every_ms: 21_599_999 })).toHaveLength(1);
+    expect(await warned({})).toHaveLength(1);
+    expect((await warned({ reread_paid_every_ms: 3_600_000 }))[0]!.level).toBe('warn');
+  });
+  it('is quiet at 6 h or more, and in dry run', async () => {
+    expect(await warned({ reread_paid_every_ms: 21_600_000 })).toEqual([]);
+    expect(await warned({ reread_paid_every_ms: 86_400_000 })).toEqual([]);
+    expect(await warned({ reread_paid_every_ms: 3_600_000 }, 'dryrun')).toEqual([]);
+  });
+});
+
+describe('a sandbox loop with a re-read cadence out of range refuses to start (F7)', () => {
+  it('throws and logs jobs.loop.bad_config for 7 days, 1e12, MAX_SAFE_INTEGER, 0, negative, NaN and fractions', () => {
+    for (const bad of [
+      7 * 86_400_000,
+      86_400_001,
+      1e12,
+      Number.MAX_SAFE_INTEGER,
+      0,
+      -1,
+      Number.NaN,
+      1.5,
+      Number.POSITIVE_INFINITY,
+      '3600000' as never,
+    ]) {
+      logs.length = 0;
+      const x = world({ reread_paid_every_ms: bad });
+      expect(
+        () => startLoop(x.d, { max_sleep_ms: 1, max_items: 7, callBudget: x.budget }),
+        String(bad),
+      ).toThrow(/reread_paid_every_ms/);
+      expect(logs.some((l) => l.msg === 'jobs.loop.bad_config')).toBe(true);
+      expect(passes()).toBe(0);
+    }
+  });
+
+  it('starts at 1 h, 6 h and 24 h; dry run does not check', async () => {
+    for (const ok of [3_600_000, 21_600_000, 86_400_000]) {
+      const x = world({ reread_paid_every_ms: ok });
+      const loop = startLoop(x.d, {
+        max_sleep_ms: 1,
+        max_items: 7,
+        recover_on_start: false,
+        callBudget: x.budget,
+      });
+      await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(1));
+      await loop.stop();
+      vi.mocked(runDue).mockClear();
+    }
+    const dry = world({ reread_paid_every_ms: 1e12 }, 300, 'dryrun');
+    const loop = startLoop(dry.d, { max_sleep_ms: 1, max_items: 7, recover_on_start: false });
+    await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(1));
     await loop.stop();
   });
 });

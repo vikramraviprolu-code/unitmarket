@@ -1,7 +1,7 @@
 // BU-5 unit tests: how many calls polling may spend (the allowance), and the call gap (PERF-9).
 // Pure functions and an injected clock: no provider, no database, no timer.
 import { describe, expect, it } from 'vitest';
-import { pollAllowance, rateLimited } from './budget';
+import { moneyCalls, pollAllowance, rateLimited } from './budget';
 
 const cfg = { poll_budget_share: 0.5, capture_reserve_calls: 30 };
 const at = (remaining_today: number, max_calls_per_day = 300) => ({
@@ -190,5 +190,106 @@ describe('rateLimited (PERF-9: at most 2 calls a second)', () => {
     await expect(l.boom()).rejects.toThrow('down');
     await expect(l.boom()).rejects.toThrow('down');
     expect(slept).toEqual([500]);
+  });
+});
+
+describe('moneyCalls (a money_only pass is bounded by the calls left, never by the reserve line)', () => {
+  it('is the whole remaining count', () => {
+    expect(moneyCalls({ remaining_today: 100, max_calls_per_day: 300 })).toBe(100);
+    expect(moneyCalls({ remaining_today: 150, max_calls_per_day: 300 })).toBe(150);
+    expect(moneyCalls({ remaining_today: 29, max_calls_per_day: 300 })).toBe(29);
+    expect(moneyCalls({ remaining_today: 0, max_calls_per_day: 300 })).toBe(0);
+    expect(moneyCalls({ remaining_today: 12.9, max_calls_per_day: 300 })).toBe(12);
+  });
+  it('is 0 for a reading that is not a sane number (fail closed)', () => {
+    expect(moneyCalls({ remaining_today: Number.NaN, max_calls_per_day: 300 })).toBe(0);
+    expect(moneyCalls({ remaining_today: -5, max_calls_per_day: 300 })).toBe(0);
+    expect(moneyCalls({ remaining_today: Number.POSITIVE_INFINITY, max_calls_per_day: 300 })).toBe(
+      0,
+    );
+    expect(moneyCalls(undefined as never)).toBe(0);
+    expect(moneyCalls({} as never)).toBe(0);
+    expect(moneyCalls({ remaining_today: '9', max_calls_per_day: 300 } as never)).toBe(0);
+  });
+});
+
+describe('rateLimited with a call quota (the allowance counts CALLS)', () => {
+  function rig(left: number) {
+    const quota = { left };
+    const ran: string[] = [];
+    let t = 0;
+    const slept: number[] = [];
+    const port = {
+      environment: 'sandbox' as const,
+      getOrder: (id: string) => {
+        ran.push(`get:${id}`);
+        return Promise.resolve({ kind: 'order', id });
+      },
+      captureOrder: (id: string) => {
+        ran.push(`capture:${id}`);
+        return Promise.resolve({ kind: 'captured', id });
+      },
+    };
+    const limited = rateLimited(port, {
+      gap_ms: 500,
+      now: () => t,
+      sleep: (ms) => {
+        slept.push(ms);
+        t += ms;
+        return Promise.resolve();
+      },
+      quota,
+    });
+    return { limited, quota, ran, slept };
+  }
+
+  it('lets exactly quota.left calls through, then answers blocked by budget without calling', async () => {
+    const r = rig(2);
+    expect(await r.limited.getOrder('a')).toEqual({ kind: 'order', id: 'a' });
+    expect(await r.limited.captureOrder('b')).toEqual({ kind: 'captured', id: 'b' });
+    expect(r.quota.left).toBe(0);
+    expect(await r.limited.getOrder('c')).toEqual({ kind: 'blocked', by: 'budget' });
+    expect(await r.limited.captureOrder('d')).toEqual({ kind: 'blocked', by: 'budget' });
+    expect(r.ran).toEqual(['get:a', 'capture:b']);
+    expect(r.quota.left).toBe(0); // never negative
+  });
+
+  it('a blocked call takes no gap slot and does not sleep', async () => {
+    const r = rig(1);
+    await r.limited.getOrder('a');
+    await r.limited.getOrder('b');
+    await r.limited.getOrder('c');
+    expect(r.slept).toEqual([]);
+  });
+
+  it('a quota of 0 (or less, or NaN) blocks everything', async () => {
+    for (const left of [0, -3, Number.NaN]) {
+      const r = rig(left);
+      expect(await r.limited.getOrder('a')).toEqual({ kind: 'blocked', by: 'budget' });
+      expect(r.ran).toEqual([]);
+    }
+  });
+
+  it('concurrent callers share the quota: no more than quota.left calls run', async () => {
+    const r = rig(3);
+    const out = await Promise.all([1, 2, 3, 4, 5].map((i) => r.limited.getOrder(String(i))));
+    expect(r.ran).toHaveLength(3);
+    expect(out.filter((x) => x.kind === 'blocked')).toHaveLength(2);
+  });
+
+  it('a quota that is refilled between passes counts again', async () => {
+    const r = rig(1);
+    await r.limited.getOrder('a');
+    expect(await r.limited.getOrder('b')).toEqual({ kind: 'blocked', by: 'budget' });
+    r.quota.left = 2;
+    await r.limited.getOrder('c');
+    await r.limited.getOrder('d');
+    expect(r.ran).toEqual(['get:a', 'get:c', 'get:d']);
+  });
+
+  it('plain properties pass through and cost nothing', () => {
+    const r = rig(1);
+    expect(r.limited.environment).toBe('sandbox');
+    expect(r.quota.left).toBe(1);
   });
 });

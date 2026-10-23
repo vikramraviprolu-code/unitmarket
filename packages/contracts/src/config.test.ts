@@ -108,4 +108,17 @@ describe('DomainConfig', () => {
     expect(ok({ min_call_gap_ms: 0 })).toBe(true);
     expect(ok({ min_call_gap_ms: -1 })).toBe(false);
   });
+  it('BU-5 F7: reread_paid_every_ms has an upper bound of 24 h (a larger value would silently end the re-reads)', () => {
+    const ok = (v: number) =>
+      DomainConfigSchema.safeParse({ ...cfg, reread_paid_every_ms: v }).success;
+    expect(ok(1)).toBe(true);
+    expect(ok(3_600_000)).toBe(true);
+    expect(ok(21_600_000)).toBe(true);
+    expect(ok(86_400_000)).toBe(true);
+    expect(ok(86_400_001)).toBe(false);
+    expect(ok(7 * 86_400_000)).toBe(false);
+    expect(ok(1e12)).toBe(false);
+    expect(ok(Number.MAX_SAFE_INTEGER)).toBe(false);
+    expect(ok(Number.POSITIVE_INFINITY)).toBe(false);
+  });
 });

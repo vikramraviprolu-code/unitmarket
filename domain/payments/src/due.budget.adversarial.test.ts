@@ -72,7 +72,7 @@ describe('a budget that is not a positive whole number', () => {
 });
 
 describe('two passes at once', () => {
-  it('two loops at once never exceed the allowance together: each due order is read once', async () => {
+  it('two passes at once never read the same due order twice (no double read; the allowance is NOT shared, see the next test)', async () => {
     w = await makeWorld();
     await threeDue();
     const base = gets();
@@ -85,6 +85,16 @@ describe('two passes at once', () => {
     // and a third and fourth pass in the same hour read nothing
     await Promise.all([runDue(w.deps, { max_items: 3 }), runDue(w.deps, { max_items: 3 })]);
     expect(gets() - base).toBe(3);
+  });
+
+  it('KNOWN LIMIT: two passes with an allowance of 1 each use 2 calls in all (the allowance is per pass, not shared)', async () => {
+    w = await makeWorld();
+    await threeDue();
+    const base = gets();
+    await Promise.all([runDue(w.deps, { max_items: 1 }), runDue(w.deps, { max_items: 1 })]);
+    // runDue has no shared counter: what keeps two loops inside one allowance is that there is one
+    // loop per approval (docs/design/nfr.md PERF-9). The claim only stops a double read.
+    expect(gets() - base).toBe(2);
   });
 
   it('two loops with an allowance of 1 each: no order is read by both', async () => {
