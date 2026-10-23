@@ -64,4 +64,4 @@ envVarGroups:
   - name: shared
     envVars:
       - key: X
-        value: y
+        value: "z"

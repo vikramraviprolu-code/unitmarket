@@ -8,6 +8,10 @@
 // paypal-host, public-name, instances, disk, pglite-dir, node-options, proxy-var, auto-deploy,
 // telemetry, fixed-value.
 //
+// The file must be printable ASCII plus LF. YAML also treats CR, NEL, LS and PS as line breaks; a
+// checker that splits on LF only would read a comment where Render reads settings, so any other
+// byte is a parse failure.
+//
 // Usage: node scripts/check-hosting.mjs [--root <dir>]   (reads <root>/render.yaml)
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,6 +23,8 @@ const ROOT = resolveRoot(process.argv, import.meta.url);
 // Names packages/config reads, plus the two MVP-B/C names its sibling lanes add (UMS_OUTBOUND_SCOPE,
 // UMS_OPERATOR_TOTP_KEYS), plus the three platform names Render or Next.js need. DATABASE_URL is
 // left out on purpose: this blueprint runs PGlite on the disk and a database URL is a secret.
+// UMS_CORRIDORS is left out too: the blueprint keeps the default corridor list, and a name that
+// is allowed but has no fixed value could never pass (fixed-value).
 const EXTRA_NAMES = ['NODE_VERSION', 'NODE_ENV', 'NEXT_TELEMETRY_DISABLED'];
 const CONFIG_NAMES = [
   'UMS_MODE',
@@ -36,7 +42,6 @@ const CONFIG_NAMES = [
   'UMS_DEMO_PASSCODE_HASH',
   'UMS_OPERATOR_TOTP_KEYS',
   'UMS_PUBLIC_ORIGIN',
-  'UMS_CORRIDORS',
   'UMS_TRUSTED_PROXIES',
   'NEXT_PUBLIC_UMS_ENV_LABEL',
 ];
@@ -67,12 +72,15 @@ const FIXED = {
   UMS_TRUSTED_PROXIES: '1',
   NEXT_PUBLIC_UMS_ENV_LABEL: 'Sandbox',
 };
+if (process.argv.includes('--print-names')) {
+  console.log(JSON.stringify([...ALLOWED].sort()));
+  process.exit(0);
+}
 const PROXY_VARS = /^(?:HTTP|HTTPS|ALL|NO|FTP)_PROXY$/i;
 const LIVE_WORD = /live/i;
 const PAYPAL_HOST = /paypal(?:objects)?\.com/i;
 const MOUNT = '/var/data';
-const BUILD =
-  'corepack enable && corepack pnpm install --frozen-lockfile && corepack pnpm --filter @umsbx/web build';
+const BUILD = 'corepack pnpm install --frozen-lockfile && corepack pnpm --filter @umsbx/web build';
 const START = 'corepack pnpm --filter @umsbx/web start';
 
 // ---- strict YAML subset ------------------------------------------------------------------------
@@ -102,6 +110,7 @@ function scalar(raw, lineNo) {
   if (/^[[{|>&*!%@`]/.test(t)) throw new ParseError(`line ${lineNo}: unsupported YAML syntax`);
   if (/^(?:on|off|yes|no|y|n|null|~)$/i.test(t))
     throw new ParseError(`line ${lineNo}: ambiguous bare word; quote it`);
+  if (/:(?:\s|$)/.test(t)) throw new ParseError(`line ${lineNo}: ": " inside a plain scalar`);
   if (t === 'true') return { v: true };
   if (t === 'false') return { v: false };
   if (/^-?\d+$/.test(t)) return { v: Number(t), num: t };
@@ -109,11 +118,16 @@ function scalar(raw, lineNo) {
 }
 
 /** Parse the subset: block maps, block lists of maps or scalars, plain/quoted scalars, comments. */
+const QUOTED = new WeakMap(); // map -> Set of keys whose value was a quoted string
 function parseYaml(text) {
+  const bad = text.search(/[^\x20-\x7E\n]/);
+  if (bad !== -1)
+    throw new ParseError(
+      `byte ${bad}: only printable ASCII and LF are allowed (YAML also reads CR, NEL, LS and PS as line breaks)`,
+    );
   const items = [];
   text.split('\n').forEach((rawLine, i) => {
     const no = i + 1;
-    if (/\t/.test(rawLine.match(/^\s*/)[0])) throw new ParseError(`line ${no}: tab indentation`);
     const line = stripComment(rawLine).replace(/\s+$/, '');
     if (line.trim() === '') return;
     items.push({ indent: line.match(/^ */)[0].length, text: line.trim(), no });
@@ -124,14 +138,14 @@ function parseYaml(text) {
   function block(indent) {
     if (pos >= items.length || items[pos].indent !== indent)
       throw new ParseError(`line ${items[pos]?.no ?? '?'}: bad indentation`);
-    return items[pos].text.startsWith('- ') || items[pos].text === '-' ? list(indent) : map(indent);
+    return items[pos].text.startsWith('- ') ? list(indent) : map(indent);
   }
 
   function list(indent) {
     const out = [];
-    while (pos < items.length && items[pos].indent === indent && items[pos].text.startsWith('-')) {
+    while (pos < items.length && items[pos].indent === indent && items[pos].text.startsWith('- ')) {
       const it = items[pos];
-      const rest = it.text === '-' ? '' : it.text.slice(2);
+      const rest = it.text.slice(2).trim();
       if (rest === '') throw new ParseError(`line ${it.no}: empty list item`);
       if (/^[^\s"'][^"']*?:(?:\s|$)/.test(rest) || /^["'].*["']:(?:\s|$)/.test(rest)) {
         // "- key: value" opens a map whose later keys sit two columns right of the dash.
@@ -147,6 +161,8 @@ function parseYaml(text) {
 
   function map(indent) {
     const out = {};
+    const quoted = new Set();
+    QUOTED.set(out, quoted);
     while (
       pos < items.length &&
       items[pos].indent === indent &&
@@ -164,6 +180,7 @@ function parseYaml(text) {
       } else {
         const s = scalar(rest, it.no);
         out[key] = s.v;
+        if (s.quoted) quoted.add(key);
       }
     }
     return out;
@@ -180,6 +197,27 @@ const violations = [];
 const fail = (rule, where) => violations.push({ rule, where });
 const isMap = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 const str = (x) => (typeof x === 'string' ? x : x === undefined ? undefined : String(x));
+
+// Live, production and PayPal-host words are refused in every key and value of the service, not
+// only in env values (names, paths, commands). One exemption: NODE_ENV's own value, "production".
+// Values are never printed.
+function scanScalars(node, path = 'service') {
+  if (Array.isArray(node)) return node.forEach((n, i) => scanScalars(n, `${path}[${i}]`));
+  if (isMap(node)) {
+    const nodeEnv = node.key === 'NODE_ENV' && node.value === 'production';
+    for (const [k, v] of Object.entries(node)) {
+      scanScalars(k, `${path}.key`);
+      if (nodeEnv && k === 'value') continue;
+      scanScalars(v, `${path}.${k}`);
+    }
+    return;
+  }
+  const t = str(node);
+  if (t === undefined) return;
+  if (LIVE_WORD.test(t)) fail('live-value', `${path} contains "live"`);
+  if (PAYPAL_HOST.test(t)) fail('paypal-host', `${path} names a PayPal host`);
+  if (/production/i.test(t)) fail('live-value', `${path} names production`);
+}
 
 function checkService(svc) {
   if (!isMap(svc)) return fail('service-shape', 'service is not a map');
@@ -200,8 +238,8 @@ function checkService(svc) {
     if (!allowedKeys.has(k)) fail('service-shape', `service key ${k} is not in the reviewed set`);
   if (svc.type !== 'web') fail('service-shape', 'type must be web');
   if (svc.runtime !== 'node') fail('service-shape', 'runtime must be node');
-  if (typeof svc.plan !== 'string' || svc.plan === '' || svc.plan.toLowerCase() === 'free')
-    fail('service-shape', 'plan must be a paid plan (free has no disk and sleeps)');
+  if (svc.plan !== 'starter')
+    fail('service-shape', 'plan must be exactly starter (free has no disk and sleeps)');
   if (svc.healthCheckPath !== '/healthz') fail('service-shape', 'healthCheckPath must be /healthz');
   if (svc.buildCommand !== BUILD)
     fail('service-shape', 'buildCommand differs from the reviewed one');
@@ -219,7 +257,7 @@ function checkService(svc) {
     if (disk.mountPath !== MOUNT) fail('disk', `mountPath must be ${MOUNT}`);
     else mount = disk.mountPath;
     if (disk.sizeGB !== 1) fail('disk', 'sizeGB must be 1');
-    if (typeof disk.name !== 'string' || disk.name === '') fail('disk', 'disk needs a name');
+    if (disk.name !== 'pglite-data') fail('disk', 'disk name must be pglite-data');
   }
 
   // env vars
@@ -227,6 +265,7 @@ function checkService(svc) {
   if (!Array.isArray(env)) return fail('service-shape', 'envVars list is required');
   const seen = new Set();
   const values = new Map();
+  scanScalars(svc);
   for (const e of env) {
     if (!isMap(e) || typeof e.key !== 'string') {
       fail('service-shape', 'every envVars entry needs a key');
@@ -248,19 +287,13 @@ function checkService(svc) {
         );
     } else if (!ALLOWED.has(key)) fail('unknown-name', `${key} is not a name the app reads`);
 
-    // Live and PayPal-host scans cover every value, secret name or not. Values are never printed.
-    if (hasValue) {
-      const v = str(e.value);
-      if (LIVE_WORD.test(v)) fail('live-value', `${key} value contains "live"`);
-      if (PAYPAL_HOST.test(v)) fail('paypal-host', `${key} value names a PayPal host`);
-      if (/production/i.test(v) && !(key === 'NODE_ENV' && v === 'production'))
-        fail('live-value', `${key} value names production`);
-    }
     if (SECRETS.has(key)) {
       if (hasValue || e.sync !== false || fields.some((f) => f !== 'sync'))
         fail('secret-with-value', `${key} must be exactly "sync: false" with no value`);
       continue;
     }
+    if (!(typeof e.value === 'string' && QUOTED.get(e).has('value')))
+      fail('value-type', `${key}: value must be a quoted string`);
     for (const f of fields)
       if (f !== 'value')
         fail('service-shape', `${key}: field ${f} is not allowed on a fixed value`);

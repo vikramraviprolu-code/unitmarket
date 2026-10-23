@@ -55,12 +55,24 @@ Needs: (1) one long-lived Node process, 30 s job loop; (2) persistent disk for P
 
 ## Deploying (Render blueprint, CO-7)
 
-`render.yaml` at the repository root describes the one web service: Node 22.22.0, one instance, auto-deploy off, a 1 GB disk at `/var/data`, `UMS_PGLITE_DIR=/var/data/pglite`, health check `/healthz`. It holds env variable names and safe fixed values only. `pnpm check:hosting` (part of `pnpm ci`) fails on any unsafe setting.
+`render.yaml` at the repository root describes the one web service: Node 22.22.0, plan starter, one instance, auto-deploy off, a 1 GB disk at `/var/data`, `UMS_PGLITE_DIR=/var/data/pglite`, health check `/healthz`. It holds env variable names and safe fixed values only. `pnpm check:hosting` (part of `pnpm ci`) fails on any unsafe setting. The file must be printable ASCII plus LF: the checker reads it the way Render does only if no CR, NEL, LS or PS byte can hide text in a comment.
 
 1. The owner connects the repository to Render and imports the blueprint (a paid plan is needed for the disk).
 2. The owner enters a value in the dashboard for every `sync: false` name: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `UMS_OUTBOUND_APPROVAL_REF`, `UMS_SESSION_SECRET`, `UMS_APPROVAL_SECRET`, `UMS_LINK_SECRET`, `UMS_DEMO_PASSCODE_HASH`, `UMS_OPERATOR_TOTP_KEYS`, `UMS_PUBLIC_ORIGIN`. No value goes into the repository, a chat or a PR.
-3. `UMS_PAYPAL_CONNECT` stays `off` in the file. The owner flips it to `on` in the dashboard only after the approval row exists. The check refuses `on` in the file.
+3. `UMS_PAYPAL_CONNECT` stays `off` in the file; the owner flips it to `on` in the dashboard only after the approval row exists. The check refuses `on` in the file. OPEN (O-C8, CO-7b): how the approval row gets into the hosted PGlite database is not decided. `safety:approve` and `safety:resume` open the PGlite directory, which the running app already holds. Running them in a Render shell while the app is up would put two processes on one directory, which this design forbids. Until O-C8 is answered, no hosted call can be approved.
 4. Deploy manually from a reviewed tag (RLR-1). Never raise `numInstances`: two processes must not share one PGlite directory.
-5. After the first deploy, confirm `UMS_TRUSTED_PROXIES=1` against the real `X-Forwarded-For` (ASM-57).
+5. After the first deploy, confirm `UMS_TRUSTED_PROXIES=1` (ASM-57). Method: read the Render request log for one request, or temporarily log the raw `X-Forwarded-For` and the socket address of a request you make from a known address, and count the entries the platform appended (remove the logging afterwards). A wrong count is worse than 0. Too low (0): every client lands in the proxy's bucket, and the D-022 strict lockout then locks everyone out after a few failures. Too high: the entry read from the right is one a client can write, so a client can spoof its bucket.
 
-Render field names this blueprint relies on and the owner must confirm on import (not verifiable offline): `runtime: node`, `plan: starter`, `numInstances`, `autoDeploy: false`, `healthCheckPath`, `disk.name` / `disk.mountPath` / `disk.sizeGB`, `envVars[].sync: false`, `NODE_VERSION` as the Node version variable, and that `corepack` is available in the build image. No `region` is set (owner's choice at import).
+Render settings and field names the owner must confirm on import (not verifiable offline):
+
+- `runtime: node`; `plan: starter` (512 MB RAM: watch Next.js, PGlite and the job loop together; `NODE_OPTIONS` cannot tune memory because boot refuses it, so the only lever is the next plan up, and the checker pins `starter` until the file is changed in review).
+- `numInstances: 1`.
+- `autoDeploy: false`. Render may prefer `autoDeployTrigger: off`; the checker refuses that key, so verify at import and change both together if needed.
+- `healthCheckPath: /healthz`.
+- `disk.name` (`pglite-data`), `disk.mountPath` (`/var/data`), `disk.sizeGB` (1).
+- `envVars[].sync: false` prompts for a value only on the first Blueprint creation; a name added later needs its value set in the dashboard.
+- `NODE_VERSION` takes precedence over `.nvmrc`, and 22.22.0 is an available version.
+- Blueprint auto-sync resets dashboard edits to the file. `UMS_PAYPAL_CONNECT` therefore goes back to `off` after a sync, which is the safe direction.
+- Pull-request previews are OFF: a preview would run PR code with the sandbox secrets.
+- No `NODE_OPTIONS`, proxy or CA variable in the dashboard or in an environment group.
+- Region (not set in the file; the owner chooses).
