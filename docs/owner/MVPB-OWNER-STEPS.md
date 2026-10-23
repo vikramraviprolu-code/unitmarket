@@ -5,8 +5,9 @@ in your own terminal, on your own machine (ASM-40 option A). The assistant never
 credentials and never runs these steps.
 
 These commands become valid when lanes BU-1, BU-2, BU-3 and BU-6 have merged (see
-`docs/design/mvpb-unseal-and-mvpc-offline.md`). Until then, only step 0 can run. Lane BU-6 re-checks
-every command below against the merged code. All rules of `docs/owner/SPIKE-RUNBOOK.md` ("What you
+`docs/design/mvpb-unseal-and-mvpc-offline.md`). Until then, only step 0 can run. Lane BU-6 re-checked
+every command below against the code it merged with (the `corepack pnpm` commands start plain `node`
+processes with no `--import` or `--require` flag, which sandbox mode would refuse). All rules of `docs/owner/SPIKE-RUNBOOK.md` ("What you
 never share or paste anywhere", machine rules, refusal table) apply here too.
 
 ## Before the day (written approvals, no computer needed)
@@ -76,12 +77,16 @@ corepack pnpm safety:resume --operator vikram --reason "MVP-B session"
 corepack pnpm safety:status
 ```
 
-`safety:status` must show the row active, the budget `300 of 300`, and `paypal_outbound on`.
+`safety:status` must show a `budget D-026: 300 of 300 calls left today` line (the row is active) and
+`switch paypal_outbound=on`.
 
 `safety:resume` (like `safety:approve` and `safety:stop`) opens the database, and the app holds it with the
 single-opener lock: stop the app, run the command, restart the app.
 
 ## Step 3: build and start the app (5 min)
+
+Next.js reads `.env.local` from the app's own folder, not from the repository root. Copy the file
+once (both copies are ignored by git; delete the copy in step 7): `cp .env.local apps/web/.env.local`.
 
 ```
 corepack pnpm --filter @umsbx/web build
@@ -125,18 +130,25 @@ Stop the app first (Ctrl-C): the suite and the app cannot share the data folder.
 UMS_SANDBOX_TESTS=1 corepack pnpm sandbox:conformance
 ```
 
-When it prints a link, open it in the browser signed in as the sandbox Personal account and approve.
-It does this two or three times. At the end it prints the folder it wrote
-(`~/unitmarket-sandbox-run/<date>/`) with `summary.md` and `calls.json`.
+Type it yourself in your own terminal window. It refuses without a terminal, in CI and in an AI
+session. It reads `.env.local` (the same file as the app) and uses the same five locks as the app: with
+any lock missing it stops at the first call and says which one, before anything is sent.
+
+When it prints "Open this link in a browser signed in as the sandbox Personal account, approve, then
+come back", open that link and approve. It does this twice (two orders). It waits up to 6 minutes
+for each. At the end it prints the folder it wrote (`~/unitmarket-sandbox-run/<date>/`) with
+`summary.md` and `calls.json`. The first case alone (the payee check of step 2b) is
+`UMS_SANDBOX_TESTS=1 corepack pnpm sandbox:conformance --only payee-echo`.
 
 ## Step 7: finish (5 min)
 
 ```
 corepack pnpm safety:stop --operator vikram --reason "end of MVP-B session"
-corepack pnpm safety:status            # paypal_outbound off
+corepack pnpm safety:status            # switch paypal_outbound=off
 ```
 
-Close the terminal. Clear the clipboard. Leave `.env.local` in place or delete it; never copy it.
+Close the terminal. Clear the clipboard. Delete `apps/web/.env.local` (the copy of step 3). Leave
+`.env.local` in place or delete it; never copy it anywhere else.
 
 ## What to bring back to Sakthi
 
