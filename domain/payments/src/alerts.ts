@@ -1,5 +1,7 @@
-// Alerts for a human. Written only here. One alert of a kind per order, unit and reason (the
-// reason is detail.reason, a short code): the insert ignores a duplicate, so a repeated read of the
+// Alerts for a human. Written here, with one exception: recovery writes the refund_failed alert of a
+// refund_pending case that went back to diagnosing (domain/recovery/src/cases.ts, settleRefundCase)
+// with the same row shape and the same unique index, because payments is never imported by recovery.
+// One alert of a kind per order, unit and reason (the reason is detail.reason, a short code): the insert ignores a duplicate, so a repeated read of the
 // same problem raises nothing new, while a different problem of the same kind is its own alert.
 // Lane 10 opens recovery cases from these rows; payments never imports recovery.
 import type { CoreDeps, Id, SqlExecutor } from '@umsbx/contracts';
