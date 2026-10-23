@@ -122,6 +122,67 @@ export function envProblems(src: string, allowed: readonly string[]): string[] {
   return bad;
 }
 
+/** Every module specifier the source loads: import, export-from, import(), require(). */
+export function loadedModules(src: string): string[] {
+  const sf = ts.createSourceFile('x.mjs', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const out: string[] = [];
+  const visit = (n: ts.Node): void => {
+    if (
+      (ts.isImportDeclaration(n) || ts.isExportDeclaration(n)) &&
+      n.moduleSpecifier !== undefined &&
+      ts.isStringLiteralLike(n.moduleSpecifier)
+    )
+      out.push(n.moduleSpecifier.text);
+    if (
+      ts.isCallExpression(n) &&
+      (n.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(n.expression) && n.expression.text === 'require')) &&
+      n.arguments[0] !== undefined
+    ) {
+      const a = n.arguments[0];
+      out.push(ts.isStringLiteralLike(a) ? a.text : '<computed>');
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+/** A process, shell, worker, VM or loader module: none may be loaded by the exempted entry. */
+const FORBIDDEN_MODULE =
+  /^(node:)?(child_process|worker_threads|vm|cluster|module|net|tls|dns|http|https|http2|dgram|process|inspector|repl)$|^<computed>$/;
+
+describe(`${FILE} loads no process, shell, worker or network module`, () => {
+  const src = readFileSync(join(REPO_ROOT, FILE), 'utf8');
+  it('no import, export-from, import() or require of node:child_process and the like', () => {
+    expect(loadedModules(src).filter((m) => FORBIDDEN_MODULE.test(m))).toEqual([]);
+  });
+  it('what it does load is exactly node:path, node:url, node:os and its own register helper and body', () => {
+    expect(loadedModules(src).sort()).toEqual(
+      [
+        './lib/register-ts.mjs',
+        './lib/sandbox-conformance-run.mjs',
+        'node:os',
+        'node:path',
+        'node:url',
+      ].sort(),
+    );
+  });
+  it.each([
+    ['import', 'import { spawn } from "node:child_process";'],
+    ['bare import', 'import cp from "child_process";'],
+    ['dynamic import', 'const m = await import("node:child_process");'],
+    ['computed import', 'const m = await import(name);'],
+    ['require', 'const m = require("child_process");'],
+    ['export from', 'export { exec } from "node:child_process";'],
+    ['worker', 'import { Worker } from "node:worker_threads";'],
+    ['vm', 'import vm from "node:vm";'],
+    ['module', 'import { register } from "node:module";'],
+    ['network', 'import https from "node:https";'],
+  ])('the pin catches %s', (_n, code) => {
+    expect(loadedModules(code).filter((m) => FORBIDDEN_MODULE.test(m)).length).toBeGreaterThan(0);
+  });
+});
+
 describe(`${FILE} reads the environment only for the flag and the CI and AI markers`, () => {
   const src = readFileSync(join(REPO_ROOT, FILE), 'utf8');
   it('uses no process.env form other than process.env.NAME with an allowed name', () => {

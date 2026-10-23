@@ -12,6 +12,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -20,9 +21,9 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { REPO_ROOT } from './test-helpers';
 import { CI_MARKERS, AI_MARKERS, runSandboxConformance } from './sandbox-conformance.mjs';
 
-// With the fake config below the locks are closed (no approval row, switch off): the first call is
-// blocked by the kill switch, before any Wire call.
-const STOP_REASON = /kill_switch/;
+// The fake config below has UMS_PAYPAL_CONNECT=off, so the first call is blocked by the connect
+// lock (L2) before anything is built and before any Wire call. The real run never has the lock open.
+const STOP_REASON = /connect_off/;
 
 const SCRIPT = join(REPO_ROOT, 'scripts', 'sandbox-conformance.mjs');
 const tmps: string[] = [];
@@ -198,7 +199,7 @@ function plainRun(
     env: {
       HOME: home,
       UMS_MODE: 'sandbox',
-      UMS_PAYPAL_CONNECT: 'on',
+      UMS_PAYPAL_CONNECT: 'off',
       UMS_OUTBOUND_APPROVAL_REF: 'D-000',
       UMS_OUTBOUND_SCOPE: 'mvp_b_polling',
       UMS_OWN_MERCHANT_ID: 'SBXOWNMERCH01',
@@ -237,6 +238,18 @@ describe('a real run with a fake config and no approval row', () => {
     const md = readFileSync(join(folder, 'summary.md'), 'utf8');
     expect(md).toMatch(STOP_REASON);
     expect(md).toMatch(/FAIL/);
+  });
+  it('the run folder is private (0700) and its files are 0600', () => {
+    const base = join(run.home, 'unitmarket-sandbox-run');
+    const folder = join(base, readdirSync(base)[0] as string);
+    expect(statSync(base).mode & 0o777).toBe(0o700);
+    expect(statSync(folder).mode & 0o777).toBe(0o700);
+    for (const f of ['summary.md', 'calls.json'])
+      expect(statSync(join(folder, f)).mode & 0o777, f).toBe(0o600);
+  });
+  it('the blocked reason is not said twice', () => {
+    expect(run.out).not.toMatch(/\(connect_off\) \(blocked by connect_off\)/);
+    expect(run.out).not.toMatch(/blocked by connect_off\).*blocked by connect_off\)/);
   });
   it('prints and writes no credential and no secret', () => {
     const base = join(run.home, 'unitmarket-sandbox-run');

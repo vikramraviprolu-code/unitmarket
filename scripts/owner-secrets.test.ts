@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { verifyPasscode } from '../packages/security/src/index';
 import { REPO_ROOT } from './test-helpers';
 import { PassThrough } from 'node:stream';
+import { AI_MARKERS, CI_MARKERS } from './sandbox-conformance.mjs';
 import { askHiddenOnTerminal, runOwnerSecrets } from './owner-secrets.mjs';
 
 const PASSCODE = 'correct horse battery staple';
@@ -187,4 +188,22 @@ describe.skipIf(!hasScript)('on a pseudo-terminal', () => {
     expect(out).not.toContain('not_a_tty');
     expect(out).not.toMatch(/^UMS_[A-Z_]+=/m);
   }, 90_000);
+});
+
+describe('owner:secrets uses the same marker lists as the runner', () => {
+  it.each(CI_MARKERS.map((m) => [m]))('CI marker %s refuses', async (m) => {
+    const r = rig({ env: { [m as string]: '1' } });
+    expect(await runOwnerSecrets(r.deps)).toEqual({ ok: false, code: 'ci_set' });
+    expect(r.prompts).toEqual([]);
+  });
+  it.each(AI_MARKERS.map((m) => [m]))('AI marker %s refuses', async (m) => {
+    const r = rig({ env: { [m as string]: '1' } });
+    expect(await runOwnerSecrets(r.deps)).toEqual({ ok: false, code: 'ai_session' });
+    expect(r.prompts).toEqual([]);
+  });
+  it('the entry takes its marker values from the runner module, not from a list of its own', () => {
+    const src = readFileSync(join(REPO_ROOT, 'scripts', 'owner-secrets.mjs'), 'utf8');
+    expect(src).toMatch(/from '\.\/sandbox-conformance\.mjs'/);
+    expect(src).not.toMatch(/CI_NAMES|AI_NAMES|'GITHUB_ACTIONS'/);
+  });
 });

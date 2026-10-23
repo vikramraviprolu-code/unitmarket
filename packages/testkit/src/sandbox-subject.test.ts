@@ -186,6 +186,15 @@ describe('hooks.approve', () => {
     expect(sleeps).toEqual([3000, 3000]);
     expect(s.sent.filter((r) => r.operation === 'get_order')).toHaveLength(3);
   });
+  it('stops polling at once when the order is VOIDED, and says so', async () => {
+    const s = scriptedOrders(['CREATED', 'VOIDED', 'APPROVED']);
+    const sleeps: number[] = [];
+    const { subject } = subjectOver(s.transport, { sleep: async (ms) => void sleeps.push(ms) });
+    const { hooks } = await subject.make();
+    await expect(hooks.approve('ORDER00123456', URL_)).rejects.toThrow(/voided/);
+    expect(s.sent.filter((r) => r.operation === 'get_order')).toHaveLength(2);
+    expect(sleeps).toEqual([3000]);
+  });
   it('does not sleep or print again once approved on the first read', async () => {
     const s = scriptedOrders(['APPROVED']);
     const sleeps: number[] = [];

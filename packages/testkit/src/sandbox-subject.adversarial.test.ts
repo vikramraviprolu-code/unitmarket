@@ -124,6 +124,13 @@ describe('each lock missing stops the suite at the first call', () => {
       expect(report.payee_echo).toBe('STOP');
     },
   );
+  it('the reason is said once in the detail of the first case', async () => {
+    const s = sealed('connect_off');
+    const { subject } = subjectOver(s.transport);
+    const report = await ownerSubset(subject).runAll();
+    expect(report.cases[0]?.detail).toBe('create answered blocked (connect_off)');
+    expect(report.stopped?.detail).toBe('blocked by connect_off');
+  });
   it('a later call on the same subject is answered blocked without reaching the transport', async () => {
     const s = sealed('kill_switch');
     const { subject } = subjectOver(s.transport);
