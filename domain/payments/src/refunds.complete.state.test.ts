@@ -519,6 +519,27 @@ describe('goal 3: refunds made at the PayPal dashboard are booked from the order
     expect(await versions(a.order_id)).toEqual([1]);
   });
 
+  check('list unavailable and everything PayPal shows is booked already: no alert', async () => {
+    const { a, unit } = await setup();
+    await run(await request(unit.id, 200));
+    w.reportRefunded = true; // the capture reports its refunded total: 2.00, all booked
+    const provider = (
+      await w.rows<{ provider_order_id: string }>('SELECT provider_order_id FROM provider_orders')
+    )[0]!.provider_order_id;
+    await w.editNextRead(provider, (r) => ({
+      ...r,
+      units: r.units.map((u) => ({
+        reference_id: u.reference_id,
+        payee_merchant_id: u.payee_merchant_id,
+        amount: u.amount,
+        capture: u.capture,
+      })),
+    }));
+    await reread(a.order_id);
+    expect(await alertKinds(w, a.order_id)).toEqual([]);
+    expect(await unitRow(unit.id)).toEqual({ status: 'partially_refunded', refunded_minor: 200 });
+  });
+
   check(
     'an empty list beside a capture that reads refunded is "unavailable" too: alert, nothing booked',
     async () => {
