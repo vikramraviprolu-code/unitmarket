@@ -2,7 +2,10 @@
 // good and bad logs. Nothing here builds or starts Next, opens a socket or reads a credential. The
 // secrets below are obviously fake placeholders assembled at run time, and no assertion message
 // ever prints one.
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { REPO_ROOT } from './test-helpers';
 import {
   analyseOverride,
   analyseStart,
@@ -373,3 +376,37 @@ describe('portCandidates', () => {
     expect(portCandidates(4242, 3)).toEqual([56954, 57055, 57156]);
   });
 });
+
+// BU-3 review: the proof is opt-in. The integration project's glob would otherwise run a multi-minute
+// build inside `pnpm test` and `pnpm ci`; vitest.config.ts leaves the file out unless the command line
+// names it. These two child runs only list files; they start no test.
+describe('the proof is opt-in (vitest.config.ts)', () => {
+  const PROOF = 'scripts/next-start-proof.integration.test.ts';
+  const listFiles = (...filters: string[]): string => {
+    const r = spawnSync(
+      process.execPath,
+      [
+        join(REPO_ROOT, 'node_modules/vitest/vitest.mjs'),
+        'list',
+        '--filesOnly',
+        '--project',
+        'integration',
+        ...filters,
+      ],
+      { cwd: REPO_ROOT, encoding: 'utf8', env: { PATH: '/usr/local/bin:/usr/bin:/bin' } },
+    );
+    expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+    return r.stdout;
+  };
+  it('the default integration listing (what pnpm test runs) leaves the proof out but keeps its neighbours', () => {
+    const out = listFiles();
+    expect(out).not.toContain('next-start-proof');
+    expect(out).toContain('scripts/restore.integration.test.ts');
+  });
+  it('a filter on another file does not bring it in', () => {
+    expect(listFiles('scripts/restore.integration.test.ts')).not.toContain('next-start-proof');
+  });
+  it('the explicit file path (the spec acceptance command) lists it', () => {
+    expect(listFiles(PROOF)).toContain(PROOF);
+  });
+}, 120_000);
