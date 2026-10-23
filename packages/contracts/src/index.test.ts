@@ -47,6 +47,7 @@ const EXPECTED_EXPORTS: string[] = [
   'CreateOrderResSchema',
   'isUrlUnderOrigin',
   'CapturedPartSchema',
+  'OrderReadRefundSchema',
   'OrderReadUnitSchema',
   'OrderReadSchema',
   'ClaimUnitSchema',

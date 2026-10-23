@@ -1,10 +1,12 @@
-// CO-5 (ASM-59) property: over 1,000 random sequences of delivery_failed, delivery_restored,
-// credit_granted, partial refunds and full refunds against a real (PGlite) database:
+// CO-5 (ASM-59) and CO-5b (ASM-62) property: over 1,000 random sequences of delivery_failed,
+// delivery_restored, buyer-sourced signals, credit_granted, sweeps, partial refunds, refunds and
+// reversals, with a clock that can step back or stand still, against a real (PGlite) database:
 //   - ends_at never decreases before a revoke;
 //   - nothing changes after a revoke (window row and access state);
 //   - `available` never follows a full refund;
 //   - no credit_granted is written after the revoked event;
-//   - the materialised window equals computeWindow(events) after every event.
+//   - the materialised window equals computeWindow(events) after every event;
+//   - stored event times never decrease in insertion order (the sweep's window_ended excepted).
 // A partial refund writes nothing to the access clock (the entitlement table maps it to a no-op),
 // so that step asserts the window row and the log are untouched. A full refund does what
 // applyMoneyEvent does to the row, then calls revokeWindow, the only revoke path.
@@ -15,6 +17,7 @@ import {
   markAccessReady,
   recordDeliveryEvent,
   revokeWindow,
+  sweepWindows,
 } from './index';
 import { HASH, makeWorld, policyFor, START } from './world';
 import type { World } from './world';
@@ -95,12 +98,29 @@ describe('refund and credit interplay, random sequences', () => {
       let frozen: Snap | null = null;
       let refunded = false;
       for (let s = 0; s < steps; s++) {
-        w.clock.advance(Math.floor(next() * 2 * 24 * H));
+        // The clock may step back (NTP, a restored host) or stand still (a tie), as well as advance.
+        const dice = next();
+        if (dice < 0.15) {
+          w.clock.set(
+            new Date(w.clock.now().getTime() - Math.floor(next() * 2 * 24 * H)).toISOString(),
+          );
+        } else if (dice >= 0.3) {
+          w.clock.advance(Math.floor(next() * 2 * 24 * H));
+        }
         const before = plain(await snap(id));
         const eventsBefore = (
           await w.db.query('SELECT 1 FROM access_events WHERE entitlement_id = $1', [id])
         ).rows.length;
-        const pick = Math.floor(next() * 7);
+        const pick = Math.floor(next() * 11);
+        const source = next() < 0.25 ? ('buyer' as const) : ('system' as const);
+        const deliver = (kind: 'delivery_failed' | 'delivery_restored' | 'reader_beacon') =>
+          recordDeliveryEvent(w.deps, {
+            entitlement_id: id,
+            kind,
+            link_id: null,
+            source,
+            evidence: {},
+          });
         let partial = false;
         if (pick === 0 || s === 0) {
           try {
@@ -112,22 +132,12 @@ describe('refund and credit interplay, random sequences', () => {
             expect(refunded).toBe(true);
           }
         } else if (pick === 1) {
-          await recordDeliveryEvent(w.deps, {
-            entitlement_id: id,
-            kind: 'delivery_failed',
-            link_id: null,
-            source: 'system',
-            evidence: {},
-          });
+          await deliver('delivery_failed');
         } else if (pick === 2) {
-          await recordDeliveryEvent(w.deps, {
-            entitlement_id: id,
-            kind: 'delivery_restored',
-            link_id: null,
-            source: 'system',
-            evidence: {},
-          });
+          await deliver('delivery_restored');
         } else if (pick === 3) {
+          await deliver('reader_beacon');
+        } else if (pick === 4) {
           await w.db.transaction((tx) =>
             grantCredit(tx, w.deps, {
               entitlement_id: id,
@@ -136,15 +146,21 @@ describe('refund and credit interplay, random sequences', () => {
               by: { kind: 'system' },
             }),
           );
-        } else if (pick === 4) {
+        } else if (pick === 5) {
           partial = true; // a partial refund: no access-clock call at all
-        } else if (pick === 5 && next() < 0.5) {
+        } else if (pick === 6) {
+          await sweepWindows(w.deps, { max_items: 5 }); // writes window_ended at its own time
+        } else if (pick === 7 && next() < 0.6) {
+          const reversal = next() < 0.4;
           await w.db.query(
-            `UPDATE entitlements SET money_state = 'refunded', access_state = 'revoked', licence_state = 'terminated' WHERE id = $1`,
-            [id],
+            `UPDATE entitlements SET money_state = $2, access_state = 'revoked', licence_state = 'terminated' WHERE id = $1`,
+            [id, reversal ? 'reversed' : 'refunded'],
           );
           await w.db.transaction((tx) =>
-            revokeWindow(tx, w.deps, { entitlement_id: id, reason: 'refund' }),
+            revokeWindow(tx, w.deps, {
+              entitlement_id: id,
+              reason: reversal ? 'reversal' : 'refund',
+            }),
           );
           refunded = true;
         } else {
@@ -215,6 +231,20 @@ describe('refund and credit interplay, random sequences', () => {
         const kinds = log.map((r) => r.kind);
         const cut = kinds.indexOf('revoked');
         if (cut >= 0) expect(kinds.slice(cut + 1), label).not.toContain('credit_granted');
+
+        // CO-5b (ASM-62): in insertion order the stored times never decrease, whatever the clock
+        // did. The sweep's window_ended carries its own earlier time (ends_at) and is left out.
+        const bySeq = (
+          await w.db.query<{ kind: string; at: Date }>(
+            'SELECT kind, at FROM access_events WHERE entitlement_id = $1 ORDER BY seq',
+            [id],
+          )
+        ).rows.filter((r) => r.kind !== 'window_ended');
+        for (let n = 1; n < bySeq.length; n += 1) {
+          expect(bySeq[n]!.at.getTime(), `${label} event ${n}`).toBeGreaterThanOrEqual(
+            bySeq[n - 1]!.at.getTime(),
+          );
+        }
       }
     }
   });
