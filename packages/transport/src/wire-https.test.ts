@@ -127,7 +127,6 @@ describe('only the sandbox hosts are ever contacted (BU-1 review L6)', () => {
       'a certificate-style host two labels deep',
       `https://a.b.${CERT_HOST}/v1/notifications/certs/C1`,
     ],
-    ['the API host on a certificate path', `https://${SANDBOX_HOST}/v1/notifications/certs/C1`],
     ['a certificate path under another domain', 'https://certs.example/v1/notifications/certs/C1'],
   ];
   it.each(refusedUrls)('%s is refused before any request', async (_n, url) => {

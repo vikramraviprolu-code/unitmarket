@@ -29,7 +29,7 @@ describe('the options handed to the request function (makeHttpsWire)', () => {
   const agent = new https.Agent({ keepAlive: false });
   const identity = (() => undefined) as unknown as typeof import('node:tls').checkServerIdentity;
   const ca = ['ROOT-A', 'ROOT-B'];
-  const deps = (request: never) =>
+  const deps = (request: Parameters<typeof testDeps>[0]) =>
     testDeps(request, { agent, lookup, checkServerIdentity: identity, ca });
   const make = () => {
     const f = fakeRequest();

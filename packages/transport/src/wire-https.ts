@@ -1,8 +1,10 @@
+import { createHash } from 'node:crypto';
 import dns from 'node:dns';
 import https from 'node:https';
 import tls from 'node:tls';
 import type { ClientRequest, IncomingHttpHeaders, IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
+import { CERT_HOST_SUFFIX, CERT_PATH_PREFIX, SANDBOX_API } from './endpoints';
 import { MAX_RESPONSE_BYTES, mapFetchError } from './wire-map';
 import { registerWireProbe } from './wire-selfcheck';
 import type { Wire, WireErrorKind, WireRequest, WireResult } from './wire';
@@ -56,12 +58,13 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   'ALL_PROXY',
   'NODE_USE_SYSTEM_CA',
   'NODE_PRESERVE_SYMLINKS',
+  'NODE_PATH',
   'OPENSSL_CONF',
   'SSL_CERT_FILE',
   'SSL_CERT_DIR',
 ]);
 const OVERRIDE_FLAG =
-  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait|-port|-publish-uid)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config|--tls-keylog|--tls-min-v1\.[01]|--heapsnapshot-signal|--heapsnapshot-near-heap-limit|--experimental-network-inspection|--secure-heap(?:-min)?|--conditions|-C|--preserve-symlinks(?:-main)?|--report-[a-z-]+|--snapshot-blob|--build-snapshot)(?:=|$)/;
+  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait|-port|-publish-uid)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config|--tls-keylog|--tls-min-v1\.[01]|--heapsnapshot-signal|--heapsnapshot-near-heap-limit|--experimental-network-inspection|--secure-heap(?:-min)?|--conditions|-C|--preserve-symlinks(?:-main)?|--experimental-(?:default-)?config-file|--insecure-http-parser|--report-[a-z-]+|--snapshot-blob|--build-snapshot)(?:=|$)/;
 
 function networkOverridden(): boolean {
   try {
@@ -75,14 +78,41 @@ function networkOverridden(): boolean {
 }
 
 // What this module found when it loaded. A later replacement of any of them stops every request.
+// checkServerIdentity is part of the set: a replacement that returns nothing accepts any certificate
+// name. getCACertificates is too: it is how the trust store is read (below).
 const LOAD = {
   request: https.request,
   connect: tls.connect,
   lookup: dns.lookup,
   Agent: https.Agent,
+  checkServerIdentity: tls.checkServerIdentity,
+  getCACertificates: Reflect.get(tls, 'getCACertificates') as
+    ((kind?: string) => string[]) | undefined,
 };
+
+// The trust store. The Wire sends the Mozilla roots bundled with this Node, captured now, as the
+// explicit `ca` of every connection, so a CA added later (tls.setDefaultCACertificates), the system
+// store, NODE_EXTRA_CA_CERTS and a default store that held more at load never widen what it trusts.
+// A change of the default store after load also stops every request (fail closed), because it means
+// something else in the process is changing trust.
+const digest = (list: readonly string[]): string =>
+  createHash('sha256').update(JSON.stringify(list)).digest('hex');
+const readStore = (kind: 'bundled' | 'default'): string[] =>
+  LOAD.getCACertificates === undefined
+    ? [...tls.rootCertificates]
+    : [...(Reflect.apply(LOAD.getCACertificates, tls, [kind]) as string[])];
+const ROOTS: readonly string[] = Object.freeze(readStore('bundled'));
+const ROOTS_DIGEST = digest(ROOTS);
+const DEFAULT_STORE_DIGEST = digest(readStore('default'));
+
 const builtinsIntact = (): boolean =>
-  https.request === LOAD.request && tls.connect === LOAD.connect && dns.lookup === LOAD.lookup;
+  https.request === LOAD.request &&
+  tls.connect === LOAD.connect &&
+  dns.lookup === LOAD.lookup &&
+  tls.checkServerIdentity === LOAD.checkServerIdentity &&
+  Reflect.get(tls, 'getCACertificates') === LOAD.getCACertificates &&
+  digest(ROOTS) === ROOTS_DIGEST &&
+  digest(readStore('default')) === DEFAULT_STORE_DIGEST;
 
 // The Wire never calls the global fetch; it only remembers which one existed at load, to report.
 const currentFetch = (): unknown => Reflect.get(globalThis, 'fetch');
@@ -107,10 +137,28 @@ export interface HttpsWireDeps {
   agent: https.Agent;
   /** dns.lookup captured at load; handed to the socket as its resolver. */
   lookup: typeof dns.lookup;
+  /** tls.checkServerIdentity captured at load; handed to the TLS layer, never called here. */
+  checkServerIdentity: typeof tls.checkServerIdentity;
+  /** The bundled root certificates captured at load; the only CAs a connection trusts. */
+  ca: readonly string[];
   /** False when https.request, tls.connect or dns.lookup is no longer what was captured. */
   builtinsIntact(): boolean;
   /** True when a proxy, trust-store, loader or Node flag override is present. */
   envOverridden(): boolean;
+}
+
+// The only hosts this Wire contacts, whatever the transport and the guard said (defence in depth):
+// the sandbox API host, and a one-label host under the sandbox domain for the certificate download,
+// on the certificate path, GET only. An IP literal matches neither.
+const SANDBOX_HOST = new URL(SANDBOX_API).hostname;
+const CERT_HOST = new RegExp(
+  `^[a-z0-9-]+${CERT_HOST_SUFFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+);
+function hostAllowed(url: URL, method: string): boolean {
+  if (url.hostname === SANDBOX_HOST) return true;
+  return (
+    method === 'GET' && CERT_HOST.test(url.hostname) && url.pathname.startsWith(CERT_PATH_PREFIX)
+  );
 }
 
 interface Prepared {
@@ -134,9 +182,14 @@ function prepare(r: WireRequest, deps: HttpsWireDeps): Prepared | null {
   // Defence in depth: the transport already passed the guard.
   if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return null;
   if (url.port !== '' || url.hash !== '' || url.hostname === '') return null;
+  if (!hostAllowed(url, r.method)) return null;
   const headers: Record<string, string> = {};
+  const seen = new Set<string>();
   for (const [name, value] of Object.entries(r.headers)) {
     const key = name.toLowerCase();
+    // The same header twice (in any case) is ambiguous: refuse rather than let the last one win.
+    if (seen.has(key)) return null;
+    seen.add(key);
     if (!ALLOWED_HEADERS.has(key)) continue;
     if (typeof value !== 'string' || !HEADER_VALUE.test(value)) return null;
     headers[key] = value;
@@ -151,6 +204,8 @@ function prepare(r: WireRequest, deps: HttpsWireDeps): Prepared | null {
       headers,
       agent: deps.agent,
       lookup: deps.lookup,
+      checkServerIdentity: deps.checkServerIdentity,
+      ca: [...deps.ca],
       servername: url.hostname,
       rejectUnauthorized: true,
       minVersion: 'TLSv1.2',
@@ -277,6 +332,8 @@ export function createHttpsWire(): Wire {
     request: LOAD.request,
     agent: new OwnAgent({ keepAlive: false, maxCachedSessions: 0 }),
     lookup: LOAD.lookup,
+    checkServerIdentity: LOAD.checkServerIdentity,
+    ca: ROOTS,
     builtinsIntact,
     envOverridden: networkOverridden,
   });

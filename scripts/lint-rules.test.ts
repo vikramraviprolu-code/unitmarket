@@ -1449,8 +1449,8 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
       '@umsbx/transport',
       '@umsbx/safety',
       '@umsbx/transport/src/sandbox',
-      '../../packages/transport/src/sandbox',
-      '../../packages/safety/src/scoped-gate',
+      join(REPO_ROOT, 'packages/transport/src/sandbox'),
+      join(REPO_ROOT, 'packages/safety/src/scoped-gate'),
       `file://${join(REPO_ROOT, 'packages/transport/src/sandbox.ts')}`,
     ];
     const outsiders = [
@@ -1463,9 +1463,19 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
     it.each(callees)(
       '%s of a sealed module is refused in an unpinned test file',
       async (callee) => {
-        for (const spec of repoSpecs)
-          for (const [fname, f] of factories)
-            for (const file of outsiders) {
+        for (const file of outsiders)
+          for (const spec of [
+            ...repoSpecs,
+            relative(
+              dirname(join(REPO_ROOT, file)),
+              join(REPO_ROOT, 'packages/transport/src/sandbox'),
+            ),
+            relative(
+              dirname(join(REPO_ROOT, file)),
+              join(REPO_ROOT, 'packages/safety/src/scoped-gate'),
+            ),
+          ])
+            for (const [fname, f] of factories) {
               const code = `${callee}('${spec}'${f});\n`;
               expect(
                 (await only(file, code, SEALED)).length,

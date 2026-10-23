@@ -540,6 +540,8 @@ const IN_PKG_INTERNAL = new Set([
   'packages/safety/src/gate',
 ]);
 const TESTY = /\.test\.[cm]?[jt]sx?$/;
+const MOCK_OBJECTS = new Set(['vi', 'jest']);
+const MOCK_FNS = new Set(['mock', 'doMock']);
 const MSG_SEALED =
   'SEAL2/SEAL3: the approved sandbox transport, the approval minter and the scoped-gate factory are reachable only from packages/safety (and pinned test files). Import the plain public names from the package; a namespace import, re-export, import(), require(), importActual or a path into packages/transport or packages/safety reaches them too, and test-only minters and test-support.ts are for test files.';
 const MSG_REQUIRE_ALIAS =
@@ -643,6 +645,12 @@ const sealedTransport = {
       }
     };
     const IMPORT_ACTUAL = new Set(['importActual', 'importMock', 'requireActual', 'requireMock']);
+    // BU-1 review F4: vi.mock(spec, async (importOriginal) => ...) and jest.mock/doMock load the real
+    // module for the factory, so mocking a sealed module hands it over as importActual does.
+    const isMockerCall = (c) =>
+      c.object.type === 'Identifier' &&
+      MOCK_OBJECTS.has(c.object.name) &&
+      MOCK_FNS.has(c.property.name ?? c.property.value);
     return {
       ImportDeclaration(n) {
         if (n.importKind !== 'type') check(n, n.source.value, 'import', n.specifiers);
@@ -663,7 +671,7 @@ const sealedTransport = {
           check(n, specOf(n.arguments[0]), 'whole');
         else if (
           c.type === 'MemberExpression' &&
-          IMPORT_ACTUAL.has(c.property.name ?? c.property.value)
+          (IMPORT_ACTUAL.has(c.property.name ?? c.property.value) || isMockerCall(c))
         ) {
           const spec = specOf(n.arguments[0]);
           // A specifier that cannot be read statically could be anything: refuse it too.
@@ -836,9 +844,12 @@ const noSealedAlias = {
         if (c.type === 'Identifier' && c.name === 'require') check(n, specOf(n.arguments[0]));
         else if (
           c.type === 'MemberExpression' &&
-          ['importActual', 'importMock', 'requireActual', 'requireMock'].includes(
+          (['importActual', 'importMock', 'requireActual', 'requireMock'].includes(
             c.property.name ?? c.property.value,
-          )
+          ) ||
+            (c.object.type === 'Identifier' &&
+              MOCK_OBJECTS.has(c.object.name) &&
+              MOCK_FNS.has(c.property.name ?? c.property.value)))
         )
           check(n, specOf(n.arguments[0]));
       },
