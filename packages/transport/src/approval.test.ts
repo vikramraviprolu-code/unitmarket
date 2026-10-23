@@ -86,3 +86,50 @@ describe('the minter mints only for a gate its claimer vouches for (P1: fake gat
     ).rejects.toBeInstanceOf(SandboxSealedError);
   });
 });
+
+// FIX-MVPB-SEAL3 LOW. The brand checks keep the WeakSet methods and Reflect.apply they saw when the
+// module loaded, so code that later replaces WeakSet.prototype.has or add cannot make a forged
+// object pass (has returning true) or stop a real capability from registering (add doing nothing).
+describe('WeakSet tampering is a non-issue', () => {
+  const realHas = WeakSet.prototype.has;
+  const realAdd = WeakSet.prototype.add;
+  const realApply = Reflect.apply;
+  const restore = () => {
+    WeakSet.prototype.has = realHas;
+    WeakSet.prototype.add = realAdd;
+    Reflect.apply = realApply;
+  };
+  it('a forged capability is still refused when WeakSet.prototype.has always says yes', () => {
+    const mint = createApprovalMinter(() => true);
+    const real = mint(input(fakeGate()));
+    const forged = { ...real };
+    try {
+      WeakSet.prototype.has = function () {
+        return true;
+      };
+      expect(isApprovalCapability(forged)).toBe(false);
+      expect(isApprovalCapability(real)).toBe(true);
+      expect(isApprovalCapability({})).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+  it('a real capability is still recognised when has always says no, and add does nothing', () => {
+    const mint = createApprovalMinter(() => true);
+    try {
+      WeakSet.prototype.has = function () {
+        return false;
+      };
+      WeakSet.prototype.add = function () {
+        return this;
+      };
+      Reflect.apply = (() => {
+        throw new Error('tampered');
+      }) as typeof Reflect.apply;
+      const cap = mint(input(fakeGate()));
+      expect(isApprovalCapability(cap)).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+});

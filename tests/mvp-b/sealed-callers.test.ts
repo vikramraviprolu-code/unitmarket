@@ -120,15 +120,11 @@ describe('the Wire is required (FIX-MVPB-SEAL2 H2)', () => {
     expect(sandbox).not.toMatch(/o\.wire\s*\?\?/);
     expect(sandbox).toMatch(/wire: Wire \| 'production'/);
   });
-  it("the 'production' sentinel is written only by composition and the transport package's own tests", () => {
+  it("the 'production' sentinel is written by no non-test file at all, and by one transport test", () => {
     const sentinel = /\bwire\s*:\s*['"`]production['"`]/;
     const users = withText(sentinel, (f) => !f.endsWith('sealed-callers.test.ts'));
-    for (const f of users)
-      expect(f === 'apps/web/composition.server.ts' || (isTransportSrc(f) && isTest(f)), f).toBe(
-        true,
-      );
-    // Today composition builds only the sealed stub, so nobody but the transport tests uses it.
-    expect(users.filter((f) => !isTransportSrc(f))).toEqual([]);
+    // SEAL3: composition no longer has a standing exemption either; unsealing adds a pinned one.
+    expect(users).toEqual(['packages/transport/src/sandbox.test.ts']);
   });
 });
 
@@ -180,7 +176,13 @@ describe('who may mint an approval capability', () => {
     expect(scoped).toMatch(new RegExp(`${CLAIM}\\(isIssuedGate\\)`));
     const gate = text.get('packages/safety/src/gate.ts') ?? '';
     expect(gate).toContain('new WeakSet');
-    expect(gate).toMatch(/issued\.add\(gate\)/);
+    expect(gate).toMatch(/apply\(wsAdd, issued, \[gate\]\)/);
+    // The brand checks use the WeakSet methods captured at load, never a live property lookup.
+    expect(gate).toContain('const wsHas = WeakSet.prototype.has');
+    expect(gate).not.toMatch(/issued\.(has|add)\(/);
+    const approval = text.get('packages/transport/src/approval.ts') ?? '';
+    expect(approval).toContain('const wsHas = WeakSet.prototype.has');
+    expect(approval).not.toMatch(/minted\.(has|add)\(/);
   });
 });
 

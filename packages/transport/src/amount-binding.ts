@@ -64,6 +64,21 @@ function minorOf(a: unknown): { currency: string; minor: number } | null {
   return { currency: c, minor: Number(scaled) };
 }
 
+/**
+ * True when a purchase unit names another account to be paid: `payee` on the unit, or `payee` on any
+ * entry of `payment_instruction.platform_fees` (a platform fee pays a second account out of the order).
+ */
+function namesAPayee(u: unknown): boolean {
+  if (typeof u !== 'object' || u === null) return false;
+  if (Object.hasOwn(u, 'payee')) return true;
+  const fees = (u as { payment_instruction?: { platform_fees?: unknown } | null })
+    .payment_instruction?.platform_fees;
+  return (
+    Array.isArray(fees) &&
+    fees.some((f) => typeof f === 'object' && f !== null && Object.hasOwn(f, 'payee'))
+  );
+}
+
 export interface CheckedMoneyBody {
   /** The amount in minor units that the body asks PayPal for. */
   minor: number;
@@ -112,7 +127,7 @@ export function canonicalMoneyBody(
       currency = m.currency;
       total += m.minor;
       if (!Number.isSafeInteger(total)) return null;
-      if (typeof u === 'object' && u !== null && Object.hasOwn(u, 'payee')) payee = true;
+      if (namesAPayee(u)) payee = true;
     }
     return currency === null ? null : { minor: total, currency, body: out, payee };
   }

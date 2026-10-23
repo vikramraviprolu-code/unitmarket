@@ -24,9 +24,14 @@ const MONEY_MOVING: ReadonlySet<PayPalOperation> = new Set(['create_order', 'ref
 // Gates built by createOutboundGate. The approval minter (claimed in scoped-gate.ts) mints only
 // for a gate in this set, so an object literal with a `check` function is refused (SEAL2 H1).
 // Module-private; the package index does not export the predicate.
+// The WeakSet methods and Reflect.apply as they are when this module loads, so code that later
+// replaces WeakSet.prototype.has or add cannot vouch for a fake gate (FIX-MVPB-SEAL3).
+const apply = Reflect.apply;
+const wsHas = WeakSet.prototype.has;
+const wsAdd = WeakSet.prototype.add;
 const issued = new WeakSet<object>();
 export const isIssuedGate = (g: unknown): boolean =>
-  typeof g === 'object' && g !== null && issued.has(g);
+  typeof g === 'object' && g !== null && apply(wsHas, issued, [g]) === true;
 
 // Decides whether a PayPal call may leave the process. First failing check wins (lane 02):
 // connect_off, kill_switch, no_approval, budget. Any read error blocks (fail closed). An allowed
@@ -86,6 +91,6 @@ export function createOutboundGate(d: {
     },
   };
   Object.freeze(gate);
-  issued.add(gate);
+  apply(wsAdd, issued, [gate]);
   return gate;
 }

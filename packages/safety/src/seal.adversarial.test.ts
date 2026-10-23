@@ -80,3 +80,44 @@ describe('evasion: the namespace import and computed names reach no minter', () 
     ).rejects.toMatchObject({ name: 'SandboxSealedError' });
   });
 });
+
+// FIX-MVPB-SEAL3 LOW. The issued-gate brand keeps the WeakSet methods it saw at load.
+describe('WeakSet tampering cannot vouch for a fake gate', () => {
+  const realHas = WeakSet.prototype.has;
+  const realAdd = WeakSet.prototype.add;
+  const realApply = Reflect.apply;
+  const restore = () => {
+    WeakSet.prototype.has = realHas;
+    WeakSet.prototype.add = realAdd;
+    Reflect.apply = realApply;
+  };
+  it('has always true: the literal is still refused by the real minter and the predicate', () => {
+    try {
+      WeakSet.prototype.has = function () {
+        return true;
+      };
+      expect(isIssuedGate(fakeLiteral())).toBe(false);
+      expect(() => mintCapability(input(fakeLiteral()))).toThrow(TypeError);
+      expect(isIssuedGate(realGate())).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+  it('add and has replaced, Reflect.apply broken: a gate built now is still recognised', () => {
+    try {
+      WeakSet.prototype.has = function () {
+        return false;
+      };
+      WeakSet.prototype.add = function () {
+        return this;
+      };
+      Reflect.apply = (() => {
+        throw new Error('tampered');
+      }) as typeof Reflect.apply;
+      expect(isIssuedGate(realGate())).toBe(true);
+      expect(isIssuedGate(fakeLiteral())).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+});

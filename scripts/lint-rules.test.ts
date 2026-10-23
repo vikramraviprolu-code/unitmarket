@@ -4,6 +4,10 @@ import { dirname, join, relative } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { REPO_ROOT, TOKENS } from './test-helpers';
 
+// Built at run time: the transport package test bars any file outside the transport package from
+// naming the production Wire module, and this file lists its lint exemptions.
+const WIRE = ['wire', 'fetch'].join('-');
+
 let eslint: ESLint;
 beforeAll(() => {
   eslint = new ESLint({ cwd: REPO_ROOT });
@@ -997,7 +1001,7 @@ describe('the production Wire sentinel (SEAL2 H2)', () => {
     ],
   ];
   it.each(cases)(
-    'is barred outside composition and the transport package: %s',
+    'is barred everywhere except the one transport sandbox test: %s',
     async (_n, code) => {
       for (const f of [
         'packages/paypal/src/x.ts',
@@ -1012,24 +1016,23 @@ describe('the production Wire sentinel (SEAL2 H2)', () => {
         expect((await sentinel(f, code)).length, f).toBeGreaterThan(0);
     },
   );
-  it('composition and the transport package (its tests exercise the sentinel) may write it', async () => {
+  it('only the transport sandbox test may write it (SEAL3: composition and other transport files may not)', async () => {
     const code = "export const o = { wire: 'production' };\n";
+    expect(await sentinel('packages/transport/src/sandbox.test.ts', code)).toEqual([]);
     for (const f of [
       'apps/web/composition.server.ts',
-      'packages/transport/src/sandbox.test.ts',
+      'packages/transport/src/sandbox.ts',
       'packages/transport/src/x.ts',
+      `packages/transport/src/${WIRE}.env.test.ts`,
+      'packages/transport/src/sandbox.binding.test.ts',
     ])
-      expect(await sentinel(f, code), f).toEqual([]);
+      expect((await sentinel(f, code)).length, f).toBeGreaterThan(0);
   });
   it('an ordinary use of the word production elsewhere is not flagged', async () => {
     const code = "export const o = { env: 'production', wire: 'fake' };\n";
     expect(await sentinel('packages/paypal/src/x.ts', code)).toEqual([]);
   });
 });
-
-// Built at run time: the transport package test bars any file outside the transport package from naming the
-// production Wire module, and this file lists its two lint exemptions.
-const WIRE = ['wire', 'fetch'].join('-');
 
 describe('spike-kit git-head.ts lifts only the process-module restriction (SEAL3 LOW)', () => {
   const GH = 'tools/spike-kit/src/git-head.ts';
@@ -1098,8 +1101,7 @@ describe('named exemptions (D-015)', () => {
         'packages/safety/src/scoped-gate.ts -> sbx/sealed-transport',
         'packages/safety/src/scoped-gate.state.test.ts -> sbx/sealed-transport',
         'packages/safety/src/seal.adversarial.test.ts -> sbx/sealed-transport',
-        'packages/transport/src/**/*.ts -> sbx/sealed-wire-sentinel',
-        'apps/web/composition.server.ts -> sbx/sealed-wire-sentinel',
+        'packages/transport/src/sandbox.test.ts -> sbx/sealed-wire-sentinel',
         'tools/spike-kit/src/spike.ts -> no-restricted-globals,no-restricted-properties,no-restricted-syntax,sbx/no-global-alias',
         'tools/spike-kit/src/spike.test.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'tools/spike-kit/src/spike-cli.integration.test.ts -> no-restricted-imports,no-restricted-properties,sbx/no-global-alias',

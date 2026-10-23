@@ -1187,15 +1187,9 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/sealed-transport'],
   },
   {
-    files: ['packages/transport/src/**/*.ts'],
+    files: ['packages/transport/src/sandbox.test.ts'],
     reason:
-      "FIX-MVPB-SEAL2 H2: the transport package's own tests exercise the 'production' Wire sentinel (construction only; fetch is spied and never reached)",
-    off: ['sbx/sealed-wire-sentinel'],
-  },
-  {
-    files: ['apps/web/composition.server.ts'],
-    reason:
-      "FIX-MVPB-SEAL2 H2: the one file that may select the production Wire with wire: 'production' when the owner unseals the transport. It does not do so today (it builds only the sealed stub; tests/mvp-b/sealed-callers.test.ts pins that)",
+      "FIX-MVPB-SEAL2 H2 (narrowed in SEAL3): the one test that exercises the 'production' Wire sentinel (construction only; fetch is stubbed and never reached). Composition has no exemption; the owner adds a pinned one when the transport is unsealed",
     off: ['sbx/sealed-wire-sentinel'],
   },
 ];

@@ -34,7 +34,14 @@ export type MintApprovalCapability = (i: MintInput) => ApprovalCapability;
 /** Says whether a gate was built by the claimer's own gate factory. */
 export type GateTrust = (gate: unknown) => boolean;
 
+// The WeakSet methods and Reflect.apply as they are when this module loads: code that later replaces
+// WeakSet.prototype.has or add (or Reflect.apply) cannot make a forged object pass or stop a real
+// capability from registering (FIX-MVPB-SEAL3).
+const apply = Reflect.apply;
+const wsHas = WeakSet.prototype.has;
+const wsAdd = WeakSet.prototype.add;
 const minted = new WeakSet<object>();
+const isMinted = (x: object): boolean => apply(wsHas, minted, [x]) === true;
 
 /**
  * Builds a minter that mints only for gates `trust` vouches for. Not exported from the package
@@ -58,7 +65,7 @@ export function createApprovalMinter(trust: GateTrust): MintApprovalCapability {
       approval_ref: i.approval_ref,
       gate: i.gate,
     }) as unknown as ApprovalCapability;
-    minted.add(cap);
+    apply(wsAdd, minted, [cap]);
     return cap;
   };
 }
@@ -77,5 +84,5 @@ export function claimApprovalMinter(trust: GateTrust): MintApprovalCapability {
 }
 
 export function isApprovalCapability(x: unknown): x is ApprovalCapability {
-  return typeof x === 'object' && x !== null && minted.has(x);
+  return typeof x === 'object' && x !== null && isMinted(x);
 }

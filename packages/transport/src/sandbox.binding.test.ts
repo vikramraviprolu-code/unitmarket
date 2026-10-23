@@ -227,6 +227,56 @@ describe('SEAL2 LOW: currency allow-list per scope and no payee in MVP-B', () =>
   ])('mvp_b_polling blocks %s in a purchase unit', async (_n, payee) => {
     await blocked('mvp_b_polling', create({ body: withPayee(payee) }), 'payee_not_allowed');
   });
+  // A platform fee names a second account that is paid out of the order.
+  it.each([
+    [
+      'a platform fee with an email payee',
+      {
+        platform_fees: [
+          {
+            amount: { currency_code: 'USD', value: '0.50' },
+            payee: { email_address: 'fee@example.test' },
+          },
+        ],
+      },
+    ],
+    [
+      'a platform fee with an empty payee',
+      { platform_fees: [{ amount: { currency_code: 'USD', value: '0.50' }, payee: {} }] },
+    ],
+    [
+      'a second fee that names a payee',
+      {
+        platform_fees: [
+          { amount: { currency_code: 'USD', value: '0.10' } },
+          {
+            amount: { currency_code: 'USD', value: '0.10' },
+            payee: { merchant_id: 'ABCDEFGHIJKLM' },
+          },
+        ],
+      },
+    ],
+  ])('mvp_b_polling blocks %s in payment_instruction', async (_n, payment_instruction) => {
+    const b = JSON.stringify({
+      purchase_units: [{ amount: { currency_code: 'USD', value: '5.00' }, payment_instruction }],
+    });
+    await blocked('mvp_b_polling', create({ body: b }), 'payee_not_allowed');
+  });
+  it('a platform fee without a payee is not refused by this rule', async () => {
+    const b = JSON.stringify({
+      purchase_units: [
+        {
+          amount: { currency_code: 'USD', value: '5.00' },
+          payment_instruction: {
+            platform_fees: [{ amount: { currency_code: 'USD', value: '0.50' } }],
+          },
+        },
+      ],
+    });
+    const { t, wire } = await build();
+    expect((await t.send(create({ body: b }))).kind).toBe('response');
+    expect(wire.requests).toHaveLength(1);
+  });
   it('a payee on the second of two units is also blocked', async () => {
     const two = JSON.stringify({
       purchase_units: [
