@@ -455,3 +455,108 @@ describe('the unseal file: who reaches it, and what it imports, exports and alia
     ).toBe(true);
   });
 });
+
+// BU-2 review nits folded into BU-7. These pin today's shape so a later change shows up in review:
+// the outbound builder is reachable from composition by one import and one call, and the factory of
+// the approved transport is called with one object literal written inside ensureBuilt.
+describe('composition and the unseal file keep their shape (BU-2 review nits)', () => {
+  const parse = (name: string): ts.SourceFile =>
+    ts.createSourceFile(name, text.get(name) ?? '', ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const identifiers = (sf: ts.SourceFile, name: string): ts.Identifier[] => {
+    const out: ts.Identifier[] = [];
+    const visit = (n: ts.Node): void => {
+      if (ts.isIdentifier(n) && n.text === name) out.push(n);
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    return out;
+  };
+
+  it('buildOutbound appears exactly twice in composition.server.ts: the import and one call', () => {
+    const file = 'apps/web/composition.server.ts';
+    const sf = parse(file);
+    const ids = identifiers(sf, 'buildOutbound');
+    expect(ids).toHaveLength(2);
+    const kinds = ids.map((id) =>
+      ts.isImportSpecifier(id.parent)
+        ? 'import'
+        : ts.isCallExpression(id.parent) && id.parent.expression === id
+          ? 'call'
+          : 'other',
+    );
+    expect(kinds.sort()).toEqual(['call', 'import']);
+    // the raw text has no third spelling (a comment, a string, a re-export)
+    expect((text.get(file) ?? '').match(/buildOutbound/g)).toHaveLength(2);
+  });
+  it('buildOutbound is never exported from composition and never re-exported or aliased anywhere in apps/', () => {
+    const sf = parse('apps/web/composition.server.ts');
+    for (const st of sf.statements) {
+      if (ts.isExportDeclaration(st) || ts.isExportAssignment(st)) {
+        expect(st.getText(sf)).not.toContain('buildOutbound');
+      }
+      if (ts.isVariableStatement(st) || ts.isFunctionDeclaration(st)) {
+        const exported = st.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+        if (exported) expect(st.getText(sf)).not.toMatch(/\bbuildOutbound\b\s*[=:]/);
+      }
+    }
+    const importers = withText(/\bbuildOutbound\b/, (f) => f.startsWith('apps/') && !isTest(f));
+    expect(importers).toEqual([
+      'apps/web/composition.server.ts',
+      'apps/web/src/server/outbound.server.ts',
+    ]);
+    // no alias spelling of the import in any file under apps/
+    expect(
+      withText(/\bbuildOutbound\s+as\s+\w+|\bas\s+buildOutbound\b/, (f) => f.startsWith('apps/')),
+    ).toEqual([]);
+  });
+  it('the composition call passes exactly one argument, an object literal with no spread', () => {
+    const sf = parse('apps/web/composition.server.ts');
+    const call = identifiers(sf, 'buildOutbound')
+      .map((id) => id.parent)
+      .find((p): p is ts.CallExpression => ts.isCallExpression(p));
+    expect(call).toBeDefined();
+    expect(call?.arguments).toHaveLength(1);
+    const arg = call?.arguments[0];
+    expect(arg !== undefined && ts.isObjectLiteralExpression(arg)).toBe(true);
+    if (arg !== undefined && ts.isObjectLiteralExpression(arg)) {
+      expect(arg.properties.some((p) => ts.isSpreadAssignment(p))).toBe(false);
+    }
+  });
+  it('outbound.server.ts has no top-level function declaration other than buildOutbound', () => {
+    const sf = parse('apps/web/src/server/outbound.server.ts');
+    const names = sf.statements
+      .filter(ts.isFunctionDeclaration)
+      .map((f) => f.name?.text ?? '(anonymous)');
+    expect(names).toEqual(['buildOutbound']);
+    // and no top-level class or default export that could carry another route to the factory
+    expect(sf.statements.some((s) => ts.isClassDeclaration(s))).toBe(false);
+    expect(sf.statements.some((s) => ts.isExportAssignment(s))).toBe(false);
+  });
+  it('the factory argument is the object literal written inside ensureBuilt, with no spread', () => {
+    const sf = parse('apps/web/src/server/outbound.server.ts');
+    const calls: ts.CallExpression[] = [];
+    const visit = (n: ts.Node): void => {
+      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === FACTORY)
+        calls.push(n);
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    expect(calls).toHaveLength(1);
+    const call = calls[0] as ts.CallExpression;
+    expect(call.arguments).toHaveLength(1);
+    const arg = call.arguments[0] as ts.Expression;
+    expect(ts.isObjectLiteralExpression(arg)).toBe(true);
+    expect(
+      (arg as ts.ObjectLiteralExpression).properties.some((p) => ts.isSpreadAssignment(p)),
+    ).toBe(false);
+    // the call sits inside the initializer of the const named ensureBuilt
+    let p: ts.Node | undefined = call;
+    let owner: string | null = null;
+    while (p !== undefined && !ts.isSourceFile(p)) {
+      if (ts.isVariableDeclaration(p) && ts.isIdentifier(p.name) && p.name.text === 'ensureBuilt')
+        owner = p.name.text;
+      p = p.parent;
+    }
+    expect(owner).toBe('ensureBuilt');
+  });
+});

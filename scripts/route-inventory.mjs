@@ -43,6 +43,20 @@ const peel = (n) => {
     n = n.expression;
   return n;
 };
+function metaProblems(d) {
+  const out = [];
+  const init = d.initializer === undefined ? undefined : peel(d.initializer);
+  if (init === undefined || !ts.isObjectLiteralExpression(init)) {
+    out.push('routeMeta must be an object literal');
+    return out;
+  }
+  for (const prop of init.properties) {
+    if (ts.isSpreadAssignment(prop)) out.push('routeMeta must not contain a spread');
+    else if (prop.name !== undefined && ts.isComputedPropertyName(prop.name))
+      out.push('routeMeta must not contain a computed key');
+  }
+  return out;
+}
 function astProblems(file, source) {
   const out = [];
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -50,6 +64,9 @@ function astProblems(file, source) {
     if (!ts.isVariableStatement(st)) continue;
     if (!st.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) continue;
     for (const d of st.declarationList.declarations) {
+      // BU-2 review nit: routeMeta is a plain object literal with plain keys. A computed key or a
+      // spread could carry fail_safe_without_mfa (or any field) past the text check above.
+      if (ts.isIdentifier(d.name) && d.name.text === 'routeMeta') out.push(...metaProblems(d));
       if (!ts.isIdentifier(d.name) || !VERBS.has(d.name.text)) continue;
       // The deps binding `withRoute(routeMeta, ...)(securityDeps)` is the one call allowed around it.
       let init = d.initializer === undefined ? undefined : peel(d.initializer);

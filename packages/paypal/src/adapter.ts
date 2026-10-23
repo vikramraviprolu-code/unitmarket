@@ -63,6 +63,11 @@ export interface AdapterDeps {
   webhook_id?: string | null;
   /** Where signing certificates come from. Default: fetched through `transport` and cached. */
   certificates?: CertificateSource;
+  /**
+   * BU-7 (D-028): our own sandbox merchant id (UMS_OWN_MERCHANT_ID, not a secret). A create unit whose
+   * payee equals it exactly is sent without `payee`. Null or omitted: every payee is sent.
+   */
+  own_merchant_id?: string | null;
 }
 
 // Placeholder bearer value for a dry-run transport without credentials. Not a credential.
@@ -251,7 +256,7 @@ export function createPayPalAdapter(d: AdapterDeps): PayPalPort {
       return call<CreateOrderRes>({
         operation: 'create_order',
         id: null,
-        body: buildCreateBody(r),
+        body: buildCreateBody(r, d.own_merchant_id),
         requestId: r.request_id,
         scenario: r.scenario,
         order_ref: r.order_ref,

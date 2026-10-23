@@ -31,6 +31,9 @@ const CONFIG_NAMES = [
   'UMS_PAYPAL_CONNECT',
   'UMS_OUTBOUND_APPROVAL_REF',
   'UMS_OUTBOUND_SCOPE',
+  // BU-7 (D-028): a name packages/config reads, allowed but not required. The hosted blueprint does
+  // not carry it.
+  'UMS_OWN_MERCHANT_ID',
   'PAYPAL_CLIENT_ID',
   'PAYPAL_CLIENT_SECRET',
   'PAYPAL_WEBHOOK_ID',
