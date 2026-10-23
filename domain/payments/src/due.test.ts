@@ -26,7 +26,8 @@ describe('nextPollAt', () => {
   it('never later than the end of the window', () => {
     const until = at(200_000);
     expect(nextPollAt(CONFIG, A, at(150_000), until)).toBe(until);
-    expect(nextPollAt(CONFIG, A, at(250_000), until)).toBe(until);
+    // past the end the window cap would be a time in the past (BU5b): one last step from now
+    expect(nextPollAt(CONFIG, A, at(250_000), until)).toBe(at(250_000 + 3_600_000));
   });
   it('a single-entry backoff repeats', () => {
     expect(nextPollAt({ reconcile_backoff_ms: [1000] }, A, at(2500), UNTIL)).toBe(at(3000));
