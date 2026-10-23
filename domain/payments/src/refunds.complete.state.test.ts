@@ -894,3 +894,151 @@ describe('recovered requests keep the single-flight rule', () => {
     ).toBe(true);
   });
 });
+
+// Opus BU-5 re-review, carried to CO-4: a read that is BLOCKED (call budget spent, kill switch, no
+// approval, connect off) is no evidence. At the end of the 24 h window it must not close a request
+// as failed or unresolved; the pass tries again later. And a refund that was put off and never sent
+// is not sent after its window: it is closed unsent.
+describe('blocked reads and the end of the window', () => {
+  const H24 = 24 * 3_600 * SEC;
+  const noLanding = () => {
+    // The refund call is lost and never reaches PayPal.
+    w.paypal.refundCapture = (r) => {
+      w.refundCalls.push({ request_id: r.request_id, capture_id: r.capture_id, amount: r.amount });
+      return Promise.resolve({ kind: 'timeout' as const });
+    };
+  };
+  const refundOps = (order_id: string) =>
+    w.rows<{ kind: string; state: string; failure_reason: string | null }>(
+      "SELECT kind, state, failure_reason FROM operations WHERE order_id = $1 AND kind IN ('refund', 'refund_readback') ORDER BY created_at, id",
+      [order_id],
+    );
+
+  it.each(['budget', 'kill_switch', 'connect_off', 'no_approval'] as const)(
+    'past the window, a read blocked by %s leaves an unknown refund unknown; the next unblocked read proves it failed',
+    async (by) => {
+      const { a, unit } = await setup();
+      noLanding();
+      const rq = await request(unit.id, 200);
+      expect((await run(rq)).ok).toBe(false);
+      expect((await reqRow(rq)).state).toBe('unknown');
+      w.tick(25 * 3_600 * SEC); // past the 5 h key window and the 24 h window
+      w.script({ kind: 'blocked', by });
+      await runDue(w.deps, { max_items: 10 });
+      expect(w.paypal.queue.get).toEqual([]); // the blocked read was the one used
+      expect((await reqRow(rq)).state).toBe('unknown');
+      expect(await alertKinds(w, a.order_id)).toEqual([]);
+      expect((await refundOps(a.order_id)).map((o) => o.state)).toEqual(['unknown']);
+      // The reservation stays: the request can still turn out to be a refund.
+      expect(
+        (
+          await requestRefund(w.deps, {
+            unit_id: unit.id,
+            amount: usd(400),
+            reason: 'x',
+            actor: OPERATOR,
+          })
+        ).ok,
+      ).toBe(false);
+      // Later the read works and shows no refund: now it is proven.
+      w.tick(3_600 * SEC);
+      await runDue(w.deps, { max_items: 10 });
+      expect((await reqRow(rq)).state).toBe('failed');
+      expect(await alertKinds(w, a.order_id)).toEqual([]);
+      expect((await refundOps(a.order_id))[0]).toMatchObject({
+        state: 'failed',
+        failure_reason: 'window_expired',
+      });
+      await invariantsHold();
+    },
+  );
+
+  it('a blocked read after a quota spent earlier in the same pass does not make a false refund_unresolved alert', async () => {
+    const { a, unit } = await setup();
+    noLanding();
+    const rq = await request(unit.id, 200);
+    await run(rq);
+    w.tick(25 * 3_600 * SEC);
+    // Two blocked reads in a row (two passes): nothing is closed, nothing is alerted.
+    w.script({ kind: 'blocked', by: 'budget' }, { kind: 'blocked', by: 'budget' });
+    await runDue(w.deps, { max_items: 10 });
+    w.tick(3_600 * SEC);
+    await runDue(w.deps, { max_items: 10 });
+    expect((await reqRow(rq)).state).toBe('unknown');
+    expect(await alertKinds(w, a.order_id)).toEqual([]);
+  });
+
+  it('an unreadable (not blocked) order at the end of the window still ends in unresolved with an alert (M-2)', async () => {
+    const { a, unit } = await setup();
+    noLanding();
+    const rq = await request(unit.id, 200);
+    await run(rq);
+    w.tick(25 * 3_600 * SEC);
+    w.script({ kind: 'not_found', debug_id: null });
+    await runDue(w.deps, { max_items: 10 });
+    expect((await reqRow(rq)).state).toBe('unresolved');
+    expect(await alertKinds(w, a.order_id)).toEqual(['refund_unresolved']);
+  });
+
+  it('past the window, a refund-status read blocked by the budget leaves a pending refund pending', async () => {
+    const { a, unit } = await setup();
+    w.refundNext.status = 'PENDING';
+    const rq = await request(unit.id, 200);
+    await run(rq);
+    const id = (await reqRow(rq)).refund_id!;
+    const real = w.paypal.getRefund.bind(w.paypal);
+    w.paypal.getRefund = () => Promise.resolve({ kind: 'blocked' as const, by: 'budget' as const });
+    w.tick(25 * 3_600 * SEC);
+    await runDue(w.deps, { max_items: 10 });
+    expect((await reqRow(rq)).state).toBe('pending');
+    expect(await alertKinds(w, a.order_id)).toEqual([]);
+    // The budget is back and PayPal completed it: it is booked.
+    w.paypal.getRefund = real;
+    w.refunds.get(id)!.status = 'COMPLETED';
+    w.tick(3_600 * SEC);
+    await runDue(w.deps, { max_items: 10 });
+    expect((await reqRow(rq)).state).toBe('completed');
+    expect(await ledger(unit.id)).toEqual([{ refund_id: id, minor: 200 }]);
+  });
+
+  it('a put-off refund (never sent) is closed unsent after its window, not sent late', async () => {
+    const { a, unit } = await setup();
+    const rq = await request(unit.id, 200);
+    w.script({ kind: 'unavailable', retry_after_ms: null });
+    await run(rq);
+    expect((await reqRow(rq)).state).toBe('requested');
+    w.tick(25 * 3_600 * SEC);
+    await runDue(w.deps, { max_items: 10 }); // PayPal answers now: a late send would go through
+    expect(w.sends()).toHaveLength(0);
+    expect((await reqRow(rq)).state).toBe('failed');
+    expect(await alertKinds(w, a.order_id)).toEqual(['refund_failed']);
+    const found = await alertRows(a.order_id);
+    expect(found[0]?.detail.reason).toBe(`refund_not_sent_${rq}`);
+    expect((await refundOps(a.order_id))[0]).toMatchObject({
+      state: 'failed',
+      failure_reason: 'window_expired',
+    });
+    // The reservation is free again.
+    expect(
+      (
+        await requestRefund(w.deps, {
+          unit_id: unit.id,
+          amount: usd(500),
+          reason: 'x',
+          actor: OPERATOR,
+        })
+      ).ok,
+    ).toBe(true);
+  });
+
+  it('a put-off refund one second before its window ends is still sent', async () => {
+    const { unit } = await setup();
+    const rq = await request(unit.id, 200);
+    w.script({ kind: 'unavailable', retry_after_ms: null });
+    await run(rq);
+    w.tick(H24 - 1 * SEC);
+    await runDue(w.deps, { max_items: 10 });
+    expect(w.sends()).toHaveLength(1);
+    expect((await reqRow(rq)).state).toBe('completed');
+  });
+});
