@@ -7,7 +7,8 @@
 //   corepack pnpm vitest run --project integration scripts/next-start-proof.integration.test.ts
 //
 // Skipped, with the reason printed, only when `next` is not installed. The proof is opt-in by
-// design (not a step of `pnpm ci`); see the PR note about the integration project glob.
+// design: vitest.config.ts leaves this file out of the integration project unless the command line
+// names it (pinned in next-start-proof.test.ts), so `pnpm test` and `pnpm ci` never run it.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -126,6 +127,14 @@ describe.skipIf(!NEXT_INSTALLED)('next start proof (offline, fake credentials)',
     expect(c.ok, c.detail).toBe(true);
     expect(Number(result.start.facts['sends'])).toBeGreaterThanOrEqual(1);
     expect(check(result.start, 'checkout_not_completed').ok).toBe(true);
+  });
+
+  it('the approved transport was built on the production Wire, and the client bundle holds no fake value', () => {
+    expect(
+      check(result.start, 'transport_built').ok,
+      check(result.start, 'transport_built').detail,
+    ).toBe(true);
+    expect(check(result.start, 'no_secret_in_bundle').ok).toBe(true);
   });
 
   it('every provider_calls row is blocked', () => {

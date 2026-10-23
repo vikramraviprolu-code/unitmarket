@@ -24,9 +24,17 @@
 // The only socket is localhost, driven with curl (fetch and node:http are barred in this repository
 // outside packages/transport, and a script may spawn processes). Exit 0 when every check passes, 1
 // when one fails, 2 when the proof could not run. The script reads no environment variable.
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { scryptSync } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -173,13 +181,14 @@ export function analyseStart(input) {
   checks.push({
     id: 'global_fetch_recorded',
     ok: atStart !== null && afterLoad !== null,
-    detail: `global_fetch_changed_since_load: ${atStart === null ? 'not recorded' : atStart} in the startup line, ${afterLoad === null ? 'not recorded' : afterLoad} on /ops after load`,
+    detail: `global_fetch_changed_since_load: ${atStart === null ? 'not recorded' : atStart} in the transport.selfcheck line (logged at first transport use), ${afterLoad === null ? 'not recorded' : afterLoad} on /ops after load`,
   });
 
   const sends = events.filter((e) => e.msg === 'sandbox.send');
   const tally = {};
   for (const s of sends) {
-    const key = `${String(s.operation)}:${String(s.outcome)}`.slice(0, 80);
+    const reason = typeof s.reason === 'string' ? ` (${s.reason.slice(0, 40)})` : '';
+    const key = `${String(s.operation)}:${String(s.outcome)}${reason}`.slice(0, 120);
     tally[key] = (tally[key] ?? 0) + 1;
   }
   const sendsOk =
@@ -215,6 +224,27 @@ export function analyseStart(input) {
   });
 
   checks.push(noSecretCheck([input.stdout, input.stderr], input.secrets ?? []));
+
+  // The approved transport was really built, on the production Wire: without this the 'blocked' lines
+  // could come from a path that never reached the gate of the approved transport.
+  const built = events.find((e) => e.msg === 'outbound.transport_built') ?? null;
+  checks.push({
+    id: 'transport_built',
+    ok: built !== null && built.wire_kind === 'production',
+    detail:
+      built === null
+        ? 'no outbound.transport_built line'
+        : `outbound.transport_built, wire_kind ${String(built.wire_kind)}`,
+  });
+  const hits = typeof input.static_hits === 'number' ? input.static_hits : null;
+  checks.push({
+    id: 'no_secret_in_bundle',
+    ok: hits === 0,
+    detail:
+      hits === null
+        ? 'the built .next/static files were not scanned'
+        : `${hits} built client file(s) hold a fake value`,
+  });
 
   return {
     ok: checks.every((c) => c.ok),
@@ -433,9 +463,21 @@ function nextArgs(port, startArgs = []) {
   ];
 }
 
-async function runProof() {
+/** How many files under `dir` (recursively) hold one of the values. Null when there is no such directory. */
+export function countFilesWithValues(dir, values) {
+  if (!existsSync(dir)) return null;
+  let n = 0;
+  for (const e of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+    if (!e.isFile()) continue;
+    const text = readFileSync(join(e.parentPath, e.name), 'latin1');
+    if (values.some((v) => v !== '' && text.includes(v))) n += 1;
+  }
+  return n;
+}
+
+async function runProof(tmpBase) {
   const ids = cryptoIds();
-  const tmp = mkdtempSync(join(tmpdir(), 'bu3-next-proof-'));
+  const tmp = mkdtempSync(join(tmpBase, 'bu3-next-proof-'));
   const dbDir = join(tmp, 'db');
   const home = join(tmp, 'home');
   mkdirSync(home, { recursive: true });
@@ -471,7 +513,16 @@ async function runProof() {
   });
 
   const pids = [];
+  const kids = [];
   let live = null;
+  // An interrupt must not leave a server running or a temp directory behind.
+  const onSignal = (sig) => {
+    for (const k of kids) k.kill('SIGKILL');
+    rmSync(tmp, { recursive: true, force: true });
+    process.exit(sig === 'SIGINT' ? 130 : 143);
+  };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
   const result = { ok: false, temp_dir: tmp, server_pids: pids };
   try {
     // 1. the database
@@ -485,9 +536,19 @@ async function runProof() {
     const t0 = nowMs();
     const build = spawn(process.execPath, [join(WEB, 'node_modules/next/dist/bin/next'), 'build'], {
       cwd: WEB,
-      env: baseEnv(3000),
+      // The build gets no credential, secret or passcode: only the switches the pages inline.
+      env: {
+        PATH: SAFE_PATH,
+        HOME: home,
+        TMPDIR: tmp,
+        NEXT_TELEMETRY_DISABLED: '1',
+        UMS_MODE: 'sandbox',
+        UMS_PAYPAL_CONNECT: 'on',
+        NEXT_PUBLIC_UMS_ENV_LABEL: 'Sandbox',
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    kids.push(build);
     const b = collect(build);
     await b.done;
     const buildMs = nowMs() - t0;
@@ -501,6 +562,9 @@ async function runProof() {
       return { ...result, setup_error: 'build failed' };
     }
 
+    // The built client files must not hold any fake value (the build was given none).
+    const staticHits = countFilesWithValues(join(WEB, '.next/static'), secrets);
+
     // 3. start
     let port = 0;
     let server = null;
@@ -513,6 +577,7 @@ async function runProof() {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       pids.push(child.pid);
+      kids.push(child);
       const col = collect(child);
       let up = false;
       for (let i = 0; i < 240 && col.exit === null && !up; i += 1) {
@@ -644,6 +709,7 @@ async function runProof() {
       exit,
       ops_selfcheck: opsSelfcheck,
       checkout_status: checkoutStatus,
+      static_hits: staticHits,
     });
     const selfcheckLine = parseOutput(server.col.stdout).events.find(
       (e) => e.msg === 'transport.selfcheck',
@@ -665,6 +731,7 @@ async function runProof() {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     pids.push(ov.pid);
+    kids.push(ov);
     const oc = collect(ov);
     let timedOut = false;
     const ovTimer = setTimeout(() => {
@@ -711,6 +778,8 @@ async function runProof() {
       table,
     };
   } finally {
+    process.removeListener('SIGINT', onSignal);
+    process.removeListener('SIGTERM', onSignal);
     if (live !== null) {
       live.child.kill('SIGKILL');
       await live.col.done;
@@ -720,8 +789,11 @@ async function runProof() {
 }
 
 async function main(argv) {
-  const ji = argv.indexOf('--json');
-  const jsonPath = ji >= 0 ? argv[ji + 1] : undefined;
+  const flagValue = (name) => {
+    const i = argv.indexOf(name);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+  const jsonPath = flagValue('--json');
   if (!argv.includes('--locked')) {
     if (!existsSync(join(WEB, 'node_modules/next/package.json'))) {
       process.stderr.write(
@@ -730,17 +802,30 @@ async function main(argv) {
       return 2;
     }
     say(`waiting for ${LOCK_FILE} (flock), then building and starting`);
-    const r = spawnSync(
+    // The inner run reads no environment: the temp base (TMPDIR) is handed down as an argument.
+    const base = tmpdir();
+    const child = spawn(
       'flock',
-      [LOCK_FILE, process.execPath, ...process.execArgv, SCRIPT, '--locked', ...argv],
-      {
-        stdio: 'inherit',
-        env: { PATH: SAFE_PATH },
-      },
+      [
+        LOCK_FILE,
+        process.execPath,
+        ...process.execArgv,
+        SCRIPT,
+        '--locked',
+        '--tmpdir',
+        base,
+        ...argv,
+      ],
+      { stdio: 'inherit', env: { PATH: SAFE_PATH, TMPDIR: base } },
     );
-    return r.status ?? 2;
+    // Forward an interrupt so the inner run can kill its server and remove its temp directory.
+    for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => child.kill(sig));
+    return new Promise((resolve) => {
+      child.on('close', (code, signal) => resolve(code ?? (signal === null ? 2 : 128)));
+      child.on('error', () => resolve(2));
+    });
   }
-  const result = await runProof();
+  const result = await runProof(flagValue('--tmpdir') ?? tmpdir());
   if (result.setup_error !== undefined) return 2;
   say(result.table);
   if (jsonPath !== undefined) writeFileSync(jsonPath, JSON.stringify(result, null, 2));
