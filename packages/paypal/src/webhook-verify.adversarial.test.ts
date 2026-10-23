@@ -733,3 +733,42 @@ describe('many hostile deliveries in a row leave no state behind', () => {
     expect(verified).toBe(250);
   }, 60_000);
 });
+
+describe('the certificate URL is reported as trusted only after a genuine signature', () => {
+  it('verified: trust is called once with the normalised URL', async () => {
+    const certs = okCertificates();
+    const host = certUrl().split('/')[2] as string;
+    await run(deliver(f, { cert_url: certUrl().replace(host, host.toUpperCase()) }), {
+      certificates: certs,
+    });
+    expect(certs.trusted).toEqual([certUrl()]);
+  });
+
+  it('a genuine signature over a body that is then malformed still trusts the URL', async () => {
+    const certs = okCertificates();
+    expect(await run(deliver(f, { raw_body: 'not json' }), { certificates: certs })).toEqual({
+      kind: 'malformed',
+    });
+    expect(certs.trusted).toEqual([certUrl()]);
+  });
+
+  it('never for a forged or altered delivery, a wrong id, a stale or off-list one, or an unavailable certificate', async () => {
+    const certs = okCertificates();
+    await run(deliver(f, { key: forger.privateKey }), { certificates: certs });
+    await run(deliver(f, { webhook_id: 'X' }), { certificates: certs });
+    await run({ ...deliver(f), raw_body: ' ' + deliver(f).raw_body }, { certificates: certs });
+    await run(deliver(f), { certificates: certs, now: iso(T + 30 * DAY) });
+    await run(deliver(f, { cert_url: certUrl({ host: 'evil.example' }) }), { certificates: certs });
+    await run(deliver(f, { algo: 'SHA1withRSA' }), { certificates: certs });
+    await run(deliver(f), { certificates: certs, webhook_id: null });
+    const unavailable = fakeCertificates({ kind: 'unavailable', why: 'fetch' });
+    await run(deliver(f), { certificates: unavailable });
+    expect(certs.trusted).toEqual([]);
+    expect(unavailable.trusted).toEqual([]);
+  });
+
+  it('a source without a trust method still works', async () => {
+    const bare = { get: okCertificates().get } as CertificateSource;
+    expect(await run(deliver(f), { certificates: bare })).toMatchObject({ kind: 'verified' });
+  });
+});
