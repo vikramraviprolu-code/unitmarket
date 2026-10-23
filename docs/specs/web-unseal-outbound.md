@@ -27,3 +27,5 @@ Do not: connect to anything; read real credentials (tests build obviously fake n
 Evidence for the PR: red summary; each command's pass counts; the lock-state golden; the pin diffs with reasons; the unseal row id quoted (merge blocker).
 
 Branch: `feat/web-unseal-outbound` Commit: `feat(web): approved sandbox transport behind five locks, resume and stop (BU-2)`
+
+Review notes (CO-9 review, 2026-10-23): add to this lane the boot-failure exit (ASM-73): in `apps/web` instrumentation catch a failed `register()` (including `DbInUseError` and the `UMS_DB=postgres` refusal), write one line to stderr and `process.exit(BOOT_REFUSAL_EXIT_CODE)`, so the host's restart policy fires and no zombie server answers 500. The message "or use the ops page Stop button" in `DbInUseError` becomes true only when this lane ships that button; keep the literal message from the CO-9 spec.

@@ -136,10 +136,11 @@ Every transaction that moves money takes its row locks in this order, and a stat
 1. `orders` (and `provider_orders`), then every `operations` row of that order (`lockOrderRows` in `domain/payments/src/store.ts`);
 2. `order_units`;
 3. `refund_requests`;
-4. `entitlements` (with `access_windows`, `access_events`);
+   3a. `recovery_cases` (CO-4): a case is locked (`FOR UPDATE` or a compare-and-set `UPDATE`) after any order, unit or refund request it needs and before its entitlement. Opening a case locks the order or the entitlement first and then only INSERTs the case row (a new row nobody can hold; not a lock event). Settling a `refund_pending` case locks only the case and reads `refund_requests` without locks;
+4. `entitlements` (with `access_windows`, `access_events`, `access_links`): a refund booking locks the unit's entitlements before it appends to the ledger, even for a partial refund (`bookEntry`, CO-4);
 5. `ledger_entries`, `receipts`.
 
-Alerts, audit and provider-call rows are leaf inserts and are not part of the order. PGlite serialises all statements, so a deadlock cannot be reproduced here. **Real-Postgres race tests (concurrent capture/poll/refund/sweeper on one order, with the pg adapter) are required before MVP-C.**
+Pinned by `lockorder.state.test.ts` (rank 4.5) and the recovery and `refunds.complete` lock-order spies. Alerts, audit and provider-call rows are leaf inserts and are not part of the order. PGlite serialises all statements, so a deadlock cannot be reproduced here. **Real-Postgres race tests (concurrent capture/poll/refund/sweeper on one order, with the pg adapter) are required before MVP-C.**
 
 ## Gate conditions (FIX-GATE2, branch fix/gate-conditions)
 

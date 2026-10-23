@@ -127,6 +127,19 @@ describe('the global budget: 6 fetches per rolling hour of the injected clock', 
     expect(source.stats().fetches_in_window).toBe(6);
   });
 
+  it('all 6 slots are usable again after the hour', async () => {
+    const clock = mutableClock(NOW_ISO);
+    const t = fakeTransport(() => NOT_FOUND);
+    const source = createCertificateSource({ transport: t, clock });
+    for (let i = 0; i < 6; i++) await source.get(urlN(i));
+    expect(t.calls).toHaveLength(6);
+    clock.advance(HOUR);
+    for (let i = 10; i < 16; i++) await source.get(urlN(i));
+    expect(t.calls).toHaveLength(12); // all six old fetches left the window together
+    await source.get(urlN(99));
+    expect(t.calls).toHaveLength(12);
+  });
+
   it('a refused lookup is not remembered as a failure: it can be fetched once the budget is back', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport((r) => (r.path.includes('GOOD') ? pemResponse(pem()) : NOT_FOUND));
@@ -189,9 +202,12 @@ describe('a legitimate delivery survives an attack', () => {
     expect((await post(source, clock, certUrl())).kind).toBe('verified');
     expect(t.calls).toHaveLength(1);
     for (let i = 0; i < 50; i++) await post(source, clock, urlN(i));
-    expect(t.calls).toHaveLength(6); // 1 legitimate + 5 attacker fetches, then the budget stops it
+    // CO-1b: the legitimate URL is trusted after its first verified delivery, so unknown URLs get
+    // 1 fetch an hour from then on (CO-1 alone allowed 5 more). That first fetch was made while
+    // cold and still counts in the hour, so the attacker gets none at all here.
+    expect(t.calls).toHaveLength(1);
     expect((await post(source, clock, certUrl())).kind).toBe('verified');
-    expect(t.calls).toHaveLength(6); // served from the cache, no fetch
+    expect(t.calls).toHaveLength(1); // served from the cache, no fetch
   });
 
   it('hour after hour of attack, a legitimate delivery that keeps arriving is never fetched again', async () => {
@@ -266,6 +282,8 @@ describe('nothing grows without bound', () => {
       failures: 0,
       in_flight: 0,
       fetches_in_window: 0,
+      unknown_fetches_today: 0,
+      trusted_urls: [],
     });
   });
 });

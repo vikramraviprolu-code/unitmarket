@@ -181,6 +181,10 @@ export async function verifyWebhook(
   const genuine = signatureHolds(cert.public_key, message, sig);
   if (!genuine) return bad('signature');
 
+  // The signature verified, so this URL held a certificate that signed for our webhook: it gets
+  // the reserved fetch budget (webhook-cert.ts). Nothing before this line may trust a URL.
+  d.certificates.trust?.(allowed.url.href);
+
   // Only a signed body is parsed.
   const event = eventOf(raw, id);
   return event === null ? MALFORMED : { kind: 'verified', event };
