@@ -188,9 +188,20 @@ describe('release', () => {
     plant({ pid: process.pid + 1, host: hostname(), started: T0 });
     expect(h.release()).toBe(false);
     expect(readLock().pid).toBe(process.pid + 1);
+  });
+
+  it('does not remove a lock with our pid and host but another start time', () => {
+    const h = acquireLock(dir, { clock: clockAt(T0), warn: () => undefined });
     plant({ pid: process.pid, host: hostname(), started: '2026-12-31T00:00:00.000Z' });
     expect(releaseLock(h)).toBe(false);
-    expect(existsSync(lockPath())).toBe(true);
+    expect(readLock().started).toBe('2026-12-31T00:00:00.000Z');
+  });
+
+  it('does not remove a lock with our pid and start time but another host', () => {
+    const h = acquireLock(dir, { clock: clockAt(T0), warn: () => undefined });
+    plant({ pid: process.pid, host: 'other-host', started: T0 });
+    expect(releaseLock(h)).toBe(false);
+    expect(readLock().host).toBe('other-host');
   });
 
   it('does nothing when the lock is already gone', () => {

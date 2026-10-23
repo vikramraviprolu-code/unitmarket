@@ -157,7 +157,9 @@ describe('a malformed lock refuses and is left in place', () => {
     ['started missing', JSON.stringify({ pid: 5, host: 'h' })],
     ['started not a date', JSON.stringify({ ...good, started: 'yesterday' })],
     ['started without Z', JSON.stringify({ ...good, started: '2026-03-04T05:06:07' })],
+    ['host over 255 characters', JSON.stringify({ ...good, host: 'h'.repeat(300) })],
     ['over 4 KiB', JSON.stringify({ ...good, host: 'h'.repeat(5000) })],
+    ['valid fields but over 4 KiB of padding', JSON.stringify({ ...good, pad: 'x'.repeat(5000) })],
   ])('%s', (_name, content) => {
     writeFileSync(lock, content);
     const e = refusal(() => acquireLock(dir, { ...quiet, isAlive: () => false }));
@@ -270,6 +272,20 @@ describe('racing openers: exactly one wins', { timeout: 120_000 }, () => {
     expect(warnings).toHaveLength(1);
     expect(JSON.parse(readFileSync(lock, 'utf8')).pid).toBe(won[0]?.info.pid);
     won[0]?.release();
+  });
+
+  it('a stale lock that a live holder replaces while the warning prints is not deleted', () => {
+    writeFileSync(lock, JSON.stringify({ pid: 999_999, host: hostname(), started: T0 }));
+    const winner = JSON.stringify({ pid: 8123, host: hostname(), started: T0 });
+    const isAlive = (pid: number): boolean => pid === 8123;
+    expect(() =>
+      acquireLock(dir, {
+        clock,
+        isAlive,
+        warn: () => writeFileSync(lock, winner), // the other process wins between check and unlink
+      }),
+    ).toThrow(DbInUseError);
+    expect(readFileSync(lock, 'utf8')).toBe(winner);
   });
 
   it('a failed database open gives the lock back', async () => {
