@@ -613,6 +613,7 @@ describe('an interrupted restore never leaves an armed or half-written target (R
         const dir = target();
         const signals = new EventEmitter();
         const exits: number[] = [];
+        let partialsAtExit = -1;
         const run = runRestore({
           from: backupDir,
           dir,
@@ -622,6 +623,8 @@ describe('an interrupted restore never leaves an armed or half-written target (R
           signals,
           exit: (c: number) => {
             exits.push(c);
+            // A real process.exit does not unwind: the handler must already have removed the partial.
+            partialsAtExit = partialsOf(dir).length;
             throw new Error(`exit ${c}`);
           },
           onPoint: (p: string) => {
@@ -630,6 +633,7 @@ describe('an interrupted restore never leaves an armed or half-written target (R
         });
         await expect(run).rejects.toThrow(`exit ${code}`);
         expect(exits[0]).toBe(code);
+        expect(partialsAtExit).toBe(0);
         expect(existsSync(dir)).toBe(false);
         expect(partialsOf(dir)).toEqual([]);
         expect(signals.listenerCount('SIGINT') + signals.listenerCount('SIGTERM')).toBe(0);
@@ -690,7 +694,7 @@ describe('an interrupted restore never leaves an armed or half-written target (R
           }
         },
       }),
-    ).rejects.toThrow(/appeared|not empty/i);
+    ).rejects.toThrow(/appeared while restoring/);
     expect(readdirSync(dir)).toEqual(['theirs.txt']);
     expect(partialsOf(dir)).toEqual([]);
   }, 180_000);
