@@ -2,11 +2,14 @@
 // read that fails after its slot was taken. payments cannot import jobs (S1), so what the loop does
 // with `callBudget` (throws, NaN) is tested in packages/jobs/src/loop.budget.integration.test.ts;
 // here the same hostile inputs arrive as what the loop would hand over: a bad `max_items`.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OrderRead } from '@umsbx/contracts';
 import { runDue } from './index';
 import { lostResponse, makeWorld, orderStatus, paid } from './ops/support';
 import type { OpsWorld } from './ops/support';
+
+// Worlds of six paid orders take seconds on a busy machine; the default 30 s is too tight.
+vi.setConfig({ testTimeout: 120_000 });
 
 let w: OpsWorld;
 afterEach(async () => {

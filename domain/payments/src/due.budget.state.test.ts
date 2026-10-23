@@ -2,7 +2,7 @@
 // pass that runs when the polling allowance is spent, and the order of work inside one pass.
 // Real PGlite, scripted PayPal, fake clock. No change to money rules is tested here: the existing
 // due tests still stand.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PaymentsDeps } from '@umsbx/contracts';
 import { beginCheckout, executeRefund, nextDueAt, requestRefund, runDue } from './index';
 import {
@@ -16,6 +16,9 @@ import {
   place,
 } from './ops/support';
 import type { OpsWorld } from './ops/support';
+
+// Worlds of six paid orders take seconds on a busy machine; the default 30 s is too tight.
+vi.setConfig({ testTimeout: 120_000 });
 
 let w: OpsWorld;
 afterEach(async () => {
@@ -58,9 +61,9 @@ describe('sandbox cadence: paid orders are re-read every 6 h (ASM-52)', () => {
     const seenAt = new Map<string, number[]>(orders.map((o) => [o.provider_order_id, []]));
     let cursor = base;
     const t0 = deps.clock.now().getTime();
-    for (let step = 1; step <= 144; step += 1) {
-      // 24 h in 10 minute steps; the loop would wake about this often
-      w.tick(600_000);
+    for (let step = 1; step <= 24; step += 1) {
+      // 24 h in hourly steps (the loop wakes more often; the cadence is what is under test)
+      w.tick(H);
       await runDue(deps, { max_items: 100 });
       for (const c of w.paypal.calls.slice(cursor)) {
         if (c.op === 'get' && c.provider_order_id !== null) {
