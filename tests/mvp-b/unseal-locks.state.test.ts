@@ -456,7 +456,11 @@ describe('safety:resume refuses without TTY, in CI, without an active row, with 
     };
     expect(pkg.scripts['safety:resume']).toContain('scripts/safety-cli.mjs');
     expect(pkg.scripts['safety:resume']).toMatch(/safety-cli\.mjs resume$/);
-    const cli = readFileSync(join(import.meta.dirname, '../../scripts/safety-cli.mjs'), 'utf8');
+    // BU-6: scripts/safety-cli.mjs is a launcher; the commands live in its body
+    const cli = readFileSync(
+      join(import.meta.dirname, '../../scripts/lib/safety-cli-main.mjs'),
+      'utf8',
+    );
     expect(cli).toContain("'resume'");
     expect(cli).toContain('runResume');
   });

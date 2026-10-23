@@ -1,4 +1,6 @@
 // Usage: node --import ./scripts/lib/ts-register.mjs scripts/<entry>.mjs
-import { register } from 'node:module';
+// Only for scripts that never load the sandbox config: the flag stays in process.execArgv. Scripts
+// that read the config start as a plain `node scripts/<entry>.mjs` and call registerTs() instead.
+import { registerTs } from './register-ts.mjs';
 
-register('./ts-hooks.mjs', import.meta.url);
+registerTs();

@@ -26,8 +26,13 @@ import {
 } from './scenarios';
 
 export interface ConformanceHooks {
-  /** Buyer approval. Dry-run: a state change in the model. Sandbox: the owner approves in the browser. */
-  approve(provider_order_id: ProviderOrderId): Promise<void>;
+  /**
+   * Buyer approval. Dry-run: a state change in the model (the link is ignored). Sandbox (BU-6): writes
+   * one line to stderr with the link, then polls GET order until it reads APPROVED. `approve_url` is
+   * optional only because the shared scenario helpers call approve(id); the sandbox hook then uses the
+   * link the create answer carried.
+   */
+  approve(provider_order_id: ProviderOrderId, approve_url?: string): Promise<void>;
   /** Dry-run only: choose the scripted scenario for the calls that follow. A no-op elsewhere. */
   scenario(name: string): void;
   /**
@@ -105,8 +110,8 @@ export function describePayPalConformance(s: ConformanceSubject): void {
     // FACT F-STATUS: order_status enum includes APPROVED once the payer approved.
     it('P4 read after approve gives APPROVED', async () => {
       const { port, hooks } = await s.make();
-      const { id } = await create(port, s.orderRequest());
-      await hooks.approve(id);
+      const { id, approveUrl } = await create(port, s.orderRequest());
+      await hooks.approve(id, approveUrl);
       expect((await read(port, id)).status).toBe('APPROVED');
     });
 
@@ -189,10 +194,10 @@ export function describePayPalConformance(s: ConformanceSubject): void {
       expect(['dryrun', 'sandbox']).toContain(port.environment);
       const req = s.orderRequest();
       CreateOrderResSchema.parse(await port.createOrder(req));
-      const { id } = await create(port, req);
+      const { id, approveUrl } = await create(port, req);
       OrderReadSchema.parse(await port.getOrder(id));
       OrderReadSchema.parse(await port.getOrder(NOT_FOUND_ID));
-      await hooks.approve(id);
+      await hooks.approve(id, approveUrl);
       const c = await claim(port, id, captureKey(req));
       for (const u of c.units) {
         if (u.capture_id !== null) await readCapture(port, u.capture_id);
@@ -213,12 +218,12 @@ export function describePayPalConformance(s: ConformanceSubject): void {
           amount: { ...u.amount, minor: minors[i % minors.length] ?? 1 },
         })),
       };
-      const { id } = await create(port, req);
+      const { id, approveUrl } = await create(port, req);
       const o = await read(port, id);
       for (const sent of req.units) {
         expect(unitOf(o.units, sent.reference_id).amount).toEqual(sent.amount);
       }
-      await hooks.approve(id);
+      await hooks.approve(id, approveUrl);
       const c = await claim(port, id, captureKey(req));
       for (const sent of req.units) {
         const cap = unitOf(c.units, sent.reference_id).capture_id;
@@ -233,10 +238,10 @@ export function describePayPalConformance(s: ConformanceSubject): void {
       const { port, hooks } = await s.make();
       const req = s.orderRequest();
       const want = req.units[0]?.amount.currency;
-      const { id } = await create(port, req);
+      const { id, approveUrl } = await create(port, req);
       for (const phase of ['created', 'captured']) {
         if (phase === 'captured') {
-          await hooks.approve(id);
+          await hooks.approve(id, approveUrl);
           await claim(port, id, captureKey(req));
         }
         const o = await read(port, id);

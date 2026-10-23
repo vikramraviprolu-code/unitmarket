@@ -5,12 +5,28 @@
 // UMS_SANDBOX_TESTS=1 with real values; the environment of each child is built by hand and never
 // inherits the caller's.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { REPO_ROOT } from './test-helpers';
+import { ENV_NAMES } from '../packages/config/src/schema';
 import { CI_MARKERS, AI_MARKERS, runSandboxConformance } from './sandbox-conformance.mjs';
+
+// UMS_OWN_MERCHANT_ID is read by packages/config from BU-7 on (D-028). Until that lane is merged the
+// config does not know the name, the subject has no payee, and the run stops before its first call
+// with a different reason. Both are a STOP with no Wire call; once BU-7 is in, the closed lock
+// (no approval row, switch off) is what stops it.
+const CONFIG_KNOWS_OWN_ID = (ENV_NAMES as readonly string[]).includes('UMS_OWN_MERCHANT_ID');
+const STOP_REASON = CONFIG_KNOWS_OWN_ID ? /kill_switch/ : /UMS_OWN_MERCHANT_ID is not set/;
 
 const SCRIPT = join(REPO_ROOT, 'scripts', 'sandbox-conformance.mjs');
 const tmps: string[] = [];
@@ -53,7 +69,11 @@ describe('refusals (nothing is loaded, no database is opened, no call is made)',
     ['the flag is 0', { env: { UMS_SANDBOX_TESTS: '0' } }, 'flag_missing'],
     ['the flag is true, not 1', { env: { UMS_SANDBOX_TESTS: 'true' } }, 'flag_missing'],
     ['the flag is " 1"', { env: { UMS_SANDBOX_TESTS: ' 1' } }, 'flag_missing'],
-    ['the output folder would sit inside the repository', { homedir: join(REPO_ROOT, 'x') }, 'output_in_repo'],
+    [
+      'the output folder would sit inside the repository',
+      { homedir: join(REPO_ROOT, 'x') },
+      'output_in_repo',
+    ],
   ];
   it.each(cases)('%s', async (_n, o, code) => {
     const r = refusalRig(o);
@@ -135,7 +155,11 @@ function driver(dir: string): string {
   return p;
 }
 
-function plainRun(extraEnv: Record<string, string> = {}, flags: string[] = [], args: string[] = []) {
+function plainRun(
+  extraEnv: Record<string, string> = {},
+  flags: string[] = [],
+  args: string[] = [],
+) {
   const dir = mkdtempSync(join(tmpdir(), 'sbx-conf-'));
   tmps.push(dir);
   const home = join(dir, 'home');
@@ -176,7 +200,7 @@ describe('a real run with a fake config and no approval row', () => {
   });
   it('stops at the first call with the blocked reason and a non-zero exit', () => {
     expect(run.r.status).toBe(1);
-    expect(run.out).toMatch(/blocked.*kill_switch|kill_switch/);
+    expect(run.out).toMatch(STOP_REASON);
     expect(run.out).toContain('payee echo: STOP');
   });
   it('writes summary.md and calls.json under the home folder, and names the folder', () => {
@@ -187,7 +211,7 @@ describe('a real run with a fake config and no approval row', () => {
     expect(readdirSync(folder).sort()).toEqual(['calls.json', 'summary.md']);
     expect(run.out).toContain(folder);
     const md = readFileSync(join(folder, 'summary.md'), 'utf8');
-    expect(md).toContain('kill_switch');
+    expect(md).toMatch(STOP_REASON);
     expect(md).toMatch(/FAIL/);
   });
   it('prints and writes no credential and no secret', () => {

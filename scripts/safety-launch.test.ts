@@ -50,17 +50,24 @@ function nodeArgs(script: string, rest: string[]): string[] {
 }
 
 describe('the package.json operator scripts', () => {
-  it.each(OPERATOR)('%s is a plain node command: no preload, loader, conditions or NODE_OPTIONS', (name) => {
-    const cmd = pkg.scripts[name] as string;
-    expect(cmd).toMatch(/^node\b/);
-    expect(cmd).toContain('scripts/safety-cli.mjs');
-    expect(cmd).not.toMatch(/--import|--require|\s-r\s|--loader|--conditions|NODE_OPTIONS|ts-register/);
-  });
+  it.each(OPERATOR)(
+    '%s is a plain node command: no preload, loader, conditions or NODE_OPTIONS',
+    (name) => {
+      const cmd = pkg.scripts[name] as string;
+      expect(cmd).toMatch(/^node\b/);
+      expect(cmd).toContain('scripts/safety-cli.mjs');
+      expect(cmd).not.toMatch(
+        /--import|--require|\s-r\s|--loader|--conditions|NODE_OPTIONS|ts-register/,
+      );
+    },
+  );
   it('owner:secrets and sandbox:conformance follow the same rule', () => {
     for (const name of ['owner:secrets', 'sandbox:conformance']) {
       const cmd = pkg.scripts[name] as string;
       expect(cmd, name).toMatch(/^node\b/);
-      expect(cmd, name).not.toMatch(/--import|--require|--loader|--conditions|NODE_OPTIONS|ts-register/);
+      expect(cmd, name).not.toMatch(
+        /--import|--require|--loader|--conditions|NODE_OPTIONS|ts-register/,
+      );
     }
   });
 });
@@ -68,10 +75,9 @@ describe('the package.json operator scripts', () => {
 describe('the status command against a fake sandbox config', () => {
   const dir = mkdtempSync(join(tmpdir(), 'sbx-launch-'));
   tmps.push(dir);
-  const args = nodeArgs(
-    pkg.scripts['safety:status'] as string,
-    [],
-  ).map((a) => (a.startsWith('--env-file') ? '--env-file-if-exists=/nonexistent/.env.local' : a));
+  const args = nodeArgs(pkg.scripts['safety:status'] as string, []).map((a) =>
+    a.startsWith('--env-file') ? '--env-file-if-exists=/nonexistent/.env.local' : a,
+  );
   const r = spawnSync(process.execPath, args, {
     cwd: REPO_ROOT,
     encoding: 'utf8',
@@ -128,7 +134,12 @@ describe('the in-process helper keeps process.execArgv free of the flagged optio
     tmps.push(dir);
     const r = spawnSync(
       process.execPath,
-      ['--import', join(REPO_ROOT, 'scripts/lib/ts-register.mjs'), join(REPO_ROOT, 'scripts/safety-cli.mjs'), 'status'],
+      [
+        '--import',
+        join(REPO_ROOT, 'scripts/lib/ts-register.mjs'),
+        join(REPO_ROOT, 'scripts/safety-cli.mjs'),
+        'status',
+      ],
       { cwd: REPO_ROOT, encoding: 'utf8', timeout: 120_000, env: sandboxEnv(dir) },
     );
     expect(`${r.stdout}${r.stderr}`).toContain('transport_env_override');

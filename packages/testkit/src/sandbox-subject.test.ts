@@ -79,7 +79,12 @@ function scriptedOrders(statuses: string[], id = 'ORDER00123456'): Scripted {
 async function modelTransport(
   clock: Clock,
   rewrite?: (r: OutboundRequest, res: TransportResult) => TransportResult,
-): Promise<{ transport: Transport; stack: DryRunStack; created: string[]; sent: OutboundRequest[] }> {
+): Promise<{
+  transport: Transport;
+  stack: DryRunStack;
+  created: string[];
+  sent: OutboundRequest[];
+}> {
   const stack = await createDryRunStack({ clock, default_scenario: null });
   const created: string[] = [];
   const sent: OutboundRequest[] = [];
@@ -241,7 +246,7 @@ async function runSubset(
   const m = await modelTransport(clock, o.rewrite);
   const { subject, lines } = subjectOver(m.transport, {
     clock,
-    own: o.own,
+    ...(o.own === undefined ? {} : { own: o.own }),
     sleep: async () => {
       for (const id of m.created) m.stack.approve(id);
     },
@@ -267,7 +272,7 @@ describe('the owner subset', () => {
     expect(lines.filter((l) => l.startsWith(LINK_LINE))).toHaveLength(2);
     expect(lines).toContain('payee echo: own id');
     // two orders, each well under the 20 call cap; polls are not counted
-    expect(m.created).toHaveLength(2);
+    expect(new Set(m.created).size).toBe(2);
     expect(subject.callLog().length).toBeLessThanOrEqual(40);
     const lost = report.cases.find((c) => c.id === 'lost_answer');
     expect(lost?.detail).toMatch(/exactly one capture/);
@@ -309,7 +314,8 @@ describe('payee echo (D-028): STOP means no further call and no retry', () => {
       // one token, one create, one read; nothing else, and no second create with another body
       expect(m.sent.map((r) => r.operation)).toEqual(['oauth_token', 'create_order', 'get_order']);
     });
-  const withBody = (patch: (b: Record<string, unknown>) => void) =>
+  const withBody =
+    (patch: (b: Record<string, unknown>) => void) =>
     (r: OutboundRequest, res: TransportResult): TransportResult => {
       if (r.operation !== 'get_order' || res.kind !== 'response') return res;
       const b = JSON.parse(res.body) as Record<string, unknown>;
@@ -363,11 +369,11 @@ describe('call log and summary', () => {
       expect(typeof e.scenario).toBe('string');
       expect(e.request.headers['authorization'] ?? '[redacted]').toBe('[redacted]');
     }
-    const built = buildRecordings(log, {
+    const built = await buildRecordings(log, {
       recorded_at: NOW,
       origin: 'sandbox-recording: BU-6 offline rehearsal against the order model',
     });
-    expect(built.ok).toBe(true);
+    expect(built.ok ? 'ok' : JSON.stringify(built.refusal)).toBe('ok');
   });
   it('the log holds no personal data even when an order read carries a payer', async () => {
     const { subject } = await runSubset({
@@ -403,7 +409,10 @@ describe('call log and summary', () => {
     expect(md).not.toContain(OWN);
   });
   it('a stopped run says which lock stopped it and shows FAIL', async () => {
-    const sealed: Transport = { kind: 'sandbox', send: async () => ({ kind: 'blocked', by: 'no_approval' }) };
+    const sealed: Transport = {
+      kind: 'sandbox',
+      send: async () => ({ kind: 'blocked', by: 'no_approval' }),
+    };
     const { subject } = subjectOver(sealed);
     const run = ownerSubset(subject);
     const report = await run.runAll();

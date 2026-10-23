@@ -23,7 +23,9 @@ import type { Rig, RigOptions } from './unseal-support';
 vi.mock('server-only', () => ({}));
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
-const enabled = import.meta.env.UMS_SANDBOX_TESTS === '1';
+// Vitest mirrors the environment into import.meta.env; only packages/config reads process.env (S3).
+const viteEnv = (import.meta as { env?: Record<string, string | undefined> }).env;
+const enabled = viteEnv?.['UMS_SANDBOX_TESTS'] === '1';
 const OWN = 'SBXOWNMERCH01';
 
 // ---- the owner part: skipped unless the flag is set; never builds anything here ----
@@ -152,7 +154,8 @@ describe('rehearsal through the real five locks (fake Wire, order model)', () =>
     ]);
     expect(r.lines).toContain('payee echo: own id');
     expect(r.m.seen.length).toBeGreaterThanOrEqual(12);
-    for (const w of r.m.seen) expect(new URL(w.url).origin).toBe('https://api-m.sandbox.paypal.com');
+    for (const w of r.m.seen)
+      expect(new URL(w.url).origin).toBe('https://api-m.sandbox.paypal.com');
     expect(await r.rig.reservations()).toBeGreaterThan(0);
   });
   const locks: [string, RigOptions, string][] = [
@@ -163,12 +166,15 @@ describe('rehearsal through the real five locks (fake Wire, order model)', () =>
     ['L4 kill switch off', { switch_on: false }, 'kill_switch'],
     ['L5 no credentials', { credentials: false }, 'egress'],
   ];
-  it.each(locks)('%s: the suite stops at the first call with %s and 0 Wire calls', async (_n, o, by) => {
-    const r = await rehearse(o);
-    expect(r.report.stopped?.code).toBe(by);
-    expect(r.m.seen).toHaveLength(0);
-    expect(await r.rig.reservations()).toBe(0);
-    expect(r.report.cases.every((c) => !c.pass)).toBe(true);
-    expect(r.lines).toContain('payee echo: STOP');
-  });
+  it.each(locks)(
+    '%s: the suite stops at the first call with %s and 0 Wire calls',
+    async (_n, o, by) => {
+      const r = await rehearse(o);
+      expect(r.report.stopped?.code).toBe(by);
+      expect(r.m.seen).toHaveLength(0);
+      expect(await r.rig.reservations()).toBe(0);
+      expect(r.report.cases.every((c) => !c.pass)).toBe(true);
+      expect(r.lines).toContain('payee echo: STOP');
+    },
+  );
 });

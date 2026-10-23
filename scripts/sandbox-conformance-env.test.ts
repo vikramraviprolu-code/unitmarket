@@ -31,14 +31,17 @@ export const ALLOWED_ENV_NAMES = [
   'CLAUDECODE',
   'CLAUDE_CODE_REMOTE',
 ] as const;
-const FORBIDDEN_FRAGMENT = /paypal|secret|credential|password|passcode|token|approval|client|merchant|webhook|database|pglite|salt|link|session/i;
+const FORBIDDEN_FRAGMENT =
+  /paypal|secret|credential|password|passcode|token|approval|client|merchant|webhook|database|pglite|salt|link|session/i;
 
 /** Every way the source touches process.env, as strings; empty means clean. */
 export function envProblems(src: string, allowed: readonly string[]): string[] {
   const sf = ts.createSourceFile('x.mjs', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   const bad: string[] = [];
   const where = (n: ts.Node) => `line ${sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1}`;
-  const isProcessEnv = (n: ts.Node): n is ts.PropertyAccessExpression | ts.ElementAccessExpression =>
+  const isProcessEnv = (
+    n: ts.Node,
+  ): n is ts.PropertyAccessExpression | ts.ElementAccessExpression =>
     (ts.isPropertyAccessExpression(n) || ts.isElementAccessExpression(n)) &&
     ts.isIdentifier(n.expression) &&
     n.expression.text === 'process' &&
@@ -66,7 +69,8 @@ export function envProblems(src: string, allowed: readonly string[]): string[] {
       const isOtherProp = ts.isPropertyAccessExpression(p) && p.name === n && !isProcessEnv(p);
       const isKey = ts.isPropertyAssignment(p) && p.name === n;
       const isShorthand = ts.isShorthandPropertyAssignment(p);
-      const isParamName = ts.isBindingElement(p) || ts.isParameter(p) || ts.isVariableDeclaration(p);
+      const isParamName =
+        ts.isBindingElement(p) || ts.isParameter(p) || ts.isVariableDeclaration(p);
       if (!okMember && !isOtherProp && !isKey && !isShorthand && !isParamName)
         bad.push(`${where(n)}: env used outside process.env.NAME`);
       if (isParamName && ts.isBindingElement(p)) bad.push(`${where(n)}: env destructured`);
@@ -77,8 +81,22 @@ export function envProblems(src: string, allowed: readonly string[]): string[] {
         ts.isPropertyAccessExpression(p) && p.expression === n && !ts.isCallExpression(p.parent);
       if (!named) bad.push(`${where(n)}: process.env used other than process.env.NAME`);
       else if (!allowed.includes((p as ts.PropertyAccessExpression).name.text))
-        bad.push(`${where(n)}: process.env.${(p as ts.PropertyAccessExpression).name.text} not allowed`);
+        bad.push(
+          `${where(n)}: process.env.${(p as ts.PropertyAccessExpression).name.text} not allowed`,
+        );
       if (ts.isElementAccessExpression(n)) bad.push(`${where(n)}: process['env']`);
+      // a read only: no delete, no assignment, no increment of process.env.NAME
+      const target = ts.isPropertyAccessExpression(p) ? p.parent : n.parent;
+      if (
+        ts.isDeleteExpression(target) ||
+        (ts.isBinaryExpression(target) &&
+          target.left === p &&
+          target.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+          target.operatorToken.kind <= ts.SyntaxKind.LastAssignment) ||
+        ts.isPrefixUnaryExpression(target) ||
+        ts.isPostfixUnaryExpression(target)
+      )
+        bad.push(`${where(n)}: process.env written or deleted`);
     }
     if (
       ts.isStringLiteralLike(n) &&
@@ -87,6 +105,17 @@ export function envProblems(src: string, allowed: readonly string[]): string[] {
     )
       bad.push(`${where(n)}: process imported`);
     if (ts.isIdentifier(n) && n.text === 'globalThis') bad.push(`${where(n)}: globalThis`);
+    // The lint exemption switches off sbx/no-global-alias for this file, and that rule is what bars
+    // time and randomness (the clock is injected). This pin takes over for those names.
+    if (ts.isIdentifier(n) && ['Date', 'performance', 'crypto'].includes(n.text))
+      bad.push(`${where(n)}: ${n.text} (inject the clock; no randomness here)`);
+    if (
+      ts.isPropertyAccessExpression(n) &&
+      ts.isIdentifier(n.expression) &&
+      n.expression.text === 'Math' &&
+      n.name.text === 'random'
+    )
+      bad.push(`${where(n)}: Math.random`);
     ts.forEachChild(n, visit);
   };
   visit(sf);
@@ -127,10 +156,17 @@ describe('the pin catches every other form (mutation checks on the pin itself)',
     ['a bare process.env', 'foo(process.env);'],
     ['an in test', 'const a = "CI" in process.env;'],
     ['a delete', 'delete process.env.CI;'],
+    ['an assignment', 'process.env.CI = "1";'],
+    ['a compound assignment', 'process.env.CI += "1";'],
     ['globalThis.process', 'const a = globalThis.process.env.CI;'],
     ['import of node:process', 'import { env } from "node:process";'],
     ['default import of node:process', 'import p from "node:process";'],
     ['dynamic import of process', 'const p = await import("node:process");'],
+    ['Math.random', 'const a = Math.random();'],
+    ['Date.now', 'const a = Date.now();'],
+    ['new Date', 'const a = new Date();'],
+    ['performance.now', 'const a = performance.now();'],
+    ['crypto', 'const a = crypto.getRandomValues(new Uint8Array(1));'],
     ['a computed member of process', 'const a = process["en" + "v"].CI;'],
   ])('flags %s', (_n, code) => {
     expect(bad(code).length).toBeGreaterThan(0);
@@ -138,7 +174,10 @@ describe('the pin catches every other form (mutation checks on the pin itself)',
   it.each([
     ['an allowed name', 'const a = process.env.CI;'],
     ['the flag', 'const a = process.env.UMS_SANDBOX_TESTS === "1";'],
-    ['other process members', 'const a = process.argv.slice(2); const b = process.stdin.isTTY; process.exit(1);'],
+    [
+      'other process members',
+      'const a = process.argv.slice(2); const b = process.stdin.isTTY; process.exit(1);',
+    ],
     ['an env key in an object literal', 'const o = { env: { CI: process.env.CI } };'],
   ])('accepts %s', (_n, code) => {
     expect(bad(code)).toEqual([]);

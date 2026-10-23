@@ -107,20 +107,23 @@ describe('each lock missing stops the suite at the first call', () => {
     ['L5 credentials or Wire not clean', 'egress'],
     ['budget spent', 'budget'],
   ];
-  it.each(locks)('%s: reason %s, one transport call, 0 Wire calls, nothing after', async (_n, by) => {
-    const s = sealed(by);
-    const { subject } = subjectOver(s.transport);
-    const run = ownerSubset(subject);
-    const report = await run.runAll();
-    expect(report.stopped?.code).toBe(by);
-    expect(subject.stopped()?.code).toBe(by);
-    expect(s.sent).toHaveLength(1);
-    expect(s.sent[0]?.operation).toBe('oauth_token');
-    expect(s.wire).toHaveLength(0);
-    expect(report.cases.every((c) => !c.pass)).toBe(true);
-    expect(report.cases[0]?.detail).toContain(by);
-    expect(report.payee_echo).toBe('STOP');
-  });
+  it.each(locks)(
+    '%s: reason %s, one transport call, 0 Wire calls, nothing after',
+    async (_n, by) => {
+      const s = sealed(by);
+      const { subject } = subjectOver(s.transport);
+      const run = ownerSubset(subject);
+      const report = await run.runAll();
+      expect(report.stopped?.code).toBe(by);
+      expect(subject.stopped()?.code).toBe(by);
+      expect(s.sent).toHaveLength(1);
+      expect(s.sent[0]?.operation).toBe('oauth_token');
+      expect(s.wire).toHaveLength(0);
+      expect(report.cases.every((c) => !c.pass)).toBe(true);
+      expect(report.cases[0]?.detail).toContain(by);
+      expect(report.payee_echo).toBe('STOP');
+    },
+  );
   it('a later call on the same subject is answered blocked without reaching the transport', async () => {
     const s = sealed('kill_switch');
     const { subject } = subjectOver(s.transport);
@@ -214,7 +217,9 @@ describe('the caps of the subject', () => {
       headers: { 'content-type': 'application/json', 'paypal-request-id': 'umsC-lie-1' },
       body: JSON.stringify({
         intent: 'CAPTURE',
-        purchase_units: [{ reference_id: 'unit-1', amount: { currency_code: 'USD', value: '25.00' } }],
+        purchase_units: [
+          { reference_id: 'unit-1', amount: { currency_code: 'USD', value: '25.00' } },
+        ],
       }),
       order_ref: null,
       amount_minor: 100,
@@ -235,7 +240,9 @@ describe('the caps of the subject', () => {
       headers: { 'content-type': 'application/json', 'paypal-request-id': 'umsC-eur-1' },
       body: JSON.stringify({
         intent: 'CAPTURE',
-        purchase_units: [{ reference_id: 'unit-1', amount: { currency_code: 'EUR', value: '1.00' } }],
+        purchase_units: [
+          { reference_id: 'unit-1', amount: { currency_code: 'EUR', value: '1.00' } },
+        ],
       }),
       order_ref: null,
       amount_minor: 100,

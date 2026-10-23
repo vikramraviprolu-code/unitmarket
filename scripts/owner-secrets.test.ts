@@ -43,7 +43,10 @@ describe('owner:secrets', () => {
     const r = rig();
     const res = await runOwnerSecrets(r.deps);
     expect(res).toEqual({ ok: true });
-    const lines = r.out.join('\n').split('\n').filter((l) => /^[A-Z_]+=/.test(l));
+    const lines = r.out
+      .join('\n')
+      .split('\n')
+      .filter((l) => /^[A-Z_]+=/.test(l));
     expect(lines.map((l) => l.split('=')[0])).toEqual(NAMES);
   });
   it('the three secrets are 32 random bytes each, distinct, strong enough for the config', async () => {

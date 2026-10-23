@@ -2,8 +2,8 @@
 // stateful flows, a small PayPal order model; the adapter on top; and testDeps(), which wires the
 // whole dependency bundle with a fake clock, seeded ids and a migrated database.
 //
-// Nothing here opens a socket or reads the environment, except sandboxSubject(), which reads it
-// through @umsbx/config and only when the owner runs the sandbox suite.
+// Nothing here opens a socket or reads the environment. The owner-run sandbox subject lives in
+// sandbox-subject.ts (BU-6).
 //
 // Two answer sources, one transport:
 //  - fixtures: a request whose scenario is one of the fixture scenarios (fixtures/paypal) is
@@ -17,13 +17,8 @@ import { createAuditSink, createLogger } from '@umsbx/obs';
 import { createScriptedModel } from '@umsbx/model';
 import { createPayPalAdapter } from '@umsbx/paypal';
 import { createSwitchReader } from '@umsbx/safety';
-import {
-  createSandboxTransport,
-  createDryRunTransport,
-  guard,
-  loadFixtures,
-} from '@umsbx/transport';
-import { loadConfigFromProcess, makeSecret } from '@umsbx/config';
+import { createDryRunTransport, guard, loadFixtures } from '@umsbx/transport';
+import { makeSecret } from '@umsbx/config';
 import { DomainConfigSchema } from '@umsbx/contracts';
 import type {
   Clock,
@@ -428,80 +423,6 @@ export function dryRunSubject(): ConformanceSubject {
     orderRequest() {
       n += 1;
       return createReqFor(null, `SBX${String(n).padStart(4, '0')}`);
-    },
-  };
-}
-
-/**
- * The sandbox subject. Built lazily and only when the owner runs the suite (UMS_SANDBOX_TESTS=1):
- * every gate is read from @umsbx/config (mode sandbox, connect on, an outbound approval ref and
- * sandbox credentials), and a missing gate throws. MVP-A ships it unused: the sandbox transport is
- * a sealed stub until lane B-L1. Buyer approval is done by the owner in the browser; the hook waits
- * for the order to read APPROVED.
- */
-export function sandboxSubject(
-  /**
-   * B-L1: an approved sandbox transport the caller already built. Omitted (as composition does in
-   * this branch), the subject keeps the sealed transport and every call is blocked. This file does
-   * not import the approved factory (FIX-MVPB-SEAL2 H1): the caller builds the transport with a
-   * capability from `@umsbx/safety` createScopedGate and an explicit Wire, so a test cannot fall
-   * back to the production Wire by leaving it out.
-   */
-  approved?: { transport: Transport },
-): ConformanceSubject {
-  let n = 0;
-  return {
-    name: 'sandbox',
-    async make() {
-      const cfg = loadConfigFromProcess();
-      if (!cfg.ok) throw new Error(`sandbox suite refused: ${cfg.error.code}`);
-      const c = cfg.value;
-      if (
-        c.mode !== 'sandbox' ||
-        !c.connect ||
-        c.outbound_approval_ref === null ||
-        c.paypal === null
-      ) {
-        throw new Error(
-          'sandbox suite refused: mode, connect, approval ref and credentials needed',
-        );
-      }
-      const clock: Clock = { now: () => new Date(Date.parse(T0)) };
-      const urls: string[] = [];
-      const inner: Transport =
-        approved === undefined ? createSandboxTransport() : approved.transport;
-      const transport: Transport = {
-        kind: inner.kind,
-        send: async (r) => {
-          const g = guard(r, 'sandbox');
-          if (g.ok) urls.push(g.url.href);
-          return inner.send(r);
-        },
-      };
-      const port = createPayPalAdapter({
-        transport,
-        clock,
-        log: quietLog,
-        credentials: { client_id: c.paypal.client_id, client_secret: c.paypal.client_secret },
-        record: async () => undefined,
-      });
-      const hooks: ConformanceHooks = {
-        approve: async (id) => {
-          for (let i = 0; i < 120; i += 1) {
-            const o = await port.getOrder(id);
-            if (o.kind === 'order' && o.status === 'APPROVED') return;
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-          }
-          throw new Error('owner did not approve the order in time');
-        },
-        scenario: () => undefined,
-        sentUrls: () => [...urls],
-      };
-      return { port, hooks };
-    },
-    orderRequest() {
-      n += 1;
-      return createReqFor(null, `SBXLIVE${String(n).padStart(3, '0')}`);
     },
   };
 }

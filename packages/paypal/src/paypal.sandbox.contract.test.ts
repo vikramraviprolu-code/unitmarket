@@ -10,16 +10,13 @@ const viteEnv = (import.meta as { env?: Record<string, string | undefined> }).en
 const enabled = viteEnv?.['UMS_SANDBOX_TESTS'] === '1';
 
 describe('PayPal sandbox contract guard', () => {
-  it.skipIf(enabled)(
-    'without UMS_SANDBOX_TESTS=1 nothing is built and no socket opens',
-    () => {
-      const fetchSpy = vi.spyOn(globalThis, 'fetch');
-      expect(fetchSpy).not.toHaveBeenCalled();
-      const open = process
-        .getActiveResourcesInfo()
-        .filter((r) => r === 'TCPSocketWrap' || r === 'TCPConnectWrap' || r === 'TLSWrap');
-      expect(open).toEqual([]);
-      fetchSpy.mockRestore();
-    },
-  );
+  it.skipIf(enabled)('without UMS_SANDBOX_TESTS=1 nothing is built and no socket opens', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const open = process
+      .getActiveResourcesInfo()
+      .filter((r) => r === 'TCPSocketWrap' || r === 'TCPConnectWrap' || r === 'TLSWrap');
+    expect(open).toEqual([]);
+    fetchSpy.mockRestore();
+  });
 });
