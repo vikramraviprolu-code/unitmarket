@@ -4,7 +4,9 @@
 // to wake and calls `runDue` to do what is due. Every unknown operation is read first, polled on
 // the backoff schedule (30 s, 2 min, 10 min, 1 h, 1 h ...) until its 24 h window ends, then closed
 // with one alert for a human; money is never failed by absence and never charged again. Abandoned
-// checkouts (P17) and the hourly re-read of paid orders for 7 days run from the same pass.
+// checkouts (P17) and the re-read of paid orders for 7 days (hourly; `reread_paid_every_ms` slows
+// it in sandbox mode, BU-5) run from the same pass. A pass can be limited to the money work
+// (`allow: 'money_only'`) when the job loop has spent its polling allowance of the day's calls.
 import { applyMoneyEvent } from '@umsbx/entitlements';
 import type {
   DomainConfig,
@@ -46,11 +48,21 @@ export function nextPollAt(
   }
 }
 
-// Paid orders watched for 7 days: next re-read an hour after the last one (the readback operation's
-// updated_at is the marker) or after the capture was verified.
-const PAID_WATCH = `
-  SELECT o.id, v.verified_at,
-         GREATEST(COALESCE(m.last_at, v.verified_at), v.verified_at) + interval '1 hour' AS next_at
+// Paid orders watched for 7 days: next re-read `every` after the last one (the readback operation's
+// updated_at is the marker) or after the capture was verified. `every` is a whole number of
+// milliseconds built by `rereadMs`, never text from outside.
+const DEFAULT_REREAD_MS = 3_600_000;
+const MAX_REREAD_MS = 86_400_000;
+const rereadMs = (c: { reread_paid_every_ms?: number | undefined }): number => {
+  const v = c.reread_paid_every_ms;
+  // Above 24 h would end the 7 day watch; such a value is a mistake, so the cadence stays hourly.
+  return typeof v === 'number' && Number.isSafeInteger(v) && v > 0 && v <= MAX_REREAD_MS
+    ? v
+    : DEFAULT_REREAD_MS;
+};
+const paidWatch = (every: number): string => `
+  SELECT o.id, v.verified_at, m.last_at,
+         GREATEST(COALESCE(m.last_at, v.verified_at), v.verified_at) + interval '${every} milliseconds' AS next_at
     FROM orders o
     JOIN LATERAL (SELECT max(u.captured_verified_at) AS verified_at FROM order_units u WHERE u.order_id = o.id) v
       ON v.verified_at IS NOT NULL
@@ -64,7 +76,8 @@ const NOT_SENT = `NOT EXISTS (SELECT 1 FROM operations p WHERE p.order_id = o.id
 
 export async function nextDueAt(
   db: SqlExecutor,
-  config: Pick<DomainConfig, 'abandoned_checkout_ms'> = { abandoned_checkout_ms: 86_400_000 },
+  config: Pick<DomainConfig, 'abandoned_checkout_ms'> &
+    Partial<Pick<DomainConfig, 'reread_paid_every_ms'>> = { abandoned_checkout_ms: 86_400_000 },
 ): Promise<IsoUtc | null> {
   const found = await db.query<Record<string, unknown>>(
     `SELECT
@@ -72,7 +85,7 @@ export async function nextDueAt(
        (SELECT min(lease_until) FROM operations WHERE state = 'sent') AS lease_at,
        (SELECT min(o.created_at) FROM orders o WHERE o.status = 'awaiting_buyer'
            OR (o.status = 'created' AND ${NOT_SENT})) AS waiting_at,
-       (SELECT min(w.next_at) FROM (${PAID_WATCH}) w
+       (SELECT min(w.next_at) FROM (${paidWatch(rereadMs(config))}) w
          WHERE w.next_at < w.verified_at + interval '7 days') AS reread_at`,
   );
   const row = found.rows[0] ?? {};
@@ -179,17 +192,43 @@ async function sweepStale(d: PaymentsDeps): Promise<void> {
 
 type Counts = { processed: number; still_unknown: number; expired: number; abandoned: number };
 
-export async function runDue(d: PaymentsDeps, i: { max_items: number }): Promise<Counts> {
+// The kinds of operation that decide whether money arrived: reading a capture and the read-back.
+const MONEY_KINDS = "('capture', 'readback')";
+// What a money_only pass may also pick up: work that closes without sending again. A create whose
+// order moved on, or whose 5 h key ran out, is closed with no call; a refund that was sent and whose
+// 24 h window ended is closed after one read of the order and never sent again. A put-off refund
+// (never sent: no first_sent_at) is not touched: closing it would send it.
+const MONEY_OR_CALL_FREE = `(kind IN ${MONEY_KINDS}
+          OR (kind = 'create' AND ((idem_safe_until IS NOT NULL AND idem_safe_until <= $1)
+                OR EXISTS (SELECT 1 FROM orders o WHERE o.id = operations.order_id AND o.status <> 'created')))
+          OR (kind = 'refund_readback' AND reconcile_until IS NOT NULL AND reconcile_until <= $1)
+          OR (kind = 'refund' AND first_sent_at IS NOT NULL AND reconcile_until IS NOT NULL AND reconcile_until <= $1))`;
+
+/**
+ * One pass of due work, at most `max_items` items. `allow: 'money_only'` (the job loop's polling
+ * allowance is spent) runs unknown capture and read-back operations, plus the closings that need
+ * no resend (a create past its key window or whose order moved on, a refund past its 24 h window);
+ * no abandonment, no paid re-read, no resend. Any value but 'all' is read as money_only. Within a pass the order
+ * is: capture and read-back unknowns, creates, refunds, abandonment, paid re-reads last.
+ */
+export async function runDue(
+  d: PaymentsDeps,
+  i: { max_items: number; allow?: 'all' | 'money_only' },
+): Promise<Counts> {
   const out: Counts = { processed: 0, still_unknown: 0, expired: 0, abandoned: 0 };
   if (!Number.isInteger(i.max_items) || i.max_items <= 0) return out;
+  const moneyOnly = i.allow !== undefined && i.allow !== 'all';
   // Outside any transaction: the port may use the database itself.
   if (!(await d.switches.isOn('paypal_outbound'))) return out;
-  await sweepStale(d);
+  await sweepStale(d); // no provider call: a dead process's work becomes unknown, in every mode
 
   let budget = i.max_items;
   const at = nowIso(d);
   const rows = await d.db.query<Record<string, unknown>>(
-    `SELECT * FROM operations WHERE state = 'unknown' AND next_retry_at <= $1 ORDER BY next_retry_at, id LIMIT $2`,
+    `SELECT * FROM operations WHERE state = 'unknown' AND next_retry_at <= $1
+        ${moneyOnly ? `AND ${MONEY_OR_CALL_FREE}` : ''}
+      ORDER BY CASE WHEN kind IN ${MONEY_KINDS} THEN 0 WHEN kind = 'create' THEN 1 ELSE 2 END,
+               next_retry_at, id LIMIT $2`,
     [at, i.max_items * 2],
   );
   // One item per order for reads (one read serves the capture and the read-back operation), one per
@@ -230,6 +269,7 @@ export async function runDue(d: PaymentsDeps, i: { max_items: number }): Promise
     }
   }
 
+  if (moneyOnly) return out;
   budget = await sweepAbandoned(d, budget, out);
   await rereadPaid(d, budget, out);
   return out;
@@ -598,32 +638,64 @@ async function takeOver(d: PaymentsDeps, order: OrderRow): Promise<'handled' | '
 }
 
 // ---------------------------------------------------------------------------------------------
-// hourly re-read of paid orders for 7 days (catches refunds made at the PayPal dashboard)
+// re-read of paid orders for 7 days (catches refunds made at the PayPal dashboard); hourly, or
+// every `reread_paid_every_ms`
 
 async function rereadPaid(d: PaymentsDeps, budget: number, out: Counts): Promise<void> {
   if (budget <= 0) return;
+  const every = rereadMs(d.config);
   const at = nowIso(d);
   const due = await d.db.query<{ id: string }>(
-    `SELECT w.id FROM (${PAID_WATCH}) w
+    `SELECT w.id FROM (${paidWatch(every)}) w
       WHERE w.next_at <= $1 AND $1 < w.verified_at + interval '7 days'
       ORDER BY w.next_at, w.id LIMIT $2`,
-    [at, budget],
+    [at, budget * 2], // spare candidates: another pass may claim some first
   );
+  let done = 0;
   for (const { id } of due.rows) {
-    const order = await loadOrder(d.db, id);
-    if (order === null) continue;
-    const r = await readAndApply(d, order, 'poll');
-    if (r.kind === 'paused') return;
+    if (done >= budget) return;
+    // The slot is taken before the read, under the order's lock: of two passes at once one wins
+    // the order, so one due re-read costs one provider call however many loops run.
+    const claim = await claimReread(d, id, every);
+    if (claim === null) continue;
+    let r: Awaited<ReturnType<typeof readAndApply>>;
+    try {
+      r = await readAndApply(d, claim.order, 'poll');
+    } catch (e) {
+      await releaseReread(d, claim);
+      throw e;
+    }
+    if (r.kind === 'paused') {
+      await releaseReread(d, claim); // nothing was read: the re-read is still owed
+      return;
+    }
     out.processed += 1;
-    await touchWatch(d, order);
+    done += 1;
   }
 }
 
+interface RereadClaim {
+  order: OrderRow;
+  at: string;
+  /** the marker before the claim, for putting it back when nothing was read */
+  prior: string;
+}
+
 // The marker of the last re-read: a settled read-back operation whose updated_at is moved forward.
-async function touchWatch(d: PaymentsDeps, order: OrderRow): Promise<void> {
-  await d.db.transaction(async (tx) => {
+// Still due, inside the 7 days and not claimed by another pass is re-checked under the lock.
+async function claimReread(d: PaymentsDeps, id: Id, every: number): Promise<RereadClaim | null> {
+  return d.db.transaction(async (tx) => {
     const at = nowIso(d);
-    await lockOrderRows(tx, order.id);
+    const order = await lockOrderRows(tx, id);
+    if (order === null) return null;
+    const still = await tx.query<Record<string, unknown>>(
+      `SELECT w.verified_at, w.last_at FROM (${paidWatch(every)}) w
+        WHERE w.id = $1 AND w.next_at <= $2 AND $2 < w.verified_at + interval '7 days'`,
+      [id, at],
+    );
+    const row = still.rows[0];
+    if (row === undefined) return null;
+    const prior = isoOf(row['last_at']) ?? (isoOf(row['verified_at']) as string);
     const existing = await loadOperation(tx, order.id, 'readback', { lock: true });
     if (existing === null) {
       await insertOperation(tx, {
@@ -643,5 +715,14 @@ async function touchWatch(d: PaymentsDeps, order: OrderRow): Promise<void> {
         [existing.id, at],
       );
     }
+    return { order, at, prior };
   });
+}
+
+async function releaseReread(d: PaymentsDeps, claim: RereadClaim): Promise<void> {
+  await d.db.query(
+    `UPDATE operations SET updated_at = $3
+      WHERE order_id = $1 AND kind = 'readback' AND state IN ('confirmed', 'failed') AND updated_at = $2`,
+    [claim.order.id, claim.at, claim.prior],
+  );
 }
