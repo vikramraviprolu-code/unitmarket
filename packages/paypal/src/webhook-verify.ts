@@ -42,7 +42,10 @@ const REQUIRED_HEADERS: readonly string[] = [H_ID, H_TIME, H_SIG, H_CERT, H_ALGO
 const ID_RE = /^[\x21-\x7b\x7d-\x7e]{1,256}$/;
 const TIME_RE =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
-const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+// Canonical base64 (RFC 4648 section 3.5): padding only at the end, and the unused bits of the last
+// character are zero, so one byte string has one spelling ("Qg==" yes, "QR==" no; "AAE=" yes, "AAB=" no).
+const BASE64_RE =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/;
 
 const MALFORMED: WebhookVerdict = { kind: 'malformed' };
 const UNVERIFIABLE: WebhookVerdict = { kind: 'unverifiable' };
