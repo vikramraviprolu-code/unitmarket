@@ -26,7 +26,7 @@ import {
   fakeClock,
   T0,
 } from '@umsbx/testkit';
-import { FixtureFileSchema } from '@umsbx/transport';
+import { FixtureFileSchema, SANDBOX_API } from '@umsbx/transport';
 import type { FixtureFile } from '@umsbx/transport';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -265,7 +265,11 @@ describe('A-26 no_live_host_in_tree', () => {
     expect(bad).toEqual([]);
   });
 
-  it('the sandbox base URL is one constant, in the transport package', () => {
+  // D-024 (owner, 2026-10-23): the spike kit must not import workspace code, so spike.ts holds a
+  // second copy of the sandbox base URL. Exactly these two files; no other holder.
+  const HOLDERS = ['packages/transport/src/endpoints.ts', 'tools/spike-kit/src/spike.ts'];
+
+  it('the sandbox base URL is held by exactly the transport constant module and the spike kit (D-024)', () => {
     const SBX = ['api-m', 'sandbox', 'paypal', 'com'].join('.');
     const holders = allFiles
       .filter(
@@ -276,9 +280,20 @@ describe('A-26 no_live_host_in_tree', () => {
       )
       .filter((f) => readFileSync(f, 'utf8').includes(SBX))
       .map(rel);
-    expect(holders.filter((h) => !h.startsWith('scripts/'))).toEqual([
-      'packages/transport/src/endpoints.ts',
-    ]);
+    expect(holders.sort()).toEqual(HOLDERS);
+  });
+
+  it('the spike kit copy equals the transport constant, and appears once in spike.ts (D-024 parity)', () => {
+    const SBX = ['https://api-m', 'sandbox', 'paypal', 'com'].join('.');
+    const constantOf = (path: string): string | undefined =>
+      /export const SANDBOX_API = '([^']+)'/.exec(readFileSync(join(ROOT, path), 'utf8'))?.[1];
+    const transport = constantOf('packages/transport/src/endpoints.ts');
+    const spike = constantOf('tools/spike-kit/src/spike.ts');
+    expect(transport).toBe(SBX);
+    expect(spike).toBe(transport);
+    expect(SANDBOX_API).toBe(transport);
+    const text = readFileSync(join(ROOT, 'tools/spike-kit/src/spike.ts'), 'utf8');
+    expect(text.split(SBX.slice('https://'.length)).length - 1).toBe(1);
   });
 });
 
