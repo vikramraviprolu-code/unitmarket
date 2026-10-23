@@ -284,6 +284,7 @@ describe('nothing grows without bound', () => {
       fetches_in_window: 0,
       unknown_fetches_today: 0,
       trusted_urls: [],
+      trusted_fetch_records: 0,
     });
   });
 });
