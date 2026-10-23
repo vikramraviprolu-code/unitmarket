@@ -64,7 +64,7 @@ const refundOps = async (order_id: string) =>
 const unavailable = { kind: 'unavailable', retry_after_ms: null } as const;
 
 describe('executeRefund and PayPal remaining amount', () => {
-  it('dashboard refunded 3.00 of 5.00, operator asks for the rest: 2.00 is sent, not 5.00', async () => {
+  it('dashboard refunded 3.00 of 5.00, operator asks for the rest with an explicit 2.00: 2.00 is sent, not 5.00', async () => {
     const { a, unit } = await setup();
     w.dashboard(unit.capture_id, 300);
     const rq = await request(unit.id, 200); // the rest as the operator sees it: 5.00 - 3.00
@@ -84,7 +84,7 @@ describe('executeRefund and PayPal remaining amount', () => {
     expect(await alertKinds(w, a.order_id)).toEqual([]);
   });
 
-  it('a request for "the rest" made before it was known stays at the local amount and is closed, not trimmed', async () => {
+  it('a null "refund the rest" request is stored at the LOCAL remaining 5.00, so after a dashboard refund it is closed over_refund_remote, never trimmed to 2.00 (carried to CO-4)', async () => {
     // requestRefund fixes a null amount to the LOCAL remaining amount (5.00). PayPal holds 2.00.
     // The send path never sends a different amount than the stored one, so nothing is sent.
     const { a, unit } = await setup();
@@ -681,5 +681,246 @@ describe('which order is read, and the locks the check takes', () => {
     expect(await stateOf(rq)).toBe('failed');
     expect(log.some((l) => l.includes('operations'))).toBe(true);
     for (const l of log) expect(inOrder(l)).toBe(true);
+  });
+});
+
+describe('refunds in flight are subtracted, under the order lock (F1)', () => {
+  const noLanding = () => {
+    // The first refund call is lost and never reaches PayPal; later calls go through.
+    const forward = w.paypal.refundCapture.bind(w.paypal);
+    let lost = 0;
+    w.paypal.refundCapture = (r) => {
+      if (lost === 0) {
+        lost += 1;
+        w.refundCalls.push({
+          request_id: r.request_id,
+          capture_id: r.capture_id,
+          amount: r.amount,
+        });
+        return Promise.resolve({ kind: 'timeout' as const });
+      }
+      return forward(r);
+    };
+  };
+  const paypalHolds = (capture_id: string) => 500 - w.remoteRemaining(capture_id, 500);
+
+  it('two executions at once for 2.00 each when PayPal holds 2.00 of 5.00: one is sent, the other is closed', async () => {
+    const { a, unit } = await setup();
+    w.dashboard(unit.capture_id, 300);
+    const A = await request(unit.id, 200);
+    const B = await request(unit.id, 200); // the local check allows both
+    const [ra, rb] = await Promise.all([
+      executeRefund(w.deps, { refund_request_id: A }),
+      executeRefund(w.deps, { refund_request_id: B }),
+    ]);
+    expect(w.sends().map((x) => x.amount)).toEqual([usd(200)]);
+    expect(paypalHolds(unit.capture_id)).toBe(500);
+    const states = [await stateOf(A), await stateOf(B)].sort();
+    expect(states).toEqual(['completed', 'failed']);
+    expect([ra, rb].some((r) => r.ok && r.value.status === 'FAILED')).toBe(true);
+    const found = await alerts(a.order_id);
+    expect(found.map((x) => x.kind)).toEqual(['refund_unbooked']);
+    expect(found[0]?.detail.reason).toMatch(/^over_refund_remote_/);
+    expect(await reserved(unit.id)).toBe(0); // the sent one is booked, the closed one freed
+  });
+
+  it('a refund that was sent and then completed is still subtracted from a read taken before it', async () => {
+    const { a, unit } = await setup();
+    w.dashboard(unit.capture_id, 300);
+    const A = await request(unit.id, 200);
+    const B = await request(unit.id, 200);
+    // B reads the order (PayPal holds 2.00) and then stalls; A runs through, sent and booked.
+    const inner = w.paypal.getOrder.bind(w.paypal);
+    let release!: () => void;
+    let reached!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const taken = new Promise<void>((r) => (reached = r));
+    let armed = true;
+    w.paypal.getOrder = async (id, scenario) => {
+      const read = await inner(id, scenario);
+      if (armed) {
+        armed = false;
+        reached();
+        await gate;
+      }
+      return read;
+    };
+    const pB = executeRefund(w.deps, { refund_request_id: B });
+    await taken;
+    expect(await executeRefund(w.deps, { refund_request_id: A })).toEqual({
+      ok: true,
+      value: { status: 'COMPLETED' },
+    });
+    release();
+    expect(await pB).toEqual({ ok: true, value: { status: 'FAILED' } });
+    expect(w.sends().map((x) => x.amount)).toEqual([usd(200)]);
+    expect(paypalHolds(unit.capture_id)).toBe(500);
+    expect((await alerts(a.order_id)).map((x) => x.kind)).toEqual(['refund_unbooked']);
+  });
+
+  it('a refund whose answer was lost and never landed still counts: the next request is closed, then the resend lands', async () => {
+    const { a, unit } = await setup();
+    w.dashboard(unit.capture_id, 100); // PayPal holds 4.00
+    noLanding();
+    const A = await request(unit.id, 300);
+    expect((await executeRefund(w.deps, { refund_request_id: A })).ok).toBe(false);
+    expect(await stateOf(A)).toBe('unknown');
+    const B = await request(unit.id, 200); // local: 5.00 - 3.00 reserved = 2.00
+    expect(await executeRefund(w.deps, { refund_request_id: B })).toEqual({
+      ok: true,
+      value: { status: 'FAILED' },
+    });
+    expect(w.sends().map((x) => x.amount)).toEqual([usd(300)]); // only A's lost attempt
+    expect(await stateOf(B)).toBe('failed');
+    // The due pass resends A under its own key; PayPal holds 1.00 + 3.00 and nothing more.
+    w.tick(30 * SEC);
+    await runDue(w.deps, { max_items: 10 });
+    expect(w.sends().map((x) => x.amount)).toEqual([usd(300), usd(300)]);
+    expect(await stateOf(A)).toBe('completed');
+    expect(paypalHolds(unit.capture_id)).toBe(400);
+    expect((await alerts(a.order_id)).map((x) => x.kind)).toEqual(['refund_unbooked']);
+  });
+
+  it('the same lost refund leaves room for a smaller request: 1.00 still goes', async () => {
+    const { unit } = await setup();
+    w.dashboard(unit.capture_id, 100);
+    noLanding();
+    const A = await request(unit.id, 300);
+    await executeRefund(w.deps, { refund_request_id: A });
+    const B = await request(unit.id, 100); // 4.00 - 3.00 = 1.00 left, exactly
+    expect((await executeRefund(w.deps, { refund_request_id: B })).ok).toBe(true);
+    expect(w.sends().map((x) => x.amount)).toEqual([usd(300), usd(100)]);
+  });
+
+  it('a refund PayPal already lists is not subtracted twice', async () => {
+    const { unit } = await setup();
+    w.dashboard(unit.capture_id, 100);
+    const A = await request(unit.id, 300);
+    expect((await executeRefund(w.deps, { refund_request_id: A })).ok).toBe(true); // completed, listed
+    w.tick(61 * SEC);
+    const B = await request(unit.id, 100); // PayPal holds 1.00 + 3.00; 1.00 left
+    expect((await executeRefund(w.deps, { refund_request_id: B })).ok).toBe(true);
+    expect(w.sends().map((x) => x.amount)).toEqual([usd(300), usd(100)]);
+  });
+
+  it('the resend of a lost answer is not checked: the same PayPal-Request-Id makes it safe', async () => {
+    // A lands at PayPal but the answer is lost; the dashboard then refunds the rest, so PayPal
+    // holds nothing more. A check at resend time would see "0 left" and wrongly close A. The
+    // resend carries the same key, PayPal answers it from memory, and A is booked.
+    const { a, unit } = await setup();
+    w.refundNext.lose_response = true;
+    const A = await request(unit.id, 300);
+    expect((await executeRefund(w.deps, { refund_request_id: A })).ok).toBe(false);
+    w.refundNext.lose_response = false;
+    w.dashboard(unit.capture_id, 200); // 3.00 (A) + 2.00 = all of it
+    w.tick(61 * SEC);
+    w.tick(30 * SEC);
+    await runDue(w.deps, { max_items: 10 });
+    const calls = w.sends().filter((x) => x.capture_id === unit.capture_id);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.request_id).toBe(calls[0]?.request_id);
+    expect(calls[1]?.amount).toEqual(usd(300));
+    expect(await stateOf(A)).toBe('completed');
+    expect(await alerts(a.order_id)).toEqual([]);
+  });
+
+  it('a put-off send gets a fresh 24 h window from the time it is finally sent', async () => {
+    // Put off at T, sent at T+23 h, the process dies: the window is counted from the send.
+    const { a, unit } = await setup();
+    const rq = await request(unit.id, 200);
+    w.script(unavailable);
+    await executeRefund(w.deps, { refund_request_id: rq });
+    w.tick(23 * 3_600 * SEC);
+    const sentAt = w.clock.now().getTime();
+    w.paypal.refundCapture = () => Promise.reject(new Error('process died'));
+    await runDue(w.deps, { max_items: 10 }); // sends (and dies)
+    w.tick(2 * 60 * SEC); // the lease runs out
+    await runDue(w.deps, { max_items: 10 }); // the sweeper marks the sent operation unknown
+    const op = (
+      await w.rows<{ first_sent_at: Date; reconcile_until: Date; state: string }>(
+        "SELECT state, first_sent_at, reconcile_until FROM operations WHERE order_id = $1 AND kind = 'refund'",
+        [a.order_id],
+      )
+    )[0]!;
+    expect(op.first_sent_at.getTime()).toBe(sentAt);
+    expect(op.reconcile_until.getTime()).toBe(sentAt + 24 * 3_600 * SEC);
+  });
+});
+
+describe('conservative edge cases of the remaining amount (pinned)', () => {
+  const read = async (
+    a: { provider_order_id: string },
+    edit: (r: Parameters<Parameters<RemainingWorld['editNextRead']>[1]>[0]) => void,
+  ) =>
+    w.editNextRead(a.provider_order_id, (r) => {
+      edit(r);
+      return r;
+    });
+
+  it('a refund id listed twice is counted twice', async () => {
+    const { a, unit } = await setup();
+    await read(a, (r) => {
+      const x = { refund_id: 'DUP1', status: 'COMPLETED' as const, amount: usd(100) };
+      r.units[0]!.refunds = [x, { ...x }];
+    });
+    const rq = await request(unit.id, 400); // once: 4.00 left; twice: 3.00 left
+    expect(await executeRefund(w.deps, { refund_request_id: rq })).toEqual({
+      ok: true,
+      value: { status: 'FAILED' },
+    });
+    expect(w.sends()).toHaveLength(0);
+  });
+
+  it("the captured amount is the latest capture's amount, not a sum of captures", async () => {
+    const { a, unit } = await setup();
+    await read(a, (r) => {
+      r.units[0]!.capture!.amount = usd(300); // the latest capture holds 3.00
+      r.units[0]!.refunds = [{ refund_id: 'R1', status: 'COMPLETED', amount: usd(100) }];
+    });
+    const rq = await request(unit.id, 250); // 3.00 - 1.00 = 2.00 left
+    expect(await executeRefund(w.deps, { refund_request_id: rq })).toEqual({
+      ok: true,
+      value: { status: 'FAILED' },
+    });
+    expect(w.sends()).toHaveLength(0);
+  });
+
+  it("when the latest capture is not the request's capture, the read is not a basis for a send", async () => {
+    const { a, unit } = await setup();
+    await read(a, (r) => {
+      r.units[0]!.capture!.capture_id = 'SBXNEWERCAPTURE';
+    });
+    const rq = await request(unit.id, 200);
+    const r = await executeRefund(w.deps, { refund_request_id: rq });
+    expect(r.ok).toBe(false);
+    expect(w.sends()).toHaveLength(0);
+    expect(await stateOf(rq)).toBe('requested');
+  });
+
+  it('PayPal listing more refunds than captured raises its own alert and keeps the real number', async () => {
+    const { a, unit } = await setup();
+    await read(a, (r) => {
+      r.units[0]!.refunds = [
+        { refund_id: 'X1', status: 'COMPLETED', amount: usd(400) },
+        { refund_id: 'X2', status: 'PENDING', amount: usd(400) },
+      ];
+    });
+    const rq = await request(unit.id, 100);
+    expect(await executeRefund(w.deps, { refund_request_id: rq })).toEqual({
+      ok: true,
+      value: { status: 'FAILED' },
+    });
+    expect(w.sends()).toHaveLength(0);
+    const found = await alerts(a.order_id);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.kind).toBe('refund_unbooked');
+    expect(found[0]?.detail.reason).toBe('remote_refunds_exceed_capture');
+    expect(found[0]?.detail).toMatchObject({
+      refund_request_id: rq,
+      requested_minor: 100,
+      captured_minor: 500,
+      remote_remaining_minor: -300,
+    });
+    expect(JSON.stringify(found[0]?.detail)).not.toMatch(/X1|X2/); // minor amounts only
   });
 });

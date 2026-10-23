@@ -56,6 +56,8 @@ describe('refund calls never carry more than PayPal holds', () => {
   it("every refundCapture call carries a non-null amount at most PayPal's remaining amount over 200 random sequences of local and dashboard refunds", async () => {
     let sent = 0;
     let closed = 0;
+    let stale = 0;
+    let together = 0;
     for (let seq = 0; seq < 200; seq += 1) {
       const rnd = seeded(seq * 7_919 + 13);
       const int = (lo: number, hi: number) => lo + Math.floor(rnd() * (hi - lo + 1));
@@ -64,26 +66,39 @@ describe('refund calls never carry more than PayPal holds', () => {
       const violations: string[] = [];
 
       // The spy sits in front of the fake PayPal: it judges each call by what PayPal holds at that
-      // moment, before the fake books the refund.
+      // moment, before the fake books the refund. A call above what PayPal holds is a violation,
+      // except right after a dashboard refund: a read up to 60 s old may predate it by design
+      // (spec BU-4), and PayPal itself then refuses the refund, as the spy does.
+      let lastDashAt = Number.NEGATIVE_INFINITY;
       const forward = world_.paypal.refundCapture.bind(world_.paypal);
       world_.paypal.refundCapture = (r) => {
         const left = world_.remoteRemaining(unit.capture_id, PRICE);
         if (r.amount === null) violations.push(`seq ${seq}: null amount`);
         else if (r.amount.minor <= 0) violations.push(`seq ${seq}: amount ${r.amount.minor} <= 0`);
-        else if (r.amount.minor > left)
-          violations.push(`seq ${seq}: sent ${r.amount.minor}, PayPal holds ${left}`);
+        else if (r.amount.minor > left) {
+          if (world_.clock.now().getTime() - lastDashAt > 60 * SEC) {
+            violations.push(`seq ${seq}: sent ${r.amount.minor}, PayPal holds ${left}`);
+          }
+          stale += 1;
+          return Promise.resolve({
+            kind: 'rejected' as const,
+            http: 422 as const,
+            name: 'UNPROCESSABLE_ENTITY',
+            issue: 'REFUND_AMOUNT_EXCEEDED',
+            debug_id: null,
+          });
+        }
         return forward(r);
       };
 
       const requests: string[] = [];
-      const steps = int(4, 12);
+      const steps = int(6, 16);
       for (let k = 0; k < steps; k += 1) {
         switch (int(0, 7)) {
           case 0: {
-            // A dashboard refund. The clock first passes 60 s: a read taken before it is then too
-            // old to be reused, as the rule says; anything newer sees the refund.
+            // A dashboard refund, half of them inside the 60 s window of a read already taken.
             // PayPal itself never refunds more than the capture holds.
-            world_.tick(61 * SEC);
+            if (rnd() < 0.5) world_.tick(61 * SEC);
             const room = world_.remoteRemaining(unit.capture_id, PRICE);
             if (room > 0) {
               world_.dashboard(
@@ -91,6 +106,7 @@ describe('refund calls never carry more than PayPal holds', () => {
                 Math.min(int(1, 250), room),
                 pick<RefundStatus>(['COMPLETED', 'COMPLETED', 'PENDING', 'FAILED', 'CANCELLED']),
               );
+              lastDashAt = world_.clock.now().getTime();
             }
             break;
           }
@@ -100,8 +116,9 @@ describe('refund calls never carry more than PayPal holds', () => {
               (x) => x.request_id === null && x.status === 'PENDING',
             );
             if (dash.length > 0) {
-              world_.tick(61 * SEC);
+              if (rnd() < 0.5) world_.tick(61 * SEC);
               pick(dash).status = pick<RefundStatus>(['COMPLETED', 'CANCELLED', 'FAILED']);
+              lastDashAt = world_.clock.now().getTime();
             }
             break;
           }
@@ -115,7 +132,18 @@ describe('refund calls never carry more than PayPal holds', () => {
           case 5: {
             if (requests.length > 0) {
               const before = world_.sends().length;
-              await executeRefund(world_.deps, { refund_request_id: pick(requests) });
+              if (requests.length > 1 && rnd() < 0.6) {
+                // Two executions at once: both can pass the check before either has sent.
+                const a = pick(requests);
+                const b = pick(requests);
+                await Promise.all([
+                  executeRefund(world_.deps, { refund_request_id: a }),
+                  executeRefund(world_.deps, { refund_request_id: b }),
+                ]);
+                together += 1;
+              } else {
+                await executeRefund(world_.deps, { refund_request_id: pick(requests) });
+              }
               sent += world_.sends().length - before;
             }
             break;
@@ -159,8 +187,10 @@ describe('refund calls never carry more than PayPal holds', () => {
       w = null;
     }
     // The sequences really exercised both branches.
-    expect(sent).toBeGreaterThan(50);
-    expect(closed).toBeGreaterThan(10);
+    expect(sent).toBeGreaterThan(100);
+    expect(closed).toBeGreaterThan(20);
+    expect(together).toBeGreaterThan(50);
+    expect(stale).toBeGreaterThanOrEqual(0);
   }, 600_000);
 
   it('every send carries the amount stored on its request, never null', async () => {

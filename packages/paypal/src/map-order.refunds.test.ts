@@ -241,4 +241,28 @@ describe('mapOrder refunds', () => {
     expect(r.units[0]?.capture?.refunded_minor).toBe(300);
     expect(r.units[0]?.refunds).toHaveLength(1);
   });
+
+  it('a unit with two captures lists every refund of the unit and takes the latest capture', () => {
+    const older = capture({ id: 'SBXCAP00001', create_time: '2026-01-01T00:00:00Z' });
+    const newer = capture({
+      id: 'SBXCAP00002',
+      amount: usd('2.00'),
+      create_time: '2026-01-02T00:00:00Z',
+    });
+    const r = read([
+      unit([refund({ id: 'SBXREFA' }), refund({ id: 'SBXREFB', amount: usd('1.00') })], {
+        payments: {
+          captures: [older, newer],
+          refunds: [refund({ id: 'SBXREFA' }), refund({ id: 'SBXREFB', amount: usd('1.00') })],
+        },
+      }),
+    ]);
+    expect(r.units[0]?.capture?.capture_id).toBe('SBXCAP00002');
+    expect(r.units[0]?.refunds?.map((x) => x.refund_id)).toEqual(['SBXREFA', 'SBXREFB']);
+  });
+
+  it('a refund id listed twice is listed twice', () => {
+    const r = read([unit([refund(), refund()])]);
+    expect(r.units[0]?.refunds).toHaveLength(2);
+  });
 });
