@@ -9,8 +9,8 @@ import type {
   AccessState,
   CoreDeps,
   Id,
+  EntitlementMoneyEvent,
   LicenceState,
-  MoneyEvent,
   MoneyState,
   Result,
   SqlExecutor,
@@ -87,7 +87,7 @@ interface HeadRow {
 export async function applyMoneyEvent(
   tx: SqlExecutor,
   d: CoreDeps,
-  i: { entitlement_id: Id; event: MoneyEvent },
+  i: { entitlement_id: Id; event: EntitlementMoneyEvent },
 ): Promise<
   Result<
     { changed: boolean; money: MoneyState; access: AccessState },

@@ -1,11 +1,19 @@
 // Adapted from AIC_Hackathon_UnitMarket packages/core/entitlements/table.ts at
 // a36ddc03fd0b962000f686291c145b50ee337f90. Owned by SBX.
-// The 36-cell money transition table (architecture 4.3) and its effects. Pure: no database, no
+// The 42-cell money transition table (architecture 4.3; 36 cells plus the CO-5 column) and its effects. Pure: no database, no
 // clock. Differences from the simulation: access names are locked/available/ended/revoked; capture
 // grants the licence but leaves access locked until the access clock starts (markAccessReady);
 // refund or reversal revokes access from every access state; `reversed` is fed only by
-// `reversal_verified`, which payments sends after a confirmed reversal.
-import type { AccessState, LicenceState, MoneyEvent, MoneyState, Result } from '@umsbx/contracts';
+// `reversal_verified`, which payments sends after a confirmed reversal. `partial_refund_verified`
+// (CO-5, ASM-59) is an allowed no-op in every row: a partial refund leaves money, access and
+// licence as they are, so the buyer keeps what was not refunded; only a full refund revokes.
+import type {
+  AccessState,
+  EntitlementMoneyEvent,
+  LicenceState,
+  MoneyState,
+  Result,
+} from '@umsbx/contracts';
 import { err, ok } from '@umsbx/contracts';
 
 export interface EntitlementStates {
@@ -13,7 +21,11 @@ export interface EntitlementStates {
   access: AccessState;
   licence: LicenceState | null;
 }
-export type TransitionError = { code: 'forbidden_transition'; from: MoneyState; event: MoneyEvent };
+export type TransitionError = {
+  code: 'forbidden_transition';
+  from: MoneyState;
+  event: EntitlementMoneyEvent;
+};
 export interface Transition {
   record: 'money' | 'access' | 'licence';
   from: string | null;
@@ -23,7 +35,7 @@ export interface Transition {
 
 // A cell is the new money state, '=' for an allowed no-op, or 'x' for a refused event.
 type Cell = MoneyState | '=' | 'x';
-const TABLE: Readonly<Record<MoneyState, Readonly<Record<MoneyEvent, Cell>>>> = {
+const TABLE: Readonly<Record<MoneyState, Readonly<Record<EntitlementMoneyEvent, Cell>>>> = {
   pending: {
     capture_verified: 'captured',
     pending: '=',
@@ -31,6 +43,7 @@ const TABLE: Readonly<Record<MoneyState, Readonly<Record<MoneyEvent, Cell>>>> = 
     unknown: 'unknown',
     refund_verified: 'x',
     reversal_verified: 'x',
+    partial_refund_verified: '=',
   },
   unknown: {
     capture_verified: 'captured',
@@ -39,6 +52,7 @@ const TABLE: Readonly<Record<MoneyState, Readonly<Record<MoneyEvent, Cell>>>> = 
     unknown: '=',
     refund_verified: 'x',
     reversal_verified: 'x',
+    partial_refund_verified: '=',
   },
   captured: {
     capture_verified: '=',
@@ -47,6 +61,7 @@ const TABLE: Readonly<Record<MoneyState, Readonly<Record<MoneyEvent, Cell>>>> = 
     unknown: 'x',
     refund_verified: 'refunded',
     reversal_verified: 'reversed',
+    partial_refund_verified: '=',
   },
   denied: {
     capture_verified: 'x',
@@ -55,6 +70,7 @@ const TABLE: Readonly<Record<MoneyState, Readonly<Record<MoneyEvent, Cell>>>> = 
     unknown: 'x',
     refund_verified: 'x',
     reversal_verified: 'x',
+    partial_refund_verified: '=',
   },
   refunded: {
     capture_verified: 'x',
@@ -63,6 +79,7 @@ const TABLE: Readonly<Record<MoneyState, Readonly<Record<MoneyEvent, Cell>>>> = 
     unknown: 'x',
     refund_verified: '=',
     reversal_verified: 'x',
+    partial_refund_verified: '=',
   },
   reversed: {
     capture_verified: 'x',
@@ -71,17 +88,18 @@ const TABLE: Readonly<Record<MoneyState, Readonly<Record<MoneyEvent, Cell>>>> = 
     unknown: 'x',
     refund_verified: 'x',
     reversal_verified: '=',
+    partial_refund_verified: '=',
   },
 };
 
-export function nextMoneyState(from: MoneyState, e: MoneyEvent): MoneyState | '=' | 'x' {
+export function nextMoneyState(from: MoneyState, e: EntitlementMoneyEvent): MoneyState | '=' | 'x' {
   return TABLE[from][e];
 }
 
 /** changed false means an allowed no-op (the same state again). */
 export function nextStates(
   current: EntitlementStates,
-  event: MoneyEvent,
+  event: EntitlementMoneyEvent,
 ): Result<{ states: EntitlementStates; changed: boolean }, TransitionError> {
   const cell = nextMoneyState(current.money, event);
   if (cell === 'x') return err({ code: 'forbidden_transition', from: current.money, event });

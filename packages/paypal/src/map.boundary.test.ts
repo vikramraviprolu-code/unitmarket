@@ -387,6 +387,7 @@ describe('mapOrder and mapCaptureRead status table', () => {
             paypal_fee_minor: null,
             refunded_minor: 0,
           },
+          refunds: [],
         },
       ],
     });

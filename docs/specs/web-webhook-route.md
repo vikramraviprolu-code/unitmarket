@@ -25,3 +25,11 @@ Do not: verify with the postback API; let a webhook set paid or touch the ledger
 Evidence for the PR: red summary; pass counts; the route inventory diff; a statement of what is still unverified until a real delivery (ASM-54).
 
 Branch: `feat/web-webhook-route` Commit: `feat(web): verified PayPal webhook route that only enqueues read-backs (CO-3)`
+
+Review notes (CO-1 and CO-2 reviews, 2026-10-23):
+
+- Check `webhook_enabled` BEFORE calling `verifyWebhook`, so a disabled webhook triggers no certificate fetch.
+- Rate-limit every non-200 answer per IP, including 503 `unverifiable`, not only 400s: a refused delivery writes one append-only `audit_log` row (300 bad deliveries gave 300 rows), and a cert-failure `unverifiable` costs a certificate fetch. Also count cert-failure `unverifiable` in the same limiter.
+- Give certificate fetches their own safety budget so they can never starve money operations (CO-1 header).
+- Read raw bytes, cap at 64 KiB while streaming, decode with `TextDecoder('utf-8', { fatal: true, ignoreBOM: true })`.
+- Refuse `webhook_enabled=on` in sandbox mode while the certificate pin (ASM-64) is empty, and while `webhook_id` is unset.

@@ -12,7 +12,7 @@ import { AMOUNT_BOUND, canonicalMoneyBody } from './amount-binding';
 import { isApprovalCapability } from './approval';
 import type { ApprovalCapability } from './approval';
 import { guard } from './guard';
-import { createFetchWire } from './wire-fetch';
+import { createHttpsWire } from './wire-https';
 import { MAX_RESPONSE_BYTES } from './wire-map';
 import type { Wire, WireRequest } from './wire';
 
@@ -34,6 +34,13 @@ export function createSandboxTransport(): Transport {
 // body rules, outbound gate, and only then the Wire. It never retries. It never follows a
 // redirect. It never records a credential.
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * Selects the production Wire in createApprovedSandboxTransport. A unique symbol, not a string: lint
+ * (sbx/sealed-transport) bars every way of reaching it outside the pinned files, and a string
+ * assembled at run time cannot stand in for it (FIX-MVPB-SEAL4 item 3).
+ */
+export const PRODUCTION_WIRE: unique symbol = Symbol('production-wire');
 
 export class SandboxSealedError extends Error {
   constructor(reason: string) {
@@ -68,10 +75,11 @@ export interface ApprovedSandboxOptions {
   log: Logger;
   /**
    * REQUIRED (FIX-MVPB-SEAL2 H2). Tests inject a fake Wire. The production Wire is built only for
-   * the explicit sentinel `'production'`, which only apps/web/composition.server.ts may write
-   * (lint: sbx/sealed-wire-sentinel). Absent, undefined, null or anything else throws.
+   * the PRODUCTION_WIRE token (SEAL4): a unique symbol exported through the package index as a sealed
+   * name, so a string (even one built at run time) selects nothing. Absent, undefined, null or
+   * anything else throws.
    */
-  wire: Wire | 'production';
+  wire: Wire | typeof PRODUCTION_WIRE;
 }
 
 /**
@@ -185,7 +193,7 @@ function headerValue(h: Record<string, string>, name: string): string | null {
 
 /** The Wire to use, or a throw: there is no default and no fallback to the platform fetch. */
 function pickWire(w: unknown): Wire {
-  if (w === 'production') return createFetchWire();
+  if (w === PRODUCTION_WIRE) return createHttpsWire();
   if (typeof w === 'object' && w !== null && typeof (w as Wire).request === 'function')
     return w as Wire;
   throw new SandboxSealedError('no wire');

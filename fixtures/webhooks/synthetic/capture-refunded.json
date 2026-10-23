@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "source": "synthetic",
+    "label": "synthetic",
+    "note": "Hand-written skeleton. The signature and certificate URL are made in the tests at run time; no key or certificate is stored here."
+  },
+  "headers": {
+    "paypal-transmission-id": "SYN-TRANS-0007",
+    "paypal-transmission-time": "2026-10-23T12:00:00Z",
+    "paypal-auth-algo": "SHA256withRSA",
+    "paypal-transmission-sig": "[redacted]"
+  },
+  "body": {
+    "id": "WH-SYN-REFUNDED-0001",
+    "event_version": "1.0",
+    "create_time": "2026-10-23T11:59:58Z",
+    "resource_type": "refund",
+    "event_type": "PAYMENT.CAPTURE.REFUNDED",
+    "summary": "Synthetic PAYMENT.CAPTURE.REFUNDED",
+    "resource": {
+      "id": "SBXREF0000000001",
+      "status": "COMPLETED",
+      "amount": {
+        "currency_code": "USD",
+        "value": "5.00"
+      },
+      "supplementary_data": {
+        "related_ids": {
+          "order_id": "SBXORD0000000001"
+        }
+      },
+      "links": [
+        {
+          "href": "https://sandbox.example.invalid/v2/payments/refunds/SBXREF0000000001",
+          "rel": "self",
+          "method": "GET"
+        },
+        {
+          "href": "https://sandbox.example.invalid/v2/payments/captures/SBXCAP0000000001",
+          "rel": "up",
+          "method": "GET"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "event_id": "WH-SYN-REFUNDED-0001",
+    "transmission_id": "SYN-TRANS-0007",
+    "occurred_at": "2026-10-23T11:59:58.000Z",
+    "type": "PAYMENT.CAPTURE.REFUNDED",
+    "provider_order_id": "SBXORD0000000001",
+    "capture_id": "SBXCAP0000000001",
+    "refund_id": "SBXREF0000000001"
+  }
+}

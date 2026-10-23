@@ -135,3 +135,60 @@ describe('transition table', () => {
     ]);
   });
 });
+
+// CO-5 (ASM-59): partial_refund_verified is a seventh money event. A partial refund leaves the
+// buyer what was not refunded, so it moves neither money, access nor licence. Hand-written
+// expectation: the cell is an allowed no-op in every row of the table.
+describe('partial_refund_verified (CO-5, ASM-59)', () => {
+  const PARTIAL = 'partial_refund_verified' as const;
+  const ACCESS: AccessState[] = ['locked', 'available', 'ended', 'revoked'];
+
+  it('the table stays exhaustive: 6 money states x 7 events = 42 cells', () => {
+    const all = [...EVENTS, PARTIAL];
+    const cells = MONEY.flatMap((m) => all.map((e) => nextMoneyState(m, e)));
+    expect(cells).toHaveLength(42);
+    for (const c of cells) expect(c).toBeDefined();
+  });
+
+  it('is an allowed no-op in every cell of the table', () => {
+    for (const m of MONEY) expect(nextMoneyState(m, PARTIAL), m).toBe('=');
+  });
+
+  it('captured stays captured and access and licence stay as they are, for every access state', () => {
+    for (const access of ACCESS) {
+      const from: EntitlementStates = { money: 'captured', access, licence: 'granted' };
+      expect(nextStates(from, PARTIAL), access).toEqual({
+        ok: true,
+        value: { states: from, changed: false },
+      });
+    }
+  });
+
+  it('changes nothing from any money state and any access state (no revoke, no unlock)', () => {
+    for (const m of MONEY) {
+      for (const access of ACCESS) {
+        for (const licence of [null, 'granted', 'terminated'] as const) {
+          const from: EntitlementStates = { money: m, access, licence };
+          const r = nextStates(from, PARTIAL);
+          expect(r, `${m}/${access}/${String(licence)}`).toEqual({
+            ok: true,
+            value: { states: from, changed: false },
+          });
+        }
+      }
+    }
+  });
+
+  it('writes no transition log entries and does not modify its input', () => {
+    const before = structuredClone(FROM.captured);
+    const r = nextStates(FROM.captured, PARTIAL);
+    expect(FROM.captured).toEqual(before);
+    expect(r.ok && transitionsBetween(FROM.captured, r.value.states, NOW)).toEqual([]);
+  });
+
+  it('the original six events keep their cells (a full refund still revokes)', () => {
+    expect(nextMoneyState('captured', 'refund_verified')).toBe('refunded');
+    expect(nextMoneyState('captured', 'reversal_verified')).toBe('reversed');
+    expect(nextMoneyState('refunded', 'refund_verified')).toBe('=');
+  });
+});
