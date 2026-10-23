@@ -94,6 +94,7 @@ export function startLoop(
 
   // With a budget the provider is held to min_call_gap_ms between calls (PERF-9, 2 a second) and
   // to the calls the pass was allowed.
+  let nullLogged = false;
   const quota: CallQuota = { left: Number.POSITIVE_INFINITY };
   const run: typeof d =
     o.callBudget === undefined && !noBudget
@@ -142,7 +143,23 @@ export function startLoop(
             fail('jobs.loop.call_budget_failed', e);
             budgetUnknown = true;
           }
-          if (reading !== null && reading.snapshot === null) {
+          if (reading !== null && reading.snapshot === null && sandbox) {
+            // A null reading means "unlimited" in dry run only. In sandbox it is no budget at all:
+            // the same fail-closed path as having no callBudget (money passes, the gap on).
+            if (!nullLogged) {
+              nullLogged = true;
+              d.log.log({
+                msg: 'jobs.loop.no_call_budget',
+                level: 'error',
+                fields: {
+                  detail: 'callBudget returned null in sandbox mode, only money passes run',
+                },
+              });
+            }
+            spent = true;
+            quota.left = Number.POSITIVE_INFINITY; // the gate decides
+            await runDue(run, { max_items: o.max_items, allow: 'money_only' });
+          } else if (reading !== null && reading.snapshot === null) {
             // Unlimited (dry run): nothing is counted, so nothing is held back either.
             await runDue(d, { max_items: o.max_items });
           } else if (reading !== null) {

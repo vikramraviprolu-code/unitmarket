@@ -195,12 +195,14 @@ type Counts = { processed: number; still_unknown: number; expired: number; aband
 // The kinds of operation that decide whether money arrived: reading a capture and the read-back.
 const MONEY_KINDS = "('capture', 'readback')";
 // What a money_only pass may also pick up: work that closes without sending again. A create whose
-// order moved on, or whose 5 h key ran out, is closed with no call; a refund whose 24 h window
-// ended is closed after one read of the order and never sent again.
+// order moved on, or whose 5 h key ran out, is closed with no call; a refund that was sent and whose
+// 24 h window ended is closed after one read of the order and never sent again. A put-off refund
+// (never sent: no first_sent_at) is not touched: closing it would send it.
 const MONEY_OR_CALL_FREE = `(kind IN ${MONEY_KINDS}
           OR (kind = 'create' AND ((idem_safe_until IS NOT NULL AND idem_safe_until <= $1)
                 OR EXISTS (SELECT 1 FROM orders o WHERE o.id = operations.order_id AND o.status <> 'created')))
-          OR (kind IN ('refund', 'refund_readback') AND reconcile_until IS NOT NULL AND reconcile_until <= $1))`;
+          OR (kind = 'refund_readback' AND reconcile_until IS NOT NULL AND reconcile_until <= $1)
+          OR (kind = 'refund' AND first_sent_at IS NOT NULL AND reconcile_until IS NOT NULL AND reconcile_until <= $1))`;
 
 /**
  * One pass of due work, at most `max_items` items. `allow: 'money_only'` (the job loop's polling

@@ -120,6 +120,14 @@ PERF-9 notes (BU-5, `packages/jobs`, `domain/payments/src/due.ts`):
 - The call gap (`min_call_gap_ms`, default 500) spaces port methods, not HTTP requests: a retry inside one transport call is not spaced. Startup recovery that composition runs itself and the return route's own capture go through neither the gap nor the quota; the gate alone decides them. Recovery run by the loop (`recover_on_start`) is gap-limited but not quota-limited.
 - Sandbox mode fails closed: a loop without a `callBudget` runs money passes only (`jobs.loop.no_call_budget`); a `reread_paid_every_ms` outside 1 ms to 24 h refuses to start (`jobs.loop.bad_config`); under 6 h it warns (`jobs.loop.reread_too_frequent`).
 
+BU-2 wiring (composition) for the BU-5 loop:
+
+- `callBudget` must never return `null` in sandbox mode; build it from `readSafetyStatus`, and treat a missing approval as a reading of 0 remaining. In sandbox a `null` reading is handled as no budget (money passes only, `jobs.loop.no_call_budget`); `null` means unlimited in dry run only.
+- A `reread_paid_every_ms` outside 1 ms to 24 h makes `startLoop` throw. Called inside `startJobs`, that would take the whole app down, `/ops` included: validate the cadence at config load, and catch the throw so the app starts with the loop off and a loud log.
+- BU-2 needs a test that the sandbox config gives `reread_paid_every_ms` 21,600,000 (and `min_call_gap_ms` 500).
+- A `money_only` pass is bounded by the calls left, so it can spend the capture reserve. That is a product decision: the reserve exists for captures and their read-backs. Record it as an ASM.
+- `money_only` never sends: it reads unknown captures and read-backs, and closes work that needs no resend (a create past its key window, a refund that was sent and whose 24 h window ended). A put-off refund (never sent) waits for a full pass.
+
 ### 2.2 Reliability and availability
 
 | Id | Requirement | Target | Verification |
