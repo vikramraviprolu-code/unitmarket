@@ -52,9 +52,13 @@ export function nextPollAt(
 // updated_at is the marker) or after the capture was verified. `every` is a whole number of
 // milliseconds built by `rereadMs`, never text from outside.
 const DEFAULT_REREAD_MS = 3_600_000;
+const MAX_REREAD_MS = 86_400_000;
 const rereadMs = (c: { reread_paid_every_ms?: number | undefined }): number => {
   const v = c.reread_paid_every_ms;
-  return typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : DEFAULT_REREAD_MS;
+  // Above 24 h would end the 7 day watch; such a value is a mistake, so the cadence stays hourly.
+  return typeof v === 'number' && Number.isSafeInteger(v) && v > 0 && v <= MAX_REREAD_MS
+    ? v
+    : DEFAULT_REREAD_MS;
 };
 const paidWatch = (every: number): string => `
   SELECT o.id, v.verified_at, m.last_at,
@@ -161,12 +165,11 @@ export async function markUnknown(
 }
 
 // A `sent` operation whose lease ran out belongs to a process that died (REL-2).
-async function sweepStale(d: PaymentsDeps, moneyOnly: boolean): Promise<void> {
+async function sweepStale(d: PaymentsDeps): Promise<void> {
   const at = nowIso(d);
   const stale = await d.db.query<Record<string, unknown>>(
     `SELECT id, order_id, kind, first_sent_at, request_id FROM operations
-      WHERE state = 'sent' AND lease_until < $1 ${moneyOnly ? `AND kind IN ${MONEY_KINDS}` : ''}
-      ORDER BY created_at, id`,
+      WHERE state = 'sent' AND lease_until < $1 ORDER BY created_at, id`,
     [at],
   );
   for (const r of stale.rows) {
@@ -191,11 +194,19 @@ type Counts = { processed: number; still_unknown: number; expired: number; aband
 
 // The kinds of operation that decide whether money arrived: reading a capture and the read-back.
 const MONEY_KINDS = "('capture', 'readback')";
+// What a money_only pass may also pick up: work that closes without sending again. A create whose
+// order moved on, or whose 5 h key ran out, is closed with no call; a refund whose 24 h window
+// ended is closed after one read of the order and never sent again.
+const MONEY_OR_CALL_FREE = `(kind IN ${MONEY_KINDS}
+          OR (kind = 'create' AND ((idem_safe_until IS NOT NULL AND idem_safe_until <= $1)
+                OR EXISTS (SELECT 1 FROM orders o WHERE o.id = operations.order_id AND o.status <> 'created')))
+          OR (kind IN ('refund', 'refund_readback') AND reconcile_until IS NOT NULL AND reconcile_until <= $1))`;
 
 /**
  * One pass of due work, at most `max_items` items. `allow: 'money_only'` (the job loop's polling
- * allowance is spent) runs only unknown capture and read-back operations: no create, refund,
- * abandonment or paid re-read. Any value but 'all' is read as money_only. Within a pass the order
+ * allowance is spent) runs unknown capture and read-back operations, plus the closings that need
+ * no resend (a create past its key window or whose order moved on, a refund past its 24 h window);
+ * no abandonment, no paid re-read, no resend. Any value but 'all' is read as money_only. Within a pass the order
  * is: capture and read-back unknowns, creates, refunds, abandonment, paid re-reads last.
  */
 export async function runDue(
@@ -207,13 +218,13 @@ export async function runDue(
   const moneyOnly = i.allow !== undefined && i.allow !== 'all';
   // Outside any transaction: the port may use the database itself.
   if (!(await d.switches.isOn('paypal_outbound'))) return out;
-  await sweepStale(d, moneyOnly);
+  await sweepStale(d); // no provider call: a dead process's work becomes unknown, in every mode
 
   let budget = i.max_items;
   const at = nowIso(d);
   const rows = await d.db.query<Record<string, unknown>>(
     `SELECT * FROM operations WHERE state = 'unknown' AND next_retry_at <= $1
-        ${moneyOnly ? `AND kind IN ${MONEY_KINDS}` : ''}
+        ${moneyOnly ? `AND ${MONEY_OR_CALL_FREE}` : ''}
       ORDER BY CASE WHEN kind IN ${MONEY_KINDS} THEN 0 WHEN kind = 'create' THEN 1 ELSE 2 END,
                next_retry_at, id LIMIT $2`,
     [at, i.max_items * 2],

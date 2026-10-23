@@ -37,8 +37,8 @@ export const DomainConfigSchema = z
     poll_budget_share: z.number().min(0).max(1).optional(),
     /** 30: calls polling never takes, so a buyer's capture and its read-back still fit */
     capture_reserve_calls: ms.optional(),
-    /** dry run 3600000 (hourly); sandbox 21600000 (6 h) */
-    reread_paid_every_ms: ms.positive().optional(),
+    /** dry run 3600000 (hourly); sandbox 21600000 (6 h); at most 24 h (more would end the watch) */
+    reread_paid_every_ms: ms.positive().max(86_400_000).optional(),
     /** 500: at most 2 provider calls a second (PERF-9) */
     min_call_gap_ms: ms.optional(),
   })

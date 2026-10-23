@@ -54,8 +54,26 @@ export function pollAllowance(
   return Math.min(max_items, Math.floor(remaining_today - line));
 }
 
+/** Calls a pass may still make; the proxy counts it down, the loop sets it before each pass. */
+export interface CallQuota {
+  left: number;
+}
+
+/**
+ * What a money_only pass may spend: every call that is left (the capture reserve exists for this
+ * work), 0 when the reading is not a sane number.
+ */
+export function moneyCalls(budget: CallBudgetSnapshot): number {
+  if (typeof budget !== 'object' || budget === null) return 0;
+  const { remaining_today, max_calls_per_day } = budget as Partial<CallBudgetSnapshot>;
+  if (!number(max_calls_per_day) || max_calls_per_day < 0) return 0;
+  return number(remaining_today) && remaining_today > 0 ? Math.floor(remaining_today) : 0;
+}
+
 export interface GapOptions {
   gap_ms: number;
+  /** When given, every method call uses one unit; at 0 the call is answered `blocked` (budget). */
+  quota?: CallQuota;
   /** milliseconds on the injected clock */
   now(): number;
   sleep(ms: number): Promise<void>;
@@ -64,7 +82,9 @@ export interface GapOptions {
 /**
  * The same object with every method held back until `gap_ms` after the previous call (PERF-9: at
  * most 2 calls a second). A slot is taken before the wait, in one synchronous step, so callers
- * that run at once get slots one gap apart. A call that fails keeps its slot.
+ * that run at once get slots one gap apart. A call that fails keeps its slot. With a `quota` the
+ * proxy also counts calls: the polling allowance is in calls, because the gate counts calls and
+ * one item can cost 1 to 4 of them. It spaces port methods, not HTTP requests.
  */
 export function rateLimited<T extends object>(port: T, o: GapOptions): T {
   const gap = Number.isFinite(o.gap_ms) && o.gap_ms > 0 ? o.gap_ms : 0;
@@ -81,6 +101,12 @@ export function rateLimited<T extends object>(port: T, o: GapOptions): T {
       const value: unknown = Reflect.get(target, key, receiver);
       if (typeof value !== 'function') return value;
       return async (...args: unknown[]): Promise<unknown> => {
+        if (o.quota !== undefined) {
+          // Counted in one synchronous step, so concurrent callers cannot overdraw it. A refused
+          // call is the same answer the gate gives (payments pauses and tries again later).
+          if (!(o.quota.left > 0)) return { kind: 'blocked', by: 'budget' };
+          o.quota.left -= 1;
+        }
         await slot();
         return (value as (...a: unknown[]) => unknown).apply(target, args);
       };

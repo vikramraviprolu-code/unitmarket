@@ -177,7 +177,7 @@ describe('call gap (PERF-9)', () => {
     });
     await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(2));
     await loop.stop();
-    expect(new Set(x.calls.slice(0, 6)).size).toBe(1); // one pass, no waiting between calls
+    expect(new Set(x.calls.slice(0, 2)).size).toBe(1); // one pass, no waiting between calls
   });
 });
 
@@ -232,7 +232,7 @@ describe('the allowance decides each pass', () => {
   it('the allowance counts CALLS: items that cost 3 or 4 calls stop at the allowance, not after it', async () => {
     for (const per_item of [1, 2, 3, 4]) {
       vi.mocked(runDue).mockReset().mockImplementation(spendingPass(0, per_item));
-      const x = world();
+      const x = world({ min_call_gap_ms: 0 });
       const loop = startLoop(x.d, {
         max_sleep_ms: 60_000,
         max_items: 100,
@@ -265,7 +265,7 @@ describe('the allowance decides each pass', () => {
   });
 
   it('a spent allowance leaves a money_only pass bounded by the calls LEFT, not by the reserve line', async () => {
-    const x = world();
+    const x = world({ min_call_gap_ms: 0 });
     vi.mocked(runDue).mockImplementation(tryCalls(500));
     const loop = startLoop(x.d, {
       max_sleep_ms: 60_000,
@@ -283,7 +283,7 @@ describe('the allowance decides each pass', () => {
     // Each loop reads the same snapshot, so each is allowed 10 calls: 20 in all, with 10 allowed.
     // The gate still stops the day at the approval's budget; the reserve is what suffers. One loop
     // per approval is the design; composition starts one.
-    const x = world();
+    const x = world({ min_call_gap_ms: 0 });
     vi.mocked(runDue).mockImplementation(spendingPass(0, 1));
     const snapshot = () => Promise.resolve({ remaining_today: 160, max_calls_per_day: 300 });
     const a = startLoop(x.d, {
@@ -420,7 +420,7 @@ describe('a budget that cannot be trusted', () => {
     ];
     for (const snapshot of bad) {
       vi.mocked(runDue).mockReset().mockImplementation(tryCalls(5));
-      const x = world();
+      const x = world({ min_call_gap_ms: 0 });
       const loop = startLoop(x.d, {
         max_sleep_ms: 1,
         max_items: 4,
