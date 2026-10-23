@@ -987,50 +987,100 @@ describe('relative, absolute and indirect reach into the sealed packages (SEAL3 
   });
 });
 
-describe('the production Wire sentinel (SEAL2 H2)', () => {
-  const SENT = 'sbx/sealed-wire-sentinel';
-  const sentinel = async (file: string, code: string) =>
-    (await lint(file, code)).filter((m) => m.ruleId === SENT);
-  const cases: [string, string][] = [
-    ['plain property', "export const o = { wire: 'production' };\n"],
-    ['quoted key', "export const o = { 'wire': 'production' };\n"],
-    ['template value', 'export const o = { wire: `production` };\n'],
-    [
-      'nested in a call',
-      "export const f = (g: (x: unknown) => void) => g({ a: 1, wire: 'production' });\n",
-    ],
+// FIX-MVPB-SEAL4 item 3. The production Wire is selected by the PRODUCTION_WIRE token (a unique
+// symbol), not by a string. A string built at run time (['prod','uction'].join(''), a const) selects
+// nothing; reaching the token needs one of the sealed ways in, which lint bars like the factory.
+describe('the production Wire token (SEAL4)', () => {
+  const SEALED = 'sbx/sealed-transport';
+  const sealed = async (file: string, code: string) =>
+    (await lint(file, code)).filter((m) => m.ruleId === SEALED);
+  const outsiders = [
+    'packages/paypal/src/evil.ts',
+    'packages/testkit/src/evil.ts',
+    'apps/web/composition.server.ts',
+    'tests/mvp-b/evil.test.ts',
+    'scripts/evil.mjs',
+    'evil.mjs',
   ];
-  it.each(cases)(
-    'is barred everywhere except the one transport sandbox test: %s',
-    async (_n, code) => {
-      for (const f of [
-        'packages/paypal/src/x.ts',
-        'packages/safety/src/x.ts',
-        'packages/testkit/src/x.ts',
-        'packages/jobs/src/x.ts',
-        'apps/web/src/x.ts',
-        'tests/mvp-b/x.test.ts',
-        'tools/spike-kit/src/x.ts',
-        'scripts/x.mjs',
-      ])
-        expect((await sentinel(f, code)).length, f).toBeGreaterThan(0);
-    },
-  );
-  it('only the transport sandbox test may write it (SEAL3: composition and other transport files may not)', async () => {
-    const code = "export const o = { wire: 'production' };\n";
-    expect(await sentinel('packages/transport/src/sandbox.test.ts', code)).toEqual([]);
-    for (const f of [
-      'apps/web/composition.server.ts',
-      'packages/transport/src/sandbox.ts',
-      'packages/transport/src/x.ts',
-      `packages/transport/src/${WIRE}.env.test.ts`,
-      'packages/transport/src/sandbox.binding.test.ts',
-    ])
-      expect((await sentinel(f, code)).length, f).toBeGreaterThan(0);
+  const forms: [string, string][] = [
+    [
+      'named import',
+      "import { PRODUCTION_WIRE } from '@umsbx/transport';\nexport const w = PRODUCTION_WIRE;\n",
+    ],
+    [
+      'renamed import',
+      "import { PRODUCTION_WIRE as P } from '@umsbx/transport';\nexport const w = P;\n",
+    ],
+    [
+      'namespace import',
+      "import * as T from '@umsbx/transport';\nexport const w = T.PRODUCTION_WIRE;\n",
+    ],
+    [
+      'computed member of a namespace',
+      "import * as T from '@umsbx/transport';\nexport const w = T[['PRODUCTION', 'WIRE'].join('_')];\n",
+    ],
+    ['re-export', "export { PRODUCTION_WIRE } from '@umsbx/transport';\n"],
+    ['dynamic import', "export const w = (await import('@umsbx/transport')).PRODUCTION_WIRE;\n"],
+  ];
+  it.each(forms)('is refused outside the pinned files: %s', async (_n, code) => {
+    for (const f of outsiders) expect((await sealed(f, code)).length, f).toBeGreaterThan(0);
   });
-  it('an ordinary use of the word production elsewhere is not flagged', async () => {
-    const code = "export const o = { env: 'production', wire: 'fake' };\n";
-    expect(await sentinel('packages/paypal/src/x.ts', code)).toEqual([]);
+  it('a string used as a wire is not a lint matter (it selects nothing at run time)', async () => {
+    const code =
+      "const P = 'production';\nexport const o = { wire: P, w2: ['prod', 'uction'].join('') };\n";
+    expect(await sealed('packages/paypal/src/x.ts', code)).toEqual([]);
+  });
+  it('the old string sentinel rule no longer exists', async () => {
+    const { default: cfg } = await import('../eslint.config.mjs');
+    const names = (cfg as { plugins?: Record<string, { rules?: object }> }[]).flatMap((c) =>
+      Object.keys(c.plugins?.['sbx']?.rules ?? {}),
+    );
+    expect(names).toContain('sealed-transport');
+    expect(names).not.toContain('sealed-wire-sentinel');
+  });
+});
+
+describe('percent-encoded relative and file: specifiers (SEAL4)', () => {
+  const SEALED = 'sbx/sealed-transport';
+  const sealed = async (file: string, code: string) =>
+    (await lint(file, code)).filter((m) => m.ruleId === SEALED);
+  const specs = [
+    '../packages/transp%6Frt/src/approval.ts',
+    '../packages/transport/src/appr%6Fval.ts',
+    '../packages/transport/%73rc/approval',
+    './a%20b',
+    '../x%2e%2e/y',
+    'file:///tmp/packages/transp%6Frt/src/approval.ts',
+    'file:///tmp/a%20b.mjs',
+    '/tmp/packages/transp%6Frt/src/approval.ts',
+  ];
+  const forms: ((s: string) => string)[] = [
+    (s) => `import { x } from '${s}';\nexport const m = x;\n`,
+    (s) => `export * from '${s}';\n`,
+    (s) => `export const m = await import('${s}');\n`,
+    (s) => `export const m = require('${s}');\n`,
+    (s) => `export const m = await vi.importActual('${s}');\n`,
+  ];
+  it('any % in a relative, file: or absolute specifier is refused, in every file', async () => {
+    for (const f of [
+      'scripts/evil.mjs',
+      'packages/paypal/src/evil.ts',
+      'packages/transport/src/evil.ts',
+      'packages/safety/src/evil.ts',
+      'tests/mvp-b/evil.test.ts',
+      'evil.mjs',
+    ])
+      for (const sp of specs)
+        for (const make of forms)
+          expect((await sealed(f, make(sp))).length, `${f} ${sp}`).toBeGreaterThan(0);
+  });
+  it('a bare package specifier or an ordinary relative path is unaffected', async () => {
+    expect(
+      await sealed(
+        'packages/paypal/src/x.ts',
+        "import { a } from './adapter';\nimport { z } from 'zod';\nexport const b = [a, z];\n",
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -1101,7 +1151,7 @@ describe('named exemptions (D-015)', () => {
         'packages/safety/src/scoped-gate.ts -> sbx/sealed-transport',
         'packages/safety/src/scoped-gate.state.test.ts -> sbx/sealed-transport',
         'packages/safety/src/seal.adversarial.test.ts -> sbx/sealed-transport',
-        'packages/transport/src/sandbox.test.ts -> sbx/sealed-wire-sentinel',
+        'tests/mvp-b/no-mint-by-path.test.ts -> sbx/no-package-escape,sbx/sealed-transport',
         'tools/spike-kit/src/spike.ts -> no-restricted-globals,no-restricted-properties,no-restricted-syntax,sbx/no-global-alias',
         'tools/spike-kit/src/spike.test.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'tools/spike-kit/src/spike-cli.integration.test.ts -> no-restricted-imports,no-restricted-properties,sbx/no-global-alias',

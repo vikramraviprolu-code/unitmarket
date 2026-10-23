@@ -27,6 +27,7 @@ export {
   SandboxSealedError,
   createApprovedSandboxTransport,
   createSandboxTransport,
+  PRODUCTION_WIRE,
   SCOPE_OPERATIONS,
 } from './sandbox';
 // FIX-MVPB-SEAL2 H1: the minter itself is not exported. `claimApprovalMinter` hands it out once
