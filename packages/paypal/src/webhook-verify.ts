@@ -40,7 +40,7 @@ const REQUIRED_HEADERS: readonly string[] = [H_ID, H_TIME, H_SIG, H_CERT, H_ALGO
 // printable ASCII without space and without the pipe that separates the signed fields
 const ID_RE = /^[\x21-\x7b\x7d-\x7e]{1,256}$/;
 const TIME_RE =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-](\d{2}):(\d{2}))$/;
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 const MALFORMED: WebhookVerdict = { kind: 'malformed' };
@@ -70,24 +70,31 @@ export function signedMessage(p: MessageParts): string {
   return `${p.transmission_id}|${p.transmission_time}|${p.webhook_id}|${crc}`;
 }
 
-/** Milliseconds since the epoch for an ISO 8601 time with a zone, or null when it is not a real instant. */
+/**
+ * Milliseconds since the epoch for an ISO 8601 time with a zone, or null when it is not a real
+ * instant: a wall-clock reading that rolls over (30 February, 24:00:00, minute 60) is refused, and
+ * so is an offset out of range (Date.parse answers NaN for it).
+ */
 function instantOf(time: string): number | null {
   const m = TIME_RE.exec(time);
   if (m === null) return null;
-  const [year, month, day, hour, minute, second, offHour, offMinute] = m.slice(1).map(Number) as [
+  const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number) as [
     number,
     number,
     number,
     number,
     number,
     number,
-    number | undefined,
-    number | undefined,
   ];
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null; // 30 February
-  if (hour > 23 || minute > 59 || second > 59) return null;
-  if ((offHour ?? 0) > 23 || (offMinute ?? 0) > 59) return null;
+  const wall = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const sameWall =
+    wall.getUTCFullYear() === year &&
+    wall.getUTCMonth() === month - 1 &&
+    wall.getUTCDate() === day &&
+    wall.getUTCHours() === hour &&
+    wall.getUTCMinutes() === minute &&
+    wall.getUTCSeconds() === second;
+  if (!sameWall) return null;
   const at = Date.parse(time);
   return Number.isNaN(at) ? null : at;
 }

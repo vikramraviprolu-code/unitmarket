@@ -147,6 +147,20 @@ describe('forgery attempts are bad_signature and cost nothing', () => {
     expect(certs.calls).toHaveLength(0);
   });
 
+  it('the signature length cap is 1368 characters: that long is looked at, one group of 4 more is not', async () => {
+    const d = deliver(f);
+    const at = async (length: number) => {
+      const certs = okCertificates();
+      const v = await run(
+        { ...d, headers: { ...d.headers, 'paypal-transmission-sig': 'A'.repeat(length) } },
+        { certificates: certs },
+      );
+      return { v, calls: certs.calls.length };
+    };
+    expect(await at(1368)).toEqual({ v: bad('signature'), calls: 1 });
+    expect(await at(1372)).toEqual({ v: bad('signature'), calls: 0 });
+  });
+
   it('the verdict never echoes the body, the signature or the certificate URL', async () => {
     const d = deliver(f, { key: forger.privateKey });
     const text = JSON.stringify(await run(d));
@@ -401,6 +415,18 @@ describe('size and headers: malformed', () => {
     });
   }
 
+  it('headers that are not an object are malformed', async () => {
+    const d = deliver(f);
+    for (const headers of [null, undefined, 'x', 5, true]) {
+      expect(await run({ ...d, headers: headers as unknown as Record<string, string> })).toEqual({
+        kind: 'malformed',
+      });
+    }
+    expect(await run({ ...d, headers: [] as unknown as Record<string, string> })).toEqual({
+      kind: 'malformed',
+    });
+  });
+
   it('a header value that is not a string is malformed', async () => {
     const d = deliver(f);
     for (const v of [undefined, null, 5, ['a'], { a: 1 }]) {
@@ -421,6 +447,17 @@ describe('size and headers: malformed', () => {
       '1761220800',
       '2026-13-01T00:00:00Z',
       '2026-10-23T25:00:00Z',
+      '2026-10-23T24:00:00Z',
+      '2026-10-23T12:60:00Z',
+      '2026-10-23T12:00:60Z',
+      '2026-02-30T12:00:00Z',
+      '2026-04-31T12:00:00Z',
+      '2025-02-29T12:00:00Z',
+      '2026-10-23T12:00:00+24:00',
+      '2026-10-23T12:00:00+02:60',
+      '2026-10-23T12:00:00.1234567890Z',
+      '2026-10-23T12:00:00',
+      '2026-10-23t12:00:00z',
       'NaN',
       '2026-10-23T12:00:00Z; drop table',
     ]) {
@@ -516,6 +553,15 @@ describe('the transmission time window [now - 3 days 1 hour, now + 5 minutes]', 
   it('exactly 5 minutes in the future is accepted; one second more is stale', async () => {
     expect(await run(deliver(f), now(T - 5 * MINUTE))).toMatchObject({ kind: 'verified' });
     expect(await run(deliver(f), now(T - 5 * MINUTE - 1000))).toEqual(bad('stale'));
+  });
+
+  it('the edges hold to the millisecond', async () => {
+    const edge = 3 * DAY + HOUR;
+    const nowAt = (ms: number) => ({ now: new Date(ms).toISOString() });
+    expect(await run(deliver(f), nowAt(T + edge))).toMatchObject({ kind: 'verified' });
+    expect(await run(deliver(f), nowAt(T + edge + 1))).toEqual(bad('stale'));
+    expect(await run(deliver(f), nowAt(T - 5 * MINUTE))).toMatchObject({ kind: 'verified' });
+    expect(await run(deliver(f), nowAt(T - 5 * MINUTE - 1))).toEqual(bad('stale'));
   });
 
   it('a week old and a year ahead are stale, and nothing is fetched', async () => {
