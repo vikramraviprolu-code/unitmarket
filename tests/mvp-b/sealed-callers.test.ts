@@ -349,6 +349,8 @@ describe('the unseal file: who reaches it, and what it imports, exports and alia
     expect(withText(/\bbuildOutbound\b/, (f) => !isTest(f))).toEqual([
       'apps/web/composition.server.ts',
       FILE,
+      // BU-6: the owner-run entry builds its transport with the same builder as the app
+      'scripts/sandbox-conformance.mjs',
       // the shared helper of the unseal tests (not a *.test.ts file)
       'tests/mvp-b/unseal-support.ts',
     ]);
@@ -368,6 +370,8 @@ describe('the unseal file: who reaches it, and what it imports, exports and alia
     ).toEqual([
       'apps/web/composition.server.ts',
       'apps/web/src/server/outbound.test.ts',
+      // BU-6: the owner-run entry
+      'scripts/sandbox-conformance.mjs',
       'tests/mvp-b/unseal-support.ts',
       'tests/mvp-b/unseal.adversarial.test.ts',
     ]);
