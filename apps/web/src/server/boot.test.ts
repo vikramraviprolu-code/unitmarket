@@ -8,10 +8,12 @@ import type { BootDeps } from './boot';
 
 const EXIT = 78; // sysexits EX_CONFIG, BOOT_REFUSAL_EXIT_CODE in packages/config
 
-class DbInUseError extends Error {
+// The real DbInUseError (packages/db) is driven through bootOrExit in tests/mvp-b/unseal.adversarial.test.ts,
+// which may import @umsbx/db; apps/web tests may not.
+class InUseError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'DbInUseError';
+    this.name = 'InUseError';
   }
 }
 
@@ -28,19 +30,17 @@ function rig(start: BootDeps['start'], exitCode: BootDeps['exitCode'] = async ()
 }
 
 describe('bootOrExit', () => {
-  it('a database that is in use: one stderr line naming the error, exit code 78', async () => {
+  it('a failure with a name and a message: one stderr line naming the error, exit code 78', async () => {
     const r = rig(async () => {
-      throw new DbInUseError(
-        'database directory is in use; stop the other process or use the ops page Stop button',
-      );
+      throw new InUseError('the database directory is held by another process');
     });
     await bootOrExit(r.deps);
     expect(r.exits).toEqual([EXIT]);
     const text = r.written.join('');
     expect(text.split('\n').filter((l) => l !== '')).toHaveLength(1);
     expect(text.endsWith('\n')).toBe(true);
-    expect(text).toContain('DbInUseError');
-    expect(text).toContain('ops page Stop button');
+    expect(text).toContain('InUseError');
+    expect(text).toContain('held by another process');
   });
 
   it('a refusal while starting the jobs exits the same way', async () => {

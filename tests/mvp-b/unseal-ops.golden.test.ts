@@ -147,6 +147,9 @@ describe('the real snapshot', () => {
       locks({ l3_approval_active: false, l4_switch_on: false }),
     );
     expect(snap?.gate.outbound?.blocked_by).toBe('kill_switch');
+    // the transport line never says dry run in sandbox mode
+    expect(snap?.gate.transport).not.toMatch(/dry/i);
+    expect(snap?.gate.transport).toMatch(/sandbox/);
     expect(gateLines(snap!.gate).join('\n')).toContain('PayPal calls: blocked (kill_switch)');
     await insertApproval(app.db, { ref: REF });
     await setOutboundSwitch(app.db, true);
@@ -167,6 +170,7 @@ describe('the real snapshot', () => {
       mfa: false,
     });
     expect(snap?.gate.outbound).toBeNull();
+    expect(snap?.gate.transport).toBe('dry-run fixtures');
     expect(gateLines(snap!.gate)[0]).toBe('Mode: offline');
   });
 });

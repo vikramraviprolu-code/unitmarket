@@ -1976,4 +1976,59 @@ describe('BU-2: the unseal file', () => {
         .length,
     ).toBeGreaterThan(0);
   });
+
+  // BU-2 review B1: buildOutbound with a fake database and the production Wire would reach a real
+  // capability, so the module is importable from composition only (and from the tests of the module).
+  describe('buildOutbound is importable from composition only', () => {
+    const spellings: [string, string][] = [
+      [
+        './outbound.server',
+        "import { buildOutbound } from './outbound.server';\nexport const b = buildOutbound;\n",
+      ],
+      [
+        '../../server/outbound.server',
+        "import { buildOutbound } from '../../server/outbound.server';\nexport const b = buildOutbound;\n",
+      ],
+      [
+        'src/server path',
+        "import { buildOutbound } from '../../src/server/outbound.server';\nexport const b = buildOutbound;\n",
+      ],
+      ['type-less namespace', "import * as O from './outbound.server';\nexport const b = O;\n"],
+      ['re-export', "export { buildOutbound } from './outbound.server';\n"],
+      ['export star', "export * from './outbound.server';\n"],
+      ['dynamic import', "export const b = await import('./outbound.server');\n"],
+      [
+        'with an extension',
+        "import { buildOutbound } from './outbound.server.ts';\nexport const b = buildOutbound;\n",
+      ],
+    ];
+    const barred = async (file: string, code: string) =>
+      (await lint(file, code)).filter(
+        (m) =>
+          m.ruleId === 'no-restricted-imports' || m.ruleId === 'sbx/no-restricted-dynamic-import',
+      );
+    it.each(spellings)('refused in every other apps/web file: %s', async (_n, code) => {
+      for (const f of [
+        'apps/web/src/server/other.server.ts',
+        'apps/web/src/server/session.ts',
+        'apps/web/src/app/api/ops/stop/route.ts',
+        'apps/web/src/app/ops/page.tsx',
+        'apps/web/src/lib/x.ts',
+        'apps/web/src/server/boot.ts',
+      ])
+        expect((await barred(f, code)).length, f).toBeGreaterThan(0);
+    });
+    it('allowed in composition and in the module tests', async () => {
+      const code =
+        "import { buildOutbound } from './src/server/outbound.server';\nexport const b = buildOutbound;\n";
+      expect(await barred('apps/web/composition.server.ts', code)).toEqual([]);
+      const own =
+        "import { buildOutbound } from './outbound.server';\nexport const b = buildOutbound;\n";
+      expect(await barred('apps/web/src/server/outbound.test.ts', own)).toEqual([]);
+    });
+    it('other imports of nearby files stay allowed', async () => {
+      const code = "import { app } from './access';\nexport const b = app;\n";
+      expect(await barred('apps/web/src/server/other.server.ts', code)).toEqual([]);
+    });
+  });
 });

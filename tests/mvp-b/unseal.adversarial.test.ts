@@ -1,8 +1,10 @@
 // BU-2 acceptance (adversarial): hostile and broken inputs to the unseal wiring. Everything fails
 // closed, nothing throws out of send(), and no test reaches a network (fake Wire, in-memory database).
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DbInUseError } from '@umsbx/db';
 import { createApp } from '../../apps/web/composition.server';
 import type { App } from '../../apps/web/composition.server';
+import { bootOrExit } from '../../apps/web/src/server/boot';
 import * as outboundModule from '../../apps/web/src/server/outbound.server';
 import { buildOutbound } from '../../apps/web/src/server/outbound.server';
 import { countingWire, makeRig, req, sandboxEnv } from './unseal-support';
@@ -239,5 +241,27 @@ describe('broken sources fail closed', () => {
     const hostile = { ...req.getOrder(), extra: 'x' } as never;
     expect(await r.outbound.transport.send(hostile)).toEqual({ kind: 'blocked', by: 'egress' });
     expect(r.counting.calls).toHaveLength(0);
+  });
+});
+
+describe('boot failure with the real DbInUseError (ASM-73, CO-9)', () => {
+  it('one stderr line carrying the literal message, then exit 78; the Stop button it names exists', async () => {
+    const written: string[] = [];
+    const exits: number[] = [];
+    await bootOrExit({
+      start: async () => {
+        throw new DbInUseError(4242);
+      },
+      exit: (c) => void exits.push(c),
+      write: (l) => void written.push(l),
+      exitCode: async () => 78,
+    });
+    expect(exits).toEqual([78]);
+    const text = written.join('');
+    expect(text.split('\n').filter((l) => l !== '')).toHaveLength(1);
+    expect(text).toContain('DbInUseError');
+    expect(text).toContain(
+      'The UnitMarket app (pid 4242) holds this database. Stop it first, or use the ops page Stop button.',
+    );
   });
 });

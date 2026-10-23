@@ -4,6 +4,7 @@
 // fails here and is reviewed by a person before the transport is unsealed.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(new URL('../..', import.meta.url).pathname);
@@ -333,5 +334,124 @@ describe('paths into the sealed packages (SEAL3 H-A)', () => {
       )
       .map(([f]) => f);
     expect(hits).toEqual([]);
+  });
+});
+
+// BU-2 review B1 and B2. The sealed lint rule is off for outbound.server.ts as a whole (a rule option
+// would reopen the seal freeze), so these pins hold what that file may import, export and alias, and
+// who may reach it.
+describe('the unseal file: who reaches it, and what it imports, exports and aliases (BU-2 review B1, B2)', () => {
+  const FILE = 'apps/web/src/server/outbound.server.ts';
+  const src = text.get(FILE) ?? '';
+  const sf = ts.createSourceFile(FILE, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+
+  it('B1: buildOutbound is named only in composition, the module and the tests of the module', () => {
+    expect(withText(/\bbuildOutbound\b/, (f) => !isTest(f))).toEqual([
+      'apps/web/composition.server.ts',
+      FILE,
+      // the shared helper of the unseal tests (not a *.test.ts file)
+      'tests/mvp-b/unseal-support.ts',
+    ]);
+    expect(
+      withText(/\bbuildOutbound\b/, (f) => isTest(f) && !f.endsWith('sealed-callers.test.ts')),
+    ).toEqual([
+      'apps/web/src/server/outbound.test.ts',
+      'tests/mvp-b/unseal-locks.state.test.ts',
+      'tests/mvp-b/unseal.adversarial.test.ts',
+    ]);
+  });
+  it('B1: the module is imported by path only from composition, its tests and the unseal test helpers', () => {
+    expect(
+      withText(/outbound\.server/, (f) => !f.endsWith('sealed-callers.test.ts')).filter(
+        (f) => f !== FILE,
+      ),
+    ).toEqual([
+      'apps/web/composition.server.ts',
+      'apps/web/src/server/outbound.test.ts',
+      'tests/mvp-b/unseal-support.ts',
+      'tests/mvp-b/unseal.adversarial.test.ts',
+    ]);
+  });
+
+  it('B2: the file exports buildOutbound and types, nothing else: no re-export, no default, no alias', () => {
+    const values: string[] = [];
+    const bad: string[] = [];
+    for (const st of sf.statements) {
+      const exported = ts
+        .getModifiers(st as ts.HasModifiers)
+        ?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+      if (ts.isExportDeclaration(st) || ts.isExportAssignment(st)) {
+        bad.push(st.getText(sf).slice(0, 60));
+        continue;
+      }
+      if (!exported) continue;
+      if (ts.isInterfaceDeclaration(st) || ts.isTypeAliasDeclaration(st)) continue;
+      if (ts.isFunctionDeclaration(st) && st.name !== undefined) values.push(st.name.text);
+      else bad.push(st.getText(sf).slice(0, 60));
+    }
+    expect(bad).toEqual([]);
+    expect(values).toEqual(['buildOutbound']);
+  });
+
+  it('B2: its value imports from the transport and safety packages are exactly the four it needs, unaliased', () => {
+    const got: Record<string, string[]> = {};
+    for (const st of sf.statements) {
+      if (!ts.isImportDeclaration(st)) continue;
+      const spec = (st.moduleSpecifier as ts.StringLiteral).text;
+      const clause = st.importClause;
+      if (clause === undefined) {
+        expect(spec, 'side-effect import').toBe('server-only');
+        continue;
+      }
+      if (clause.isTypeOnly) continue;
+      if (spec !== '@umsbx/transport' && spec !== '@umsbx/safety') continue;
+      expect(clause.name, `default import of ${spec}`).toBeUndefined();
+      const nb = clause.namedBindings;
+      expect(nb !== undefined && ts.isNamedImports(nb), `namespace import of ${spec}`).toBe(true);
+      for (const el of (nb as ts.NamedImports).elements) {
+        if (el.isTypeOnly) continue;
+        expect(el.propertyName, `alias of ${el.name.text}`).toBeUndefined();
+        (got[spec] ??= []).push(el.name.text);
+      }
+    }
+    expect((got['@umsbx/transport'] ?? []).sort()).toEqual(
+      [FACTORY, 'PRODUCTION_WIRE', 'wireSelfCheck'].sort(),
+    );
+    expect(got['@umsbx/safety']).toEqual(['createScopedGate']);
+  });
+
+  it('B2: each sealed name is used once, in its one shape: a call, or the null branch of the Wire choice', () => {
+    const uses: Record<string, ts.Node[]> = {};
+    const visit = (n: ts.Node): void => {
+      if (ts.isImportDeclaration(n)) return;
+      if (ts.isIdentifier(n)) uses[n.text] = [...(uses[n.text] ?? []), n];
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    const sites = (name: string) =>
+      (uses[name] ?? []).filter((id) => {
+        const p = id.parent;
+        // property names and declarations of the same spelling are not uses of the import
+        return !(ts.isPropertyAccessExpression(p) && p.name === id);
+      });
+    for (const name of [FACTORY, 'createScopedGate']) {
+      const s = sites(name);
+      expect(s, name).toHaveLength(1);
+      const p = (s[0] as ts.Node).parent;
+      expect(ts.isCallExpression(p) && p.expression === s[0], `${name} is only called`).toBe(true);
+    }
+    const wire = sites('PRODUCTION_WIRE');
+    expect(wire).toHaveLength(1);
+    const cond = (wire[0] as ts.Node).parent;
+    expect(ts.isConditionalExpression(cond) && cond.whenTrue === wire[0]).toBe(true);
+    expect(
+      ts.isConditionalExpression(cond) && /^d\.wire === null$/.test(cond.condition.getText(sf)),
+    ).toBe(true);
+    const check = sites('wireSelfCheck');
+    expect(check).toHaveLength(1);
+    const bin = (check[0] as ts.Node).parent;
+    expect(
+      ts.isBinaryExpression(bin) && bin.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken,
+    ).toBe(true);
   });
 });

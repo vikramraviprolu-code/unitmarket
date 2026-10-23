@@ -136,6 +136,26 @@ describe('all five present', () => {
   });
 });
 
+describe('status() reads the approval row the way the gate does (BU-2 review nit)', () => {
+  it('a row that does not list the operations of the scope is not reported as an active approval', async () => {
+    const r = await rig({ approval: { ops: ['oauth_token'] } });
+    const st = await r.outbound.status();
+    expect(st.locks.l3_approval_active).toBe(false);
+    expect(st.open).toBe(false);
+    expect(st.blocked_by).toBe('no_approval');
+  });
+  it('a row listing the five operations of the phase is', async () => {
+    const r = await rig();
+    expect((await r.outbound.status()).locks.l3_approval_active).toBe(true);
+  });
+  it('a row missing just one of the five (get_capture) is not', async () => {
+    const r = await rig({
+      approval: { ops: ['oauth_token', 'create_order', 'get_order', 'capture_order'] },
+    });
+    expect((await r.outbound.status()).locks.l3_approval_active).toBe(false);
+  });
+});
+
 describe('the gate decides each request after the build', () => {
   it('approval row expires mid-session: next request blocked no_approval, 0 Wire calls', async () => {
     const r = await rig();
