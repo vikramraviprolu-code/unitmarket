@@ -1174,10 +1174,35 @@ describe('named exemptions (D-015)', () => {
         'packages/safety/src/seal.adversarial.test.ts -> sbx/sealed-transport',
         'tests/mvp-b/no-mint-by-path.test.ts -> sbx/no-package-escape,sbx/sealed-transport',
         'tools/spike-kit/src/spike.ts -> no-restricted-globals,no-restricted-properties,no-restricted-syntax,sbx/no-global-alias',
+        // BU-6: the owner-run entry reads the flag and the CI and AI markers from process.env, nothing else.
+        'scripts/sandbox-conformance.mjs -> no-restricted-properties,sbx/no-global-alias',
         'tools/spike-kit/src/spike.test.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'tools/spike-kit/src/spike-cli.integration.test.ts -> no-restricted-imports,no-restricted-properties,sbx/no-global-alias',
       ].sort(),
     );
+  });
+});
+
+describe('the BU-6 exemption for the owner-run entry reads process.env and nothing more', () => {
+  const ENTRY = 'scripts/sandbox-conformance.mjs';
+  const env = 'export const a = process.env.UMS_SANDBOX_TESTS;\n';
+  it('the entry may read process.env; no other script may', async () => {
+    expect(await lint(ENTRY, env)).toEqual([]);
+    for (const f of ['scripts/other.mjs', 'scripts/safety-cli.mjs', 'scripts/lib/x.mjs'])
+      expect((await lint(f, env)).length, f).toBeGreaterThan(0);
+  });
+  it('the exemption is two rules and one file: network, shell, new Date and globalThis stay refused in the entry', async () => {
+    // sbx/no-global-alias is off for this file, and it is also the rule that bars Math.random, Date.now
+    // and aliasing process. scripts/sandbox-conformance-env.test.ts parses the file and takes those
+    // over, so the file cannot use them either.
+    for (const code of [
+      'export const a = () => fetch("x");\n',
+      'import { request } from "node:https";\nexport const a = request;\n',
+      'import net from "node:net";\nexport const a = net;\n',
+      'export const a = new Date();\n',
+      'export const a = globalThis.process.env;\n',
+    ])
+      expect((await lint(ENTRY, code)).length, code).toBeGreaterThan(0);
   });
 });
 

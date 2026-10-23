@@ -1500,6 +1500,12 @@ export const NAMED_EXEMPTIONS = [
     ],
   },
   {
+    files: ['scripts/sandbox-conformance.mjs'],
+    reason:
+      'BU-6: the owner-run entry reads process.env for UMS_SANDBOX_TESTS and the CI and AI marker names only (one static member access each, pinned by scripts/sandbox-conformance-env.test.ts). Credentials, secrets and approval names are read by packages/config alone',
+    off: ['no-restricted-properties', 'sbx/no-global-alias'],
+  },
+  {
     files: ['tools/spike-kit/src/spike.test.ts'],
     reason:
       'B-L6: the test imports node:net, tls, http, https and dns only to spy on them and prove zero network use',

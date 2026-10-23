@@ -134,10 +134,17 @@ describe('who may build the approved sandbox transport', () => {
     expect(missing).toEqual([]);
   });
   it('the testkit sandbox subject takes a transport that its caller built, and does not import the factory', () => {
+    // BU-6: the subject moved to sandbox-subject.ts and the transport is now required, not optional;
+    // stack.ts no longer carries a sandbox subject at all.
     const stack = text.get('packages/testkit/src/stack.ts') ?? '';
-    expect(stack).toMatch(/approved\?: \{ transport: Transport \}/);
-    expect(stack).not.toContain(FACTORY);
-    expect(stack).not.toMatch(/wire\?:/);
+    const subject = text.get('packages/testkit/src/sandbox-subject.ts') ?? '';
+    expect(stack).not.toMatch(/sandboxSubject/);
+    expect(subject).toMatch(/transport: Transport;/);
+    expect(subject).not.toMatch(/transport\?:/);
+    for (const t of [stack, subject]) {
+      expect(t).not.toContain(FACTORY);
+      expect(t).not.toMatch(/wire\?:/);
+    }
   });
 });
 
@@ -287,7 +294,11 @@ describe('paths into the sealed packages (SEAL3 H-A)', () => {
       [
         'scripts/record-fixtures.mjs -> packages/transport/src/index.ts',
         'scripts/record-fixtures.test.ts -> packages/transport/src/recorder-corpus',
-        'scripts/safety-cli.mjs -> packages/safety/src/index.ts',
+        // BU-6: the launcher scripts/safety-cli.mjs registers the hooks and imports this body
+        'scripts/lib/safety-cli-main.mjs -> packages/safety/src/index.ts',
+        // BU-6: the owner-run suite builds its switches reader and reads the recorder's refusals
+        'scripts/lib/sandbox-conformance-run.mjs -> packages/safety/src/index.ts',
+        'scripts/lib/sandbox-conformance-run.mjs -> packages/transport/src/index.ts',
       ].sort(),
     );
   });
@@ -349,6 +360,8 @@ describe('the unseal file: who reaches it, and what it imports, exports and alia
     expect(withText(/\bbuildOutbound\b/, (f) => !isTest(f))).toEqual([
       'apps/web/composition.server.ts',
       FILE,
+      // BU-6: the owner-run entry builds its transport with the same builder as the app
+      'scripts/lib/sandbox-conformance-run.mjs',
       // the shared helper of the unseal tests (not a *.test.ts file)
       'tests/mvp-b/unseal-support.ts',
     ]);
@@ -368,6 +381,8 @@ describe('the unseal file: who reaches it, and what it imports, exports and alia
     ).toEqual([
       'apps/web/composition.server.ts',
       'apps/web/src/server/outbound.test.ts',
+      // BU-6: the owner-run entry
+      'scripts/lib/sandbox-conformance-run.mjs',
       'tests/mvp-b/unseal-support.ts',
       'tests/mvp-b/unseal.adversarial.test.ts',
     ]);
