@@ -438,7 +438,12 @@ const RANK: Record<string, number> = {
 function lockTarget(sql: string): string | null {
   const s = sql.replace(/\s+/g, ' ').trim();
   const write = /^(?:UPDATE|INSERT INTO|DELETE FROM) (\w+)/i.exec(s);
-  if (write !== null) return write[1]!.toLowerCase();
+  // A new recovery case row (INSERT) is a row nobody else can hold: no lock event (a case is opened
+  // with its entitlement locked first; only UPDATE and FOR UPDATE of a case count).
+  if (write !== null) {
+    const table = write[1]!.toLowerCase();
+    return table === 'recovery_cases' && /^INSERT/i.test(s) ? null : table;
+  }
   if (!/ FOR UPDATE\b/i.test(s)) return null;
   const of = / FOR UPDATE OF (\w+)/i.exec(s);
   if (of !== null) {

@@ -126,6 +126,11 @@ describe('refund calls never carry more than PayPal holds', () => {
           case 3: {
             const r = await request(unit.id, rnd() < 0.2 ? null : int(1, PRICE));
             if (r.ok) requests.push(r.value.refund_request_id);
+            // One open request per unit (CO-4): the coexisting request of an older version or a race
+            // is inserted directly, so the sequences still run two requests against the send check.
+            else if (r.error.code === 'refund_in_flight') {
+              requests.push(await world_.coexisting(unit.id, int(1, PRICE)));
+            }
             break;
           }
           case 4:

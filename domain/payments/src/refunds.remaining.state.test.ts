@@ -708,7 +708,7 @@ describe('refunds in flight are subtracted, under the order lock (F1)', () => {
     const { a, unit } = await setup();
     w.dashboard(unit.capture_id, 300);
     const A = await request(unit.id, 200);
-    const B = await request(unit.id, 200); // the local check allows both
+    const B = await w.coexisting(unit.id, 200); // requestRefund allows one open request since CO-4
     const [ra, rb] = await Promise.all([
       executeRefund(w.deps, { refund_request_id: A }),
       executeRefund(w.deps, { refund_request_id: B }),
@@ -728,7 +728,7 @@ describe('refunds in flight are subtracted, under the order lock (F1)', () => {
     const { a, unit } = await setup();
     w.dashboard(unit.capture_id, 300);
     const A = await request(unit.id, 200);
-    const B = await request(unit.id, 200);
+    const B = await w.coexisting(unit.id, 200);
     // B reads the order (PayPal holds 2.00) and then stalls; A runs through, sent and booked.
     const inner = w.paypal.getOrder.bind(w.paypal);
     let release!: () => void;
@@ -765,7 +765,7 @@ describe('refunds in flight are subtracted, under the order lock (F1)', () => {
     const A = await request(unit.id, 300);
     expect((await executeRefund(w.deps, { refund_request_id: A })).ok).toBe(false);
     expect(await stateOf(A)).toBe('unknown');
-    const B = await request(unit.id, 200); // local: 5.00 - 3.00 reserved = 2.00
+    const B = await w.coexisting(unit.id, 200); // local: 5.00 - 3.00 reserved = 2.00
     expect(await executeRefund(w.deps, { refund_request_id: B })).toEqual({
       ok: true,
       value: { status: 'FAILED' },
@@ -787,7 +787,7 @@ describe('refunds in flight are subtracted, under the order lock (F1)', () => {
     noLanding();
     const A = await request(unit.id, 300);
     await executeRefund(w.deps, { refund_request_id: A });
-    const B = await request(unit.id, 100); // 4.00 - 3.00 = 1.00 left, exactly
+    const B = await w.coexisting(unit.id, 100); // 4.00 - 3.00 = 1.00 left, exactly
     expect((await executeRefund(w.deps, { refund_request_id: B })).ok).toBe(true);
     expect(w.sends().map((x) => x.amount)).toEqual([usd(300), usd(100)]);
   });

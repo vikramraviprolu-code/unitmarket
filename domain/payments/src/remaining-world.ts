@@ -11,6 +11,13 @@ export interface RemainingWorld extends OpsWorld {
   dashboard(capture_id: string, minor: number, status?: RefundStatus): string;
   /** What PayPal holds for a capture: captured minus refunds that are COMPLETED or PENDING. */
   remoteRemaining(capture_id: string, captured_minor: number): number;
+  /**
+   * A refund request row as an older version or a race would have left it: another open request for
+   * a unit that already has one. requestRefund no longer allows that (CO-4: one open request per
+   * unit), but the send path still has to hold when two requests coexist (F1), so these tests insert
+   * the row directly. Same columns as requestRefund writes; no audit entry.
+   */
+  coexisting(unit_id: string, minor: number): Promise<string>;
   /** Every audit record written through the deps. */
   audits: AuditEntry[];
   /** Order reads that reached PayPal since markReads() (the journey that made the world is not counted). */
@@ -83,6 +90,22 @@ export async function makeRemainingWorld(opts: WorldOptions = {}): Promise<Remai
         (x) => x.capture_id === capture_id && (x.status === 'COMPLETED' || x.status === 'PENDING'),
       )
       .reduce((s, x) => s + x.amount.minor, 0);
+  w.coexisting = async (unit_id, minor) => {
+    const unit = (
+      await w.rows<{ capture_id: string }>('SELECT capture_id FROM order_units WHERE id = $1', [
+        unit_id,
+      ])
+    )[0];
+    if (unit === undefined) throw new Error(`no unit ${unit_id}`);
+    const id = w.deps.ids.next('rfr');
+    const at = w.clock.now().toISOString();
+    await w.rows(
+      `INSERT INTO refund_requests (id, unit_id, capture_id, amount_minor, currency, reason, requested_by, state, refund_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'USD', 'goodwill', 'operator:opr_1', 'requested', NULL, $5, $5)`,
+      [id, unit_id, unit.capture_id, minor, at],
+    );
+    return id;
+  };
   w.audits = [];
   w.deps = {
     ...w.deps,

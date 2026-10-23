@@ -118,7 +118,7 @@ describe('goal 1: the operator needs MFA (P9)', () => {
       await w.rows("SELECT 1 FROM operations WHERE kind IN ('refund', 'refund_readback')"),
     ).toEqual([]);
     expect(w.audits.length).toBe(before);
-    expect(w.paypal.calls.filter((c) => c.op === 'get')).toHaveLength(0); // no read for a refused caller
+    expect(w.reads()).toBe(0); // no read for a refused caller
   });
 
   check(

@@ -118,6 +118,7 @@ describe('refund_pending case follows its refund', () => {
     await sweep();
     expect(await stateOf(done.case_id)).toBe('refunded');
     expect((await actionsOf(done.case_id)).map((x) => x.action)).toEqual([
+      'opened',
       'offer_refund',
       'refund_completed',
     ]);
@@ -128,6 +129,7 @@ describe('refund_pending case follows its refund', () => {
     await sweep();
     expect(await stateOf(bad.case_id)).toBe('diagnosing');
     expect((await actionsOf(bad.case_id)).map((x) => x.action)).toEqual([
+      'opened',
       'offer_refund',
       'refund_failed',
     ]);
@@ -343,7 +345,12 @@ const RANK: Record<string, number> = {
 function lockTarget(sql: string): string | null {
   const s = sql.replace(/\s+/g, ' ').trim();
   const write = /^(?:UPDATE|INSERT INTO|DELETE FROM) (\w+)/i.exec(s);
-  if (write !== null) return write[1]!.toLowerCase();
+  // A new case row (INSERT) is a row nobody else can hold or wait for: it is no lock event. An
+  // entitlement is locked first when a case is opened; only UPDATE and FOR UPDATE of a case count.
+  if (write !== null) {
+    const table = write[1]!.toLowerCase();
+    return table === 'recovery_cases' && /^INSERT/i.test(s) ? null : table;
+  }
   if (!/ FOR UPDATE\b/i.test(s)) return null;
   return /FROM (\w+)/i.exec(s)?.[1]?.toLowerCase() ?? null;
 }
