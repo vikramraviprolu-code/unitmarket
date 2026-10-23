@@ -316,8 +316,8 @@ describe('the allowance decides each pass', () => {
     expect(x.sweepWindows).toHaveBeenCalled();
   });
 
-  it('a null budget (dry run) is unlimited: the pass is the old pass, with the same deps', async () => {
-    const x = world();
+  it('a null budget in dry run is unlimited: the pass is the old pass, with the same deps', async () => {
+    const x = world({}, 300, 'dryrun');
     const loop = startLoop(x.d, {
       max_sleep_ms: 1,
       max_items: 7,
@@ -327,6 +327,43 @@ describe('the allowance decides each pass', () => {
     await loop.stop();
     expect(vi.mocked(runDue).mock.calls[0]![0]).toBe(x.d); // no rate limiting either
     expect(vi.mocked(runDue).mock.calls[0]![1]).toEqual({ max_items: 7 });
+    expect(logs.filter((l) => l.msg === 'jobs.loop.no_call_budget')).toEqual([]);
+  });
+
+  it('R3: a null budget in sandbox is no budget: money_only, the gap on, jobs.loop.no_call_budget', async () => {
+    const x = world({ reread_paid_every_ms: 21_600_000, min_call_gap_ms: 500 });
+    vi.mocked(runDue).mockImplementation(spendingPass(60_000, 1));
+    const loop = startLoop(x.d, {
+      max_sleep_ms: 1,
+      max_items: 7,
+      recover_on_start: false,
+      callBudget: () => Promise.resolve(null),
+      gap_sleep: x.gap_sleep,
+    });
+    await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(2));
+    await loop.stop();
+    for (const call of vi.mocked(runDue).mock.calls) {
+      expect(call[0]).not.toBe(x.d); // the rate-limited port
+      expect(call[1]).toEqual({ max_items: 7, allow: 'money_only' });
+    }
+    expect(logs.filter((l) => l.msg === 'jobs.loop.no_call_budget').length).toBeGreaterThanOrEqual(
+      1,
+    );
+  });
+
+  it('R3: a null budget in sandbox still keeps the call gap', async () => {
+    const x = world({ reread_paid_every_ms: 21_600_000, min_call_gap_ms: 500 });
+    vi.mocked(runDue).mockImplementation(tryCalls(4));
+    const loop = startLoop(x.d, {
+      max_sleep_ms: 60_000,
+      max_items: 7,
+      recover_on_start: false,
+      callBudget: () => Promise.resolve(null),
+      gap_sleep: x.gap_sleep,
+    });
+    await vi.waitFor(() => expect(passes()).toBeGreaterThanOrEqual(1));
+    await loop.stop();
+    expect(x.calls.slice(0, 4)).toEqual([0, 500, 1000, 1500]);
   });
 
   it('dry run with no callBudget option nothing changes: same deps, same arguments', async () => {
