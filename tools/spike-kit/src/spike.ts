@@ -134,6 +134,11 @@ export interface Deps {
    * git cannot answer. A real run needs it: docs/decision-log.md must equal HEAD (SEAL2 M1).
    */
   gitShowHead?: (relPath: string) => string | null;
+  /**
+   * Says whether the global fetch or the undici global dispatcher changed since this module loaded
+   * (SEAL3 M-C); asked before every request. The real entry point supplies it.
+   */
+  integrity?: () => string | null;
 }
 export interface Config {
   dryRun: boolean;
@@ -553,7 +558,30 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   'SSL_CERT_DIR',
 ]);
 const OVERRIDE_FLAG =
-  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config)(?:=|$)/;
+  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait|-port|-publish-uid)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config|--tls-keylog|--tls-min-v1\.[01]|--heapsnapshot-signal|--heapsnapshot-near-heap-limit|--experimental-network-inspection|--secure-heap(?:-min)?|--conditions|-C)(?:=|$)/;
+// FIX-MVPB-SEAL3 M-C. The global fetch and the undici global dispatcher as they were when this
+// module loaded. Swapping either redirects the next request without touching any variable.
+const DISPATCHER_KEY = Symbol.for('undici.globalDispatcher.1');
+export interface NetworkBaseline {
+  fetchFn: unknown;
+  dispatcher: unknown;
+}
+export function captureNetworkBaseline(g: object = globalThis): NetworkBaseline {
+  try {
+    // Building a Request makes Node create its own default dispatcher now (no network).
+    new Request('https://baseline.invalid/');
+  } catch {
+    /* the baseline then holds whatever is there */
+  }
+  return { fetchFn: Reflect.get(g, 'fetch'), dispatcher: Reflect.get(g, DISPATCHER_KEY) };
+}
+export function networkTampered(b: NetworkBaseline, g: object = globalThis): string | null {
+  if (Reflect.get(g, 'fetch') !== b.fetchFn) return 'globalThis.fetch';
+  if (Reflect.get(g, DISPATCHER_KEY) !== b.dispatcher) return 'the undici global dispatcher';
+  return null;
+}
+const LOAD_BASELINE = captureNetworkBaseline();
+
 /**
  * The name of the first environment variable, or `execArgv` for a Node flag, that overrides the
  * network path or the trust store; null when none does. Names only, never values.
@@ -2097,8 +2125,9 @@ export async function main(deps: Deps): Promise<number> {
   let wire: Wire;
   if (cfg.dryRun) wire = createReplayWire(deps.fixtureDir, deps.readText);
   else if (deps.fetchImpl)
-    wire = createSpikeFetchWire(deps.fetchImpl, () =>
-      networkOverride(deps.env, deps.execArgv ?? []),
+    wire = createSpikeFetchWire(
+      deps.fetchImpl,
+      () => networkOverride(deps.env, deps.execArgv ?? []) ?? deps.integrity?.() ?? null,
     );
   else {
     deps.err('REFUSED no_transport: no fetch function available');
@@ -2155,7 +2184,13 @@ if (entry !== undefined && import.meta.url === pathToFileURL(resolve(entry)).hre
       realpath: (p) => realpathSync(p),
     },
     ...(git === null ? {} : { gitShowHead: (rel: string) => git.gitShowHead(repoRoot, rel) }),
-    ...(dry ? {} : { fetchImpl: fetch as unknown as FetchLike }),
+    ...(dry
+      ? {}
+      : {
+          // The fetch of the moment the module loaded, not whatever the global is now.
+          fetchImpl: LOAD_BASELINE.fetchFn as FetchLike,
+          integrity: () => networkTampered(LOAD_BASELINE),
+        }),
   };
   const code = await main(deps);
   rl.close();

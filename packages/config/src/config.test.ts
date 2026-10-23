@@ -447,6 +447,17 @@ describe('transport environment overrides (M1)', () => {
     '--use-openssl-ca',
     '--openssl-config',
     '--openssl-shared-config',
+    '--tls-keylog',
+    '--heapsnapshot-signal',
+    '--heapsnapshot-near-heap-limit',
+    '--inspect-port',
+    '--inspect-wait',
+    '--experimental-network-inspection',
+    '--secure-heap',
+    '--tls-min-v1.0',
+    '--tls-min-v1.1',
+    '--conditions',
+    '-C',
   ])('sandbox mode refuses execArgv %s', (flag) => {
     const r = loadConfig(sandbox(), { execArgv: ['--max-old-space-size=512', flag] });
     expect(!r.ok && r.error).toEqual({ code: 'transport_env_override', name: 'execArgv' });
@@ -459,6 +470,13 @@ describe('transport environment overrides (M1)', () => {
     '--experimental-loader=./x.mjs',
     '--openssl-config=/tmp/x.cnf',
     '--openssl-shared-config=x',
+    '--tls-keylog=/tmp/k.log',
+    '--heapsnapshot-signal=SIGUSR2',
+    '--heapsnapshot-near-heap-limit=3',
+    '--inspect-port=9230',
+    '--secure-heap=1048576',
+    '--conditions=dev',
+    '-C=dev',
   ])('sandbox mode refuses execArgv %s', (flag) => {
     const r = loadConfig(sandbox(), { execArgv: [flag] });
     expect(!r.ok && r.error.code).toBe('transport_env_override');

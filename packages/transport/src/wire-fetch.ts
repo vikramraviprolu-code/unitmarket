@@ -32,7 +32,30 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   'SSL_CERT_DIR',
 ]);
 const OVERRIDE_FLAG =
-  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config)(?:=|$)/;
+  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait|-port|-publish-uid)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config|--tls-keylog|--tls-min-v1\.[01]|--heapsnapshot-signal|--heapsnapshot-near-heap-limit|--experimental-network-inspection|--secure-heap(?:-min)?|--conditions|-C)(?:=|$)/;
+// FIX-MVPB-SEAL3 M-C. Swapping the global fetch, or installing another undici global dispatcher (a
+// proxy agent, a custom TLS agent), redirects the next request without touching any variable. The
+// Wire remembers both as they were when this module loaded and refuses on any change.
+const DISPATCHER_KEY = Symbol.for('undici.globalDispatcher.1');
+export interface NetworkBaseline {
+  fetchFn: unknown;
+  dispatcher: unknown;
+}
+export function captureNetworkBaseline(g: object = globalThis): NetworkBaseline {
+  try {
+    // Building a Request makes Node create its own default global dispatcher now (no network), so
+    // the baseline holds Node's dispatcher, not whichever one is installed later.
+    new Request('https://baseline.invalid/');
+  } catch {
+    /* the baseline then holds whatever is there */
+  }
+  return { fetchFn: Reflect.get(g, 'fetch'), dispatcher: Reflect.get(g, DISPATCHER_KEY) };
+}
+const LOAD_BASELINE = captureNetworkBaseline();
+const networkSwapped = (b: NetworkBaseline): boolean =>
+  Reflect.get(globalThis, 'fetch') !== b.fetchFn ||
+  Reflect.get(globalThis, DISPATCHER_KEY) !== b.dispatcher;
+
 function networkOverridden(): boolean {
   try {
     for (const [name, v] of Object.entries(process.env)) {
@@ -44,10 +67,10 @@ function networkOverridden(): boolean {
   }
 }
 
-export function createFetchWire(): Wire {
+export function createFetchWire(baseline: NetworkBaseline = LOAD_BASELINE): Wire {
   return {
     async request(r: WireRequest): Promise<WireResult> {
-      if (networkOverridden()) return fail('other');
+      if (networkOverridden() || networkSwapped(baseline)) return fail('other');
       let url: URL;
       try {
         url = new URL(r.url);

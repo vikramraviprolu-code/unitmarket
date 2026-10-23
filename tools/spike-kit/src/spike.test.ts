@@ -21,8 +21,10 @@ import {
   createSpikeFetchWire,
   createRedactor,
   createReplayWire,
+  captureNetworkBaseline,
   main,
   networkOverride,
+  networkTampered,
   parseSpikeGo,
   preflight,
   redactionSelfTest,
@@ -1152,6 +1154,21 @@ describe('M1: proxy, certificate and Node-option overrides are refused in real m
     '--openssl-config',
     '--openssl-config=/tmp/x.cnf',
     '--openssl-shared-config',
+    '--tls-keylog',
+    '--heapsnapshot-signal',
+    '--heapsnapshot-near-heap-limit',
+    '--inspect-port',
+    '--inspect-wait',
+    '--experimental-network-inspection',
+    '--secure-heap',
+    '--tls-min-v1.0',
+    '--tls-min-v1.1',
+    '--conditions',
+    '-C',
+    '--tls-keylog=/tmp/k.log',
+    '--inspect-port=9230',
+    '--secure-heap=1048576',
+    '--conditions=dev',
   ])('refuses execArgv %s', (flag) => {
     const h = real();
     h.deps.execArgv = ['--max-old-space-size=512', flag];
@@ -1254,6 +1271,53 @@ describe('M3 (SEAL2): the override check runs again on every request', () => {
     // The summary names the override, by name only.
     const summary = fs.readFileSync(path.join(tmp, 'out', 'summary.md'), 'utf8');
     expect(summary).toContain('NODE_TLS_REJECT_UNAUTHORIZED');
+    expect(summary).not.toContain(FAKE_SECRET);
+  });
+});
+
+describe('M-C (SEAL3): a swapped global fetch or undici dispatcher stops the run', () => {
+  const KEY = Symbol.for('undici.globalDispatcher.1');
+  it('networkTampered compares the fetch and the dispatcher with the baseline', () => {
+    const f = () => undefined;
+    const g: Record<string | symbol, unknown> = { fetch: f, [KEY]: { name: 'Agent' } };
+    const b = captureNetworkBaseline(g);
+    expect(networkTampered(b, g)).toBeNull();
+    g['fetch'] = () => undefined;
+    expect(networkTampered(b, g)).toBe('globalThis.fetch');
+    g['fetch'] = f;
+    expect(networkTampered(b, g)).toBeNull();
+    g[KEY] = { name: 'ProxyAgent' };
+    expect(networkTampered(b, g)).toBe('the undici global dispatcher');
+    delete g[KEY];
+    expect(networkTampered(b, g)).toBe('the undici global dispatcher');
+  });
+  it('the real baseline holds Node default dispatcher, taken without any request', () => {
+    const b = captureNetworkBaseline();
+    expect(b.dispatcher).toBeDefined();
+    expect(networkTampered(b)).toBeNull();
+  });
+  it('main: an integrity failure after the first request stops the run before the next fetch', async () => {
+    const h = harness({
+      env: realEnv(),
+      stdinIsTTY: true,
+      argv: ['--out', path.join(tmp, 'out')],
+    });
+    let tampered: string | null = null;
+    h.deps.integrity = () => tampered;
+    const token = JSON.stringify({ access_token: FAKE_TOKEN, token_type: 'Bearer', expires_in: 1 });
+    const f = vi.fn(async () => {
+      tampered = 'the undici global dispatcher';
+      return {
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        arrayBuffer: async () => new TextEncoder().encode(token).buffer,
+      };
+    });
+    h.deps.fetchImpl = f as never;
+    expect(await main(h.deps)).toBe(4);
+    expect(f).toHaveBeenCalledTimes(1);
+    const summary = fs.readFileSync(path.join(tmp, 'out', 'summary.md'), 'utf8');
+    expect(summary).toContain('the undici global dispatcher');
     expect(summary).not.toContain(FAKE_SECRET);
   });
 });

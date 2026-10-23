@@ -120,7 +120,7 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
 // the application (module hooks, loaders, preloads). Kept in step with the production Wire in
 // packages/transport and the spike kit, which check the same list again on every request.
 const OVERRIDE_FLAG =
-  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config)(?:=|$)/;
+  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait|-port|-publish-uid)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config|--tls-keylog|--tls-min-v1\.[01]|--heapsnapshot-signal|--heapsnapshot-near-heap-limit|--experimental-network-inspection|--secure-heap(?:-min)?|--conditions|-C)(?:=|$)/;
 function transportOverride(env: Env, execArgv: readonly string[]): string | null {
   for (const [name, v] of Object.entries(env)) {
     const up = name.toUpperCase();
