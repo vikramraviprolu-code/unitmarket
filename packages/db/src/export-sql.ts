@@ -237,7 +237,10 @@ export async function openForBackup(dir: string): Promise<BackupHandle> {
 
 /** Writes a tarball made by openForBackup(...).tarball() into an empty data directory. */
 export async function restoreDataDirTarball(dir: string, bytes: Uint8Array): Promise<void> {
-  const pg = new PGlite({ dataDir: dir, loadDataDir: new Blob([bytes]) });
+  // A copy backed by a plain ArrayBuffer: Blob parts do not accept a view over a shared buffer.
+  const copy = new Uint8Array(new ArrayBuffer(bytes.length));
+  copy.set(bytes);
+  const pg = new PGlite({ dataDir: dir, loadDataDir: new Blob([copy]) });
   await pg.waitReady;
   await pg.close();
 }
