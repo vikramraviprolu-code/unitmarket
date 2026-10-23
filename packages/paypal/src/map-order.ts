@@ -4,8 +4,16 @@ import {
   IdSchema,
   ProviderOrderIdSchema,
   ProviderOrderStatusSchema,
+  RefundStatusSchema,
 } from '@umsbx/contracts';
-import type { CaptureRead, CapturedPart, Money, OrderRead, OrderReadUnit } from '@umsbx/contracts';
+import type {
+  CaptureRead,
+  CapturedPart,
+  Money,
+  OrderRead,
+  OrderReadRefund,
+  OrderReadUnit,
+} from '@umsbx/contracts';
 import { mapError } from './errors';
 import { debugIdOf, isRecord } from './headers';
 import type { Http, Mapped } from './shapes';
@@ -109,6 +117,32 @@ export function latestCapture(unit: Record<string, unknown>): unknown {
   return best;
 }
 
+/**
+ * The refunds PayPal lists for a unit (`payments.refunds[]`), whoever made them. Empty when the
+ * unit has none. Null when any entry cannot be read exactly (unknown status, unreadable amount,
+ * an amount in another currency than the unit, no usable id): the whole order read is then
+ * unavailable, because the refund send path takes PayPal's remaining amount from this list and a
+ * partial list would overstate it (BU-4, ASM-53).
+ */
+export function readRefunds(
+  unit: Record<string, unknown>,
+  currency: string,
+): OrderReadRefund[] | null {
+  const payments = unit.payments;
+  if (!isRecord(payments) || payments.refunds === undefined) return [];
+  if (!Array.isArray(payments.refunds)) return null;
+  const out: OrderReadRefund[] = [];
+  for (const r of payments.refunds as unknown[]) {
+    if (!isRecord(r) || typeof r.id !== 'string' || r.id.length === 0 || r.id.length > 64)
+      return null;
+    const status = RefundStatusSchema.safeParse(r.status);
+    const amount = moneyOf(r.amount);
+    if (!status.success || amount === null || amount.currency !== currency) return null;
+    out.push({ refund_id: r.id, status: status.data, amount });
+  }
+  return out;
+}
+
 export function purchaseUnits(body: unknown): Record<string, unknown>[] | null {
   if (!isRecord(body)) return null;
   if (body.purchase_units === undefined) return [];
@@ -162,7 +196,9 @@ export function mapOrder(h: Http, now: Date): Mapped<OrderRead> {
       capture = c.part;
       notes.push(...c.notes);
     }
-    units.push({ reference_id, payee_merchant_id: payee, amount, capture });
+    const refunds = readRefunds(u, amount.currency);
+    if (refunds === null) return { result: unreadable, notes: ['malformed_response'] };
+    units.push({ reference_id, payee_merchant_id: payee, amount, capture, refunds });
   }
   // One custom_id per order in the port: units that disagree read as null, which never matches.
   const only = customIds.size === 1 ? [...customIds][0] : null;

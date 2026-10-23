@@ -153,12 +153,28 @@ export const CapturedPartSchema = z
   .strict();
 export type CapturedPart = z.infer<typeof CapturedPartSchema>;
 
+/** One refund PayPal lists for a unit (purchase_units[].payments.refunds[]). */
+export const OrderReadRefundSchema = z
+  .object({
+    refund_id: z.string().min(1),
+    status: RefundStatusSchema,
+    amount: MoneySchema,
+  })
+  .strict();
+export type OrderReadRefund = z.infer<typeof OrderReadRefundSchema>;
+
 export const OrderReadUnitSchema = z
   .object({
     reference_id: IdSchema,
     payee_merchant_id: z.string().nullable(),
     amount: MoneySchema,
     capture: CapturedPartSchema.nullable(),
+    /**
+     * Every refund PayPal lists for the unit, whoever made it (BU-4). The adapter always sets it
+     * (empty when PayPal lists none). Optional in the type so that readers written before it
+     * existed keep compiling; a missing list means "none listed".
+     */
+    refunds: z.array(OrderReadRefundSchema).optional(),
   })
   .strict();
 export type OrderReadUnit = z.infer<typeof OrderReadUnitSchema>;

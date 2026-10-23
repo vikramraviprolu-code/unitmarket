@@ -26,3 +26,10 @@ Do not: book from `refunded_minor` alone; book before a read shows the refund; r
 Evidence for the PR: red summary; pass counts; mutation score; INV results after the integration run.
 
 Branch: `feat/payments-refunds-complete` Commit: `feat(payments): refunds need MFA, dashboard refunds booked, partial and full states (CO-4)`
+
+Review notes (CO-5 and BU-4 reviews, 2026-10-23):
+
+- Never send a money event for a PayPal refund that reads PENDING: `pending` from `captured` is refused. Pending refunds stay in the payments layer only.
+- Item-level refunds: a partial refund is a unit-level price adjustment and never revokes an item (ASM-61, open). An item-level refund must be a full refund of a single-item unit.
+- BU-4 leaves "refund the rest" with no amount stored as the local remaining. After a dashboard refund this always closes as over-remaining. Book dashboard refunds first (goal 3), then clamp a null request to PayPal's remaining amount, and test it.
+- Lock order: a recovery case in `refund_pending` locks the case, then the entitlement. Take the same order here, and ask the reviewer to add recovery cases to the D-020 list.

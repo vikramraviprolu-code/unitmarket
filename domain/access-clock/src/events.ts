@@ -70,7 +70,14 @@ export async function loadEvents(tx: SqlExecutor, id: Id): Promise<AccessEvent[]
   }));
 }
 
-/** Appends one event. False when the link_issued-once-per-link index already holds it. */
+/**
+ * Appends one event. False when the link_issued-once-per-link index already holds it.
+ * Event time is monotonic per entitlement (CO-5b, ASM-62): without an explicit `at` the event is
+ * stamped max(now, the latest `at` already in the log), so a clock that steps back can never put a
+ * new fact before an earlier one (computeWindow sorts by `at`; a delivery_restored slipped in before
+ * a revoke used to earn credit on a revoked window). An explicit `at` is the caller's decision (the
+ * sweep stamps window_ended at ends_at) and is stored as given.
+ */
 export async function insertEvent(
   tx: SqlExecutor,
   d: CoreDeps,
@@ -83,7 +90,17 @@ export async function insertEvent(
     at?: Date;
   },
 ): Promise<boolean> {
-  const stamp = d.clock.now().toISOString();
+  const now = d.clock.now();
+  const stamp = now.toISOString();
+  let when = i.at;
+  if (when === undefined) {
+    const last = await tx.query<{ last: Date | string | null }>(
+      'SELECT max(at) AS last FROM access_events WHERE entitlement_id = $1',
+      [i.entitlement_id],
+    );
+    const latest = last.rows[0]?.last;
+    when = latest != null && new Date(latest).getTime() > now.getTime() ? new Date(latest) : now;
+  }
   const inserted = await tx.query(
     `INSERT INTO access_events (id, entitlement_id, link_id, kind, at, source, evidence, environment, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $9)
@@ -93,7 +110,7 @@ export async function insertEvent(
       i.entitlement_id,
       i.link_id,
       i.kind,
-      (i.at ?? d.clock.now()).toISOString(),
+      when.toISOString(),
       i.source,
       JSON.stringify(i.evidence),
       d.environment,
@@ -179,6 +196,7 @@ export async function recordDeliveryEvent(
 ): Promise<WindowState & { inserted: boolean }> {
   return d.db.transaction(async (tx) => {
     const head = await requireEntitlement(tx, i.entitlement_id);
+    const before = computeWindow(await loadEvents(tx, head.id), head.policy, d.clock.now());
     const inserted = await insertEvent(tx, d, {
       entitlement_id: i.entitlement_id,
       kind: i.kind,
@@ -186,6 +204,8 @@ export async function recordDeliveryEvent(
       source: i.source,
       evidence: i.evidence,
     });
+    // A revoked window is final: the fact is kept as evidence, the window row is not rewritten.
+    if (before.state === 'revoked') return { ...before, inserted };
     return { ...(await materialise(tx, d, head)), inserted };
   });
 }
@@ -204,7 +224,9 @@ export async function markAccessReady(
 ): Promise<WindowState> {
   const head = await requireEntitlement(tx, i.entitlement_id);
   if (head.money !== 'captured') {
-    throw new Error(`access_ready refused: money is ${head.money}, not captured`);
+    throw new Error(
+      `money_not_captured: access_ready refused, money is ${head.money}, not captured`,
+    );
   }
   const current = computeWindow(await loadEvents(tx, head.id), head.policy, d.clock.now());
   if (current.state === 'not_started') {
