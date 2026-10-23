@@ -203,10 +203,11 @@ describe('a legitimate delivery survives an attack', () => {
     expect(t.calls).toHaveLength(1);
     for (let i = 0; i < 50; i++) await post(source, clock, urlN(i));
     // CO-1b: the legitimate URL is trusted after its first verified delivery, so unknown URLs get
-    // 1 fetch an hour from then on (CO-1 alone allowed 5 more): 1 legitimate + 1 attacker fetch
-    expect(t.calls).toHaveLength(2);
+    // 1 fetch an hour from then on (CO-1 alone allowed 5 more). That first fetch was made while
+    // cold and still counts in the hour, so the attacker gets none at all here.
+    expect(t.calls).toHaveLength(1);
     expect((await post(source, clock, certUrl())).kind).toBe('verified');
-    expect(t.calls).toHaveLength(2); // served from the cache, no fetch
+    expect(t.calls).toHaveLength(1); // served from the cache, no fetch
   });
 
   it('hour after hour of attack, a legitimate delivery that keeps arriving is never fetched again', async () => {
@@ -281,6 +282,8 @@ describe('nothing grows without bound', () => {
       failures: 0,
       in_flight: 0,
       fetches_in_window: 0,
+      unknown_fetches_today: 0,
+      trusted_urls: [],
     });
   });
 });

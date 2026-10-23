@@ -70,8 +70,8 @@ describe('R2: a low-rate attacker spends the unknown budget every time the hour 
       if ((await post(LEGIT)).kind === 'verified') legitVerified += 1;
     }
     expect(legitVerified).toBe(legitTotal);
-    // the 24-hour cache expired three times, and each refresh went through
-    expect(stamps.filter((s) => s.path === LEGIT).length).toBeGreaterThanOrEqual(4);
+    // the 24-hour cache expired at hours 24 and 49, and each refresh went through
+    expect(stamps.filter((s) => s.path === LEGIT).length).toBeGreaterThanOrEqual(3);
     // approval calls from this path: at most 24 in any rolling day
     for (const s of stamps) expect(callsIn(stamps, s.at - DAY, s.at)).toBeLessThanOrEqual(24);
     // and the attacker got at most 12 a day, 1 an hour
@@ -125,6 +125,7 @@ describe('R6: attacker URLs that return valid certificates cannot push the legit
 describe('trust is earned by a genuine signature only', () => {
   it('forged signatures, wrong webhook ids and stale deliveries never make a URL trusted', async () => {
     const { clock, post, source } = setup(() => pemResponse(pem()));
+    clock.advance(4 * DAY); // the fixture's own transmission time is now stale
     for (let i = 0; i < 5; i++) {
       clock.advance(HOUR);
       await post(attacker(i), forger.privateKey);

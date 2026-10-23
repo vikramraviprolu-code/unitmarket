@@ -5,29 +5,48 @@
 // Every failure is `unavailable`: the verdict is then `unverifiable` (HTTP 503, PayPal retries) and
 // is never recorded as a forgery (nfr.md P1).
 //
-// Cost control (review of CO-1, H1). The webhook route is public, and the certificate URL is read
-// from a request header. The URL must pass the allow-list, but any file name under the certificate
-// path does, and every fetch is one outbound call that counts against the approval's
+// Cost control (review of CO-1, H1; CO-1b). The webhook route is public, and the certificate URL is
+// read from a request header. The URL must pass the allow-list, but any file name under the
+// certificate path does, and every fetch is one outbound call that counts against the approval's
 // max_calls_per_day (and writes an audit row). Without limits a few hundred forged posts would
-// leave nothing for captures, refunds and read-backs. So this source:
-//   - remembers a failed URL for 10 minutes (success is cached by URL for up to 24 h, see below);
-//   - makes at most 6 fetches in any rolling hour of the injected clock, over all URLs; beyond that
-//     it answers `unavailable` without calling the Transport (and does not remember that as a
-//     failure of the URL);
+// leave nothing for captures, refunds and read-backs, and a patient attacker could keep the
+// legitimate URL from ever being fetched. So this source:
+//   - remembers a failed URL for 10 minutes (success is cached by URL for up to 24 h);
 //   - keeps the certificate cache least-recently-used, so a certificate that real deliveries keep
-//     using is not pushed out by attacker URLs (at most 6 fetches an hour cannot fill 8 slots);
-//   - bounds every map: 8 certificates, 32 remembered failures, and in-flight fetches (each one
-//     holds a unit of the budget).
-// Consequence: during an attack a legitimate delivery whose certificate is not cached yet is
-// `unverifiable` (503) until the budget returns; PayPal retries for 3 days.
+//     using is not pushed out by a few attacker URLs;
+//   - bounds every map: 8 certificates, 32 remembered failures, 4 trusted URLs, and in-flight
+//     fetches (each one holds a unit of a budget);
+//   - splits the fetch budget by who is asking (all windows roll by the injected clock; a fetch
+//     leaves a window at exactly its length; a refused lookup makes no Transport call and is not
+//     remembered as a failure of the URL):
+//       trusted URL    a URL that has already verified a delivery (see trust() below) may be
+//                      fetched at most 2 times an hour from a reserved budget that no other URL
+//                      can use, and it does not use the budget below either;
+//       unknown URL    while nothing is trusted yet (first delivery, after a restart, after the
+//                      trusted entries expired): at most 6 fetches an hour, as in CO-1;
+//                      once any URL is trusted: at most 1 fetch an hour and 12 in any rolling 24
+//                      hours (this daily count includes fetches made while cold).
+//     With a trusted URL, an attacker therefore costs at most 12 calls a day (about 24 a day with
+//     the legitimate refreshes), whatever the posting rate, and cannot stop the trusted
+//     certificate from being refreshed. Before the first verified delivery (or after a restart)
+//     the CO-1 limit of 6 an hour, about 144 a day, is all that stands in the way; the owner's
+//     first run is what trusts the real URL.
+// trust(url) is called by the verifier only after a signature has verified. A trusted URL is kept
+// until the certificate's end date or 7 days (a later verified delivery extends it), at most 4 at
+// a time (PayPal rotates certificate files: a new verified URL replaces the oldest), and the list
+// is memory only, so a restart clears it.
+// Consequence: while an attack runs, a legitimate delivery that arrives with an unknown URL (a
+// rotated certificate) can be `unverifiable` (503) for up to an hour; PayPal retries for 3 days.
 //
 // Requirements on the callers (CO-3, the route):
-//   - count every `unverifiable` that comes from a certificate failure in the per-IP limiter of
-//     invalid webhook traffic (COST-3), exactly like a bad signature, so one address cannot keep
-//     the budget empty;
+//   - the per-IP limiter for invalid webhook traffic (COST-3) keeps the audit log from filling
+//     and should count certificate-failure `unverifiable` like a bad signature, but it does NOT
+//     protect the fetch budget: 6 posts an hour is under any per-IP limit, and an attacker can
+//     use many addresses. The protection of the budget is the split above;
 //   - consider a safety budget for these fetches that is separate from the order and refund
 //     budget (a scope or counter of its own), so that exhausting it cannot block money movement;
-//   - after the first recorded delivery, tighten the allow-list to the one certificate URL (ASM-54).
+//   - pin the certificate host after the first recorded delivery (ASM-54); known URLs already get
+//     priority here, and the exact file name is not pinned because PayPal rotates certificate files.
 import { X509Certificate } from 'node:crypto';
 import type { KeyObject } from 'node:crypto';
 import type { Clock, Logger, Transport } from '@umsbx/contracts';
@@ -48,6 +67,12 @@ export type CertificateResult =
 /** The port the verifier uses to obtain a certificate by (already allow-listed) URL. */
 export interface CertificateSource {
   get(url: string): Promise<CertificateResult>;
+  /**
+   * Called by the verifier after a signature made with the certificate at `url` has verified. The
+   * URL then gets the reserved budget (see the header). Optional: a source without a budget need
+   * not implement it.
+   */
+  trust?(url: string): void;
 }
 
 /** Cached certificates: at most this many, each for at most this long (or until `validTo`). */
@@ -58,6 +83,14 @@ export const MAX_CERT_BYTES = 64 * 1024;
 /** Outbound certificate fetches over all URLs: at most this many in any rolling hour. */
 export const CERT_FETCH_BUDGET_PER_HOUR = 6;
 export const CERT_FETCH_WINDOW_MS = 60 * 60 * 1000;
+/** CO-1b. Once a URL is trusted, unknown URLs: this many an hour and this many a rolling day. */
+export const CERT_UNKNOWN_FETCHES_PER_HOUR = 1;
+export const CERT_UNKNOWN_FETCHES_PER_DAY = 12;
+export const CERT_DAY_MS = 24 * 60 * 60 * 1000;
+/** CO-1b. Trusted URLs: at most this many, each for at most this long, this many fetches an hour. */
+export const CERT_TRUSTED_MAX_URLS = 4;
+export const CERT_TRUSTED_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const CERT_TRUSTED_FETCHES_PER_HOUR = 2;
 /** A failed URL is not tried again for this long; at most this many failures are remembered. */
 export const CERT_NEGATIVE_TTL_MS = 10 * 60 * 1000;
 export const CERT_NEGATIVE_MAX_ENTRIES = 32;
@@ -157,9 +190,15 @@ export interface CertificateSourceStats {
   certificates: number;
   failures: number;
   in_flight: number;
+  /** fetches in the last hour, trusted and unknown together */
   fetches_in_window: number;
+  /** unknown-URL fetches in the last 24 hours */
+  unknown_fetches_today: number;
+  /** trusted URLs, oldest first */
+  trusted_urls: string[];
 }
 export interface CertificateSourceWithStats extends CertificateSource {
+  trust(url: string): void;
   stats(): CertificateSourceStats;
 }
 
@@ -184,15 +223,41 @@ export function createCertificateSource(d: CertificateSourceDeps): CertificateSo
   const cache = createCertCache(d.clock);
   const inflight = new Map<string, Promise<CertificateResult>>();
   const failures = new Map<string, { result: CertificateResult; until: number }>();
-  const fetchTimes: number[] = [];
+  const unknownTimes: number[] = []; // unknown-URL fetches, last 24 h (at most 144 while cold)
+  const trustedTimes: number[] = []; // trusted-URL fetches, last hour (at most 2)
+  const trusted = new Map<string, number>(); // url -> end of trust, oldest first
   const expected = d.expected_subjects ?? EXPECTED_CERT_SUBJECTS;
-  const budget = d.limits?.fetches_per_hour ?? CERT_FETCH_BUDGET_PER_HOUR;
+  const coldBudget = d.limits?.fetches_per_hour ?? CERT_FETCH_BUDGET_PER_HOUR;
   const failuresMax = d.limits?.failures_max ?? CERT_NEGATIVE_MAX_ENTRIES;
 
-  const purgeFetches = (now: number) => {
-    // a fetch leaves the window at exactly one hour
-    while (fetchTimes.length > 0 && (fetchTimes[0] as number) <= now - CERT_FETCH_WINDOW_MS)
-      fetchTimes.shift();
+  /** drop the fetch times that have left a window of `length` ms (at exactly that age) */
+  const dropOld = (times: number[], now: number, length: number) => {
+    while (times.length > 0 && (times[0] as number) <= now - length) times.shift();
+  };
+  const purgeTrusted = (now: number) => {
+    for (const [url, until] of trusted) if (now > until) trusted.delete(url);
+  };
+  const inLastHour = (times: number[], now: number) =>
+    times.filter((t) => t > now - CERT_FETCH_WINDOW_MS).length;
+  /** true and the fetch is counted, or false and nothing is counted */
+  const admit = (url: string, now: number): boolean => {
+    purgeTrusted(now);
+    if (trusted.has(url)) {
+      dropOld(trustedTimes, now, CERT_FETCH_WINDOW_MS);
+      if (trustedTimes.length >= CERT_TRUSTED_FETCHES_PER_HOUR) return false;
+      trustedTimes.push(now);
+      return true;
+    }
+    dropOld(unknownTimes, now, CERT_DAY_MS);
+    const lastHour = inLastHour(unknownTimes, now);
+    const refused =
+      trusted.size === 0
+        ? lastHour >= coldBudget
+        : lastHour >= CERT_UNKNOWN_FETCHES_PER_HOUR ||
+          unknownTimes.length >= CERT_UNKNOWN_FETCHES_PER_DAY;
+    if (refused) return false;
+    unknownTimes.push(now);
+    return true;
   };
   const purgeFailures = (now: number) => {
     for (const [url, f] of failures) if (now >= f.until) failures.delete(url);
@@ -244,9 +309,7 @@ export function createCertificateSource(d: CertificateSourceDeps): CertificateSo
       }
       const pending = inflight.get(url);
       if (pending !== undefined) return pending;
-      purgeFetches(now);
-      if (fetchTimes.length >= budget) return unavailable('fetch');
-      fetchTimes.push(now);
+      if (!admit(url, now)) return unavailable('fetch');
       const flight = fetchOne(url)
         .then((result) => {
           if (result.kind === 'unavailable') rememberFailure(url, result);
@@ -258,15 +321,33 @@ export function createCertificateSource(d: CertificateSourceDeps): CertificateSo
       inflight.set(url, flight);
       return flight;
     },
+    trust(raw) {
+      const checked = guard({ ...requestFor(raw), path: raw }, 'sandbox');
+      if (!checked.ok) return;
+      const url = checked.url.href;
+      const now = d.clock.now().getTime();
+      purgeTrusted(now);
+      // until the certificate's end date, or 7 days from now when it is not at hand, whichever is first
+      const end = cache.get(url)?.valid_to.getTime() ?? now + CERT_TRUSTED_MAX_AGE_MS;
+      trusted.delete(url);
+      // the map is not empty here (size >= 4), so the first key is the oldest
+      while (trusted.size >= CERT_TRUSTED_MAX_URLS)
+        trusted.delete(trusted.keys().next().value as string);
+      trusted.set(url, Math.min(end, now + CERT_TRUSTED_MAX_AGE_MS));
+    },
     stats() {
       const now = d.clock.now().getTime();
-      purgeFetches(now);
+      dropOld(unknownTimes, now, CERT_DAY_MS);
+      dropOld(trustedTimes, now, CERT_FETCH_WINDOW_MS);
       purgeFailures(now);
+      purgeTrusted(now);
       return {
         certificates: cache.size(),
         failures: failures.size,
         in_flight: inflight.size,
-        fetches_in_window: fetchTimes.length,
+        fetches_in_window: inLastHour(unknownTimes, now) + trustedTimes.length,
+        unknown_fetches_today: unknownTimes.length,
+        trusted_urls: [...trusted.keys()],
       };
     },
   };

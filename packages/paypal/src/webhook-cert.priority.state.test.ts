@@ -161,6 +161,7 @@ describe('budgets by class', () => {
     const { t, source, clock } = world();
     await source.get(url('A'));
     source.trust(url('A'));
+    clock.advance(HOUR); // the cold-start fetch of A leaves the unknown window
     const before = t.calls.length;
     for (let i = 0; i < 10; i++) await source.get(url(`FAIL-${i}`));
     expect(t.calls.length - before).toBe(1);
