@@ -53,7 +53,7 @@ describe('R1: the REVERSED hint opens no recovery case', () => {
     const ran = await applyAutomaticRules(w.td, { max_items: 20 });
     expect(ran.opened).toBe(0);
     expect(await count(w, 'SELECT count(*) AS c FROM recovery_cases')).toBe(0);
-    expect(await listCasesForBuyer(w.td.db, { buyer_id: BUYER_A.buyer_id })).toEqual([]);
+    expect(await listCasesForBuyer(w.td.db, { buyer_id: 'buy_A' })).toEqual([]);
   });
 
   it('once a read shows the capture as declined, the reversal alert opens the case', async () => {
@@ -77,6 +77,6 @@ describe('R1: the REVERSED hint opens no recovery case', () => {
       'SELECT kind, state FROM recovery_cases',
     );
     expect(cases).toEqual([{ kind: 'reversal', state: 'open' }]);
-    expect(await listCasesForBuyer(w.td.db, { buyer_id: BUYER_A.buyer_id })).toHaveLength(1);
+    expect(await listCasesForBuyer(w.td.db, { buyer_id: 'buy_A' })).toHaveLength(1);
   });
 });
