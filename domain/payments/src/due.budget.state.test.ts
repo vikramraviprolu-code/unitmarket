@@ -171,6 +171,23 @@ describe('sandbox cadence: paid orders are re-read every 6 h (ASM-52)', () => {
   });
 });
 
+describe('the allowance bounds paid re-reads', () => {
+  it('three re-reads due, max_items 2: two are read, the third waits for the next pass', async () => {
+    w = await makeWorld();
+    const orders = [];
+    for (const offer of ['ofr_1', 'ofr_2', 'ofr_3']) {
+      orders.push(await paid(w, { buyer_id: 'buy_A', offers: [offer] }));
+    }
+    w.tick(H + 1000);
+    const base = gets();
+    expect((await runDue(w.deps, { max_items: 2, allow: 'all' })).processed).toBe(2);
+    expect(gets() - base).toBe(2);
+    expect((await runDue(w.deps, { max_items: 2, allow: 'all' })).processed).toBe(1);
+    expect(gets() - base).toBe(3);
+    expect((await runDue(w.deps, { max_items: 2, allow: 'all' })).processed).toBe(0);
+  });
+});
+
 describe('allow: money_only (the polling allowance is spent)', () => {
   it('remaining at the reserve: re-reads skipped, an unknown capture is still read', async () => {
     w = await makeWorld();
