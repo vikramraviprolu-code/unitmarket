@@ -123,6 +123,29 @@ describe('analyseStart: a good run', () => {
   });
 });
 
+describe('analyseStart: the details a reviewer reads', () => {
+  const detail = (r: ReturnType<typeof analyseStart>, id: string): string =>
+    r.checks.find((c) => c.id === id)?.detail ?? '';
+  it('counts the send lines and names the operation and outcome', () => {
+    expect(detail(analyseStart(good()), 'sends_blocked')).toBe(
+      '2 line(s): oauth_token:blocked:no_approval x2',
+    );
+  });
+  it('one single blocked send line is enough to pass', () => {
+    const one = analyseStart(good({ stdout: [...BANNER, SELFCHECK, GOOD_SEND].join('\n') }));
+    expect(failed(one)).toEqual([]);
+    expect(one.facts.sends).toBe(1);
+  });
+  it('says so when the gate was never reached, and when the server never listened', () => {
+    const none = analyseStart(good({ stdout: [...BANNER, SELFCHECK].join('\n') }));
+    expect(detail(none, 'sends_blocked')).toBe('no sandbox.send line: the gate was never reached');
+    expect(detail(analyseStart(good({ listened: false })), 'listened')).toBe(
+      'no 200 from /healthz',
+    );
+    expect(detail(analyseStart(good()), 'listened')).toContain('answered 200');
+  });
+});
+
 describe('analyseStart: bad runs', () => {
   it('the server never listened', () => {
     expect(failed(analyseStart(good({ listened: false })))).toContain('listened');
@@ -321,6 +344,15 @@ describe('analyseOverride (NODE_OPTIONS=--require)', () => {
       expect(r.checks.find((c) => c.id === 'nothing_served')?.ok).toBe(false);
     }
   });
+  it('says how many application log lines were written', () => {
+    const r = run({ stdout: [...BANNER, refusal, SELFCHECK].join('\n') });
+    expect(r.checks.find((c) => c.id === 'nothing_served')?.detail).toBe(
+      '1 application log line(s) were written',
+    );
+    expect(run().checks.find((c) => c.id === 'nothing_served')?.detail).toContain(
+      'no application log line',
+    );
+  });
   it('a secret in the output fails', () => {
     const r = run({ stderr: `${refusal} ${FAKE_SECRET}` });
     expect(r.checks.find((c) => c.id === 'no_secret_in_output')?.ok).toBe(false);
@@ -338,5 +370,6 @@ describe('portCandidates', () => {
       expect(p).toBeLessThan(60000);
     }
     expect(portCandidates(4243, 1)[0]).not.toBe(a[0]);
+    expect(portCandidates(4242, 3)).toEqual([56954, 57055, 57156]);
   });
 });
