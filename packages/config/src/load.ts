@@ -112,6 +112,7 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
   'ALL_PROXY',
   // FIX-MVPB-SEAL2 M3: more ways to change which certificates or OpenSSL settings a connection uses.
   'NODE_USE_SYSTEM_CA',
+  'NODE_PRESERVE_SYMLINKS',
   'OPENSSL_CONF',
   'SSL_CERT_FILE',
   'SSL_CERT_DIR',
@@ -120,7 +121,7 @@ const OVERRIDE_NAMES: ReadonlySet<string> = new Set([
 // the application (module hooks, loaders, preloads). Kept in step with the production Wire in
 // packages/transport and the spike kit, which check the same list again on every request.
 const OVERRIDE_FLAG =
-  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait|-port|-publish-uid)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config|--tls-keylog|--tls-min-v1\.[01]|--heapsnapshot-signal|--heapsnapshot-near-heap-limit|--experimental-network-inspection|--secure-heap(?:-min)?|--conditions|-C|--report-[a-z-]+|--snapshot-blob|--build-snapshot)(?:=|$)/;
+  /^(?:--use-env-proxy|--require|-r|--import|--inspect(?:-brk|-wait|-port|-publish-uid)?|--loader|--experimental-loader|--use-system-ca|--use-openssl-ca|--openssl-config|--openssl-shared-config|--tls-keylog|--tls-min-v1\.[01]|--heapsnapshot-signal|--heapsnapshot-near-heap-limit|--experimental-network-inspection|--secure-heap(?:-min)?|--conditions|-C|--preserve-symlinks(?:-main)?|--report-[a-z-]+|--snapshot-blob|--build-snapshot)(?:=|$)/;
 function transportOverride(env: Env, execArgv: readonly string[]): string | null {
   for (const [name, v] of Object.entries(env)) {
     const up = name.toUpperCase();

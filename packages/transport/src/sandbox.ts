@@ -12,7 +12,7 @@ import { AMOUNT_BOUND, canonicalMoneyBody } from './amount-binding';
 import { isApprovalCapability } from './approval';
 import type { ApprovalCapability } from './approval';
 import { guard } from './guard';
-import { createFetchWire } from './wire-fetch';
+import { createHttpsWire } from './wire-https';
 import { MAX_RESPONSE_BYTES } from './wire-map';
 import type { Wire, WireRequest } from './wire';
 
@@ -193,7 +193,7 @@ function headerValue(h: Record<string, string>, name: string): string | null {
 
 /** The Wire to use, or a throw: there is no default and no fallback to the platform fetch. */
 function pickWire(w: unknown): Wire {
-  if (w === PRODUCTION_WIRE) return createFetchWire();
+  if (w === PRODUCTION_WIRE) return createHttpsWire();
   if (typeof w === 'object' && w !== null && typeof (w as Wire).request === 'function')
     return w as Wire;
   throw new SandboxSealedError('no wire');

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanProcess, loadHttpsWire, unloadHttpsWire } from './https-fake';
+import { cleanProcess, loadHttpsWire, setExecArgv, unloadHttpsWire } from './https-fake';
 import { SANDBOX_HOST } from './test-support';
 import type { WireRequest } from './wire';
 
@@ -121,7 +121,7 @@ describe('NODE_OPTIONS or --import set after boot: refused other', () => {
     '--preserve-symlinks',
   ])('execArgv %s', async (flag) => {
     const wire = loaded.createHttpsWire();
-    Object.defineProperty(process, 'execArgv', { value: [flag], configurable: true });
+    setExecArgv([flag]);
     expect(await wire.request(request())).toEqual(refused);
     expect(loaded.world.calls).toHaveLength(0);
   });

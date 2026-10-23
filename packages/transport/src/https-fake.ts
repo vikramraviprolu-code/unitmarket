@@ -210,6 +210,18 @@ export const OVERRIDE_ENV_NAMES = [
 ];
 
 /**
+ * Replaces the Node flags the process reports, in place (the array object stays the same, which is
+ * all the Wire reads). Returns the function that puts the previous flags back.
+ */
+export function setExecArgv(argv: string[]): () => void {
+  const saved = [...process.execArgv];
+  process.execArgv.splice(0, process.execArgv.length, ...argv);
+  return () => {
+    process.execArgv.splice(0, process.execArgv.length, ...saved);
+  };
+}
+
+/**
  * Empties every override variable (in both cases) and every Node flag for the current test, because
  * the test runner's own workers carry --require and the container sets HTTPS_PROXY. Returns the
  * function that puts the flags back; the caller also runs vi.unstubAllEnvs().
@@ -219,7 +231,5 @@ export function cleanProcess(): () => void {
     vi.stubEnv(n, '');
     vi.stubEnv(n.toLowerCase(), '');
   }
-  const saved = process.execArgv;
-  Object.defineProperty(process, 'execArgv', { value: [], configurable: true });
-  return () => Object.defineProperty(process, 'execArgv', { value: saved, configurable: true });
+  return setExecArgv([]);
 }

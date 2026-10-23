@@ -2,7 +2,7 @@ import type { OutboundGate } from '@umsbx/contracts';
 
 // The low-level Wire: the one seam between the sandbox transport and the network (B-L1).
 // The transport decides WHAT may be sent (egress guard, outbound gate, header rules); a Wire only
-// moves bytes. Tests use a fake Wire; the production Wire is wire-fetch.ts, imported by sandbox.ts
+// moves bytes. Tests use a fake Wire; the production Wire is wire-https.ts, imported by sandbox.ts
 // alone.
 
 export type WireErrorKind =

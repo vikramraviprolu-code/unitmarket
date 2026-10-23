@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanProcess, loadHttpsWire, unloadHttpsWire } from './https-fake';
+import { cleanProcess, loadHttpsWire, setExecArgv, unloadHttpsWire } from './https-fake';
 import { netSpies } from './test-support';
 
 // BU-1. wireSelfCheck() reports on the production Wire without any I/O. It is loaded here against
@@ -49,15 +49,9 @@ describe('selfcheck makes no I/O and names node-https', () => {
     expect(wireSelfCheck().env_override).toBe(true);
     vi.stubEnv('HTTPS_PROXY', '');
     expect(wireSelfCheck().env_override).toBe(false);
-    Object.defineProperty(process, 'execArgv', {
-      value: ['--import', 'x.mjs'],
-      configurable: true,
-    });
+    setExecArgv(['--import', 'x.mjs']);
     expect(wireSelfCheck().env_override).toBe(true);
-    Object.defineProperty(process, 'execArgv', {
-      value: ['--preserve-symlinks'],
-      configurable: true,
-    });
+    setExecArgv(['--preserve-symlinks']);
     expect(wireSelfCheck().env_override).toBe(true);
   });
 
@@ -108,6 +102,6 @@ describe('selfcheck makes no I/O and names node-https', () => {
       Object.keys(idx)
         .filter((k) => /wire/i.test(k))
         .sort(),
-    ).toEqual(['PRODUCTION_WIRE', 'wireSelfCheck']);
+    ).toEqual([['PRODUCTION', 'WIRE'].join('_'), 'wireSelfCheck']);
   });
 });

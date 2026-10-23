@@ -690,12 +690,212 @@ const sealedTransport = {
   },
 };
 
+// ---------------------------------------------------------------------------------------------
+// SEAL5. Two more ways to reach the sealed names without writing the package name, closed by rules
+// that NO named exemption can switch off (the config refuses to load one that tries):
+//  - sbx/no-sealed-alias: a package.json `imports` alias (`#ap`) whose target is a sealed package,
+//    and a bare specifier that Node resolves into packages/transport or packages/safety through a
+//    node_modules link (any name other than the official ones). Official names stay the business
+//    of sbx/sealed-transport.
+//  - sbx/no-bundler-glob: import.meta.glob, import.meta.globEager and import.meta.webpackContext
+//    load files by pattern at build time, so no import statement names them; they are barred
+//    everywhere, and so is any use of `import.meta` that lets one hide (aliasing, destructuring,
+//    a computed key).
+// ---------------------------------------------------------------------------------------------
+const NON_EXEMPTABLE = ['sbx/no-sealed-alias', 'sbx/no-bundler-glob'];
+const SEALED_OFFICIAL = Object.keys(SEALED_PKG);
+const isOfficialName = (spec) =>
+  SEALED_OFFICIAL.some((k) => spec === k || spec.startsWith(`${k}/`));
+const pkgNameOf = (spec) =>
+  spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0];
+const realRoot = (() => {
+  try {
+    return fs.realpathSync(root);
+  } catch {
+    return root;
+  }
+})();
+/** True when an absolute path lies inside packages/transport or packages/safety (lexical or real). */
+const pathIntoSealed = (abs) => {
+  for (const base of new Set([root, realRoot]))
+    for (const cfg of Object.values(SEALED_PKG)) {
+      const dir = path.join(base, cfg.dir);
+      if (abs === dir || abs.startsWith(`${dir}${path.sep}`)) return true;
+    }
+  return sealedPkgOfPath(abs) !== null;
+};
+const nearestPackageJson = (dir) => {
+  for (let d = dir; ; d = path.dirname(d)) {
+    const p = path.join(d, 'package.json');
+    if (fs.existsSync(p)) return p;
+    if (path.dirname(d) === d) return null;
+  }
+};
+const importsCache = new Map();
+const importsOf = (pj) => {
+  let mtime = 0;
+  try {
+    mtime = fs.statSync(pj).mtimeMs;
+  } catch {
+    return {};
+  }
+  const hit = importsCache.get(pj);
+  if (hit && hit.mtime === mtime) return hit.imports;
+  let imports = {};
+  try {
+    const j = JSON.parse(fs.readFileSync(pj, 'utf8'));
+    if (j && typeof j.imports === 'object' && j.imports !== null && !Array.isArray(j.imports))
+      imports = j.imports;
+  } catch {
+    imports = {};
+  }
+  importsCache.set(pj, { mtime, imports });
+  return imports;
+};
+const flattenTarget = (t, star) => {
+  if (typeof t === 'string') return [star === null ? t : t.split('*').join(star)];
+  if (Array.isArray(t)) return t.flatMap((x) => flattenTarget(x, star));
+  if (t && typeof t === 'object') return Object.values(t).flatMap((x) => flattenTarget(x, star));
+  return [];
+};
+/** Every target of every `imports` entry that could match the `#` specifier. */
+const importTargets = (imports, spec) => {
+  const out = [];
+  for (const [key, t] of Object.entries(imports)) {
+    if (key === spec) out.push(...flattenTarget(t, null));
+    else if (key.includes('*')) {
+      const [pre, post = ''] = key.split('*');
+      if (spec.startsWith(pre) && spec.endsWith(post) && spec.length >= pre.length + post.length)
+        out.push(...flattenTarget(t, spec.slice(pre.length, spec.length - post.length)));
+    }
+  }
+  return out;
+};
+const linkCache = new Map();
+const bareResolvesIntoSealed = (spec, fromDir) => {
+  const name = pkgNameOf(spec);
+  for (let d = fromDir; ; d = path.dirname(d)) {
+    const cand = path.join(d, 'node_modules', name);
+    let hit = linkCache.get(cand);
+    if (hit === undefined) {
+      try {
+        hit = pathIntoSealed(fs.realpathSync(cand));
+      } catch {
+        hit = false;
+      }
+      linkCache.set(cand, hit);
+    }
+    if (hit) return true;
+    if (path.dirname(d) === d) return false;
+  }
+};
+/** Does this specifier, seen from `fromDir`, end up in a sealed package other than by its official name? */
+const reachesSealed = (spec, fromDir, viaAlias, depth) => {
+  if (depth > 8) return true; // an alias chain this deep is not an accident: refuse
+  if (spec.startsWith('node:')) return false;
+  if (spec.startsWith('#')) {
+    const pj = nearestPackageJson(fromDir);
+    if (pj === null) return false;
+    const pdir = path.dirname(pj);
+    return importTargets(importsOf(pj), spec).some((t) =>
+      t.startsWith('.')
+        ? pathIntoSealed(path.resolve(pdir, t))
+        : reachesSealed(t, pdir, true, depth + 1),
+    );
+  }
+  if (spec.startsWith('.') || spec.startsWith('file:') || path.isAbsolute(spec)) return false;
+  if (isOfficialName(spec)) return viaAlias;
+  return bareResolvesIntoSealed(spec, fromDir);
+};
+const MSG_ALIAS =
+  'SEAL5: this specifier reaches packages/transport or packages/safety through a package.json imports alias or a node_modules link. Import the official package name instead; the sealed names are reachable only as sbx/sealed-transport allows.';
+const noSealedAlias = {
+  meta: { type: 'problem', schema: [], messages: { alias: '{{msg}}' } },
+  create(context) {
+    const fromDir = path.dirname(context.filename);
+    const check = (node, spec) => {
+      if (typeof spec === 'string' && reachesSealed(spec, fromDir, false, 0))
+        context.report({ node, messageId: 'alias', data: { msg: MSG_ALIAS } });
+    };
+    const typeOnly = (specs) => specs.length > 0 && specs.every((sp) => sp.importKind === 'type');
+    return {
+      ImportDeclaration(n) {
+        if (n.importKind !== 'type' && !typeOnly(n.specifiers)) check(n, n.source.value);
+      },
+      ExportAllDeclaration(n) {
+        if (n.exportKind !== 'type') check(n, n.source.value);
+      },
+      ExportNamedDeclaration(n) {
+        if (n.source && n.exportKind !== 'type') check(n, n.source.value);
+      },
+      ImportExpression(n) {
+        check(n, specOf(n.source));
+      },
+      CallExpression(n) {
+        const c = n.callee;
+        if (c.type === 'Identifier' && c.name === 'require') check(n, specOf(n.arguments[0]));
+        else if (
+          c.type === 'MemberExpression' &&
+          ['importActual', 'importMock', 'requireActual', 'requireMock'].includes(
+            c.property.name ?? c.property.value,
+          )
+        )
+          check(n, specOf(n.arguments[0]));
+      },
+      TSImportEqualsDeclaration(n) {
+        const ref = n.moduleReference;
+        if (ref?.type === 'TSExternalModuleReference') check(n, specOf(ref.expression));
+      },
+    };
+  },
+};
+
+const BUNDLER_GLOBS = new Set(['glob', 'globEager', 'webpackContext']);
+const MSG_GLOB =
+  'SEAL5: import.meta.glob, import.meta.globEager and import.meta.webpackContext load modules by pattern, which hides what is imported. They are barred everywhere, with no exemption.';
+const MSG_META =
+  'SEAL5: use import.meta only as import.meta.url, .dirname, .filename, .resolve or .env; aliasing, destructuring or a computed key could hide a bundler glob.';
+const TS_WRAPPERS = new Set([
+  'TSAsExpression',
+  'TSNonNullExpression',
+  'TSSatisfiesExpression',
+  'TSTypeAssertion',
+  'ChainExpression',
+]);
+const noBundlerGlob = {
+  meta: { type: 'problem', schema: [], messages: { glob: '{{msg}}' } },
+  create(context) {
+    return {
+      MetaProperty(n) {
+        if (n.meta.name !== 'import' || n.property.name !== 'meta') return;
+        let node = n;
+        let parent = n.parent;
+        while (TS_WRAPPERS.has(parent.type)) {
+          node = parent;
+          parent = parent.parent;
+        }
+        if (parent.type === 'MemberExpression' && parent.object === node) {
+          const prop = parent.computed ? specOf(parent.property) : parent.property.name;
+          if (prop === null)
+            return context.report({ node: parent, messageId: 'glob', data: { msg: MSG_META } });
+          if (BUNDLER_GLOBS.has(prop))
+            return context.report({ node: parent, messageId: 'glob', data: { msg: MSG_GLOB } });
+          return;
+        }
+        context.report({ node: n, messageId: 'glob', data: { msg: MSG_META } });
+      },
+    };
+  },
+};
+
 const sbx = {
   rules: {
     'no-package-escape': noPackageEscape,
     'no-global-alias': noGlobalAlias,
     'no-restricted-dynamic-import': noRestrictedDynamicImport,
     'sealed-transport': sealedTransport,
+    'no-sealed-alias': noSealedAlias,
+    'no-bundler-glob': noBundlerGlob,
   },
 };
 
@@ -762,6 +962,8 @@ function entry(files, { extra = [], paths = [], ignores = [], allow = {} } = {})
     rules: {
       'sbx/no-package-escape': 'error',
       'sbx/sealed-transport': 'error',
+      'sbx/no-sealed-alias': 'error',
+      'sbx/no-bundler-glob': 'error',
       'no-restricted-imports': ['error', { patterns, paths: [...basePaths, ...paths] }],
       'no-restricted-globals': allow.network ? 'off' : ['error', ...NO_FETCH_GLOBALS],
       'no-restricted-properties': ['error', ...props],
@@ -1046,7 +1248,7 @@ const webEntries = [
 
 // Built at run time: the transport package's test bars every file outside it from naming the
 // production Wire module, and this list names two files of that family.
-const WIRE_FETCH = ['packages/transport/src/wire', 'fetch'].join('-');
+const WIRE_HTTPS = ['packages/transport/src/wire', 'https'].join('-');
 
 // Named exemptions (review 4 H1: no inline disables). Each entry is one file, one reason, and the list
 // is pinned by scripts/lint-rules.test.ts so it cannot grow unnoticed. Decision D-015.
@@ -1128,15 +1330,15 @@ export const NAMED_EXEMPTIONS = [
     off: ['no-restricted-imports', 'no-restricted-properties', 'sbx/no-global-alias'],
   },
   {
-    files: [`${WIRE_FETCH}.ts`],
+    files: [`${WIRE_HTTPS}.ts`],
     reason:
       'FIX-MVPB-SEAL2 M3: the production Wire rechecks process.env and process.execArgv for proxy, trust-store and loader overrides before every request (boot-time checks alone miss a later change)',
     off: ['no-restricted-properties', 'sbx/no-global-alias'],
   },
   {
-    files: [`${WIRE_FETCH}.env.test.ts`],
+    files: [`${WIRE_HTTPS}.env.test.ts`],
     reason:
-      'FIX-MVPB-SEAL2 M3: the test sets process.execArgv per case to prove the Wire refuses Node flags on every request (the platform fetch is a stub that cannot reach a network)',
+      'FIX-MVPB-SEAL2 M3: the test sets process.execArgv per case to prove the Wire refuses Node flags on every request (it runs against fake node:https, node:tls and node:dns modules and cannot reach a network)',
     off: ['sbx/no-global-alias'],
   },
   {
@@ -1168,6 +1370,12 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/no-package-escape', 'sbx/sealed-transport'],
   },
 ];
+for (const e of NAMED_EXEMPTIONS)
+  for (const r of e.off)
+    if (NON_EXEMPTABLE.includes(r))
+      throw new Error(
+        `SEAL5: ${r} cannot be switched off by a named exemption (${e.files.join(', ')})`,
+      );
 const namedExemptions = NAMED_EXEMPTIONS.map((e) => ({
   files: e.files,
   rules: Object.fromEntries(e.off.map((r) => [r, 'off'])),

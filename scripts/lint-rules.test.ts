@@ -1,5 +1,6 @@
 // Proves the ESLint layering rules (architecture 2.2 and 2.3) with real lint runs on virtual files.
 import { ESLint } from 'eslint';
+import { execFileSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,7 +12,6 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { REPO_ROOT, TOKENS } from './test-helpers';
@@ -1177,7 +1177,7 @@ describe('named exemptions (D-015)', () => {
 // createScopedGate) without writing the package name: a package.json `imports` alias (`#ap`), a
 // node_modules alias whose real path is packages/transport or packages/safety, and the bundler
 // globs `import.meta.glob` / `import.meta.webpackContext`. The first two are proved real by the
-// Node resolver itself (createRequire().resolve) before lint is asked to refuse them.
+// Node resolver itself (require.resolve in a child Node process started inside the fixture package) before lint is asked to refuse them.
 // ---------------------------------------------------------------------------------------------
 describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () => {
   const ALIAS = 'sbx/no-sealed-alias';
@@ -1201,7 +1201,7 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
         imports: {
           '#ap': '@umsbx/transport',
           '#ap-cond': { node: { import: './nothing.js', default: '@umsbx/transport' } },
-          '#ap-array': ['./nothing.js', 'transport-alias'],
+          '#ap-array': ['transport-alias'],
           '#alias': 'transport-alias',
           '#safety': 'safety-alias',
           '#star/*': '@umsbx/transport/src/*',
@@ -1231,7 +1231,11 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
       ['transport-alias', TRANSPORT],
       ['safety-alias', SAFETY],
     ])('%s resolves into %s', (spec, pkg) => {
-      const resolved = createRequire(join(fx, 'package.json')).resolve(spec);
+      const resolved = execFileSync(
+        process.execPath,
+        ['-e', 'process.stdout.write(require.resolve(process.argv[1]))', spec],
+        { cwd: fx, encoding: 'utf8', env: {} },
+      );
       expect(realpathSync(resolved).startsWith(`${realpathSync(pkg)}/`), resolved).toBe(true);
     });
   });
