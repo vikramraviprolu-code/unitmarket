@@ -21,8 +21,11 @@ export async function grantCredit(
   }
   const current = computeWindow(await loadEvents(tx, head.id), head.policy, d.clock.now());
   if (current.state === 'not_started') return err({ code: 'window_not_started' });
-  // An ended window is history: a credit now would change nothing (compute skips it) yet look granted.
-  if (current.state === 'ended') return err({ code: 'window_ended' });
+  // An ended or revoked window is history: a credit now would change nothing (compute skips it, and
+  // stops at the first revoke) yet look granted. Nothing is written (CO-5 R3, ASM-59).
+  if (current.state === 'ended' || current.state === 'revoked') {
+    return err({ code: 'window_ended' });
+  }
   await insertEvent(tx, d, {
     entitlement_id: head.id,
     kind: 'credit_granted',

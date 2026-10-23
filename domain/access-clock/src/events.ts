@@ -204,7 +204,9 @@ export async function markAccessReady(
 ): Promise<WindowState> {
   const head = await requireEntitlement(tx, i.entitlement_id);
   if (head.money !== 'captured') {
-    throw new Error(`access_ready refused: money is ${head.money}, not captured`);
+    throw new Error(
+      `money_not_captured: access_ready refused, money is ${head.money}, not captured`,
+    );
   }
   const current = computeWindow(await loadEvents(tx, head.id), head.policy, d.clock.now());
   if (current.state === 'not_started') {
