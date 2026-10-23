@@ -545,6 +545,8 @@ const MSG_SEALED =
   'SEAL2/SEAL3: the approved sandbox transport, the approval minter and the scoped-gate factory are reachable only from packages/safety (and pinned test files). Import the plain public names from the package; a namespace import, re-export, import(), require(), importActual or a path into packages/transport or packages/safety reaches them too, and test-only minters and test-support.ts are for test files.';
 const MSG_MOCKER =
   'BU-1 re-review M1: use vi and jest only as the object of a call such as vi.fn() or vi.mock(...); renaming, copying, passing or destructuring them could hide a mock of a sealed module.';
+const MSG_LOADER_READ =
+  'BU-1b: mock, doMock, importMock, requireMock, requireActual and importActual may only be called where they are read (vi.doMock(...)); storing, passing, destructuring or a sequence-expression callee ((0, vi.doMock)(...)) could call them later under another name.';
 const MSG_REQUIRE_ALIAS =
   'SEAL3 H-A: require may only be called directly; aliasing or passing it hides what is loaded.';
 const specOf = (n) => {
@@ -563,16 +565,51 @@ const ACTUAL_FNS = new Set(['importActual', 'importMock', 'requireActual', 'requ
 const LOADER_FNS = new Set([...ACTUAL_FNS, 'mock', 'doMock']);
 const WRAP_FNS = new Set(['call', 'apply', 'bind']);
 const memberName = (m) => (m.computed ? specOf(m.property) : m.property.name);
-const isMockerObject = (o) =>
-  o?.type === 'MemberExpression'
+// TypeScript wrappers (as, satisfies, !, <T>x) and optional-chain wrappers change nothing at run time,
+// so the checks look through them (BU-1b, as no-bundler-glob already does).
+const TS_WRAPPERS = new Set([
+  'TSAsExpression',
+  'TSNonNullExpression',
+  'TSSatisfiesExpression',
+  'TSTypeAssertion',
+  'ChainExpression',
+]);
+const unwrapTs = (o) => {
+  let x = o;
+  while (x && TS_WRAPPERS.has(x.type)) x = x.expression;
+  return x;
+};
+/** The node and its parent after climbing out of the wrappers around it. */
+const climb = (n) => {
+  let node = n;
+  let p = n.parent;
+  while (p && TS_WRAPPERS.has(p.type)) {
+    node = p;
+    p = p.parent;
+  }
+  return [node, p];
+};
+const isMockerObject = (o0) => {
+  const o = unwrapTs(o0);
+  return o?.type === 'MemberExpression'
     ? MOCK_OBJECTS.has(memberName(o))
     : o?.type === 'Identifier' && MOCK_OBJECTS.has(o.name);
+};
+const MOCK_DATA = new Set([
+  'calls',
+  'results',
+  'lastCall',
+  'instances',
+  'contexts',
+  'invocationCallOrder',
+  'settledResults',
+]);
 /**
  * undefined when the call is not a loader call; otherwise { spec, strict }: the specifier string (null
  * when it cannot be read) and whether an unreadable specifier must be refused.
  */
 const loaderCall = (n) => {
-  const c = n.callee;
+  const c = unwrapTs(n.callee);
   if (c.type === 'Identifier')
     return c.name !== 'require' && LOADER_FNS.has(c.name)
       ? { spec: specOf(n.arguments[0]), strict: false }
@@ -580,13 +617,11 @@ const loaderCall = (n) => {
   if (c.type !== 'MemberExpression') return undefined;
   const name = memberName(c);
   if (typeof name !== 'string') return undefined;
-  if (LOADER_FNS.has(name))
-    return {
-      spec: specOf(n.arguments[0]),
-      strict: ACTUAL_FNS.has(name) || isMockerObject(c.object),
-    };
-  if (WRAP_FNS.has(name) && c.object.type === 'MemberExpression') {
-    const inner = memberName(c.object);
+  // An unreadable specifier is refused for every loader member call, whatever the object is called.
+  if (LOADER_FNS.has(name)) return { spec: specOf(n.arguments[0]), strict: true };
+  const target = unwrapTs(c.object);
+  if (WRAP_FNS.has(name) && target?.type === 'MemberExpression') {
+    const inner = memberName(target);
     if (typeof inner === 'string' && LOADER_FNS.has(inner)) {
       const arg =
         name === 'apply'
@@ -695,23 +730,45 @@ const sealedTransport = {
     // BU-1 re-review M1: vi and jest may only be used as the object of a member access (vi.fn(),
     // vi.mock(...)). Copying, renaming, passing or destructuring them would hide a mock of a sealed
     // module from the loader-call check.
-    const checkMockerUse = (n) => {
-      const p = n.parent;
+    const checkMockerUse = (n, isMember = false) => {
+      const [node, p] = climb(n);
       if (/^TS/.test(p.type)) return; // types: typeof vi.fn
       if (p.type === 'UnaryExpression' && p.operator === 'typeof') return;
-      if (p.type === 'MemberExpression') {
-        if (p.object === n) {
-          if (!p.computed || specOf(p.property) !== null) return;
-          return report(n, MSG_MOCKER);
-        }
-        if (p.property === n && !p.computed) return; // x.vi
+      if (p.type === 'MemberExpression' && p.object === node) {
+        if (!p.computed || specOf(p.property) !== null) return;
+        return report(n, MSG_MOCKER);
       }
+      if (isMember) return report(n, MSG_MOCKER); // X.vi or X.jest used as a value
+      if (p.type === 'MemberExpression' && p.property === n && !p.computed) return; // x.vi
       if (/^Import/.test(p.type)) return; // import { vi }, import vi, import * as vi
       if (p.type === 'VariableDeclarator' && p.id === n) return; // const vi = ...
       if (/Function/.test(p.type) && p.params.includes(n)) return; // (vi) => ...
       if (p.type === 'Property' && p.parent.type === 'ObjectPattern') return; // { vi } = x, { x: vi } = y
       if (p.type === 'Property' && p.key === n && !p.computed && !p.shorthand) return; // { vi: 1 }
       report(n, MSG_MOCKER);
+    };
+    // BU-1b: a loader function may only be CALLED where it is read (vi.doMock(...), vi.mock.call(...)).
+    // Stored, passed, destructured or used as a sequence-expression callee ((0, vi.doMock)(...)) it
+    // can be called later under another name.
+    const checkLoaderRead = (n) => {
+      const name = memberName(n);
+      if (typeof name !== 'string') return;
+      if (MOCK_OBJECTS.has(name)) return checkMockerUse(n, true);
+      if (!LOADER_FNS.has(name)) return;
+      // spy.mock.calls on a vi.fn() is a data property, not the module mocker
+      if (name === 'mock' && !isMockerObject(n.object)) return;
+      const [node, p] = climb(n);
+      if (p.type === 'CallExpression' && p.callee === node) return;
+      if (p.type === 'UnaryExpression' && p.operator === 'typeof') return;
+      if (/^TS/.test(p.type)) return;
+      if (p.type === 'MemberExpression' && p.object === node) {
+        if (name === 'mock' && MOCK_DATA.has(memberName(p))) return;
+        if (WRAP_FNS.has(memberName(p))) {
+          const [pn, pp] = climb(p);
+          if (pp.type === 'CallExpression' && pp.callee === pn) return;
+        }
+      }
+      report(n, MSG_LOADER_READ);
     };
     return {
       ImportDeclaration(n) {
@@ -747,7 +804,16 @@ const sealedTransport = {
         if (n.importKind !== 'type' && MOCK_OBJECTS.has(imported) && n.local.name !== imported)
           report(n, MSG_MOCKER);
       },
+      MemberExpression: checkLoaderRead,
       Property(n) {
+        if (
+          n.parent.type === 'ObjectPattern' &&
+          !n.computed &&
+          n.key.type === 'Identifier' &&
+          LOADER_FNS.has(n.key.name) &&
+          n.key.name !== 'mock'
+        )
+          report(n, MSG_LOADER_READ);
         if (
           n.parent.type === 'ObjectPattern' &&
           !n.computed &&
@@ -934,13 +1000,6 @@ const MSG_GLOB =
   'SEAL5: import.meta.glob, import.meta.globEager and import.meta.webpackContext load modules by pattern, which hides what is imported. They are barred everywhere, with no exemption.';
 const MSG_META =
   'SEAL5: use import.meta only as import.meta.url, .dirname, .filename, .resolve or .env; aliasing, destructuring or a computed key could hide a bundler glob.';
-const TS_WRAPPERS = new Set([
-  'TSAsExpression',
-  'TSNonNullExpression',
-  'TSSatisfiesExpression',
-  'TSTypeAssertion',
-  'ChainExpression',
-]);
 const noBundlerGlob = {
   meta: { type: 'problem', schema: [], messages: { glob: '{{msg}}' } },
   create(context) {

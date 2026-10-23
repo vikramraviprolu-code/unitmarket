@@ -145,13 +145,20 @@ export const certificateOf = (
 
 export interface FakeCertificates extends CertificateSource {
   calls: string[];
+  /** urls the verifier reported as trusted (after a genuine signature) */
+  trusted: string[];
 }
 export function fakeCertificates(
   answer: CertificateResult | ((url: string) => CertificateResult | Promise<CertificateResult>),
 ): FakeCertificates {
   const calls: string[] = [];
+  const trusted: string[] = [];
   return {
     calls,
+    trusted,
+    trust(url) {
+      trusted.push(url);
+    },
     async get(url) {
       calls.push(url);
       return typeof answer === 'function' ? answer(url) : answer;

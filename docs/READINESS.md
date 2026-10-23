@@ -136,10 +136,11 @@ Every transaction that moves money takes its row locks in this order, and a stat
 1. `orders` (and `provider_orders`), then every `operations` row of that order (`lockOrderRows` in `domain/payments/src/store.ts`);
 2. `order_units`;
 3. `refund_requests`;
-4. `entitlements` (with `access_windows`, `access_events`);
+   3a. `recovery_cases` (CO-4): a case is locked (`FOR UPDATE` or a compare-and-set `UPDATE`) after any order, unit or refund request it needs and before its entitlement. Opening a case locks the order or the entitlement first and then only INSERTs the case row (a new row nobody can hold; not a lock event). Settling a `refund_pending` case locks only the case and reads `refund_requests` without locks;
+4. `entitlements` (with `access_windows`, `access_events`, `access_links`): a refund booking locks the unit's entitlements before it appends to the ledger, even for a partial refund (`bookEntry`, CO-4);
 5. `ledger_entries`, `receipts`.
 
-Alerts, audit and provider-call rows are leaf inserts and are not part of the order. PGlite serialises all statements, so a deadlock cannot be reproduced here. **Real-Postgres race tests (concurrent capture/poll/refund/sweeper on one order, with the pg adapter) are required before MVP-C.**
+Pinned by `lockorder.state.test.ts` (rank 4.5) and the recovery and `refunds.complete` lock-order spies. Alerts, audit and provider-call rows are leaf inserts and are not part of the order. PGlite serialises all statements, so a deadlock cannot be reproduced here. **Real-Postgres race tests (concurrent capture/poll/refund/sweeper on one order, with the pg adapter) are required before MVP-C.**
 
 ## Gate conditions (FIX-GATE2, branch fix/gate-conditions)
 
@@ -223,3 +224,15 @@ Still offline: no network, no credentials, no approval row. Every test of the ne
 - **Wire certificate path (re-review L1).** The certificate host and path rule is the guard's own (`CERT_HOST_RE`, `CERT_PATH_RE`, exported from `guard.ts`): no `%`, no sub-path, no dot file.
 - **Sticky trust-store refusal (P2b), for BU-3 and the owner.** Any call of `tls.setDefaultCACertificates` after the Wire loaded, even one that restores the same list, makes every request fail closed until the process restarts. Checked on real Node 22.22: the default store reported 123 certificates before and 122 after setting that same list, so its digest differs. Nothing in this application calls it; if a framework or a diagnostic does, the Wire refuses (`other`) rather than trusting a changed store.
 - **Still open: `diagnostics_channel` (L1 of the Opus review).** A subscriber to a diagnostics channel sees HTTP client request and response objects; the Wire does not block or detect subscribers. Not fixed in this branch.
+
+## Seal residuals after BU-1b (Opus final round, 2026-10-23)
+
+The lint seal is a review aid, not a sandbox. Known residuals, all bounded by the run-time facts below:
+
+- `eval` and `new Function` are covered only by `no-eval` and `no-restricted-syntax`. Bundler or TypeScript `paths` aliases are not read by lint (the repo has none). A relative `imports` target through a symlinked directory is matched lexically; the pin test "no package.json declares `imports`" is the control.
+- Mock bar edges: `X.vi` read as a value is flagged on purpose (`cfg.vi`; rename the key if it bites); `{ mock }` destructured from a non-vi object is not flagged.
+- Any test-file bypass is bounded at run time: under vitest the Wire refuses (execArgv carries `--require` and `--conditions`) and the gate needs an approval row the owner inserted.
+- Code in the same process can still observe or wrap the Wire: `diagnostics_channel` (`http.client.request.start`) shows request headers; a `Module._load` or `registerHooks` patch applied before the transport loads is captured as if it were the real module; any `setDefaultCACertificates` call, even a restore, makes the Wire refuse until restart.
+- NODE_PATH is deliberately allowed (pnpm shims export it on every start).
+- Unverified until the owner's window: that the PayPal sandbox chain validates against Node 22.22's pinned bundled roots; real handshake time against the 3 s connect deadline; the BU-3 `next start` self-check line (`env_override false`, `builtins_intact true`).
+- Seal freeze: further seal changes only for a demonstrated defect with a runtime proof (ASM-70, owner to confirm).
