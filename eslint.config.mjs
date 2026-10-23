@@ -1393,6 +1393,14 @@ const webEntries = [
         'Z1: route handlers and components reach the engine only through composition.server.ts.',
       ),
     ],
+    // BU-2 review B1: buildOutbound with a fake database would reach a real capability, so only
+    // composition (ignored by this entry) and the tests of the module may import the module.
+    prod: [
+      pat(
+        ['**/outbound.server', '**/outbound.server.*'],
+        'BU-2: the unseal module is imported by apps/web/composition.server.ts only.',
+      ),
+    ],
     ignores: ['apps/web/composition.server.ts', OUTBOUND_FILE],
   }).map((e, i) =>
     i === 0

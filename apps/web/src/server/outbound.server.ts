@@ -66,6 +66,15 @@ export interface OutboundSeams {
   gate?: ScopedGateHandle;
 }
 
+/** The operations the app needs under any scope: token, create, get, capture, get capture (ASM-32). */
+const PHASE_OPERATIONS: readonly string[] = [
+  'oauth_token',
+  'create_order',
+  'get_order',
+  'capture_order',
+  'get_capture',
+];
+
 const FAIL_CLOSED_CHECK: WireSelfCheck = {
   impl: 'node-https',
   env_override: true,
@@ -188,11 +197,19 @@ export function buildOutbound(d: OutboundDeps, seams: OutboundSeams = {}): Outbo
     const ref = config.outbound_approval_ref;
     if (ref === null || ref === '') return false;
     try {
-      const r = await db.query<{ scope: string }>(
-        'SELECT scope FROM outbound_approvals WHERE approval_ref = $1 AND valid_until > $2',
+      const r = await db.query<{ scope: string; operations: string[] }>(
+        'SELECT scope, operations FROM outbound_approvals WHERE approval_ref = $1 AND valid_until > $2',
         [ref, clock.now().toISOString()],
       );
-      return r.rows[0]?.scope === scope;
+      const row = r.rows[0];
+      // The row must list the five operations of the polling phase (every scope includes them): a
+      // row that lists fewer would be reported as open while most calls are blocked by the gate.
+      return (
+        row !== undefined &&
+        row.scope === scope &&
+        Array.isArray(row.operations) &&
+        PHASE_OPERATIONS.every((o) => row.operations.includes(o))
+      );
     } catch {
       return false;
     }

@@ -122,6 +122,9 @@ function validateMeta(meta: RouteMeta): void {
     bad('rate_target needs an ip rate');
   if (meta.fail_safe_without_mfa === true && (meta.auth !== 'operator' || meta.method !== 'POST'))
     bad('fail_safe_without_mfa is for operator POST routes only');
+  // One route only (BU-2 review B3); scripts/route-inventory.mjs checks the same list statically.
+  if (meta.fail_safe_without_mfa === true && meta.path !== '/api/ops/stop')
+    bad('fail_safe_without_mfa is allowed on /api/ops/stop only');
 }
 
 const json = (status: number, body: unknown, headers: Headers): Response => {

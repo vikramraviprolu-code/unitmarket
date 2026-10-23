@@ -66,4 +66,9 @@ describe('fail_safe_without_mfa', () => {
     ])
       expect(() => withRoute({ ...meta, fail_safe_without_mfa: true }, schema, handler)).toThrow();
   });
+  it('the flag is allowed on /api/ops/stop only, whatever the route', () => {
+    expect(() =>
+      withRoute({ ...base, path: '/api/ops/other', fail_safe_without_mfa: true }, schema, handler),
+    ).toThrow(/ops\/stop/);
+  });
 });

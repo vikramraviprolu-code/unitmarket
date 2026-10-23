@@ -78,6 +78,9 @@ corepack pnpm safety:status
 
 `safety:status` must show the row active, the budget `300 of 300`, and `paypal_outbound on`.
 
+`safety:resume` (like `safety:approve` and `safety:stop`) opens the database, and the app holds it with the
+single-opener lock: stop the app, run the command, restart the app.
+
 ## Step 3: build and start the app (5 min)
 
 ```

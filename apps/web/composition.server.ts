@@ -1027,7 +1027,10 @@ function buildApp(config: Config, opts: AppOptions): App {
           mode: config.mode,
           connect: config.connect,
           approval_ref_set: config.outbound_approval_ref !== null,
-          transport: 'dry-run fixtures',
+          transport:
+            outbound === null
+              ? 'dry-run fixtures'
+              : 'sandbox, approved transport behind five locks',
           outbound: outbound === null ? null : await outbound.status(),
           selfcheck: outbound?.selfcheck() ?? null,
         },
