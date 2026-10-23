@@ -274,4 +274,39 @@ describe('budgets by class', () => {
     for (let i = 0; i < 100; i++) await source.get(url('A'));
     expect(t.calls).toHaveLength(1);
   });
+
+  it('the daily window for unknown URLs is exactly 24 hours', async () => {
+    const { t, source, clock } = world();
+    await source.get(url('A')); // fetch 1, at T0, while cold
+    source.trust(url('A'));
+    for (let i = 1; i <= 11; i++) {
+      clock.advance(HOUR + MINUTE);
+      await source.get(url(`FAIL-DAILY-${i}`)); // fetches 2 to 12
+    }
+    expect(t.calls).toHaveLength(12);
+    clock.advance(DAY - 1 - 11 * (HOUR + MINUTE)); // 1 ms before the first fetch is 24 hours old
+    await source.get(url('FAIL-LATE'));
+    expect(t.calls).toHaveLength(12); // 12 in the window: refused
+    clock.advance(1);
+    await source.get(url('FAIL-LATE-2'));
+    expect(t.calls).toHaveLength(13); // the first fetch has left
+  });
+
+  it('an old trusted fetch is forgotten: two more are allowed after the hour', async () => {
+    const { t, source, clock } = world();
+    const trusted = url('FAIL-TRUSTED');
+    await source.get(trusted);
+    source.trust(trusted);
+    clock.advance(HOUR);
+    await source.get(trusted); // one reserved fetch
+    clock.advance(2 * HOUR);
+    const base = t.calls.length;
+    await source.get(trusted);
+    clock.advance(11 * MINUTE);
+    await source.get(trusted);
+    expect(t.calls.length - base).toBe(2);
+    clock.advance(11 * MINUTE);
+    await source.get(trusted);
+    expect(t.calls.length - base).toBe(2); // and the third is refused
+  });
 });
