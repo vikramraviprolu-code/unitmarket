@@ -31,7 +31,7 @@ export const signer = generateKeyPairSync('rsa', { modulusLength: 2048 });
 export const forger = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const DOMAIN = ['sandbox', 'paypal', 'com'].join('.');
 export const certUrl = (): string =>
-  `https://${['api', DOMAIN].join('.')}/v1/notifications/certs/CERT-SYNTHETIC-0001`;
+  `https://${['certs', DOMAIN].join('.')}/v1/notifications/certs/CERT-SYNTHETIC-0001`;
 
 export interface FakeCerts extends CertSource {
   calls: string[];

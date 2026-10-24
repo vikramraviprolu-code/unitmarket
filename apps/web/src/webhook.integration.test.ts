@@ -78,6 +78,20 @@ describe('a signed delivery', () => {
     rig = await bootWebhookApp();
     const { order_id } = await seedCapturingOrder(rig.app);
     const before = await orderStatus(order_id);
+    const tables = [
+      'ledger_entries',
+      'entitlements',
+      'receipts',
+      'access_windows',
+      'access_events',
+    ];
+    const moneyCounts = async () =>
+      Promise.all(tables.map((t) => rig.count(`SELECT count(*) AS c FROM ${t}`)));
+    const countsBefore = await moneyCounts();
+    const unitsBefore = await rig.app.db.query(
+      'SELECT id, status, capture_id, refunded_minor FROM order_units WHERE order_id = $1 ORDER BY id',
+      [order_id],
+    );
     for (const [i, type] of [
       'PAYMENT.CAPTURE.COMPLETED',
       'PAYMENT.CAPTURE.REVERSED',
@@ -90,11 +104,12 @@ describe('a signed delivery', () => {
       expect((await rig.post(d)).status).toBe(200);
     }
     expect(await orderStatus(order_id)).toBe(before);
-    for (const table of ['ledger_entries', 'entitlements', 'receipts', 'access_windows'])
-      expect(await rig.count(`SELECT count(*) AS c FROM ${table}`)).toBe(0);
-    expect(
-      await rig.count(`SELECT count(*) AS c FROM order_units WHERE status <> 'expected'`),
-    ).toBe(0);
+    expect(await moneyCounts()).toEqual(countsBefore);
+    const unitsAfter = await rig.app.db.query(
+      'SELECT id, status, capture_id, refunded_minor FROM order_units WHERE order_id = $1 ORDER BY id',
+      [order_id],
+    );
+    expect(unitsAfter.rows).toEqual(unitsBefore.rows);
     expect(rig.wire).toEqual([]);
     expect(await rig.count('SELECT count(*) AS c FROM provider_calls')).toBe(0);
   });

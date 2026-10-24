@@ -36,7 +36,7 @@ function build(answer: () => Answer = () => OK) {
   });
   return { seen, handler };
 }
-const post = (body: BodyInit | null, headers: Record<string, string> = {}) =>
+const post = (body: string | Uint8Array | null, headers: Record<string, string> = {}) =>
   new Request(`${ORIGIN}/api/webhooks/paypal`, { method: 'POST', body, headers });
 const send = (
   rig: TestRig,
@@ -145,13 +145,16 @@ describe('raw body (CO-3)', () => {
     const rig = await makeRig();
     const { seen, handler } = build();
     let pulled = false;
-    const stream = new ReadableStream<Uint8Array>({
-      pull(c) {
-        pulled = true;
-        c.enqueue(new Uint8Array(10));
-        c.close();
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull(c) {
+          pulled = true;
+          c.enqueue(new Uint8Array(10));
+          c.close();
+        },
       },
-    });
+      { highWaterMark: 0 },
+    );
     const res = await send(
       rig,
       handler,
@@ -237,13 +240,16 @@ describe('invalid-delivery limiter (COST-3: 60 a minute per address)', () => {
     const { handler } = build(() => REFUSED);
     for (let i = 0; i < 60; i++) await send(rig, handler, post('x'), '203.0.113.20');
     let pulled = false;
-    const stream = new ReadableStream<Uint8Array>({
-      pull(c) {
-        pulled = true;
-        c.enqueue(new Uint8Array(10));
-        c.close();
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull(c) {
+          pulled = true;
+          c.enqueue(new Uint8Array(10));
+          c.close();
+        },
       },
-    });
+      { highWaterMark: 0 },
+    );
     const res = await send(
       rig,
       handler,

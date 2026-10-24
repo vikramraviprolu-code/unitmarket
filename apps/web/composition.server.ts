@@ -48,7 +48,8 @@ import { createAuditSink, createLogger } from '@umsbx/obs';
 import { createOutboundGate, createSwitchReader, readSafetyStatus, runStop } from '@umsbx/safety';
 import { guard } from '@umsbx/transport';
 import type { Wire } from '@umsbx/transport';
-import { createPayPalAdapter } from '@umsbx/paypal';
+import { EXPECTED_CERT_SUBJECTS, createPayPalAdapter } from '@umsbx/paypal';
+import type { AdapterDeps } from '@umsbx/paypal';
 import { createScriptedModel } from '@umsbx/model';
 import { SEED_DATA, getOffer, seedCatalogue } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
@@ -71,6 +72,7 @@ import {
   checkInvariants,
   onBuyerReturn as onPaymentsReturn,
   placeOrder as placePaymentsOrder,
+  handleWebhook,
   recoverOnStartup,
   requestRefund,
 } from '@umsbx/payments';
@@ -87,6 +89,8 @@ import {
 import type { SecurityDeps } from '@umsbx/security';
 import { DRYRUN_SCENARIOS, createDryRunModel, isScenarioId } from './src/server/dryrun-model';
 import { buildOutbound } from './src/server/outbound.server';
+import { receiveWebhook, webhookAllowed } from './src/server/webhook';
+import type { WebhookInput, WebhookResponse } from './src/server/webhook';
 import type { Outbound } from './src/server/outbound.server';
 import type { OpsGate } from './src/lib/gate-lines';
 
@@ -102,6 +106,11 @@ export interface AppOptions {
   test_wire?: Wire;
   /** Overrides of the domain config (tests). Refused unless NODE_ENV is test. */
   test_domain?: Partial<DomainConfig>;
+  /**
+   * A webhook certificate source standing in for the one fetched through the transport (CO-3 tests).
+   * createApp refuses it unless NODE_ENV is test.
+   */
+  webhook_certificates?: NonNullable<AdapterDeps['certificates']>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -376,6 +385,13 @@ export interface Engine {
     last_pass_at: string | null;
     due: number;
   }>;
+  /**
+   * One PayPal webhook delivery (CO-3). Checks the webhook may be verified at all (switch on, webhook
+   * id set, certificate pin set in sandbox mode), verifies it over the raw bytes, and hands the verdict
+   * to payments intake: at most one stored event and one due read-back. It never sets paid, books
+   * money or calls PayPal for the order.
+   */
+  webhook(i: WebhookInput): Promise<WebhookResponse>;
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
   /** One pass of the access-window sweep and the automatic recovery rules (the job loop's sweep). */
@@ -428,6 +444,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       throw new Error('boot refused: test_wire outside NODE_ENV=test');
     if (opts.test_domain !== undefined)
       throw new Error('boot refused: test_domain outside NODE_ENV=test');
+    if (opts.webhook_certificates !== undefined)
+      throw new Error('boot refused: webhook_certificates outside NODE_ENV=test');
   }
   const environment = envLabel(config);
   const clock: Clock = systemClock();
@@ -596,6 +614,9 @@ function buildApp(config: Config, opts: AppOptions): App {
     log,
     credentials: config.paypal === null ? null : config.paypal,
     own_merchant_id: config.own_merchant_id,
+    // PAYPAL_WEBHOOK_ID (sandbox mode only; config reads it there). Unset: no webhook can be verified.
+    webhook_id: config.paypal?.webhook_id ?? null,
+    ...(opts.webhook_certificates === undefined ? {} : { certificates: opts.webhook_certificates }),
     record: async (c) => {
       await db.query(
         `INSERT INTO provider_calls (id, operation_id, operation, method, path_template, http_status, outcome, debug_id, duration_ms, transport_kind, request_redacted, response_redacted, environment, created_at, updated_at)
@@ -1111,6 +1132,26 @@ function buildApp(config: Config, opts: AppOptions): App {
       if (r.ok) return ok(undefined);
       return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
     },
+
+    webhook: (i) =>
+      receiveWebhook(
+        {
+          clock,
+          log,
+          // The switch is read BEFORE verification, so a switched-off webhook fetches no certificate.
+          allowed: async () =>
+            webhookAllowed({
+              switch_on: await switches.isOn('webhook_enabled'),
+              mode: config.mode,
+              webhook_id: config.paypal?.webhook_id ?? null,
+              pin_set: EXPECTED_CERT_SUBJECTS.length > 0,
+              injected_source: opts.webhook_certificates !== undefined,
+            }),
+          verify: (w) => paypal.verifyWebhook(w),
+          intake: (x) => handleWebhook(core, x),
+        },
+        i,
+      ),
 
     newKey: () => ids.nonce(),
 
