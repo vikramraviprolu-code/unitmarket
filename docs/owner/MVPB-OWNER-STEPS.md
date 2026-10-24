@@ -22,7 +22,7 @@ never share or paste anywhere", machine rules, refusal table) apply here too.
      valid until <date, at most 7 days ahead>."
    - "Spike Part W is replaced by this session" (or: "I will run Part W separately").
 3. Sakthi has merged the decision-log rows for these and tells you the approval reference, for
-   example `D-026`. Pull `main`.
+   example `D-035`. Pull `main`.
 
 ## Step 0: machine check (5 min)
 
@@ -53,7 +53,7 @@ and 7, so type it first in each of them, then `cd` to the repository folder.
 ```
 UMS_MODE=sandbox
 UMS_PAYPAL_CONNECT=on
-UMS_OUTBOUND_APPROVAL_REF=D-026
+UMS_OUTBOUND_APPROVAL_REF=D-035
 UMS_OUTBOUND_SCOPE=mvp_b_polling
 UMS_OWN_MERCHANT_ID=<merchant id of your sandbox Business account, 13 characters A-Z and 0-9>
 UMS_DB=pglite-disk
@@ -79,7 +79,7 @@ PAYPAL_CLIENT_SECRET=<the ROTATED secret, pasted after clicking Show>
 ## Step 2: approval row and switch (app not running) (5 min)
 
 ```
-corepack pnpm safety:approve --operator vikram --ref D-026 --scope mvp_b_polling \
+corepack pnpm safety:approve --operator vikram --ref D-035 --scope mvp_b_polling \
   --ops oauth_token,create_order,get_order,capture_order,get_capture \
   --max-amount 2000 --max-calls 300 --valid-until <YYYY-MM-DDT23:59:00Z> --approved-by vikram
 ```
@@ -91,7 +91,7 @@ corepack pnpm safety:resume --operator vikram --reason "MVP-B session"
 corepack pnpm safety:status
 ```
 
-`safety:status` must show a `budget D-026: 300 of 300 calls left today` line (the row is active) and
+`safety:status` must show a `budget D-035: 300 of 300 calls left today` line (the row is active) and
 `switch paypal_outbound=on`.
 
 `safety:resume` (like `safety:approve` and `safety:stop`) opens the database, and the app holds it with the
