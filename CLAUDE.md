@@ -60,7 +60,7 @@ own git worktree (`git worktree add ../sbx-wt-<lane> -b <branch> main`), never t
 
 `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, `pnpm test` (all six suites), `pnpm
 test:unit|state|contract|integration|adversarial|golden`, `pnpm check:isolation`, `pnpm
-check:no-live-host`, `pnpm check:secrets-names`, `pnpm format`, `pnpm ci`. Test file names pick the
+check:no-live-host`, `pnpm check:secrets-names`, `pnpm format`, `pnpm run ci`. Test file names pick the
 suite: `*.test.ts`, `*.state.test.ts`, `*.contract.test.ts`, `*.integration.test.ts`,
 `*.adversarial.test.ts`, `*.golden.test.ts`. CI runs offline checks only; sandbox tests never run in CI.
 Runtimes: Node 22.22.0, pnpm 10.34.7 (`corepack pnpm` if the global differs).

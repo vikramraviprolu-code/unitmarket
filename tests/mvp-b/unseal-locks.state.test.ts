@@ -227,7 +227,8 @@ describe('stop via /api/ops/stop', () => {
     installApp(app);
     await app.ready();
     apps.push(app);
-    await insertApproval(app.db, { ref: REF });
+    // Far-future expiry: these tests run the app on the real clock.
+    await insertApproval(app.db, { ref: REF, valid_until: '2999-01-01T00:00:00Z' });
     await setOutboundSwitch(app.db, true);
     const stop = (await import('../../apps/web/src/app/api/ops/stop/route')).POST;
     const session = await import('../../apps/web/src/app/api/session/route');

@@ -151,7 +151,8 @@ describe('the real snapshot', () => {
     expect(snap?.gate.transport).not.toMatch(/dry/i);
     expect(snap?.gate.transport).toMatch(/sandbox/);
     expect(gateLines(snap!.gate).join('\n')).toContain('PayPal calls: blocked (kill_switch)');
-    await insertApproval(app.db, { ref: REF });
+    // Far-future expiry: this test runs the app on the real clock.
+    await insertApproval(app.db, { ref: REF, valid_until: '2999-01-01T00:00:00Z' });
     await setOutboundSwitch(app.db, true);
     const open = await app.engine.opsSnapshot(op);
     expect(open?.gate.outbound?.open).toBe(true);

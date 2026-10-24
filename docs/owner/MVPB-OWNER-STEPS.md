@@ -33,7 +33,7 @@ corepack pnpm -v                         # 10.34.7
 cd path/to/unitmarket-sandbox
 git status --short                       # prints nothing
 corepack pnpm install --frozen-lockfile
-corepack pnpm ci                         # ends without an error (takes several minutes)
+corepack pnpm run ci                      # ends without an error (takes several minutes)
 ```
 
 Off any VPN. A normal terminal window, not an editor panel. No proxy variables set.
