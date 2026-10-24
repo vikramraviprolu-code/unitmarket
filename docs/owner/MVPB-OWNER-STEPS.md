@@ -202,6 +202,9 @@ Close the terminal. Clear the clipboard. Delete `apps/web/.env.local` (the copy 
    characters (`MERCHANT-REDACTED-<last 4>`), replaces the `?token=` value of the approval link with
    `<redacted>`, and drops names, emails and addresses. It keeps order and capture ids, because Sakthi
    needs them to build the fixtures. Send both files, but never commit them yourself: Sakthi turns
+   Note: `calls.json` still contains the sandbox order ids, and the approval-link `token=` value is the order id
+   itself. They are play ids and cannot be used without the merchant credentials, but share the file only after
+   Sakthi has run it through `pnpm record:fixtures --synthetic-ids`.
    them into fixtures in a reviewed pull request. A `calls.json` from a run before the BU-6b merge
    still holds your merchant id and the token in full: keep that one on your Mac.
 2. The screenshots from steps 4, 5 and the dashboard row.
