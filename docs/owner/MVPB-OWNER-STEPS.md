@@ -198,9 +198,12 @@ Close the terminal. Clear the clipboard. Delete `apps/web/.env.local` (the copy 
 
 1. The line printed by step 2b (`payee echo: own id`). `summary.md` and `calls.json` from `~/unitmarket-sandbox-run/<date>/`. Open each once and check:
    no email address, no name, no long random string that looks like a token.
-   Until the redaction fix (lane BU-6b) is merged, `calls.json` keeps your merchant id in full and the
-   `?token=` part of the approval link: keep that file on your Mac, do not send it, and bring only
-   `summary.md`.
+   `calls.json` is safe to share once you have read it: lane BU-6b masks every merchant id to its last 4
+   characters (`MERCHANT-REDACTED-<last 4>`), replaces the `?token=` value of the approval link with
+   `<redacted>`, and drops names, emails and addresses. It keeps order and capture ids, because Sakthi
+   needs them to build the fixtures. Send both files, but never commit them yourself: Sakthi turns
+   them into fixtures in a reviewed pull request. A `calls.json` from a run before the BU-6b merge
+   still holds your merchant id and the token in full: keep that one on your Mac.
 2. The screenshots from steps 4, 5 and the dashboard row.
 3. The text output of the two `safety:status` runs (it holds no secret).
 4. One line per step: done, skipped, or what you saw instead.

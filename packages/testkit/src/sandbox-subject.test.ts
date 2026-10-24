@@ -585,7 +585,7 @@ describe('the call log never holds the own merchant id', () => {
     expect(text).not.toContain(OWN);
     expect(text).toContain('OWNMERCHANT01');
   });
-  it('another merchant id is left alone', async () => {
+  it('another merchant id is masked to a placeholder and its last 4 characters (BU-6b)', async () => {
     const { subject } = await runSubset({
       rewrite: (r, res) => {
         if (r.operation !== 'get_order' || res.kind !== 'response') return res;
@@ -594,6 +594,8 @@ describe('the call log never holds the own merchant id', () => {
         return { ...res, body: JSON.stringify(b) };
       },
     });
-    expect(JSON.stringify(subject.callLog())).toContain(OTHER);
+    const text = JSON.stringify(subject.callLog());
+    expect(text).not.toContain(OTHER);
+    expect(text).toContain(`MERCHANT-REDACTED-${OTHER.slice(-4)}`);
   });
 });
