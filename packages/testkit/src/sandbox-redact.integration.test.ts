@@ -79,11 +79,14 @@ async function fakeRun(o: { rewrite?: Rewrite; stackOwn?: string } = {}) {
   return { subject, report, lines, created };
 }
 
-const echoesAccount: Rewrite = (_r, body) => {
-  const units = body.purchase_units;
-  if (Array.isArray(units))
-    for (const u of units as Record<string, Record<string, unknown>>[])
-      u.payee = { ...(u.payee ?? {}), merchant_id: ACCT };
+/** The create answer names the app account's own id (not UMS_OWN_MERCHANT_ID); reads name OWN. */
+const echoesAccount: Rewrite = (r, body) => {
+  if (r.operation !== 'create_order') return;
+  const units = body.purchase_units ?? [{}];
+  body.purchase_units = (units as Record<string, Record<string, unknown>>[]).map((u) => ({
+    ...u,
+    payee: { ...(u.payee ?? {}), merchant_id: ACCT },
+  }));
 };
 
 describe('a full fake run writes a calls.json that is safe to share', () => {
@@ -126,7 +129,7 @@ describe('a full fake run writes a calls.json that is safe to share', () => {
 
   it('the payee echo compares the live answer: PASS with a masked file, STOP when the live id differs', async () => {
     const pass = await fakeRun({ rewrite: echoesAccount });
-    // The model's read says OWN; the created answer carried another id. The check read the live read.
+    // The created answer carried another id; the check reads the live order read, which names OWN.
     expect(pass.report.payee_echo).toBe('own id');
     expect(pass.report.cases[0]?.pass).toBe(true);
     expect(pass.lines).toContain('payee echo: own id');

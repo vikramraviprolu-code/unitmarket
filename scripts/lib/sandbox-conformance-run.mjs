@@ -12,6 +12,7 @@ import { createSwitchReader } from '../../packages/safety/src/index.ts';
 import { buildRecordings } from '../../packages/transport/src/index.ts';
 import {
   ownerSubset,
+  renderCallsJson,
   renderOwnerSummary,
   sandboxSubject,
 } from '../../packages/testkit/src/sandbox-subject.ts';
@@ -100,7 +101,7 @@ export async function runOwnerSuite(d, ctx) {
       origin: 'sandbox-recording: owner run of pnpm sandbox:conformance',
     });
     if (exchanges.length === 0 || built.ok) {
-      writeFileSync(join(dir, 'calls.json'), `${JSON.stringify(exchanges, null, 2)}\n`, {
+      writeFileSync(join(dir, 'calls.json'), renderCallsJson(exchanges), {
         flag: 'wx',
         mode: 0o600,
       });

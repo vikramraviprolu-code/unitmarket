@@ -152,23 +152,63 @@ const OWN_PLACEHOLDER = 'OWNMERCHANT01';
 const SECRET_KEY =
   /secret|password|passwd|passcode|assertion|credential|token|nonce|signature|^sig$|authorization|cookie|^client_?id$|^app_?id$|api_?key/i;
 const PERSON_KEY =
-  /^(given_name|surname|full_name|family_name|first_name|last_name|middle_name|nickname|display_name|business_name|recipient_name)$|email|phone|national_number|^address|address_line|admin_area|postal_code|^zip|street|^payer_id$|^account_id$|^note_to_/i;
+  /^(given_name|surname|full_name|family_name|first_name|last_name|middle_name|nickname|display_name|business_name|recipient_name)$|email|phone|national_number|^address|address_line|admin_area|postal_code|^zip|street|^payer_id$|^payee_id$|^account_id$|^note_to_/i;
 const KEPT_HEADERS_REQUEST = ['content-type', 'accept', 'prefer', 'paypal-request-id'];
 const KEPT_HEADERS_RESPONSE = ['content-type', 'paypal-debug-id'];
 
-function redactValue(v: unknown, own: string | null, key = '', depth = 0): unknown {
-  if (depth > 30) return REDACTED;
-  if (typeof v === 'string') return own !== null && v === own ? OWN_PLACEHOLDER : v;
-  if (Array.isArray(v)) return v.map((x) => redactValue(x, own, key, depth + 1));
-  if (isRec(v)) {
-    const out: Json = {};
-    for (const [k, x] of Object.entries(v)) {
-      const personal = PERSON_KEY.test(k) || (k === 'name' && isRec(x));
-      out[k] = SECRET_KEY.test(k) || personal ? REDACTED : redactValue(x, own, k, depth + 1);
-    }
-    return out;
+/** Query parameters whose name ends in `token` (the approval link's `?token=`, `ba_token`): the value goes. */
+const TOKEN_PARAM = /([?&][A-Za-z0-9_.-]*token=)[^&#\s"']*/gi;
+const TOKEN_MASK = '<redacted>';
+/** Keys that name a merchant account: only the last 4 characters may be recorded. */
+const MERCHANT_KEY = /^(payee_)?merchant_id$/i;
+const MERCHANT_MASK = 'MERCHANT-REDACTED';
+/** A merchant id shorter than this shows no tail: 4 characters would be half of it or more. */
+const MERCHANT_TAIL_FROM = 8;
+const MAX_DEPTH = 30;
+
+function maskMerchant(v: unknown, own: string | null): unknown {
+  if (v === null) return null;
+  if (typeof v !== 'string') return REDACTED;
+  if (own !== null && v === own) return OWN_PLACEHOLDER;
+  if (v === OWN_PLACEHOLDER || v.startsWith(MERCHANT_MASK)) return v;
+  return v.length >= MERCHANT_TAIL_FROM ? `${MERCHANT_MASK}-${v.slice(-4)}` : MERCHANT_MASK;
+}
+
+/**
+ * Redacts one parsed request or response body for the call log (BU-6b). Pure and total: it never
+ * throws, never changes its input, and is idempotent. What it does, exactly:
+ *  - keys `merchant_id` and `payee_merchant_id` at any depth: placeholder plus the last 4 characters
+ *    (none when shorter than 8); our own merchant id becomes `OWNMERCHANT01`;
+ *  - keys matching the secret pattern, the person pattern (names, email, phone, address fields,
+ *    `payer_id`, `payee_id`, `account_id`, `note_to_*`) and a `name` object: `[redacted]`;
+ *  - in every string, the value of a query parameter ending in `token`: `<redacted>`;
+ *  - everything else, order and capture ids included, is kept for `pnpm record:fixtures`.
+ */
+export function redactCallBody(v: unknown, own: string | null, depth = 0): unknown {
+  if (depth > MAX_DEPTH) return REDACTED;
+  if (typeof v === 'string') {
+    if (own !== null && v === own) return OWN_PLACEHOLDER;
+    return v.replace(TOKEN_PARAM, `$1${TOKEN_MASK}`);
   }
-  return v;
+  if (v === null || v === undefined || typeof v === 'number' || typeof v === 'boolean') return v;
+  if (Array.isArray(v)) return v.map((x) => redactCallBody(x, own, depth + 1));
+  if (isRec(v)) {
+    // fromEntries defines own properties, so a JSON key named __proto__ stays data.
+    return Object.fromEntries(
+      Object.entries(v).map(([k, x]): [string, unknown] => {
+        const personal = PERSON_KEY.test(k) || (k === 'name' && isRec(x));
+        if (SECRET_KEY.test(k) || personal) return [k, REDACTED];
+        if (MERCHANT_KEY.test(k)) return [k, maskMerchant(x, own)];
+        return [k, redactCallBody(x, own, depth + 1)];
+      }),
+    );
+  }
+  return REDACTED;
+}
+
+/** The bytes of calls.json: two-space JSON and one newline. The log is already redacted. */
+export function renderCallsJson(log: readonly CallExchange[]): string {
+  return `${JSON.stringify(log, null, 2)}\n`;
 }
 function parseBody(text: string | null): unknown {
   if (text === null || text === '') return null;
@@ -315,7 +355,7 @@ export function sandboxSubject(o: SandboxSubjectOptions): SandboxSubject {
             ...keepHeaders(r.headers, KEEP_REQ),
             ...(headerOf(r.headers, 'authorization') === null ? {} : { authorization: REDACTED }),
           },
-          body: r.operation === 'oauth_token' ? REDACTED : redactValue(parseBody(r.body), own),
+          body: r.operation === 'oauth_token' ? REDACTED : redactCallBody(parseBody(r.body), own),
         };
         if (res.kind === 'response') {
           note('response', res.status, debugIdOf(res.headers));
@@ -327,7 +367,7 @@ export function sandboxSubject(o: SandboxSubjectOptions): SandboxSubject {
               status: res.status,
               headers: keepHeaders(res.headers, KEEP_RES),
               body:
-                r.operation === 'oauth_token' ? REDACTED : redactValue(parseBody(res.body), own),
+                r.operation === 'oauth_token' ? REDACTED : redactCallBody(parseBody(res.body), own),
             },
           });
         } else if (res.kind === 'timeout') {

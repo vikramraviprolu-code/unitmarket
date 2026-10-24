@@ -7,7 +7,14 @@ export { T0, fakeClock, seededIds } from './clock';
 export { seedTestCatalogue } from './catalogue';
 export { createDryRunStack, createReqFor, dryRunSubject, testDeps } from './stack';
 export type { DryRunStack, TestDeps } from './stack';
-export { SANDBOX_LIMITS, ownerSubset, renderOwnerSummary, sandboxSubject } from './sandbox-subject';
+export {
+  SANDBOX_LIMITS,
+  ownerSubset,
+  redactCallBody,
+  renderCallsJson,
+  renderOwnerSummary,
+  sandboxSubject,
+} from './sandbox-subject';
 export type {
   CallEvent,
   CallExchange,
