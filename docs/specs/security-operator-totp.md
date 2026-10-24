@@ -8,7 +8,7 @@ Goal: `totp.ts` implements RFC 6238 over `node:crypto` (HMAC-SHA1, 30 s step, 6 
 
 Inputs: `packages/security/src/{session.ts, passcode.ts, rate.ts}`, `packages/config/src/{schema.ts, load.ts, secret.ts}`, composition `engine.signIn`, `apps/web/src/app/signin/*`, RFC 6238 appendix B vectors.
 
-Outputs: `packages/security/src/{totp.ts, session.ts}`, `packages/config/src/{schema.ts, load.ts}`, `.env.example` (name only), `apps/web/composition.server.ts` (sign-in wiring only), `apps/web/src/app/signin/{page.tsx, SignInForm.tsx}`, `scripts/totp-enrol.mjs` and its test, tests below.
+Outputs: `packages/security/src/{totp.ts, session.ts}`, `packages/config/src/{schema.ts, load.ts}`, `.env.example` (name only), `apps/web/composition.server.ts` (sign-in wiring only), `apps/web/src/app/signin/{page.tsx, SignInForm.tsx}`, `apps/web/src/app/api/session/route.ts` (sign-in route: operator name and code fields), `scripts/totp-enrol.mjs` and its test, tests below. Config constraints on `UMS_OPERATOR_TOTP_KEYS`: no key is named `demo` (the id `opr_demo` is the session without a second factor), names are unique, at most 8 operators. Failures also spend a per-operator bucket (5 per 15 minutes, `TOTP_FAIL_RULE`), separate from the per-client passcode bucket; a right code gives it back.
 
 Order: commit 1 is tests only, run red; then implement.
 

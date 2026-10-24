@@ -65,3 +65,36 @@ describe('session lifetime', () => {
     expect(await resolveSession(other.deps, c)).toBeNull();
   });
 });
+
+describe('L2 defence in depth: mfa needs an mfa signature and a named operator row', () => {
+  const named = { kind: 'operator', operator_id: 'opr_vikram', mfa: true } as const;
+  it('an opr_demo row never gets mfa, even with an mfa signature', async () => {
+    const { deps } = await makeRig();
+    const s = await createSession(deps, { ...named, operator_id: 'opr_demo' });
+    expect(await resolveSession(deps, cookiePair(s.cookie))).toEqual({
+      kind: 'operator',
+      operator_id: 'opr_demo',
+      mfa: false,
+    });
+  });
+  it('an mfa cookie whose row was changed to opr_demo does not give mfa', async () => {
+    const { deps, db } = await makeRig();
+    const s = await createSession(deps, named);
+    await db.query("UPDATE sessions SET actor_id = 'opr_demo' WHERE actor_kind = 'operator'");
+    expect(await resolveSession(deps, cookiePair(s.cookie))).toEqual({
+      kind: 'operator',
+      operator_id: 'opr_demo',
+      mfa: false,
+    });
+  });
+  it('a named operator row with a plain signature is a normal non-mfa session', async () => {
+    const { deps } = await makeRig();
+    const s = await createSession(deps, { ...named, mfa: false });
+    expect(await resolveSession(deps, cookiePair(s.cookie))).toEqual({ ...named, mfa: false });
+  });
+  it('a named operator row with an mfa signature keeps mfa', async () => {
+    const { deps } = await makeRig();
+    const s = await createSession(deps, named);
+    expect(await resolveSession(deps, cookiePair(s.cookie))).toEqual(named);
+  });
+});
