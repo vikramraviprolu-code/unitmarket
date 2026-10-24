@@ -77,7 +77,13 @@ import {
 import { health as jobsHealth, startLoop } from '@umsbx/jobs';
 import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
-import { SESSION_COOKIE, resolveSession, createSession, verifyPasscode } from '@umsbx/security';
+import {
+  SESSION_COOKIE,
+  createSession,
+  operatorSignIn,
+  resolveSession,
+  verifyPasscode,
+} from '@umsbx/security';
 import type { SecurityDeps } from '@umsbx/security';
 import { DRYRUN_SCENARIOS, createDryRunModel, isScenarioId } from './src/server/dryrun-model';
 import { buildOutbound } from './src/server/outbound.server';
@@ -110,7 +116,6 @@ const BUYER_IDS: Record<'buyer-a' | 'buyer-b', Id> = {
   'buyer-a': 'buy_persona_a',
   'buyer-b': 'buy_persona_b',
 };
-const OPERATOR_ID: Id = 'opr_demo';
 
 export const envLabel = (c: Config): EnvironmentLabel =>
   c.mode === 'sandbox' ? 'sandbox' : 'dryrun';
@@ -291,9 +296,16 @@ export interface App {
 
 export interface Engine {
   personas(): readonly Persona[];
+  /**
+   * The passcode is checked first. For the operator persona, `operator` and `code` are the name and the
+   * authenticator code (CO-6): a right pair gives `opr_<name>` with mfa; no keys configured, or no code,
+   * gives the unverified operator without mfa; a wrong code gives null, like a wrong passcode.
+   */
   signIn(i: {
     persona: string;
     passcode: string;
+    operator?: string | undefined;
+    code?: string | undefined;
   }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
   actorFromCookie(cookie: string | null): Promise<Actor | null>;
   /**
@@ -735,7 +747,7 @@ function buildApp(config: Config, opts: AppOptions): App {
   const engine: Engine = {
     personas: () => PERSONAS,
 
-    async signIn({ persona, passcode }) {
+    async signIn({ persona, passcode, operator, code }) {
       if (config.passcode_hash === null) return null;
       if (!(PERSONAS as readonly string[]).includes(persona)) {
         // Same cost for an unknown persona, so the answer does not reveal the persona list.
@@ -747,7 +759,13 @@ function buildApp(config: Config, opts: AppOptions): App {
       if (persona === 'buyer-a' || persona === 'buyer-b') {
         actor = { kind: 'buyer', buyer_id: BUYER_IDS[persona] };
       } else if (persona === 'operator') {
-        actor = { kind: 'operator', operator_id: OPERATOR_ID, mfa: false };
+        const r = await operatorSignIn(security, {
+          keys: config.operator_totp_keys,
+          operator,
+          code,
+        });
+        if (!r.ok) return null;
+        actor = { kind: 'operator', operator_id: r.operator_id, mfa: r.mfa };
       } else {
         const p = await db.query<{ id: string }>('SELECT id FROM publishers ORDER BY slug LIMIT 1');
         const id = p.rows[0]?.id;

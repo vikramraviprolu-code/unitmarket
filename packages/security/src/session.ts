@@ -23,9 +23,13 @@ export interface SessionRecord {
 
 const ms = (v: unknown): number => (v instanceof Date ? v.getTime() : Date.parse(String(v)));
 
-function sign(deps: SecurityDeps, session_id: string): string {
+// CO-6: the second factor is carried by the signature. A session whose operator showed a TOTP code is
+// signed under its own domain (`session-mfa:`), a plain one under `session:`; the cookie keeps one
+// shape and the sessions table needs no column. Only the server, which holds the session secret,
+// can make either signature, so a cookie cannot be turned into an mfa cookie.
+function sign(deps: SecurityDeps, session_id: string, mfa: boolean): string {
   return createHmac('sha256', deps.session_secret.reveal())
-    .update(`session:${session_id}`)
+    .update(`${mfa ? 'session-mfa' : 'session'}:${session_id}`)
     .digest('base64url');
 }
 
@@ -54,15 +58,22 @@ export function readSessionCookie(header: string | null): string | null {
   return null;
 }
 
-function verifyCookie(deps: SecurityDeps, value: string): Id | null {
+function verifyCookie(deps: SecurityDeps, value: string): { id: Id; mfa: boolean } | null {
   const dot = value.indexOf('.');
   if (dot < 0) return null;
   const id = value.slice(0, dot);
   const sig = value.slice(dot + 1);
   if (!SESSION_ID.test(id) || !SIGNATURE.test(sig)) return null;
   const a = Buffer.from(sig);
-  const b = Buffer.from(sign(deps, id));
-  return a.length === b.length && timingSafeEqual(a, b) ? id : null;
+  const matches = (mfa: boolean): boolean => {
+    const b = Buffer.from(sign(deps, id, mfa));
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
+  // Both are always computed, so the answer does not depend on which one matched.
+  const strong = matches(true);
+  const plain = matches(false);
+  if (strong) return { id, mfa: true };
+  return plain ? { id, mfa: false } : null;
 }
 
 export async function createSession(
@@ -70,6 +81,7 @@ export async function createSession(
   actor: Actor,
 ): Promise<{ cookie: string; csrf_token: string }> {
   const { kind, id: actor_id } = actorParts(actor);
+  const mfa = actor.kind === 'operator' && actor.mfa === true;
   const id = deps.ids.next('ses');
   const csrf_token = deps.ids.nonce();
   const now = deps.clock.now().getTime();
@@ -89,7 +101,7 @@ export async function createSession(
       detail: {},
     });
   });
-  const cookie = `${SESSION_COOKIE}=${id}.${sign(deps, id)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_ABSOLUTE_MS / 1000}`;
+  const cookie = `${SESSION_COOKIE}=${id}.${sign(deps, id, mfa)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_ABSOLUTE_MS / 1000}`;
   return { cookie, csrf_token };
 }
 
@@ -114,8 +126,9 @@ export async function resolveSessionRecord(
 ): Promise<SessionRecord | null> {
   const value = readSessionCookie(cookieHeader);
   if (value === null) return null;
-  const id = verifyCookie(deps, value);
-  if (id === null) return null;
+  const verified = verifyCookie(deps, value);
+  if (verified === null) return null;
+  const { id } = verified;
   const res = await deps.db.query<SessionRow>(
     'SELECT id, actor_kind, actor_id, csrf_token_hash, last_seen_at, expires_at, revoked_at FROM sessions WHERE id = $1',
     [id],
@@ -130,7 +143,7 @@ export async function resolveSessionRecord(
   else if (row.actor_kind === 'publisher')
     actor = { kind: 'publisher', publisher_id: row.actor_id };
   else if (row.actor_kind === 'operator')
-    actor = { kind: 'operator', operator_id: row.actor_id, mfa: false };
+    actor = { kind: 'operator', operator_id: row.actor_id, mfa: verified.mfa };
   else return null;
   await deps.db.query('UPDATE sessions SET last_seen_at = $2, updated_at = $2 WHERE id = $1', [
     id,

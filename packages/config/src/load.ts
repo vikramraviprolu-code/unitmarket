@@ -7,9 +7,13 @@ import { BOOT_REFUSAL_EXIT_CODE, refusalLine } from './refusal';
 import { makeSecret } from './secret';
 import {
   KNOWN_CORRIDORS,
+  MAX_TOTP_OPERATORS,
   MERCHANT_ID_PATTERN,
   MIN_SECRET_BYTES,
+  MIN_TOTP_KEY_BYTES,
+  OPERATOR_NAME_PATTERN,
   OUTBOUND_SCOPES,
+  RESERVED_OPERATOR_NAME,
   isPublicOrigin,
 } from './schema';
 import type { Config, Mode, OutboundScope } from './schema';
@@ -108,6 +112,48 @@ const refuse = (code: BootRefusal['code'], name: string) => err<BootRefusal>({ c
 // packages/security/src/passcode.ts; scripts/passcode-env-load.integration.test.ts pins the two.
 const PASSCODE_HASH_SHAPE =
   /^scrypt(?::[1-9][0-9]*:[1-9][0-9]*:[1-9][0-9]*:(?:[0-9a-f]{2}){16,64}:[0-9a-f]{64}|\$[1-9][0-9]*\$[1-9][0-9]*\$[1-9][0-9]*\$(?:[0-9a-f]{2}){16,64}\$[0-9a-f]{64})$/;
+
+// CO-6 (ASM-56): UMS_OPERATOR_TOTP_KEYS = name:base32[,name:base32...]. Parsed once; the keys leave this
+// function only as Secrets, upper case and unpadded. Nothing about a bad value is reported but the
+// variable name. packages/security decodes the same text again with its own base32 reader, and
+// apps/web/src/operator-mfa.integration.test.ts pins that the two agree.
+const BASE32_BODY = /^[A-Z2-7]+$/;
+const PAD_FOR_REMAINDER: Record<number, number> = { 0: 0, 2: 6, 4: 4, 5: 3, 7: 1 };
+function parseOperatorTotpKeys(
+  raw: string | undefined,
+): Result<Config['operator_totp_keys'], BootRefusal> {
+  const name = 'UMS_OPERATOR_TOTP_KEYS';
+  if (raw === undefined) return ok([]);
+  const entries = raw.split(',');
+  if (entries.length > MAX_TOTP_OPERATORS) return refuse('invalid_value', name);
+  const out: Array<{ name: string; key: ReturnType<typeof makeSecret> }> = [];
+  const seenNames = new Set<string>();
+  const seenKeys = new Set<string>();
+  let tooShort = false;
+  for (const entry of entries) {
+    const colon = entry.indexOf(':');
+    if (colon < 0) return refuse('invalid_value', name);
+    const who = entry.slice(0, colon).trim();
+    const text = entry.slice(colon + 1).trim();
+    if (!OPERATOR_NAME_PATTERN.test(who) || who === RESERVED_OPERATOR_NAME)
+      return refuse('invalid_value', name);
+    const m = /^([A-Za-z2-7]+)(={0,6})$/.exec(text);
+    if (m === null) return refuse('invalid_value', name);
+    const body = (m[1] ?? '').toUpperCase();
+    const pad = (m[2] ?? '').length;
+    const wantPad = PAD_FOR_REMAINDER[body.length % 8];
+    if (wantPad === undefined || (pad !== 0 && pad !== wantPad) || !BASE32_BODY.test(body))
+      return refuse('invalid_value', name);
+    if (seenNames.has(who) || seenKeys.has(body)) return refuse('invalid_value', name);
+    seenNames.add(who);
+    seenKeys.add(body);
+    // Short or degenerate keys are reported after the whole value has been checked for shape.
+    if (Math.floor((body.length * 5) / 8) < MIN_TOTP_KEY_BYTES || /^(.)\1*$/s.test(body))
+      tooShort = true;
+    out.push({ name: who, key: makeSecret(body) });
+  }
+  return tooShort ? refuse('weak_secret', name) : ok(out);
+}
 
 const val = (env: Env, name: string): string | undefined => {
   const v = env[name];
@@ -298,6 +344,10 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
   if (rawOwn !== null && !MERCHANT_ID_PATTERN.test(rawOwn))
     return refuse('invalid_value', 'UMS_OWN_MERCHANT_ID');
 
+  // 14. operator TOTP keys (CO-6): optional; a bad value stops the boot, naming the variable only.
+  const totp = parseOperatorTotpKeys(val(env, 'UMS_OPERATOR_TOTP_KEYS'));
+  if (!totp.ok) return err<BootRefusal>(totp.error);
+
   return ok<Config>({
     mode,
     connect,
@@ -310,6 +360,7 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
     approval_secret: makeSecret(secretValues[1] ?? ''),
     link_secret: makeSecret(secretValues[2] ?? ''),
     passcode_hash,
+    operator_totp_keys: totp.value,
     public_origin,
     corridors,
     trusted_proxies,

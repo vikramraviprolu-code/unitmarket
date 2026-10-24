@@ -17,7 +17,10 @@ export default async function SignIn({
   return (
     <>
       <h1>Sign in</h1>
-      <p className="lede">This is a test build. Pick a test persona and enter the demo passcode.</p>
+      <p className="lede">
+        This is a test build. Pick a test persona and enter the demo passcode. Operators also enter
+        their name and the code from their authenticator app.
+      </p>
       <SignInForm next={safeNext(q['next'])} />
     </>
   );
