@@ -34,6 +34,7 @@ describe('UMS_DEMO_PASSCODE_HASH shape (BU-6c)', () => {
     ['new form', NEW_FORM],
     ['old form', OLD_FORM],
     ['new form, longest salt', `scrypt:16384:8:1:${'cd'.repeat(64)}:${KEY}`],
+    ['old form, longest salt', `scrypt$16384$8$1$${'cd'.repeat(64)}$${KEY}`],
     ['new form with blanks around it', `  ${NEW_FORM}  `],
   ])('accepts the %s, in offline, sandbox and production', (_n, v) => {
     for (const env of [
@@ -85,6 +86,13 @@ describe('UMS_DEMO_PASSCODE_HASH shape (BU-6c)', () => {
     ['short key', `scrypt:16384:8:1:${SALT}:${KEY.slice(2)}`],
     ['long key', `scrypt:16384:8:1:${SALT}:${KEY}00`],
     ['upper-case key', `scrypt:16384:8:1:${SALT}:${KEY.toUpperCase()}`],
+    ['scheme name only', 'scrypt'],
+    ['scheme name with junk', 'scryptx'],
+    ['old form, empty N', `scrypt$$8$1$${SALT}$${KEY}`],
+    ['old form, zero N', `scrypt$0$8$1$${SALT}$${KEY}`],
+    ['old form, salt too long', `scrypt$16384$8$1$${'cd'.repeat(65)}$${KEY}`],
+    ['junk before the scheme', `x${NEW_FORM}`],
+    ['junk before the old scheme', `x${OLD_FORM}`],
     ['trailing newline inside', `scrypt:16384:8:1:${SALT}:${KEY}\nX=1`],
   ];
 

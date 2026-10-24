@@ -35,11 +35,9 @@ export async function hashPasscode(plain: string, salt_hex: string): Promise<str
 }
 
 // The six fields of a stored hash, or null. One separator for the whole value, `:` (current) or `$`
-// (old); a value that mixes them, or has neither, is not a hash.
+// (old). A value that mixes them has a colon inside a field, which the field checks refuse.
 function splitStored(hash: string): string[] | null {
-  const sep = hash.includes('$') ? (hash.includes(':') ? null : '$') : ':';
-  if (sep === null) return null;
-  const parts = hash.split(sep);
+  const parts = hash.split(hash.includes('$') ? '$' : ':');
   return parts.length === 6 && parts[0] === 'scrypt' ? parts : null;
 }
 
@@ -55,11 +53,12 @@ export async function verifyPasscode(hash: string, attempt: string): Promise<boo
       string,
       string,
     ];
+    // digits only, no sign, no leading zero: every field is then a positive integer or Infinity
+    // (a digit string too long for a number), and the limits below refuse Infinity
     if (![ns, rs, ps].every((v) => /^[1-9][0-9]*$/.test(v))) return false;
     const n = Number(ns);
     const r = Number(rs);
     const p = Number(ps);
-    if (![n, r, p].every((v) => Number.isInteger(v) && v > 0)) return false;
     if (n > MAX_N || (n & (n - 1)) !== 0 || r > 16 || p > 4) return false;
     if (!/^[0-9a-f]{32,128}$/.test(salt_hex) || !/^[0-9a-f]{64}$/.test(key_hex)) return false;
     if (Buffer.byteLength(attempt, 'utf8') > MAX_ATTEMPT_BYTES) return false;

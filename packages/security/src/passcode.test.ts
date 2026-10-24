@@ -116,6 +116,10 @@ describe('passcode', () => {
         `scrypt: ${n}:${r}:${p}:${salt}:${key}`,
         `Scrypt:${n}:${r}:${p}:${salt}:${key}`,
         `argon2:${n}:${r}:${p}:${salt}:${key}`,
+        `scrypt:${n}:${'9'.repeat(400)}:${p}:${salt}:${key}`,
+        `scrypt:${'9'.repeat(400)}:${r}:${p}:${salt}:${key}`,
+        `scrypt:${n}:${r}:${'9'.repeat(400)}:${salt}:${key}`,
+        `scrypt:0${n}:${r}:${p}:${salt}:${key}`,
         // the shape dotenv-expand leaves behind
         'scrypt6384',
         'scrypt',
