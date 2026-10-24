@@ -103,6 +103,12 @@ const suspiciousUnknownName = (name: string): boolean =>
   !KNOWN_PAYPAL_OR_MODE_NAMES.has(name) && SUSPICIOUS_NAME.test(name);
 
 const refuse = (code: BootRefusal['code'], name: string) => err<BootRefusal>({ code, name });
+// BU-6c: scrypt:N:r:p:salt_hex:hash_hex (current) or the same with `$` (old), one separator
+// throughout. config imports only contracts, so this repeats the shape of
+// packages/security/src/passcode.ts; scripts/passcode-env-load.integration.test.ts pins the two.
+const PASSCODE_HASH_SHAPE =
+  /^scrypt(?::[1-9][0-9]*:[1-9][0-9]*:[1-9][0-9]*:(?:[0-9a-f]{2}){16,64}:[0-9a-f]{64}|\$[1-9][0-9]*\$[1-9][0-9]*\$[1-9][0-9]*\$(?:[0-9a-f]{2}){16,64}\$[0-9a-f]{64})$/;
+
 const val = (env: Env, name: string): string | undefined => {
   const v = env[name];
   return v === undefined || v.trim() === '' ? undefined : v.trim();
@@ -257,6 +263,11 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
 
   // 9. passcode hash
   const passcode_hash = val(env, 'UMS_DEMO_PASSCODE_HASH') ?? null;
+  // BU-6c: a value a dotenv loader mangled (`scrypt6384`) must stop the boot, not turn into a silent
+  // sign-in failure. Shape only; @umsbx/security checks the work factors. Names the variable only.
+  if (passcode_hash !== null && !PASSCODE_HASH_SHAPE.test(passcode_hash)) {
+    return refuse('invalid_value', 'UMS_DEMO_PASSCODE_HASH');
+  }
   if (node_env === 'production' && mode === 'offline' && passcode_hash === null) {
     return refuse('missing_value', 'UMS_DEMO_PASSCODE_HASH');
   }
