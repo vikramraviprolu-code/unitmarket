@@ -4,6 +4,9 @@ import { expect } from '@playwright/test';
 import type { Browser, Page } from '@playwright/test';
 
 export const PASSCODE = 'e2e passcode one';
+// The fixed fake operator key the e2e server is started with (playwright.config.ts): the RFC 6238
+// test key "12345678901234567890". A public test value, not a credential.
+export const TOTP_KEY_BYTES = Buffer.from('12345678901234567890', 'ascii');
 const dir = fileURLToPath(new URL('./.auth/', import.meta.url));
 export const AUTH_A = `${dir}buyer-a.json`;
 export const AUTH_B = `${dir}buyer-b.json`;
