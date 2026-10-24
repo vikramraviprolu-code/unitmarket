@@ -70,9 +70,12 @@ export const SANDBOX_LIMITS = {
   /** Largest order: 1.00 USD, in minor units. */
   max_amount_minor: 100,
   currency: 'USD',
-  /** GET order while the owner approves. Not counted in max_calls_per_order; capped here instead. */
-  poll_interval_ms: 3000,
-  max_polls: 120,
+  /**
+   * GET order while the owner approves. Not counted in max_calls_per_order; capped here instead.
+   * Every 15 s, at most 24 reads (6 minutes): about 24 calls of the daily approval budget per wait.
+   */
+  poll_interval_ms: 15000,
+  max_polls: 24,
 } as const;
 
 /** The five operations of the polling phase (ASM-32); nothing else goes through this subject. */

@@ -181,14 +181,14 @@ describe('the caps of the subject', () => {
     for (let i = 0; i < 10; i += 1) await b.port.getOrder('ORDER00AAAAAA');
     expect(subject.stopped()).toBeNull();
   });
-  it('approval polls are not counted against the 20 but are capped at 120', async () => {
+  it('approval polls are not counted against the 20 but are capped at 24', async () => {
     const o = open();
     const { subject } = subjectOver(o.transport);
     const { hooks } = await subject.make();
     await expect(
       hooks.approve('ORDER00AAAAAA', 'https://www.sandbox.paypal.com/checkoutnow?token=X'),
     ).rejects.toThrow(/did not approve/);
-    expect(o.sent.filter((r) => r.operation === 'get_order')).toHaveLength(120);
+    expect(o.sent.filter((r) => r.operation === 'get_order')).toHaveLength(24);
     expect(subject.stopped()).toBeNull();
   });
   it('refuses an amount above 1.00 USD: the create never reaches the transport', async () => {
