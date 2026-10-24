@@ -1,5 +1,8 @@
 // Passcode hashing for the demo personas: scrypt with a per-hash salt, timing-safe compare.
-// Stored form: scrypt$N$r$p$salt_hex$hash_hex. A plain passcode is never stored or logged.
+// Stored form: scrypt:N:r:p:salt_hex:hash_hex (BU-6c). The form has no `$` because Next.js loads
+// .env.local with dotenv-expand, which reads `$16384` as a variable reference and mangled the old
+// form scrypt$N$r$p$salt_hex$hash_hex. verifyPasscode still accepts the old form (a hash exported in
+// the shell or set in a host dashboard is not expanded). A plain passcode is never stored or logged.
 import { scrypt, timingSafeEqual } from 'node:crypto';
 
 const N = 16384;
@@ -28,13 +31,22 @@ export async function hashPasscode(plain: string, salt_hex: string): Promise<str
     throw new Error('hashPasscode: salt must be 16 to 64 bytes as lowercase hex');
   }
   const key = await derive(plain, Buffer.from(salt_hex, 'hex'), N, R, P);
-  return `scrypt$${N}$${R}$${P}$${salt_hex}$${key.toString('hex')}`;
+  return `scrypt:${N}:${R}:${P}:${salt_hex}:${key.toString('hex')}`;
+}
+
+// The six fields of a stored hash, or null. One separator for the whole value, `:` (current) or `$`
+// (old); a value that mixes them, or has neither, is not a hash.
+function splitStored(hash: string): string[] | null {
+  const sep = hash.includes('$') ? (hash.includes(':') ? null : '$') : ':';
+  if (sep === null) return null;
+  const parts = hash.split(sep);
+  return parts.length === 6 && parts[0] === 'scrypt' ? parts : null;
 }
 
 export async function verifyPasscode(hash: string, attempt: string): Promise<boolean> {
   try {
-    const parts = hash.split('$');
-    if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
+    const parts = splitStored(hash);
+    if (parts === null) return false;
     const [, ns, rs, ps, salt_hex, key_hex] = parts as [
       string,
       string,
@@ -43,6 +55,7 @@ export async function verifyPasscode(hash: string, attempt: string): Promise<boo
       string,
       string,
     ];
+    if (![ns, rs, ps].every((v) => /^[1-9][0-9]*$/.test(v))) return false;
     const n = Number(ns);
     const r = Number(rs);
     const p = Number(ps);

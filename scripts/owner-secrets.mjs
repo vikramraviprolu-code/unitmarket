@@ -1,7 +1,7 @@
 // pnpm owner:secrets (BU-6). For the owner, at a terminal, on their own machine. Prints four
 // NAME=value lines to paste into .env.local:
 //   UMS_SESSION_SECRET, UMS_APPROVAL_SECRET, UMS_LINK_SECRET   32 random bytes each (base64url)
-//   UMS_DEMO_PASSCODE_HASH                                     scrypt hash of a passcode typed twice
+//   UMS_DEMO_PASSCODE_HASH                                     scrypt hash of a passcode typed twice (scrypt:N:r:p:salt:key, no `$`, BU-6c)
 // It writes no file, reads no environment value other than the CI and AI markers (the runner's lists), and prints the
 // passcode never. It refuses without a terminal, in CI and in an AI session, before it asks anything.
 //
