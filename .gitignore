@@ -18,3 +18,9 @@ coverage/
 .recordings/
 .sbx-local/
 *.log
+
+# local assistant tool state, never committed
+.claude/
+.claude-flow/
+.swarm/
+ruvector.db

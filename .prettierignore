@@ -7,3 +7,7 @@ scripts/__fixtures__
 docs/design
 apps/web/tsconfig.json
 apps/web/next-env.d.ts
+.claude
+.claude-flow
+.swarm
+ruvector.db
