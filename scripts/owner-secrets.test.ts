@@ -81,13 +81,15 @@ describe('owner:secrets', () => {
       .split('\n')
       .find((l) => l.startsWith('UMS_DEMO_PASSCODE_HASH='))
       ?.slice('UMS_DEMO_PASSCODE_HASH='.length) as string;
-    expect(hash).toMatch(/^scrypt\$\d+\$\d+\$\d+\$[0-9a-f]{32}\$[0-9a-f]{64}$/);
+    expect(hash).toMatch(/^scrypt:\d+:\d+:\d+:[0-9a-f]{32}:[0-9a-f]{64}$/);
+    // BU-6c: no dollar sign, so Next's dotenv-expand cannot treat part of it as a variable
+    expect(hash).not.toContain('$');
     expect(await verifyPasscode(hash, PASSCODE)).toBe(true);
     expect(await verifyPasscode(hash, `${PASSCODE}x`)).toBe(false);
     const r2 = rig();
     await runOwnerSecrets(r2.deps);
     const hash2 = r2.out.find((l) => l.startsWith('UMS_DEMO_PASSCODE_HASH=')) as string;
-    expect(hash2.split('$')[4]).not.toBe(hash.split('$')[4]);
+    expect(hash2.split(':')[4]).not.toBe(hash.split(':')[4]);
   });
   it('asks for the passcode twice, hidden', async () => {
     const r = rig();

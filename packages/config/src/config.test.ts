@@ -147,7 +147,12 @@ describe('loadConfig refuses (P15, RLR-4)', () => {
   it('production, offline and no passcode hash refuses', () => {
     const env = offline({ NODE_ENV: 'production', UMS_PUBLIC_ORIGIN: 'https://um.example.org' });
     expect(refusal(env)).toEqual({ code: 'missing_value', name: 'UMS_DEMO_PASSCODE_HASH' });
-    expect(loadConfig({ ...env, UMS_DEMO_PASSCODE_HASH: 'scrypt$x' }).ok).toBe(true);
+    expect(
+      loadConfig({
+        ...env,
+        UMS_DEMO_PASSCODE_HASH: `scrypt:16384:8:1:${'00'.repeat(16)}:${'ab'.repeat(32)}`,
+      }).ok,
+    ).toBe(true);
   });
   it('unknown corridor refuses', () => {
     expect(refusal(offline({ UMS_CORRIDORS: 'us-usd,xx-zzz' }))).toEqual({
