@@ -22,6 +22,24 @@ export {
   revokeAllSessions,
 } from './session';
 export { hashPasscode, verifyPasscode } from './passcode';
+export {
+  OPERATOR_NAME,
+  TOTP_FAIL_RULE,
+  TOTP_ISSUER,
+  TOTP_MIN_KEY_BYTES,
+  TOTP_USED_ACTION,
+  UNVERIFIED_OPERATOR_ID,
+  acceptTotp,
+  base32Decode,
+  base32Encode,
+  isOperatorName,
+  matchingSteps,
+  operatorSignIn,
+  otpauthUri,
+  stepAt,
+  totpCode,
+} from './totp';
+export type { OperatorSignIn, TotpVerdict } from './totp';
 export { securityHeaders } from './headers';
 export { DEFAULT_RATES } from './rate';
 export { AUTH_RULES, checkEntry, formatInventory, parseRouteMeta, pathFromFile } from './inventory';

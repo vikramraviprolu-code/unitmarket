@@ -1,6 +1,7 @@
 import { inspect } from 'node:util';
 import { describe, expect, it } from 'vitest';
-import { ENV_NAMES, loadConfig } from './index';
+import { loadConfig } from './index';
+import { ENV_NAMES } from './schema';
 
 // CO-6 (ASM-56): UMS_OPERATOR_TOTP_KEYS = name:base32,name:base32. Parsed once into Secret values;
 // every key at least 20 bytes; anything malformed refuses boot, naming the variable and never the value.

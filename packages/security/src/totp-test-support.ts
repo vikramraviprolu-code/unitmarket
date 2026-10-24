@@ -45,6 +45,9 @@ afterAll(async () => {
 const BASE_MS = Date.parse('2026-10-22T09:00:00.000Z');
 
 export interface TotpRig extends TestRig {
+  /** The first instant of this rig's hour; audit rows of other rigs are older or newer. */
+  from: string;
+  to: string;
   /** The current step of the rig's fake clock. */
   step(): number;
   /** The code for `step + delta`, made by the oracle. */
@@ -82,9 +85,13 @@ export async function totpRig(): Promise<TotpRig> {
     },
   };
   const rig = await makeRig({ db: shared, clock, audit });
+  const from = new Date(BASE_MS + no * 60 * MIN).toISOString();
+  const to = new Date(BASE_MS + (no + 1) * 60 * MIN).toISOString();
   const step = (): number => stepOf(clock.now().getTime());
   return {
     ...rig,
+    from,
+    to,
     clock,
     step,
     code: (key, delta = 0) => oracleCode(key, step() + delta),
@@ -100,19 +107,23 @@ export interface AuditRow {
   detail: Record<string, unknown>;
 }
 
-export async function usedRows(db: SqlDriver, operator_id?: string): Promise<AuditRow[]> {
-  const res = await db.query<AuditRow>(
+export async function usedRows(rig: TotpRig, operator_id?: string): Promise<AuditRow[]> {
+  const res = await rig.db.query<AuditRow>(
     `SELECT actor_kind, actor_id, action, target, reason, detail FROM audit_log
-      WHERE action = 'operator.totp_used' ${operator_id === undefined ? '' : 'AND actor_id = $1'}
+      WHERE action = 'operator.totp_used' AND created_at >= $1 AND created_at < $2
+        ${operator_id === undefined ? '' : 'AND actor_id = $3'}
       ORDER BY created_at, id`,
-    operator_id === undefined ? [] : [operator_id],
+    operator_id === undefined ? [rig.from, rig.to] : [rig.from, rig.to, operator_id],
   );
   return res.rows;
 }
 
 /** Everything a sign-in could have written down, as one string, for "no key and no code in it" checks. */
 export async function everythingWritten(rig: TotpRig): Promise<string> {
-  const audit = await rig.db.query('SELECT * FROM audit_log');
+  const audit = await rig.db.query(
+    'SELECT * FROM audit_log WHERE created_at >= $1 AND created_at < $2',
+    [rig.from, rig.to],
+  );
   const buckets = await rig.db.query('SELECT * FROM rate_buckets');
   const sessions = await rig.db.query('SELECT * FROM sessions');
   return JSON.stringify({

@@ -15,8 +15,15 @@ export const routeMeta: RouteMeta = {
   risk: 'high',
 };
 
+// CO-6: `operator` and `code` are for the operator persona only (name and authenticator code); other
+// personas ignore them. Wrong codes spend the same persona bucket as wrong passcodes.
 const Input = z
-  .object({ persona: z.string().min(1).max(40), passcode: z.string().min(1).max(200) })
+  .object({
+    persona: z.string().min(1).max(40),
+    passcode: z.string().min(1).max(200),
+    operator: z.string().max(40).optional(),
+    code: z.string().max(16).optional(),
+  })
   .strict();
 
 export const POST = withRoute(routeMeta, Input, async ({ input }) => {
@@ -26,7 +33,11 @@ export const POST = withRoute(routeMeta, Input, async ({ input }) => {
     return { status: 401, code: 'sign_in_failed', message: 'That passcode did not work.' };
   return {
     status: 200,
-    body: { csrf_token: s.csrf_token, actor_kind: s.actor.kind },
+    body: {
+      csrf_token: s.csrf_token,
+      actor_kind: s.actor.kind,
+      ...(s.actor.kind === 'operator' ? { mfa: s.actor.mfa } : {}),
+    },
     headers: { 'set-cookie': s.cookie },
   };
 })(securityDeps);

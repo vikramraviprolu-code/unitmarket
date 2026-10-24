@@ -4,9 +4,7 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { loadConfig } from '@umsbx/config';
-import { setSwitch } from '@umsbx/safety';
-import { base32Decode, withRoute } from '@umsbx/security';
+import { base32Decode, isOperatorName, withRoute } from '@umsbx/security';
 import type { RouteMeta } from '@umsbx/security';
 import type { Actor } from '@umsbx/contracts';
 import type { App } from '../composition.server';
@@ -55,9 +53,9 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function boot(keys: string | undefined = KEYS) {
+async function boot(keys: string | null = KEYS) {
   app = await bootTestApp({
-    ...(keys === undefined ? {} : { UMS_OPERATOR_TOTP_KEYS: keys }),
+    ...(keys === null ? {} : { UMS_OPERATOR_TOTP_KEYS: keys }),
   });
   sessionRoute = await import('./app/api/session/route');
 }
@@ -294,34 +292,14 @@ describe('the session of an operator with mfa', () => {
   });
 });
 
-describe('turning a switch on needs mfa (C-08)', () => {
-  const turnOn = (a: Actor | null) =>
-    setSwitch(app.security.db, app.security.audit, app.security.clock, {
-      name: 'paypal_outbound',
-      on: true,
-      by: a ?? { kind: 'system' },
-      reason: 'test',
-      approval_ref: 'D-000',
-    });
-  it('an operator without mfa is refused; with mfa the request reaches the approval check', async () => {
-    await boot();
-    const plain = await signIn({});
-    expect(await turnOn(await actorOf(plain.session))).toEqual({
-      ok: false,
-      error: 'operator_required',
-    });
-    const strong = await signIn({ operator: 'vikram', code: code(VIKRAM_B32, nowMs) });
-    // past the mfa gate; no approval row exists, so the next lock answers
-    expect(await turnOn(await actorOf(strong.session))).toEqual({
-      ok: false,
-      error: 'approval_not_active',
-    });
-  });
-});
+// Turning paypal_outbound on needs `actor.mfa` (packages/safety/src/switches.ts, pinned by
+// safety.state.test.ts). Apps/web may not import safety (Z1), so the whole of C-08 for that switch is
+// the CO-G file tests/mvp-c/c08-c09-operator-headers.integration.test.ts; what this file proves is the
+// flag the gate reads: the actor of a session is mfa false without a code and mfa true with one.
 
 describe('no keys configured', () => {
   it('every operator signs in with mfa false, with or without a code or a name; refunds answer 403', async () => {
-    await boot(undefined);
+    await boot(null);
     for (const o of [
       {},
       { operator: 'vikram' },
@@ -372,10 +350,17 @@ describe('buyer and publisher sign-in are unchanged', () => {
 });
 
 describe('config and security agree on what a key is', () => {
-  const base = {
-    UMS_SESSION_SECRET: 'Qm7vK2pLx9RbT4zWc8NdYh3JfG6sAe1U',
-    UMS_APPROVAL_SECRET: 'Zr5tB8nKd2VwXq7LmC4yHj9PgF3sEa6U',
-    UMS_LINK_SECRET: 'Jd4wN7xQk2ZcR9vTb5LmY8hGp3FsAe6U',
+  // createApp loads the config and throws "boot refused: <code> <variable>" on a refusal; nothing is opened.
+  const accepts = async (keys: string): Promise<boolean> => {
+    try {
+      createApp(await testEnv({ UMS_OPERATOR_TOTP_KEYS: keys }));
+      return true;
+    } catch (e) {
+      expect(String(e)).toMatch(
+        /^Error: boot refused: (invalid_value|weak_secret) UMS_OPERATOR_TOTP_KEYS$/,
+      );
+      return false;
+    }
   };
   it.each([
     VIKRAM_B32,
@@ -388,14 +373,13 @@ describe('config and security agree on what a key is', () => {
     'IFBEGRCFIZDUQSKKJNGE2TSPKBIVEU2U=',
   ])(
     '%s: the config accepts it exactly when security decodes it to at least 20 bytes that are not one repeated character',
-    (b32) => {
-      const r = loadConfig({ ...base, UMS_OPERATOR_TOTP_KEYS: `vikram:${b32}` });
+    async (b32) => {
       const bytes = base32Decode(b32);
       const usable =
         bytes !== null &&
         bytes.length >= 20 &&
         !/^(.)\1*$/.test(b32.toUpperCase().replace(/=+$/, ''));
-      expect(r.ok).toBe(usable);
+      expect(await accepts(`vikram:${b32}`)).toBe(usable);
     },
   );
   it.each([
@@ -410,9 +394,7 @@ describe('config and security agree on what a key is', () => {
     'x'.repeat(32),
     'x'.repeat(33),
   ])('the name %s', async (name) => {
-    const { isOperatorName } = await import('@umsbx/security');
-    const r = loadConfig({ ...base, UMS_OPERATOR_TOTP_KEYS: `${name}:${VIKRAM_B32}` });
-    expect(r.ok).toBe(isOperatorName(name));
+    expect(await accepts(`${name}:${VIKRAM_B32}`)).toBe(isOperatorName(name));
   });
 });
 

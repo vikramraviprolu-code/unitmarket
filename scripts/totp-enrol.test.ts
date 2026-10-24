@@ -97,7 +97,7 @@ describe('totp:enrol output', () => {
 });
 
 describe('totp:enrol refuses', () => {
-  it.each([
+  const cases: Array<[string, RunOptions, string]> = [
     ['stdin is not a terminal', { stdin: false }, 'not_a_tty'],
     [
       'stdout is not a terminal (the secret would go to a file or a log)',
@@ -105,16 +105,28 @@ describe('totp:enrol refuses', () => {
       'not_a_tty',
     ],
     ['neither is a terminal', { stdin: false, stdout: false }, 'not_a_tty'],
-    ...CI_MARKERS.map((m) => [`${m} is set`, { env: { [m]: '1' } }, 'ci_set'] as const),
-    ...AI_MARKERS.map((m) => [`${m} is set`, { env: { [m]: '1' } }, 'ai_session'] as const),
-  ])('when %s, before it draws any randomness and with no output', async (_n, o, code) => {
-    const nonces = [HEX_A, HEX_B];
-    const { res, out, err } = await run({ ...(o as object), nonces });
-    expect(res).toEqual({ ok: false, code });
-    expect(out).toEqual([]);
-    expect(err).toEqual([]);
-    expect(nonces).toEqual([HEX_A, HEX_B]);
-  });
+    ...CI_MARKERS.map((m): [string, RunOptions, string] => [
+      `${m} is set`,
+      { env: { [m]: '1' } },
+      'ci_set',
+    ]),
+    ...AI_MARKERS.map((m): [string, RunOptions, string] => [
+      `${m} is set`,
+      { env: { [m]: '1' } },
+      'ai_session',
+    ]),
+  ];
+  it.each(cases)(
+    'when %s, before it draws any randomness and with no output',
+    async (_n, o, code) => {
+      const nonces = [HEX_A, HEX_B];
+      const { res, out, err } = await run({ ...o, nonces });
+      expect(res).toEqual({ ok: false, code });
+      expect(out).toEqual([]);
+      expect(err).toEqual([]);
+      expect(nonces).toEqual([HEX_A, HEX_B]);
+    },
+  );
   it.each([
     undefined,
     '',

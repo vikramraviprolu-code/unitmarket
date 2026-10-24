@@ -18,15 +18,28 @@ async function currentCode(page: Page, stepOffset = 0): Promise<string> {
   return String((mac.readUInt32BE(o) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 }
 
-async function fillAndSubmit(page: Page, o: { name?: string; code?: string }) {
+interface Answer {
+  status: number;
+  body: Record<string, unknown>;
+}
+
+// The page navigates away as soon as sign-in succeeds, and the browser then drops the response body,
+// so the body is read inside a route handler, before the page sees the answer.
+async function fillAndSubmit(page: Page, o: { name?: string; code?: string }): Promise<Answer> {
+  let answer: Answer | null = null;
+  await page.route('**/api/session', async (route) => {
+    const res = await route.fetch();
+    answer = { status: res.status(), body: (await res.json()) as Record<string, unknown> };
+    await route.fulfill({ response: res });
+  });
   await page.goto('/signin?next=/ops');
   await page.getByLabel('Who are you testing as?').selectOption('operator');
   if (o.name !== undefined) await page.getByLabel('Operator name').fill(o.name);
   await page.getByLabel('Demo passcode').fill(PASSCODE);
   if (o.code !== undefined) await page.getByLabel('Authenticator code').fill(o.code);
-  const answered = page.waitForResponse((r) => r.url().endsWith('/api/session'));
   await page.getByRole('button', { name: 'Sign in' }).click();
-  return answered;
+  await expect.poll(() => answer, { timeout: 10_000 }).not.toBeNull();
+  return answer as unknown as Answer;
 }
 
 test.describe('operator sign-in with a code', () => {
@@ -42,10 +55,9 @@ test.describe('operator sign-in with a code', () => {
     await expect(page.getByLabel('Operator name')).toBeVisible();
     await expect(page.getByLabel('Authenticator code')).toBeVisible();
     const code = await currentCode(page);
-    const answered = await fillAndSubmit(page, { name: 'vikram', code });
-    const res = await answered;
-    expect(res.status()).toBe(200);
-    expect(await res.json()).toMatchObject({ actor_kind: 'operator', mfa: true });
+    const res = await fillAndSubmit(page, { name: 'vikram', code });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ actor_kind: 'operator', mfa: true });
     await expect(page.getByRole('heading', { level: 1, name: /Operations/ })).toBeVisible();
     // The page and its scripts never carry the key or the code.
     const html = await page.content();
@@ -60,8 +72,8 @@ test.describe('operator sign-in with a code', () => {
     const page = await ctx.newPage();
     const real = await currentCode(page, 0);
     const wrong = String((Number(real) + 123457) % 1_000_000).padStart(6, '0');
-    const res = await await fillAndSubmit(page, { name: 'vikram', code: wrong });
-    expect(res.status()).toBe(401);
+    const res = await fillAndSubmit(page, { name: 'vikram', code: wrong });
+    expect(res.status).toBe(401);
     await expect(page.getByText(/did not work/)).toBeVisible();
     await expect(page).toHaveURL(/\/signin/);
     await ctx.close();
@@ -70,9 +82,9 @@ test.describe('operator sign-in with a code', () => {
   test('without a code the operator signs in view-only (mfa off)', async ({ browser }) => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    const res = await await fillAndSubmit(page, {});
-    expect(res.status()).toBe(200);
-    expect(await res.json()).toMatchObject({ actor_kind: 'operator', mfa: false });
+    const res = await fillAndSubmit(page, {});
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ actor_kind: 'operator', mfa: false });
     await expect(page.getByRole('heading', { level: 1, name: /Operations/ })).toBeVisible();
     await ctx.close();
   });

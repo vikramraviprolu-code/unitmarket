@@ -24,7 +24,7 @@ describe('replay: a step already used by that operator is refused', () => {
     const code = r.code(VIKRAM_KEY);
     expect(await acceptTotp(r.deps, { ...vikram, code })).toBe('accepted');
     expect(await acceptTotp(r.deps, { ...vikram, code })).toBe('replay');
-    const rows = await usedRows(r.db, 'opr_vikram');
+    const rows = await usedRows(r, 'opr_vikram');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       actor_kind: 'operator',
@@ -39,7 +39,7 @@ describe('replay: a step already used by that operator is refused', () => {
     await acceptTotp(r.deps, { ...vikram, code });
     await acceptTotp(r.deps, { ...vikram, code });
     await acceptTotp(r.deps, { ...vikram, code: r.code(VIKRAM_KEY, 5) });
-    expect(await usedRows(r.db)).toHaveLength(1);
+    expect(await usedRows(r)).toHaveLength(1);
   });
   it('the code of the next step is a different code and is accepted; the earlier one stays used', async () => {
     const r = await totpRig();
@@ -51,7 +51,7 @@ describe('replay: a step already used by that operator is refused', () => {
     expect(await acceptTotp(r.deps, { ...vikram, code: second })).toBe('accepted');
     // the first code is still inside the window of the new step, and still used
     expect(await acceptTotp(r.deps, { ...vikram, code: first })).toBe('replay');
-    expect((await usedRows(r.db, 'opr_vikram')).map((x) => x.detail['step'])).toEqual([
+    expect((await usedRows(r, 'opr_vikram')).map((x) => x.detail['step'])).toEqual([
       r.step() - 1,
       r.step(),
     ]);
@@ -154,7 +154,7 @@ describe('the sign-in decision', () => {
         code: r.code(VIKRAM_KEY),
       }),
     ).toEqual({ ok: true, operator_id: 'opr_demo', mfa: false });
-    expect(await usedRows(r.db)).toEqual([]);
+    expect(await usedRows(r)).toEqual([]);
   });
   it('keys configured, no code: mfa false and the unverified id, never a named operator', async () => {
     const r = await totpRig();

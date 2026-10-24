@@ -26,6 +26,11 @@ export interface Config {
   approval_secret: Secret;
   link_secret: Secret;
   passcode_hash: string | null;
+  /**
+   * UMS_OPERATOR_TOTP_KEYS (CO-6, ASM-56): one base32 TOTP key per operator, as Secrets (upper case, no
+   * padding). Empty when unset: operators then sign in without a second factor (mfa false).
+   */
+  operator_totp_keys: ReadonlyArray<{ name: string; key: Secret }>;
   public_origin: string;
   corridors: string[];
   /** Reverse proxies in front of the app, 0 to 3 (UMS_TRUSTED_PROXIES). 0: X-Forwarded-For is never read. */
@@ -51,6 +56,7 @@ export const ENV_NAMES = [
   'UMS_APPROVAL_SECRET',
   'UMS_LINK_SECRET',
   'UMS_DEMO_PASSCODE_HASH',
+  'UMS_OPERATOR_TOTP_KEYS',
   'UMS_PUBLIC_ORIGIN',
   'UMS_CORRIDORS',
   'UMS_TRUSTED_PROXIES',
@@ -61,6 +67,14 @@ export const ENV_NAMES = [
 export const KNOWN_CORRIDORS: readonly string[] = ['us-usd'];
 
 export const MIN_SECRET_BYTES = 32;
+
+/** Operator TOTP keys (CO-6): at least 20 bytes (RFC 4226 section 4), a handful of operators. */
+export const MIN_TOTP_KEY_BYTES = 20;
+export const MAX_TOTP_OPERATORS = 8;
+/** Same shape as OPERATOR_NAME in packages/security/src/totp.ts, which this package may not import; the web integration test pins the two. */
+export const OPERATOR_NAME_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
+/** The id `opr_demo` belongs to an operator session without a second factor, so no key may use the name. */
+export const RESERVED_OPERATOR_NAME = 'demo';
 
 /** PayPal merchant ids are 13 characters, upper-case letters and digits (BU-7). Exact, no folding. */
 export const MERCHANT_ID_PATTERN = /^[A-Z0-9]{13}$/;
