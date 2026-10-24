@@ -174,7 +174,7 @@ describe('sandboxSubject construction', () => {
 
 describe('hooks.approve', () => {
   const URL_ = 'https://www.sandbox.paypal.com/checkoutnow?token=ORDER00123456';
-  it('prints the link once, exactly, and polls GET order every 3 s until APPROVED', async () => {
+  it('prints the link once, exactly, and polls GET order every 15 s until APPROVED', async () => {
     const s = scriptedOrders(['CREATED', 'CREATED', 'APPROVED']);
     const sleeps: number[] = [];
     const { subject, lines } = subjectOver(s.transport, {
@@ -183,7 +183,7 @@ describe('hooks.approve', () => {
     const { hooks } = await subject.make();
     await hooks.approve('ORDER00123456', URL_);
     expect(lines).toEqual([`${LINK_LINE}${URL_}`]);
-    expect(sleeps).toEqual([3000, 3000]);
+    expect(sleeps).toEqual([15000, 15000]);
     expect(s.sent.filter((r) => r.operation === 'get_order')).toHaveLength(3);
   });
   it('stops polling at once when the order is VOIDED, and says so', async () => {
@@ -193,7 +193,7 @@ describe('hooks.approve', () => {
     const { hooks } = await subject.make();
     await expect(hooks.approve('ORDER00123456', URL_)).rejects.toThrow(/voided/);
     expect(s.sent.filter((r) => r.operation === 'get_order')).toHaveLength(2);
-    expect(sleeps).toEqual([3000]);
+    expect(sleeps).toEqual([15000]);
   });
   it('does not sleep or print again once approved on the first read', async () => {
     const s = scriptedOrders(['APPROVED']);
@@ -206,15 +206,15 @@ describe('hooks.approve', () => {
     expect(lines).toHaveLength(1);
     expect(sleeps).toEqual([]);
   });
-  it('gives up after 6 minutes: 120 reads, 119 sleeps of 3 s, and says so', async () => {
+  it('gives up after 6 minutes: 24 reads, 23 sleeps of 15 s, and says so', async () => {
     const s = scriptedOrders(['CREATED']);
     const sleeps: number[] = [];
     const { subject } = subjectOver(s.transport, { sleep: async (ms) => void sleeps.push(ms) });
     const { hooks } = await subject.make();
     await expect(hooks.approve('ORDER00123456', URL_)).rejects.toThrow(/did not approve/);
-    expect(s.sent.filter((r) => r.operation === 'get_order')).toHaveLength(120);
-    expect(sleeps).toHaveLength(119);
-    expect(sleeps.every((m) => m === 3000)).toBe(true);
+    expect(s.sent.filter((r) => r.operation === 'get_order')).toHaveLength(24);
+    expect(sleeps).toHaveLength(23);
+    expect(sleeps.every((m) => m === 15000)).toBe(true);
   });
   it('falls back to the link the create answer carried when the caller passes none', async () => {
     const clock = clockAt();
