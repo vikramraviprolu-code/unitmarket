@@ -1,8 +1,8 @@
-# BU-7: cut the conformance approval poll rate
+# BU-8: cut the conformance approval poll rate
 
 Task: poll GET order every 15 s, at most 24 reads, in the owner-run sandbox subject.
-Package: `packages/testkit` Owner: Sonnet 5.5 builder Reviewer: Opus 5.5; Sakthi merges
-Goal: the owner-run suite waits for the owner's approval for the same 6 minutes but costs about 24 calls instead of up to 120, so a run no longer burns the 300 calls/day approval budget (D-035). `SANDBOX_LIMITS.poll_interval_ms` is 15000 and `max_polls` is 24. Nothing else changes: the 20-calls-per-order cap, the 1.00 USD cap, the VOIDED stop and the "did not approve" error stay as they are.
+Package: `packages/testkit` Owner: Sonnet 5.5 builder Reviewer: Opus 5.5 (merges after "merge yes")
+Goal: the owner-run suite waits for the owner's approval for the same 6 minutes but costs at most 24 calls instead of up to 120 (48 for the two orders of a run), so a run no longer burns the 300 calls/day approval budget (D-035). `SANDBOX_LIMITS.poll_interval_ms` is 15000 and `max_polls` is 24. Nothing else changes: the 20-calls-per-order cap, the 1.00 USD cap, the VOIDED stop and the "did not approve" error stay as they are.
 Inputs: `packages/testkit/src/sandbox-subject.ts` (`SANDBOX_LIMITS`), `docs/owner/MVPB-OWNER-STEPS.md` step 6.
 Outputs: `packages/testkit/src/sandbox-subject.ts`, `packages/testkit/src/sandbox-subject.test.ts`, `packages/testkit/src/sandbox-subject.adversarial.test.ts`, `docs/owner/MVPB-OWNER-STEPS.md` (one sentence), this spec.
 Acceptance tests:
@@ -14,6 +14,6 @@ Acceptance tests:
 
 Do not: touch other packages; add dependencies; change any other limit or behaviour; run `sandbox:conformance`; use credentials.
 Evidence for the PR: red output of commit 1, green output of commit 2, diff stat.
-Branch: `feat/testkit-poll-rate` Commit: `feat(testkit): poll every 15 s, at most 24 reads (BU-7)`
+Branch: `feat/testkit-poll-rate` Commit: `feat(testkit): poll every 15 s, at most 24 reads (BU-8)`
 
-Note: the tests of commit 1 replace the old numbers (3 s, 120 reads) because they contradict this spec; no other test changed.
+Note: the tests of commit 1 replace the old numbers (3 s, 120 reads) because they contradict this spec; no other test changed. The two commits were made as BU-7, a name the own-payee lane already uses; the lane is BU-8.

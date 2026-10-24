@@ -148,7 +148,8 @@ missing, stop (Ctrl-C) and tell Sakthi.
 
 ## Step 4: one real purchase (B-01, B-08, B-09) (15 min)
 
-1. In a private browser window open `http://localhost:3000`, sign in as `buyer-a` with your passcode.
+1. In a Chrome Incognito window (Safari refuses the Secure session cookie on plain http) open
+   `http://localhost:3000`, sign in as `buyer-a` with your passcode.
 2. Open the first offer, choose an access option, tick the terms, press Approve.
 3. You are sent to the PayPal sandbox page. Check the address bar starts with
    `https://www.sandbox.paypal.com`. Log in as the sandbox **Personal** account and approve.
@@ -161,13 +162,16 @@ missing, stop (Ctrl-C) and tell Sakthi.
 
 ## Step 5: kill switch in the middle (B-06) (10 min)
 
-1. Start a second purchase as `buyer-a` and approve at PayPal, but do not come back yet: leave the
-   PayPal tab open on its last page.
-2. On `/ops` press "Stop PayPal now" (reason: "B-06 test").
-3. Now let PayPal return you. The page must say "Payments paused". Nothing was captured.
+1. Start a second purchase as `buyer-a` and go on to the PayPal review page, ready to press Pay.
+   Do not press Pay yet: PayPal sends you back to the app the moment you do.
+2. In a second tab on `/ops` press "Stop PayPal now" (reason: "B-06 test"). Wait 10 seconds.
+3. Back on the PayPal tab press Pay and let PayPal return you. The page must say "Checkout is paused".
+   Nothing was captured.
 4. Stop the app (Ctrl-C), run `corepack pnpm safety:resume --operator vikram --reason "B-06 resume"`,
-   start it again with only the second command of step 3 (`start`; no rebuild is needed). Within a minute the order completes with one capture. Screenshot the
-   library entry.
+   start it again with only the second command of step 3 (`start`; no rebuild is needed).
+5. Resuming does not capture by itself: the buyer's return is the trigger. In a Chrome Incognito
+   window signed in as `buyer-a`, open `http://localhost:3000/checkout/return?ref=<order reference from
+/ops>` (type it yourself). The order completes with one capture. Screenshot the library entry.
 
 ## Step 6: conformance run (B-02, B-03, B-04, B-07) (20 min)
 
@@ -183,7 +187,7 @@ any lock missing it stops at the first call and says which one, before anything 
 
 When it prints "Open this link in a browser signed in as the sandbox Personal account, approve, then
 come back", open that link and approve. It does this twice (two orders). Approve promptly: it waits
-up to 6 minutes for each and reads the order every 15 seconds (about 24 reads per approval), and every one of those reads counts
+up to 6 minutes for each and reads the order every 15 seconds (at most 24 reads per approval), and every one of those reads counts
 toward the 300 calls a day of the gate budget (the suite stops with `budget` if it runs out). At the end it prints the folder it wrote (`~/unitmarket-sandbox-run/<date>/`) with
 `summary.md` and `calls.json`. If you ran step 2b today, that folder already exists, so this run's
 folder is `<date>-2`. The first case alone (the payee check of step 2b) is
