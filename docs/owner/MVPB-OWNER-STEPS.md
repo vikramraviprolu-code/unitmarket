@@ -198,6 +198,9 @@ Close the terminal. Clear the clipboard. Delete `apps/web/.env.local` (the copy 
 
 1. The line printed by step 2b (`payee echo: own id`). `summary.md` and `calls.json` from `~/unitmarket-sandbox-run/<date>/`. Open each once and check:
    no email address, no name, no long random string that looks like a token.
+   Until the redaction fix (lane BU-6b) is merged, `calls.json` keeps your merchant id in full and the
+   `?token=` part of the approval link: keep that file on your Mac, do not send it, and bring only
+   `summary.md`.
 2. The screenshots from steps 4, 5 and the dashboard row.
 3. The text output of the two `safety:status` runs (it holds no secret).
 4. One line per step: done, skipped, or what you saw instead.
