@@ -2,8 +2,8 @@
 // The current step and one either side are accepted. Every candidate is compared with
 // timingSafeEqual and none returns early. A step an operator has already used is refused: the
 // used step is an `operator.totp_used` audit_log row, read back before a code is accepted (a code is
-// accepted only above the operator's highest used step), so no table is added. Keys come from config (UMS_OPERATOR_TOTP_KEYS) as Secrets; this file never logs
-// or stores a key or a code.
+// accepted only above the operator's highest used step), so no table is added. Keys come from config
+// (UMS_OPERATOR_TOTP_KEYS) as Secrets; this file never logs or stores a key or a code.
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Id, Secret } from '@umsbx/contracts';
 import { resetBucket, takeToken, type RateRule } from './rate';

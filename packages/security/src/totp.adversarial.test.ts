@@ -280,7 +280,8 @@ describe('L1 monotonic window under concurrency', () => {
   });
   it('parallel codes of three steps: rows match the accepts, and nothing at or below the highest used step is accepted afterwards', async () => {
     const r = await totpRig();
-    const codes = [-1, 0, 1, 0, -1, 1].map((d) => r.code(VIKRAM_KEY, d));
+    // Falling order: the old code accepts every distinct step it has not used; the new code only the first.
+    const codes = [1, 0, -1, 1, 0, -1].map((d) => r.code(VIKRAM_KEY, d));
     const results = await Promise.all(
       codes.map((code) =>
         acceptTotp(r.deps, { operator_id: 'opr_vikram', key: secret(VIKRAM_B32), code }),
@@ -288,7 +289,8 @@ describe('L1 monotonic window under concurrency', () => {
     );
     const steps = (await usedRows(r, 'opr_vikram')).map((x) => Number(x.detail['step']));
     expect(steps).toHaveLength(results.filter((x) => x === 'accepted').length);
-    expect(steps.length).toBeGreaterThanOrEqual(1);
+    expect(steps).toEqual([r.step() + 1]);
+    expect(results.filter((x) => x === 'accepted')).toHaveLength(1);
     expect(new Set(steps).size).toBe(steps.length);
     for (const d of [-1, 0, 1]) {
       if (r.step() + d > Math.max(...steps)) continue;
