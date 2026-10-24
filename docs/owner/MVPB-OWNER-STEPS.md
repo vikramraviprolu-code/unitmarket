@@ -49,7 +49,9 @@ and 7, so type it first in each of them, then `cd` to the repository folder.
    (at least 12 characters; you will type it to sign in). It prints four `NAME=value` lines.
    The hash line must start with `scrypt:` (colons); a hash with `$` signs made by an earlier `owner:secrets`
    must be generated again with the fixed one, because Next.js expands `$16384` in `.env.local` as a variable and
-   sign-in then fails (an old hash only works if it is exported in the shell).
+   sign-in then fails. An old `$` hash only works if the app is started with Node's own loader
+   (`node --env-file=../../.env.local ./node_modules/next/dist/bin/next start` from `apps/web`) and `apps/web/.env.local`
+   does not exist; exporting it in the shell does not help, because Next overwrites it from the file.
 3. Create `.env.local` in the repository folder with a text editor (this file is ignored by git).
    Paste the four lines from step 2, then add these lines with your values:
 
