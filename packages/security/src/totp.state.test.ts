@@ -83,6 +83,48 @@ describe('replay: a step already used by that operator is refused', () => {
   });
 });
 
+describe('L1 monotonic window: only a step above the highest used step is accepted', () => {
+  it('after step S is accepted, an older unused code (S-1) is refused', async () => {
+    const r = await totpRig();
+    expect(await acceptTotp(r.deps, { ...vikram, code: r.code(VIKRAM_KEY) })).toBe('accepted');
+    expect(await acceptTotp(r.deps, { ...vikram, code: r.code(VIKRAM_KEY, -1) })).toBe('replay');
+    expect(await usedRows(r, 'opr_vikram')).toHaveLength(1);
+  });
+  it('after step S+1 is accepted early, the current code (S) and the older code (S-1) are refused', async () => {
+    const r = await totpRig();
+    expect(await acceptTotp(r.deps, { ...vikram, code: r.code(VIKRAM_KEY, 1) })).toBe('accepted');
+    expect(await acceptTotp(r.deps, { ...vikram, code: r.code(VIKRAM_KEY, 0) })).toBe('replay');
+    expect(await acceptTotp(r.deps, { ...vikram, code: r.code(VIKRAM_KEY, -1) })).toBe('replay');
+    expect(await usedRows(r, 'opr_vikram')).toHaveLength(1);
+  });
+  it('the same code is refused', async () => {
+    const r = await totpRig();
+    const code = r.code(VIKRAM_KEY);
+    expect(await acceptTotp(r.deps, { ...vikram, code })).toBe('accepted');
+    expect(await acceptTotp(r.deps, { ...vikram, code })).toBe('replay');
+  });
+  it('a later step is accepted', async () => {
+    const r = await totpRig();
+    expect(await acceptTotp(r.deps, { ...vikram, code: r.code(VIKRAM_KEY) })).toBe('accepted');
+    expect(await acceptTotp(r.deps, { ...vikram, code: r.code(VIKRAM_KEY, 1) })).toBe('accepted');
+    expect((await usedRows(r, 'opr_vikram')).map((x) => x.detail['step'])).toEqual([
+      r.step(),
+      r.step() + 1,
+    ]);
+  });
+  it('the highest used step belongs to its operator: another operator may still use S-1', async () => {
+    const r = await totpRig();
+    expect(await acceptTotp(r.deps, { ...vikram, code: r.code(VIKRAM_KEY) })).toBe('accepted');
+    expect(
+      await acceptTotp(r.deps, {
+        operator_id: 'opr_sakthi',
+        key: secret(SAKTHI_B32),
+        code: r.code(SAKTHI_KEY, -1),
+      }),
+    ).toBe('accepted');
+  });
+});
+
 describe('clock skew: current step and one either side', () => {
   it.each([
     [-2, 'wrong'],
