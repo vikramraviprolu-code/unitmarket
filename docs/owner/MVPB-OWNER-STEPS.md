@@ -183,7 +183,7 @@ any lock missing it stops at the first call and says which one, before anything 
 
 When it prints "Open this link in a browser signed in as the sandbox Personal account, approve, then
 come back", open that link and approve. It does this twice (two orders). Approve promptly: it waits
-up to 6 minutes for each and reads the order every 3 seconds, and every one of those reads counts
+up to 6 minutes for each and reads the order every 15 seconds (about 24 reads per approval), and every one of those reads counts
 toward the 300 calls a day of the gate budget (the suite stops with `budget` if it runs out). At the end it prints the folder it wrote (`~/unitmarket-sandbox-run/<date>/`) with
 `summary.md` and `calls.json`. If you ran step 2b today, that folder already exists, so this run's
 folder is `<date>-2`. The first case alone (the payee check of step 2b) is
