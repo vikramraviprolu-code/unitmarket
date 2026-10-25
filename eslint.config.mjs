@@ -1446,6 +1446,19 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/no-package-escape'],
   },
   {
+    files: [
+      'tests/mvp-c/c-support.ts',
+      'tests/mvp-c/c02-c05-webhooks.integration.test.ts',
+      'tests/mvp-c/c06-c07-refunds.integration.test.ts',
+      'tests/mvp-c/c08-c09-operator-headers.integration.test.ts',
+      'tests/mvp-c/c12-race.integration.test.ts',
+      'tests/mvp-c/c-offline.adversarial.test.ts',
+    ],
+    reason:
+      'CO-G (MVP-C offline gate): the web composition, the route handlers and the apps/web test helpers are reachable only by relative path (@umsbx/web exports none); needed to drive C-02 to C-09 and C-12 through the public routes. They build the approved transport from nothing: the fake Wire is injected through the composition test seam, and no file names a sealed identifier',
+    off: ['sbx/no-package-escape'],
+  },
+  {
     files: ['apps/web/src/lib/client-api.ts'],
     reason: 'browser same-origin fetch to this app JSON API; S2 targets payment network clients',
     off: ['no-restricted-globals'],
