@@ -1,0 +1,250 @@
+// CO-7b (D-037): the flag is created and removed only from the host shell. This file walks every route
+// module under apps/web/src/app (the same files scripts/route-inventory.mjs lists) and proves two
+// things: in maintenance mode each one answers 503 `maintenance` (the health check 200) and leaves the
+// flag exactly as it was; in normal mode no route, as anonymous, buyer or operator, creates the flag or
+// deletes it, whatever it is sent.
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { createApp, installApp } from '../composition.server';
+import type { App } from '../composition.server';
+import { ORIGIN, signIn, testEnv } from './support';
+import type { Session } from './support';
+
+vi.mock('server-only', () => ({}));
+
+const APP_DIR = join(__dirname, 'app');
+type Handler = (
+  req: Request,
+  ctx?: { params: Promise<Record<string, string>> },
+) => Promise<Response>;
+interface Mod {
+  routeMeta: { path: string; method: 'GET' | 'POST' };
+  GET?: Handler;
+  POST?: Handler;
+}
+
+function routeFiles(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir).sort()) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) routeFiles(p, out);
+    else if (/^route\.[cm]?[jt]sx?$/.test(name)) out.push(p);
+  }
+  return out;
+}
+const FILES = routeFiles(APP_DIR);
+const load = async (): Promise<Mod[]> =>
+  Promise.all(FILES.map(async (f) => (await import(/* @vite-ignore */ f)) as Mod));
+
+const paramsOf = (path: string): Record<string, string> =>
+  Object.fromEntries([...path.matchAll(/\[(\w+)\]/g)].map((m) => [m[1] as string, 'x1']));
+const urlOf = (path: string): string => `${ORIGIN}${path.replace(/\[(\w+)\]/g, 'x1')}`;
+
+const snapshot = (flag: string) => ({
+  text: readFileSync(flag, 'utf8'),
+  mtime: statSync(flag).mtimeMs,
+  size: statSync(flag).size,
+  ino: statSync(flag).ino,
+});
+
+async function hitAll(mods: Mod[], sessions: Array<Session | null>): Promise<Response[]> {
+  const out: Response[] = [];
+  for (const m of mods) {
+    for (const verb of ['GET', 'POST'] as const) {
+      const h = m[verb];
+      if (h === undefined) continue;
+      for (const s of sessions) {
+        for (const body of verb === 'POST'
+          ? ['{}', 'not json', '{"persona":"operator"}']
+          : [null]) {
+          const headers: Record<string, string> = {
+            'x-forwarded-for': '203.0.113.7',
+            'paypal-transmission-id': 'x',
+          };
+          if (verb === 'POST') {
+            headers['origin'] = ORIGIN;
+            headers['content-type'] = 'application/json';
+          }
+          if (s !== null) {
+            headers['cookie'] = s.cookie;
+            if (verb === 'POST') headers['x-csrf-token'] = s.csrf;
+          } else headers['cookie'] = 'ums_session=garbage';
+          out.push(
+            await h(new Request(urlOf(m.routeMeta.path), { method: verb, headers, body }), {
+              params: Promise.resolve(paramsOf(m.routeMeta.path)),
+            }),
+          );
+        }
+      }
+    }
+  }
+  return out;
+}
+
+describe('the walk is not empty', () => {
+  it('finds every route module and each declares routeMeta', async () => {
+    expect(FILES.length).toBeGreaterThanOrEqual(18);
+    const mods = await load();
+    for (const m of mods) expect(m.routeMeta.path).toMatch(/^\//);
+    expect(mods.some((m) => m.routeMeta.path === '/healthz')).toBe(true);
+    expect(mods.some((m) => m.routeMeta.path === '/api/webhooks/paypal')).toBe(true);
+    expect(mods.some((m) => m.routeMeta.path === '/c/[token]')).toBe(true);
+  });
+});
+
+describe('maintenance mode: every route', () => {
+  let tmp: string;
+  let flag: string;
+  let app: App;
+  beforeAll(async () => {
+    tmp = mkdtempSync(join(tmpdir(), 'co7b-walk-'));
+    flag = join(tmp, 'ums-maintenance');
+    writeFileSync(flag, 'owner made this\n');
+    app = createApp(
+      await testEnv({
+        UMS_DB: 'pglite-disk',
+        UMS_PGLITE_DIR: join(tmp, 'pglite'),
+        UMS_MAINTENANCE_FLAG: flag,
+      }),
+      { switch_cache_ms: 0 },
+    );
+    installApp(app);
+  });
+  afterAll(async () => {
+    await app.close();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('answers 503 maintenance (health: 200 maintenance true) and never touches the flag or the disk', async () => {
+    const before = snapshot(flag);
+    const mods = await load();
+    const fake: Session = { cookie: 'ums_session=ses_00000000000000000000000000.x', csrf: 'x' };
+    let health = 0;
+    for (const m of mods) {
+      for (const verb of ['GET', 'POST'] as const) {
+        const h = m[verb];
+        if (h === undefined) continue;
+        const res = await hitOne(m, verb, h, fake);
+        if (m.routeMeta.path === '/healthz') {
+          health += 1;
+          expect(res.status).toBe(200);
+          expect(await res.json()).toMatchObject({ ok: true, maintenance: true });
+        } else {
+          expect(res.status, `${verb} ${m.routeMeta.path}`).toBe(503);
+          const body = (await res.json()) as { error: { code: string } };
+          expect(body.error.code, m.routeMeta.path).toBe('maintenance');
+        }
+      }
+    }
+    expect(health).toBe(1);
+    // every other shape of request too: anonymous, garbage cookie, bad bodies
+    for (const res of await hitAll(
+      mods.filter((m) => m.routeMeta.path !== '/healthz'),
+      [null, fake],
+    ))
+      expect(res.status).toBe(503);
+    expect(snapshot(flag)).toEqual(before);
+    expect(readdirSync(tmp)).toEqual(['ums-maintenance']);
+  });
+});
+
+async function hitOne(m: Mod, verb: 'GET' | 'POST', h: Handler, s: Session): Promise<Response> {
+  const headers: Record<string, string> = { cookie: s.cookie };
+  if (verb === 'POST') {
+    headers['origin'] = ORIGIN;
+    headers['content-type'] = 'application/json';
+    headers['x-csrf-token'] = s.csrf;
+  }
+  return h(
+    new Request(urlOf(m.routeMeta.path), {
+      method: verb,
+      headers,
+      body: verb === 'POST' ? '{}' : null,
+    }),
+    { params: Promise.resolve(paramsOf(m.routeMeta.path)) },
+  );
+}
+
+describe('normal mode: no route creates or deletes the flag', () => {
+  let tmp: string;
+  let flag: string;
+  let app: App;
+  let sessions: Array<Session | null>;
+  beforeAll(async () => {
+    tmp = mkdtempSync(join(tmpdir(), 'co7b-walk2-'));
+    flag = join(tmp, 'ums-maintenance');
+    app = createApp(
+      await testEnv({
+        UMS_DB: 'pglite-disk',
+        UMS_PGLITE_DIR: join(tmp, 'pglite'),
+        UMS_MAINTENANCE_FLAG: flag,
+      }),
+      { switch_cache_ms: 0 },
+    );
+    installApp(app);
+    await app.ready();
+    const { POST } = (await import('./app/api/session/route')) as unknown as { POST: Handler };
+    const buyer = await signIn(POST, 'buyer-a');
+    const operator = await signIn(POST, 'operator');
+    sessions = [null, buyer, operator];
+    expect(buyer).not.toBeNull();
+    expect(operator).not.toBeNull();
+  }, 60_000);
+  afterAll(async () => {
+    await app.close();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('with no flag: after every route, as anonymous, buyer and operator, there is still no flag', async () => {
+    const mods = await load();
+    const res = await hitAll(mods, sessions);
+    expect(res.length).toBeGreaterThan(100);
+    expect(res.some((r) => r.status === 200)).toBe(true); // the walk really reached handlers
+    // nothing answered "maintenance" in normal mode
+    for (const r of res)
+      expect(r.status === 503 && (await r.clone().text()).includes('maintenance')).toBe(false);
+    expect(existsSync(flag)).toBe(false);
+    expect(readdirSync(tmp)).toEqual(['pglite']);
+  }, 120_000);
+
+  it('with a flag the owner made after boot: after every route the flag is the same file', async () => {
+    writeFileSync(flag, 'owner made this\n');
+    const before = snapshot(flag);
+    const mods = await load();
+    await hitAll(mods, sessions);
+    expect(snapshot(flag)).toEqual(before);
+    expect(readdirSync(tmp).sort()).toEqual(['pglite', 'ums-maintenance']);
+    // the app did not enter maintenance because of it: it stays latched at what it saw at boot
+    expect(app.maintenance).toBe(false);
+  }, 120_000);
+
+  it('the stop button, the one route that changes a switch, can only turn outbound off', async () => {
+    const { POST } = (await import('./app/api/ops/stop/route')) as unknown as { POST: Handler };
+    const op = sessions[2] as Session;
+    const before = snapshot(flag);
+    const res = await POST(
+      new Request(`${ORIGIN}/api/ops/stop`, {
+        method: 'POST',
+        headers: {
+          origin: ORIGIN,
+          'content-type': 'application/json',
+          cookie: op.cookie,
+          'x-csrf-token': op.csrf,
+        },
+        body: JSON.stringify({ reason: 'maintenance test' }),
+      }),
+      { params: Promise.resolve({}) },
+    );
+    expect([200, 403]).toContain(res.status);
+    expect(snapshot(flag)).toEqual(before);
+  });
+});

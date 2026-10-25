@@ -117,6 +117,17 @@ const BAD: Array<[fixture: string, rule: string]> = [
   ['bad-fixed-novalue', 'service-shape'],
   ['bad-fixed-extra-field', 'service-shape'],
   ['bad-disk-extra-key', 'disk'],
+  // CO-7b: the maintenance flag sits on the persistent disk, beside the PGlite folder (D-037)
+  ['bad-maintenance-flag-missing', 'maintenance-flag'],
+  ['bad-maintenance-flag-tmp', 'maintenance-flag'],
+  ['bad-maintenance-flag-inside-pglite', 'maintenance-flag'],
+  ['bad-maintenance-flag-sibling-folder', 'maintenance-flag'],
+  ['bad-maintenance-flag-traversal', 'maintenance-flag'],
+  ['bad-maintenance-flag-name', 'maintenance-flag'],
+  ['bad-maintenance-flag-relative', 'maintenance-flag'],
+  ['bad-maintenance-flag-sync-false', 'maintenance-flag'],
+  ['bad-maintenance-flag-dup', 'duplicate-key'],
+  ['bad-maintenance-flag-pglite-moved', 'maintenance-flag'],
 ];
 
 describe('check-hosting', () => {
@@ -223,6 +234,12 @@ describe('check-hosting', () => {
     const r = runGuard(GUARD, dir);
     expect(r.status).toBe(1);
     expect(r.out).toContain('hosting: FAIL paypal-host');
+  });
+
+  it('the real render.yaml pins the maintenance flag on the disk, beside the PGlite folder (CO-7b)', () => {
+    const text = readFileSync(`${REPO_ROOT}/render.yaml`, 'utf8');
+    expect(text).toMatch(/key: UMS_MAINTENANCE_FLAG\n\s+value: '\/var\/data\/ums-maintenance'\n/);
+    expect(text).toMatch(/key: UMS_PGLITE_DIR\n\s+value: '\/var\/data\/pglite'\n/);
   });
 
   it('the real render.yaml is printable ASCII plus LF only', () => {
