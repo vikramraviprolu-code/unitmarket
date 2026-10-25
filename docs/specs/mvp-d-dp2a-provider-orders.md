@@ -1,32 +1,102 @@
 # DP-2a: provider orders for route D2: create, "Step 2 of 2", capture and read-back per PayPal order
 
-Task: settle a `per_publisher` order as one PayPal order per publisher, each with its own state, keys, invoice id, approval, capture and matching read-back, and derive the order status from them, on the buyer's return path.
-Package: `domain/payments`, `packages/db` (migration 0011), `packages/contracts` (paypal, config), `packages/paypal` (`build-create.ts`) Owner: Sonnet 5.5 builder, effort high ($) Reviewer: Opus 5.5 high, diff review plus mutation checks; Sakthi merges
-Wave: MVP-D W2, after DP-1. Coordinator decisions used: OQ-3, OQ-4, OQ-6, OQ-9, OQ-14 (table A). Requirements: D-01, D-02, D-05, P3, P4, P5 per unit, P6, P14, D-014/D-018, D-020, ASM-75, architecture 4.1, 4.2, 5. Background paths (reconcile, due, recover, webhooks) are DP-2b. Do not deploy to the host before DP-3 merges.
+Task: settle a `per_publisher` order as one PayPal order per publisher, each with its own state, keys, invoice id, approval, capture and matching read-back, on the buyer's return path.
+Package: `domain/payments`, `packages/db` (0011), `packages/contracts` (paypal, config), `packages/paypal` (`build-create.ts`) Owner: Sonnet 5.5 builder, effort high ($) Reviewer: Opus 5.5 high, diff review plus mutation checks; Sakthi merges
+Wave: MVP-D W2, after DP-1. Decisions: table A (OQ-3, 4, 6, 9, 14). Requirements: D-01, D-02, D-05, P3 to P6, P14, D-014/D-018, D-020, ASM-75. The names, states, status rules, backfill and call budget are in `mvp-d-overview.md` section 3. DP-2b owns the background paths. Do not deploy to the host before DP-3 merges.
 
-Goal. **Migration 0011** (forward-only, M5): add `provider_orders.position`, `po_ref`, `publisher_id`, `state`, `first_approved_at` and `operations.provider_order_ref` as nullable; backfill with values from existing rows only (no `now()`): `position` 1, `po_ref` = the order's `order_ref`, `publisher_id` NULL (route `single`), every operation pointing at its order's one provider order, and `state` from the order status: `created`→`prepared`, `awaiting_buyer`→`awaiting_buyer`, `capture_requested`→`capture_requested`, `capture_claimed`→`capture_claimed`, `unresolved`→`unresolved`, `paid`→`captured`, `paid_partial`→`captured`, `failed`→`failed`, `abandoned`→`abandoned`, `frozen`→`frozen`. Then set NOT NULL on `position`, `po_ref`, `state`, and add UNIQUE `(order_id, position)`, UNIQUE `po_ref`, UNIQUE `(order_id, publisher_id)`, CHECK `route = 'single' OR publisher_id IS NOT NULL`, and the state CHECK. The migration is tested on a copy of an MVP-C-shaped database (orders in all ten statuses, refunds, operations). **Locks (M1):** `lockOrderRows` locks the order, then its provider orders `FOR UPDATE` ordered by position, then its operations; `lockorder.state.test.ts` pins it. **Place:** a snapshot with `settlement.route = 'per_publisher'` writes one provider order per publisher (state `prepared`, `po_ref = <order_ref>-p<n>`), each unit pointing at its own provider order, and one `create` operation per provider order keyed `umsC-<po_ref>`. A two-publisher snapshot without `settlement` is an invalid approval. `single` keeps today's rows, keys and hash. **Create (eager):** `beginCheckout` sends every prepared create one at a time, outside any transaction: N single-unit creates, `custom_id` = `order_ref`, `invoice_id` = `po_ref` (new optional `invoice_id` in `CreateOrderReqSchema`, allowed only with one unit; `buildCreateBody` uses it), payee per D-028. No new operation, header, scope or seal change; the approval row shape is unchanged. It returns the position-1 approve URL and `progress { step: 1, of: 2 }` only when every provider order is created. A rejected create fails the whole order (nothing charged). `DUPLICATE_INVOICE_ID` at create freezes the whole order (L4). An unknown create leaves the order `created` (DP-2b resends). **Return:** a trigger only. It reads every `awaiting_buyer` provider order by its stored id (P6, never `token` from the URL); APPROVED moves it to `approved` and sets `first_approved_at` on the first one. While any is still awaiting, it answers the next approve URL and `step` of `of`, and sends no capture. Pack window (H3): when `now >= first_approved_at + pack_approval_window_ms` (new optional `DomainConfig` field, default 3 600 000) and a provider order is still unapproved, the whole pack is `abandoned`, nothing charged. **Before the first capture (M2, OQ-14):** one pass reads and matches every provider order against its slice of the expected transaction (`expectedFor`; claims of every unit of the order are passed, so a capture id reused across provider orders is caught), plus one readiness check over every item. Any mismatch, `DUPLICATE_INVOICE_ID` or not-ready item stops the whole order with nothing captured (`frozen` with an alert, or `failed` for readiness). **Capture:** each `approved` provider order in position order: a status-only read (APPROVED), then the one compare-and-set path on its own capture operation (`umsK-<po_ref>`, D-014 key cap per provider order), then order GET plus capture GET and the match for that slice. **After a capture:** a unit mismatch or `DUPLICATE_INVOICE_ID` freezes that provider order only. **Status (H1):** a pure `deriveOrderStatus(states, current)` in `composite.ts` gives the order status (overview section 3). Any `frozen` provider order sets `orders.mismatch`, raises `frozen_order` with its unit, and is "On hold while we check it", never "not charged" (the existing rule at `apply.ts` ~262). `partial_composite` (reason `partial`) is raised once, on entering `paid_partial`, only when at least one provider order is `declined`, `failed` or `abandoned`. A hold after money moved writes a new receipt version (M6): the mismatch branch no longer returns before `issueReceiptIfChanged`. INV5 holds per provider order. `OrderView` gains `progress`, `provider_orders [{ position, publisher_id, state }]` and per-item `publisher_id`. Test worlds `support.ts` and `ops/support.ts` read provider orders by position.
+Goal.
 
-Inputs: overview sections 1 and 3, DP-1 snapshot, `domain/payments/src/*`, `0004_money.sql`, `build-create.ts`, `packages/contracts/src/{paypal,config}.ts`, READINESS "Lock order".
+- **Migration 0011** (forward-only).
+  - Add the new provider order columns and `operations.provider_order_ref` as nullable.
+  - Backfill from existing rows only (no `now()`), using the overview mapping.
+  - Then set NOT NULL on `position`, `po_ref` and `state`.
+  - Add UNIQUE `(order_id, position)`, UNIQUE `po_ref`, UNIQUE `(order_id, publisher_id)`, CHECK `route = 'single' OR publisher_id IS NOT NULL`, and the state CHECK.
+  - Test it on a copy of an MVP-C-shaped database.
+- **Locks.** `lockOrderRows` locks the order, then its provider orders `FOR UPDATE` by position, then its operations.
+- **Place.**
+  - A `per_publisher` snapshot writes one provider order per publisher (`prepared`), with each unit on its own provider order and one create operation `umsC-<po_ref>` each.
+  - A two-publisher snapshot without `settlement` is an invalid approval.
+  - `single` is unchanged.
+- **Create (eager).** `beginCheckout` sends each create outside any transaction: one unit each, `custom_id` = `order_ref`, `invoice_id` = `po_ref`.
+  - `invoice_id` is a new optional field in `CreateOrderReqSchema`, allowed with one unit only; `buildCreateBody` uses it.
+  - It answers the position-1 approve URL with `progress { step: 1, of: 2 }`, and only when every provider order has been created.
+  - If any create is rejected, the whole order is `failed`. A `DUPLICATE_INVOICE_ID` at create freezes the whole order.
+- **Return** (a trigger only).
+  - Read every `awaiting_buyer` provider order by its stored id (P6). An APPROVED read moves that order to `approved`, and the first one sets `first_approved_at`.
+  - While any is still awaiting the buyer, answer the next approve URL with `step` of `of`.
+  - Pack window: once it has run out, every provider order is read. All APPROVED: go on to capture. Otherwise the whole pack is `abandoned`.
+- **Pre-capture pass.** One pass reads and matches every provider order against its slice (`expectedFor`, with the claims of every unit of the order), and checks readiness for every item.
+  - Any mismatch or `DUPLICATE_INVOICE_ID`: the whole order is `frozen`, nothing captured.
+  - Any item not ready: the whole order is `failed`.
+  - A provider order that has lapsed (VOIDED or not found, no capture): the whole pack is `abandoned`, nothing charged. No hold wording (L-2).
+- **Capture gate (H-1).**
+  - In one transaction: lock the order rows, require `provider_orders.state = 'approved'` for that PayPal order, move its capture operation `prepared`→`sent` and move that provider order to `capture_requested`.
+  - Each `approved` provider order is captured in position order, after a status-only read showing APPROVED, with its own key (D-014 cap per provider order).
+  - Every answer writes the state of that PayPal order only:
+    - claim → `capture_claimed`;
+    - unknown → `unresolved`;
+    - blocked, reopen or payer_action → back to `approved`; payer_action writes `approve_url` `WHERE id` = that provider order.
+  - `orders.status` is set only by `deriveOrderStatus` (`composite.ts`, pure). It never returns to `awaiting_buyer` once a capture was sent.
+- **Read-back.** After each capture: an order GET and a capture GET, matched against that slice. A unit mismatch, or a `DUPLICATE_INVOICE_ID` after a capture, freezes only that provider order (`frozen_order` alert, mismatch flag, "On hold").
+- **Alerts and receipts.**
+  - `partial_composite` is raised only on entering `paid_partial` with at least one provider order not charged.
+  - A hold after money moved writes a new receipt version: the mismatch branch no longer returns before `issueReceiptIfChanged`.
+- **Invariants and views.**
+  - INV5 holds per provider order.
+  - `OrderView` gains `progress`, `provider_orders [{ position, publisher_id, state }]`, and `publisher_id` per item.
+  - The test worlds read provider orders by position.
 
-Outputs: the DP-2a files in the overview, section 4. The listed tests that place two publishers into one PayPal order contradict the spec (that shape is D1). Their setup moves to a helper that inserts a `single` two-unit order directly, labelled "D1 dormant"; their assertions stay. Say so in the PR.
+Inputs: overview sections 1 and 3, DP-1, `domain/payments/src/*`, `0004_money.sql`, `build-create.ts`, `packages/contracts/src/{paypal,config}.ts`, READINESS "Lock order".
+
+Outputs: the DP-2a files in overview section 4. Two notes for the commit and the PR:
+
+- The listed `ofr_3` tests contradict the spec, because two publishers in one PayPal order is the D1 shape. Their setup moves to a labelled "D1 dormant" helper, and their assertions stay.
+- `apps/web/src/webhook-support.ts:291` is changed, as a named exception, because 0011 makes its second-provider-order INSERT invalid. It now UPDATEs the placed row.
 
 Red-first tests (commit 1):
 
-- `composite.test.ts` (unit): `deriveOrderStatus` table over every state mix, including `captured+frozen` = `paid_partial` with mismatch and no partial alert, `captured+declined` = `paid_partial` with the alert, `frozen` alone = `frozen`; `expectedFor` slices; `po_ref` and key formats `umsC-<ref>-p1`, `umsK-<ref>-p2-2`; `captureKeyNumber` on a `po_ref`.
+- `composite.test.ts`: `deriveOrderStatus` over every overview row, including captured+approved = `capture_requested`, captured+unresolved = `unresolved`, captured+frozen = `paid_partial` with mismatch and no partial alert, captured+declined = `paid_partial` with the alert; also `expectedFor`, the key formats and `captureKeyNumber` on a `po_ref`.
 - `build-create.test.ts`: `invoice_id honoured`; `invoice_id with two units refused`.
-- `migration-0011.state.test.ts`: `each of the ten order statuses maps to its provider order state`; `operations backfilled`; `constraints hold after backfill`.
-- `composite.state.test.ts`: `place writes 2 provider orders, 2 units, 2 create ops`; `single route unchanged (rows, keys, hash)`; `checkout sends two single-unit creates with distinct invoice ids, custom_id = order_ref, fake payees sent, own id omitted`; `checkout repeat: no third create`; `second create rejected: order failed, no approve url`; `return after PO1 approved: no capture, step 2 of 2`; `D-01 both approved: two captures, two capture ids, per-item entitlements, two sales`; `D-02 PO2 DECLINED: paid_partial, PO1 items available, PO2 items locked and not charged, one partial_composite alert`; `D-05 PO2 payee mismatch after capture: PO2 frozen, order paid_partial with mismatch, frozen_order alert, no partial_composite alert, new receipt version, PO2 shown on hold`; `D-05 mismatch on PO2 in the pre-capture pass: order frozen, zero capture calls`; `capture id reused across provider orders`; `readiness fails for one item: order failed, zero capture calls`; `DUPLICATE_INVOICE_ID at create freezes the order`; `pack window: PO2 still unapproved 60 minutes after the first approval: abandoned, zero capture calls`; `call budget: happy composite at most 13 provider calls`.
-- `composite.adversarial.test.ts`: `20 concurrent returns: exactly one capture per provider order`; `lock order spy: orders, provider_orders by position, operations, order_units, entitlements, ledger, receipts`; `return with another provider order id or another order's ref in the URL: ignored`; `no create request carries two units for a per_publisher order`.
-- `lockorder.state.test.ts`: the provider_orders rank.
+- `migration-0011.state.test.ts`: the ten status mappings, operations backfilled, constraints hold.
+- `composite.state.test.ts`:
+  - `place: 2 provider orders, 2 units, 2 create ops`;
+  - `single unchanged`;
+  - `two single-unit creates, distinct invoice ids, own id omitted`;
+  - `repeat checkout: no third create`;
+  - `second create rejected: failed`;
+  - `return after PO1: no capture, step 2 of 2`;
+  - `D-01 two captures, two capture ids, two sales`;
+  - `D-02 PO2 DECLINED: paid_partial, PO2 not charged, one partial alert`;
+  - `D-05 PO2 payee mismatch after capture: PO2 frozen, paid_partial with mismatch, new receipt version, no partial alert`;
+  - `mismatch in the pass: order frozen, zero captures`;
+  - `PO2 VOIDED in the pass: abandoned, zero captures, no hold`;
+  - `readiness fails: failed, zero captures`;
+  - `DUPLICATE_INVOICE_ID at create freezes the order`;
+  - `kill switch on PO2's capture after PO1 captured: PO2 approved, order capture_requested, never awaiting_buyer`;
+  - `payer_action on PO2: approve_url written on PO2 only`;
+  - `pack window run out, PO2 unapproved: abandoned; all APPROVED: captured`;
+  - `happy composite at most 13 PayPal calls`.
+- `composite.adversarial.test.ts`:
+  - `20 concurrent returns: one capture per PayPal order`;
+  - `lock order spy, provider_orders after orders`;
+  - `URL ids ignored`;
+  - `no create carries two units`.
 
 Acceptance tests:
 
-- `corepack pnpm vitest run --project unit --project state --project adversarial domain/payments packages/paypal packages/contracts packages/db`: all pass.
-- `corepack pnpm mutation --targets domain/payments/src/composite.ts,domain/payments/src/apply.ts,domain/payments/src/return.ts,domain/payments/src/checkout.ts --require-targets`: each at least 80 percent.
+- `corepack pnpm vitest run --project unit --project state --project adversarial domain/payments packages/paypal packages/contracts packages/db apps/web`: all pass.
+- `corepack pnpm mutation --targets domain/payments/src/composite.ts,domain/payments/src/apply.ts,domain/payments/src/return.ts,domain/payments/src/capture.ts --require-targets`: each at least 80 percent.
 - `corepack pnpm test && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm check:isolation && corepack pnpm check:no-live-host`: exit 0.
 
-Do not: touch `packages/transport`, `packages/safety` (seal freeze, ASM-70), `reconcile.ts`, `due.ts`, `recover.ts`, `webhooks.ts` (DP-2b), `refunds.ts` (DP-3), the web app, composition, recovery, ledger or receipts; build D1 or D3; send a payee that D-028 leaves out; capture before every provider order is approved; add a dependency.
+Do not:
 
-Evidence for the PR: red summary, pass counts, mutation scores, the lock-order spy output, the migration test on the MVP-C-shaped copy, and the provider-call list of one happy and one partial composite (sanitised).
+- touch `packages/transport` or `packages/safety` (ASM-70);
+- touch `reconcile.ts`, `due.ts`, `recover.ts`, `webhooks.ts` or `refunds.ts`;
+- touch the web app beyond the named file;
+- build D1 or D3;
+- capture before every PayPal order is approved;
+- add a dependency.
+
+Evidence for the PR: red summary, pass counts, mutation scores, the lock-order spy output, the migration test, and the sanitised PayPal call lists for a happy and a partial composite.
 
 Branch: `feat/payments-provider-orders-d2` Commit: `feat(payments): one PayPal order per publisher on the return path (DP-2a)`
