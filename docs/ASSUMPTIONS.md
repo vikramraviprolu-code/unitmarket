@@ -139,7 +139,7 @@ on it. Status `open` means the plan builds on it but the owner has not confirmed
 
 - 2026-10-23: first version.
 - 2026-10-25: ASM-64 and ASM-71 updated by CO-1d (D-038): the learn-only window and the full pin are built;
-  ASM-71 records that trust comes from the committed pin and a learn window never trusts.
+  ASM-71 records that the pin gates acceptance from boot and a learn window never trusts; the trusted budget list is memory only, fail-closed (follow-up CO-1e).
 - 2026-10-23: ASM-40 set to option A (a person runs PayPal-touching steps; assistant guides).
 - 2026-10-23: ASM-50 to ASM-60 proposed (status open or unverified) by the MVP-B unseal and MVP-C
   offline plan.
