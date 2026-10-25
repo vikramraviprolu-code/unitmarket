@@ -3,12 +3,12 @@
 // byte leaves the process (the Wire is a counting stand-in that must see no call). Not a test file.
 import { createSign, generateKeyPairSync } from 'node:crypto';
 import type { KeyObject } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
 import type { Actor } from '@umsbx/contracts';
 import { createApp, installApp } from '../composition.server';
 import type { App, AppOptions } from '../composition.server';
 import { testEnv } from './support';
+import { EMAIL_SUBJECT_PEM, PARSE_ONLY_PEM, TOKEN_SUBJECT_PEM } from './webhook-test-support';
 
 type Wire = NonNullable<AppOptions['test_wire']>;
 type WireRequest = Parameters<Wire['request']>[0];
@@ -304,19 +304,7 @@ export async function seedCapturingOrder(
 // the committed parse-only PEM (a public test certificate, its key discarded) and counts every
 // request; nothing leaves the process.
 // ---------------------------------------------------------------------------------------------
-export const PARSE_ONLY_PEM = readFileSync(
-  new URL('../../../fixtures/webhooks/synthetic/parse-only.pem', import.meta.url),
-  'utf8',
-);
-/** Public test certificates (keys discarded) whose subject the log/audit redaction would change (CO-1d F2). Valid from 2026-10-25T13:28Z. */
-export const EMAIL_SUBJECT_PEM = readFileSync(
-  new URL('../../../fixtures/webhooks/synthetic/parse-only-email.pem', import.meta.url),
-  'utf8',
-);
-export const TOKEN_SUBJECT_PEM = readFileSync(
-  new URL('../../../fixtures/webhooks/synthetic/parse-only-token.pem', import.meta.url),
-  'utf8',
-);
+export { EMAIL_SUBJECT_PEM, PARSE_ONLY_PEM, TOKEN_SUBJECT_PEM };
 /** What Node reads from the PEM above: pinned here so a changed fixture is noticed. */
 export const PARSE_ONLY_FACTS = {
   subject: 'CN=synthetic-webhook-cert.invalid, O=UnitMarket SBX synthetic test',
