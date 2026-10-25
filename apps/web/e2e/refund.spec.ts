@@ -38,6 +38,28 @@ async function operatorWithCode(browser: Browser): Promise<{ ctx: BrowserContext
 const unitCard = (page: Page, title: string) =>
   page.getByTestId('refund-unit').filter({ hasText: title });
 
+// CO-8c: counts the page's own data re-reads (router.refresh sends an RSC request for the current
+// path; link prefetches carry next-router-prefetch and are not counted).
+function countRefreshes(page: Page): () => number {
+  let n = 0;
+  page.on('request', (r) => {
+    const h = r.headers();
+    if (
+      h['rsc'] === '1' &&
+      h['next-router-prefetch'] === undefined &&
+      new URL(r.url()).pathname === '/ops'
+    )
+      n += 1;
+  });
+  return () => n;
+}
+
+const jsonAnswer = (status: number, body: unknown) => ({
+  status,
+  contentType: 'application/json',
+  body: JSON.stringify(body),
+});
+
 test.describe.serial('refund journey', () => {
   let op: { ctx: BrowserContext; page: Page };
   test.beforeAll(async ({ browser }) => {
@@ -89,7 +111,10 @@ test.describe.serial('refund journey', () => {
     await expect(result).toContainText('Refunded $0.75');
     await expect(result).toContainText('$1.75 is left to refund');
     // L2: the answer names the payment it is about.
-    await expect(result).toContainText('What a small harbour charges and why');
+    await expect(result).toContainText('What a small harbour charges and why (order ');
+    // Nit: a booked refund is the green success banner.
+    await expect(result.locator('.banner-success')).toHaveCount(1);
+    await expect(result.locator('.banner-warn')).toHaveCount(0);
     await expectDryRun(op.page);
 
     // 3. The buyer, who did not reload, is told in the live region.
@@ -124,6 +149,7 @@ test.describe.serial('refund journey', () => {
     await op.page.keyboard.press('Enter');
     await expect(result).toContainText('Refunded $1.75');
     await expect(result).toContainText('fully refunded');
+    await expect(result).toContainText('(order ');
     // L6: the card is gone after a full refund, so focus moves to the answer.
     await expect(result).toBeFocused();
 
@@ -163,6 +189,7 @@ test.describe.serial('refund journey', () => {
     await expect(buyer.getByTestId('order-live')).toContainText('Paid.');
     await op.page.goto('/ops');
     const card = unitCard(op.page, 'A notebook of six working knots');
+    const refreshes = countRefreshes(op.page);
     // M1: an answer that is not a clear refusal (a server error) must not say that nothing was refunded.
     await op.page.route('**/api/refunds', (route) =>
       route.fulfill({
@@ -185,6 +212,50 @@ test.describe.serial('refund journey', () => {
     await expect(unsure).toContainText('We do not know yet whether this refund was made');
     await expect(unsure).toContainText('Do not start a new refund');
     await expect(unsure).not.toContainText('Nothing was refunded');
+    // CO-8c L2: an unknown outcome must not re-read the page. A refresh brings a new Idempotency-Key
+    // and removes the replay protection.
+    await op.page.waitForTimeout(1500);
+    expect(refreshes()).toBe(0);
+    // CO-8c L2: after refunds_paused_midway the open request and the paused banner are new, so the
+    // page re-reads itself once, as the message ("Withdraw the open request on this page") promises.
+    await op.page.unroute('**/api/refunds');
+    await op.page.route('**/api/refunds', (route) =>
+      route.fulfill(
+        jsonAnswer(503, {
+          error: {
+            code: 'refunds_paused_midway',
+            message:
+              'Refunds were paused before it was sent. Nothing was refunded. Withdraw the open request on this page, then try again when refunds are on.',
+          },
+        }),
+      ),
+    );
+    await card.getByRole('button', { name: 'Refund $0.10' }).click();
+    await expect(op.page.getByTestId('error-state')).toContainText('Withdraw the open request');
+    await expect.poll(refreshes).toBe(1);
+    // CO-8c nit: a queued answer (202, state unknown) is a warning with a text label, not green.
+    await op.page.unroute('**/api/refunds');
+    await op.page.route('**/api/refunds', (route) =>
+      route.fulfill(
+        jsonAnswer(202, {
+          refund_request_id: 'rr_e2e',
+          unit_id: 'u_e2e',
+          state: 'unknown',
+          amount_minor: 10,
+          currency: 'USD',
+          refunded_minor: 0,
+          remaining_minor: 250,
+          unit_status: 'captured',
+          message: 'Nothing was sent yet: PayPal could not be read. Mocked for this drill.',
+        }),
+      ),
+    );
+    await expect(card.getByRole('button', { name: 'Refund $0.10' })).toBeEnabled();
+    await card.getByRole('button', { name: 'Refund $0.10' }).click();
+    const queued = op.page.getByTestId('refund-result');
+    await expect(queued.locator('.banner-warn')).toContainText('Not finished yet');
+    await expect(queued.locator('.banner-warn')).toContainText('Mocked for this drill');
+    await expect(queued.locator('.banner-success')).toHaveCount(0);
     await op.page.unroute('**/api/refunds');
     await expect(async () => {
       await card.getByLabel(/^Amount/).fill('9.99');
