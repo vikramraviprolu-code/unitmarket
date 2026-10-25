@@ -3,6 +3,7 @@
 // byte leaves the process (the Wire is a counting stand-in that must see no call). Not a test file.
 import { createSign, generateKeyPairSync } from 'node:crypto';
 import type { KeyObject } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
 import type { Actor } from '@umsbx/contracts';
 import { createApp, installApp } from '../composition.server';
@@ -11,6 +12,7 @@ import { testEnv } from './support';
 
 type Wire = NonNullable<AppOptions['test_wire']>;
 type WireRequest = Parameters<Wire['request']>[0];
+type WireResult = Awaited<ReturnType<Wire['request']>>;
 export type CertSource = NonNullable<AppOptions['webhook_certificates']>;
 
 export const WEBHOOK_ID = 'SYN-WEBHOOK-ID-0001';
@@ -158,6 +160,14 @@ export interface WebhookRig {
 }
 
 export interface BootOptions {
+  /** CO-1d: how the stand-in Wire answers (default: an error). It is the only thing that ever "answers". */
+  wire_answer?: (r: WireRequest) => WireResult;
+  /** CO-1d: UMS_PAYPAL_CONNECT (default off, as in the other rigs). */
+  connect?: 'on' | 'off';
+  /** CO-1d: insert an approval row for these operations (scope mvp_c_refunds) and turn paypal_outbound on. */
+  approval?: { operations: string[]; outbound_on?: boolean } | null;
+  /** CO-1d: UMS_WEBHOOK_CERT_LEARN_UNTIL (an ISO time); null or omitted: not set. */
+  learn_until?: string | null;
   scope?: 'mvp_b_polling' | 'mvp_c_refunds';
   /** a source, or null: none injected (the app builds its own through the transport) */
   certs?: FakeCerts | null;
@@ -172,8 +182,8 @@ export async function bootWebhookApp(o: BootOptions = {}): Promise<WebhookRig> {
   const wire: WireRequest[] = [];
   const stand: Wire = {
     async request(r) {
-      wire.push(r);
-      return { kind: 'error', error: 'other' };
+      wire.push(structuredClone(r));
+      return o.wire_answer === undefined ? { kind: 'error', error: 'other' } : o.wire_answer(r);
     },
   };
   const certs = o.certs === undefined ? certsFor() : o.certs;
@@ -184,6 +194,7 @@ export async function bootWebhookApp(o: BootOptions = {}): Promise<WebhookRig> {
     ...(sandbox
       ? {
           UMS_MODE: 'sandbox',
+          ...(o.connect === 'on' ? { UMS_PAYPAL_CONNECT: 'on' } : {}),
           UMS_OUTBOUND_APPROVAL_REF: APPROVAL_REF,
           UMS_OUTBOUND_SCOPE: o.scope ?? 'mvp_b_polling',
           UMS_OWN_MERCHANT_ID: OWN,
@@ -192,6 +203,9 @@ export async function bootWebhookApp(o: BootOptions = {}): Promise<WebhookRig> {
           ...(webhookId === null ? {} : { PAYPAL_WEBHOOK_ID: webhookId }),
         }
       : {}),
+    ...(o.learn_until === undefined || o.learn_until === null
+      ? {}
+      : { UMS_WEBHOOK_CERT_LEARN_UNTIL: o.learn_until }),
     ...(o.env ?? {}),
   });
   const app = createApp(env, {
@@ -202,6 +216,15 @@ export async function bootWebhookApp(o: BootOptions = {}): Promise<WebhookRig> {
   });
   installApp(app);
   await app.ready();
+  if (o.approval !== undefined && o.approval !== null) {
+    await app.db.query(
+      `INSERT INTO outbound_approvals (id, approval_ref, scope, operations, max_amount_minor, max_calls_per_day, valid_until, approved_by, created_at, updated_at)
+       VALUES ('oap_co1d_000000000000001', $1, 'mvp_c_refunds', $2, 2000, 300, '2999-01-01T00:00:00Z', 'co1d-test', $3, $3)`,
+      [APPROVAL_REF, o.approval.operations, NOW_ISO],
+    );
+    if (o.approval.outbound_on !== false)
+      await app.db.query(`UPDATE safety_switches SET "on" = true WHERE name = 'paypal_outbound'`);
+  }
   const route = await import('./app/api/webhooks/paypal/route');
   return {
     app,
@@ -275,3 +298,118 @@ export async function seedCapturingOrder(
   );
   return { order_id: placed.value.order_id, order_ref: placed.value.order_ref };
 }
+
+// ---------------------------------------------------------------------------------------------
+// CO-1d: the certificate learn window. The Wire is a stand-in that answers certificate fetches with
+// the committed parse-only PEM (a public test certificate, its key discarded) and counts every
+// request; nothing leaves the process.
+// ---------------------------------------------------------------------------------------------
+export const PARSE_ONLY_PEM = readFileSync(
+  new URL('../../../fixtures/webhooks/synthetic/parse-only.pem', import.meta.url),
+  'utf8',
+);
+/** What Node reads from the PEM above: pinned here so a changed fixture is noticed. */
+export const PARSE_ONLY_FACTS = {
+  subject: 'CN=synthetic-webhook-cert.invalid, O=UnitMarket SBX synthetic test',
+  subject_cn: 'synthetic-webhook-cert.invalid',
+  issuer: 'CN=synthetic-webhook-cert.invalid, O=UnitMarket SBX synthetic test',
+  valid_from: '2026-10-23T05:52:31.000Z',
+  valid_to: '2046-10-18T05:52:31.000Z',
+  fingerprint_sha256:
+    'A3:25:90:28:E2:82:D1:FE:7D:FE:F5:86:9E:3D:42:39:5D:50:F3:B8:D7:17:B2:E1:EB:C7:C6:C9:51:2C:35:B9',
+} as const;
+export const CERT_HOST = ['certs', ...DOMAIN.split('.')].join('.');
+export const certUrlN = (n: number, o: { host?: string; query?: string } = {}): string =>
+  `https://${o.host ?? CERT_HOST}/v1/notifications/certs/CERT-LEARN-${String(n).padStart(4, '0')}${o.query ?? ''}`;
+
+/** The operations the MVP-C approval names, with the certificate fetch. */
+export const LEARN_OPERATIONS = ['oauth_token', 'get_order', 'get_capture', 'fetch_webhook_cert'];
+
+/** A PEM answer for any path under the certificate path, a 404 for anything else. */
+export const certWire =
+  (pem: string = PARSE_ONLY_PEM) =>
+  (r: WireRequest): WireResult => {
+    const path = new URL(r.url).pathname;
+    if (r.method === 'GET' && path.startsWith('/v1/notifications/certs/'))
+      return {
+        kind: 'response',
+        status: 200,
+        headers: { 'content-type': 'application/x-pem-file' },
+        body: pem,
+      };
+    return {
+      kind: 'response',
+      status: 404,
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    };
+  };
+
+/** A sandbox app with the learn window open (default: until 30 minutes after NOW_ISO). */
+export function bootLearnApp(o: BootOptions = {}): Promise<WebhookRig> {
+  return bootWebhookApp({
+    scope: 'mvp_c_refunds',
+    connect: 'on',
+    certs: null,
+    approval: { operations: LEARN_OPERATIONS },
+    wire_answer: certWire(),
+    learn_until: new Date(NOW_MS + 30 * 60_000).toISOString(),
+    ...o,
+  });
+}
+
+/** Tables a webhook, a refusal or a learn must not touch: row count and a hash of every row's text. */
+export const STATE_TABLES = [
+  'orders',
+  'order_units',
+  'provider_orders',
+  'operations',
+  'provider_calls',
+  'webhook_events',
+  'refund_requests',
+  'ledger_entries',
+  'receipts',
+  'entitlements',
+  'access_windows',
+  'access_events',
+  'links',
+  'recovery_cases',
+  'alerts',
+] as const;
+export async function stateOf(app: App): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const t of STATE_TABLES) {
+    const r = await app.db.query<{ n: string | number; h: string }>(
+      `SELECT count(*) AS n, md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) AS h FROM ${t} x`,
+    );
+    out[t] = `${String(r.rows[0]?.n)}:${r.rows[0]?.h}`;
+  }
+  return out;
+}
+export async function learnRows(app: App): Promise<
+  Array<{
+    actor_kind: string;
+    actor_id: string | null;
+    target: string | null;
+    reason: string | null;
+    detail: Record<string, unknown>;
+  }>
+> {
+  const r = await app.db.query<{
+    actor_kind: string;
+    actor_id: string | null;
+    target: string | null;
+    reason: string | null;
+    detail: Record<string, unknown> | string;
+  }>(
+    `SELECT actor_kind, actor_id, target, reason, detail FROM audit_log WHERE action = 'webhook.cert_learned' ORDER BY created_at, id`,
+  );
+  return r.rows.map((x) => ({
+    ...x,
+    detail:
+      typeof x.detail === 'string' ? (JSON.parse(x.detail) as Record<string, unknown>) : x.detail,
+  }));
+}
+/** The parsed log lines with the given message. */
+export const logLines = (lines: string[], msg: string): Array<Record<string, unknown>> =>
+  lines.map((l) => JSON.parse(l) as Record<string, unknown>).filter((l) => l['msg'] === msg);

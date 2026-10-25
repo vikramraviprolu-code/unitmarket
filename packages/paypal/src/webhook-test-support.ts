@@ -234,6 +234,8 @@ export interface CertOptions {
   notBefore: Date;
   notAfter: Date;
   cn?: string;
+  /** the issuer's common name (default 'Synthetic Issuer') */
+  issuer_cn?: string;
 }
 export function certificatePem(o: CertOptions): string {
   const sigAlg = seq(oid('1.2.840.113549.1.1.11'), tlv(0x05));
@@ -241,7 +243,7 @@ export function certificatePem(o: CertOptions): string {
     tlv(0xa0, tlv(0x02, Buffer.from([2]))),
     tlv(0x02, Buffer.from([1])),
     sigAlg,
-    name('Synthetic Issuer'),
+    name(o.issuer_cn ?? 'Synthetic Issuer'),
     seq(time(o.notBefore), time(o.notAfter)),
     name(o.cn ?? 'synthetic-webhook.invalid'),
     o.publicKey.export({ type: 'spki', format: 'der' }),

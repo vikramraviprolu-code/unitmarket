@@ -16,22 +16,31 @@ import type { WebhookRig } from './webhook-support';
 
 vi.mock('server-only', () => ({}));
 
-// L1: the certificate pin (EXPECTED_CERT_SUBJECTS) is empty in the repository. One test needs it
+// L1: the certificate pin (EXPECTED_CERT_PINS) is empty in the repository. One test needs it
 // non-empty to reach the real certificate source; the holder is read on every access.
-const pin = vi.hoisted(() => ({ subjects: [] as string[] }));
+const pin = vi.hoisted(() => ({
+  pins: [] as Array<{ host: string; subject: string; issuer: string }>,
+}));
 vi.mock('@umsbx/paypal', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@umsbx/paypal')>();
   return {
     ...actual,
-    get EXPECTED_CERT_SUBJECTS() {
-      return pin.subjects;
+    get EXPECTED_CERT_PINS() {
+      return pin.pins;
     },
   };
 });
 
+// A complete pin (exact host, subject and issuer): the gate needs all three (CO-1d).
+const FULL_PIN = {
+  host: ['certs', 'sandbox', 'paypal', 'com'].join('.'),
+  subject: 'CN=synthetic.invalid',
+  issuer: 'CN=synthetic-issuer.invalid',
+};
+
 let rig: WebhookRig;
 beforeEach(() => {
-  pin.subjects = [];
+  pin.pins = [];
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW_MS);
 });
@@ -175,7 +184,7 @@ describe('without a certificate source of its own', () => {
   });
 
   it('under mvp_b_polling with a pin set and no injected source the certificate fetch is blocked: 503 `unverifiable`', async () => {
-    pin.subjects = ['CN=synthetic.invalid'];
+    pin.pins = [FULL_PIN];
     rig = await bootWebhookApp({ certs: null, scope: 'mvp_b_polling' });
     const { order_id } = await seedCapturingOrder(rig.app);
     const res = await rig.post(delivery(eventBody({ id: 'WH-B-2' }), { id: 'TR-B-2' }));
@@ -204,6 +213,39 @@ describe('without a certificate source of its own', () => {
     expect(
       await rig.count('SELECT count(*) AS c FROM audit_log WHERE action LIKE $1', ['webhook.%']),
     ).toBe(0);
+  });
+
+  it.each([
+    ['a subject-only pin (the old shape)', [{ subject: 'CN=synthetic.invalid' }]],
+    ['a pin without an issuer', [{ host: FULL_PIN.host, subject: FULL_PIN.subject, issuer: '' }]],
+    ['a pin without a host', [{ host: '', subject: FULL_PIN.subject, issuer: FULL_PIN.issuer }]],
+    [
+      'a pin whose host the certificate rules refuse',
+      [{ host: 'evil.example.invalid', subject: FULL_PIN.subject, issuer: FULL_PIN.issuer }],
+    ],
+    ['one full pin beside one partial pin', [FULL_PIN, { ...FULL_PIN, issuer: '' }]],
+  ])(
+    'CO-1d: %s keeps the webhook off under mvp_c_refunds (503 disabled, nothing fetched or stored)',
+    async (_name, pins) => {
+      pin.pins = pins as typeof pin.pins;
+      rig = await bootWebhookApp({ certs: null, scope: 'mvp_c_refunds' });
+      const res = await rig.post(delivery(eventBody({ id: 'WH-C-PARTIAL' }), { id: 'TR-C-P' }));
+      expect(res.status).toBe(503);
+      expect(outcomes()).toEqual(['disabled']);
+      expect(await rig.count('SELECT count(*) AS c FROM webhook_events')).toBe(0);
+      expect(rig.wire).toEqual([]);
+      expect(
+        await rig.count('SELECT count(*) AS c FROM audit_log WHERE action LIKE $1', ['webhook.%']),
+      ).toBe(0);
+    },
+  );
+
+  it('CO-1d: a full pin lets the gate through (the delivery then reaches the certificate source)', async () => {
+    pin.pins = [FULL_PIN];
+    rig = await bootWebhookApp({ certs: null, scope: 'mvp_c_refunds' });
+    const res = await rig.post(delivery(eventBody({ id: 'WH-C-FULL' }), { id: 'TR-C-F' }));
+    expect(res.status).toBe(503);
+    expect(outcomes()).toEqual(['unverifiable']);
   });
 
   it('no webhook id configured: 503, and the certificate source is never asked', async () => {
