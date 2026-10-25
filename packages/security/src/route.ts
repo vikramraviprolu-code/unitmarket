@@ -1,6 +1,10 @@
 // The one route wrapper (architecture 9.8). Every route handler is built with withRoute(); the
 // RouteMeta it takes feeds scripts/route-inventory.mjs. Authorisation runs here, never in Next.js
 // middleware alone.
+//
+// Webhook limiter (CO-3): the peek and the charge are two steps, so concurrent refused requests
+// from one address can overshoot the 60 a minute by up to the number of connections that address
+// holds at once. The overshoot is bounded by the connection count and accepted.
 import { createHmac } from 'node:crypto';
 import type { ZodType } from 'zod';
 import type {
@@ -56,6 +60,14 @@ export interface RouteMeta {
   max_body_bytes: number;
   idempotent: boolean;
   risk: 'low' | 'medium' | 'high';
+  /**
+   * CO-3. The handler gets the body as the exact text received (valid UTF-8 or a 400; a byte order
+   * mark is kept) and the `paypal-*` request headers, as `{ raw_body, headers }`, and nothing is
+   * parsed: a signature over the bytes is checked before any parse. Every refusal then carries an
+   * empty JSON body, a wrong method is 405, and the size cap, the method and the limiter stay.
+   * Valid on the one public webhook route only (RAW_BODY_ROUTES).
+   */
+  raw?: boolean;
 }
 
 export interface RouteContext<I> {
@@ -90,6 +102,10 @@ export type HttpResult<O> =
 
 export const MAX_BODY_CEILING = 1_048_576;
 
+/** CO-3. The one route that may declare `raw: true`; checked when withRoute is called. */
+export const RAW_BODY_ROUTES: readonly string[] = ['/api/webhooks/paypal'];
+const RAW_HEADER_PREFIX = 'paypal-';
+
 export function notFoundUnlessOwner<T extends { buyer_id: Id }>(
   row: T | null,
   actor: Actor,
@@ -111,6 +127,17 @@ function validateMeta(meta: RouteMeta): void {
     meta.max_body_bytes > MAX_BODY_CEILING
   )
     bad('max_body_bytes');
+  if (
+    meta.raw === true &&
+    (meta.method !== 'POST' ||
+      meta.auth !== 'webhook' ||
+      meta.csrf ||
+      meta.idempotent ||
+      meta.rate === null ||
+      meta.rate.per !== 'ip' ||
+      !RAW_BODY_ROUTES.includes(meta.path))
+  )
+    bad('raw is for the public webhook route only (POST, webhook auth, no csrf, an ip limiter)');
   if (meta.method === 'POST' && meta.auth !== 'webhook' && !meta.csrf) bad('POST needs csrf');
   if (
     meta.idempotent &&
@@ -172,7 +199,11 @@ export interface RouteCallContext {
   remote_addr?: string;
 }
 
-async function readBody(req: Request, max: number): Promise<string | 'too_large' | 'bad_encoding'> {
+async function readBody(
+  req: Request,
+  max: number,
+  keepBom = false,
+): Promise<string | 'too_large' | 'bad_encoding'> {
   if (req.body === null) return '';
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -188,7 +219,10 @@ async function readBody(req: Request, max: number): Promise<string | 'too_large'
     chunks.push(value);
   }
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
+    // keepBom: the text must re-encode to the bytes that were signed, so a BOM is not stripped.
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: keepBom }).decode(
+      Buffer.concat(chunks),
+    );
   } catch {
     return 'bad_encoding';
   }
@@ -209,6 +243,9 @@ export function withRoute<I, O>(
   validateMeta(meta);
   const parser = strictParser(meta, schema);
 
+  const raw = meta.raw === true;
+  const webhook = meta.auth === 'webhook';
+
   return (deps) => async (req, call) => {
     const req_id = deps.ids.nonce();
     const log = deps.log.child({ req_id, route: meta.path });
@@ -225,16 +262,18 @@ export function withRoute<I, O>(
       extra?: Record<string, string>,
     ): Response => {
       for (const [k, v] of Object.entries(extra ?? {})) headers.set(k, v);
-      return json(status, errorBody(code, message, req_id, fields), headers);
+      // CO-3: a raw (webhook) route never says why; the code and message stay in the handler.
+      return json(status, raw ? {} : errorBody(code, message, req_id, fields), headers);
     };
 
     let idem: IdemScope | null = null;
     try {
-      if (req.method !== meta.method) return fail(404, 'not_found', 'Not found.');
-
-      const declared = Number(req.headers.get('content-length') ?? '0');
-      if (Number.isFinite(declared) && declared > meta.max_body_bytes)
-        return fail(413, 'too_large', 'The request is too large.');
+      if (req.method !== meta.method)
+        return raw
+          ? fail(405, 'method_not_allowed', 'Method not allowed.', undefined, {
+              allow: meta.method,
+            })
+          : fail(404, 'not_found', 'Not found.');
 
       const ip_hash = createHmac('sha256', deps.session_secret.reveal())
         .update(`ip:${clientIp(req, deps, call)}`)
@@ -244,6 +283,29 @@ export function withRoute<I, O>(
         fail(429, 'rate_limited', 'Too many requests. Try again later.', undefined, {
           'retry-after': String(Math.max(1, Math.ceil(retry_ms / 1000))),
         });
+
+      // A webhook route: an address that has used up its refused-delivery tokens is turned away
+      // before the body is read and before any signature work (review M2). A valid delivery
+      // spends nothing; every refusal spends one (charge below).
+      if (webhook && meta.rate !== null) {
+        const v = await takeToken(deps, meta.rate, ip_hash, 'peek');
+        if (!v.allowed) return tooMany(v.retry_after_ms);
+      }
+      const charge = async (): Promise<Response | null> => {
+        if (!webhook || meta.rate === null) return null;
+        const v = await takeToken(deps, meta.rate, ip_hash);
+        return v.allowed ? null : tooMany(v.retry_after_ms);
+      };
+      const refuse = async (
+        status: number,
+        code: string,
+        message: string,
+        fields?: string[],
+      ): Promise<Response> => (await charge()) ?? fail(status, code, message, fields);
+
+      const declared = Number(req.headers.get('content-length') ?? '0');
+      if (Number.isFinite(declared) && declared > meta.max_body_bytes)
+        return refuse(413, 'too_large', 'The request is too large.');
 
       let targetSubject: string | null = null;
       let sharedBucketRetryMs: number | null = null;
@@ -293,35 +355,42 @@ export function withRoute<I, O>(
       }
 
       // Input.
-      let raw: unknown;
+      let input: unknown;
       let rawBody = '';
       if (meta.method === 'POST') {
-        const body = await readBody(req, meta.max_body_bytes);
-        if (body === 'too_large') return fail(413, 'too_large', 'The request is too large.');
+        const body = await readBody(req, meta.max_body_bytes, raw);
+        if (body === 'too_large') return refuse(413, 'too_large', 'The request is too large.');
         if (body === 'bad_encoding')
-          return fail(400, 'bad_request', 'The request could not be read.');
+          return refuse(400, 'bad_request', 'The request could not be read.');
         rawBody = body;
-        if (body.trim() === '') raw = {};
+        if (raw) {
+          // CO-3: nothing is parsed here. The handler verifies the signature over these bytes first.
+          const picked: Record<string, string> = {};
+          req.headers.forEach((v, k) => {
+            if (k.startsWith(RAW_HEADER_PREFIX)) picked[k] = v;
+          });
+          input = { raw_body: body, headers: picked };
+        } else if (body.trim() === '') input = {};
         else {
           try {
-            raw = JSON.parse(body);
+            input = JSON.parse(body);
           } catch {
-            return fail(400, 'bad_request', 'The request body is not valid JSON.');
+            return refuse(400, 'bad_request', 'The request body is not valid JSON.');
           }
         }
       } else {
-        raw = Object.fromEntries(new URL(req.url).searchParams);
+        input = Object.fromEntries(new URL(req.url).searchParams);
       }
       let paramsText = '';
-      if (call?.params !== undefined) {
+      if (call?.params !== undefined && !raw) {
         const params = await call.params;
         paramsText = JSON.stringify(Object.entries(params).sort(([a], [b]) => (a < b ? -1 : 1)));
-        if (typeof raw === 'object' && raw !== null && !Array.isArray(raw))
-          raw = { ...(raw as Record<string, unknown>), ...params };
+        if (typeof input === 'object' && input !== null && !Array.isArray(input))
+          input = { ...(input as Record<string, unknown>), ...params };
       }
-      const parsed = parser.safeParse(raw);
+      const parsed = parser.safeParse(input);
       if (!parsed.success)
-        return fail(
+        return refuse(
           422,
           'invalid_input',
           'The request did not match the expected shape.',
@@ -329,7 +398,7 @@ export function withRoute<I, O>(
         );
 
       if (meta.rate?.per === 'ip' && meta.auth !== 'webhook' && meta.rate_target !== undefined) {
-        const target = (raw as Record<string, unknown> | null)?.[meta.rate_target];
+        const target = (input as Record<string, unknown> | null)?.[meta.rate_target];
         targetSubject = `${ip_hash}:${sha256Hex(String(target ?? '')).slice(0, 32)}`;
         const v = await takeToken(deps, meta.rate, targetSubject);
         if (!v.allowed) {
@@ -339,12 +408,6 @@ export function withRoute<I, O>(
           if (clientIp(req, deps, call) !== 'no-address') return tooMany(v.retry_after_ms);
           sharedBucketRetryMs = v.retry_after_ms;
         }
-      }
-
-      // Webhook limiter (M2): refuse an exhausted source before the handler (signature check) runs.
-      if (meta.auth === 'webhook' && meta.rate !== null) {
-        const v = await takeToken(deps, meta.rate, ip_hash, 'peek');
-        if (!v.allowed) return tooMany(v.retry_after_ms);
       }
 
       // Idempotency.
@@ -397,15 +460,11 @@ export function withRoute<I, O>(
         }
       }
 
-      // Webhook limiter counts only rejected requests; a valid webhook is never limited.
-      if (
-        meta.auth === 'webhook' &&
-        meta.rate !== null &&
-        'code' in result &&
-        [400, 401, 403].includes(result.status)
-      ) {
-        const v = await takeToken(deps, meta.rate, ip_hash);
-        if (!v.allowed) return tooMany(v.retry_after_ms);
+      // Webhook limiter counts every refused answer (400, 401, 403, 503 and the rest, with no
+      // opt-out); a valid webhook is never limited.
+      if (webhook && 'code' in result) {
+        const limited = await charge();
+        if (limited !== null) return limited;
       }
 
       if ('code' in result) {
@@ -434,7 +493,7 @@ export function withRoute<I, O>(
         level: 'error',
         fields: { err_name: e instanceof Error ? e.name : 'unknown' },
       });
-      return json(500, errorBody('internal', GENERIC_MESSAGE, req_id), headers);
+      return json(500, raw ? {} : errorBody('internal', GENERIC_MESSAGE, req_id), headers);
     }
   };
 }
