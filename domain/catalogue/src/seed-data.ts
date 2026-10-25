@@ -219,3 +219,73 @@ export const SEED_DATA = {
     superseded_by: null,
   })),
 } as const;
+
+// MVP-D supplementary block (DP-1, M4): one more fictional US publisher with two authorised USD
+// offers, so a pack of two publishers in one currency exists. It is applied after the base seed by
+// seedSupplement under its own Ids, so SEED_DATA and every id of the base seed stay as they are.
+// Mirrored in fixtures/catalogue/seed-composite.json (a test keeps them equal).
+export const SEED_SUPPLEMENT_COMPOSITE = {
+  meta: {
+    source: 'synthetic',
+    note: 'Supplementary block for MVP-D: one fictional US publisher and two team-written articles. Applied after the base seed by seedSupplement.',
+  },
+  corridors: [],
+  publishers: [
+    { slug: 'quayside-gazette', display_name: 'Quayside Gazette (fictional)', country: 'US' },
+  ],
+  articles: [
+    {
+      key: 'market-hall-move',
+      publisher_slug: 'quayside-gazette',
+      title: 'Why the quayside market moved indoors',
+      abstract:
+        'A short account of an invented market that left the open quay for a covered hall, and what its traders say changed.',
+      language: 'en',
+      topics: ['markets', 'local'],
+      published_at: '2025-12-15T09:00:00.000Z',
+      text: 'The market stood on the quay for ninety years. A wet decade and a new drainage rule moved it into a covered hall in one winter.\n\nTraders report fewer lost days and fewer casual buyers. The hall is dry; the footfall is not.\n',
+      rights_note:
+        'Written by the SBX team for the sandbox. Personal use only; no redistribution; AI use on review.',
+    },
+    {
+      key: 'quay-walk',
+      publisher_slug: 'quayside-gazette',
+      title: 'A morning walk along the old quay',
+      abstract:
+        'A short walking route past four invented landmarks, with what each was built to do.',
+      language: 'en',
+      topics: ['walking', 'history'],
+      published_at: '2025-12-22T09:00:00.000Z',
+      text: 'Start at the clock stand and walk east.\n\nThe crane base, the net store and the customs shed each served one trade. Only the shed is still roofed.\n',
+      rights_note:
+        'Written by the SBX team for the sandbox. Personal use only; no redistribution; AI use on review.',
+    },
+  ],
+  offers: [
+    {
+      code: 'market-hall-move',
+      article_key: 'market-hall-move',
+      status: 'authorised',
+      currency: 'USD',
+      options: BOTH(150, 120),
+      affordability: FIXED,
+      authorised: true,
+    },
+    {
+      code: 'quay-walk',
+      article_key: 'quay-walk',
+      status: 'authorised',
+      currency: 'USD',
+      options: BOTH(90, 90),
+      affordability: FIXED,
+      authorised: true,
+    },
+  ].map((o) => ({
+    ...o,
+    terms_version: 'terms-1',
+    rights: RIGHTS,
+    valid_from: T0,
+    valid_until: null,
+    superseded_by: null,
+  })),
+} as const;

@@ -114,7 +114,9 @@ async function world(opts: { quaysideMerchant?: string | null; quaysideVerified?
   }
 }
 
-async function propose(offers: [offer_id: string, currency?: string, corridor?: string][]) {
+async function propose(
+  offers: [offer_id: string, currency?: string | undefined, corridor?: string | undefined][],
+) {
   const quotes: { quote_id: string; offer_id: string }[] = [];
   let n = 0;
   for (const [offer_id, currency, corridor_id] of offers) {

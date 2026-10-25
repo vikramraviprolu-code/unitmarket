@@ -4,5 +4,5 @@ export const PACKAGE_NAME = '@umsbx/catalogue' as const;
 export { getOffer, listAuthorisedOffers, offerIdFor } from './read';
 export type { OfferView } from './read';
 export { getCorridor, corridorFor } from './corridors';
-export { seedCatalogue } from './seed';
-export { SEED_DATA } from './seed-data';
+export { seedCatalogue, seedSupplement } from './seed';
+export { SEED_DATA, SEED_SUPPLEMENT_COMPOSITE } from './seed-data';

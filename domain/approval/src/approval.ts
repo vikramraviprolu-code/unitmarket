@@ -45,6 +45,8 @@ export interface ApprovalGranted {
 }
 
 const MAX_ITEMS = 5;
+// A pack settles as one PayPal order per publisher (MVP-D, D2); more than two is refused.
+const MAX_PUBLISHERS = 2;
 
 // ---------- row helpers ----------
 // PGlite returns timestamptz as Date and jsonb as a parsed value; other drivers may return text.
@@ -303,6 +305,7 @@ export async function requestApproval(
     const publishers = [...blocks.values()].sort((a, b) =>
       a.publisher_id < b.publisher_id ? -1 : a.publisher_id > b.publisher_id ? 1 : 0,
     );
+    if (publishers.length > MAX_PUBLISHERS) return approvalError('too_many_publishers');
     const total_minor = publishers.reduce((sum, p) => sum + p.amount_minor, 0);
     if (corridor.min_charge_minor !== null && total_minor < corridor.min_charge_minor) {
       return approvalError('corridor_unsupported');
@@ -319,6 +322,11 @@ export async function requestApproval(
       reader: { buyer_id: buyer.buyer_id },
       rule_version: d.config.rule_version,
       pricing_rule_version: d.config.pricing_rule_version,
+      // Two publishers: the settlement route is frozen with the snapshot (inside the hash). One
+      // publisher: no key at all, so the snapshot and its hash are exactly what they were before.
+      ...(publishers.length === MAX_PUBLISHERS
+        ? { settlement: { route: 'per_publisher', payments: MAX_PUBLISHERS } }
+        : {}),
     });
     // A duplicate article (two offers for one article) is the one way a built snapshot can fail.
     if (!parsed.success) return approvalError('unknown_selection');

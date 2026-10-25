@@ -9,7 +9,8 @@ export type ApprovalError = {
     | 'corridor_unsupported'
     | 'consent_missing'
     | 'not_owner'
-    | 'too_many_items';
+    | 'too_many_items'
+    | 'too_many_publishers';
 };
 
 export type VerifyError =
