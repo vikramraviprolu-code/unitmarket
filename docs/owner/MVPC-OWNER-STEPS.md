@@ -82,8 +82,7 @@ Expected output: one line `<name>:<base32 secret>` and one `otpauth://` link.
    `vikram:<secret>,sakthi:<secret>`. Build it one entry at a time, each by its owner. Vikram creates the
    value with his own entry only. Sakthi then opens the same variable in the Render dashboard himself,
    under his own Render login (if the plan lets Vikram add a second login), and appends
-   `,sakthi:<secret>`. If Sakthi has no login, he types his entry into the field on a call while Vikram looks away from the
-   screen. Anyone who can open the service's Environment page can read the whole value, so that page is
+   `,sakthi:<secret>`. If Sakthi has no Render login, he adds his entry at Vikram's machine in person, with no screen share or recording running; otherwise the value holds Vikram's entry only for this sitting (Sakthi can still use Stop, which needs no code). Anyone who can open the service's Environment page can read the whole value, so that page is
    for the two operators only.
 4. Clear the terminal scrollback and the clipboard. Never paste the secret or the link anywhere else.
    Do not screenshot this step.
@@ -135,7 +134,7 @@ Do this BEFORE the webhook is registered or switched on (hosting.md step 5).
    BEFORE the webhook is registered in Step 4: a wrong count lets one client fill the limiter bucket that
    PayPal's own deliveries share, or lets a client choose its own bucket. `UMS_TRUSTED_PROXIES=1` in
    `render.yaml` assumes exactly one proxy appends to `X-Forwarded-For`. The test uses the sign-in limiter
-   (5 wrong passcodes per address and persona in 15 minutes, then 429) and the persona `buyer-b`, so
+   (5 wrong passcodes per address and persona, then 429; one attempt comes back every 3 minutes, all 5 after 15 minutes) and the persona `buyer-b`, so
    `buyer-a` and the operator are not locked out. Put only the host name in the variable, no
    `https://`. The passcode value below is a made-up wrong one; never type the real passcode here.
 
@@ -157,7 +156,7 @@ Do this BEFORE the webhook is registered or switched on (hosting.md step 5).
    counting. If a `429` comes before the 6th, other clients share your bucket (or you ran this less than 15 minutes ago). If you see `403`,
    `UMS_PUBLIC_ORIGIN` does not match the host name. In every such case STOP and tell Sakthi.
 
-   (b) Straight after (a), from machine A again, send the 6th request with a forged
+   (b) Straight after (a), within 3 minutes of its first request (later, a returned attempt answers 401 for that reason alone), from machine A again, send the 6th request with a forged
    `X-Forwarded-For` that you wrote yourself:
 
    ```
@@ -171,7 +170,7 @@ Do this BEFORE the webhook is registered or switched on (hosting.md step 5).
    can pick its own bucket (the count is too high, or the platform appends nothing). STOP.
 
    (c) From a second network (your phone's hotspot: join machine B or your laptop to it, so the public
-   address is not the one used in (a)), run one wrong sign-in, still inside the 15 minutes of (a):
+   address is not the one used in (a)), run one wrong sign-in, also within 3 minutes of the first request of (a) (the same reason):
 
    ```
    curl -sS -o /dev/null -w "second network: %{http_code}\n" -X POST "https://$HOST/api/session" \

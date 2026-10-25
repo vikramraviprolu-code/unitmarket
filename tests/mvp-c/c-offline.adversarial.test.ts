@@ -16,7 +16,7 @@
 // package (SEAL2 lint), so the list is rebuilt here.
 import dc from 'node:diagnostics_channel';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { bypassShapes, netViews, openRaw } from './c-net-probe';
+import { bypassShapes, netViews, openRaw, viaSharedDns } from './c-net-probe';
 import type { RawNet } from './c-net-probe';
 
 vi.mock('server-only', () => ({}));
@@ -58,6 +58,17 @@ const { trace, patch, patchDns, blocked, fetchStub, hooks } = vi.hoisted(() => {
     dns: async (importOriginal: () => Promise<unknown>) => {
       const actual = (await importOriginal()) as Mod;
       guardDnsPromises(actual['promises'] as Mod);
+      hooks.sharedDns = actual['default'];
+      // The shared module object and the Resolver classes are reachable without this mock
+      // (require('node:dns'), process.getBuiltinModule, new Resolver()): guard them in place too.
+      const shared = actual['default'] as Mod;
+      for (const k of fnNames(shared))
+        vi.spyOn(shared as Record<string, Fn>, k).mockImplementation(blocked(`dns.${k}`) as Fn);
+      for (const R of [shared['Resolver'], (shared['promises'] as Mod)['Resolver']]) {
+        const proto = (R as { prototype: Record<string, Fn> }).prototype;
+        for (const k of Object.getOwnPropertyNames(proto).filter((n) => DNS_NAMES.test(n)))
+          vi.spyOn(proto, k).mockImplementation(blocked(`dns.Resolver.${k}`) as Fn);
+      }
       const patched: Mod = { ...actual };
       for (const k of fnNames(actual)) patched[k] = blocked(`dns.${k}`);
       return { ...patched, default: patched };
@@ -80,6 +91,8 @@ const { trace, patch, patchDns, blocked, fetchStub, hooks } = vi.hoisted(() => {
   const hooks = {
     raw: {} as Partial<RawNet>,
     passThrough: undefined as ((on: boolean) => void) | undefined,
+    // the real shared node:dns object, as require('node:dns') hands it out
+    sharedDns: undefined as unknown,
   };
   const guardSocket = (actual: Mod): void => {
     const proto = (actual['Socket'] as { prototype: Record<string, Fn> }).prototype;
@@ -173,6 +186,8 @@ describe('C-offline interception, bypass shapes', () => {
     ['dns.promises.lookup', 'dns.promises.lookup'],
     ['node:dns/promises named lookup', 'dns/promises.lookup'],
     ['node:dns/promises default lookup', 'dns.promises.lookup'],
+    ['dns.Resolver resolve4', 'dns.Resolver.resolve4'],
+    ['dns.promises.Resolver resolve4', 'dns.Resolver.resolve4'],
     ['http2.connect', 'http2.connect'],
     ['http.Agent createConnection', 'http.Agent.prototype.createConnection'],
     ['https.Agent createConnection', 'https.Agent.prototype.createConnection'],
@@ -184,6 +199,11 @@ describe('C-offline interception, bypass shapes', () => {
       expect(trace.calls).toEqual([label]);
     },
   );
+  it('C-offline the shared node:dns object itself is guarded: lookup called on it (require, getBuiltinModule) is recorded and refused', () => {
+    expect(hooks.sharedDns, 'the interception keeps the shared node:dns object').toBeDefined();
+    expect(viaSharedDns(hooks.sharedDns)).toBe(true);
+    expect(trace.calls).toEqual(['dns.lookup']);
+  });
   it('C-offline the net.client.socket channel records real client sockets that skip the guards (unpatched functions, closed loopback port)', async () => {
     const raw = hooks.raw;
     expect(raw.socketConnect, 'the interception keeps the unpatched Socket connect').toBeTypeOf(

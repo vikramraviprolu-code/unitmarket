@@ -22,36 +22,32 @@ Wire, a real child process for C-11), and the whole C run opens no socket. No cr
 open. The window itself is not ready: three owner decisions were open (F-1 O-C8, F-2 certificate pin, F-3
 backup on the host), and without the first no sandbox call can be approved on the host and without the
 second no genuine delivery can be accepted. They fail closed, so none of them is a money-safety defect, but
-they block the owner window, so they are conditions, not footnotes. The builder rated them Medium; the
-reviewer may raise them.
+they block the owner window, so they are conditions, not footnotes. The gate review kept them as
+conditions W1 and W2 (F-3 goes with W1).
 
 ### Conditions of the verdict (open items)
 
-The numbering W1 to W4 and C1 is the gate review's. The review text is not in this repository, so the
-wording of W1 to W4 below is this lane's reading of D-037 to D-039 and the register; the reviewer confirms
-or corrects it when merging CO-Gb. A condition closes when its lane is merged or its decision row exists;
-none is closed by this report.
+The numbering W1 to W4 and C1 is the Opus gate review's (verdict APPROVED WITH CONDITIONS). A condition
+closes when its lane is merged or its decision row exists.
 
-| Id  | Condition                                                                                                                                                                                                        | Owner / lane                | State                                                                    |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------ |
-| W1  | O-C8: a path to put the approval row and the switch-on on the hosted database (maintenance mode, D-037); also lets backup and restore run on the host (F-3). Step 6 stays text-only until the lane merges        | lane CO-7b                  | decided (D-037); lane not merged: open                                   |
-| W2  | Webhook certificate pin: learn-only window, full pin (exact host, subject, issuer) committed through review, trust seeded at boot from the pin (D-038, ASM-71). Step 7 and C-01 wait for it                      | lane CO-1d                  | decided (D-038); lane not merged: open                                   |
-| W3  | ASM-66 (CO-2b): a webhook-reopened read-back must not be confirmed by an apply that started earlier. Closed before the webhook goes live, or waived for the single sitting (see below)                           | lane CO-2b / owner decision | open                                                                     |
-| W4  | Decision rows still missing: ASM-55 waiver (real-Postgres race tests), TOTP key location (host settings and each operator's own `.env.local` only), the shared demo passcode (D-039 note)                        | owner                       | open                                                                     |
-| C1  | The gate review's test and owner-step corrections: network trace shapes (M1), C-11 child watched live (L1), C-07 old link (L2), refund booking rollback (M2), proxy-depth test (L3), TOTP keys without chat (L4) | lane CO-Gb (this change)    | done in this lane, see "CO-Gb follow-up"; open until the reviewer merges |
+| Id  | Condition                                                                                                                                                                                                        | Owner / lane                  | State                                       |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------- |
+| W1  | O-C8 decided (D-037, option a); lane CO-7b (maintenance mode) merged with tests; Step 6 has real commands                                                                                                        | CO-7b                         | closed: D-037, CO-7b merged as d889651      |
+| W2  | Certificate pin decision recorded (D-038, learn only) and its lane built, including ASM-71 (trust seeded at boot from the full pin)                                                                              | CO-1d                         | decided D-038; lane not merged: open        |
+| W3  | Owner decision rows: C-11 meaning of REL-2 (lease end plus 2 passes), ASM-61 accepted, ASM-68 accepted for the sitting, ASM-66 waived for the sitting, ASM-55 / O-C6 waived for the sitting                      | owner                         | closed: D-039 (1) to (3), D-040 (3) and (4) |
+| W4  | Sakthi runs gitleaks on the full history; the proxy count of 1 is confirmed by the Step 3 curl test before the webhook is registered                                                                             | Sakthi / owner, at the window | open                                        |
+| C1  | The gate review's test and owner-step corrections: network trace shapes (M1), C-11 child watched live (L1), C-07 old link (L2), refund booking rollback (M2), proxy-depth test (L3), TOTP keys without chat (L4) | lane CO-Gb (this change)      | closed when this lane merges                |
 
-**ASM-66 for the single sitting.** The MVP-C sitting registers the webhook once and runs for one
-afternoon; polling still reconciles every order, so a read-back missed by the race is caught by the
-hourly or 6-hourly re-read. A waiver for this one sitting is therefore proposed. It is NOT in force:
-D-039 states that the ASM-66 waiver is not recorded and is still open. It needs its own decision row in
-`docs/decision-log.md`; until then W3 stands and the webhook is not switched on.
+**ASM-66 for the single sitting.** Waived by D-040 (3) for the single MVP-C sitting only: the connection is
+turned off at the end of the sitting, so the 7-day watch cannot lapse. CO-2b is required before the webhook
+stays live for more than 7 days.
 
 **ASM-71 (trust seeded at boot from the pin).** Added to the known items (F-6) and to W2: a restart must
 never be cold. The exact-host pin, the per-URL fetch budget (worst case 12 + 16 = 28 calls a day) and
 the boot seeding are the CO-1d acceptance; rotation under a sustained attack can stay unverifiable until
 the pin is updated, so webhook silence is alerted and the pin update is in the rotation runbook.
 
-### Decisions recorded after the offline run (`docs/decision-log.md`)
+### Decisions recorded after the offline run, D-037 to D-040 (`docs/decision-log.md`)
 
 - **D-037** (2026-10-25): O-C8 option (a), a hosted maintenance mode (flag file on the persistent disk,
   shell only, no route; the app starts without the database, jobs or transport and answers 503 except
@@ -65,6 +61,12 @@ the pin is updated, so webhook silence is alerted and the pin update is in the r
   passes (about 59 s after the restart); the lease is not shortened (closes F-4). (2) ASM-61: a partial
   refund is a unit-level price adjustment and never revokes an item. (3) ASM-68: no reserve of calls for
   new checkouts for this sitting only.
+- **D-040** (2026-10-25): four acceptances for the sitting. (1) `UMS_OPERATOR_TOTP_KEYS` lives only in the
+  host settings and in each operator's own `.env.local`, never in a cloud session. (2) The shared demo
+  passcode is accepted, with the known risk that its holder can lock an operator out of mfa sign-in for up
+  to 15 minutes (Stop still works); rotating `UMS_DEMO_PASSCODE_HASH` stops it. (3) ASM-66 is waived for
+  the single sitting; CO-2b is required before the webhook stays live for more than 7 days. (4) ASM-55
+  (real-Postgres race tests, O-C6) is waived for the sitting.
 
 ## Acceptance table (mvp-plan MVP-C, C-01 to C-13)
 
@@ -110,7 +112,7 @@ none
 - Impact: availability of the owner window only. No money or secret exposure.
 - Fix: the owner picks option (a) maintenance start or (b) operator-console approval; lane CO-7b is written and built; then Step 6 gets commands.
 - Files: `docs/design/hosting.md`, `docs/owner/MVPC-OWNER-STEPS.md` (Step 6)
-- Status: decided D-037 (option a, lane CO-7b); open until that lane merges (W1)
+- Status: closed: D-037 option (a); CO-7b merged as d889651 (W1).
 
 #### F-2 The webhook certificate pin is empty and its learning method is undecided (ASM-64)
 
@@ -128,7 +130,7 @@ none
 - Impact: recoverability on the host.
 - Fix: decided together with F-1.
 - Files: `scripts/backup.mjs`, `scripts/restore.mjs`
-- Status: decided together with F-1 (D-037 also lets backup and restore run on the host); open until CO-7b merges (W1)
+- Status: closed with F-1: CO-7b merged as d889651; Step 11 is the hosted drill.
 
 ### Low
 
@@ -158,7 +160,7 @@ none
 - Wrapper-level refusals are not audited: F-5.
 - ASM-57 (unverified): `UMS_TRUSTED_PROXIES=1` for Render. Checked on the host in Step 3, before the webhook is switched on.
 - ASM-53 (unverified): GET order lists refunds under `purchase_units[].payments.refunds[]`. Seen in Step 10 or not at all.
-- ASM-63, ASM-65, ASM-69: held or open as registered. ASM-66 must be closed before the webhook goes live (CO-2b) or waived for the single sitting by a decision row that does not exist yet (W3, see the Verdict).
+- ASM-63, ASM-65, ASM-69: held or open as registered. ASM-66: waived for the single sitting (D-040 (3)); CO-2b is required before the webhook stays live for more than 7 days. ASM-55: waived for the sitting (D-040 (4), O-C6).
 - ASM-71 (open): hosted webhook go-live needs trust seeded at boot from the pin, a per-URL fetch budget and the exact-host pin (CO-1b review F1 to F3; lane CO-1d, W2).
 - Status: open
 
@@ -274,6 +276,12 @@ Line 718, `if (outcome.kind === 'unknown') return err({ code: 'unknown' });`, is
 with the condition false the code falls through to `readBack(d, request_id)`, and an unknown outcome
 stores no `refund_id`, so `readBackChecked` returns `err({ code: 'unknown' })` with `blocked: false` at its
 first guard, the same answer, with no write and no PayPal call. No test can tell them apart.
+
+981, 1113 and 1168 are also equivalent: they change a return value that no caller reads (`book` at line 838;
+`closeRefundUnknown` at lines 1036 and 1047). 456 and 1074 drop a row lock; they show only with concurrent
+writers on real Postgres (ASM-55, waived for the sitting by D-040 (4)). 296, 753 and 780 are guards or a
+timing constant with no money effect. 802 changes only whether a blocked order read is retried, and is
+fail-safe.
 
 ### Machine checks, CO-Gb
 

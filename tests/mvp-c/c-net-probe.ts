@@ -55,6 +55,20 @@ export const bypassShapes = {
   'dns.promises.lookup': (): boolean => attempt(() => dns.promises.lookup('localhost')),
   'node:dns/promises named lookup': (): boolean => attempt(() => lookupNamed('localhost')),
   'node:dns/promises default lookup': (): boolean => attempt(() => dnsPromises.lookup('localhost')),
+  // a Resolver asks its name servers directly (c-ares), not the hosts file: point it at loopback port 1
+  // first, so even an unguarded call is refused on this machine and no query leaves it
+  'dns.Resolver resolve4': (): boolean =>
+    attempt(() => {
+      const r = new dns.Resolver();
+      r.setServers([`${HOST}:${PORT}`]);
+      return r.resolve4('localhost', noop);
+    }),
+  'dns.promises.Resolver resolve4': (): boolean =>
+    attempt(() => {
+      const r = new dnsPromises.Resolver();
+      r.setServers([`${HOST}:${PORT}`]);
+      return r.resolve4('localhost');
+    }),
   'http2.connect': (): boolean => attempt(() => http2.connect(`http://${HOST}:${PORT}`)),
   'http.Agent createConnection': (): boolean =>
     attempt(() => new http.Agent().createConnection({ host: HOST, port: PORT })),
@@ -88,4 +102,9 @@ export async function openRaw(raw: RawNet): Promise<void> {
   keep(Reflect.apply(raw.http2Connect, http2, [`http://${HOST}:${PORT}`]));
   await new Promise((r) => setTimeout(r, 50)); // let the refusals arrive
   for (const m of made) release(m);
+}
+
+/** The shared module object itself (what `require('node:dns')` or `process.getBuiltinModule` hands out). */
+export function viaSharedDns(shared: unknown): boolean {
+  return attempt(() => (shared as typeof dns).lookup('localhost', noop));
 }
