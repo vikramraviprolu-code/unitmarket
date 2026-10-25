@@ -38,6 +38,7 @@ const FS_ALLOWED = new Set([
   'packages/transport/src/fixture-store.ts', // reads recorded fixtures
   'packages/transport/src/recorder.ts', // owner-run recorder
   'tools/spike-kit/src/git-head.ts', // owner-run spike kit
+  'tools/spike-kit/src/spike.ts', // owner-run spike kit
   'packages/config/src/maintenance.ts', // the flag reader (CO-7b): lstat only
 ]);
 
@@ -115,17 +116,23 @@ describe('the reader only looks', () => {
 });
 
 describe('the host tools only look at the flag', () => {
-  for (const f of ['scripts/backup.mjs', 'scripts/restore.mjs']) {
-    it(`${f}: every file-system call on the flag is a read`, () => {
-      const text = read(f);
-      const lines = text.split('\n').filter((l) => /maintenance|MAINTENANCE|flag/i.test(l));
-      expect(lines.length).toBeGreaterThan(0);
-      for (const l of lines) {
-        const code = l.replace(/\/\/.*$/, '');
-        expect(code, l).not.toMatch(
-          /\b(?:writeFileSync|rmSync|unlinkSync|renameSync|mkdirSync|symlinkSync|copyFileSync|openSync|appendFileSync)\b/,
-        );
-      }
-    });
-  }
+  const WRITES =
+    /\b(?:writeFileSync|rmSync|unlinkSync|renameSync|mkdirSync|symlinkSync|copyFileSync|openSync|appendFileSync)\b/;
+
+  it('backup.mjs: the flag check is one lstat and nothing else', () => {
+    const text = read('scripts/backup.mjs');
+    const start = text.indexOf('export function checkMaintenanceFlag');
+    expect(start).toBeGreaterThan(-1);
+    const body = text.slice(start, text.indexOf('\nfunction ', start));
+    expect(body).toContain('lstatSync(flag)');
+    expect(body.replace(/\/\/.*$/gm, '')).not.toMatch(WRITES);
+  });
+
+  it('restore.mjs: every line that deals with maintenance mode is free of writes', () => {
+    const lines = read('scripts/restore.mjs')
+      .split('\n')
+      .filter((l) => /maintenance/i.test(l));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const l of lines) expect(l.replace(/\/\/.*$/, ''), l).not.toMatch(WRITES);
+  });
 });

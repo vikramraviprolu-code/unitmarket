@@ -17,6 +17,14 @@ export const routeMeta: RouteMeta = {
 export const GET = withRoute(routeMeta, z.object({}).strict(), async () => {
   const h = await (await app()).engine.health();
   return h.ok
-    ? { status: 200, body: { ok: true, environment: h.environment } }
+    ? {
+        status: 200,
+        // CO-7b: in maintenance mode the app is up with its database deliberately closed.
+        body: {
+          ok: true,
+          environment: h.environment,
+          ...(h.maintenance ? { maintenance: true } : {}),
+        },
+      }
     : { status: 503, code: 'unhealthy', message: 'The service is not ready.' };
 })(securityDeps);

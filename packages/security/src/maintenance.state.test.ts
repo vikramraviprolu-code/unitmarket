@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { MAINTENANCE_ROUTES, withRoute } from './route';
 import type { RouteMeta, SecurityDeps } from './route';
-import { ORIGIN, makeRig } from './test-support';
+import { ORIGIN, makeRig, secret } from './test-support';
 
 // CO-7b (D-037): in maintenance mode the route wrapper answers 503 `maintenance` before it reads the
 // method, the cookie, the body, the limiter or the database, for every route except the health check.
@@ -136,7 +136,11 @@ describe('maintenance gate in withRoute', () => {
     const res = await withRoute(meta('/healthz', { max_body_bytes: 1024 }), empty, async () => {
       ran += 1;
       return { status: 200, body: { ok: true, maintenance: true } };
-    })(untouchable())(new Request(`${ORIGIN}/healthz`));
+      // The ip hash needs the session secret; the database stays untouchable, and a cookie is sent to
+      // prove that no session is looked up in maintenance mode.
+    })(untouchable({ session_secret: secret('maintenance-test-secret-0123456789abcdef') }))(
+      new Request(`${ORIGIN}/healthz`, { headers: { cookie: 'ums_session=ses_garbage.x' } }),
+    );
     expect(ran).toBe(1);
     expect(res.status).toBe(200);
   });

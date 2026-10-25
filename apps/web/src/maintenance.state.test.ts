@@ -6,26 +6,34 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { openDatabase } from '@umsbx/db';
-import { startLoop } from '@umsbx/jobs';
 import { createApp, installApp } from '../composition.server';
 import type { App } from '../composition.server';
-import { buildOutbound } from './server/outbound.server';
 import { testEnv } from './support';
 
+// Spies on what maintenance mode must never reach: the database and the job loop. They wrap the real
+// functions, so the "without the flag" tests still run the real boot. This folder may not import
+// @umsbx/db or @umsbx/jobs, and the seal pins (lint SEAL2/SEAL3, tests/mvp-b/sealed-callers.test.ts)
+// allow no new file to name the outbound builder or touch the transport package, so "no transport and
+// no Wire" is checked through `app.outbound` (null unless the builder ran) and the log lines the
+// transport would write.
+const spies = vi.hoisted(() => ({
+  openDatabase: vi.fn(),
+  startLoop: vi.fn(),
+}));
+type Fn = (...a: unknown[]) => unknown;
 vi.mock('server-only', () => ({}));
 vi.mock('@umsbx/db', async (orig) => {
-  const m = await orig<typeof import('@umsbx/db')>();
-  return { ...m, openDatabase: vi.fn(m.openDatabase) };
+  const m = (await orig()) as Record<string, Fn>;
+  spies.openDatabase.mockImplementation(m['openDatabase'] as Fn);
+  return { ...m, openDatabase: spies.openDatabase };
 });
 vi.mock('@umsbx/jobs', async (orig) => {
-  const m = await orig<typeof import('@umsbx/jobs')>();
-  return { ...m, startLoop: vi.fn(m.startLoop) };
+  const m = (await orig()) as Record<string, Fn>;
+  spies.startLoop.mockImplementation(m['startLoop'] as Fn);
+  return { ...m, startLoop: spies.startLoop };
 });
-vi.mock('./server/outbound.server', async (orig) => {
-  const m = await orig<typeof import('./server/outbound.server')>();
-  return { ...m, buildOutbound: vi.fn(m.buildOutbound) };
-});
+const openDatabase = spies.openDatabase;
+const startLoop = spies.startLoop;
 
 const SB = {
   UMS_MODE: 'sandbox',
@@ -45,9 +53,8 @@ beforeEach(() => {
   pglite = join(tmp, 'pglite');
   flag = join(tmp, 'ums-maintenance');
   lines.length = 0;
-  vi.mocked(openDatabase).mockClear();
-  vi.mocked(startLoop).mockClear();
-  vi.mocked(buildOutbound).mockClear();
+  openDatabase.mockClear();
+  startLoop.mockClear();
 });
 afterEach(async () => {
   await app?.close();
@@ -71,7 +78,8 @@ async function boot(over: Record<string, string> = {}, withFlag = true): Promise
 const untouched = (): void => {
   expect(openDatabase).not.toHaveBeenCalled();
   expect(startLoop).not.toHaveBeenCalled();
-  expect(buildOutbound).not.toHaveBeenCalled();
+  // No transport, selfcheck or dry-run send was ever reached (they log when they are).
+  expect(lines.filter((l) => /transport\.|dryrun\./.test(l))).toEqual([]);
   expect(existsSync(pglite)).toBe(false);
   expect(existsSync(join(pglite, '.ums-open.lock'))).toBe(false);
 };
@@ -181,7 +189,7 @@ describe('without the flag, boot is unchanged', () => {
     expect(a.maintenance).toBe(false);
     await a.ready();
     expect(openDatabase).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(openDatabase).mock.calls[0]?.[0]).toEqual({
+    expect(openDatabase.mock.calls[0]?.[0]).toEqual({
       kind: 'pglite-disk',
       dir: pglite,
     });

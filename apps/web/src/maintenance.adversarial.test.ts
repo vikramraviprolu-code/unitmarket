@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp, installApp } from '../composition.server';
 import type { App } from '../composition.server';
@@ -37,14 +37,36 @@ function routeFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir).sort()) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) routeFiles(p, out);
-    else if (/^route\.[cm]?[jt]sx?$/.test(name)) out.push(p);
+    else if (/^route\.[cm]?[jt]sx?$/.test(name))
+      out.push(relative(APP_DIR, p).split(sep).join('/'));
   }
   return out;
 }
 const FILES = routeFiles(APP_DIR);
+// Static specifiers (the lint rule bans computed imports). The test below fails when this list and the
+// route files on disk differ, so a new route cannot escape the walk.
+const IMPORTERS: Record<string, () => Promise<unknown>> = {
+  'api/approvals/route.ts': () => import('./app/api/approvals/route'),
+  'api/briefs/route.ts': () => import('./app/api/briefs/route'),
+  'api/cases/route.ts': () => import('./app/api/cases/route'),
+  'api/discover/route.ts': () => import('./app/api/discover/route'),
+  'api/library/[id]/link/route.ts': () => import('./app/api/library/[id]/link/route'),
+  'api/library/route.ts': () => import('./app/api/library/route'),
+  'api/ops/stop/route.ts': () => import('./app/api/ops/stop/route'),
+  'api/orders/[ref]/checkout/route.ts': () => import('./app/api/orders/[ref]/checkout/route'),
+  'api/orders/[ref]/route.ts': () => import('./app/api/orders/[ref]/route'),
+  'api/orders/route.ts': () => import('./app/api/orders/route'),
+  'api/quotes/route.ts': () => import('./app/api/quotes/route'),
+  'api/receipts/[order]/route.ts': () => import('./app/api/receipts/[order]/route'),
+  'api/refunds/[id]/cancel/route.ts': () => import('./app/api/refunds/[id]/cancel/route'),
+  'api/refunds/route.ts': () => import('./app/api/refunds/route'),
+  'api/session/route.ts': () => import('./app/api/session/route'),
+  'api/webhooks/paypal/route.ts': () => import('./app/api/webhooks/paypal/route'),
+  'c/[token]/route.ts': () => import('./app/c/[token]/route'),
+  'healthz/route.ts': () => import('./app/healthz/route'),
+};
 const load = async (): Promise<Mod[]> =>
-  Promise.all(FILES.map(async (f) => (await import(/* @vite-ignore */ f)) as Mod));
-
+  Promise.all(FILES.map(async (f) => (await IMPORTERS[f]?.()) as Mod));
 const paramsOf = (path: string): Record<string, string> =>
   Object.fromEntries([...path.matchAll(/\[(\w+)\]/g)].map((m) => [m[1] as string, 'x1']));
 const urlOf = (path: string): string => `${ORIGIN}${path.replace(/\[(\w+)\]/g, 'x1')}`;
@@ -92,6 +114,7 @@ async function hitAll(mods: Mod[], sessions: Array<Session | null>): Promise<Res
 
 describe('the walk is not empty', () => {
   it('finds every route module and each declares routeMeta', async () => {
+    expect([...FILES].sort()).toEqual(Object.keys(IMPORTERS).sort());
     expect(FILES.length).toBeGreaterThanOrEqual(18);
     const mods = await load();
     for (const m of mods) expect(m.routeMeta.path).toMatch(/^\//);

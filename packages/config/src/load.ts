@@ -2,11 +2,13 @@
 // plain object, so tests never touch the real environment.
 import { err, ok } from '@umsbx/contracts';
 import type { Result } from '@umsbx/contracts';
+import { posix } from 'node:path';
 import type { BootRefusal } from './refusal';
 import { BOOT_REFUSAL_EXIT_CODE, refusalLine } from './refusal';
 import { makeSecret } from './secret';
 import {
   KNOWN_CORRIDORS,
+  MAINTENANCE_FLAG_NAME,
   MAX_TOTP_OPERATORS,
   MERCHANT_ID_PATTERN,
   MIN_SECRET_BYTES,
@@ -348,6 +350,24 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
   const totp = parseOperatorTotpKeys(val(env, 'UMS_OPERATOR_TOTP_KEYS'));
   if (!totp.ok) return err<BootRefusal>(totp.error);
 
+  // 15. the maintenance flag path (CO-7b, D-037): optional; the value is read as written (no trimming),
+  // an absolute normal path named ums-maintenance. With a PGlite folder on disk it must sit beside that
+  // folder, never inside it (a restore replaces the folder, and the flag must survive that). The error
+  // names the variable, never the value.
+  const rawFlag = env['UMS_MAINTENANCE_FLAG'];
+  let maintenance_flag: string | null = null;
+  if (rawFlag !== undefined && rawFlag.trim() !== '') {
+    const normal =
+      /^\/[\x21-\x7E]+$/.test(rawFlag) &&
+      posix.normalize(rawFlag) === rawFlag &&
+      posix.basename(rawFlag) === MAINTENANCE_FLAG_NAME &&
+      !rawFlag.endsWith('/');
+    const beside =
+      db.kind !== 'pglite-disk' || posix.dirname(rawFlag) === posix.dirname(posix.resolve(db.dir));
+    if (!normal || !beside) return refuse('invalid_value', 'UMS_MAINTENANCE_FLAG');
+    maintenance_flag = rawFlag;
+  }
+
   return ok<Config>({
     mode,
     connect,
@@ -364,6 +384,7 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
     public_origin,
     corridors,
     trusted_proxies,
+    maintenance_flag,
     env_label: mode === 'sandbox' ? 'Sandbox' : 'Dry run',
     node_env,
   });
