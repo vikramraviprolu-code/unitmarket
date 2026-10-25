@@ -4,7 +4,13 @@ import { useRouter } from 'next/navigation';
 import { postJson } from '../../lib/client-api';
 import { formatMinor } from '../../lib/format';
 import { parseAmount } from '../../lib/refund-amount';
-import { openRequestWaitText, refundFailureView } from '../../lib/refund-answer';
+import {
+  answerTone,
+  openRequestWaitText,
+  refreshAfterFailure,
+  refundFailureView,
+  unitLine,
+} from '../../lib/refund-answer';
 import type { RefundOverview, RefundUnitView } from '../../lib/view-types';
 import { ErrorState } from '../../ui/ErrorState';
 
@@ -14,10 +20,12 @@ import { ErrorState } from '../../ui/ErrorState';
 // after an answer the page is re-read, which brings a fresh key, so a second click cannot repeat a
 // refund. One live region announces the answer (A11Y-4); errors say what to do next (A11Y-7).
 
-const unitLabel = (u: RefundUnitView): string =>
-  u.titles.length > 0 ? u.titles.join(', ') : u.order_ref;
+// The result line names the order too: two cards can share a title (CO-8c).
+const unitLabel = (u: RefundUnitView): string => unitLine(u.titles, u.order_ref);
 
-type Answer = { kind: 'ok'; message: string } | { kind: 'error'; title: string; message: string };
+type Answer =
+  | { kind: 'ok'; message: string; tone: 'success' | 'warn'; label: string | null }
+  | { kind: 'error'; title: string; message: string };
 
 export function RefundPanel({ overview, keys }: { overview: RefundOverview; keys: string[] }) {
   const router = useRouter();
@@ -34,7 +42,7 @@ export function RefundPanel({ overview, keys }: { overview: RefundOverview; keys
   async function send(unit: RefundUnitView, key: string, amount: number | null, reason: string) {
     setBusy(unit.unit_id);
     setAnswer(null);
-    const r = await postJson<{ message: string }>(
+    const r = await postJson<{ message: string; state?: string }>(
       '/api/refunds',
       { unit_id: unit.unit_id, amount_minor: amount, reason },
       { 'idempotency-key': key },
@@ -44,11 +52,19 @@ export function RefundPanel({ overview, keys }: { overview: RefundOverview; keys
       // Only a clear refusal says nothing was refunded; any other failure may hide a refund that was
       // made (CO-8b M1). The key is kept either way: a retry with it replays, it cannot refund twice.
       setAnswer({ kind: 'error', ...refundFailureView(r) });
+      // Only refunds_paused_midway: the open request and the paused banner are new, and the message
+      // says to withdraw the request on this page. Never for an unknown outcome: a refresh brings a
+      // new Idempotency-Key and removes the replay protection (CO-8c).
+      if (refreshAfterFailure(r.code)) router.refresh();
       return false;
     }
     // The key is spent: the re-read page brings a new one.
     setUsedKeys((k) => [...k, key]);
-    setAnswer({ kind: 'ok', message: `${unitLabel(unit)}: ${r.data.message}` });
+    setAnswer({
+      kind: 'ok',
+      message: `${unitLabel(unit)}: ${r.data.message}`,
+      ...answerTone(r.data.state),
+    });
     router.refresh();
     return true;
   }
@@ -68,6 +84,7 @@ export function RefundPanel({ overview, keys }: { overview: RefundOverview; keys
     setAnswer({
       kind: 'ok',
       message: `${unitLabel(unit)}: the refund request was withdrawn. Nothing was refunded.`,
+      ...answerTone('completed'),
     });
     router.refresh();
   }
@@ -94,7 +111,14 @@ export function RefundPanel({ overview, keys }: { overview: RefundOverview; keys
         aria-atomic="true"
         data-testid="refund-result"
       >
-        {answer?.kind === 'ok' ? <p className="banner banner-success">{answer.message}</p> : null}
+        {answer?.kind === 'ok' ? (
+          <p className={answer.tone === 'success' ? 'banner banner-success' : 'banner banner-warn'}>
+            {answer.label !== null ? (
+              <strong className="banner-title">{answer.label}</strong>
+            ) : null}
+            {answer.message}
+          </p>
+        ) : null}
       </div>
       {answer?.kind === 'error' ? (
         <ErrorState title={answer.title}>{answer.message}</ErrorState>
