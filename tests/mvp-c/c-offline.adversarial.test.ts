@@ -6,11 +6,13 @@
 // called" and not "never watched". The C-11 restart test (scripts/c11-restart.integration.test.ts)
 // spawns children; each child traces the same functions inside its own process and that test asserts
 // they report none.
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { bypassShapes, netViews, openRaw } from './c-net-probe';
+import type { RawNet } from './c-net-probe';
 
 vi.mock('server-only', () => ({}));
 
-const { trace, patch, blocked, fetchStub } = vi.hoisted(() => {
+const { trace, patch, blocked, fetchStub, hooks } = vi.hoisted(() => {
   const trace = { calls: [] as string[] };
   const blocked =
     (label: string) =>
@@ -30,7 +32,13 @@ const { trace, patch, blocked, fetchStub } = vi.hoisted(() => {
     trace.calls.push(`fetch ${String(a[0])}`);
     return Promise.reject(new Error('fetch: the C run is offline'));
   };
-  return { trace, patch, blocked, fetchStub };
+  // Filled by the interception (CO-Gb): the unpatched functions, and a switch that lets the
+  // Socket.prototype.connect guard call through, for the channel proof only.
+  const hooks = {
+    raw: undefined as RawNet | undefined,
+    passThrough: undefined as ((on: boolean) => void) | undefined,
+  };
+  return { trace, patch, blocked, fetchStub, hooks };
 });
 vi.stubGlobal('fetch', fetchStub);
 vi.mock('node:net', patch(['connect', 'createConnection'], 'net'));
@@ -50,6 +58,51 @@ describe('C-offline interception', () => {
     );
     expect(trace.calls).toEqual(['probe.fn', 'fetch https://example.invalid/']);
     trace.calls.length = 0; // nothing else has run yet: this is the first test of the file
+  });
+});
+
+// CO-Gb (gate review M1). Replacing module exports misses connections opened another way, so the
+// interception is also a set of guards on the classes and a subscription to the channel Node publishes
+// whenever a client socket is created. These tests open each way through c-net-probe.ts (a module that
+// imports the network modules as product code does) and expect the trace to record it. Nothing leaves
+// the machine: each probe is refused by the guard, and the channel proof uses loopback port 1.
+describe('C-offline interception, bypass shapes', () => {
+  afterEach(() => {
+    trace.calls.length = 0;
+  });
+  it('C-offline a helper module sees the patched node:net: default, named and namespace imports record and are refused', () => {
+    for (const [view, open] of Object.entries(netViews)) {
+      trace.calls.length = 0;
+      expect(open(), view).toBe(true);
+      expect(trace.calls, view).toEqual(['net.connect']);
+    }
+  });
+  const SHAPES: [keyof typeof bypassShapes, string][] = [
+    ['net.Socket.prototype.connect', 'net.Socket.prototype.connect'],
+    ['dns.promises.lookup', 'dns.promises.lookup'],
+    ['node:dns/promises named lookup', 'dns/promises.lookup'],
+    ['node:dns/promises default lookup', 'dns.promises.lookup'],
+    ['http2.connect', 'http2.connect'],
+    ['http.Agent createConnection', 'http.Agent.prototype.createConnection'],
+    ['https.Agent createConnection', 'https.Agent.prototype.createConnection'],
+  ];
+  it.each(SHAPES)(
+    'C-offline bypass shape %s is recorded by the harness and refused',
+    (shape, label) => {
+      expect(bypassShapes[shape](), `${shape} was not refused`).toBe(true);
+      expect(trace.calls).toEqual([label]);
+    },
+  );
+  it('C-offline the net.client.socket channel records real client sockets that skip the guards (unpatched functions, closed loopback port)', async () => {
+    expect(hooks.raw, 'the interception keeps the unpatched functions').toBeDefined();
+    expect(hooks.passThrough, 'the interception can let the guard call through').toBeDefined();
+    hooks.passThrough?.(true);
+    try {
+      if (hooks.raw !== undefined) await openRaw(hooks.raw);
+    } finally {
+      hooks.passThrough?.(false);
+    }
+    expect(trace.calls).toEqual(['net.client.socket', 'net.client.socket', 'net.client.socket']);
   });
 });
 

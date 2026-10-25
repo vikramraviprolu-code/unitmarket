@@ -1459,6 +1459,12 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/no-package-escape'],
   },
   {
+    files: ['tests/mvp-c/c-net-probe.ts'],
+    reason:
+      'CO-Gb (gate review M1): the canary helper imports node:net, dns, dns/promises, http, https and http2 the way product code does, to show that the C-offline interception sees every way to open a connection. Every probe targets loopback port 1 or the name localhost and is refused by the interception; no request leaves the machine. no-restricted-imports only',
+    off: ['no-restricted-imports'],
+  },
+  {
     files: ['apps/web/src/lib/client-api.ts'],
     reason: 'browser same-origin fetch to this app JSON API; S2 targets payment network clients',
     off: ['no-restricted-globals'],

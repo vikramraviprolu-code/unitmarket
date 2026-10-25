@@ -280,6 +280,8 @@ function world() {
     send(m: Msg): void;
     exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
     traces: string[][];
+    /** CO-Gb L1: every network attempt the child made, as it made it (one message each, live). */
+    net: string[];
   }
   function start(): Running {
     // empty environment and no Node flags: sandbox mode refuses loader flags and proxy variables
@@ -292,6 +294,7 @@ function world() {
     const waiters: { t: string; ok: (m: Msg) => void; bad: (e: Error) => void }[] = [];
     const inbox: Msg[] = [];
     const traces: string[][] = [];
+    const net: string[] = [];
     let stderr = '';
     child.stderr?.on('data', (d: Buffer) => (stderr += d.toString()));
     child.stdout?.on('data', () => undefined);
@@ -306,6 +309,10 @@ function world() {
     };
     child.on('message', (raw) => {
       const m = raw as Msg;
+      if (m.t === 'net') {
+        net.push(String(m['label']));
+        return;
+      }
       if (m.t === 'wire') {
         const answer = paypal(m['req'] as WireReq, child);
         if (answer !== null && child.connected)
@@ -324,6 +331,7 @@ function world() {
     return {
       child,
       traces,
+      net,
       exited,
       send: (m) => void child.send(m),
       waitFor(t, ms = 60_000) {
@@ -352,9 +360,46 @@ function world() {
   };
 }
 
-const noSockets = (traces: string[][]) => expect(traces.flat()).toEqual([]);
+/** The child's final reports and the live messages it sent while it ran (a killed child sent only those). */
+const noSockets = (...children: Array<{ traces: string[][]; net: string[] }>) =>
+  expect(children.flatMap((c) => [...c.traces.flat(), ...c.net])).toEqual([]);
+
+// Every way a child could open a connection or resolve a name, as the child's own `probe-net` message
+// tries them (CO-Gb L1). Each is refused by the child's wrapper and sent to the parent when it happens.
+const PROBED = [
+  'net.connect',
+  'net.createConnection',
+  'tls.connect',
+  'http.request',
+  'http.get',
+  'https.request',
+  'https.get',
+  'dns.lookup',
+  'dns.resolve',
+  'net.Socket.prototype.connect',
+  'dns.promises.lookup',
+  'dns.promises.resolve',
+  'http2.connect',
+  'http.Agent.prototype.createConnection',
+  'https.Agent.prototype.createConnection',
+  'fetch',
+];
 
 describe('C-11 restart_mid_capture', () => {
+  it('C-11 the children watch the network while they run: every way to open a connection is refused and sent live, before any report', async () => {
+    const w = world();
+    const a = w.start();
+    await a.waitFor('up');
+    a.send({ t: 'probe-net' });
+    const done = await a.waitFor('probe-done', 15_000);
+    expect(done['refused']).toBe(PROBED.length);
+    // the live messages alone (no `ready` or `bye` report has been sent) name every probe, in order
+    expect(a.net).toEqual(PROBED);
+    expect(a.traces).toEqual([]);
+    a.child.kill('SIGKILL');
+    await a.exited;
+  }, 60_000);
+
   it('C-11 kill -9 between the capture send and its answer: after the restart the order is terminal or frozen within two job passes, with one sale', async () => {
     const w = world();
 
@@ -397,7 +442,7 @@ describe('C-11 restart_mid_capture', () => {
     b.send({ t: 'exit' });
     await b.waitFor('bye');
     await b.exited;
-    noSockets([...a.traces, ...b.traces]);
+    noSockets(a, b);
 
     // run 3: another restart changes nothing
     const c = w.start();
@@ -411,6 +456,6 @@ describe('C-11 restart_mid_capture', () => {
     c.send({ t: 'exit' });
     await c.waitFor('bye');
     await c.exited;
-    noSockets(c.traces);
+    noSockets(c);
   }, 300_000);
 });

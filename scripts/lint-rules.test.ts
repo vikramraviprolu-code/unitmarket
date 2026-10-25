@@ -1161,6 +1161,8 @@ describe('named exemptions (D-015)', () => {
         'tests/mvp-c/c08-c09-operator-headers.integration.test.ts -> sbx/no-package-escape',
         'tests/mvp-c/c12-race.integration.test.ts -> sbx/no-package-escape',
         'tests/mvp-c/c-offline.adversarial.test.ts -> sbx/no-package-escape',
+        // CO-Gb: the C-offline canary helper imports the network modules to show what the interception sees.
+        'tests/mvp-c/c-net-probe.ts -> no-restricted-imports',
         'apps/web/src/lib/client-api.ts -> no-restricted-globals',
         'packages/paypal/src/paypal.sandbox.contract.test.ts -> no-restricted-syntax,sbx/no-global-alias',
         'domain/library/src/world.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
