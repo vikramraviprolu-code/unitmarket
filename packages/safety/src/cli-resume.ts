@@ -20,10 +20,12 @@ const CI_MARKERS = ['GITHUB_ACTIONS'] as const;
 const set = (v: string | undefined): boolean => v !== undefined && v !== '';
 
 /**
- * `pnpm safety:resume` (BU-2, O-B6): turns paypal_outbound back on. In sandbox mode nothing else can:
- * setSwitch needs an operator with a second factor, and the web sign-in never gives one. The owner at
- * a terminal on their own machine, with an active approval row for the configured reference and the
- * scope typed back, counts as that second factor (the same basis as safety:approve, ASM-31).
+ * `pnpm safety:resume` (BU-2, O-B6): turns paypal_outbound back on. setSwitch needs an operator with a
+ * second factor. The web sign-in gives one only with a right authenticator code (CO-6), and no web
+ * route turns the switch on (the ops button only stops), so in sandbox mode this command is the way.
+ * The owner at a terminal on their own machine, with an active approval row for the configured
+ * reference and the scope typed back, counts as that second factor (the same basis as safety:approve,
+ * ASM-31). On the host it runs in the Render shell while the app is in maintenance mode (D-037, CO-7b).
  *
  * Refuses, before it asks anything, without a terminal, in CI, and in an AI session. Then:
  * the approval row for the configured ref must be active now and be for the scope the app serves;

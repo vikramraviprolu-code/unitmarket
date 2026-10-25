@@ -5,3 +5,5 @@ export type { BootRefusal } from './refusal';
 export { BOOT_REFUSAL_EXIT_CODE } from './refusal';
 export { bootOrExit, loadConfig, loadConfigFromProcess, terminalEnv } from './load';
 export { makeSecret } from './secret';
+export { readMaintenanceFlag } from './maintenance';
+export type { MaintenanceReading } from './maintenance';

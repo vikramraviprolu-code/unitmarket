@@ -1,6 +1,12 @@
 // Offline restore of a backup made by scripts/backup.mjs (CO-10, nfr.md REL-5, REL-7).
 //
-//   node scripts/restore.mjs --from <backup folder> --dir <empty dir> [--sql] [--allow-live-approvals]
+//   node scripts/restore.mjs --from <backup folder> --dir <empty dir> [--sql] [--allow-live-approvals] [--maintenance]
+//
+// ON THE HOST (D-037, CO-7b) pass --maintenance: the target is where the app will find its data, so the
+// maintenance flag file ums-maintenance must be a plain file beside the target, which means the app was
+// started in maintenance mode and a restart would not open the database. The flag is only looked at;
+// this command never creates, changes or removes it. Without --maintenance nothing about it is checked
+// (the drill on a laptop).
 //
 // Refuses a target that is not empty, checks the size and sha256 of both files against the manifest,
 // then either loads the tarball into the target (default) or, with --sql, migrates a fresh PGlite
@@ -36,6 +42,7 @@ import { pathToFileURL } from 'node:url';
 import {
   LOCK_FILE,
   MANIFEST_FORMAT,
+  checkMaintenanceFlag,
   REPO_ROOT,
   Refused,
   USAGE as BACKUP_NOTES,
@@ -46,7 +53,7 @@ import {
 } from './backup.mjs';
 
 const NOTES = BACKUP_NOTES.split('\n').slice(2).join('\n');
-export const USAGE = `usage: restore.mjs --from <folder> --dir <empty dir> [--sql] [--allow-live-approvals]\n${NOTES}`;
+export const USAGE = `usage: restore.mjs --from <folder> --dir <empty dir> [--sql] [--allow-live-approvals] [--maintenance]\n${NOTES}`;
 export const OUTBOUND_NOTE =
   'kept; switching paypal_outbound on with one of these refs re-activates it';
 
@@ -107,12 +114,13 @@ function compareCounts(expected, actual) {
   }
 }
 
-/** @param {{ from: string, dir: string, sql?: boolean, allowLiveApprovals?: boolean, clock?: { now(): Date }, warn?: (message: string) => void, onPoint?: (point: string) => void | Promise<void>, signals?: { once(sig: string, fn: () => void): unknown, off(sig: string, fn: () => void): unknown }, exit?: (code: number) => void }} options */
+/** @param {{ from: string, dir: string, sql?: boolean, allowLiveApprovals?: boolean, maintenance?: boolean, clock?: { now(): Date }, warn?: (message: string) => void, onPoint?: (point: string) => void | Promise<void>, signals?: { once(sig: string, fn: () => void): unknown, off(sig: string, fn: () => void): unknown }, exit?: (code: number) => void }} options */
 export async function runRestore({
   from,
   dir,
   sql = false,
   allowLiveApprovals = false,
+  maintenance = false,
   clock,
   warn = (message) => void message,
   onPoint = () => {},
@@ -125,6 +133,7 @@ export async function runRestore({
   if (!from || !dir) throw new Refused(USAGE);
   const source = resolve(from);
   const target = resolve(dir);
+  if (maintenance) checkMaintenanceFlag(target);
   if (!existsSync(source) || !statSync(source).isDirectory()) {
     throw new Refused(`${source} is not a folder`);
   }
@@ -277,6 +286,10 @@ export function parseArgs(argv) {
       args.allowLiveApprovals = true;
       continue;
     }
+    if (flag === '--maintenance') {
+      args.maintenance = true;
+      continue;
+    }
     if (flag !== '--from' && flag !== '--dir') return null;
     const value = argv[i + 1];
     if (value === undefined || value.startsWith('--')) return null;
@@ -298,6 +311,7 @@ export async function main(argv, io = { out: process.stdout, err: process.stderr
       dir: args.dir,
       sql: args.sql,
       allowLiveApprovals: args.allowLiveApprovals,
+      maintenance: args.maintenance,
       warn: (m) => io.err.write(`${m}\n`),
     });
     const rows = Object.values(res.tables).reduce((a, b) => a + b, 0);

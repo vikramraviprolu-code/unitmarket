@@ -38,7 +38,12 @@ import type {
   Transport,
 } from '@umsbx/contracts';
 import { err, ok } from '@umsbx/contracts';
-import { BOOT_REFUSAL_EXIT_CODE, loadConfig, loadConfigFromProcess } from '@umsbx/config';
+import {
+  BOOT_REFUSAL_EXIT_CODE,
+  loadConfig,
+  loadConfigFromProcess,
+  readMaintenanceFlag,
+} from '@umsbx/config';
 export { BOOT_REFUSAL_EXIT_CODE };
 import type { Config } from '@umsbx/config';
 import { migrate, openDatabase } from '@umsbx/db';
@@ -308,9 +313,28 @@ export function orderMessage(status: string, unit_statuses: string[]): string {
   }
 }
 
+/**
+ * CO-7b (D-037): thrown by anything that would open the database or build the transport while the app
+ * is in maintenance mode. The database is not opened, so the single-opener lock stays free for
+ * `pnpm safety:approve` and `pnpm safety:resume` in the host shell.
+ */
+export class MaintenanceError extends Error {
+  constructor() {
+    super('the app is in maintenance mode: the database is not open');
+    this.name = 'MaintenanceError';
+  }
+}
+
 export interface App {
   readonly config: Config;
   readonly environment: EnvironmentLabel;
+  /**
+   * CO-7b (D-037): true when the host's maintenance flag file was there when the app was built. Decided
+   * once and never changed while the process lives: the database is not opened, the job loop is not
+   * started and no outbound or Wire is built; every route but the health check answers 503. Leaving the
+   * mode takes a restart after the owner removed the flag in the host shell.
+   */
+  readonly maintenance: boolean;
   /** Resolves after the database is open, migrated and seeded. */
   ready(): Promise<void>;
   /**
@@ -405,6 +429,8 @@ export interface Engine {
     ok: boolean;
     environment: EnvironmentLabel;
     db: boolean;
+    /** True in maintenance mode: the app is up, the database is deliberately not open (CO-7b). */
+    maintenance: boolean;
     last_pass_at: string | null;
     due: number;
   }>;
@@ -486,11 +512,17 @@ function buildApp(config: Config, opts: AppOptions): App {
           process.stdout.write(`${line}\n`);
         });
   const log: Logger = createLogger(sink, { env_label: environment }, clock);
+  // CO-7b (D-037): read once, here, and latched for the life of the process. Reading only; the owner
+  // creates and removes the file in the host shell and nothing in the app writes it.
+  const flag = readMaintenanceFlag(config.maintenance_flag);
+  const maintenance = flag.on;
+  if (flag.on) log.log({ msg: 'maintenance.on', level: 'warn', fields: { why: flag.why } });
   const audit: AuditSink = createAuditSink(ids, clock);
 
   // --- lazy database -------------------------------------------------------------------------
   let driver: Promise<SqlDriver> | null = null;
   const open = (): Promise<SqlDriver> => {
+    if (maintenance) return Promise.reject(new MaintenanceError());
     driver ??= (async () => {
       if (config.db.kind === 'postgres') throw new Error('postgres is not wired in MVP-A');
       const d = await openDatabase(
@@ -563,7 +595,7 @@ function buildApp(config: Config, opts: AppOptions): App {
 
   // --- sandbox outbound (BU-2): built only in sandbox mode; it answers blocked until all locks open ---
   const outbound: Outbound | null =
-    config.mode === 'sandbox'
+    config.mode === 'sandbox' && !maintenance
       ? buildOutbound({
           config,
           db,
@@ -600,6 +632,7 @@ function buildApp(config: Config, opts: AppOptions): App {
   const dryModel = createDryRunModel(clock, { own_merchant_id: config.own_merchant_id });
   let transport: Transport | null = null;
   const getTransport = async (): Promise<Transport> => {
+    if (maintenance) throw new MaintenanceError();
     if (transport !== null) return transport;
     if (outbound !== null) {
       logSelfcheckOnce();
@@ -1240,11 +1273,15 @@ function buildApp(config: Config, opts: AppOptions): App {
       }),
 
     async health() {
+      // CO-7b: the health check stays green so the host does not restart-loop, and says why.
+      if (maintenance)
+        return { ok: true, environment, db: false, maintenance: true, last_pass_at: null, due: 0 };
       const h = await jobsHealth(core);
       return {
         ok: h.db,
         environment,
         db: h.db,
+        maintenance: false,
         last_pass_at: h.last_pass_at,
         due: h.due,
       };
@@ -1254,7 +1291,9 @@ function buildApp(config: Config, opts: AppOptions): App {
   return {
     config,
     environment,
+    maintenance,
     ready: async () => {
+      if (maintenance) return;
       await open();
     },
     db,
@@ -1262,6 +1301,8 @@ function buildApp(config: Config, opts: AppOptions): App {
     security,
     outbound,
     startJobs: async () => {
+      // CO-7b: no recovery pass, no loop, no database. Nothing to stop.
+      if (maintenance) return { stop: async () => undefined };
       if (loop !== null) return loop;
       await open();
       logSelfcheckOnce();
@@ -1336,6 +1377,9 @@ export function getApp(): App {
  * import time: the app (and its config) is created by the first request.
  */
 export const securityDeps: SecurityDeps = {
+  get maintenance() {
+    return getApp().maintenance;
+  },
   get db() {
     return getApp().security.db;
   },
@@ -1364,6 +1408,15 @@ export const securityDeps: SecurityDeps = {
     return getApp().security.trusted_proxies ?? 0;
   },
 };
+
+/**
+ * CO-7b: is the app in maintenance mode? Read by the page middleware. The middleware may be the first
+ * caller and then builds the app (in sandbox mode that includes the outbound object; no socket is
+ * opened); normally instrumentation has built it already. It opens no database in either case.
+ */
+export function maintenanceActive(): boolean {
+  return getApp().maintenance;
+}
 
 /** Ready app for a page or handler. */
 export async function app(): Promise<App> {
