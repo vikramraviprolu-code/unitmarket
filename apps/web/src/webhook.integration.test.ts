@@ -16,8 +16,22 @@ import type { WebhookRig } from './webhook-support';
 
 vi.mock('server-only', () => ({}));
 
+// L1: the certificate pin (EXPECTED_CERT_SUBJECTS) is empty in the repository. One test needs it
+// non-empty to reach the real certificate source; the holder is read on every access.
+const pin = vi.hoisted(() => ({ subjects: [] as string[] }));
+vi.mock('@umsbx/paypal', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@umsbx/paypal')>();
+  return {
+    ...actual,
+    get EXPECTED_CERT_SUBJECTS() {
+      return pin.subjects;
+    },
+  };
+});
+
 let rig: WebhookRig;
 beforeEach(() => {
+  pin.subjects = [];
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW_MS);
 });
@@ -25,6 +39,13 @@ afterEach(async () => {
   await rig?.close();
   vi.useRealTimers();
 });
+
+/** The `outcome` of every webhook.delivery log line, in order. */
+const outcomes = (): string[] =>
+  rig.lines
+    .map((l) => JSON.parse(l) as { msg?: string; outcome?: string })
+    .filter((l) => l.msg === 'webhook.delivery')
+    .map((l) => l.outcome ?? '');
 
 const readbacks = (order_id: string) =>
   rig.app.db.query<{ state: string; next_retry_at: unknown; updated_at: unknown }>(
@@ -139,12 +160,34 @@ describe('a signed delivery', () => {
 });
 
 describe('without a certificate source of its own', () => {
-  it('under mvp_b_polling with no injected source the answer is 503 and nothing is stored', async () => {
+  it('under mvp_b_polling with no injected source and an empty pin the answer is 503 `disabled`, nothing is stored', async () => {
     rig = await bootWebhookApp({ certs: null, scope: 'mvp_b_polling' });
     const { order_id } = await seedCapturingOrder(rig.app);
     const res = await rig.post(delivery(eventBody({ id: 'WH-B-1' }), { id: 'TR-B-1' }));
     expect(res.status).toBe(503);
     expect(await res.text()).toBe('{}');
+    // the empty-pin gate answers, before any verification (the next test reaches the transport)
+    expect(outcomes()).toEqual(['disabled']);
+    expect(await rig.count('SELECT count(*) AS c FROM webhook_events')).toBe(0);
+    expect((await readbacks(order_id)).rows).toHaveLength(0);
+    expect(rig.wire).toEqual([]);
+    expect(await rig.count('SELECT count(*) AS c FROM provider_calls')).toBe(0);
+  });
+
+  it('under mvp_b_polling with a pin set and no injected source the certificate fetch is blocked: 503 `unverifiable`', async () => {
+    pin.subjects = ['CN=synthetic.invalid'];
+    rig = await bootWebhookApp({ certs: null, scope: 'mvp_b_polling' });
+    const { order_id } = await seedCapturingOrder(rig.app);
+    const res = await rig.post(delivery(eventBody({ id: 'WH-B-2' }), { id: 'TR-B-2' }));
+    expect(res.status).toBe(503);
+    expect(await res.text()).toBe('{}');
+    // the real certificate source asked the transport, which refused the operation
+    expect(outcomes()).toEqual(['unverifiable']);
+    expect(
+      await rig.count('SELECT count(*) AS c FROM audit_log WHERE action = $1', [
+        'webhook.unverifiable',
+      ]),
+    ).toBe(1);
     expect(await rig.count('SELECT count(*) AS c FROM webhook_events')).toBe(0);
     expect((await readbacks(order_id)).rows).toHaveLength(0);
     expect(rig.wire).toEqual([]);

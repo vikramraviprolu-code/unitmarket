@@ -290,19 +290,6 @@ describe('invalid-delivery limiter (COST-3: 60 a minute per address)', () => {
     expect((await send(rig, handler, post('u61'), '203.0.113.30')).status).toBe(429);
   });
 
-  it('a 503 marked no_rate_charge (the webhook is switched off) is not charged', async () => {
-    const rig = await makeRig();
-    const { handler } = build(() => ({
-      status: 503,
-      code: 'unavailable',
-      message: 'Try again later.',
-      no_rate_charge: true,
-    }));
-    for (let i = 0; i < 150; i++)
-      expect((await send(rig, handler, post(`d${i}`), '203.0.113.31')).status).toBe(503);
-    expect(await buckets(rig)).toEqual([]);
-  });
-
   it('refusals before the handler are charged too: bad encoding, a declared length over the cap, an oversized stream', async () => {
     const rig = await makeRig();
     const { seen, handler } = build();

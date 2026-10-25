@@ -92,20 +92,21 @@ describe('verdict to answer table (through the route)', () => {
 });
 
 describe('answerFor (the pure table)', () => {
-  const table: [WebhookResponse, number, boolean][] = [
-    [{ http: 200, outcome: 'enqueued' }, 200, false],
-    [{ http: 200, outcome: 'no_op' }, 200, false],
-    [{ http: 200, outcome: 'duplicate' }, 200, false],
-    [{ http: 400, outcome: 'rejected' }, 400, false],
-    [{ http: 503, outcome: 'unverifiable' }, 503, false],
-    [{ http: 503, outcome: 'disabled' }, 503, true],
+  const table: [WebhookResponse, number][] = [
+    [{ http: 200, outcome: 'enqueued' }, 200],
+    [{ http: 200, outcome: 'no_op' }, 200],
+    [{ http: 200, outcome: 'duplicate' }, 200],
+    [{ http: 400, outcome: 'rejected' }, 400],
+    [{ http: 503, outcome: 'unverifiable' }, 503],
+    [{ http: 503, outcome: 'disabled' }, 503],
   ];
-  it.each(table)('%j answers %i (uncharged: %s)', (r, status, uncharged) => {
+  it.each(table)('%j answers %i', (r, status) => {
     const a = answerFor(r);
     expect(a.status).toBe(status);
     if (status === 200) expect('body' in a && a.body).toEqual({});
     else {
-      expect('no_rate_charge' in a && a.no_rate_charge === true).toBe(uncharged);
+      // every refused answer, the switched-off 503 included, is charged to the limiter (no opt-out)
+      expect(Object.keys(a).sort()).toEqual(['code', 'message', 'status']);
       // one code per class: the answer to a bad signature and to malformed is the same
       expect('code' in a && a.code).toBe(status === 400 ? 'rejected' : 'unavailable');
     }
@@ -200,13 +201,19 @@ describe('invalid deliveries are limited, valid ones never (COST-3)', () => {
     });
   });
 
-  it('a webhook switched off is answered 503 without charging the limiter and without a certificate fetch', async () => {
+  it('a webhook switched off is answered 503 without a certificate fetch, and the 61st from one address is 429', async () => {
     rig = await bootWebhookApp();
     await rig.app.db.query(
       `UPDATE safety_switches SET "on" = false WHERE name = 'webhook_enabled'`,
     );
-    for (let i = 0; i < 100; i++)
+    for (let i = 1; i <= 60; i++)
       expect((await rig.post(fresh(), { ip: '203.0.113.95' })).status).toBe(503);
+    const limited = await rig.post(fresh(), { ip: '203.0.113.95' });
+    expect(limited.status).toBe(429);
+    expect(await limited.text()).toBe('{}');
+    // another address still gets the 503 of a webhook that is off
+    expect((await rig.post(fresh(), { ip: '203.0.113.96' })).status).toBe(503);
     expect(rig.certs?.calls).toEqual([]);
+    expect(await rig.count('SELECT count(*) AS c FROM webhook_events')).toBe(0);
   });
 });

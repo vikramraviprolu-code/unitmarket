@@ -8,6 +8,7 @@ import { testEnv } from './support';
 import {
   NOW_MS,
   bootWebhookApp,
+  certUrl,
   certsFor,
   delivery,
   eventBody,
@@ -310,7 +311,8 @@ describe('nothing sensitive in logs or audit rows', () => {
     await fire(mk('A6'), '203.0.113.156'); // unverifiable
     await grab();
 
-    const secrets = new Set<string>([CANARY_BODY, CANARY_TRANS]);
+    // the certificate URL comes from a request header and names the host we would fetch from
+    const secrets = new Set<string>([CANARY_BODY, CANARY_TRANS, certUrl()]);
     for (const d of sent) {
       for (const k of ['paypal-transmission-sig', 'paypal-transmission-id'])
         if ((d.headers[k] ?? '') !== '') secrets.add(d.headers[k] as string);
