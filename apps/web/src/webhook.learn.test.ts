@@ -68,7 +68,7 @@ describe('receiveWebhook with an open learn window', () => {
       message: 'Try again later.',
     });
   });
-  it.each<LearnOutcome>(['recorded', 'known', 'nothing', 'switch_off', 'error'])(
+  it.each<LearnOutcome>(['recorded', 'known', 'nothing', 'switch_off', 'error', 'unrecordable'])(
     'learn outcome %s: still 503, still nothing verified or stored',
     async (outcome) => {
       const { w, calls } = wiring({ learn: { open: () => true, record: async () => outcome } });
@@ -233,6 +233,45 @@ describe('createLearnRecorder', () => {
     fail = false;
     expect(await record(HEADERS)).toBe('recorded');
     expect(audited).toHaveLength(1);
+  });
+  it('facts that redaction would change are `unrecordable`: no audit row, one line with host, path and fingerprint only', async () => {
+    const { record, audited, log } = make({ recordable: () => false });
+    expect(await record(HEADERS)).toBe('unrecordable');
+    expect(audited).toEqual([]);
+    expect(log.events.filter((e) => e.msg === 'webhook.cert_learned')).toEqual([]);
+    const lines = log.events.filter((e) => e.msg === 'webhook.cert_learn_unrecordable');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.fields).toEqual({
+      host: facts().host,
+      path: facts().path,
+      fingerprint_sha256: facts().fingerprint_sha256,
+    });
+  });
+  it('recordable facts are recorded as before; the check sees exactly the eight facts', async () => {
+    const seen: LearnedFacts[] = [];
+    const { record, audited } = make({
+      recordable: (f) => {
+        seen.push(f);
+        return true;
+      },
+    });
+    expect(await record(HEADERS)).toBe('recorded');
+    expect(seen).toEqual([facts()]);
+    expect(audited).toHaveLength(1);
+  });
+  it('twelve deliveries at once for twelve different certificates record at most 8 rows (F4)', async () => {
+    let n = 0;
+    const { record, audited } = make({
+      lookup: async () => {
+        const mine = ++n;
+        await new Promise((r) => setTimeout(r, 5)); // all twelve are past the first size check
+        return facts(mine);
+      },
+    });
+    const all = await Promise.all(Array.from({ length: 12 }, () => record(HEADERS)));
+    expect(all.filter((r) => r === 'recorded')).toHaveLength(8);
+    expect(audited).toHaveLength(8);
+    expect(all.filter((r) => r === 'nothing')).toHaveLength(4);
   });
   it('a lookup that throws is `error`, never a throw', async () => {
     const { record } = make({

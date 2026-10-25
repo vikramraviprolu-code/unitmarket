@@ -3,8 +3,11 @@
 // the process. While the window is open a delivery is answered 503 and acts on nothing; the app
 // records the certificate facts (one audit row, one log line) and no more.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { X509Certificate } from 'node:crypto';
 import {
   CERT_HOST,
+  EMAIL_SUBJECT_PEM,
+  TOKEN_SUBJECT_PEM,
   LEARN_OPERATIONS,
   NOW_MS,
   PARSE_ONLY_FACTS,
@@ -380,4 +383,48 @@ describe('window closed, expired, capped, refused', () => {
     );
     expect(err?.message).toBe('boot refused: invalid_value UMS_WEBHOOK_CERT_LEARN_UNTIL');
   });
+});
+
+describe('CO-1d F2: a certificate whose facts redaction would change is never recorded', () => {
+  // The audit sink and the logger run `redact`; a learned subject like `ops@x` would become `sha256:...`
+  // and the owner would copy a wrong pin. Such a certificate gets no row and no facts line.
+  const AFTER = Date.parse('2026-10-26T00:00:00Z');
+  it.each([
+    ['an e-mail address in the subject', EMAIL_SUBJECT_PEM, 'ops@'],
+    ['token=abc123 in the subject', TOKEN_SUBJECT_PEM, 'token=abc123'],
+  ])(
+    '%s: 503, no audit row, an unrecordable line with host, path and fingerprint only, no other effect',
+    async (_n, pem, needle) => {
+      vi.setSystemTime(AFTER);
+      rig = await bootLearnApp({
+        learn_until: '2026-10-26T00:30:00Z',
+        wire_answer: certWire(pem),
+      });
+      const before = await stateOf(rig.app);
+      const res = await rig.post(sent(1));
+      expect(res.status).toBe(503);
+      expect(await learnRows(rig.app)).toEqual([]);
+      expect(logLines(rig.lines, 'webhook.cert_learned')).toEqual([]);
+      const lines = logLines(rig.lines, 'webhook.cert_learn_unrecordable');
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toMatchObject({
+        host: CERT_HOST,
+        path: EXPECTED(1).path,
+        fingerprint_sha256: new X509Certificate(pem).fingerprint256,
+      });
+      const text = JSON.stringify(lines[0]);
+      for (const x of ['subject', 'issuer', 'valid_from', needle]) expect(text).not.toContain(x);
+      expect(logLines(rig.lines, 'webhook.delivery')[0]).toMatchObject({
+        http: 503,
+        outcome: 'learning',
+        learn: 'unrecordable',
+      });
+      expect(rig.lines.join('\n')).not.toContain(needle);
+      expect(await stateOf(rig.app)).toEqual(before);
+      expect(
+        await rig.count('SELECT count(*) AS c FROM audit_log WHERE action LIKE $1', ['webhook.%']),
+      ).toBe(0);
+      expect(rig.wire).toHaveLength(1);
+    },
+  );
 });

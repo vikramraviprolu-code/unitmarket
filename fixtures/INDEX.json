@@ -427,6 +427,16 @@
       "source": "synthetic"
     },
     {
+      "path": "webhooks/synthetic/parse-only-email.pem",
+      "sha256": "399ccfb709d782b5484d14746cb513ca6eed9a9f24fd021e0ceefa38c703f6da",
+      "source": null
+    },
+    {
+      "path": "webhooks/synthetic/parse-only-token.pem",
+      "sha256": "64175bc97b9af25b8f42d670fae1cd55f6c4a9079dfd3573088b59560b64707e",
+      "source": null
+    },
+    {
       "path": "webhooks/synthetic/parse-only.pem",
       "sha256": "07df41c9b18fdc1caf99342c1363385dc229778442e60d05b75cae83e06823d4",
       "source": null
