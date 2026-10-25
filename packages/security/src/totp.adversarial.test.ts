@@ -259,6 +259,53 @@ describe('replay under concurrency', () => {
   });
 });
 
+describe('L1 monotonic window under concurrency', () => {
+  it('four sign-ins with the same older-step code after a newer accept: none is accepted', async () => {
+    const r = await totpRig();
+    expect(
+      await acceptTotp(r.deps, {
+        operator_id: 'opr_vikram',
+        key: secret(VIKRAM_B32),
+        code: r.code(VIKRAM_KEY, 1),
+      }),
+    ).toBe('accepted');
+    const old = r.code(VIKRAM_KEY, -1);
+    const results = await Promise.all(
+      [1, 2, 3, 4].map(() =>
+        acceptTotp(r.deps, { operator_id: 'opr_vikram', key: secret(VIKRAM_B32), code: old }),
+      ),
+    );
+    expect(results.filter((x) => x === 'accepted')).toHaveLength(0);
+    expect(await usedRows(r, 'opr_vikram')).toHaveLength(1);
+  });
+  it('parallel codes of three steps: rows match the accepts, and nothing at or below the highest used step is accepted afterwards', async () => {
+    const r = await totpRig();
+    // Falling order: the old code accepts every distinct step it has not used; the new code only the first.
+    const codes = [1, 0, -1, 1, 0, -1].map((d) => r.code(VIKRAM_KEY, d));
+    const results = await Promise.all(
+      codes.map((code) =>
+        acceptTotp(r.deps, { operator_id: 'opr_vikram', key: secret(VIKRAM_B32), code }),
+      ),
+    );
+    const steps = (await usedRows(r, 'opr_vikram')).map((x) => Number(x.detail['step']));
+    expect(steps).toHaveLength(results.filter((x) => x === 'accepted').length);
+    expect(steps).toEqual([r.step() + 1]);
+    expect(results.filter((x) => x === 'accepted')).toHaveLength(1);
+    expect(new Set(steps).size).toBe(steps.length);
+    for (const d of [-1, 0, 1]) {
+      if (r.step() + d > Math.max(...steps)) continue;
+      expect(
+        await acceptTotp(r.deps, {
+          operator_id: 'opr_vikram',
+          key: secret(VIKRAM_B32),
+          code: r.code(VIKRAM_KEY, d),
+        }),
+      ).not.toBe('accepted');
+    }
+    expect(await usedRows(r, 'opr_vikram')).toHaveLength(steps.length);
+  });
+});
+
 describe('hostile input', () => {
   it.each([
     '12345',

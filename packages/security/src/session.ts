@@ -6,6 +6,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Actor, Id } from '@umsbx/contracts';
 import { hashCsrfToken } from './csrf';
 import type { SecurityDeps } from './route';
+import { UNVERIFIED_OPERATOR_ID } from './totp';
 
 export const SESSION_COOKIE = '__Host-ums_s';
 export const SESSION_ABSOLUTE_MS = 8 * 60 * 60_000;
@@ -143,7 +144,13 @@ export async function resolveSessionRecord(
   else if (row.actor_kind === 'publisher')
     actor = { kind: 'publisher', publisher_id: row.actor_id };
   else if (row.actor_kind === 'operator')
-    actor = { kind: 'operator', operator_id: row.actor_id, mfa: verified.mfa };
+    // Defence in depth: mfa needs the mfa signature AND a named operator row. The unverified
+    // operator (`opr_demo`) never has it, whatever the cookie says.
+    actor = {
+      kind: 'operator',
+      operator_id: row.actor_id,
+      mfa: verified.mfa && row.actor_id !== UNVERIFIED_OPERATOR_ID,
+    };
   else return null;
   await deps.db.query('UPDATE sessions SET last_seen_at = $2, updated_at = $2 WHERE id = $1', [
     id,

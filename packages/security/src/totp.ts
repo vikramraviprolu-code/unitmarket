@@ -1,9 +1,9 @@
 // Operator TOTP (CO-6, RFC 6238 over node:crypto, no library): HMAC-SHA1, 30 s step, 6 digits.
 // The current step and one either side are accepted. Every candidate is compared with
 // timingSafeEqual and none returns early. A step an operator has already used is refused: the
-// used step is an `operator.totp_used` audit_log row, read back before a code is accepted, so no
-// table is added. Keys come from config (UMS_OPERATOR_TOTP_KEYS) as Secrets; this file never logs
-// or stores a key or a code.
+// used step is an `operator.totp_used` audit_log row, read back before a code is accepted (a code is
+// accepted only above the operator's highest used step), so no table is added. Keys come from config
+// (UMS_OPERATOR_TOTP_KEYS) as Secrets; this file never logs or stores a key or a code.
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Id, Secret } from '@umsbx/contracts';
 import { resetBucket, takeToken, type RateRule } from './rate';
@@ -148,9 +148,10 @@ export type TotpVerdict = 'accepted' | 'wrong' | 'replay' | 'locked';
 
 /**
  * Checks one code for one operator. A token of the operator's failure bucket is spent first (no token:
- * `locked`, nothing is checked). A code inside the window is then accepted only if its step is not yet
- * an `operator.totp_used` row; the check and the row are one transaction under a per-operator advisory
- * lock, so two sign-ins with the same code cannot both pass. A right code gives the tokens back.
+ * `locked`, nothing is checked). A code inside the window is then accepted only if its step is above the
+ * highest `operator.totp_used` step of that operator (a reused step and an older unused one are both
+ * `replay`); the check and the row are one transaction under a per-operator advisory lock, so two
+ * sign-ins cannot both pass on one step. A right code gives the tokens back.
  */
 export async function acceptTotp(
   deps: TotpDeps,
@@ -165,14 +166,16 @@ export async function acceptTotp(
   if (steps.length === 0) return 'wrong';
   const verdict = await deps.db.transaction(async (tx): Promise<'accepted' | 'replay'> => {
     await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`totp:${i.operator_id}`]);
-    for (const step of steps) {
-      const used = await tx.query(
-        `SELECT 1 FROM audit_log
-          WHERE action = $1 AND actor_kind = 'operator' AND actor_id = $2 AND detail->>'step' = $3
-          LIMIT 1`,
-        [TOTP_USED_ACTION, i.operator_id, String(step)],
-      );
-      if (used.rows.length > 0) continue;
+    // Monotonic: only a step above the highest step this operator has used. That refuses a reused
+    // step and an older unused one (S-1 after S) alike.
+    const top = await tx.query<{ top: string | null }>(
+      `SELECT max((detail->>'step')::bigint)::text AS top FROM audit_log
+        WHERE action = $1 AND actor_kind = 'operator' AND actor_id = $2`,
+      [TOTP_USED_ACTION, i.operator_id],
+    );
+    const highest = top.rows[0]?.top ?? null;
+    const step = Math.max(...steps);
+    if (highest === null || BigInt(step) > BigInt(highest)) {
       await deps.audit.record(tx, {
         actor: { kind: 'operator', operator_id: i.operator_id, mfa: true },
         action: TOTP_USED_ACTION,
