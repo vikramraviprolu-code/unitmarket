@@ -1,6 +1,10 @@
 // The one route wrapper (architecture 9.8). Every route handler is built with withRoute(); the
 // RouteMeta it takes feeds scripts/route-inventory.mjs. Authorisation runs here, never in Next.js
 // middleware alone.
+//
+// Webhook limiter (CO-3): the peek and the charge are two steps, so concurrent refused requests
+// from one address can overshoot the 60 a minute by up to the number of connections that address
+// holds at once. The overshoot is bounded by the connection count and accepted.
 import { createHmac } from 'node:crypto';
 import type { ZodType } from 'zod';
 import type {
@@ -94,12 +98,6 @@ export type HttpResult<O> =
       status: 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429 | 503;
       code: string;
       message: string;
-      /**
-       * Webhook routes only: every refused answer is charged to the invalid-delivery limiter
-       * (COST-3) unless it sets this. Used for the answer that costs nothing to give (the webhook
-       * is switched off), so a retry storm from PayPal during an outage is not throttled.
-       */
-      no_rate_charge?: true;
     };
 
 export const MAX_BODY_CEILING = 1_048_576;
@@ -462,9 +460,9 @@ export function withRoute<I, O>(
         }
       }
 
-      // Webhook limiter counts only refused answers (400, 401, 403, 503 and the rest); a valid
-      // webhook is never limited. An answer that costs nothing to give opts out (no_rate_charge).
-      if (webhook && 'code' in result && result.no_rate_charge !== true) {
+      // Webhook limiter counts every refused answer (400, 401, 403, 503 and the rest, with no
+      // opt-out); a valid webhook is never limited.
+      if (webhook && 'code' in result) {
         const limited = await charge();
         if (limited !== null) return limited;
       }

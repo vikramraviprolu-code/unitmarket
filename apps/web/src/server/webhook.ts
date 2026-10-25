@@ -114,10 +114,6 @@ export function answerFor(r: WebhookResponse): HttpResult<Record<string, never>>
   if (r.http === 200) return { status: 200, body: {} };
   if (r.http === 400)
     return { status: 400, code: 'rejected', message: 'The delivery was refused.' };
-  return {
-    status: 503,
-    code: 'unavailable',
-    message: 'Try again later.',
-    ...(r.outcome === 'disabled' ? { no_rate_charge: true as const } : {}),
-  };
+  // 503 unverifiable and 503 disabled alike: both are charged to the limiter (no opt-out).
+  return { status: 503, code: 'unavailable', message: 'Try again later.' };
 }
