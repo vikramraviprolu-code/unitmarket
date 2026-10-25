@@ -332,3 +332,27 @@ describe('BU-4: the refund list of an order read unit', () => {
     ).toBe(true);
   });
 });
+
+describe('CreateOrderReq invoice_id (DP-2a)', () => {
+  it('is optional, and allowed with one unit only', () => {
+    expect(CreateOrderReqSchema.safeParse({ ...createReq, invoice_id: 'ord_REF-p1' }).success).toBe(
+      true,
+    );
+    const two = [unit, { ...unit, reference_id: 'unt_2' }];
+    expect(
+      CreateOrderReqSchema.safeParse({ ...createReq, units: two, invoice_id: 'ord_REF-p1' })
+        .success,
+    ).toBe(false);
+    // without invoice_id two units stay valid (the old shape)
+    expect(CreateOrderReqSchema.safeParse({ ...createReq, units: two }).success).toBe(true);
+  });
+  it('is 1 to 127 characters', () => {
+    expect(CreateOrderReqSchema.safeParse({ ...createReq, invoice_id: '' }).success).toBe(false);
+    expect(
+      CreateOrderReqSchema.safeParse({ ...createReq, invoice_id: 'i'.repeat(128) }).success,
+    ).toBe(false);
+    expect(
+      CreateOrderReqSchema.safeParse({ ...createReq, invoice_id: 'i'.repeat(127) }).success,
+    ).toBe(true);
+  });
+});

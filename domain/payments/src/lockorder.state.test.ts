@@ -3,7 +3,7 @@
 // SqlExecutor) and asserts that the rows they lock follow the documented order, which a real
 // Postgres needs to be free of deadlocks between the capture, the poll, the refund and the sweeper.
 //
-// The order (docs/READINESS.md "Lock order"): 1 orders (and provider_orders) -> 2 operations ->
+// The order (docs/READINESS.md "Lock order"): 1 orders -> 1.5 provider_orders (by position, DP-2a) -> 2 operations ->
 // 3 order_units -> 4 refund_requests -> 4.5 recovery_cases -> 5 entitlements (and their windows and
 // events) -> 6 ledger_entries and receipts. Alerts, audit and provider call rows are leaf inserts
 // and are not part of the order. A recovery case (CO-4) locks the case, then the entitlement (credit),
@@ -11,6 +11,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { PaymentsDeps, SqlExecutor } from '@umsbx/contracts';
 import {
+  beginCheckout,
   executeRefund,
   onBuyerReturn,
   recoverOnStartup,
@@ -18,7 +19,16 @@ import {
   runDue,
   suspectReversal,
 } from './index';
-import { BUYER_A, OPERATOR, approved, makeWorld, paid, sentCapture } from './ops/support';
+import {
+  BUYER_A,
+  OPERATOR,
+  approvePo,
+  approved,
+  awaiting,
+  makeWorld,
+  paid,
+  sentCapture,
+} from './ops/support';
 import type { OpsWorld } from './ops/support';
 
 let w: OpsWorld;
@@ -29,7 +39,7 @@ const H = 3_600_000;
 
 const RANK: Record<string, number> = {
   orders: 1,
-  provider_orders: 1,
+  provider_orders: 1.5,
   operations: 2,
   order_units: 3,
   refund_requests: 4,
@@ -187,6 +197,64 @@ describe('M-3: every money transaction locks in the documented order', () => {
     }
 
     expect(log.length).toBeGreaterThan(20);
+    expect(violations(log)).toEqual([]);
+  });
+});
+
+describe('DP-2a: a pack of two publishers follows the same order', () => {
+  it('checkout, both returns, both captures, both read-backs, a poll, a refund and a reversal', async () => {
+    w = await makeWorld();
+    const log: Tx[] = [];
+    const d = spy(w.deps, log);
+    const a = await awaiting(w, { offers: ['ofr_1', 'ofr_3'] });
+    // a repeat checkout is a transaction of its own
+    await beginCheckout(d, { order_id: a.order_id, actor: BUYER_A });
+    approvePo(w, a, 1);
+    await onBuyerReturn(d, { order_ref: a.order_ref, actor: BUYER_A });
+    approvePo(w, a, 2);
+    w.paypal.next.lose_response = false;
+    await onBuyerReturn(d, { order_ref: a.order_ref, actor: BUYER_A });
+    w.tick(H);
+    await runDue(d, { max_items: 10 });
+    const unit = (
+      await w.rows<{ id: string; capture_id: string | null }>(
+        "SELECT id, capture_id FROM order_units WHERE status = 'captured_verified' ORDER BY id",
+      )
+    )[0]!;
+    const r = await requestRefund(d, {
+      unit_id: unit.id,
+      amount: { currency: 'USD', minor: 100 },
+      reason: 'x',
+      actor: OPERATOR,
+    });
+    if (!r.ok) throw new Error('refund request refused');
+    await executeRefund(d, { refund_request_id: r.value.refund_request_id });
+    await suspectReversal(d, { capture_id: unit.capture_id as string, source: 'manual' });
+    expect(log.length).toBeGreaterThan(10);
+    expect(violations(log)).toEqual([]);
+    // a transaction that takes provider_orders takes the order first
+    for (const tx of log) {
+      const tables = tx.locks.map((l) => l.table);
+      const p = tables.indexOf('provider_orders');
+      if (p >= 0 && tables.includes('orders')) expect(tables.indexOf('orders')).toBeLessThan(p);
+    }
+  });
+
+  it('lockOrderRows locks the order, then its provider orders by position, then its operations', async () => {
+    w = await makeWorld();
+    const log: Tx[] = [];
+    const d = spy(w.deps, log);
+    const a = await awaiting(w, { offers: ['ofr_1', 'ofr_3'] });
+    approvePo(w, a, 1);
+    approvePo(w, a, 2);
+    await onBuyerReturn(d, { order_ref: a.order_ref, actor: BUYER_A });
+    const gate = log.find((t) => t.locks.some((l) => l.table === 'provider_orders'))!;
+    expect(gate).toBeDefined();
+    const seq = gate.locks.map((l) => l.table);
+    expect(seq.indexOf('orders')).toBeLessThan(seq.indexOf('provider_orders'));
+    expect(seq.indexOf('provider_orders')).toBeLessThan(seq.indexOf('operations'));
+    const po = gate.locks.find((l) => l.table === 'provider_orders')!;
+    expect(po.sql).toMatch(/provider_orders/i);
     expect(violations(log)).toEqual([]);
   });
 });

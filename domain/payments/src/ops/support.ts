@@ -13,8 +13,19 @@ import { onBuyerReturn } from '../index';
 import { approved, makeWorld as makeBaseWorld } from '../support';
 import type { Awaiting, World, WorldOptions } from '../support';
 
-export { BUYER_A, BUYER_B, START, approved, awaiting, count, place } from '../support';
-export type { Awaiting, World } from '../support';
+export {
+  BUYER_A,
+  BUYER_B,
+  START,
+  approvePo,
+  approved,
+  awaiting,
+  collapseToD1Dormant,
+  count,
+  place,
+  providerOrdersOf,
+} from '../support';
+export type { Awaiting, ProviderOrderInfo, World } from '../support';
 
 export interface FakeRefund {
   refund_id: string;

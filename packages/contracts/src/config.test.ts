@@ -122,3 +122,20 @@ describe('DomainConfig', () => {
     expect(ok(Number.POSITIVE_INFINITY)).toBe(false);
   });
 });
+
+describe('DomainConfig pack_approval_window_ms (DP-2a)', () => {
+  const ok = (v: unknown) =>
+    DomainConfigSchema.safeParse({ ...cfg, pack_approval_window_ms: v }).success;
+  it('is optional (a config without it is valid; the engine defaults to 60 minutes)', () => {
+    expect(DomainConfigSchema.safeParse(cfg).success).toBe(true);
+    const parsed = DomainConfigSchema.safeParse({ ...cfg, pack_approval_window_ms: 3_600_000 });
+    expect(parsed.success && parsed.data.pack_approval_window_ms).toBe(3_600_000);
+  });
+  it('is a positive whole number of milliseconds', () => {
+    expect(ok(0)).toBe(false);
+    expect(ok(-1)).toBe(false);
+    expect(ok(1.5)).toBe(false);
+    expect(ok('3600000')).toBe(false);
+    expect(ok(1)).toBe(true);
+  });
+});

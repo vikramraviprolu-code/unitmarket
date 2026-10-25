@@ -159,7 +159,7 @@ describe('claims of several units', () => {
     'the same capture id claimed for two units (%s) is stored once, on the first reference',
     async (how) => {
       w = await makeWorld();
-      const a = await approved(w, { offers: ['ofr_1', 'ofr_3'] });
+      const a = await approved(w, { offers: ['ofr_1', 'ofr_3'], d1: true });
       const units = await w.rows<{ reference_id: string }>(
         'SELECT reference_id FROM order_units WHERE order_id = $1 ORDER BY reference_id',
         [a.order_id],

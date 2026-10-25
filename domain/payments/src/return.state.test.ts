@@ -128,7 +128,7 @@ describe('the verified journey', () => {
 
   it('a two-publisher order captured once unlocks every item', async () => {
     w = await makeWorld();
-    const a = await approved(w, { offers: ['ofr_1', 'ofr_3'] });
+    const a = await approved(w, { offers: ['ofr_1', 'ofr_3'], d1: true });
     const r = await ret(a.order_ref);
     expect(r.ok && r.value.status).toBe('paid');
     expect(r.ok && r.value.items.map((i) => i.access)).toEqual(['available', 'available']);
@@ -469,7 +469,7 @@ describe('A-17: delivery readiness is checked before any charge', () => {
 
   it('one unreadable item among several stops the whole capture', async () => {
     w = await makeWorld();
-    const a = await approved(w, { offers: ['ofr_1', 'ofr_3'] });
+    const a = await approved(w, { offers: ['ofr_1', 'ofr_3'], d1: true });
     w.content.heads.delete('key-art_3');
     expect(await ret(a.order_ref)).toEqual({
       ok: false,

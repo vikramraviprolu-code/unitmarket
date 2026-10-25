@@ -545,7 +545,7 @@ describe('executeRefund and PayPal remaining amount', () => {
 describe('which order is read, and the locks the check takes', () => {
   it('an order of two publishers: each unit is checked against its own capture', async () => {
     w = await makeRemainingWorld({ price: 400 });
-    const a = await paid(w, { offers: ['ofr_1', 'ofr_3'] });
+    const a = await paid(w, { offers: ['ofr_1', 'ofr_3'], d1: true });
     w.markReads();
     const units = await w.rows<{ id: string; capture_id: string }>(
       'SELECT id, capture_id FROM order_units WHERE order_id = $1 ORDER BY reference_id',
