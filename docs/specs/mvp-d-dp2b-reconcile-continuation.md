@@ -16,7 +16,7 @@ Goal.
 - `IN_FLIGHT` (`recover.ts:20`) excludes never-sent captures (`prepared` with `first_sent_at` NULL). The capture retry refuses such a capture (no `idem_safe_until`, `due.ts:386`), so marking it `unknown` would strand it.
 - `UNPOLLED_ORDERS` also selects by provider order state.
 
-**Continuation selector (M-1 a).** The due pass picks every `approved` provider order whose order has `capture_sent`, in the overview's sense: a sibling PayPal order is `capture_requested`, `capture_claimed`, `unresolved` or `captured`, or `frozen` after its own send. A reopened capture's `first_sent_at` alone does not count (H-A), so a `single` order after payer_action, or a pack with nothing in flight, stays with the buyer and the return path. Each one is counted against the due budget. These orders are never sent to the sweep: the sweep only looks at `awaiting_buyer` orders (`due.ts:558`). For each one:
+**Continuation selector (M-1 a).** The due pass picks every `approved` provider order whose order has `capture_sent`, in the overview's sense: a sibling PayPal order whose own capture operation has `first_sent_at` and whose state is not `approved` (this includes `captured`, in flight, and `frozen`, `declined` or `failed` after its own send). A reopened capture's `first_sent_at` alone does not count (H-A), so a `single` order after payer_action, or a pack with nothing in flight, stays with the buyer and the return path. Each one is counted against the due budget. These orders are never sent to the sweep: the sweep only looks at `awaiting_buyer` orders (`due.ts:558`). For each one:
 
 - read it fresh;
 - if the read shows APPROVED and the match holds, capture it through the DP-2a gate with its own key, then read it back;
@@ -60,7 +60,7 @@ Red-first tests (commit 1):
   - `continuation counted against the due budget`;
   - `24 h sweep, nothing sent, PO2 unapproved: abandoned`;
   - `window run out, both read APPROVED: captured once (P17)`;
-  - `expireCreate per provider order`; `single payer_action: awaiting_buyer, unchanged, no continuation pick`; `pack with nothing sent, PO1 reopened after payer_action: not picked, buyer can approve again`; `PO2 APPROVED read before the deadline: not declined`; `PO2 APPROVED read after the deadline with no capture on the unit: declined (case 2b)`.
+  - `expireCreate per provider order`; `D-02 PO1 DECLINED at capture, crash before PO2: continuation captures PO2, paid_partial, one partial_composite alert`; `single payer_action: awaiting_buyer, unchanged, no continuation pick`; `pack with nothing sent, PO1 reopened after payer_action: not picked, buyer can approve again`; `PO2 APPROVED read before the deadline: not declined`; `PO2 APPROVED read after the deadline with no capture on the unit: declined (case 2b)`.
 - `composite.recover.state.test.ts`:
   - `a never-sent prepared PO2 capture is not marked unknown`;
   - `a sent PO2 capture is read first`.

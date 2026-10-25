@@ -101,7 +101,7 @@ Order: DP-1, DP-2a, DP-2b, then DP-3 and DP-4 in parallel (disjoint files), then
   - **Not charged** means `declined`, `failed` or `abandoned` only. `frozen` means on hold: money may have moved.
 - **Backfill of existing rows** (0011, from the order status): `created`→`prepared`, `awaiting_buyer`→`awaiting_buyer`, `capture_requested`→`capture_requested`, `capture_claimed`→`capture_claimed`, `unresolved`→`unresolved`, `paid`→`captured`, `paid_partial`→`captured`, `failed`→`failed`, `abandoned`→`abandoned`, `frozen`→`frozen`.
 - **Order status** comes only from `deriveOrderStatus`. The first rule that matches wins.
-  - **Sent PayPal orders.** A PayPal order counts as sent while it is `capture_requested`, `capture_claimed`, `unresolved` or `captured`, or when it is `frozen` and its own capture operation has `first_sent_at` (held after a send, so money may have moved). `capture_sent` means the order has at least one sent PayPal order.
+  - **Sent PayPal orders.** A PayPal order counts as sent when its own capture operation has `first_sent_at` and its state is not `approved`. This covers `capture_requested`, `capture_claimed`, `unresolved` and `captured`, and also `frozen`, `declined` or `failed` after its own send. A decline after a send still counts (M-C): a pack whose first PayPal order was declined at capture must still capture the approved second one. `capture_sent` means the order has at least one sent PayPal order.
   - **Why not `first_sent_at` alone.** A capture reopened after payer_action or `ORDER_NOT_APPROVED` keeps its `first_sent_at` (`capture.ts:258`), but that PayPal order is back to `approved` and does not count as sent.
   - **Rule 1: every PayPal order is terminal.**
     - all `captured` → `paid`;
@@ -112,7 +112,7 @@ Order: DP-1, DP-2a, DP-2b, then DP-3 and DP-4 in parallel (disjoint files), then
   - **Rule 2: `capture_sent`, some PayPal order not terminal.**
     - any `unresolved` → `unresolved`;
     - otherwise any `capture_claimed` → `capture_claimed`;
-    - otherwise → `capture_requested`. This covers captured+approved, captured+capture_requested, approved+capture_requested and sent-frozen+approved.
+    - otherwise → `capture_requested`. This covers captured+approved, captured+capture_requested, approved+capture_requested, sent-frozen+approved and sent-declined+approved (M-C). A `single` order has one PayPal order; once reopened it is `approved`, so it is not sent and rule 3 gives `awaiting_buyer`, as today.
   - **Rule 3: no capture sent.** Checked in this order: any `frozen` → `frozen`; any `failed` → `failed`; any `abandoned` → `abandoned`; any `prepared` → `created`; otherwise → `awaiting_buyer`.
   - **Whole-order outcomes.** These are: a create rejected, `DUPLICATE_INVOICE_ID` at create, a mismatch in the pre-capture pass, an item not ready, a lapsed order, and a pack abandon. Each writes the same terminal state to every non-terminal PayPal order of the order in one transaction, so rule 3 never sees a held order beside a waiting one.
   - **Consequences.**
