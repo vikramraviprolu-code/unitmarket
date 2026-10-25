@@ -1,0 +1,25 @@
+# DP-3: partial composite outcome: keep what worked or ask for a refund of the captured part, no substitution
+
+Task: turn a `paid_partial` order into one `partial_composite` case with two buyer choices, keep-what-worked (default) or a refund request for the captured part, never a substitute; and make refunds of a composite read the unit's own PayPal order.
+Package: `domain/recovery`, `packages/contracts` (recovery), `domain/payments` (`refunds.ts` only) Owner: Sonnet 5.5 builder, effort high ($ for the refund lookups) Reviewer: Opus 5.5 high; Sakthi merges
+Wave: MVP-D W3, after DP-2; parallel with DP-4 (disjoint files). Prerequisites: OQ-7, OQ-8, OQ-10. Requirements: D-02 (case opened), D-03, ASM-61 (accepted, D-039), architecture 4.5 and 9.7, nfr P9.
+
+Goal. The `partial_composite` alert raised by DP-2 opens one case through the existing `applyAutomaticRules`. Its buyer message names what is ready and what was not charged in plain words (OQ-8 wording, no internals): "Part of your order did not go through. <ready titles> are ready in your library. You were not charged for <failed titles>." `CaseView` gains `choices: ('keep' | 'refund_captured')[]`, non-empty only for an open `partial_composite` case of that buyer. New `chooseCompositeOutcome(d, { case_id, actor, choice })`: buyer of the order only (another buyer 404), once (a second choice 409), recorded as an append-only `recovery_actions` row. `keep` closes the case `closed_not_charged` with "You kept <n> items. You were not charged for the rest." `refund_captured` moves the case to `diagnosing` with action `refund_requested_by_buyer` and the captured unit ids; an operator then uses the existing `offer_refund` path (refund of each captured unit's remaining amount through `requestRefund`, MFA, `mvp_c_refunds`), so no buyer action moves money by itself (OQ-7); the case reaches `refund_pending` and `refunded` through the existing settle rule. The buyer is told: "Refund requested. A person confirms it within 48 hours. Links stop after the refund. A copy you already downloaded cannot be recalled." Default (OQ-7): a `partial_composite` case with no choice after 7 days is closed by the rule as `keep`. No path of recovery creates an order, a quote, a proposal or an approval (D-03). Refunds (OQ-10): `refunds.ts` reads the unit's own provider order everywhere (`~796`, `~1122` today use the order's first provider order); a refund of one publisher's unit never changes the other unit, its entitlements, its ledger rows or its read-back; a partial refund never revokes (ASM-61).
+
+Inputs: DP-2 (`partial_composite` alert, provider order per unit), `domain/recovery/src/{cases.ts,rules.ts,messages.ts}`, `domain/payments/src/refunds.ts`, `packages/contracts/src/recovery.ts`, CO-4 and CO-5 refund rules.
+
+Outputs: the DP-3 files in the overview; tests `domain/recovery/src/composite-case.state.test.ts`, `composite-case.adversarial.test.ts`, `domain/payments/src/refunds.composite.state.test.ts`, `packages/contracts/src/recovery.test.ts` (extended).
+
+Red-first tests (commit 1): `composite-case.state.test.ts`: `paid_partial opens one case; a second rule pass opens none`; `buyer message names ready and not-charged titles`; `choices shown only to the buyer of an open partial case`; `keep: closed_not_charged, items stay available`; `refund_captured: diagnosing with the captured unit ids; nothing sent to PayPal`; `operator offer_refund after the buyer's request: refund_pending, then refunded after read-back COMPLETED, PO1 items revoked`; `no choice in 7 days: closed as keep by the rule`; `second choice 409`; `choice on a non-partial case refused`. `composite-case.adversarial.test.ts`: `other buyer 404 and nothing recorded`; `D-03: across open, choose, rule and resolve, the counts of orders, quotes, proposals and approvals do not change`; `recovery_actions stays append-only`; `lock order spy: case after order and units, before entitlements (D-020 3a)`. `refunds.composite.state.test.ts`: `refund of the Quayside unit reads the Quayside PayPal order, not the first one`; `refund of one publisher leaves the other unit, entitlements and ledger untouched`; `partial refund of a unit does not revoke (ASM-61)`; `refund read-back of a frozen sibling provider order does not block this refund`.
+
+Acceptance tests:
+
+- `corepack pnpm vitest run --project state --project adversarial domain/recovery domain/payments/src/refunds.composite.state.test.ts`: all pass, including the titles above.
+- `corepack pnpm mutation --targets domain/recovery/src/cases.ts,domain/payments/src/refunds.ts --require-targets`: each at least 80 percent.
+- `corepack pnpm test && corepack pnpm lint && corepack pnpm typecheck`: exit 0.
+
+Do not: let a buyer action call `requestRefund` or PayPal; propose or create another offer; touch `apply.ts`, `capture.ts`, `return.ts`, ledger, receipts, the web app or composition; add a dependency.
+
+Evidence for the PR: red summary, pass counts, mutation scores, the buyer messages as rendered text.
+
+Branch: `feat/recovery-partial-composite` Commit: `feat(recovery): partial composite choices without substitution (DP-3)`
