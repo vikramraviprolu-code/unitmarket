@@ -236,6 +236,21 @@ describe('composite snapshot (DP-1, D-04, D-07, P5)', () => {
     expect(await approvalRows()).toBe(0);
   });
 
+  it('error order: mixed_currency and publisher_unverified come before too_many_publishers', async () => {
+    await world();
+    // three publishers, one of them in GBP: mixed_currency
+    const mixed = await propose([['ofr_1'], ['ofr_q1'], ['ofr_n1', 'GBP']]);
+    expect(code(await request(mixed))).toBe('mixed_currency');
+    expect(await approvalRows()).toBe(0);
+    await h.db.close();
+    // three publishers, the third unverified: publisher_unverified
+    await world();
+    await h.db.query(`UPDATE publishers SET payee_verified_at = NULL WHERE id = 'pub_3'`);
+    const unverified = await propose([['ofr_1'], ['ofr_q1'], ['ofr_31']]);
+    expect(code(await request(unverified))).toBe('publisher_unverified');
+    expect(await approvalRows()).toBe(0);
+  });
+
   it('D-04 Quayside has no payee_verified_at: publisher_unverified, no row', async () => {
     await world({ quaysideVerified: false });
     const r = await request(await propose([['ofr_1'], ['ofr_q1']]));

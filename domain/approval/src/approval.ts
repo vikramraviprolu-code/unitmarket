@@ -324,8 +324,8 @@ export async function requestApproval(
       pricing_rule_version: d.config.pricing_rule_version,
       // Two publishers: the settlement route is frozen with the snapshot (inside the hash). One
       // publisher: no key at all, so the snapshot and its hash are exactly what they were before.
-      ...(publishers.length === MAX_PUBLISHERS
-        ? { settlement: { route: 'per_publisher', payments: MAX_PUBLISHERS } }
+      ...(publishers.length >= 2
+        ? { settlement: { route: 'per_publisher', payments: publishers.length } }
         : {}),
     });
     // A duplicate article (two offers for one article) is the one way a built snapshot can fail.

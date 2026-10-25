@@ -49,6 +49,8 @@ Acceptance tests:
 - `corepack pnpm mutation --targets domain/payments/src/composite.ts,domain/payments/src/apply.ts,domain/payments/src/due.ts,domain/ledger/src/sums.ts --require-targets`: each at least 80 percent.
 - `gitleaks git --no-banner --redact` on the full history (Sakthi, if the binary is absent in the container): no finding.
 
+Recorded gap (DP-1 review L2): `payee_shared` is set only by the audited DP-5 boot step; the database role set would still let an operator actor update it. A later Supabase migration should `REVOKE UPDATE (payee_shared) ON publishers FROM ums_app` (the system path keeps the worker). Owner lane DP-6 (see `docs/ASSUMPTIONS.md`).
+
 Do not: change product code or other lanes' tests; mark an owner-window item as passed; write the approval row (the owner does); connect to anything.
 
 Evidence for the PR: the gate report with each D id marked PASS, OWNER WINDOW or NOT ATTEMPTED, the command output, and open findings by severity (zero critical or high to pass).

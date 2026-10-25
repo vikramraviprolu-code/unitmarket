@@ -14,18 +14,25 @@ ALTER TABLE publishers DROP CONSTRAINT publishers_paypal_merchant_id_key;
 
 CREATE UNIQUE INDEX publishers_merchant_unshared ON publishers (paypal_merchant_id) WHERE NOT payee_shared;
 
--- SECURITY DEFINER with a fixed search_path: the check must see every publisher row, also when row-level
--- security (the supabase set) would hide other publishers from the calling role.
+-- SECURITY DEFINER with search_path = pg_catalog, pg_temp: the check must see every publisher row, also when
+-- row-level security (the supabase set) would hide other publishers from the calling role, and a temporary
+-- table named publishers must not shadow the real one (every table below is schema-qualified as well).
+-- The check is correct under READ COMMITTED and SERIALIZABLE. A REPEATABLE READ writer can race (the second
+-- writer commits a mixed pair), so the trigger refuses a REPEATABLE READ writer with serialization_failure.
 CREATE FUNCTION ums_publisher_payee_guard() RETURNS trigger LANGUAGE plpgsql
-  SECURITY DEFINER SET search_path = public, pg_catalog AS $$
+  SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   IF NEW.paypal_merchant_id IS NULL THEN
     RETURN NEW;
   END IF;
+  IF pg_catalog.current_setting('transaction_isolation') = 'repeatable read' THEN
+    RAISE EXCEPTION 'publishers: a merchant id cannot be written under REPEATABLE READ'
+      USING ERRCODE = 'serialization_failure';
+  END IF;
   -- One merchant id at a time: two concurrent writers of the same id cannot both pass the check below.
-  PERFORM pg_advisory_xact_lock(hashtextextended('ums.publishers.merchant:' || NEW.paypal_merchant_id, 0));
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('ums.publishers.merchant:' || NEW.paypal_merchant_id, 0));
   IF EXISTS (
-    SELECT 1 FROM publishers p
+    SELECT 1 FROM public.publishers p
      WHERE p.paypal_merchant_id = NEW.paypal_merchant_id
        AND p.id <> NEW.id
        AND NOT (p.payee_shared AND NEW.payee_shared)

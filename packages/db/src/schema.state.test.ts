@@ -1522,3 +1522,61 @@ describe('0010 publishers.payee_shared (DP-1, D-041)', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+describe('0010 payee guard hardening (DP-1 review M1, L1)', () => {
+  const pubSql = (n: number, shared: boolean) =>
+    `INSERT INTO publishers (id, slug, display_name, country, paypal_merchant_id, payee_verified_at, payee_shared, created_at, updated_at)
+     VALUES ('pub_h${n}', 'ph${n}', 'P', 'US', 'SBXPAYEEHARD1', '${T}', ${shared}, '${T}', '${T}')`;
+
+  it('the function definition is SECURITY DEFINER, pins pg_catalog, pg_temp and names public.publishers', async () => {
+    const f = await db.query<{ def: string; secdef: boolean; config: string[] | null }>(
+      `SELECT pg_get_functiondef(p.oid) AS def, p.prosecdef AS secdef, p.proconfig AS config
+         FROM pg_proc p WHERE p.proname = 'ums_publisher_payee_guard'`,
+    );
+    expect(f.rows).toHaveLength(1);
+    const { def, secdef, config } = f.rows[0]!;
+    expect(secdef).toBe(true);
+    expect(config).toEqual(['search_path=pg_catalog, pg_temp']);
+    expect(def).toContain('public.publishers');
+    expect(def).not.toMatch(/FROM\s+publishers\b/);
+  });
+
+  it('a temporary table named publishers does not shadow the real one (flagged row, then unflagged clash)', async () => {
+    await db.query(pubSql(1, true));
+    let created = true;
+    try {
+      await db.exec(
+        'CREATE TEMP TABLE publishers (id text, paypal_merchant_id text, payee_shared boolean)',
+      );
+    } catch {
+      created = false; // the driver refuses temp tables: the static test above carries the proof
+    }
+    try {
+      // `publishers` now names the temp table first on the session path; the insert goes to the real one.
+      await expect(
+        db.query(pubSql(2, false).replace('INTO publishers', 'INTO public.publishers')),
+      ).rejects.toThrow();
+    } finally {
+      if (created) await db.exec('DROP TABLE pg_temp.publishers');
+    }
+    const n = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM public.publishers');
+    expect(n.rows[0]!.n).toBe(1);
+  });
+
+  it('a REPEATABLE READ writer of a merchant id is refused with serialization_failure', async () => {
+    let code: unknown;
+    try {
+      await db.exec(`BEGIN ISOLATION LEVEL REPEATABLE READ; ${pubSql(1, true)};`);
+    } catch (e) {
+      code = (e as { code?: unknown }).code;
+    } finally {
+      await db.exec('ROLLBACK');
+    }
+    expect(code).toBe('40001');
+    expect((await db.query('SELECT id FROM publishers')).rows).toEqual([]);
+    // READ COMMITTED (the default) and SERIALIZABLE are fine
+    await db.exec(`BEGIN ISOLATION LEVEL SERIALIZABLE; ${pubSql(1, true)}; COMMIT;`);
+    expect((await db.query('SELECT id FROM publishers')).rows).toHaveLength(1);
+  });
+});
