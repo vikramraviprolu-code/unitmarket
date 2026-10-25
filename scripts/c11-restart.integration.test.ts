@@ -158,6 +158,9 @@ async function runJobs(limitMs) {
   return { snap, passes: all.size, passes_after_lease: afterLease.size, lease, resolved_after_ms: resolvedAtMs, ms: Date.now() - t0 };
 }
 
+// The parent is gone (a failed test, a killed run): do not outlive it.
+process.on('disconnect', () => process.exit(0));
+
 process.on('message', async (m) => {
   try {
     if (m.t === 'wire-reply') { pending.get(m.id)?.(m.result); pending.delete(m.id); return; }
@@ -201,7 +204,10 @@ interface WireReq {
 }
 
 const made: string[] = [];
+const started: ChildProcess[] = [];
 afterAll(() => {
+  // a failed run must not leave a child behind
+  for (const c of started) if (c.exitCode === null && c.signalCode === null) c.kill('SIGKILL');
   for (const d of made) rmSync(d, { recursive: true, force: true });
 });
 
@@ -282,6 +288,7 @@ function world() {
       env: {},
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
+    started.push(child);
     const waiters: { t: string; ok: (m: Msg) => void; bad: (e: Error) => void }[] = [];
     const inbox: Msg[] = [];
     const traces: string[][] = [];

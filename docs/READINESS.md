@@ -236,3 +236,15 @@ The lint seal is a review aid, not a sandbox. Known residuals, all bounded by th
 - NODE_PATH is deliberately allowed (pnpm shims export it on every start).
 - Unverified until the owner's window: that the PayPal sandbox chain validates against Node 22.22's pinned bundled roots; real handshake time against the 3 s connect deadline; the BU-3 `next start` self-check line (`env_override false`, `builtins_intact true`).
 - Seal freeze: further seal changes only for a demonstrated defect with a runtime proof (ASM-70, owner to confirm).
+
+## MVP-C offline gate (CO-G, branch feat/mvp-c-offline-gate)
+
+State: every offline acceptance twin of the MVP-C table passes (C-02 to C-09, C-11, C-12 under `tests/mvp-c` and `scripts/c11-restart.integration.test.ts`); the whole C run opens no socket (`tests/mvp-c/c-offline.adversarial.test.ts`). Report: `docs/evidence/mvp-c-offline-gate-2026-10-25.md`. Owner steps: `docs/owner/MVPC-OWNER-STEPS.md`. "Passing offline" proves the modelled cases only, not PayPal compatibility.
+
+Not ready for the owner's hosted window until these are decided and built (none is a money-safety defect: every one fails closed):
+
+- **O-C8.** No way to put the `mvp_c_refunds` approval row and the switch-on onto the Render disk. `safety:approve` and `safety:resume` open the PGlite folder the running app holds, and the single-opener lock makes them refuse. Without an approval row the hosted app can make no PayPal call. Lane CO-7b is written after the owner picks an option.
+- **Certificate pin (ASM-64).** `EXPECTED_CERT_SUBJECTS` is empty and the webhook stays off while it is empty, so a first genuine delivery cannot teach the app the pin. Open owner decision: a time-limited learn window recorded in the decision log, or an owner-run fetch script. Neither is built.
+- **Backup on the host.** `scripts/backup.mjs` needs the app stopped, which on Render has the same cause as O-C8.
+
+Open, not blocking the window: ASM-61 (a partial refund never revokes an item; the owner has not accepted it), ASM-68 (no hard floor of calls kept for a new checkout; the capture reserve can reach zero), `offer_refund` recovery cases only request a refund and nothing executes them, and a refusal made by the route wrapper (401, 403, 413, 429) writes neither an audit row nor a log line (probed: an operator without MFA gets 403 `mfa_required`, 0 audit rows, 0 log lines). A killed process's capture is picked up when its lease runs out (60 s by default), so C-11 resolves about a minute after the restart (REL-2 counts the passes from then).
