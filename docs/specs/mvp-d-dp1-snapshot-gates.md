@@ -1,0 +1,32 @@
+# DP-1: composite snapshot gates, settlement route and supply data
+
+Task: freeze the per-publisher settlement route in a two-publisher snapshot, cap a pack at two publishers, prove the P18 and mixed-currency gates for a composite, and add the supply data a USD two-publisher pack needs without moving any existing seed id.
+Package: `domain/approval`, `packages/contracts` (approval), `domain/catalogue` (supplementary seed), `packages/testkit` (opt-in), `packages/db` (migration 0010) Owner: Sonnet 5.5 builder, effort medium Reviewer: Opus 5.5 medium; Sakthi merges
+Wave: MVP-D W1, first lane. Decisions: D-041 (owner, decided: OQ-1 = B and OQ-18). Coordinator decisions used: OQ-9, OQ-12, OQ-15 (table A). Requirements: D-04, D-07, P18, P5 (snapshot side), A-08, A-09.
+
+Goal. (1) `requestApproval` refuses a selection from more than `MAX_PUBLISHERS = 2` publishers with `too_many_publishers` (422) before any row is written. (2) Only a snapshot with two publishers gains `settlement: { route: 'per_publisher'; payments: 2 }`, inside the canonical hash; a one-publisher snapshot is built exactly as today, so its `content_hash` does not change (L1). `ApprovalSnapshotSchema` accepts `settlement` as optional and refuses `payments` that differs from the publisher count, `route: 'single'` and `settlement` on a one-publisher snapshot. `placeOrder` (DP-2a) treats a two-publisher snapshot without `settlement` as an invalid approval. (3) P18 and D-07 already hold in code; this lane proves them for a composite. (4) Supply (M4): a new `SEED_SUPPLEMENT_COMPOSITE` block (one fictional US publisher `quayside-gazette`, "Quayside Gazette (fictional)", two short team-written articles, two authorised USD offers `BOTH(150, 120)` and `BOTH(90, 90)`) applied by `seedSupplement(db, clock, ids, block)` after the base seed. It is idempotent by slug and key, so it can run on every boot (DP-5 calls it from composition) and reaches an existing persistent disk. It takes its own `Ids` (tests use `seededIds('seed-composite')`), so `SEED_DATA` and every id of the base seed stay as they are. `seedTestCatalogue` in `packages/testkit` gains an opt-in `{ composite: true }` that applies the supplement with `seededIds('testkit-catalogue-composite')`; without it, nothing changes. Mirror: `fixtures/catalogue/seed-composite.json`. (5) Migration `0010_publisher_payee_shared.sql` (M5, required by D-041): adds `payee_shared boolean NOT NULL DEFAULT false`, drops `publishers_paypal_merchant_id_key`, and adds `CREATE UNIQUE INDEX publishers_merchant_unshared ON publishers (paypal_merchant_id) WHERE NOT payee_shared`. Two rows may share a merchant id only when both carry the explicit flag; the flag is set only by the audited seeding step of DP-5. The publisher row stays the unit of attribution. Forward-only.
+
+Inputs: `domain/approval/src/approval.ts`, `packages/contracts/src/approval.ts`, `domain/approval/src/snapshot.ts`, `domain/catalogue/src/{seed-data.ts,seed.ts}`, `packages/testkit/src/catalogue.ts`, `packages/runtime/src/seeded-ids.ts`, `packages/db/migrations/common/0001_core.sql`, `packages/db/src/schema.state.test.ts`.
+
+Outputs: the DP-1 files in `mvp-d-overview.md` section 4. These must stay green unchanged, as proof that no seed id moved: `domain/offer-entry/src/{start.state,start.adversarial}.test.ts`, `domain/discovery/src/*.test.ts`, `domain/catalogue/src/catalogue.state.test.ts` (existing cases), `tests/mvp-a/*`.
+
+Red-first tests (commit 1, run red):
+
+- `domain/approval/src/composite.state.test.ts`: `two publishers, USD: settlement per_publisher, payments 2, two blocks with their own payee and amount, total = sum`; `one publisher: no settlement, content_hash equal to the pre-change hash of the same fixture`; `three publishers: too_many_publishers, no approval row`; `D-04 Quayside has no payee_verified_at: publisher_unverified, no row`; `D-04 Quayside has no merchant id: publisher_unverified`; `D-07 Harbour (USD) plus Northfield (GBP): mixed_currency, no row`; `changing payments in a stored snapshot: snapshot_tampered at verify`.
+- `domain/approval/src/composite.adversarial.test.ts`: `the caller cannot pass a route, payee or amount (strict input)`; `same article through two offers: unknown_selection`; `payee lost after approval: placeOrder answers payee_unavailable for a composite`.
+- `packages/contracts/src/approval.test.ts`: `settlement only with 2 publishers; payments must equal 2; single route refused`.
+- `domain/catalogue/src/catalogue.state.test.ts` (new cases): `seedSupplement adds 1 publisher, 2 articles, 2 offers; a second run adds nothing`; `base seed ids unchanged when the supplement runs after it`; `supplement on a database that already holds the base seed (the MVP-C disk case)`.
+- `packages/db/src/schema.state.test.ts`: `two publishers with payee_shared may share a merchant id`; `two without the flag may not (23505)`; `one flagged and one unflagged with the same id: refused`; `0010 recorded by name`.
+
+Acceptance tests:
+
+- `corepack pnpm vitest run --project state domain/approval domain/catalogue domain/offer-entry domain/discovery packages/db packages/testkit`: all pass.
+- `corepack pnpm vitest run --project adversarial domain/approval` and `corepack pnpm vitest run --project unit packages/contracts`: pass.
+- `corepack pnpm check:fixtures && corepack pnpm check:provenance`: exit 0.
+- `corepack pnpm test && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm format:check`: exit 0.
+
+Do not: touch `domain/payments`, the web app, composition, the transport or the safety packages; change `SEED_DATA` or any existing price; set `payee_shared` anywhere except the tests; add a dependency; write a real merchant id anywhere.
+
+Evidence for the PR: red run summary, pass counts, the migration text, a sample composite snapshot (fake payee ids only).
+
+Branch: `feat/approval-composite-gates` Commit: `feat(approval): composite settlement route, gates and supplementary seed (DP-1)`
