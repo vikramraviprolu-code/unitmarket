@@ -10,7 +10,7 @@ Design: the path is `UMS_MAINTENANCE_FLAG` (config, S3), pinned by `check:hostin
 
 Inputs: D-037, `packages/db/src/lock.ts`, `scripts/backup.mjs`, `scripts/restore.mjs`, `apps/web/composition.server.ts`, `docs/design/hosting.md`.
 
-Outputs: `packages/config/src/{schema,load,index,maintenance}.ts`, `.env.example`, `packages/security/src/route.ts` (gate, 12 lines), `apps/web/composition.server.ts`, `apps/web/src/{middleware,instrumentation}.ts`, `apps/web/src/app/healthz/route.ts`, `render.yaml`, `scripts/{check-hosting,backup,restore}.mjs`, `packages/safety/src/cli-resume.ts` (a stale comment only: the web sign-in does give mfa since CO-6), `docs/design/hosting.md`, `docs/owner/MVPC-OWNER-STEPS.md` Step 6 only. Tests below; hosting fixtures under `scripts/__fixtures__/hosting/`.
+Outputs: `packages/config/src/{schema,load,index,maintenance}.ts`, `.env.example`, `packages/security/src/route.ts` (the gate, about 20 lines), `apps/web/composition.server.ts`, `apps/web/src/{middleware,instrumentation}.ts`, `apps/web/src/app/healthz/route.ts`, `render.yaml`, `scripts/{check-hosting,backup,restore}.mjs`, `packages/safety/src/cli-resume.ts` and `scripts/lib/safety-cli-main.mjs` (stale comments only: the web sign-in does give mfa since CO-6; the app need not be stopped on the host), `docs/design/hosting.md`, `docs/READINESS.md` (O-C8, backup, one open item), `docs/owner/MVPC-OWNER-STEPS.md` (the pending table, the prerequisite row O-C8, Steps 5, 6 and 11 only). Tests below; hosting fixtures under `scripts/__fixtures__/hosting/`.
 
 Acceptance tests (all offline):
 

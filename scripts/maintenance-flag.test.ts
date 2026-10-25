@@ -30,7 +30,7 @@ const prodFiles = ['apps', 'packages', 'domain', 'tools']
   .filter((f) => !TEST_FILE.test(`/${f}`));
 
 const FS_IMPORT =
-  /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](?:node:)?(?:fs|fs\/promises|child_process)['"]/;
+  /(?:from\s+|import\s*\(\s*|require\s*\(\s*|getBuiltinModule\s*\(\s*)['"](?:node:)?(?:fs|fs\/promises|child_process)['"]|\bcreateRequire\b/;
 // The only production files that import node:fs (or child_process) today, each for its own job.
 const FS_ALLOWED = new Set([
   'packages/db/src/lock.ts', // the single-opener lock, inside the PGlite folder
@@ -46,6 +46,27 @@ const WRITE_API =
   /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|unlink|unlinkSync|rm|rmSync|rmdir|rmdirSync|rename|renameSync|mkdir|mkdirSync|mkdtemp|symlink|symlinkSync|link|linkSync|copyFile|copyFileSync|cp|cpSync|truncate|truncateSync|open|openSync|chmod|chmodSync|chown|utimes|utimesSync|exec|execSync|spawn|spawnSync|fork)\b/;
 
 describe('who may touch the file system or name the flag', () => {
+  it('the import pattern catches every way to reach node:fs that the scan knows about', () => {
+    for (const hit of [
+      "import fs from 'node:fs';",
+      'import { x } from "fs";',
+      "await import('node:fs/promises')",
+      "require('child_process')",
+      "process.getBuiltinModule('fs')",
+      "process.getBuiltinModule( 'node:fs' )",
+      "import { createRequire } from 'node:module';",
+      'const r = createRequire(import.meta.url);',
+    ])
+      expect(FS_IMPORT.test(hit), hit).toBe(true);
+    for (const miss of [
+      "import path from 'node:path';",
+      "process.getBuiltinModule('path')",
+      "const fsLike = 'fs';",
+      "import x from './fs-helper';",
+    ])
+      expect(FS_IMPORT.test(miss), miss).toBe(false);
+  });
+
   it('finds the production files (the scan is live)', () => {
     expect(prodFiles.length).toBeGreaterThan(100);
     expect(prodFiles).toContain('packages/db/src/lock.ts');

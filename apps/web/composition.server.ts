@@ -1409,7 +1409,11 @@ export const securityDeps: SecurityDeps = {
   },
 };
 
-/** CO-7b: is the app in maintenance mode? Read by the page middleware. Builds nothing but the app object. */
+/**
+ * CO-7b: is the app in maintenance mode? Read by the page middleware. The middleware may be the first
+ * caller and then builds the app (in sandbox mode that includes the outbound object; no socket is
+ * opened); normally instrumentation has built it already. It opens no database in either case.
+ */
 export function maintenanceActive(): boolean {
   return getApp().maintenance;
 }

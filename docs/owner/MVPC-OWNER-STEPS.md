@@ -11,14 +11,14 @@ which three items below are still open decisions. All rules of `docs/owner/SPIKE
 never share or paste anywhere", machine rules, refusal table) and of `docs/owner/MVPB-OWNER-STEPS.md`
 apply here too. `docs/owner/MVPC-OWNER-NOTES.md` explains the operator keys.
 
-**Three steps are marked DECISION PENDING.** No command is written for them, because none exists and
-the assistant must not invent one. Do not start the sitting until the decisions are recorded:
+Steps 6 and 11 use the maintenance mode of D-037 (lane CO-7b). Do not start the sitting until the
+decisions in the decision log are recorded:
 
 | Pending            | Where   | What is undecided                                                                                                                                                                                                              |
 | ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| O-C8               | Step 6  | How the approval row and the switch-on reach the database on the Render disk. `safety:approve` and `safety:resume` open the PGlite folder, which the running app already holds; they refuse while it does.                     |
+| O-C8               | Step 6  | Decided: D-037 option (a), maintenance mode, built in lane CO-7b. Step 6 has the commands.                                                                                                                                     |
 | Cert pin           | Step 7  | How the webhook certificate pin is learned: Option A (a time-limited learn window, recorded in the decision log) or Option B (an owner-run fetch script). Until the pin is set the webhook answers 503 and stays off (ASM-64). |
-| Backup on the host | Step 11 | Taking a backup on Render needs the app stopped (the same folder lock). The offline drill on your laptop does not.                                                                                                             |
+| Backup on the host | Step 11 | Decided with O-C8 (D-037): run in maintenance mode with --maintenance. Step 11 has the commands.                                                                                                                               |
 
 ## Before the day (written approvals and host setup, no PayPal contact)
 
@@ -34,16 +34,16 @@ the assistant must not invent one. Do not start the sitting until the decisions 
    Pull `main` and use a reviewed tag for the deploy (RLR-1).
 4. Host prerequisites, all yours (the repository and the host are the only accounts you add):
 
-| Id   | What                                                                                         | Done when                                                   |
-| ---- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| O-C1 | A GitHub remote for the repository (Render deploys from Git).                                | Sakthi can see the reviewed tag there.                      |
-| O-C2 | A Render account, a card, the paid `starter` plan with a 1 GB disk (about USD 7.25 a month). | The dashboard offers the Blueprint import.                  |
-| O-C3 | A webhook in the PayPal developer dashboard (Step 4).                                        | You hold its Webhook ID.                                    |
-| O-C4 | The MVP-C approval row (Step 6).                                                             | `safety:status` or `/ops` shows the budget line.            |
-| O-C5 | TOTP enrolment for Vikram and Sakthi (Step 1).                                               | Both can sign in to `/ops` with a code.                     |
-| O-C6 | The waiver for real-Postgres race tests (ASM-55, PORT-1) is recorded.                        | A decision row names it.                                    |
-| O-C7 | A spend alert and a reminder to cancel the host after 15 Dec 2026 (COST-4).                  | The reminder is in your calendar.                           |
-| O-C8 | The approval-row path to the host (Step 6).                                                  | A decision row names the option and the lane that built it. |
+| Id   | What                                                                                         | Done when                                                     |
+| ---- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| O-C1 | A GitHub remote for the repository (Render deploys from Git).                                | Sakthi can see the reviewed tag there.                        |
+| O-C2 | A Render account, a card, the paid `starter` plan with a 1 GB disk (about USD 7.25 a month). | The dashboard offers the Blueprint import.                    |
+| O-C3 | A webhook in the PayPal developer dashboard (Step 4).                                        | You hold its Webhook ID.                                      |
+| O-C4 | The MVP-C approval row (Step 6).                                                             | `safety:status` or `/ops` shows the budget line.              |
+| O-C5 | TOTP enrolment for Vikram and Sakthi (Step 1).                                               | Both can sign in to `/ops` with a code.                       |
+| O-C6 | The waiver for real-Postgres race tests (ASM-55, PORT-1) is recorded.                        | A decision row names it.                                      |
+| O-C7 | A spend alert and a reminder to cancel the host after 15 Dec 2026 (COST-4).                  | The reminder is in your calendar.                             |
+| O-C8 | The approval-row path to the host (Step 6).                                                  | D-037 names option (a) and lane CO-7b is merged and deployed. |
 
 ## Step 0: machine check (5 min)
 
@@ -155,8 +155,8 @@ for 3 days, so nothing is lost.
 
 ## Step 5: stop here until the three decisions are recorded
 
-Steps 6, 7 and 11 are the DECISION PENDING steps. Confirm with Sakthi that the decision-log rows exist
-before going on. If they do not, you can still do the local fallback at the end of this file.
+Confirm with Sakthi that lane CO-7b (maintenance mode, D-037) is merged and deployed for Steps 6 and 11.
+If not, you can still do the local fallback at the end of this file.
 
 ## Step 6: the approval row and the switch on the host (O-C8, D-037, 25 min)
 
@@ -329,7 +329,7 @@ Only when Steps 3, 4, 6 and 7 are done.
 
 If a refund is refused, copy the plain-words message exactly; it is data.
 
-## Step 11: backup and restore drill (C-10, 30 min) , part DECISION PENDING
+## Step 11: backup and restore drill (C-10, 30 min)
 
 Offline drill (works today, on your laptop, no host, no PayPal):
 
@@ -340,19 +340,24 @@ corepack pnpm vitest run --project integration scripts/restore.integration.test.
 Expected: all tests pass (tarball restore and logical-export restore both give the same row counts and
 ledger sums; a changed byte in either file refuses; a non-empty target refuses).
 
-Hosted drill. A backup of the Render disk needs the app stopped, for the same lock reason as Step 6:
+Hosted drill, in the Render shell, with the app in maintenance mode: Step 6 items 1 and 2 done, and
+/healthz says "maintenance":true. If it does not, stop.
 
 ```
-node scripts/backup.mjs --dir <pglite dir> --out <folder outside the repo> --i-stopped-the-app
-node scripts/restore.mjs --from <backup folder> --dir <empty dir>
+node scripts/backup.mjs --dir /var/data/pglite --out /var/data/backup-<YYYYMMDD> --maintenance
+node scripts/restore.mjs --from /var/data/backup-<YYYYMMDD> --dir /var/data/pglite-drill --maintenance
 ```
 
-On Render the folder belongs to the running app, so these two commands cannot be run there until the
-same maintenance decision as O-C8 exists. **DECISION PENDING**. Until then the drill you can do is: a
-Render disk snapshot (the dashboard's own feature) restored to a new disk, and a note of how long it took.
+Both must end without refused, and the restore's row counts must equal the backup's. The drill restores
+into a new folder and never replaces /var/data/pglite. Afterwards run
+`rm -rf /var/data/pglite-drill /var/data/backup-<YYYYMMDD>` (the backup holds session data), then
+`rm /var/data/ums-maintenance` and restart as in Step 6 item 7. A real recovery (swapping the folder) is a
+separate procedure: ask Sakthi. A restored database has paypal_outbound off, so Step 6 items 5 and 6 must
+be repeated.
+
 Pass condition from C-10: the latest dump restores to a fresh host within 30 minutes, the logical export
-restores into stock Postgres, and the orders match PayPal read-backs. A restore forces `paypal_outbound`
-OFF; approval rows are kept and a live one makes the restore refuse unless you say so.
+restores into stock Postgres, and the orders match PayPal read-backs. Approval rows are kept in a restore
+and a live one makes it refuse unless you say so.
 
 Write what you did and how long it took. Never copy a backup anywhere shared: it holds session data.
 
