@@ -49,7 +49,14 @@ export interface LearnedFacts {
   valid_to: string;
   fingerprint_sha256: string;
 }
-export type LearnOutcome = 'recorded' | 'known' | 'nothing' | 'switch_off' | 'error';
+export type LearnOutcome =
+  | 'recorded'
+  | 'known'
+  | 'nothing'
+  | 'switch_off'
+  | 'error'
+  /** the facts would be changed by audit or log redaction, so recording them would teach a wrong pin */
+  | 'unrecordable';
 
 export interface LearnWiring {
   /** true while the learn window is open (asked for every delivery, with the injected clock) */
@@ -184,6 +191,11 @@ export interface LearnPorts {
   switchOn(): Promise<boolean>;
   /** describe the certificate named by the delivery's headers (null: nothing to describe) */
   lookup(headers: Record<string, string>): Promise<LearnedFacts | null>;
+  /**
+   * false when audit and log redaction would change the facts (an e-mail-like string, `token=...`): the
+   * owner would copy a wrong pin. Such facts are not written; only host, path and fingerprint are logged.
+   */
+  recordable(f: LearnedFacts): boolean;
   /** one `audit_log` row, in a transaction of its own */
   audit(f: LearnedFacts): Promise<void>;
 }
@@ -192,7 +204,8 @@ export interface LearnPorts {
  * The learn window's recorder (CO-1d). For a delivery: webhook switch on, a certificate described, not
  * yet recorded in this process -> one audit row, then one log line, both holding exactly the eight
  * facts. The same certificate again (same host, path and fingerprint) is `known`: no row. After
- * LEARN_MAX_CERTIFICATES rows nothing more is looked up. An audit failure is `error` and is retried by
+ * LEARN_MAX_CERTIFICATES rows nothing more is looked up, and the cap is checked again after the lookup,
+ * so deliveries at once cannot overshoot it. Facts that redaction would change are `unrecordable`. An audit failure is `error` and is retried by
  * the next delivery; the log line is written only after the row is.
  */
 export function createLearnRecorder(
@@ -218,6 +231,20 @@ export function createLearnRecorder(
       };
       const key = `${facts.host}${facts.path}|${facts.fingerprint_sha256}`;
       if (recorded.has(key)) return 'known';
+      if (!p.recordable(facts)) {
+        p.log.log({
+          msg: 'webhook.cert_learn_unrecordable',
+          level: 'warn',
+          fields: {
+            host: facts.host,
+            path: facts.path,
+            fingerprint_sha256: facts.fingerprint_sha256,
+          },
+        });
+        return 'unrecordable';
+      }
+      // The lookup was awaited: deliveries for other certificates may have filled the cap meanwhile.
+      if (recorded.size >= LEARN_MAX_CERTIFICATES) return 'nothing';
       recorded.add(key); // before the first await below, so two deliveries at once write one row
       try {
         await p.audit(facts);

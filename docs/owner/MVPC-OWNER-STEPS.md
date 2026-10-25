@@ -290,8 +290,8 @@ Needs: Steps 2, 3, 4 and 6 done, and the connection on (Step 8, items 1 and 2: `
    time down.
 2. Render dashboard, Environment: add `UMS_WEBHOOK_CERT_LEARN_UNTIL` with that time. Save and let it
    redeploy. If the time is malformed, more than 24 hours ahead, or the app is not in sandbox mode, the
-   app does not start and the log says `boot refused: invalid_value (UMS_WEBHOOK_CERT_LEARN_UNTIL)`
-   (the value is never printed): fix the time and redeploy. Open `/healthz` as in Step 2.
+   app does not start and the log has a line containing `invalid_value` and
+   `UMS_WEBHOOK_CERT_LEARN_UNTIL` (the value is never printed): fix the time and redeploy. Open `/healthz` as in Step 2.
 3. Send exactly one delivery. Either use the PayPal developer dashboard (Webhooks, Webhooks simulator,
    Sandbox, your webhook URL, event `CHECKOUT.ORDER.APPROVED`, Send Test), or start a real sandbox
    purchase as in Step 9 and let PayPal deliver. The dashboard shows `503` for the delivery. That is the
@@ -302,14 +302,14 @@ Needs: Steps 2, 3, 4 and 6 done, and the connection on (Step 8, items 1 and 2: `
    `learn: recorded`. The same facts are in the database as one `audit_log` row (action
    `webhook.cert_learned`, actor system); the `/ops` page does not list audit rows and the Render disk cannot
    be opened while the app runs, so the log line is how you read it here. `learn: known` means the same
-   certificate was recorded already; `nothing` means no certificate could be read (check the locks and
-   that the address in the delivery is a sandbox certificate address); `switch_off` means the webhook
+   certificate was recorded already; `nothing` means no certificate could be read (check the locks and that the address in the delivery is a sandbox certificate address, fix what is wrong, then WAIT 10 MINUTES before sending again: a failed address is remembered for that long); `switch_off` means the webhook
    switch is off; `error` means the row could not be written (send one more delivery). Copy the log
    line as text; it holds no secret.
 5. Check before you go on: the `host` ends in `.sandbox.paypal.com`, and only one certificate (one
    `fingerprint_sha256`) appears. If a second, different certificate appears, or the host is not what you
    expect, STOP and tell Sakthi: that is the finding. The app records at most 8 certificates and one row
-   for each.
+   for each. The `subject` and `issuer` must contain no `sha256:` and no `[redacted]`; if the log says
+   `webhook.cert_learn_unrecordable` instead, STOP and tell Sakthi (the app would have recorded a changed value, so it records nothing).
 6. Close the window now: delete `UMS_WEBHOOK_CERT_LEARN_UNTIL` in the Render Environment and redeploy.
    Do not wait for the end time. It also closes by itself at the end time, but while it is open the app
    does not process any delivery, so it must not stay set after the pin is deployed.

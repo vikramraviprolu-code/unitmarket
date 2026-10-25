@@ -161,6 +161,7 @@ describe('createLearnRecorder', () => {
       log,
       switchOn,
       lookup,
+      recordable: () => true,
       audit: async (f) => {
         order.push('audit');
         audited.push(f);

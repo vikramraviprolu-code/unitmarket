@@ -51,7 +51,7 @@ import type { Config } from '@umsbx/config';
 import { migrate, openDatabase } from '@umsbx/db';
 import type { SqlDriver } from '@umsbx/db';
 import { cryptoIds, systemClock } from '@umsbx/runtime';
-import { createAuditSink, createLogger } from '@umsbx/obs';
+import { createAuditSink, createLogger, redact } from '@umsbx/obs';
 import { createOutboundGate, createSwitchReader, readSafetyStatus, runStop } from '@umsbx/safety';
 import { guard } from '@umsbx/transport';
 import type { Wire } from '@umsbx/transport';
@@ -740,6 +740,8 @@ function buildApp(config: Config, opts: AppOptions): App {
             const r = await learnWebhookCertificate(certificates, headers);
             return r.kind === 'facts' ? r.facts : null;
           },
+          // F2: the audit sink and the logger redact. Facts redaction would change are not recorded.
+          recordable: (f) => JSON.stringify(redact(f)) === JSON.stringify(f),
           audit: (f) =>
             db.transaction((tx) =>
               audit.record(tx, {

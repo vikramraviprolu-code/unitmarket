@@ -50,8 +50,11 @@
 // (pinComplete) before the webhook runs at all. The values are learned once, from `inspect`: it fetches
 // through the same Transport under the same guard and the same fetch budgets, describes the certificate
 // and returns its facts. It never fills the certificate cache, never calls trust() and never applies or
-// changes a pin: a described certificate is not a trusted one. Trust is seeded at boot from the
-// committed pin, never from a delivery or a description (ASM-71).
+// changes a pin: a described certificate is not a trusted one. The pin gates acceptance from boot and
+// no delivery or description changes it. The trusted fetch-budget list below is memory only and is not
+// seeded after a restart (fail-closed: a cold restart can only cause 503 unverifiable; PayPal retries
+// and polling reconciles). Follow-up CO-1e (ASM-71): refuse a URL whose host is not pinned before the
+// budget is charged.
 //
 // Requirements on the callers (CO-3, the route):
 //   - the per-IP limiter for invalid webhook traffic (COST-3) keeps the audit log from filling
