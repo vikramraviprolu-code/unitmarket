@@ -7,21 +7,20 @@ The assistant never sees your credentials, never runs these steps and never hold
 This list proves the rows the offline gate could not: C-01 (a genuine webhook), the real halves of C-06
 and C-07 (refunds executed and read back at PayPal), C-10 (restore drill, real part) and C-13 (uptime).
 Read `docs/evidence/mvp-c-offline-gate-2026-10-25.md` first: it says what already passed offline and
-which three items below are still open decisions. All rules of `docs/owner/SPIKE-RUNBOOK.md` ("What you
+which items were open decisions (all recorded now, see the table below). All rules of `docs/owner/SPIKE-RUNBOOK.md` ("What you
 never share or paste anywhere", machine rules, refusal table) and of `docs/owner/MVPB-OWNER-STEPS.md`
 apply here too. `docs/owner/MVPC-OWNER-NOTES.md` explains the operator keys.
 
-**Two steps are marked DECISION PENDING.** No command is written for them, because none exists and
-the assistant must not invent one. Do not start the sitting until the decisions are recorded:
+Every decision this sitting depends on is recorded in `docs/decision-log.md`: O-C8 is D-037 (maintenance
+mode, lane CO-7b, Steps 6 and 11), the certificate pin is D-038 (a learn-only window, lane CO-1d, Step 7),
+and the accepted items are D-039 and D-040. Do not start the sitting until Sakthi confirms those lanes are
+merged and deployed:
 
-| Pending            | Where   | What is undecided                                                                                                                                                                                          |
-| ------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| O-C8               | Step 6  | How the approval row and the switch-on reach the database on the Render disk. `safety:approve` and `safety:resume` open the PGlite folder, which the running app already holds; they refuse while it does. |
-| Backup on the host | Step 11 | Taking a backup on Render needs the app stopped (the same folder lock). The offline drill on your laptop does not.                                                                                         |
-
-The certificate pin (Step 7) is decided: D-038, a learn-only window, built in lane CO-1d. It needs the
-approval row (Step 6) and the connection (Step 8, items 1 and 2) first, because the app reads the
-certificate through the same locked connection as every other PayPal call.
+| Decision           | Where   | Status                                                                                                                                                                                                                                              |
+| ------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| O-C8               | Step 6  | Decided: D-037 option (a), maintenance mode, built in lane CO-7b. Step 6 has the commands.                                                                                                                                                          |
+| Cert pin           | Step 7  | Decided: D-038, a learn-only window, built in lane CO-1d. It needs the approval row (Step 6) and the connection (Step 8, items 1 and 2) first, because the app reads the certificate through the same locked connection as every other PayPal call. |
+| Backup on the host | Step 11 | Decided with O-C8 (D-037): run in maintenance mode with --maintenance. Step 11 has the commands.                                                                                                                                                    |
 
 ## Before the day (written approvals and host setup, no PayPal contact)
 
@@ -37,16 +36,16 @@ certificate through the same locked connection as every other PayPal call.
    Pull `main` and use a reviewed tag for the deploy (RLR-1).
 4. Host prerequisites, all yours (the repository and the host are the only accounts you add):
 
-| Id   | What                                                                                         | Done when                                                   |
-| ---- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| O-C1 | A GitHub remote for the repository (Render deploys from Git).                                | Sakthi can see the reviewed tag there.                      |
-| O-C2 | A Render account, a card, the paid `starter` plan with a 1 GB disk (about USD 7.25 a month). | The dashboard offers the Blueprint import.                  |
-| O-C3 | A webhook in the PayPal developer dashboard (Step 4).                                        | You hold its Webhook ID.                                    |
-| O-C4 | The MVP-C approval row (Step 6).                                                             | `safety:status` or `/ops` shows the budget line.            |
-| O-C5 | TOTP enrolment for Vikram and Sakthi (Step 1).                                               | Both can sign in to `/ops` with a code.                     |
-| O-C6 | The waiver for real-Postgres race tests (ASM-55, PORT-1) is recorded.                        | A decision row names it.                                    |
-| O-C7 | A spend alert and a reminder to cancel the host after 15 Dec 2026 (COST-4).                  | The reminder is in your calendar.                           |
-| O-C8 | The approval-row path to the host (Step 6).                                                  | A decision row names the option and the lane that built it. |
+| Id   | What                                                                                         | Done when                                                     |
+| ---- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| O-C1 | A GitHub remote for the repository (Render deploys from Git).                                | Sakthi can see the reviewed tag there.                        |
+| O-C2 | A Render account, a card, the paid `starter` plan with a 1 GB disk (about USD 7.25 a month). | The dashboard offers the Blueprint import.                    |
+| O-C3 | A webhook in the PayPal developer dashboard (Step 4).                                        | You hold its Webhook ID.                                      |
+| O-C4 | The MVP-C approval row (Step 6).                                                             | `safety:status` or `/ops` shows the budget line.              |
+| O-C5 | TOTP enrolment for Vikram and Sakthi (Step 1).                                               | Both can sign in to `/ops` with a code.                       |
+| O-C6 | The waiver for real-Postgres race tests (ASM-55, PORT-1) is recorded.                        | A decision row names it.                                      |
+| O-C7 | A spend alert and a reminder to cancel the host after 15 Dec 2026 (COST-4).                  | The reminder is in your calendar.                             |
+| O-C8 | The approval-row path to the host (Step 6).                                                  | D-037 names option (a) and lane CO-7b is merged and deployed. |
 
 ## Step 0: machine check (5 min)
 
@@ -156,33 +155,116 @@ Do this BEFORE the webhook is registered or switched on (hosting.md step 5).
 The app answers 503 to every delivery for now (the pin is empty and no approval exists). PayPal retries
 for 3 days, so nothing is lost.
 
-## Step 5: stop here until the two decisions are recorded
+## Step 5: stop here until the decided lanes are merged and deployed
 
-Steps 6 and 11 are the DECISION PENDING steps. Confirm with Sakthi that the decision-log rows exist
-before going on. If they do not, you can still do the local fallback at the end of this file.
+Confirm with Sakthi that lane CO-7b (maintenance mode, D-037) is merged and deployed for Steps 6 and 11,
+and that lane CO-1d (the certificate learn window, D-038) is merged and deployed for Step 7. If not, you
+can still do the local fallback at the end of this file.
 
-## Step 6: the approval row and the switch on the host (O-C8) , DECISION PENDING
+## Step 6: the approval row and the switch on the host (O-C8, D-037, 25 min)
 
-What exists today: `corepack pnpm safety:approve` and `corepack pnpm safety:resume` run only at your own
-terminal and open a PGlite folder on that machine. On Render the folder belongs to the running app, and
-the single-opener lock makes both commands refuse while it is held. What does not exist: any way to run
-them against the Render disk, or a console approval. The recommended option in the lane plan is (a), a
-maintenance start on Render (the app does not open the database while a flag file exists, you run the
-tool in the Render shell, remove the flag, restart); option (b) is an operator-console approval with
-TOTP. **Neither is built and neither is chosen.** A lane (CO-7b) is written after the owner answers.
+Why this is needed: `safety:approve` and `safety:resume` open the PGlite folder on the Render disk, and
+the running app holds it (the single-opener lock), so both refuse while the app runs normally. The fix is
+the maintenance mode of decision D-037 (lane CO-7b): while a flag file exists, the app starts without
+opening the database, without the job loop and without any PayPal transport, so the two commands can run
+in the Render shell. You make the flag and remove it yourself, in the Render shell. Nothing in the app
+creates or removes it, and the app cannot reach PayPal while it exists.
 
-Write the decision here when it exists: `D-0xx = option ___ , built in lane ___ , merged at ___`.
+Before you start: Steps 1 to 4 are done, the service is deployed from the reviewed tag with that tag's
+`render.yaml` (it carries `UMS_MAINTENANCE_FLAG=/var/data/ums-maintenance`), and
+`UMS_OUTBOUND_APPROVAL_REF` in the dashboard is the new reference `D-0xx`. `UMS_PAYPAL_CONNECT` stays
+`off`. You type everything yourself. Do not paste a command through a script or a pipe: the tools check
+for a real terminal and a person (see 4).
 
-What the step must achieve, whichever option is built, and what you check afterwards:
+1. Make the flag. Render dashboard, your service, **Shell** tab (this opens a shell on the running
+   instance). Type:
 
-1. An `outbound_approvals` row for `D-0xx`, scope `mvp_c_refunds`, with the operations listed in the
-   approvals above, at most 2000 minor units per order, 300 calls a day, valid for at most 7 days. You type
-   the scope name back to confirm.
-2. `paypal_outbound` is turned on by you at a terminal or by an MFA operator, with the scope typed back.
-3. `/ops` shows all five locks open, the transport line `sandbox (approved)` and a
-   `budget D-0xx: 300 of 300 calls left today` line. Screenshot it.
+   ```
+   touch /var/data/ums-maintenance
+   ls -l /var/data
+   ```
 
-Do not set `UMS_PAYPAL_CONNECT=on` before this step is done.
+   Expected: a line for `ums-maintenance` (size 0) next to `pglite`.
+
+2. Restart the service so it boots in maintenance mode (Render dashboard: the service's menu, **Restart
+   service**; the shell closes, that is expected). Wait for the restart, then open
+   `https://<your-service>.onrender.com/healthz`. Expected:
+
+   ```
+   {"ok":true,"environment":"sandbox","maintenance":true}
+   ```
+
+   Any other page answers `503` with the code `maintenance`. If `/healthz` does not say
+   `"maintenance":true`, stop: the flag is not where the app looks, or the restart did not happen. Do
+   not go on. Screenshot the `/healthz` answer.
+
+3. Open the **Shell** tab again. If `ls package.json` does not find the repository, `cd` to the folder
+   Render opened for you at deploy (Render's usual place is `/opt/render/project/src`; not checked here).
+   Check that the tool sees the database free and no approval yet:
+
+   ```
+   corepack pnpm safety:status
+   ```
+
+   Expected: a line `mode=sandbox connect=off db=pglite-disk`, six `switch ...` lines with
+   `paypal_outbound=off`, and `budget: no active approval for the configured reference`. If it says
+   `The UnitMarket app (pid ...) holds this database`, the app is not in maintenance mode: go back to 2.
+
+4. Insert the approval row. Replace `<YYYY-MM-DDT23:59:00Z>` with a date at most 7 days ahead, and use
+   your `D-0xx`:
+
+   ```
+   corepack pnpm safety:approve --operator vikram --ref D-0xx --scope mvp_c_refunds \
+     --ops oauth_token,create_order,get_order,capture_order,get_capture,refund_capture,get_refund,fetch_webhook_cert \
+     --max-amount 2000 --max-calls 300 --valid-until <YYYY-MM-DDT23:59:00Z> --approved-by vikram
+   ```
+
+   Expected: one line `Approving oauth_token, create_order, ... up to 2000 minor units, 300 calls a
+day, until <date>.`, then the question `Type the scope name (mvp_c_refunds) to confirm:`. Type
+   `mvp_c_refunds` and press Enter. Expected: `approval D-0xx recorded`.
+
+   If it prints `safety: refused: not_a_tty`, the Render shell does not give the tool a terminal. Stop.
+   Do not work around it (no pipe, no `script`, no here-document). Tell Sakthi; nothing was written.
+   Whether Render's web shell passes this check on your plan has not been checked.
+
+5. Turn the switch on:
+
+   ```
+   corepack pnpm safety:resume --operator vikram --reason "MVP-C session"
+   ```
+
+   Expected: `Turning paypal_outbound on for approval D-0xx: scope mvp_c_refunds, 300 calls a day, up to
+2000 minor units per order.`, then the same question; type `mvp_c_refunds`. Expected:
+   `paypal_outbound is now on for mvp_c_refunds under approval D-0xx`.
+
+6. Check, and screenshot (it holds no secret):
+
+   ```
+   corepack pnpm safety:status
+   ```
+
+   Expected: `switch paypal_outbound=on` and
+   `budget D-0xx: 300 of 300 calls left today; per-order cap 2000 minor; valid until <date>; operations ...`.
+   `connect=off` is still right: the connect flag is Step 8.
+
+7. Remove the flag and restart. In the same shell:
+
+   ```
+   rm /var/data/ums-maintenance
+   ls -l /var/data
+   ```
+
+   Expected: only `pglite` (and anything you put there yourself). Restart the service as in 2. Then
+   `/healthz` must answer `{"ok":true,"environment":"sandbox"}` with no `maintenance` field. If it still says
+   `"maintenance":true`, the flag is still there or the restart did not happen.
+
+What stays true throughout: the app made no PayPal call while the flag existed, the approval row is
+append-only and bounded by the scope, amount, call budget and date you typed, the connect flag is still
+`off`, and the kill switch and the other locks are as before. Do not set `UMS_PAYPAL_CONNECT=on` before
+Steps 3, 4 and 7 are done.
+
+If something goes wrong, the safe way out is always the same: leave the flag in place (the app does
+nothing), tell Sakthi what the last command printed, and do not retry with other flags.
 
 ## Step 7: the webhook certificate pin (D-038, learn only, 30 to 45 min)
 
@@ -294,7 +376,7 @@ open, every delivery is answered 503 `learning` and nothing is processed).
 
 If a refund is refused, copy the plain-words message exactly; it is data.
 
-## Step 11: backup and restore drill (C-10, 30 min) , part DECISION PENDING
+## Step 11: backup and restore drill (C-10, 30 min)
 
 Offline drill (works today, on your laptop, no host, no PayPal):
 
@@ -305,19 +387,24 @@ corepack pnpm vitest run --project integration scripts/restore.integration.test.
 Expected: all tests pass (tarball restore and logical-export restore both give the same row counts and
 ledger sums; a changed byte in either file refuses; a non-empty target refuses).
 
-Hosted drill. A backup of the Render disk needs the app stopped, for the same lock reason as Step 6:
+Hosted drill, in the Render shell, with the app in maintenance mode: Step 6 items 1 and 2 done, and
+/healthz says "maintenance":true. If it does not, stop.
 
 ```
-node scripts/backup.mjs --dir <pglite dir> --out <folder outside the repo> --i-stopped-the-app
-node scripts/restore.mjs --from <backup folder> --dir <empty dir>
+node scripts/backup.mjs --dir /var/data/pglite --out /var/data/backup-<YYYYMMDD> --maintenance
+node scripts/restore.mjs --from /var/data/backup-<YYYYMMDD> --dir /var/data/pglite-drill --maintenance
 ```
 
-On Render the folder belongs to the running app, so these two commands cannot be run there until the
-same maintenance decision as O-C8 exists. **DECISION PENDING**. Until then the drill you can do is: a
-Render disk snapshot (the dashboard's own feature) restored to a new disk, and a note of how long it took.
+Both must end without refused, and the restore's row counts must equal the backup's. The drill restores
+into a new folder and never replaces /var/data/pglite. Afterwards run
+`rm -rf /var/data/pglite-drill /var/data/backup-<YYYYMMDD>` (the backup holds session data), then
+`rm /var/data/ums-maintenance` and restart as in Step 6 item 7. A real recovery (swapping the folder) is a
+separate procedure: ask Sakthi. A restored database has paypal_outbound off, so Step 6 items 5 and 6 must
+be repeated.
+
 Pass condition from C-10: the latest dump restores to a fresh host within 30 minutes, the logical export
-restores into stock Postgres, and the orders match PayPal read-backs. A restore forces `paypal_outbound`
-OFF; approval rows are kept and a live one makes the restore refuse unless you say so.
+restores into stock Postgres, and the orders match PayPal read-backs. Approval rows are kept in a restore
+and a live one makes it refuse unless you say so.
 
 Write what you did and how long it took. Never copy a backup anywhere shared: it holds session data.
 

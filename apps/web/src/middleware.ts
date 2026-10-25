@@ -3,7 +3,7 @@
 // withRoute and in the data access functions (architecture 9.8), never here.
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { newNonce } from '../composition.server';
+import { maintenanceActive, newNonce } from '../composition.server';
 import { pageHeaders } from './lib/page-headers';
 
 export const config = {
@@ -13,6 +13,13 @@ export const config = {
 };
 
 export function middleware(req: NextRequest): NextResponse {
+  // CO-7b (D-037): in maintenance mode a page is not served; the database behind it is closed anyway.
+  // The API, content and health routes are not matched here: withRoute answers for them.
+  if (maintenanceActive())
+    return NextResponse.json(
+      { error: { code: 'maintenance', message: 'The service is down for maintenance.' } },
+      { status: 503, headers: { 'cache-control': 'no-store' } },
+    );
   const nonce = newNonce();
   const headers = pageHeaders(nonce);
   const forward = new Headers(req.headers);

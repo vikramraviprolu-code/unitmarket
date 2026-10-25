@@ -35,6 +35,10 @@ services:
         value: 'pglite-disk'
       - key: UMS_PGLITE_DIR
         value: '/var/data/pglite'
+      # CO-7b (D-037) maintenance mode: while this file exists at boot the app opens no database. The
+      # owner creates and removes it in the Render shell only; nothing in the app writes it.
+      - key: UMS_MAINTENANCE_FLAG
+        value: '/var/data/ums-maintenance'
       # ASM-57: one proxy in front. Unverified; confirm on the first deploy.
       - key: UMS_TRUSTED_PROXIES
         value: '1'

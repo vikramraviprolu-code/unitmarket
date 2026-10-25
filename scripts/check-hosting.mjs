@@ -5,8 +5,8 @@
 // failure, never a guess) and reports every violation by rule name. Values are never printed.
 //
 // Rules: parse, duplicate-key, service-shape, unknown-name, secret-with-value, live-value,
-// paypal-host, public-name, instances, disk, pglite-dir, node-options, proxy-var, auto-deploy,
-// telemetry, fixed-value, value-type.
+// paypal-host, public-name, instances, disk, pglite-dir, maintenance-flag, node-options, proxy-var,
+// auto-deploy, telemetry, fixed-value, value-type.
 //
 // The file must be printable ASCII plus LF. YAML also treats CR, NEL, LS and PS as line breaks; a
 // checker that splits on LF only would read a comment where Render reads settings, so any other
@@ -46,6 +46,8 @@ const CONFIG_NAMES = [
   'UMS_OPERATOR_TOTP_KEYS',
   'UMS_PUBLIC_ORIGIN',
   'UMS_TRUSTED_PROXIES',
+  // CO-7b (D-037): the maintenance flag path. Pinned by its own rule (maintenance-flag), not by FIXED.
+  'UMS_MAINTENANCE_FLAG',
   'NEXT_PUBLIC_UMS_ENV_LABEL',
 ];
 const ALLOWED = new Set([...CONFIG_NAMES, ...EXTRA_NAMES]);
@@ -83,6 +85,10 @@ const PROXY_VARS = /^(?:HTTP|HTTPS|ALL|NO|FTP)_PROXY$/i;
 const LIVE_WORD = /live/i;
 const PAYPAL_HOST = /paypal(?:objects)?\.com/i;
 const MOUNT = '/var/data';
+// CO-7b (D-037): the flag file sits on the persistent disk, directly in the mount and beside (never
+// inside) the PGlite folder, so it survives a restart, a redeploy and a restore of the folder.
+const FLAG_KEY = 'UMS_MAINTENANCE_FLAG';
+const FLAG_PATH = `${MOUNT}/ums-maintenance`;
 const BUILD = 'corepack pnpm install --frozen-lockfile && corepack pnpm --filter @umsbx/web build';
 const START = 'corepack pnpm --filter @umsbx/web start';
 
@@ -311,7 +317,7 @@ function checkService(svc) {
     values.set(key, v);
     if (key in FIXED && v !== FIXED[key])
       fail('fixed-value', `${key} must be the reviewed fixed value`);
-    if (!(key in FIXED))
+    if (!(key in FIXED) && key !== FLAG_KEY)
       fail('fixed-value', `${key} has a value but is neither fixed nor a secret name`);
   }
   if (values.get('NEXT_TELEMETRY_DISABLED') !== '1')
@@ -329,6 +335,18 @@ function checkService(svc) {
     if (!inside || parts.includes('..') || parts.includes('.') || dir.includes('//'))
       fail('pglite-dir', `UMS_PGLITE_DIR must be a path inside ${MOUNT} with no dot segments`);
   }
+
+  // The maintenance flag: exactly one path, on the disk, beside the PGlite folder.
+  const flag = values.get(FLAG_KEY);
+  if (flag === undefined)
+    fail('maintenance-flag', `${FLAG_KEY} is required: a quoted ${FLAG_PATH} (D-037)`);
+  else if (flag !== FLAG_PATH)
+    fail('maintenance-flag', `${FLAG_KEY} must be exactly ${FLAG_PATH}, on the disk`);
+  if (dir !== undefined && dir.slice(0, dir.lastIndexOf('/')) !== MOUNT)
+    fail(
+      'maintenance-flag',
+      `UMS_PGLITE_DIR must sit directly in ${MOUNT}, so that the flag is its sibling and not inside it`,
+    );
 }
 
 function main() {
