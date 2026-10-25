@@ -199,10 +199,10 @@ describe('online item: buy, partial refund, the rest', () => {
 
 describe('download-and-keep item: a full refund', () => {
   it('stops the links and says the downloaded copy cannot be recalled', async () => {
-    const unit = await buy(w, { offer: 'dock-history', option: 'keep_retrieve' }); // 2.00
+    const unit = await buy(w, { offer: 'harbour-fees', option: 'keep_retrieve' }); // 3.00
     const res = await postRefund(w, w.op, {
       unit_id: unit.unit_id,
-      amount_minor: 200,
+      amount_minor: 300,
       reason: 'Wrong file delivered',
     });
     expect(res.status).toBe(200);
@@ -226,7 +226,7 @@ describe('download-and-keep item: a full refund', () => {
 
 describe('a partial refund of a keep item', () => {
   it('keeps access and says so; the receipt shows the refund line and version 2', async () => {
-    const unit = await buy(w, { offer: 'harbour-fees', option: 'keep_retrieve' }); // 3.00
+    const unit = await buy(w, { offer: 'ferry-timetables', option: 'keep_retrieve' }); // 1.25
     const res = await postRefund(w, w.op, {
       unit_id: unit.unit_id,
       amount_minor: 100,
@@ -243,24 +243,27 @@ describe('a partial refund of a keep item', () => {
 describe('pending states from stored data', () => {
   it('pending at PayPal and confirming payment come from the stored order, with no refund copy', async () => {
     const pending = await buy(w, {
-      offer: 'village-bus',
+      offer: 'tide-tables',
       option: 'online_read',
       scenario: 'pending_receiving_pref',
     });
     const confirming = await buy(w, {
-      offer: 'allotment-diary',
+      offer: 'tide-tables',
       option: 'online_read',
       scenario: 'capture_202',
+      who: 'B',
     });
-    const view = async (u: { order_ref: string }) =>
-      (await w.app.engine.orderView({ order_ref: u.order_ref, actor: w.actorA }))!;
-    expect((await view(pending)).buyer_message).toBe('Payment pending at PayPal');
-    expect((await view(confirming)).buyer_message).toBe('Confirming payment');
-    const items = await libraryOf(w.A);
-    expect(items.find((i) => i.entitlement_id === pending.entitlement_id)?.status_text).toBe(
+    const view = async (u: { order_ref: string }, actor: typeof w.actorA) =>
+      (await w.app.engine.orderView({ order_ref: u.order_ref, actor }))!;
+    expect((await view(pending, w.actorA)).buyer_message).toBe('Payment pending at PayPal');
+    expect((await view(confirming, w.actorB)).buyer_message).toBe('Confirming payment');
+    expect((await view(pending, w.actorA)).refund_line).toBeNull();
+    const mine = await libraryOf(w.A);
+    const theirs = await libraryOf(w.B);
+    expect(mine.find((i) => i.entitlement_id === pending.entitlement_id)?.status_text).toBe(
       'Payment pending at PayPal',
     );
-    expect(items.find((i) => i.entitlement_id === confirming.entitlement_id)?.status_text).toBe(
+    expect(theirs.find((i) => i.entitlement_id === confirming.entitlement_id)?.status_text).toBe(
       'Confirming payment',
     );
     // nothing can be refunded before it is captured
@@ -275,15 +278,16 @@ describe('pending states from stored data', () => {
 
 describe('the other buyer', () => {
   it('sees nothing of the first buyer’s refunds: library, receipt and order', async () => {
-    const mine = await buy(w, { offer: 'ferry-timetables', option: 'online_read', who: 'A' });
-    await postRefund(w, w.op, {
-      unit_id: mine.unit_id,
-      amount_minor: 25,
-      reason: 'Small adjustment',
-    });
+    const [row] = (
+      await w.app.db.query<{ id: string; order_id: string }>(
+        `SELECT e.id, u.order_id FROM entitlements e JOIN order_units u ON u.id = e.unit_id
+          WHERE u.status = 'partially_refunded' AND e.buyer_id = $1 LIMIT 1`,
+        [(w.actorA as { buyer_id: string }).buyer_id],
+      )
+    ).rows;
+    expect(row).toBeDefined();
     const theirs = await libraryOf(w.B);
-    expect(theirs.some((i) => i.entitlement_id === mine.entitlement_id)).toBe(false);
-    expect((await receiptOf(mine.order_id, w.B)).status).toBe(404);
-    expect(await w.app.engine.orderView({ order_ref: mine.order_ref, actor: w.actorB })).toBeNull();
+    expect(theirs.some((i) => i.entitlement_id === row!.id)).toBe(false);
+    expect((await receiptOf(row!.order_id, w.B)).status).toBe(404);
   });
 });

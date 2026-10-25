@@ -26,11 +26,11 @@ const u: Record<string, BoughtUnit> = {};
 
 beforeAll(async () => {
   w = await bootRefundWorld({}, { log_sink: (l) => logs.push(l) });
-  u['a'] = await buy(w, { offer: 'knot-notebook', option: 'online_read' }); // 4.50
-  u['b'] = await buy(w, { offer: 'dock-history', option: 'online_read' }); // 2.00
-  u['c'] = await buy(w, { offer: 'harbour-fees', option: 'online_read' }); // 2.50
-  u['d'] = await buy(w, { offer: 'allotment-diary', option: 'online_read' }); // 1.50
-  u['e'] = await buy(w, { offer: 'village-bus', option: 'online_read' }); // 0.90
+  u['a'] = await buy(w, { offer: 'knot-notebook', option: 'online_read' }); // A 4.50
+  u['b'] = await buy(w, { offer: 'harbour-fees', option: 'online_read' }); // A 2.50
+  u['c'] = await buy(w, { offer: 'ferry-timetables', option: 'online_read' }); // A 1.25
+  u['d'] = await buy(w, { offer: 'tide-tables', option: 'online_read' }); // A 0.40
+  u['e'] = await buy(w, { offer: 'tide-tables', option: 'online_read', who: 'B' }); // B 0.40
 });
 afterAll(async () => {
   await w.app.close();
@@ -119,28 +119,28 @@ describe('the amount', () => {
     expect(await refundRows(w.app)).toBe(0);
   });
   it('the exact amount left is allowed; one cent more after that is not', async () => {
-    const unit = u['e']!; // 0.90
-    expect((await postRefund(w, w.op, ask(unit, 90))).status).toBe(200);
+    const unit = u['e']!; // 0.40
+    expect((await postRefund(w, w.op, ask(unit, 40))).status).toBe(200);
     const more = await postRefund(w, w.op, ask(unit, 1));
     expect(more.status).toBe(409);
-    expect(await ledgerRefunds(w.app, unit.unit_id)).toBe(90);
+    expect(await ledgerRefunds(w.app, unit.unit_id)).toBe(40);
   });
   it('two partial refunds that together pass the total: the second is refused', async () => {
-    const unit = u['b']!; // 2.00
+    const unit = u['b']!; // 2.50
     expect((await postRefund(w, w.op, ask(unit, 150))).status).toBe(200);
-    const second = await postRefund(w, w.op, ask(unit, 51));
+    const second = await postRefund(w, w.op, ask(unit, 101));
     expect(second.status).toBe(409);
     expect((await errorOf(second)).code).toBe('over_refund');
     expect(await ledgerRefunds(w.app, unit.unit_id)).toBe(150);
   });
   it('a stale page: an amount that fitted when the page was drawn is refused after the money moved', async () => {
-    const unit = u['d']!; // 1.50
-    const drawn = 150; // what the page showed as left
-    expect((await postRefund(w, w.op, ask(unit, 100))).status).toBe(200); // a second tab refunds 1.00
+    const unit = u['d']!; // 0.40
+    const drawn = 40; // what the page showed as left
+    expect((await postRefund(w, w.op, ask(unit, 30))).status).toBe(200); // a second tab refunds 0.30
     const stale = await postRefund(w, w.op, ask(unit, drawn));
     expect(stale.status).toBe(409);
     expect((await errorOf(stale)).message).toMatch(/nothing was refunded/i);
-    expect(await ledgerRefunds(w.app, unit.unit_id)).toBe(100);
+    expect(await ledgerRefunds(w.app, unit.unit_id)).toBe(30);
   });
   it('an id that looks like SQL is just an unknown unit', async () => {
     const res = await postRefund(w, w.op, {
@@ -173,6 +173,8 @@ describe('sessions', () => {
   });
   it('an idle session (30 minutes) is refused with 401', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
+    const start = Date.parse('2030-01-01T12:00:00.000Z');
+    vi.setSystemTime(start);
     const { createSession } = await import('@umsbx/security');
     const s = await createSession(w.app.security, {
       kind: 'operator',
@@ -180,7 +182,7 @@ describe('sessions', () => {
       mfa: true,
     });
     const session = { cookie: s.cookie.split(';')[0] ?? '', csrf: s.csrf_token };
-    vi.setSystemTime(Date.now() + SESSION_IDLE_MS + 1000);
+    vi.setSystemTime(start + SESSION_IDLE_MS + 1000);
     const res = await postRefund(w, session, ask(u['c']!, 50));
     expect(res.status).toBe(401);
     expect(await refundRows(w.app, u['c']!.unit_id)).toBe(0);
@@ -265,7 +267,7 @@ describe('the switches', () => {
 
 describe('many at once', () => {
   it('ten refunds of the rest with ten keys make exactly one provider call and one ledger entry', async () => {
-    const unit = await buy(w, { offer: 'ferry-timetables', option: 'online_read' }); // 1.25
+    const unit = await buy(w, { offer: 'ferry-timetables', option: 'online_read', who: 'B' }); // 1.25
     const before = await providerCalls(w.app, 'refund_capture');
     const all = await Promise.all(
       Array.from({ length: 10 }, (_, i) =>
@@ -285,7 +287,7 @@ describe('many at once', () => {
     expect(await unitStatus(w.app, unit.unit_id)).toBe('refunded');
   });
   it('ten sends of one key give one refund; the rest are the stored answer or 409 in_progress', async () => {
-    const unit = await buy(w, { offer: 'tide-tables', option: 'online_read' }); // 0.40
+    const unit = await buy(w, { offer: 'harbour-fees', option: 'online_read', who: 'B' }); // 2.50
     const before = await providerCalls(w.app, 'refund_capture');
     const all = await Promise.all(
       Array.from({ length: 10 }, () =>
@@ -301,7 +303,7 @@ describe('many at once', () => {
 
 describe('no secrets in logs or the audit log', () => {
   it('no log line or audit row carries a cookie, a CSRF token, the passcode, the TOTP key or the reason text', async () => {
-    const unit = await buy(w, { offer: 'harbour-fees', option: 'keep_retrieve', who: 'B' });
+    const unit = await buy(w, { offer: 'knot-notebook', option: 'keep_retrieve', who: 'B' });
     const reason = 'Secret-looking reason zq81xk';
     await postRefund(w, w.op, { unit_id: unit.unit_id, amount_minor: 50, reason });
     const log = logs.join('\n');
@@ -321,7 +323,7 @@ describe('no secrets in logs or the audit log', () => {
       expect(audit.includes(secret)).toBe(false);
     }
     // the reason itself is in the audit row (it is the operator's own statement), and nowhere else
-    expect(audit).toContain(reason);
+    expect(audit.includes(reason)).toBe(true);
   });
 });
 

@@ -31,36 +31,40 @@ describe('refund and pending copy (golden)', () => {
     const statusOf = async (u: { entitlement_id: string }) =>
       (await w.app.engine.libraryItem({ entitlement_id: u.entitlement_id, actor: w.actorA }))!;
 
+    const statusOfB = async (u: { entitlement_id: string }) =>
+      (await w.app.engine.libraryItem({ entitlement_id: u.entitlement_id, actor: w.actorB }))!;
+
     const online = await buy(w, { offer: 'knot-notebook', option: 'online_read' });
     await postRefund(w, w.op, {
       unit_id: online.unit_id,
       amount_minor: 450,
       reason: 'Golden full refund',
     });
-    const keep = await buy(w, { offer: 'dock-history', option: 'keep_retrieve' });
+    const keep = await buy(w, { offer: 'harbour-fees', option: 'keep_retrieve' });
     await postRefund(w, w.op, {
       unit_id: keep.unit_id,
-      amount_minor: 200,
+      amount_minor: 300,
       reason: 'Golden full refund',
     });
-    const part = await buy(w, { offer: 'harbour-fees', option: 'online_read' });
+    const part = await buy(w, { offer: 'ferry-timetables', option: 'online_read' });
     await postRefund(w, w.op, {
       unit_id: part.unit_id,
       amount_minor: 100,
       reason: 'Golden partial refund',
     });
     const pending = await buy(w, {
-      offer: 'village-bus',
+      offer: 'tide-tables',
       option: 'online_read',
       scenario: 'pending_receiving_pref',
     });
     const confirming = await buy(w, {
-      offer: 'allotment-diary',
+      offer: 'tide-tables',
       option: 'online_read',
       scenario: 'capture_202',
+      who: 'B',
     });
-    const orderMsg = async (u: { order_ref: string }) =>
-      (await w.app.engine.orderView({ order_ref: u.order_ref, actor: w.actorA }))!.buyer_message;
+    const orderMsg = async (u: { order_ref: string }, actor: typeof w.actorA) =>
+      (await w.app.engine.orderView({ order_ref: u.order_ref, actor }))!.buyer_message;
 
     const lines = [
       `library, online item refunded: ${(await statusOf(online)).status_text}`,
@@ -68,9 +72,9 @@ describe('refund and pending copy (golden)', () => {
       `library, partially refunded: ${(await statusOf(part)).status_text}`,
       `library, partially refunded, note: ${(await statusOf(part)).refund_note}`,
       `library, payment pending: ${(await statusOf(pending)).status_text}`,
-      `library, confirming payment: ${(await statusOf(confirming)).status_text}`,
-      `order page, payment pending: ${await orderMsg(pending)}`,
-      `order page, confirming payment: ${await orderMsg(confirming)}`,
+      `library, confirming payment: ${(await statusOfB(confirming)).status_text}`,
+      `order page, payment pending: ${await orderMsg(pending, w.actorA)}`,
+      `order page, confirming payment: ${await orderMsg(confirming, w.actorB)}`,
       ...Object.entries(REFUSALS).map(
         ([k, r]) => `operator, ${k}: ${r.http} ${r.code}: ${r.message}`,
       ),

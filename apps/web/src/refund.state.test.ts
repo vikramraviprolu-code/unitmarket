@@ -24,13 +24,14 @@ const u: Record<string, BoughtUnit> = {};
 
 beforeAll(async () => {
   w = await bootRefundWorld();
-  u['main'] = await buy(w, { offer: 'knot-notebook', option: 'online_read' }); // 4.50
-  u['nomfa'] = await buy(w, { offer: 'dock-history', option: 'online_read' }); // 2.00
-  u['replay'] = await buy(w, { offer: 'allotment-diary', option: 'online_read' }); // 1.50
-  u['over'] = await buy(w, { offer: 'village-bus', option: 'online_read' }); // 0.90
-  u['flight'] = await buy(w, { offer: 'ferry-timetables', option: 'online_read' }); // 1.25
-  u['frozen'] = await buy(w, { offer: 'harbour-fees', option: 'online_read' }); // 2.50
-  u['valid'] = await buy(w, { offer: 'tide-tables', option: 'online_read' }); // 0.40
+  // Only four offers are open to a USD buyer, and a buyer owns an article once: four units each.
+  u['main'] = await buy(w, { offer: 'knot-notebook', option: 'online_read' }); // A 4.50
+  u['nomfa'] = await buy(w, { offer: 'tide-tables', option: 'online_read' }); // A 0.40
+  u['replay'] = await buy(w, { offer: 'ferry-timetables', option: 'online_read' }); // A 1.25
+  u['over'] = await buy(w, { offer: 'harbour-fees', option: 'online_read' }); // A 2.50
+  u['flight'] = await buy(w, { offer: 'knot-notebook', option: 'online_read', who: 'B' }); // B 4.50
+  u['frozen'] = await buy(w, { offer: 'ferry-timetables', option: 'online_read', who: 'B' }); // B 1.25
+  u['valid'] = await buy(w, { offer: 'harbour-fees', option: 'online_read', who: 'B' }); // B 2.50
 });
 afterAll(async () => {
   await w.app.close();
@@ -117,13 +118,13 @@ describe('a replayed Idempotency-Key', () => {
   });
 
   it('a refused attempt does not keep its key: the same key can be used again once the cause is fixed', async () => {
-    const unit = u['over']!; // 0.90
-    const refused = await postRefund(w, w.op, body(unit, 91), { key: 'retry-key-0001' });
+    const unit = u['over']!; // 2.50
+    const refused = await postRefund(w, w.op, body(unit, 251), { key: 'retry-key-0001' });
     expect(refused.status).toBe(409);
-    const ok = await postRefund(w, w.op, body(unit, 91 - 1), { key: 'retry-key-0001' });
+    const ok = await postRefund(w, w.op, body(unit, 250), { key: 'retry-key-0001' });
     // the body changed, so this is a new request under a key that was released, not a replay
     expect(ok.status).toBe(200);
-    expect(await ledgerRefunds(w.app, unit.unit_id)).toBe(90);
+    expect(await ledgerRefunds(w.app, unit.unit_id)).toBe(250);
   });
 });
 
@@ -148,7 +149,7 @@ describe('refusals are plain', () => {
     expect(unknown.status).toBe(409);
     expect((await errorOf(unknown)).code).toBe('not_captured');
     const pending = await buy(w, {
-      offer: 'village-bus',
+      offer: 'tide-tables',
       option: 'online_read',
       scenario: 'pending_receiving_pref',
       who: 'B',
@@ -192,7 +193,7 @@ describe('refusals are plain', () => {
     expect(await refundRows(w.app, unit.unit_id)).toBe(0);
     const lib = await w.app.engine.libraryItem({
       entitlement_id: unit.entitlement_id,
-      actor: w.actorA,
+      actor: w.actorB,
     });
     expect(lib?.can_open).toBe(true);
   });
@@ -243,7 +244,7 @@ describe('the input is strict', () => {
 
 describe('the cancel path', () => {
   it('withdraws a request that is still requested, also while refunds are paused', async () => {
-    const fresh = await buy(w, { offer: 'ferry-timetables', option: 'keep_retrieve', who: 'B' });
+    const fresh = u['nomfa']!; // 0.40, untouched until now
     const id = await openRequest(fresh, 30);
     await w.app.db.query(`UPDATE safety_switches SET "on" = false WHERE name = 'refunds_enabled'`);
     const res = await postCancel(w, w.op, id);

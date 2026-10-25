@@ -74,6 +74,8 @@ import {
   placeOrder as placePaymentsOrder,
   handleWebhook,
   recoverOnStartup,
+  cancelRefundRequest,
+  executeRefund,
   requestRefund,
 } from '@umsbx/payments';
 import { health as jobsHealth, startLoop } from '@umsbx/jobs';
@@ -93,6 +95,15 @@ import { receiveWebhook, webhookAllowed } from './src/server/webhook';
 import type { WebhookInput, WebhookResponse } from './src/server/webhook';
 import type { Outbound } from './src/server/outbound.server';
 import type { OpsGate } from './src/lib/gate-lines';
+import {
+  buyerRefundNote,
+  buyerStatusText,
+  createRefundFacade,
+  loadRefundOverview,
+  orderRefundLine,
+} from './src/server/refund';
+import type { RefundFacade, RefundOverview, RefundUnitView } from './src/server/refund';
+export type { RefundOverview, RefundUnitView };
 
 type Env = Record<string, string | undefined>;
 export interface AppOptions {
@@ -155,6 +166,8 @@ export interface OrderView {
   environment: EnvironmentLabel;
   /** The case opened for this order, if any (recovery rules or the buyer). */
   open_case: { case_id: Id; state: string; buyer_message: string } | null;
+  /** What has been refunded of what was paid, from the stored units (CO-8); null when nothing. */
+  refund_line: string | null;
 }
 export interface PaymentsFacade {
   placeOrder(i: {
@@ -223,6 +236,8 @@ export interface LibraryEntry {
     days_left: number | null;
   };
   status_text: string;
+  /** CO-8: set for a partially refunded unit; says access to every item in the order continues. */
+  refund_note: string | null;
   can_open: boolean;
   order_id: Id | null;
   /** Receipt versions of the order, oldest first (lane 10). */
@@ -250,6 +265,11 @@ export interface OpsSnapshot {
   };
   /** The job loop: when it last finished a pass and how much recovery work is due. */
   jobs: { last_pass_at: string | null; due: number };
+  /**
+   * CO-8: the units an operator may refund. Null unless the session carries the second factor (P9):
+   * the page shows the form only to such sessions, and the route refuses the others anyway.
+   */
+  refunds: RefundOverview | null;
 }
 
 const SWITCHES: SwitchName[] = [
@@ -392,6 +412,11 @@ export interface Engine {
    * money or calls PayPal for the order.
    */
   webhook(i: WebhookInput): Promise<WebhookResponse>;
+  /**
+   * CO-8: the operator refund path. `request` is requestRefund then executeRefund for an operator with
+   * the second factor; `cancel` withdraws a request that is still `requested`.
+   */
+  refund: RefundFacade;
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
   /** One pass of the access-window sweep and the automatic recovery rules (the job loop's sweep). */
@@ -672,7 +697,19 @@ function buildApp(config: Config, opts: AppOptions): App {
     ...core,
     content,
     requestRefund: (i) => requestRefund(paymentsDeps, i),
+    // CO-4 review: an offer over several units is all or none, so the resolver can undo its requests.
+    cancelRefund: (i) => cancelRefundRequest(paymentsDeps, i.refund_request_id, i.actor),
   };
+  // CO-8: the operator refund path. The payments functions are bound here; the behaviour is in
+  // src/server/refund.ts.
+  const refundFacade: RefundFacade = createRefundFacade({
+    db,
+    audit,
+    log,
+    requestRefund: (i) => requestRefund(paymentsDeps, i),
+    executeRefund: (i) => executeRefund(paymentsDeps, i),
+    cancelRefund: (i) => cancelRefundRequest(paymentsDeps, i.refund_request_id, i.actor),
+  });
   // One pass of the loop's sweep: end access windows, then turn alerts into cases.
   const sweepAll = async (x: { max_items: number }): Promise<{ ended: number }> => {
     const swept = await sweepWindows(core, x);
@@ -721,8 +758,13 @@ function buildApp(config: Config, opts: AppOptions): App {
     const items = await getLibrary(db, { buyer_id, now: clock.now() });
     const facts = new Map(
       (
-        await db.query<{ id: string; money_state: string; order_id: string | null }>(
-          `SELECT e.id, e.money_state, u.order_id
+        await db.query<{
+          id: string;
+          money_state: string;
+          order_id: string | null;
+          unit_status: string | null;
+        }>(
+          `SELECT e.id, e.money_state, u.order_id, u.status AS unit_status
              FROM entitlements e LEFT JOIN order_units u ON u.id = e.unit_id
             WHERE e.buyer_id = $1`,
           [buyer_id],
@@ -734,6 +776,13 @@ function buildApp(config: Config, opts: AppOptions): App {
       if (only !== null && v.entitlement_id !== only) continue;
       const ends = v.window.ends_at;
       const running = v.window.state === 'running' && ends !== null;
+      const fact = facts.get(v.entitlement_id);
+      // CO-8: refund words come from stored facts (money state, unit status, window, option) here, not
+      // in a page. The library read model keeps its own words for everything else.
+      const refundFacts = {
+        money: fact?.money_state ?? 'unknown',
+        unit_status: fact?.unit_status ?? 'unknown',
+      };
       const days =
         running && ends !== null
           ? Math.max(0, Math.ceil((Date.parse(ends) - clock.now().getTime()) / DAY_MS))
@@ -752,7 +801,13 @@ function buildApp(config: Config, opts: AppOptions): App {
           ends_at: ends,
           days_left: days,
         },
-        status_text: v.status_text,
+        status_text: buyerStatusText({
+          base: v.status_text,
+          ...refundFacts,
+          window_state: v.window.state,
+          option: v.option,
+        }),
+        refund_note: buyerRefundNote(refundFacts),
         can_open: v.can_open,
         order_id: facts.get(v.entitlement_id)?.order_id ?? null,
         receipt_versions: v.receipt_versions,
@@ -941,16 +996,20 @@ function buildApp(config: Config, opts: AppOptions): App {
           order_ref: string;
           status: string;
           environment: EnvironmentLabel;
+          currency: string;
         }>(
-          'SELECT id, order_ref, status, environment FROM orders WHERE order_ref = $1 AND buyer_id = $2',
+          'SELECT id, order_ref, status, environment, currency FROM orders WHERE order_ref = $1 AND buyer_id = $2',
           [order_ref, buyer],
         )
       ).rows[0];
       if (o === undefined) return null;
-      const units = await db.query<{ status: string }>(
-        'SELECT status FROM order_units WHERE order_id = $1',
-        [o.id],
-      );
+      const units = await db.query<{
+        status: string;
+        amount_minor: string | number;
+        refunded_minor: string | number;
+      }>('SELECT status, amount_minor, refunded_minor FROM order_units WHERE order_id = $1', [
+        o.id,
+      ]);
       const ents = await db.query<{ article_id: string; title: string; access_state: string }>(
         `SELECT e.article_id, a.title, e.access_state FROM entitlements e
            JOIN order_units u ON u.id = e.unit_id JOIN articles a ON a.id = e.article_id
@@ -979,6 +1038,11 @@ function buildApp(config: Config, opts: AppOptions): App {
           access: e.access_state,
         })),
         environment: o.environment,
+        refund_line: orderRefundLine({
+          total_minor: units.rows.reduce((n, u) => n + Number(u.amount_minor), 0),
+          refunded_minor: units.rows.reduce((n, u) => n + Number(u.refunded_minor), 0),
+          currency: o.currency,
+        }),
       };
     },
 
@@ -1115,6 +1179,9 @@ function buildApp(config: Config, opts: AppOptions): App {
                 },
         },
         jobs: { last_pass_at: jobs.last_pass_at, due: jobs.due },
+        // P9: only a session with the second factor is shown the refund form.
+        refunds:
+          actor.mfa === true ? await loadRefundOverview(db, sw['refunds_enabled'] === true) : null,
       };
     },
 
@@ -1152,6 +1219,8 @@ function buildApp(config: Config, opts: AppOptions): App {
         },
         i,
       ),
+
+    refund: refundFacade,
 
     newKey: () => ids.nonce(),
 

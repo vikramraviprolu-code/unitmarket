@@ -50,17 +50,18 @@ test.describe.serial('refund journey', () => {
   test('buyer buys; operator refunds part; buyer sees Partially refunded; operator refunds the rest by keyboard; buyer sees Refunded and cannot open it', async ({
     browser,
   }) => {
-    // 1. The buyer pays 2.00 for an online item.
-    const buyer = await buyerPage(browser, 'a');
-    await payWithScenario(buyer, { offer: 'dock-history', scenario: 'happy' });
+    // 1. The buyer pays 2.50 for an online item.
+    const buyer = await buyerPage(browser, 'b');
+    await payWithScenario(buyer, { offer: 'harbour-fees', scenario: 'happy' });
     await expect(buyer.getByTestId('order-live')).toContainText(
       'Paid. Your item is in your library.',
     );
     await buyer.getByRole('link', { name: 'Open my library' }).click();
     const item = buyer
       .getByTestId('library-item')
-      .filter({ hasText: 'The dock that was never finished' });
-    await item.getByRole('link', { name: 'The dock that was never finished' }).click();
+      .filter({ hasText: 'What a small harbour charges and why' });
+    await item.getByRole('link', { name: 'What a small harbour charges and why' }).click();
+    await expect(buyer).toHaveURL(/\/library\/.+/);
     const status = buyer.locator('[aria-live="polite"][data-testid="library-status"]');
     await expect(status).toContainText(/Ready, /);
     await expectDryRun(buyer);
@@ -68,8 +69,8 @@ test.describe.serial('refund journey', () => {
     // 2. The operator sees the refund form (second-factor session) and refunds 0.75.
     await op.page.goto('/ops');
     await expect(op.page.getByTestId('refund-no-mfa')).toHaveCount(0);
-    const card = unitCard(op.page, 'The dock that was never finished');
-    await expect(card).toContainText('$2.00');
+    const card = unitCard(op.page, 'What a small harbour charges and why');
+    await expect(card).toContainText('$2.50');
     await expect(card.getByRole('button', { name: 'Refund the rest' })).toBeVisible();
     await expect(async () => {
       await card.getByLabel(/^Amount/).fill('0.75');
@@ -81,7 +82,7 @@ test.describe.serial('refund journey', () => {
     await card.getByRole('button', { name: 'Refund $0.75' }).click();
     const result = op.page.locator('[aria-live="polite"][data-testid="refund-result"]');
     await expect(result).toContainText('Refunded $0.75');
-    await expect(result).toContainText('$1.25 is left to refund');
+    await expect(result).toContainText('$1.75 is left to refund');
     await expectDryRun(op.page);
 
     // 3. The buyer, who did not reload, is told in the live region.
@@ -95,9 +96,11 @@ test.describe.serial('refund journey', () => {
 
     // 4. The operator refunds the rest, by keyboard only: amount empty, reason typed, button by Enter.
     await expect(
-      op.page.getByTestId('refund-unit').filter({ hasText: 'The dock that was never finished' }),
-    ).toContainText('$1.25');
-    const again = unitCard(op.page, 'The dock that was never finished');
+      op.page
+        .getByTestId('refund-unit')
+        .filter({ hasText: 'What a small harbour charges and why' }),
+    ).toContainText('$1.75');
+    const again = unitCard(op.page, 'What a small harbour charges and why');
     await expect(async () => {
       await again.getByLabel(/^Amount/).focus();
       await op.page.keyboard.press('Tab');
@@ -112,7 +115,7 @@ test.describe.serial('refund journey', () => {
       });
     }).toPass({ timeout: 20_000 });
     await op.page.keyboard.press('Enter');
-    await expect(result).toContainText('Refunded $1.25');
+    await expect(result).toContainText('Refunded $1.75');
     await expect(result).toContainText('fully refunded');
 
     // 5. The buyer sees Refunded and the item cannot be opened.
@@ -121,60 +124,34 @@ test.describe.serial('refund journey', () => {
     await buyer.goto('/library');
     const row = buyer
       .getByTestId('library-item')
-      .filter({ hasText: 'The dock that was never finished' });
+      .filter({ hasText: 'What a small harbour charges and why' });
     await expect(row.getByTestId('library-status')).toHaveText('Refunded: access has ended');
     await expect(row.getByRole('button')).toHaveCount(0);
 
     // 6. The receipt lists both refunds and the version.
     await buyer.goto('/library');
-    await row.getByRole('link', { name: 'The dock that was never finished' }).click();
+    await row.getByRole('link', { name: 'What a small harbour charges and why' }).click();
     await buyer.getByRole('link', { name: 'View receipt' }).click();
     await expectDryRun(buyer);
     await expect(buyer.getByTestId('receipt-version')).toContainText('Version 3');
     await expect(buyer.getByTestId('receipt-refund')).toHaveCount(2);
     await expect(buyer.getByTestId('receipt-refunds')).toContainText('$0.75');
-    await expect(buyer.getByTestId('receipt-refunds')).toContainText('$1.25');
+    await expect(buyer.getByTestId('receipt-refunds')).toContainText('$1.75');
     await buyer.context().close();
   });
 
-  test('a download-and-keep item says the links stopped and the copy cannot be recalled', async ({
+  test('a download-and-keep item: a too-large amount is refused in plain words, then the rest is refunded and the links stop', async ({
     browser,
   }) => {
-    const buyer = await buyerPage(browser, 'a');
+    const buyer = await buyerPage(browser, 'b');
     await payWithScenario(buyer, {
-      offer: 'allotment-diary',
+      offer: 'knot-notebook',
       scenario: 'happy',
       option: 'Download and keep',
     });
     await expect(buyer.getByTestId('order-live')).toContainText('Paid.');
     await op.page.goto('/ops');
-    const card = unitCard(op.page, 'An allotment diary for a cold March');
-    await expect(async () => {
-      await card.getByLabel(/^Reason/).fill('Wrong file was delivered');
-      await expect(card.getByRole('button', { name: 'Refund the rest' })).toBeEnabled({
-        timeout: 1000,
-      });
-    }).toPass({ timeout: 20_000 });
-    await card.getByRole('button', { name: 'Refund the rest' }).click();
-    await expect(op.page.getByTestId('refund-result')).toContainText('fully refunded');
-    await buyer.goto('/library');
-    const row = buyer
-      .getByTestId('library-item')
-      .filter({ hasText: 'An allotment diary for a cold March' });
-    await expect(row.getByTestId('library-status')).toHaveText(
-      'Refunded: links have stopped. The copy you downloaded cannot be recalled.',
-    );
-    await expect(row.getByRole('button', { name: 'Download' })).toHaveCount(0);
-    await buyer.context().close();
-  });
-
-  test('an over-large amount is refused in plain words and nothing is refunded', async ({
-    browser,
-  }) => {
-    const buyer = await buyerPage(browser, 'a');
-    await payWithScenario(buyer, { offer: 'village-bus', scenario: 'happy' });
-    await op.page.goto('/ops');
-    const card = unitCard(op.page, 'How a village bus route is saved');
+    const card = unitCard(op.page, 'A notebook of six working knots');
     await expect(async () => {
       await card.getByLabel(/^Amount/).fill('9.99');
       await card.getByLabel(/^Reason/).fill('Trying too much on purpose');
@@ -185,6 +162,19 @@ test.describe.serial('refund journey', () => {
     await card.getByRole('button', { name: 'Refund $9.99' }).click();
     await expect(op.page.getByTestId('error-state')).toContainText('more than is left to refund');
     await expect(op.page.getByTestId('error-state')).toContainText('Nothing was refunded');
+    // The same form, the amount emptied: the rest.
+    await card.getByLabel(/^Amount/).fill('');
+    await expect(card.getByRole('button', { name: 'Refund the rest' })).toBeEnabled();
+    await card.getByRole('button', { name: 'Refund the rest' }).click();
+    await expect(op.page.getByTestId('refund-result')).toContainText('fully refunded');
+    await buyer.goto('/library');
+    const row = buyer
+      .getByTestId('library-item')
+      .filter({ hasText: 'A notebook of six working knots' });
+    await expect(row.getByTestId('library-status')).toHaveText(
+      'Refunded: links have stopped. The copy you downloaded cannot be recalled.',
+    );
+    await expect(row.getByRole('button', { name: 'Download' })).toHaveCount(0);
     await buyer.context().close();
   });
 });

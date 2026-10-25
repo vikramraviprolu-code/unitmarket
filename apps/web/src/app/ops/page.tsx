@@ -6,6 +6,7 @@ import { EnvLabel } from '../../ui/EnvLabel';
 import { formatMinor, formatDateTime } from '../../lib/format';
 import { gateLines } from '../../lib/gate-lines';
 import { StopButton } from './StopButton';
+import { RefundPanel } from './RefundPanel';
 
 export const metadata: Metadata = { title: 'Operations' };
 
@@ -14,14 +15,17 @@ export default async function Ops() {
   if (actor?.kind !== 'operator') redirect('/signin?next=/ops');
   const snap = await (await app()).engine.opsSnapshot(actor);
   if (snap === null) redirect('/signin?next=/ops');
+  const a = await app();
+  // One single-use Idempotency-Key per refund form, made on the server (CO-8).
+  const refundKeys = snap.refunds === null ? [] : snap.refunds.units.map(() => a.engine.newKey());
   return (
     <>
       <h1>
         Operations <EnvLabel environment={snap.environment} />
       </h1>
       <p className="muted">
-        Read only, except the stop button below. Everything else is changed with the operator
-        command line.
+        Read only, except the stop button and, with the authenticator code, refunds. Everything else
+        is changed with the operator command line.
       </p>
 
       <h2>Switches</h2>
@@ -76,6 +80,18 @@ export default async function Ops() {
       </ul>
 
       <StopButton />
+
+      {snap.refunds === null ? (
+        <section aria-labelledby="refunds-heading">
+          <h2 id="refunds-heading">Refunds</h2>
+          <p data-testid="refund-no-mfa">
+            Refunds need a sign-in with your authenticator code. This session has none. Sign out and
+            sign in again as a named operator with the code to see the refund form.
+          </p>
+        </section>
+      ) : (
+        <RefundPanel overview={snap.refunds} keys={refundKeys} />
+      )}
 
       <h2>Orders</h2>
       {snap.orders.length === 0 ? (
