@@ -29,6 +29,7 @@ Goal.
   - Any mismatch or `DUPLICATE_INVOICE_ID`: the whole order is `frozen`, nothing captured.
   - Any item not ready: the whole order is `failed`.
   - A provider order that has lapsed (VOIDED or not found, no capture): the whole pack is `abandoned`, nothing charged. No hold wording (L-2).
+  - **Whole-order outcomes (M-A)** are all the cases above: a create rejected, a duplicate at create, a pass mismatch, an item not ready, a lapsed order, and a pack abandon. Each writes its terminal state to **every** non-terminal PayPal order of the order, in one transaction under `lockOrderRows`.
 - **Capture gate (H-1).**
   - In one transaction: lock the order rows, require `provider_orders.state = 'approved'` for that PayPal order, move its capture operation `prepared`→`sent` and move that provider order to `capture_requested`.
   - Each `approved` provider order is captured in position order, after a status-only read showing APPROVED, with its own key (D-014 cap per provider order).
@@ -36,7 +37,7 @@ Goal.
     - claim → `capture_claimed`;
     - unknown → `unresolved`;
     - blocked, reopen or payer_action → back to `approved`; payer_action writes `approve_url` `WHERE id` = that provider order.
-  - `orders.status` is set only by `deriveOrderStatus` (`composite.ts`, pure). It never returns to `awaiting_buyer` once a capture was sent.
+  - `orders.status` is set only by `deriveOrderStatus` (`composite.ts`, pure). It never returns to `awaiting_buyer` while `capture_sent` holds. `capture_sent` means a PayPal order is sent in the overview's sense, not merely that some operation has `first_sent_at` (H-A). So a `single` order reopened after payer_action or `ORDER_NOT_APPROVED` goes back to `awaiting_buyer`, as today (`return.state.test.ts:575`, `:597` stay green unchanged).
 - **Read-back.** After each capture: an order GET and a capture GET, matched against that slice. A unit mismatch, or a `DUPLICATE_INVOICE_ID` after a capture, freezes only that provider order (`frozen_order` alert, mismatch flag, "On hold").
 - **Alerts and receipts.**
   - `partial_composite` is raised only on entering `paid_partial` with at least one provider order not charged.
@@ -48,7 +49,9 @@ Goal.
 
 Inputs: overview sections 1 and 3, DP-1, `domain/payments/src/*`, `0004_money.sql`, `build-create.ts`, `packages/contracts/src/{paypal,config}.ts`, READINESS "Lock order".
 
-Outputs: the DP-2a files in overview section 4. Two notes for the commit and the PR:
+Outputs: the DP-2a files in overview section 4. Three notes for the commit and the PR:
+
+- This spec is longer than one page (about 1,200 words), a stated exception accepted by the reviewer: the capture-gate and status rules are what the builder must not get wrong.
 
 - The listed `ofr_3` tests contradict the spec, because two publishers in one PayPal order is the D1 shape. Their setup moves to a labelled "D1 dormant" helper, and their assertions stay.
 - `apps/web/src/webhook-support.ts:291` is changed, as a named exception, because 0011 makes its second-provider-order INSERT invalid. It now UPDATEs the placed row.
@@ -61,6 +64,9 @@ Red-first tests (commit 1):
 - `composite.state.test.ts`:
   - `place: 2 provider orders, 2 units, 2 create ops`;
   - `single unchanged`;
+  - `single payer_action: awaiting_buyer, unchanged`;
+  - `pack with nothing captured, PO1 reopened after payer_action: awaiting_buyer, buyer can approve again`;
+  - whole-order outcomes, each writing every PayPal order: `create rejected on PO2: both failed, order failed`; `DUPLICATE_INVOICE_ID at create on PO2: both frozen, order frozen, no approve url`; `pass mismatch on PO2: both frozen`; `readiness fails: both failed`; `PO2 lapsed in the pass: both abandoned`; `pack window abandon: both abandoned`;
   - `two single-unit creates, distinct invoice ids, own id omitted`;
   - `repeat checkout: no third create`;
   - `second create rejected: failed`;
@@ -71,7 +77,6 @@ Red-first tests (commit 1):
   - `mismatch in the pass: order frozen, zero captures`;
   - `PO2 VOIDED in the pass: abandoned, zero captures, no hold`;
   - `readiness fails: failed, zero captures`;
-  - `DUPLICATE_INVOICE_ID at create freezes the order`;
   - `kill switch on PO2's capture after PO1 captured: PO2 approved, order capture_requested, never awaiting_buyer`;
   - `payer_action on PO2: approve_url written on PO2 only`;
   - `pack window run out, PO2 unapproved: abandoned; all APPROVED: captured`;
