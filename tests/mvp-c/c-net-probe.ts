@@ -76,13 +76,16 @@ export interface RawNet {
  */
 export async function openRaw(raw: RawNet): Promise<void> {
   const made: unknown[] = [];
-  const s = new Socket();
-  s.on('error', noop);
-  made.push(s, Reflect.apply(raw.socketConnect, s, [PORT, HOST]));
-  made.push(
-    Reflect.apply(raw.agentCreateConnection, new http.Agent(), [{ host: HOST, port: PORT }]),
-  );
-  made.push(Reflect.apply(raw.http2Connect, http2, [`http://${HOST}:${PORT}`]));
+  // an error handler goes on each object the moment it exists: the refusal arrives within milliseconds
+  const keep = <T>(thing: T): T => {
+    (thing as { on?: (e: string, f: () => void) => unknown }).on?.('error', noop);
+    made.push(thing);
+    return thing;
+  };
+  const s = keep(new Socket());
+  Reflect.apply(raw.socketConnect, s, [PORT, HOST]);
+  keep(Reflect.apply(raw.agentCreateConnection, new http.Agent(), [{ host: HOST, port: PORT }]));
+  keep(Reflect.apply(raw.http2Connect, http2, [`http://${HOST}:${PORT}`]));
   await new Promise((r) => setTimeout(r, 50)); // let the refusals arrive
   for (const m of made) release(m);
 }
