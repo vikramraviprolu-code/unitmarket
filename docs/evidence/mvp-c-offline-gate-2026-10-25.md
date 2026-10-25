@@ -6,6 +6,7 @@ no tokens, no raw ids. Simulation and fixtures prove the modelled cases only, no
 - Gate: MVP-C, offline part (the hosted part is `docs/owner/MVPC-OWNER-STEPS.md`)
 - Date: 2026-10-25
 - Commit: tests `2eec6f` on `main` `5a0b8e` (this report is on the next commit of `feat/mvp-c-offline-gate`)
+- Main moved to `bae276` (CO-8c, refund panel UI) after the full runs below; `main` was merged into the branch and the five CO-G files, `apps/web/src/refund.integration.test.ts`, the adversarial run, format, lint, typecheck and the check scripts were run again: all green. The full six suites and `ci` were not repeated on the merged tree.
 - Author: Sonnet 5.5 builder (CO-G) Reviewer: Opus 5.5 high (gate review); Sakthi merges
 - Evidence runs: the command outputs below; no other `docs/evidence` file belongs to this gate
 
