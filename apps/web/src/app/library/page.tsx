@@ -43,11 +43,13 @@ export default async function Library() {
               <p aria-live="polite" aria-atomic="true" data-testid="library-status">
                 <strong>{i.status_text}</strong>
               </p>
-              <WindowMeter
-                state={i.window.state}
-                daysLeft={i.window.days_left}
-                endsAt={i.window.ends_at}
-              />
+              {i.refunded ? null : (
+                <WindowMeter
+                  state={i.window.state}
+                  daysLeft={i.window.days_left}
+                  endsAt={i.window.ends_at}
+                />
+              )}
               {i.can_open ? (
                 <div className="actions">
                   <OpenButton

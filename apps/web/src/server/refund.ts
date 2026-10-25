@@ -39,7 +39,8 @@ export type RefusalCode =
   | 'refund_in_flight'
   | 'unit_frozen'
   | 'refund_failed'
-  | 'refund_rejected';
+  | 'refund_rejected'
+  | 'refunds_paused_midway';
 
 export interface Refusal {
   http: 403 | 409 | 503;
@@ -93,6 +94,13 @@ export const REFUSALS: Record<RefusalCode, Refusal> = {
     code: 'refund_rejected',
     message: 'PayPal refused this refund. Nothing was refunded.',
   },
+  // Refunds were switched off between the request and the send (CO-8b L1). The request stays open.
+  refunds_paused_midway: {
+    http: 503,
+    code: 'refunds_paused_midway',
+    message:
+      'Refunds were paused before it was sent. Nothing was refunded. Withdraw the open request on this page, then try again when refunds are on.',
+  },
 };
 
 const FORBIDDEN: Refusal = {
@@ -109,6 +117,10 @@ export const PENDING_MESSAGE =
   "PayPal is still processing this refund. It is booked when PayPal confirms it, and the buyer's access does not change until then.";
 export const UNKNOWN_MESSAGE =
   'We could not confirm this refund with PayPal yet. Do not send it again: the system keeps checking, and an alert shows if a person must look.';
+
+/** The refund is stored but was never sent: PayPal could not be read, so the send was put off (BU-4). */
+export const QUEUED_MESSAGE =
+  'Nothing was sent yet: PayPal could not be read. The system will send this refund when PayPal can be read again, for up to 24 hours. Withdraw it on this page if it should not go.';
 
 export type CancelCode = 'not_operator' | 'mfa_required' | 'not_found' | 'wrong_state';
 export function cancelRefusal(code: CancelCode): {
@@ -227,6 +239,7 @@ export function createRefundFacade(w: RefundWiring): RefundFacade {
   const describe = async (
     request_id: Id,
     state: RefundDone['state'],
+    unknownMessage: string = UNKNOWN_MESSAGE,
   ): Promise<RefundDone | null> => {
     try {
       const r = (
@@ -250,7 +263,7 @@ export function createRefundFacade(w: RefundWiring): RefundFacade {
         state === 'pending'
           ? PENDING_MESSAGE
           : state === 'unknown'
-            ? UNKNOWN_MESSAGE
+            ? unknownMessage
             : r.status === 'refunded' || left <= 0
               ? COMPLETED_FULL(formatMinor(amount, r.currency))
               : COMPLETED_PARTIAL(formatMinor(amount, r.currency), formatMinor(left, r.currency));
@@ -348,7 +361,15 @@ export function createRefundFacade(w: RefundWiring): RefundFacade {
         return finish('refund_failed', request_id);
       }
       if (executed.error.code === 'unknown') {
-        const done = await describe(request_id, 'unknown');
+        // Never sent (still `requested`: PayPal could not be read, so the send was put off), or sent
+        // with the answer lost: two different things to tell the operator.
+        const at = (
+          await w.db.query<{ state: string }>('SELECT state FROM refund_requests WHERE id = $1', [
+            request_id,
+          ])
+        ).rows[0]?.state;
+        const words = at === 'requested' ? QUEUED_MESSAGE : UNKNOWN_MESSAGE;
+        const done = await describe(request_id, 'unknown', words);
         await audit(actor, unit_id, reason, {
           outcome: 'unknown',
           amount_minor,
@@ -364,7 +385,7 @@ export function createRefundFacade(w: RefundWiring): RefundFacade {
             refunded_minor: 0,
             remaining_minor: 0,
             unit_status: 'unknown',
-            message: UNKNOWN_MESSAGE,
+            message: words,
           },
         );
       }
@@ -375,7 +396,7 @@ export function createRefundFacade(w: RefundWiring): RefundFacade {
           request_id,
         ])
       ).rows[0]?.state;
-      return finish(left === 'requested' ? 'refunds_off' : 'refund_rejected', request_id);
+      return finish(left === 'requested' ? 'refunds_paused_midway' : 'refund_rejected', request_id);
     },
 
     async cancel({ actor, refund_request_id }) {
@@ -549,10 +570,15 @@ export interface BuyerFacts {
   unit_status: string;
 }
 
+/** A full refund: the money state or the unit says so, and it is not a reversal. */
+export function isFullyRefunded(f: Pick<BuyerFacts, 'money' | 'unit_status'>): boolean {
+  if (f.money === 'reversed' || f.unit_status === 'reversed') return false;
+  return f.money === 'refunded' || f.unit_status === 'refunded';
+}
+
 export function buyerStatusText(f: BuyerFacts): string {
   if (f.money === 'reversed' || f.unit_status === 'reversed') return f.base;
-  if (f.money === 'refunded' || f.unit_status === 'refunded')
-    return f.option === 'keep_retrieve' ? REFUNDED_KEEP : REFUNDED_ONLINE;
+  if (isFullyRefunded(f)) return f.option === 'keep_retrieve' ? REFUNDED_KEEP : REFUNDED_ONLINE;
   if (f.unit_status === 'partially_refunded' && f.money === 'captured') {
     return f.window_state === 'ended' || f.window_state === 'revoked'
       ? `Partially refunded. ${f.base}`

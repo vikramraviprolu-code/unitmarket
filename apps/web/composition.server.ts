@@ -98,6 +98,7 @@ import type { OpsGate } from './src/lib/gate-lines';
 import {
   buyerRefundNote,
   buyerStatusText,
+  isFullyRefunded,
   createRefundFacade,
   loadRefundOverview,
   orderRefundLine,
@@ -238,6 +239,8 @@ export interface LibraryEntry {
   status_text: string;
   /** CO-8: set for a partially refunded unit; says access to every item in the order continues. */
   refund_note: string | null;
+  /** CO-8b L4: a full refund; the page shows the refund line and no window meter. */
+  refunded: boolean;
   can_open: boolean;
   order_id: Id | null;
   /** Receipt versions of the order, oldest first (lane 10). */
@@ -808,6 +811,7 @@ function buildApp(config: Config, opts: AppOptions): App {
           option: v.option,
         }),
         refund_note: buyerRefundNote(refundFacts),
+        refunded: isFullyRefunded(refundFacts),
         can_open: v.can_open,
         order_id: facts.get(v.entitlement_id)?.order_id ?? null,
         receipt_versions: v.receipt_versions,

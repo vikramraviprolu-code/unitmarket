@@ -1,7 +1,7 @@
 // BU-2 e2e (offline, dry run): the operator presses "Stop PayPal now" on /ops; the next checkout shows
-// that it is paused and nothing is charged. Runs last (file name order; the zz- prefix keeps it
-// after refund.spec.ts, CO-8) because the stop stays in force for the life of the server. The operator signs in through the sign-in form; the buyer is
-// buyer B from the setup project.
+// that it is paused and nothing is charged. Runs last (file name order: the zz- prefix keeps it after
+// refund.spec.ts, CO-8) because the stop stays in force for the life of the server. The operator signs
+// in through the sign-in form; the buyer is buyer B from the setup project.
 import { test, expect } from '@playwright/test';
 import { PASSCODE, askPrice, buyerPage, toApproval } from './support';
 

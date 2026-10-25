@@ -131,6 +131,9 @@ on it. Status `open` means the plan builds on it but the owner has not confirmed
   owner on 2026-10-23.
 - `CLAUDE.md` rule 3 still names `packages/paypal/src/endpoints.ts` as the host constant location;
   D-013 moved it to `packages/transport/src/endpoints.ts`. Fix the sentence in a docs commit.
+- `offer_refund` only requests; nothing executes those requests and each blocks its unit with
+  `refund_in_flight` until an operator withdraws it (CO-8). Before any route calls `resolveCase`,
+  give `ResolveDeps` an `executeRefund` and call it for each request after the case commits.
 
 ## History
 

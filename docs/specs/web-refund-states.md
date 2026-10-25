@@ -8,13 +8,13 @@ Goal: `POST /api/refunds` is `withRoute({ auth: 'operator', csrf: true, idempote
 
 Inputs: CO-4 (`requestRefund` codes `mfa_required`, `refund_in_flight`), CO-5 (window rules), CO-6 (MFA sessions), `apps/web/composition.server.ts`, `apps/web/src/server/dryrun-model.ts`, `apps/web/src/app/{ops,library,receipts,orders}/**`, `domain/library` (status text source).
 
-Outputs: `apps/web/src/app/api/refunds/route.ts`, `apps/web/composition.server.ts` (`engine.refund`, wiring only; logic in `apps/web/src/server/refund.ts`), the page files above, `apps/web/src/server/dryrun-model.ts`, `apps/web/e2e/refund.spec.ts`, tests below, the route list entry.
+Outputs: `apps/web/src/app/api/refunds/route.ts`, `apps/web/src/app/api/refunds/[id]/cancel/route.ts` (the cancel path of the CO-4 review notes), `apps/web/src/server/refund.ts` (the facade, the words and the ops reader), `apps/web/composition.server.ts` (`engine.refund`, wiring only), the page files above, `apps/web/src/server/dryrun-model.ts`, `apps/web/e2e/refund.spec.ts`, tests below, the route list entry.
 
 Order: commit 1 is tests, e2e spec and golden copy only, run red; then implement.
 
 Acceptance tests:
 
-- `corepack pnpm vitest run --project state apps/web/src/refund.state.test.ts`: operator without MFA 403; buyer 404 (no existence oracle); replayed key gives one request; over-refund 409 with a plain message.
+- `corepack pnpm vitest run --project state apps/web/src/refund.state.test.ts`: operator without MFA 403; buyer 403 `forbidden` (no existence oracle: the wrapper refuses a wrong role before any lookup, and the answer is the same for a real and an unknown unit id); replayed key gives one request; over-refund 409 with a plain message.
 - `corepack pnpm vitest run --project integration apps/web/src/refund.integration.test.ts`: dry run, through the routes: buy, partial refund, remainder, library and receipt states after each step, INV1 to INV4 green.
 - `corepack pnpm vitest run --project adversarial apps/web/src/refund.adversarial.test.ts`: CSRF missing 403; amount as a string, negative, fractional or over the cap refused; another operator's session cookie on a stopped session refused; `refunds_enabled` off answers 503 `Refunds paused`.
 - `corepack pnpm vitest run --project golden apps/web/src/refund-copy.golden.test.ts`: buyer copy for each state matches the golden text.

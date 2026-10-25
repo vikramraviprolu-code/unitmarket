@@ -31,11 +31,13 @@ export default async function LibraryItem({
         <strong>{item.status_text}</strong>
       </p>
       {item.refund_note ? <p data-testid="library-refund-note">{item.refund_note}</p> : null}
-      <WindowMeter
-        state={item.window.state}
-        daysLeft={item.window.days_left}
-        endsAt={item.window.ends_at}
-      />
+      {item.refunded ? null : (
+        <WindowMeter
+          state={item.window.state}
+          daysLeft={item.window.days_left}
+          endsAt={item.window.ends_at}
+        />
+      )}
       <h2>Evidence</h2>
       <dl>
         <dt>Window started</dt>
