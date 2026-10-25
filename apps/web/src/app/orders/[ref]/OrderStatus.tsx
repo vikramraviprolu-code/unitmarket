@@ -40,6 +40,7 @@ export function OrderStatus({ initial }: { initial: OrderView }) {
           We opened case {view.open_case.case_id}. {view.open_case.buyer_message}
         </p>
       ) : null}
+      {view.refund_line !== null ? <p data-testid="order-refund">{view.refund_line}</p> : null}
       <ul>
         {view.items.map((i) => (
           <li key={i.article_id}>
@@ -48,7 +49,9 @@ export function OrderStatus({ initial }: { initial: OrderView }) {
               ? 'ready'
               : i.access === 'locked'
                 ? 'not unlocked yet'
-                : i.access}
+                : i.access === 'revoked'
+                  ? 'access has ended'
+                  : i.access}
           </li>
         ))}
       </ul>

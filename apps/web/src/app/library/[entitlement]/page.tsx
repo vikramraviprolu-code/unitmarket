@@ -5,6 +5,7 @@ import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { WindowMeter } from '../../../ui/WindowMeter';
 import { OpenButton } from '../OpenButton';
+import { Refresher } from '../../../ui/Refresher';
 import { optionLabel, formatDateTime } from '../../../lib/format';
 
 export const metadata: Metadata = { title: 'Library item' };
@@ -24,14 +25,19 @@ export default async function LibraryItem({
     <>
       <p className="muted">{item.publisher}</p>
       <h1>{item.title}</h1>
-      <p>
-        {optionLabel(item.option)}. <strong>{item.status_text}</strong>
+      <Refresher />
+      <p>{optionLabel(item.option)}.</p>
+      <p aria-live="polite" aria-atomic="true" data-testid="library-status">
+        <strong>{item.status_text}</strong>
       </p>
-      <WindowMeter
-        state={item.window.state}
-        daysLeft={item.window.days_left}
-        endsAt={item.window.ends_at}
-      />
+      {item.refund_note ? <p data-testid="library-refund-note">{item.refund_note}</p> : null}
+      {item.refunded ? null : (
+        <WindowMeter
+          state={item.window.state}
+          daysLeft={item.window.days_left}
+          endsAt={item.window.ends_at}
+        />
+      )}
       <h2>Evidence</h2>
       <dl>
         <dt>Window started</dt>

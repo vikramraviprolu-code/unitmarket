@@ -1,0 +1,31 @@
+# CO-8 golden: the words people are told about refunds and pending payments. Hand reviewed.
+# Buyer lines first (library, order page), then what the operator is told. ASM-61 (open): a partial
+# refund is a price adjustment for the whole order, so the note says access to every item continues
+# and no per-item refund state is shown.
+library, online item refunded: Refunded: access has ended
+library, keep item refunded: Refunded: links have stopped. The copy you downloaded cannot be recalled.
+library, partially refunded: Partially refunded: your access continues
+library, partially refunded, note: Part of this order was refunded as a price adjustment. Access to every item in the order continues.
+library, payment pending: Payment pending at PayPal
+library, confirming payment: Confirming payment
+order page, payment pending: Payment pending at PayPal
+order page, confirming payment: Confirming payment
+operator, mfa_required: 403 mfa_required: Sign in again with your authenticator code. Refunds need the second factor.
+operator, refunds_off: 503 refunds_paused: Refunds paused. Nothing was refunded. Ask the owner to turn refunds on again.
+operator, not_captured: 409 not_captured: This payment has no captured money left to refund. Nothing was refunded.
+operator, over_refund: 409 over_refund: That is more than is left to refund on this payment. Nothing was refunded. Check the amount left and try again.
+operator, refund_in_flight: 409 refund_in_flight: A refund request is already open for this payment. Wait for it to finish, or withdraw it, then try again. Nothing new was requested.
+operator, unit_frozen: 409 unit_frozen: This payment is frozen: a refund list from PayPal did not add up and a person must look. Nothing can be refunded until the flag is cleared. The buyer's access is unchanged.
+operator, refund_failed: 409 refund_failed: The refund was not made: PayPal holds less than that, or did not complete it. A person has been alerted. Nothing was refunded.
+operator, refund_rejected: 409 refund_rejected: PayPal refused this refund. Nothing was refunded.
+operator, refunds_paused_midway: 503 refunds_paused_midway: Refunds were paused before it was sent. Nothing was refunded. Withdraw the open request on this page, then try again when refunds are on.
+operator, cancel wrong_state: 409 That request can no longer be withdrawn: it was already sent or has finished.
+operator, cancel not_found: 404 We could not find that refund request.
+operator, done in part: Refunded USD 1.50. USD 3.00 is left to refund. The buyer keeps access.
+operator, done in full: Refunded USD 4.50. This payment is now fully refunded and the buyer's access has ended.
+operator, pending at PayPal: PayPal is still processing this refund. It is booked when PayPal confirms it, and the buyer's access does not change until then.
+operator, not confirmed yet: We could not confirm this refund with PayPal yet. Do not send it again: the system keeps checking, and an alert shows if a person must look.
+operator, not sent yet: Nothing was sent yet: PayPal could not be read. The system will send this refund when PayPal can be read again, for up to 24 hours. Withdraw it on this page if it should not go.
+operator, form could not tell: We do not know yet whether this refund was made. Do not start a new refund. Reload the page and check the open requests for this payment.
+operator, open request being sent: Wait for it to finish.
+operator, open request unresolved: A person must look at this request.

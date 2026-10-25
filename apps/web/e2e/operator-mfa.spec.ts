@@ -1,7 +1,7 @@
 // CO-6 e2e (offline, dry run): an operator signs in with the passcode and a code from an authenticator.
 // The server is started with a fixed fake key (the RFC 6238 test key, see playwright.config.ts); the
 // test makes the code itself, from the server's own clock (the Date header of /healthz, so the test
-// reads no clock of its own). Runs before ops-stop.spec.ts (file name order).
+// reads no clock of its own). Runs before zz-ops-stop.spec.ts (file name order).
 import { createHmac } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';

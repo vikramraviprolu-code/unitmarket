@@ -10,5 +10,7 @@ export type {
   OfferPage,
   OpsSnapshot,
   OrderView,
+  RefundOverview,
+  RefundUnitView,
 } from '../../composition.server';
 export { orderMessage } from '../../composition.server';

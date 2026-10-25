@@ -19,7 +19,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ order:
       <h1>
         Receipt <EnvLabel environment={r.environment} />
       </h1>
-      <p className="muted">
+      <p className="muted" data-testid="receipt-version">
         Version {r.version}, issued {formatDateTime(r.created_at)}
       </p>
       <table>
@@ -48,13 +48,25 @@ export default async function ReceiptPage({ params }: { params: Promise<{ order:
         Total: <strong>{formatMinor(r.snapshot.total_minor, cur)}</strong>
       </p>
       {r.refunds.length > 0 ? (
-        <ul>
-          {r.refunds.map((f) => (
-            <li key={f.refund_id}>
-              Refund {formatMinor(f.amount.minor, f.amount.currency)} on {formatDateTime(f.at)}
-            </li>
-          ))}
-        </ul>
+        <section aria-labelledby="receipt-refunds-heading">
+          <h2 id="receipt-refunds-heading">Refunds</h2>
+          <ul data-testid="receipt-refunds">
+            {r.refunds.map((f) => (
+              <li key={f.refund_id} data-testid="receipt-refund">
+                Refund {formatMinor(f.amount.minor, f.amount.currency)} on {formatDateTime(f.at)}
+              </li>
+            ))}
+          </ul>
+          <p>
+            Refunded in total:{' '}
+            <strong data-testid="receipt-refunded-total">
+              {formatMinor(
+                r.refunds.reduce((n, f) => n + f.amount.minor, 0),
+                cur,
+              )}
+            </strong>
+          </p>
+        </section>
       ) : null}
       <h2>Fingerprint</h2>
       <p className="muted">

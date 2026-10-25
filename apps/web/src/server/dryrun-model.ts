@@ -4,6 +4,9 @@
 // while the web app builds orders with the catalogue price and a generated reference: the model
 // echoes what was created, so the real order, adapter and match logic run over it.
 //
+// CO-8: it also answers refund_capture and get_refund and lists the refunds on GET order, so the refund
+// journey runs offline. A refund is COMPLETED at once.
+//
 // Dry-run only. It opens no socket, reads no environment and no clock of its own (the clock is
 // injected), and its answers are synthetic: they are not PayPal evidence. Only type imports.
 import type { Clock, OutboundRequest, TransportResult } from '@umsbx/contracts';
@@ -32,12 +35,20 @@ interface ModelCapture {
   status: 'COMPLETED' | 'PENDING' | 'DECLINED';
   reason: string | null;
 }
+/** A refund the model took (CO-8). It is COMPLETED at once; the model has no pending refund. */
+interface ModelRefund {
+  id: string;
+  capture_id: string;
+  minor: number;
+  created: string;
+}
 interface ModelUnit {
   reference_id: string;
   custom_id: string;
   amount: { currency_code: string; value: string };
   payee: { merchant_id: string } | null;
   capture: ModelCapture | null;
+  refunds: ModelRefund[];
 }
 interface ModelOrder {
   id: string;
@@ -99,6 +110,7 @@ export function createDryRunModel(clock: Clock, opts: DryRunModelOptions = {}): 
   const orders = new Map<string, ModelOrder>();
   const replays = new Map<string, Stored>();
   let n = 0;
+  let refundN = 0;
   let debug = 0;
 
   const stamp = (): string =>
@@ -138,25 +150,58 @@ export function createDryRunModel(clock: Clock, opts: DryRunModelOptions = {}): 
   const scenarioOf = (o: ModelOrder, r: OutboundRequest): string =>
     r.scenario ?? o.scenario ?? 'happy';
 
-  const captureBody = (c: ModelCapture, u: ModelUnit, o: ModelOrder): Json => ({
-    id: c.id,
-    status: c.status,
-    amount: u.amount,
-    final_capture: true,
-    create_time: o.updated,
-    update_time: o.updated,
-    ...(c.reason === null ? {} : { status_details: { reason: c.reason } }),
-    ...(c.status === 'COMPLETED'
-      ? {
-          seller_receivable_breakdown: {
-            gross_amount: u.amount,
-            paypal_fee: {
-              currency_code: u.amount.currency_code,
-              value: fromMinor(Math.floor(toMinor(u.amount.value) / 10)),
+  const refundedOf = (u: ModelUnit): number => u.refunds.reduce((sum, r) => sum + r.minor, 0);
+
+  // A refunded capture reads PARTIALLY_REFUNDED or REFUNDED from what the model refunded, with the
+  // refunded total in the receivable breakdown, the way a real capture is read after a refund.
+  const captureBody = (c: ModelCapture, u: ModelUnit, o: ModelOrder): Json => {
+    const refunded = c.status === 'COMPLETED' ? refundedOf(u) : 0;
+    const status =
+      refunded <= 0
+        ? c.status
+        : refunded >= toMinor(u.amount.value)
+          ? 'REFUNDED'
+          : 'PARTIALLY_REFUNDED';
+    return {
+      id: c.id,
+      status,
+      amount: u.amount,
+      final_capture: true,
+      create_time: o.updated,
+      update_time: o.updated,
+      ...(c.reason === null ? {} : { status_details: { reason: c.reason } }),
+      ...(c.status === 'COMPLETED'
+        ? {
+            seller_receivable_breakdown: {
+              gross_amount: u.amount,
+              paypal_fee: {
+                currency_code: u.amount.currency_code,
+                value: fromMinor(Math.floor(toMinor(u.amount.value) / 10)),
+              },
+              ...(refunded > 0
+                ? {
+                    total_refunded_amount: {
+                      currency_code: u.amount.currency_code,
+                      value: fromMinor(refunded),
+                    },
+                  }
+                : {}),
             },
-          },
-        }
-      : {}),
+          }
+        : {}),
+    };
+  };
+
+  const refundBody = (r: ModelRefund, u: ModelUnit): Json => ({
+    id: r.id,
+    status: 'COMPLETED',
+    amount: { currency_code: u.amount.currency_code, value: fromMinor(r.minor) },
+    create_time: r.created,
+    update_time: r.created,
+    links: [
+      { href: `/v2/payments/refunds/${r.id}`, rel: 'self', method: 'GET' },
+      { href: `/v2/payments/captures/${r.capture_id}`, rel: 'up', method: 'GET' },
+    ],
   });
 
   // What a read shows. The mismatch scenarios change one field of what PayPal reports; the order
@@ -177,7 +222,17 @@ export function createDryRunModel(clock: Clock, opts: DryRunModelOptions = {}): 
         custom_id: u.custom_id,
         amount,
         ...(payee === undefined ? {} : { payee }),
-        ...(u.capture === null ? {} : { payments: { captures: [captureBody(u.capture, u, o)] } }),
+        ...(u.capture === null
+          ? {}
+          : {
+              payments: {
+                captures: [captureBody(u.capture, u, o)],
+                // The refunds of the capture, whoever made them (here: only the ones the model took).
+                ...(u.refunds.length === 0
+                  ? {}
+                  : { refunds: u.refunds.map((r) => refundBody(r, u)) }),
+              },
+            }),
       };
     }),
     create_time: o.created,
@@ -233,6 +288,7 @@ export function createDryRunModel(clock: Clock, opts: DryRunModelOptions = {}): 
           },
           payee: payee === null ? ownPayee : { merchant_id: String(payee.merchant_id) },
           capture: null,
+          refunds: [],
         };
       }),
     };
@@ -325,6 +381,84 @@ export function createDryRunModel(clock: Clock, opts: DryRunModelOptions = {}): 
     return notFound();
   };
 
+  const findCapture = (id: string): { o: ModelOrder; u: ModelUnit } | null => {
+    for (const o of orders.values())
+      for (const u of o.units) if (u.capture?.id === id) return { o, u };
+    return null;
+  };
+
+  // POST /v2/payments/captures/{id}/refund (CO-8). The amount is checked against what is left; the same
+  // PayPal-Request-Id replays the first answer; no amount refunds what is left. Only a capture that
+  // completed can be refunded.
+  const refund = (id: string, body: unknown, rid: string | null): TransportResult => {
+    const hit = findCapture(id);
+    if (hit === null) return notFound();
+    const key = `refund|${id}|${rid ?? ''}`;
+    const prior = rid === null ? undefined : replays.get(key);
+    if (prior !== undefined) return res(prior.status, prior.body);
+    const { o, u } = hit;
+    if (u.capture?.status !== 'COMPLETED') {
+      return fail(
+        422,
+        'UNPROCESSABLE_ENTITY',
+        'CAPTURE_NOT_COMPLETED',
+        'The capture is not completed, so it cannot be refunded.',
+      );
+    }
+    const left = toMinor(u.amount.value) - refundedOf(u);
+    if (left <= 0) {
+      return fail(
+        422,
+        'UNPROCESSABLE_ENTITY',
+        'CAPTURE_FULLY_REFUNDED',
+        'The capture has already been fully refunded.',
+      );
+    }
+    let minor = left;
+    if (isRec(body) && body.amount !== undefined) {
+      const a = body.amount;
+      if (
+        !isRec(a) ||
+        a.currency_code !== u.amount.currency_code ||
+        typeof a.value !== 'string' ||
+        !/^\d{1,9}(\.\d{1,2})?$/.test(a.value)
+      ) {
+        return fail(400, 'INVALID_REQUEST', 'INVALID_PARAMETER_VALUE', 'amount');
+      }
+      minor = toMinor(a.value);
+      if (minor <= 0) return fail(400, 'INVALID_REQUEST', 'INVALID_PARAMETER_VALUE', 'amount');
+    }
+    if (minor > left) {
+      return fail(
+        422,
+        'UNPROCESSABLE_ENTITY',
+        'REFUND_AMOUNT_EXCEEDED',
+        'The refund amount is more than the amount left on the capture.',
+      );
+    }
+    refundN += 1;
+    const made: ModelRefund = {
+      id: `SBXMODELREF${String(refundN).padStart(6, '0')}`,
+      capture_id: id,
+      minor,
+      created: stamp(),
+    };
+    u.refunds.push(made);
+    o.updated = made.created;
+    const answer = refundBody(made, u);
+    if (rid !== null) replays.set(key, { status: 201, body: answer });
+    return res(201, answer);
+  };
+
+  const getRefund = (id: string): TransportResult => {
+    for (const o of orders.values())
+      for (const u of o.units) {
+        const r = u.refunds.find((x) => x.id === id);
+        if (r !== undefined) return res(200, refundBody(r, u));
+      }
+    return notFound();
+  };
+
   return {
     approve(id, scenario) {
       const o = orders.get(id);
@@ -353,8 +487,12 @@ export function createDryRunModel(clock: Clock, opts: DryRunModelOptions = {}): 
           return capture(parts[3] ?? '', r, rid);
         case 'get_capture':
           return getCapture(parts[3] ?? '', r);
+        case 'refund_capture':
+          return refund(parts[3] ?? '', body, rid);
+        case 'get_refund':
+          return getRefund(parts[3] ?? '');
         default:
-          // Refunds and webhooks are not modelled here; the fixtures cover them in tests.
+          // Webhooks are not modelled here; the fixtures cover them in tests.
           return { kind: 'blocked', by: 'dry_run_miss' };
       }
     },

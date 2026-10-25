@@ -6,6 +6,7 @@ import { currentActor } from '../../server/session';
 import { EmptyState } from '../../ui/EmptyState';
 import { WindowMeter } from '../../ui/WindowMeter';
 import { OpenButton } from './OpenButton';
+import { Refresher } from '../../ui/Refresher';
 import { optionLabel } from '../../lib/format';
 
 export const metadata: Metadata = { title: 'My library' };
@@ -17,6 +18,7 @@ export default async function Library() {
   return (
     <>
       <h1>My library</h1>
+      <Refresher />
       {items.length === 0 ? (
         <EmptyState
           title="Nothing here yet"
@@ -38,14 +40,16 @@ export default async function Library() {
               <p className="muted">
                 {i.publisher}, {optionLabel(i.option)}
               </p>
-              <p>
-                <strong data-testid="library-status">{i.status_text}</strong>
+              <p aria-live="polite" aria-atomic="true" data-testid="library-status">
+                <strong>{i.status_text}</strong>
               </p>
-              <WindowMeter
-                state={i.window.state}
-                daysLeft={i.window.days_left}
-                endsAt={i.window.ends_at}
-              />
+              {i.refunded ? null : (
+                <WindowMeter
+                  state={i.window.state}
+                  daysLeft={i.window.days_left}
+                  endsAt={i.window.ends_at}
+                />
+              )}
               {i.can_open ? (
                 <div className="actions">
                   <OpenButton
