@@ -31,6 +31,13 @@ export interface Config {
    * padding). Empty when unset: operators then sign in without a second factor (mfa false).
    */
   operator_totp_keys: ReadonlyArray<{ name: string; key: Secret }>;
+  /**
+   * UMS_WEBHOOK_CERT_LEARN_UNTIL (CO-1d, D-038): the end of the webhook certificate learn window, as an
+   * ISO time, or null (no window). Sandbox mode only. Config only parses it: the window is open while the
+   * injected clock is before this time, and composition refuses a time more than 24 h after boot
+   * (webhookLearnWindow). While open the webhook route records certificate facts and acts on nothing.
+   */
+  webhook_cert_learn_until: string | null;
   public_origin: string;
   corridors: string[];
   /** Reverse proxies in front of the app, 0 to 3 (UMS_TRUSTED_PROXIES). 0: X-Forwarded-For is never read. */
@@ -57,6 +64,7 @@ export const ENV_NAMES = [
   'UMS_LINK_SECRET',
   'UMS_DEMO_PASSCODE_HASH',
   'UMS_OPERATOR_TOTP_KEYS',
+  'UMS_WEBHOOK_CERT_LEARN_UNTIL',
   'UMS_PUBLIC_ORIGIN',
   'UMS_CORRIDORS',
   'UMS_TRUSTED_PROXIES',
@@ -75,6 +83,26 @@ export const MAX_TOTP_OPERATORS = 8;
 export const OPERATOR_NAME_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
 /** The id `opr_demo` belongs to an operator session without a second factor, so no key may use the name. */
 export const RESERVED_OPERATOR_NAME = 'demo';
+
+/** The learn window (CO-1d, D-038) may end at most this long after the app boots. */
+export const MAX_LEARN_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** A UTC time, seconds precision (milliseconds only as exactly three digits). No zone offsets, no dates alone. */
+export const LEARN_UNTIL_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
+
+/**
+ * Where the learn window stands at `now` (the caller's injected clock; config never reads time).
+ * 'open' only while now < until <= now + 24 h. 'closed': no window, the end has passed (the end moment
+ * itself is closed) or the value cannot be read. 'too_far': the end is more than 24 h away, which
+ * composition refuses at boot.
+ */
+export function webhookLearnWindow(until: string | null, now: Date): 'closed' | 'open' | 'too_far' {
+  if (until === null || !LEARN_UNTIL_PATTERN.test(until)) return 'closed';
+  const end = Date.parse(until);
+  const t = now.getTime();
+  if (Number.isNaN(end) || Number.isNaN(t)) return 'closed';
+  if (end > t + MAX_LEARN_WINDOW_MS) return 'too_far';
+  return t < end ? 'open' : 'closed';
+}
 
 /** PayPal merchant ids are 13 characters, upper-case letters and digits (BU-7). Exact, no folding. */
 export const MERCHANT_ID_PATTERN = /^[A-Z0-9]{13}$/;

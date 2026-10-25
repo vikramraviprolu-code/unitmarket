@@ -179,9 +179,11 @@ describe('check-hosting', () => {
         (m) => m[1] as string,
       ),
     );
-    // Deliberately not allowed in the blueprint: the default corridor list is kept, and a database
-    // URL is a secret that PGlite-on-disk does not need.
-    for (const n of ['UMS_CORRIDORS', 'DATABASE_URL']) read.delete(n);
+    // Deliberately not allowed in the blueprint: the default corridor list is kept, a database
+    // URL is a secret that PGlite-on-disk does not need, and the webhook certificate learn window
+    // (CO-1d, D-038) is a dashboard-only, time-limited setting that must never be committed.
+    for (const n of ['UMS_CORRIDORS', 'DATABASE_URL', 'UMS_WEBHOOK_CERT_LEARN_UNTIL'])
+      read.delete(n);
     const extras = [
       'UMS_OUTBOUND_SCOPE',
       'UMS_OPERATOR_TOTP_KEYS',
@@ -202,6 +204,7 @@ describe('check-hosting', () => {
     );
     expect(r.status).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual(names(load));
+    expect(JSON.parse(r.stdout)).not.toContain('UMS_WEBHOOK_CERT_LEARN_UNTIL');
   });
 
   it('the names comparison tolerates a load.ts that already reads an extra name', () => {

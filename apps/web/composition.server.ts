@@ -28,6 +28,7 @@ import type {
   Id,
   Ids,
   Logger,
+  OutboundRequest,
   PayPalPort,
   PaymentsDeps,
   Receipt,
@@ -38,7 +39,12 @@ import type {
   Transport,
 } from '@umsbx/contracts';
 import { err, ok } from '@umsbx/contracts';
-import { BOOT_REFUSAL_EXIT_CODE, loadConfig, loadConfigFromProcess } from '@umsbx/config';
+import {
+  BOOT_REFUSAL_EXIT_CODE,
+  loadConfig,
+  loadConfigFromProcess,
+  webhookLearnWindow,
+} from '@umsbx/config';
 export { BOOT_REFUSAL_EXIT_CODE };
 import type { Config } from '@umsbx/config';
 import { migrate, openDatabase } from '@umsbx/db';
@@ -48,7 +54,13 @@ import { createAuditSink, createLogger } from '@umsbx/obs';
 import { createOutboundGate, createSwitchReader, readSafetyStatus, runStop } from '@umsbx/safety';
 import { guard } from '@umsbx/transport';
 import type { Wire } from '@umsbx/transport';
-import { EXPECTED_CERT_SUBJECTS, createPayPalAdapter } from '@umsbx/paypal';
+import {
+  EXPECTED_CERT_PINS,
+  createCertificateSource,
+  createPayPalAdapter,
+  learnWebhookCertificate,
+  pinComplete,
+} from '@umsbx/paypal';
 import type { AdapterDeps } from '@umsbx/paypal';
 import { createScriptedModel } from '@umsbx/model';
 import { SEED_DATA, getOffer, seedCatalogue } from '@umsbx/catalogue';
@@ -91,7 +103,7 @@ import {
 import type { SecurityDeps } from '@umsbx/security';
 import { DRYRUN_SCENARIOS, createDryRunModel, isScenarioId } from './src/server/dryrun-model';
 import { buildOutbound } from './src/server/outbound.server';
-import { receiveWebhook, webhookAllowed } from './src/server/webhook';
+import { createLearnRecorder, receiveWebhook, webhookAllowed } from './src/server/webhook';
 import type { WebhookInput, WebhookResponse } from './src/server/webhook';
 import type { Outbound } from './src/server/outbound.server';
 import type { OpsGate } from './src/lib/gate-lines';
@@ -478,6 +490,10 @@ function buildApp(config: Config, opts: AppOptions): App {
   const environment = envLabel(config);
   const clock: Clock = systemClock();
   const ids: Ids = cryptoIds();
+  // CO-1d (D-038): the learn window may end at most 24 h after this boot. Config only parsed the value
+  // (sandbox mode, strict UTC time); the cap needs the clock. A longer window never starts.
+  if (webhookLearnWindow(config.webhook_cert_learn_until, clock.now()) === 'too_far')
+    throw new Error('boot refused: invalid_value UMS_WEBHOOK_CERT_LEARN_UNTIL');
   const sink =
     opts.log_sink ??
     (config.node_env === 'test'
@@ -633,18 +649,23 @@ function buildApp(config: Config, opts: AppOptions): App {
     }
     return transport;
   };
+  const payTransport = {
+    kind: config.mode === 'sandbox' ? 'sandbox' : 'dryrun',
+    send: async (r: OutboundRequest) => (await getTransport()).send(r),
+  } as Transport;
+  // The certificate source is built here (the adapter would build the same one) so the learn window
+  // (CO-1d) describes certificates through the very source, budgets and Transport that verification uses.
+  const certificates: NonNullable<AdapterDeps['certificates']> =
+    opts.webhook_certificates ?? createCertificateSource({ transport: payTransport, clock, log });
   const paypal: PayPalPort = createPayPalAdapter({
-    transport: {
-      kind: config.mode === 'sandbox' ? 'sandbox' : 'dryrun',
-      send: async (r) => (await getTransport()).send(r),
-    } as Transport,
+    transport: payTransport,
     clock,
     log,
     credentials: config.paypal === null ? null : config.paypal,
     own_merchant_id: config.own_merchant_id,
     // PAYPAL_WEBHOOK_ID (sandbox mode only; config reads it there). Unset: no webhook can be verified.
     webhook_id: config.paypal?.webhook_id ?? null,
-    ...(opts.webhook_certificates === undefined ? {} : { certificates: opts.webhook_certificates }),
+    certificates,
     record: async (c) => {
       await db.query(
         `INSERT INTO provider_calls (id, operation_id, operation, method, path_template, http_status, outcome, debug_id, duration_ms, transport_kind, request_redacted, response_redacted, environment, created_at, updated_at)
@@ -677,6 +698,30 @@ function buildApp(config: Config, opts: AppOptions): App {
     config: DOMAIN_CONFIG(config),
     environment,
   };
+  // CO-1d (D-038): the learn window's recorder. Built only when a window was configured; the window
+  // itself is checked per delivery against the clock. It describes the certificate through the one
+  // certificate source above and writes one audit row (actor system) per distinct certificate.
+  const learnRecorder =
+    config.webhook_cert_learn_until === null
+      ? null
+      : createLearnRecorder({
+          log,
+          switchOn: () => switches.isOn('webhook_enabled'),
+          lookup: async (headers) => {
+            const r = await learnWebhookCertificate(certificates, headers);
+            return r.kind === 'facts' ? r.facts : null;
+          },
+          audit: (f) =>
+            db.transaction((tx) =>
+              audit.record(tx, {
+                actor: { kind: 'system' },
+                action: 'webhook.cert_learned',
+                target: null,
+                reason: null,
+                detail: { ...f },
+              }),
+            ),
+        });
   const agent: AgentDeps = { ...core, model: createScriptedModel() };
   const paymentsDeps: PaymentsDeps = { ...core, paypal, content };
   // The loop's deps carry the cadence (the domain config); test_domain changes it in tests only.
@@ -1215,11 +1260,21 @@ function buildApp(config: Config, opts: AppOptions): App {
               switch_on: await switches.isOn('webhook_enabled'),
               mode: config.mode,
               webhook_id: config.paypal?.webhook_id ?? null,
-              pin_set: EXPECTED_CERT_SUBJECTS.length > 0,
+              // the FULL pin (exact host, subject and issuer), not a subject alone (CO-1d)
+              pin_set: pinComplete(EXPECTED_CERT_PINS),
               injected_source: opts.webhook_certificates !== undefined,
             }),
           verify: (w) => paypal.verifyWebhook(w),
           intake: (x) => handleWebhook(core, x),
+          ...(learnRecorder === null
+            ? {}
+            : {
+                learn: {
+                  open: () =>
+                    webhookLearnWindow(config.webhook_cert_learn_until, clock.now()) === 'open',
+                  record: learnRecorder,
+                },
+              }),
         },
         i,
       ),

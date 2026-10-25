@@ -44,6 +44,15 @@
 // (the expected URL or subject, ASM-64) is updated by the owner. The route should alert on
 // webhook silence (no verified delivery for longer than expected) so this is noticed.
 //
+// The pin (CO-1d, D-038, ASM-64, ASM-71). EXPECTED_CERT_PINS is a code constant of full pins: exact
+// host, subject and issuer. When it is not empty a certificate passes `get` only if its URL host, its
+// subject and its issuer all equal one entry. The sandbox gate in the web app needs a complete pin
+// (pinComplete) before the webhook runs at all. The values are learned once, from `inspect`: it fetches
+// through the same Transport under the same guard and the same fetch budgets, describes the certificate
+// and returns its facts. It never fills the certificate cache, never calls trust() and never applies or
+// changes a pin: a described certificate is not a trusted one. Trust is seeded at boot from the
+// committed pin, never from a delivery or a description (ASM-71).
+//
 // Requirements on the callers (CO-3, the route):
 //   - the per-IP limiter for invalid webhook traffic (COST-3) keeps the audit log from filling
 //     and should count certificate-failure `unverifiable` like a bad signature, but it does NOT
@@ -64,11 +73,31 @@ export interface WebhookCertificate {
   subject: string;
   valid_from: Date;
   valid_to: Date;
+  /** the issuer's distinguished name, one line, for the pin (set by parseCertificate) */
+  issuer?: string;
+  /** the CN of the subject, when it has one (set by parseCertificate) */
+  subject_cn?: string | null;
+  /** SHA-256 of the DER certificate, upper-case hex pairs separated by colons (set by parseCertificate) */
+  fingerprint256?: string;
 }
 
-export type CertificateFailure = 'fetch' | 'parse' | 'validity' | 'key' | 'subject';
+export type CertificateFailure = 'fetch' | 'parse' | 'validity' | 'key' | 'pin';
 export type CertificateResult =
   { kind: 'ok'; cert: WebhookCertificate } | { kind: 'unavailable'; why: CertificateFailure };
+
+/** What `inspect` reports about a certificate (CO-1d): public facts only, no key, no certificate text. */
+export interface CertificateFacts {
+  host: string;
+  path: string;
+  subject: string;
+  subject_cn: string | null;
+  issuer: string;
+  valid_from: string;
+  valid_to: string;
+  fingerprint_sha256: string;
+}
+export type InspectResult =
+  { kind: 'ok'; facts: CertificateFacts } | { kind: 'unavailable'; why: CertificateFailure };
 
 /** The port the verifier uses to obtain a certificate by (already allow-listed) URL. */
 export interface CertificateSource {
@@ -104,14 +133,56 @@ export const CERT_NEGATIVE_TTL_MS = 10 * 60 * 1000;
 export const CERT_NEGATIVE_MAX_ENTRIES = 32;
 const MIN_RSA_BITS = 2048;
 
-/**
- * Expected certificate subjects. Empty for now: the subject is logged on the first fetch and not
- * checked. After the first owner run the recorded subject is pinned here, as a code constant (no
- * configuration can change it). Entries are the one-line subject, e.g. `CN=example, O=Example`.
- */
-export const EXPECTED_CERT_SUBJECTS: readonly string[] = [];
+/** A full certificate pin (CO-1d): the exact URL host and the exact one-line subject and issuer. */
+export interface CertPin {
+  host: string;
+  subject: string;
+  issuer: string;
+}
 
-const unavailable = (why: CertificateFailure): CertificateResult => ({ kind: 'unavailable', why });
+/**
+ * Expected certificates. Empty for now: the webhook stays off in sandbox mode while this is empty
+ * (ASM-64). After the owner's learn window (D-038) the recorded host, subject and issuer are
+ * committed here through a reviewed change, as a code constant (no configuration can change it).
+ * Subject and issuer are the one-line forms the learn record shows, e.g. `CN=example, O=Example`.
+ */
+export const EXPECTED_CERT_PINS: readonly CertPin[] = [];
+
+/** A pin with all three fields set, whose host is one the transport guard allows for certificates. */
+export function isFullPin(p: unknown): p is CertPin {
+  if (typeof p !== 'object' || p === null) return false;
+  const { host, subject, issuer } = p as Record<string, unknown>;
+  if (typeof host !== 'string' || typeof subject !== 'string' || typeof issuer !== 'string')
+    return false;
+  if (host === '' || subject.trim() === '' || issuer.trim() === '') return false;
+  const checked = guard(requestFor(`https://${host}${PIN_CHECK_PATH}`), 'sandbox');
+  // the host must be spelled exactly as the guard reads it (lower case, no port, no wildcard)
+  return checked.ok && checked.url.hostname === host;
+}
+const PIN_CHECK_PATH = '/v1/notifications/certs/PIN-CHECK';
+
+/** The sandbox gate: at least one pin, and every pin is full. */
+export function pinComplete(pins: readonly unknown[]): boolean {
+  return pins.length > 0 && pins.every(isFullPin);
+}
+
+const unavailable = (
+  why: CertificateFailure,
+): { kind: 'unavailable'; why: CertificateFailure } => ({
+  kind: 'unavailable',
+  why,
+});
+
+/** Host, subject and issuer must all equal one pin. A certificate with no issuer never matches. */
+function matchesPin(pins: readonly CertPin[], host: string, c: WebhookCertificate): boolean {
+  return pins.some(
+    (p) =>
+      p.host === host && p.subject === c.subject && c.issuer !== undefined && p.issuer === c.issuer,
+  );
+}
+
+/** Field limit for the facts we record: a subject or issuer longer than this is refused, not cut. */
+const MAX_NAME_CHARS = 512;
 
 /** Parse one PEM certificate; refuse it outside its dates or when its key is not RSA of 2048+ bits. */
 export function parseCertificate(pem: string, now: Date): CertificateResult {
@@ -135,9 +206,23 @@ export function parseCertificate(pem: string, now: Date): CertificateResult {
     (key.asymmetricKeyDetails?.modulusLength ?? 0) < MIN_RSA_BITS
   )
     return unavailable('key');
+  const subjectLines = x.subject.split('\n');
+  const subject = subjectLines.join(', ');
+  const issuer = x.issuer.split('\n').join(', ');
+  if (subject.length > MAX_NAME_CHARS || issuer.length > MAX_NAME_CHARS)
+    return unavailable('parse');
+  const cn = subjectLines.find((l) => l.startsWith('CN='));
   return {
     kind: 'ok',
-    cert: { public_key: key, subject: x.subject.split('\n').join(', '), valid_from, valid_to },
+    cert: {
+      public_key: key,
+      subject,
+      valid_from,
+      valid_to,
+      issuer,
+      subject_cn: cn === undefined ? null : cn.slice(3),
+      fingerprint256: x.fingerprint256,
+    },
   };
 }
 
@@ -188,8 +273,8 @@ export interface CertificateSourceDeps {
   transport: Transport;
   clock: Clock;
   log?: Logger;
-  /** defaults to EXPECTED_CERT_SUBJECTS; empty means log, do not check */
-  expected_subjects?: readonly string[];
+  /** defaults to EXPECTED_CERT_PINS; empty means log the subject, do not check */
+  expected_pins?: readonly CertPin[];
   /** test hooks; production uses the exported constants */
   limits?: { fetches_per_hour?: number; failures_max?: number };
 }
@@ -209,8 +294,19 @@ export interface CertificateSourceStats {
 }
 export interface CertificateSourceWithStats extends CertificateSource {
   trust(url: string): void;
+  /**
+   * CO-1d (D-038). Fetch the certificate at `url` the way `get` does (same guard, same Transport, same
+   * budgets, same failure memory) and describe it. Never checks or applies a pin, never fills the
+   * certificate cache, never trusts the URL. A repeat within an hour is answered from a small memory
+   * (8 URLs) without a fetch.
+   */
+  inspect(url: string): Promise<InspectResult>;
   stats(): CertificateSourceStats;
 }
+
+/** How long, and for how many URLs, `inspect` remembers what it described. */
+export const CERT_INSPECT_MEMO_MS = 60 * 60 * 1000;
+export const CERT_INSPECT_MEMO_MAX = 8;
 
 const requestFor = (path: string) =>
   ({
@@ -236,7 +332,7 @@ export function createCertificateSource(d: CertificateSourceDeps): CertificateSo
   const unknownTimes: number[] = []; // unknown-URL fetches, last 24 h (at most 144 while cold)
   const trustedFetches = new Map<string, number[]>(); // per trusted URL, last 24 h (at most 4 each)
   const trusted = new Map<string, number>(); // url -> end of trust, oldest first
-  const expected = d.expected_subjects ?? EXPECTED_CERT_SUBJECTS;
+  const expected = d.expected_pins ?? EXPECTED_CERT_PINS;
   const coldBudget = d.limits?.fetches_per_hour ?? CERT_FETCH_BUDGET_PER_HOUR;
   const failuresMax = d.limits?.failures_max ?? CERT_NEGATIVE_MAX_ENTRIES;
 
@@ -292,7 +388,8 @@ export function createCertificateSource(d: CertificateSourceDeps): CertificateSo
     failures.set(url, { result, until: now + CERT_NEGATIVE_TTL_MS });
   };
 
-  async function fetchOne(url: string): Promise<CertificateResult> {
+  /** Fetch and parse; no pin, no cache, no log. The caller has already been admitted by the budget. */
+  async function download(url: string): Promise<CertificateResult> {
     let tr;
     try {
       tr = await d.transport.send(requestFor(url));
@@ -300,7 +397,11 @@ export function createCertificateSource(d: CertificateSourceDeps): CertificateSo
       return unavailable('fetch');
     }
     if (tr.kind !== 'response' || tr.status !== 200) return unavailable('fetch');
-    const parsed = parseCertificate(tr.body, d.clock.now());
+    return parseCertificate(tr.body, d.clock.now());
+  }
+
+  async function fetchOne(url: string): Promise<CertificateResult> {
+    const parsed = await download(url);
     if (parsed.kind !== 'ok') return parsed;
     if (expected.length === 0) {
       d.log?.log({
@@ -308,11 +409,45 @@ export function createCertificateSource(d: CertificateSourceDeps): CertificateSo
         level: 'info',
         fields: { subject: parsed.cert.subject, valid_to: parsed.cert.valid_to.toISOString() },
       });
-    } else if (!expected.includes(parsed.cert.subject)) {
-      return unavailable('subject');
+    } else if (!matchesPin(expected, new URL(url).hostname, parsed.cert)) {
+      return unavailable('pin');
     }
     cache.set(url, parsed.cert);
     return parsed;
+  }
+
+  // inspect (CO-1d): its own memory, never the certificate cache.
+  const described = new Map<string, { facts: CertificateFacts; until: number }>();
+  const describing = new Map<string, Promise<InspectResult>>();
+  const factsOf = (url: string, c: WebhookCertificate): CertificateFacts => {
+    const u = new URL(url);
+    return {
+      host: u.hostname,
+      path: u.pathname,
+      subject: c.subject,
+      subject_cn: c.subject_cn ?? null,
+      issuer: c.issuer ?? '',
+      valid_from: c.valid_from.toISOString(),
+      valid_to: c.valid_to.toISOString(),
+      fingerprint_sha256: c.fingerprint256 ?? '',
+    };
+  };
+  async function describeOne(url: string, now: number): Promise<InspectResult> {
+    if (!admit(url, now)) return unavailable('fetch');
+    const parsed = await download(url);
+    if (parsed.kind !== 'ok') {
+      rememberFailure(url, parsed);
+      return parsed;
+    }
+    const facts = factsOf(url, parsed.cert);
+    const at = d.clock.now().getTime();
+    for (const [k, v] of described) if (at >= v.until) described.delete(k);
+    described.delete(url);
+    // the map is not empty here (size >= 8), so the first key is the oldest
+    while (described.size >= CERT_INSPECT_MEMO_MAX)
+      described.delete(described.keys().next().value as string);
+    described.set(url, { facts, until: at + CERT_INSPECT_MEMO_MS });
+    return { kind: 'ok', facts };
   }
 
   return {
@@ -340,6 +475,30 @@ export function createCertificateSource(d: CertificateSourceDeps): CertificateSo
           inflight.delete(url);
         });
       inflight.set(url, flight);
+      return flight;
+    },
+    async inspect(raw) {
+      const checked = guard({ ...requestFor(raw), path: raw }, 'sandbox');
+      if (!checked.ok) return unavailable('fetch');
+      const url = checked.url.href;
+      const now = d.clock.now().getTime();
+      const memo = described.get(url);
+      if (memo !== undefined) {
+        if (now < memo.until) return { kind: 'ok', facts: memo.facts };
+        described.delete(url);
+      }
+      const failed = failures.get(url);
+      if (failed !== undefined) {
+        if (now < failed.until)
+          return failed.result.kind === 'ok' ? unavailable('fetch') : failed.result;
+        failures.delete(url);
+      }
+      const pending = describing.get(url);
+      if (pending !== undefined) return pending;
+      const flight = describeOne(url, now).finally(() => {
+        describing.delete(url);
+      });
+      describing.set(url, flight);
       return flight;
     },
     trust(raw) {

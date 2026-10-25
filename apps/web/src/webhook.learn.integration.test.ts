@@ -186,7 +186,8 @@ describe('window open', () => {
     expect(res.status).toBe(503);
     expect(rig.wire).toHaveLength(2);
     const rows = await learnRows(rig.app);
-    expect(rows.map((r) => r.detail['path'])).toEqual([EXPECTED(1).path, EXPECTED(2).path]);
+    // (the clock is frozen, so the rows have one timestamp and no defined order)
+    expect(rows.map((r) => r.detail['path']).sort()).toEqual([EXPECTED(1).path, EXPECTED(2).path]);
   });
 
   it('respects the certificate fetch budget: 6 an hour from a cold start, then nothing is fetched or recorded', async () => {

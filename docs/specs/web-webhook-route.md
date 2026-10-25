@@ -40,3 +40,8 @@ Amendment CO-3b (Opus review of CO-3, 2026-10-24):
 - The acceptance command is `corepack pnpm run ci` (pnpm has no `ci` command of its own).
 - The one-line re-export of `EXPECTED_CERT_SUBJECTS` in `packages/paypal/src/index.ts` is an Output (rule S1 bars a subpath import).
 - Every non-200 answer is charged to the limiter, the 503 for a switched-off webhook included; there is no opt-out.
+
+Amendment CO-1d (D-038, 2026-10-25): see `docs/specs/paypal-webhook-cert-learn.md`.
+
+- The pin gate needs the FULL pin: `EXPECTED_CERT_PINS` (exact host, subject and issuer) replaces `EXPECTED_CERT_SUBJECTS`, and `pin_set` is `pinComplete(EXPECTED_CERT_PINS)`.
+- While the owner's learn window is open (`UMS_WEBHOOK_CERT_LEARN_UNTIL`, sandbox only, at most 24 h after boot) the handler answers 503 `learning` and acts on nothing; it is checked before `allowed()` and before verification. It records certificate facts only (one audit row `webhook.cert_learned`, one log line). The route's `RouteMeta`, limiter and size cap are unchanged and come first.

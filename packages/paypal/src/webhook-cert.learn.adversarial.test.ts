@@ -80,11 +80,17 @@ describe('inspect keeps the facts small', () => {
 });
 
 describe('inspect never trusts', () => {
-  it('describing a URL leaves the trust list, the cache and the failure memory as they were', async () => {
+  it('describing a URL leaves the trust list, the cache and the failure memory as they were (only the budget counters move)', async () => {
     const { source } = build();
-    const before = JSON.stringify({ ...source.stats(), fetches_in_window: 0 });
+    const before = JSON.stringify({
+      ...source.stats(),
+      fetches_in_window: 0,
+      unknown_fetches_today: 0,
+    });
     await source.inspect(certUrl());
-    expect(JSON.stringify({ ...source.stats(), fetches_in_window: 0 })).toBe(before);
+    expect(
+      JSON.stringify({ ...source.stats(), fetches_in_window: 0, unknown_fetches_today: 0 }),
+    ).toBe(before);
   });
   it('a certificate that fails to describe is not remembered as anything but a failure of that URL', async () => {
     const { source } = build(() => pemResponse('junk'));

@@ -11,14 +11,17 @@ which three items below are still open decisions. All rules of `docs/owner/SPIKE
 never share or paste anywhere", machine rules, refusal table) and of `docs/owner/MVPB-OWNER-STEPS.md`
 apply here too. `docs/owner/MVPC-OWNER-NOTES.md` explains the operator keys.
 
-**Three steps are marked DECISION PENDING.** No command is written for them, because none exists and
+**Two steps are marked DECISION PENDING.** No command is written for them, because none exists and
 the assistant must not invent one. Do not start the sitting until the decisions are recorded:
 
-| Pending            | Where   | What is undecided                                                                                                                                                                                                              |
-| ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| O-C8               | Step 6  | How the approval row and the switch-on reach the database on the Render disk. `safety:approve` and `safety:resume` open the PGlite folder, which the running app already holds; they refuse while it does.                     |
-| Cert pin           | Step 7  | How the webhook certificate pin is learned: Option A (a time-limited learn window, recorded in the decision log) or Option B (an owner-run fetch script). Until the pin is set the webhook answers 503 and stays off (ASM-64). |
-| Backup on the host | Step 11 | Taking a backup on Render needs the app stopped (the same folder lock). The offline drill on your laptop does not.                                                                                                             |
+| Pending            | Where   | What is undecided                                                                                                                                                                                          |
+| ------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| O-C8               | Step 6  | How the approval row and the switch-on reach the database on the Render disk. `safety:approve` and `safety:resume` open the PGlite folder, which the running app already holds; they refuse while it does. |
+| Backup on the host | Step 11 | Taking a backup on Render needs the app stopped (the same folder lock). The offline drill on your laptop does not.                                                                                         |
+
+The certificate pin (Step 7) is decided: D-038, a learn-only window, built in lane CO-1d. It needs the
+approval row (Step 6) and the connection (Step 8, items 1 and 2) first, because the app reads the
+certificate through the same locked connection as every other PayPal call.
 
 ## Before the day (written approvals and host setup, no PayPal contact)
 
@@ -153,9 +156,9 @@ Do this BEFORE the webhook is registered or switched on (hosting.md step 5).
 The app answers 503 to every delivery for now (the pin is empty and no approval exists). PayPal retries
 for 3 days, so nothing is lost.
 
-## Step 5: stop here until the three decisions are recorded
+## Step 5: stop here until the two decisions are recorded
 
-Steps 6, 7 and 11 are the DECISION PENDING steps. Confirm with Sakthi that the decision-log rows exist
+Steps 6 and 11 are the DECISION PENDING steps. Confirm with Sakthi that the decision-log rows exist
 before going on. If they do not, you can still do the local fallback at the end of this file.
 
 ## Step 6: the approval row and the switch on the host (O-C8) , DECISION PENDING
@@ -181,29 +184,70 @@ What the step must achieve, whichever option is built, and what you check afterw
 
 Do not set `UMS_PAYPAL_CONNECT=on` before this step is done.
 
-## Step 7: the webhook certificate pin , DECISION PENDING
+## Step 7: the webhook certificate pin (D-038, learn only, 30 to 45 min)
 
-Facts: the code carries the pin as constants (`EXPECTED_CERT_SUBJECTS`, empty in the repository). While it
-is empty the webhook stays off under the MVP-C scope (ASM-64), so a first genuine delivery cannot teach
-the app anything unless one of the two options below exists. Hosted MVP-C needs the exact certificate
-host, subject CN and issuer DN pinned. Nothing in the repository builds either option.
+Facts: the code carries the pin as a constant, `EXPECTED_CERT_PINS`: the exact certificate host, the
+subject and the issuer. It is empty in the repository. While it is not complete the webhook answers 503
+`disabled` to every delivery and does nothing (ASM-64), so a real delivery could never teach the app the
+pin. D-038 adds a **learn window** for this one job. While it is open:
 
-| Option | What it would be                                                                                                                                                                                                                                                                                                                                           | Decision         |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| A      | A time-limited **learn window** recorded in the decision log: for a stated period (for example 30 minutes, with a reference `D-0xx`) the app records the host, subject CN and issuer DN of the certificate that signed the first verified delivery, then turns the window off. The values are then committed as constants through a reviewed pull request. | DECISION PENDING |
-| B      | An **owner-run fetch script**: at your own terminal you run a script that fetches the certificate URL PayPal names in the first delivery, prints the host, subject CN and issuer DN, and writes nothing else. You give the printed values to Sakthi, who commits them as constants through a reviewed pull request.                                        | DECISION PENDING |
+- every delivery to the webhook is answered 503 and **acts on nothing**: it is not verified, no event is
+  stored, no read-back is scheduled, no order or money row changes;
+- the app fetches the certificate the delivery names (only a `*.sandbox.paypal.com` certificate address,
+  through the same locked connection, within the same call budget) and writes down only its host, path,
+  subject, issuer, validity dates and SHA-256 fingerprint: one audit row and one log line,
+  `webhook.cert_learned`. Never the body, the signature, the delivery id or anything after a `?`;
+- the certificate is described, never trusted. The values count only after Sakthi commits them as the
+  pin in a reviewed pull request and the reviewed tag is deployed (ASM-71).
 
-Either way, the order is: learn the values once, commit them as constants in a reviewed pull request,
-redeploy the reviewed tag, and only then does the webhook accept deliveries. The assistant does not
-choose between A and B and builds neither. Write the decision here when it exists:
-`D-0xx = option ___`.
+Needs: Steps 2, 3, 4 and 6 done, and the connection on (Step 8, items 1 and 2: `UMS_PAYPAL_CONNECT=on`,
+`/ops` shows all five locks open). The only PayPal call this step causes is the fetch of one certificate.
 
-After the pin is committed and deployed, check from `/ops` or the Render log that the first delivery that
-arrives is not answered `disabled` (the log line `webhook.delivery` shows `outcome` and `verdict`).
+1. Decide the end of the window. It must be a UTC time of the form `2026-10-25T18:30:00Z`, no more than 24
+   hours after the app starts. Sixty minutes ahead is plenty. Check your clock with `date -u` and write the
+   time down.
+2. Render dashboard, Environment: add `UMS_WEBHOOK_CERT_LEARN_UNTIL` with that time. Save and let it
+   redeploy. If the time is malformed, more than 24 hours ahead, or the app is not in sandbox mode, the
+   app does not start and the log says `boot refused: invalid_value (UMS_WEBHOOK_CERT_LEARN_UNTIL)`
+   (the value is never printed): fix the time and redeploy. Open `/healthz` as in Step 2.
+3. Send exactly one delivery. Either use the PayPal developer dashboard (Webhooks, Webhooks simulator,
+   Sandbox, your webhook URL, event `CHECKOUT.ORDER.APPROVED`, Send Test), or start a real sandbox
+   purchase as in Step 9 and let PayPal deliver. The dashboard shows `503` for the delivery. That is the
+   expected answer, not a failure.
+4. Read the result in the Render log (Logs tab). Expect exactly one line with `"msg":"webhook.cert_learned"`
+   holding `host`, `path`, `subject_cn`, `subject`, `issuer`, `valid_from`, `valid_to` and
+   `fingerprint_sha256`, and one `webhook.delivery` line with `http: 503`, `outcome: learning`,
+   `learn: recorded`. The same facts are in the database as one `audit_log` row (action
+   `webhook.cert_learned`, actor system); the `/ops` page does not list audit rows and the Render disk cannot
+   be opened while the app runs, so the log line is how you read it here. `learn: known` means the same
+   certificate was recorded already; `nothing` means no certificate could be read (check the locks and
+   that the address in the delivery is a sandbox certificate address); `switch_off` means the webhook
+   switch is off; `error` means the row could not be written (send one more delivery). Copy the log
+   line as text; it holds no secret.
+5. Check before you go on: the `host` ends in `.sandbox.paypal.com`, and only one certificate (one
+   `fingerprint_sha256`) appears. If a second, different certificate appears, or the host is not what you
+   expect, STOP and tell Sakthi: that is the finding. The app records at most 8 certificates and one row
+   for each.
+6. Close the window now: delete `UMS_WEBHOOK_CERT_LEARN_UNTIL` in the Render Environment and redeploy.
+   Do not wait for the end time. It also closes by itself at the end time, but while it is open the app
+   does not process any delivery, so it must not stay set after the pin is deployed.
+7. Give Sakthi the `webhook.cert_learned` line. In a reviewed pull request (spec, tests, `corepack pnpm run ci`)
+   he sets `EXPECTED_CERT_PINS` in `packages/paypal/src/webhook-cert.ts` to one entry with the logged
+   `host`, `subject` and `issuer`, exactly as written, then merges. Deploy the reviewed tag (RLR-1).
+   Until that is deployed the webhook still answers 503 `disabled`; PayPal retries for 3 days.
+8. After the deploy, check the Render log: the next delivery is not `disabled` and not `learning`
+   (the log line `webhook.delivery` shows `outcome` and `verdict`). A delivery from the simulator may fail
+   the signature check because it is not a real event: the real proof is Step 9.
+
+Write down: the end time you used, whether the log showed `learn: recorded`, the `host`, and the time you
+removed the variable. If the certificate PayPal uses for the simulator differs from the one for real
+events, the second one shows as a second `fingerprint_sha256` the next time you open a window; that is
+unverified until Step 9 has run.
 
 ## Step 8: switch the connection on (5 min)
 
-Only when Steps 3, 4, 6 and 7 are done.
+Only when Steps 3, 4 and 6 are done. Items 1 and 2 come before Step 7 (the certificate fetch needs the
+connection); the rest waits until Step 7 is deployed.
 
 1. Render dashboard, Environment: set `UMS_PAYPAL_CONNECT` to `on`. Save and let it redeploy.
 2. Open `/ops`. All five locks open; transport `sandbox (approved)`; `paypal_outbound` on.
@@ -211,6 +255,9 @@ Only when Steps 3, 4, 6 and 7 are done.
    press it), or set `UMS_PAYPAL_CONNECT` back to `off` in the dashboard.
 
 ## Step 9: one genuine webhook delivery (C-01, 15 min)
+
+Needs Step 7 finished: the pin is deployed and `UMS_WEBHOOK_CERT_LEARN_UNTIL` is removed (while the window is
+open, every delivery is answered 503 `learning` and nothing is processed).
 
 1. In a Chrome Incognito window sign in as `buyer-a`, open the first offer, choose an online option,
    tick the terms, press Approve. Check the address bar starts with `https://www.sandbox.paypal.com`,
@@ -223,7 +270,7 @@ Only when Steps 3, 4, 6 and 7 are done.
 4. In the PayPal dashboard, Webhooks events (Sandbox): each delivery to your URL shows `200`.
 5. Screenshot: the dashboard delivery list (status 200), the library entry and the receipt. Copy the
    log lines `webhook.delivery` as text (they hold no body, no signature, no id). If a delivery shows
-   `disabled`, `unverifiable` or 400, write down which and stop: that is the finding, not a failure to hide.
+   `disabled`, `learning`, `unverifiable` or 400, write down which and stop: that is the finding, not a failure to hide.
 
 ## Step 10: a real partial refund and the remainder, with MFA (C-06, C-07 real halves, 25 min)
 
@@ -302,9 +349,8 @@ percent a month.
 6. Anything that surprised you, especially: a delivery answered other than 200, a refund word you
    did not expect, a lock shown missing, a restore that took longer than 30 minutes.
 
-Sakthi records the results in the gate report's owner-window rows and, if the first genuine delivery
-taught the certificate host, subject and issuer, turns them into the pin constants in a reviewed pull
-request.
+Sakthi records the results in the gate report's owner-window rows. The pin constants come from the Step 7
+learn window and are committed in a reviewed pull request.
 
 ## Local fallback for the refund rows only (no host, no webhook)
 
