@@ -1154,6 +1154,13 @@ describe('named exemptions (D-015)', () => {
         'tests/mvp-b/unseal.adversarial.test.ts -> sbx/no-package-escape',
         'tests/mvp-b/unseal-ops.golden.test.ts -> sbx/no-package-escape',
         'tests/mvp-b/unseal-support.ts -> sbx/no-package-escape',
+        // CO-G: the MVP-C offline twins drive the web routes by relative path.
+        'tests/mvp-c/c-support.ts -> sbx/no-package-escape',
+        'tests/mvp-c/c02-c05-webhooks.integration.test.ts -> sbx/no-package-escape',
+        'tests/mvp-c/c06-c07-refunds.integration.test.ts -> sbx/no-package-escape',
+        'tests/mvp-c/c08-c09-operator-headers.integration.test.ts -> sbx/no-package-escape',
+        'tests/mvp-c/c12-race.integration.test.ts -> sbx/no-package-escape',
+        'tests/mvp-c/c-offline.adversarial.test.ts -> sbx/no-package-escape',
         'apps/web/src/lib/client-api.ts -> no-restricted-globals',
         'packages/paypal/src/paypal.sandbox.contract.test.ts -> no-restricted-syntax,sbx/no-global-alias',
         'domain/library/src/world.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
