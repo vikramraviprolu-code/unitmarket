@@ -9,10 +9,12 @@ import {
   COMPLETED_FULL,
   COMPLETED_PARTIAL,
   PENDING_MESSAGE,
+  QUEUED_MESSAGE,
   REFUSALS,
   UNKNOWN_MESSAGE,
   cancelRefusal,
 } from './server/refund';
+import { UNKNOWN_FAILURE_MESSAGE, openRequestWaitText } from './lib/refund-answer';
 import { bootRefundWorld, buy, postRefund } from './refund-support';
 import type { RefundWorld } from './refund-support';
 
@@ -84,6 +86,10 @@ describe('refund and pending copy (golden)', () => {
       `operator, done in full: ${COMPLETED_FULL('USD 4.50')}`,
       `operator, pending at PayPal: ${PENDING_MESSAGE}`,
       `operator, not confirmed yet: ${UNKNOWN_MESSAGE}`,
+      `operator, not sent yet: ${QUEUED_MESSAGE}`,
+      `operator, form could not tell: ${UNKNOWN_FAILURE_MESSAGE}`,
+      `operator, open request being sent: ${openRequestWaitText('sent')}`,
+      `operator, open request unresolved: ${openRequestWaitText('unresolved')}`,
     ];
     const expected = readFileSync(
       new URL('./golden/refund-copy.golden.txt', import.meta.url),

@@ -275,12 +275,45 @@ describe('the cancel path', () => {
     expect((await postCancel(w, w.A, done.rows[0]!.id)).status).toBe(403);
   });
 
-  it('the case resolver can undo its own requests: cancelRefund is wired beside requestRefund', async () => {
-    const src = await import('node:fs').then((fs) =>
-      fs.readFileSync(new URL('../composition.server.ts', import.meta.url), 'utf8'),
+  it('the case resolver undoes its own requests: an offer over two units is all or none', async () => {
+    // A two-unit order cannot be bought (one publisher is USD, the other GBP, and an order holds one
+    // currency), so the second unit is added to a paid order by hand, with a request already open on
+    // it. The offer asks for the first unit, is refused on the second (refund_in_flight), and must
+    // withdraw the first request through cancelRefund.
+    const unit = u['valid']!;
+    const second = `unt_${'z'.repeat(26)}`; // sorts after the first unit
+    await w.app.db.query(
+      `INSERT INTO order_units (id, order_id, provider_order_ref, publisher_id, reference_id, payee_merchant_id, amount_minor, platform_fee_minor, capture_id, status, paypal_fee_minor, refunded_minor, captured_verified_at, created_at, updated_at)
+       SELECT $2, order_id, provider_order_ref, publisher_id, 'unit-2', payee_merchant_id, 100, 0, 'CAPSECOND1', 'captured_verified', 0, 0, captured_verified_at, created_at, updated_at
+         FROM order_units WHERE id = $1`,
+      [unit.unit_id, second],
     );
-    expect(src).toMatch(/cancelRefund\s*:/);
-    expect(src).toMatch(/cancelRefundRequest/);
+    await w.app.db.query(
+      `INSERT INTO refund_requests (id, unit_id, capture_id, amount_minor, currency, reason, requested_by, state, refund_id, created_at, updated_at)
+       VALUES ('rfr_blocker_two_unit', $1, 'CAPSECOND1', 10, 'USD', 'already open', 'operator:opr_vikram', 'requested', NULL, now(), now())`,
+      [second],
+    );
+    const opened = await w.app.engine.openCase({ actor: w.actorB, order_id: unit.order_id });
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    const calls = await providerCalls(w.app, 'refund_capture');
+    const r = await w.app.engine.resolveCase({
+      actor: { kind: 'operator', operator_id: 'opr_vikram', mfa: true },
+      case_id: opened.value.case_id,
+      action: 'offer_refund',
+      reason: 'offer over two units',
+    });
+    expect(r.ok).toBe(false);
+    const states = await w.app.db.query<{ unit_id: string; state: string }>(
+      "SELECT unit_id, state FROM refund_requests WHERE reason = 'offer over two units'",
+    );
+    expect(states.rows).toEqual([{ unit_id: unit.unit_id, state: 'cancelled' }]);
+    // the request that was already open on the second unit is untouched, and nothing was sent
+    const blocker = await w.app.db.query<{ state: string }>(
+      "SELECT state FROM refund_requests WHERE id = 'rfr_blocker_two_unit'",
+    );
+    expect(blocker.rows[0]?.state).toBe('requested');
+    expect(await providerCalls(w.app, 'refund_capture')).toBe(calls);
   });
 });
 

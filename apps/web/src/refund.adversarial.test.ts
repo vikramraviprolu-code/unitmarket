@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { revokeAllSessions } from '@umsbx/security';
 import { SESSION_IDLE_MS } from '@umsbx/security';
 import { PASSCODE, ORIGIN, call } from './support';
+import { QUEUED_MESSAGE } from './server/refund';
 import {
   postRefund,
   providerCalls,
@@ -251,7 +252,7 @@ describe('the switches', () => {
       const calls = await providerCalls(w.app, 'refund_capture');
       const res = await postRefund(w, w.op, ask(unit, 50));
       expect(res.status).toBe(202);
-      expect(await res.json()).toMatchObject({ state: 'unknown' });
+      expect(await res.json()).toMatchObject({ state: 'unknown', message: QUEUED_MESSAGE });
       expect(await providerCalls(w.app, 'refund_capture')).toBe(calls);
       expect(await ledgerRefunds(w.app, unit.unit_id)).toBe(0);
       expect(await unitStatus(w.app, unit.unit_id)).toBe('captured_verified');

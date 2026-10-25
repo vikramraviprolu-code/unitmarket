@@ -18,9 +18,14 @@ operator, refund_in_flight: 409 refund_in_flight: A refund request is already op
 operator, unit_frozen: 409 unit_frozen: This payment is frozen: a refund list from PayPal did not add up and a person must look. Nothing can be refunded until the flag is cleared. The buyer's access is unchanged.
 operator, refund_failed: 409 refund_failed: The refund was not made: PayPal holds less than that, or did not complete it. A person has been alerted. Nothing was refunded.
 operator, refund_rejected: 409 refund_rejected: PayPal refused this refund. Nothing was refunded.
+operator, refunds_paused_midway: 503 refunds_paused_midway: Refunds were paused before it was sent. Nothing was refunded. Withdraw the open request on this page, then try again when refunds are on.
 operator, cancel wrong_state: 409 That request can no longer be withdrawn: it was already sent or has finished.
 operator, cancel not_found: 404 We could not find that refund request.
 operator, done in part: Refunded USD 1.50. USD 3.00 is left to refund. The buyer keeps access.
 operator, done in full: Refunded USD 4.50. This payment is now fully refunded and the buyer's access has ended.
 operator, pending at PayPal: PayPal is still processing this refund. It is booked when PayPal confirms it, and the buyer's access does not change until then.
 operator, not confirmed yet: We could not confirm this refund with PayPal yet. Do not send it again: the system keeps checking, and an alert shows if a person must look.
+operator, not sent yet: Nothing was sent yet: PayPal could not be read. The system will send this refund when PayPal can be read again, for up to 24 hours. Withdraw it on this page if it should not go.
+operator, form could not tell: We do not know yet whether this refund was made. Do not start a new refund. Reload the page and check the open requests for this payment.
+operator, open request being sent: Wait for it to finish.
+operator, open request unresolved: A person must look at this request.

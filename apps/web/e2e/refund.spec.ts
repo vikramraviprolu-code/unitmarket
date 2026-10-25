@@ -72,6 +72,11 @@ test.describe.serial('refund journey', () => {
     const card = unitCard(op.page, 'What a small harbour charges and why');
     await expect(card).toContainText('$2.50');
     await expect(card.getByRole('button', { name: 'Refund the rest' })).toBeVisible();
+    // L8: the panel says it lists only the newest units.
+    await expect(op.page.getByTestId('refund-panel')).toContainText('50 newest');
+    // L6: a disabled button says why (the reason is empty or too short).
+    await expect(card.getByRole('button', { name: 'Refund the rest' })).toBeDisabled();
+    await expect(card.getByTestId('refund-reason-hint')).toContainText('at least 3 characters');
     await expect(async () => {
       await card.getByLabel(/^Amount/).fill('0.75');
       await card.getByLabel(/^Reason/).fill('Part of the article was missing');
@@ -83,6 +88,8 @@ test.describe.serial('refund journey', () => {
     const result = op.page.locator('[aria-live="polite"][data-testid="refund-result"]');
     await expect(result).toContainText('Refunded $0.75');
     await expect(result).toContainText('$1.75 is left to refund');
+    // L2: the answer names the payment it is about.
+    await expect(result).toContainText('What a small harbour charges and why');
     await expectDryRun(op.page);
 
     // 3. The buyer, who did not reload, is told in the live region.
@@ -117,6 +124,8 @@ test.describe.serial('refund journey', () => {
     await op.page.keyboard.press('Enter');
     await expect(result).toContainText('Refunded $1.75');
     await expect(result).toContainText('fully refunded');
+    // L6: the card is gone after a full refund, so focus moves to the answer.
+    await expect(result).toBeFocused();
 
     // 5. The buyer sees Refunded and the item cannot be opened.
     await expect(status).toContainText('Refunded: access has ended', { timeout: 20_000 });
@@ -127,6 +136,8 @@ test.describe.serial('refund journey', () => {
       .filter({ hasText: 'What a small harbour charges and why' });
     await expect(row.getByTestId('library-status')).toHaveText('Refunded: access has ended');
     await expect(row.getByRole('button')).toHaveCount(0);
+    // L4: the refund line is enough; the window meter does not add "Access was revoked."
+    await expect(row).not.toContainText('Access was revoked');
 
     // 6. The receipt lists both refunds and the version.
     await buyer.goto('/library');
@@ -152,6 +163,29 @@ test.describe.serial('refund journey', () => {
     await expect(buyer.getByTestId('order-live')).toContainText('Paid.');
     await op.page.goto('/ops');
     const card = unitCard(op.page, 'A notebook of six working knots');
+    // M1: an answer that is not a clear refusal (a server error) must not say that nothing was refunded.
+    await op.page.route('**/api/refunds', (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: { code: 'internal', message: 'Something went wrong.', support_code: 'e2e' },
+        }),
+      }),
+    );
+    await expect(async () => {
+      await card.getByLabel(/^Amount/).fill('0.10');
+      await card.getByLabel(/^Reason/).fill('Server error drill');
+      await expect(card.getByRole('button', { name: 'Refund $0.10' })).toBeEnabled({
+        timeout: 1000,
+      });
+    }).toPass({ timeout: 20_000 });
+    await card.getByRole('button', { name: 'Refund $0.10' }).click();
+    const unsure = op.page.getByTestId('error-state');
+    await expect(unsure).toContainText('We do not know yet whether this refund was made');
+    await expect(unsure).toContainText('Do not start a new refund');
+    await expect(unsure).not.toContainText('Nothing was refunded');
+    await op.page.unroute('**/api/refunds');
     await expect(async () => {
       await card.getByLabel(/^Amount/).fill('9.99');
       await card.getByLabel(/^Reason/).fill('Trying too much on purpose');

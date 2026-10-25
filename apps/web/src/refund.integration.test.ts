@@ -36,6 +36,7 @@ const libraryOf = async (s: typeof w.A) => {
         can_open: boolean;
         access: string;
         refund_note: string | null;
+        refunded: boolean;
         receipt_versions: number[];
         environment: string;
       }>;
@@ -101,6 +102,7 @@ describe('online item: buy, partial refund, the rest', () => {
     expect(await ledgerRefunds(w.app, unit.unit_id)).toBe(150);
     item = (await libraryOf(w.A)).find((i) => i.entitlement_id === unit.entitlement_id)!;
     expect(item.status_text).toBe('Partially refunded: your access continues');
+    expect(item.refunded).toBe(false);
     expect(item.can_open).toBe(true);
     expect(item.access).toBe('available');
     expect(item.refund_note).toMatch(/every item in the order continues/i);
@@ -137,6 +139,7 @@ describe('online item: buy, partial refund, the rest', () => {
     expect(await ledgerRefunds(w.app, unit.unit_id)).toBe(450);
     item = (await libraryOf(w.A)).find((i) => i.entitlement_id === unit.entitlement_id)!;
     expect(item.status_text).toBe('Refunded: access has ended');
+    expect(item.refunded).toBe(true);
     expect(item.can_open).toBe(false);
     expect(item.access).toBe('revoked');
     receipt = await receiptOf(unit.order_id, w.A);
@@ -279,8 +282,9 @@ describe('pending states from stored data', () => {
 describe('the other buyer', () => {
   it('sees nothing of the first buyer’s refunds: library, receipt and order', async () => {
     const [row] = (
-      await w.app.db.query<{ id: string; order_id: string }>(
-        `SELECT e.id, u.order_id FROM entitlements e JOIN order_units u ON u.id = e.unit_id
+      await w.app.db.query<{ id: string; order_id: string; order_ref: string }>(
+        `SELECT e.id, u.order_id, o.order_ref FROM entitlements e
+           JOIN order_units u ON u.id = e.unit_id JOIN orders o ON o.id = u.order_id
           WHERE u.status = 'partially_refunded' AND e.buyer_id = $1 LIMIT 1`,
         [(w.actorA as { buyer_id: string }).buyer_id],
       )
@@ -289,5 +293,10 @@ describe('the other buyer', () => {
     const theirs = await libraryOf(w.B);
     expect(theirs.some((i) => i.entitlement_id === row!.id)).toBe(false);
     expect((await receiptOf(row!.order_id, w.B)).status).toBe(404);
+    // the owner does see it, so a null for B is the rule and not a missing order
+    expect(
+      await w.app.engine.orderView({ order_ref: row!.order_ref, actor: w.actorA }),
+    ).not.toBeNull();
+    expect(await w.app.engine.orderView({ order_ref: row!.order_ref, actor: w.actorB })).toBeNull();
   });
 });
