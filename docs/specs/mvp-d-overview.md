@@ -100,24 +100,27 @@ Order: DP-1, DP-2a, DP-2b, then DP-3 and DP-4 in parallel (disjoint files), then
   - Terminal: `captured`, `declined`, `frozen`, `failed`, `abandoned`.
   - **Not charged** means `declined`, `failed` or `abandoned` only. `frozen` means on hold: money may have moved.
 - **Backfill of existing rows** (0011, from the order status): `created`→`prepared`, `awaiting_buyer`→`awaiting_buyer`, `capture_requested`→`capture_requested`, `capture_claimed`→`capture_claimed`, `unresolved`→`unresolved`, `paid`→`captured`, `paid_partial`→`captured`, `failed`→`failed`, `abandoned`→`abandoned`, `frozen`→`frozen`.
-- **Order status** comes only from `deriveOrderStatus(provider order states, capture_sent)`, where `capture_sent` means some capture operation of the order has `first_sent_at`.
-  - No capture sent:
-    - any `prepared` → `created`;
-    - otherwise any `awaiting_buyer` or `approved` → `awaiting_buyer`;
-    - all `abandoned` → `abandoned`;
-    - all `failed` → `failed`;
-    - any `frozen` → `frozen`.
-  - Capture sent, some provider order not terminal:
+- **Order status** comes only from `deriveOrderStatus`. The first rule that matches wins.
+  - **Sent PayPal orders.** A PayPal order counts as sent while it is `capture_requested`, `capture_claimed`, `unresolved` or `captured`, or when it is `frozen` and its own capture operation has `first_sent_at` (held after a send, so money may have moved). `capture_sent` means the order has at least one sent PayPal order.
+  - **Why not `first_sent_at` alone.** A capture reopened after payer_action or `ORDER_NOT_APPROVED` keeps its `first_sent_at` (`capture.ts:258`), but that PayPal order is back to `approved` and does not count as sent.
+  - **Rule 1: every PayPal order is terminal.**
+    - all `captured` → `paid`;
+    - otherwise any `captured` → `paid_partial`;
+    - otherwise any `frozen` → `frozen`;
+    - otherwise all `abandoned` → `abandoned`;
+    - otherwise → `failed`.
+  - **Rule 2: `capture_sent`, some PayPal order not terminal.**
     - any `unresolved` → `unresolved`;
     - otherwise any `capture_claimed` → `capture_claimed`;
-    - otherwise → `capture_requested`. This covers captured+approved, captured+capture_requested and approved+capture_requested.
-  - Capture sent, all terminal:
-    - all `captured` → `paid`;
-    - at least one `captured` → `paid_partial`;
-    - none `captured` and any `frozen` → `frozen`;
-    - otherwise → `failed`.
-  - The order never returns to `awaiting_buyer` once a capture was sent.
-  - `mismatch = true` whenever any provider order is `frozen`.
+    - otherwise → `capture_requested`. This covers captured+approved, captured+capture_requested, approved+capture_requested and sent-frozen+approved.
+  - **Rule 3: no capture sent.** Checked in this order: any `frozen` → `frozen`; any `failed` → `failed`; any `abandoned` → `abandoned`; any `prepared` → `created`; otherwise → `awaiting_buyer`.
+  - **Whole-order outcomes.** These are: a create rejected, `DUPLICATE_INVOICE_ID` at create, a mismatch in the pre-capture pass, an item not ready, a lapsed order, and a pack abandon. Each writes the same terminal state to every non-terminal PayPal order of the order in one transaction, so rule 3 never sees a held order beside a waiting one.
+  - **Consequences.**
+    - A `single` order whose capture was reopened after a definitive no-capture answer goes back to `awaiting_buyer`, as today.
+    - A pack with nothing captured and nothing in flight lets the buyer approve again.
+    - Only a pack with a sent PayPal order follows the continuation and the no-re-approval deadline (DP-2b).
+    - The order never returns to `awaiting_buyer` while `capture_sent` holds.
+  - `mismatch = true` whenever any PayPal order is `frozen`.
 - **Keys and ids.** `umsC-<po_ref>`, `umsK-<po_ref>[-n]` (D-014 cap per provider order), read-back row `umsB-<po_ref>`; `custom_id` = `order_ref`; `invoice_id` = `po_ref`. N single-unit creates; no new operation, header, scope or seal change; the approval row shape is unchanged.
 - **Alerts.**
   - `partial_composite` (reason `partial`, once per order) only when a provider order is not charged.
