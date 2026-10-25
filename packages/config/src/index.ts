@@ -5,5 +5,6 @@ export type { BootRefusal } from './refusal';
 export { BOOT_REFUSAL_EXIT_CODE } from './refusal';
 export { bootOrExit, loadConfig, loadConfigFromProcess, terminalEnv } from './load';
 export { makeSecret } from './secret';
+export { MAX_LEARN_WINDOW_MS, webhookLearnWindow } from './schema';
 export { readMaintenanceFlag } from './maintenance';
 export type { MaintenanceReading } from './maintenance';

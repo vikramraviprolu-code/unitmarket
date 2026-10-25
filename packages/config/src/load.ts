@@ -8,6 +8,7 @@ import { BOOT_REFUSAL_EXIT_CODE, refusalLine } from './refusal';
 import { makeSecret } from './secret';
 import {
   KNOWN_CORRIDORS,
+  LEARN_UNTIL_PATTERN,
   MAINTENANCE_FLAG_NAME,
   MAX_TOTP_OPERATORS,
   MERCHANT_ID_PATTERN,
@@ -350,7 +351,21 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
   const totp = parseOperatorTotpKeys(val(env, 'UMS_OPERATOR_TOTP_KEYS'));
   if (!totp.ok) return err<BootRefusal>(totp.error);
 
-  // 15. the maintenance flag path (CO-7b, D-037): optional; the value is read as written (no trimming),
+  // 15. the webhook certificate learn window (CO-1d, D-038): optional, sandbox mode only, a strict UTC
+  // time. A time in the past is accepted (the window is then closed); the 24 h cap needs a clock and is
+  // checked by composition. The error names the variable, never the value.
+  const rawLearn = val(env, 'UMS_WEBHOOK_CERT_LEARN_UNTIL') ?? null;
+  let webhook_cert_learn_until: string | null = null;
+  if (rawLearn !== null) {
+    if (mode !== 'sandbox' || !LEARN_UNTIL_PATTERN.test(rawLearn))
+      return refuse('invalid_value', 'UMS_WEBHOOK_CERT_LEARN_UNTIL');
+    const at = new Date(rawLearn);
+    if (Number.isNaN(at.getTime()) || at.toISOString().slice(0, 19) !== rawLearn.slice(0, 19))
+      return refuse('invalid_value', 'UMS_WEBHOOK_CERT_LEARN_UNTIL');
+    webhook_cert_learn_until = at.toISOString();
+  }
+
+  // 16. the maintenance flag path (CO-7b, D-037): optional; the value is read as written (no trimming),
   // an absolute normal path named ums-maintenance. With a PGlite folder on disk it must sit beside that
   // folder, never inside it (a restore replaces the folder, and the flag must survive that). The error
   // names the variable, never the value.
@@ -381,6 +396,7 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
     link_secret: makeSecret(secretValues[2] ?? ''),
     passcode_hash,
     operator_totp_keys: totp.value,
+    webhook_cert_learn_until,
     public_origin,
     corridors,
     trusted_proxies,

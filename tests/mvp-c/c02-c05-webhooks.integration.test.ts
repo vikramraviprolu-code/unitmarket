@@ -35,18 +35,27 @@ import type { CRig } from './c-support';
 
 vi.mock('server-only', () => ({}));
 
-// The certificate pin (EXPECTED_CERT_SUBJECTS) is empty in the repository (ASM-64). One test needs it
+// The certificate pin (EXPECTED_CERT_PINS) is empty in the repository (ASM-64). One test needs it
 // non-empty to reach the real certificate source; the holder is read on every access.
-const pin = vi.hoisted(() => ({ subjects: [] as string[] }));
+const pin = vi.hoisted(() => ({
+  pins: [] as Array<{ host: string; subject: string; issuer: string }>,
+}));
 vi.mock('@umsbx/paypal', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@umsbx/paypal')>();
   return {
     ...actual,
-    get EXPECTED_CERT_SUBJECTS() {
-      return pin.subjects;
+    get EXPECTED_CERT_PINS() {
+      return pin.pins;
     },
   };
 });
+
+// A complete pin (exact host, subject and issuer): the gate needs all three (CO-1d).
+const FULL_PIN = {
+  host: ['certs', 'sandbox', 'paypal', 'com'].join('.'),
+  subject: 'CN=synthetic.invalid',
+  issuer: 'CN=synthetic-issuer.invalid',
+};
 
 const host = (...parts: string[]): string => parts.join('.');
 const SANDBOX = host('sandbox', 'paypal', 'com');
@@ -56,7 +65,7 @@ describe('C-02 to C-05 webhooks (public route, offline)', () => {
   let rig: WebhookRig;
   let crig: CRig | null = null;
   beforeEach(() => {
-    pin.subjects = [];
+    pin.pins = [];
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW_MS);
   });
@@ -154,7 +163,7 @@ describe('C-02 to C-05 webhooks (public route, offline)', () => {
     });
 
     it('C-03 with the real certificate source (pin set, nothing injected) an off-list URL makes zero transport calls', async () => {
-      pin.subjects = ['CN=synthetic.invalid'];
+      pin.pins = [FULL_PIN];
       rig = await bootWebhookApp({ certs: null, scope: 'mvp_c_refunds' });
       for (const [i, url] of offList.entries()) {
         const d = delivery(eventBody({ id: `WH-C03R-${i}` }), {

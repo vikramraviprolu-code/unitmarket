@@ -9,7 +9,7 @@ import {
   CERT_FETCH_WINDOW_MS,
   CERT_NEGATIVE_MAX_ENTRIES,
   CERT_NEGATIVE_TTL_MS,
-  EXPECTED_CERT_SUBJECTS,
+  EXPECTED_CERT_PINS,
   createCertCache,
   createCertificateSource,
   parseCertificate,
@@ -19,6 +19,7 @@ import {
   DAY,
   HOUR,
   SYNTHETIC_DIR,
+  certHost,
   certUrl,
   certificateOf,
   certificatePem,
@@ -46,8 +47,8 @@ describe('limits', () => {
     expect(CERT_NEGATIVE_TTL_MS).toBe(10 * 60_000);
     expect(CERT_NEGATIVE_MAX_ENTRIES).toBe(32);
   });
-  it('no certificate subject is pinned yet (recorded on the first owner run)', () => {
-    expect(EXPECTED_CERT_SUBJECTS).toEqual([]);
+  it('no certificate is pinned yet (host, subject and issuer are recorded on the first owner run)', () => {
+    expect(EXPECTED_CERT_PINS).toEqual([]);
   });
 });
 
@@ -372,19 +373,25 @@ describe('createCertificateSource: subject pin and log', () => {
     expect(text).not.toContain(pem.split('\n')[1]!);
   });
 
-  it('with a pinned list, a matching subject passes and any other is unavailable (subject)', async () => {
-    const t = fakeTransport(() => pemResponse(pem));
-    const match = createCertificateSource({
-      transport: t,
-      clock: mutableClock(NOW),
-      expected_subjects: ['CN=pinned.example.invalid'],
-    });
-    expect((await match.get(certUrl())).kind).toBe('ok');
-    const other = createCertificateSource({
-      transport: fakeTransport(() => pemResponse(pem)),
-      clock: mutableClock(NOW),
-      expected_subjects: ['CN=someone.else.invalid'],
-    });
-    expect(await other.get(certUrl())).toEqual({ kind: 'unavailable', why: 'subject' });
+  it('with a pinned list, only a certificate whose URL host, subject and issuer all match passes (unavailable: pin)', async () => {
+    const host = new URL(certUrl()).hostname;
+    const pinned = {
+      host,
+      subject: 'CN=pinned.example.invalid',
+      issuer: 'CN=Synthetic Issuer',
+    };
+    const run = async (pin: typeof pinned, url = certUrl()) =>
+      createCertificateSource({
+        transport: fakeTransport(() => pemResponse(pem)),
+        clock: mutableClock(NOW),
+        expected_pins: [pin],
+      }).get(url);
+    expect((await run(pinned)).kind).toBe('ok');
+    const refused = { kind: 'unavailable', why: 'pin' };
+    expect(await run({ ...pinned, subject: 'CN=someone.else.invalid' })).toEqual(refused);
+    expect(await run({ ...pinned, issuer: 'CN=Other Issuer' })).toEqual(refused);
+    expect(await run({ ...pinned, host: certHost(['other']) })).toEqual(refused);
+    // the same certificate served from another allowed host is not the pinned host
+    expect(await run(pinned, certUrl({ host: certHost(['other']) }))).toEqual(refused);
   });
 });

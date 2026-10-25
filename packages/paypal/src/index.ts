@@ -5,4 +5,18 @@ export { createPayPalAdapter } from './adapter';
 export type { AdapterDeps, ProviderCallRecord } from './adapter';
 export { mapError } from './errors';
 export { fromDecimalString, minorUnitsFor, toDecimalString } from './money';
-export { EXPECTED_CERT_SUBJECTS } from './webhook-cert';
+export {
+  EXPECTED_CERT_PINS,
+  createCertificateSource,
+  isFullPin,
+  pinComplete,
+} from './webhook-cert';
+export type {
+  CertPin,
+  CertificateFacts,
+  CertificateSource,
+  CertificateSourceWithStats,
+  InspectResult,
+} from './webhook-cert';
+export { learnWebhookCertificate } from './webhook-learn';
+export type { Describer, LearnResult } from './webhook-learn';
