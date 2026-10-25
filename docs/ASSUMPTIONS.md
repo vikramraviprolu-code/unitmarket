@@ -142,6 +142,9 @@ Source: `docs/specs/mvp-d-overview.md` and `docs/specs/mvp-d-open-questions.md`.
 - `offer_refund` only requests; nothing executes those requests and each blocks its unit with
   `refund_in_flight` until an operator withdraws it (CO-8). Before any route calls `resolveCase`,
   give `ResolveDeps` an `executeRefund` and call it for each request after the case commits.
+- `payee_shared` is set only by the audited DP-5 boot step; the database role set would still let an
+  operator actor update it: a later Supabase migration should `REVOKE UPDATE (payee_shared) ON publishers
+FROM ums_app` (the system path keeps the worker). Owner lane DP-6.
 
 ## History
 

@@ -271,3 +271,19 @@ export async function seedCatalogue(
     return counts;
   });
 }
+
+/**
+ * Applies a supplementary block (for example SEED_SUPPLEMENT_COMPOSITE) after the base seed. Same
+ * rules as seedCatalogue, stated for the caller: every row is looked up by slug, content key or
+ * offer id first, so it can run on every boot and reaches a database that already holds the base
+ * seed (the persistent disk). It takes its own Ids; an id is drawn only for a row that is new, so
+ * no id of the base seed can move. It never sets a merchant id, a verification time or payee_shared.
+ */
+export function seedSupplement(
+  db: Database,
+  clock: Clock,
+  ids: Ids,
+  block: unknown,
+): Promise<{ publishers: number; articles: number; offers: number }> {
+  return seedCatalogue(db, clock, ids, block);
+}

@@ -8,7 +8,7 @@ Goal. **Pack (OQ-17):** `/discover` results get a checkbox per item and a "Buy s
 
 Inputs: DP-1 to DP-4 engine functions and views, `apps/web/src/**`, `apps/web/e2e/support.ts`, `scripts/route-inventory.mjs`, CO-8 copy rules.
 
-Outputs: the DP-5 files in `mvp-d-overview.md` section 4.
+Outputs: the DP-5 files in `mvp-d-overview.md` section 4. Also `apps/web/src/app/api/approvals/route.ts`: add `too_many_publishers: 422` to `STATUS` and a plain `TEXT` line. Seeding: `seedSupplement` runs only after the base-seed check (`composition.server.ts:553` seeds the base only when there are no publishers), so the supplement is never the first seed on an empty disk. The two `payee_shared` flag updates stay two statements in one transaction, Harbour first.
 
 Red-first tests (commit 1):
 

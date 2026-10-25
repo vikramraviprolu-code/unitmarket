@@ -39,6 +39,16 @@ export const SnapshotPublisherSchema = z
   .strict();
 export type SnapshotPublisher = z.infer<typeof SnapshotPublisherSchema>;
 
+// How a pack of two publishers is settled (MVP-D, D2): one PayPal order per publisher. The schema is
+// not exported (the contracts index test lists its exports exactly); use the type.
+const SnapshotSettlementSchema = z
+  .object({
+    route: z.literal('per_publisher'),
+    payments: z.literal(2),
+  })
+  .strict();
+export type SnapshotSettlement = z.infer<typeof SnapshotSettlementSchema>;
+
 // Refinements: unique article ids; every item has a publisher block with the same payee; each
 // publisher amount equals the sum of its items; the total equals the sum of publishers. A snapshot
 // has one currency field and items carry none, so a second currency cannot be expressed (strict).
@@ -53,11 +63,21 @@ export const ApprovalSnapshotSchema = z
     reader: z.object({ buyer_id: IdSchema }).strict(),
     rule_version: z.string().min(1),
     pricing_rule_version: z.string().min(1),
+    // Only a snapshot with exactly two publishers carries it, and it is inside the content hash. A
+    // one-publisher snapshot has no `settlement` key at all, so its hash is what it always was.
+    settlement: SnapshotSettlementSchema.optional(),
   })
   .strict()
   .superRefine((snapshot, ctx) => {
     const issue = (message: string, path: (string | number)[]) =>
       ctx.addIssue({ code: 'custom', message, path });
+
+    if (
+      snapshot.settlement !== undefined &&
+      snapshot.publishers.length !== snapshot.settlement.payments
+    ) {
+      issue('settlement.payments must equal the number of publishers', ['settlement', 'payments']);
+    }
 
     const byPublisher = new Map<string, z.infer<typeof SnapshotPublisherSchema>>();
     snapshot.publishers.forEach((publisher, index) => {

@@ -112,6 +112,57 @@ describe('ApprovalSnapshot refinements', () => {
   });
 });
 
+describe('ApprovalSnapshot settlement (DP-1, MVP-D)', () => {
+  const two = (settlement?: unknown) => ({
+    ...snapshot(),
+    ...(settlement === undefined ? {} : { settlement }),
+  });
+  const ok = { route: 'per_publisher', payments: 2 };
+  it('settlement only with 2 publishers; payments must equal 2; single route refused', () => {
+    // two publishers: settlement is accepted, and so is its absence (a pre-DP-1 stored snapshot)
+    expect(valid(two(ok))).toBe(true);
+    expect(valid(two())).toBe(true);
+    const parsed = ApprovalSnapshotSchema.parse(two(ok));
+    expect(parsed.settlement).toEqual({ route: 'per_publisher', payments: 2 });
+    // payments must equal the publisher count (2)
+    for (const payments of [0, 1, 3, 2.5, '2', null]) {
+      expect(valid(two({ route: 'per_publisher', payments })), String(payments)).toBe(false);
+    }
+    // the single route is refused, and an unknown route
+    expect(valid(two({ route: 'single', payments: 2 }))).toBe(false);
+    expect(valid(two({ route: 'single', payments: 1 }))).toBe(false);
+    expect(valid(two({ route: 'other', payments: 2 }))).toBe(false);
+    // the settlement object is strict, and both keys are required
+    expect(valid(two({ ...ok, extra: 1 }))).toBe(false);
+    expect(valid(two({ route: 'per_publisher' }))).toBe(false);
+    expect(valid(two({ payments: 2 }))).toBe(false);
+    expect(valid(two(null))).toBe(false);
+  });
+  it('a settlement on a one-publisher snapshot is refused, even a consistent-looking one', () => {
+    const one = {
+      ...snapshot(),
+      items: [item('art_1', 'pub_1', 'M1', 300), item('art_2', 'pub_1', 'M1', 200)],
+      publishers: [pubBlock('pub_1', 'M1', 500)],
+      total_minor: 500,
+    };
+    expect(valid(one)).toBe(true);
+    expect(valid({ ...one, settlement: ok })).toBe(false);
+    expect(valid({ ...one, settlement: { route: 'per_publisher', payments: 1 } })).toBe(false);
+    expect(valid({ ...one, settlement: { route: 'single', payments: 1 } })).toBe(false);
+  });
+  it('a settlement on a three-publisher snapshot is refused (payments is 2 and the count is 3)', () => {
+    const three = {
+      ...snapshot(),
+      items: [...snapshot().items, item('art_4', 'pub_3', 'M3', 50)],
+      publishers: [...snapshot().publishers, pubBlock('pub_3', 'M3', 50)],
+      total_minor: 650,
+    };
+    expect(valid(three)).toBe(true);
+    expect(valid({ ...three, settlement: ok })).toBe(false);
+    expect(valid({ ...three, settlement: { route: 'per_publisher', payments: 3 } })).toBe(false);
+  });
+});
+
 describe('Approval', () => {
   const base = {
     approval_id: 'apr_1',

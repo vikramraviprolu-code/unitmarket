@@ -15,7 +15,7 @@ Goal.
 - **Locks.** `lockOrderRows` locks the order, then its provider orders `FOR UPDATE` by position, then its operations.
 - **Place.**
   - A `per_publisher` snapshot writes one provider order per publisher (`prepared`), with each unit on its own provider order and one create operation `umsC-<po_ref>` each.
-  - A two-publisher snapshot without `settlement` is an invalid approval.
+  - A snapshot with 2 or more publishers is valid only with `settlement` whose `payments` equals the publisher count, and with at most 2 publishers. Any other shape (2 or more publishers without `settlement`, or 3 or more) is an invalid approval: no order, no unit, `used_at` not set. The schema stays permissive because old snapshots are re-parsed (`domain/receipts/src/body.ts:79`, `domain/payments/src/apply.ts:59`).
   - `single` is unchanged.
 - **Create (eager).** `beginCheckout` sends each create outside any transaction: one unit each, `custom_id` = `order_ref`, `invoice_id` = `po_ref`.
   - `invoice_id` is a new optional field in `CreateOrderReqSchema`, allowed with one unit only; `buildCreateBody` uses it.
@@ -53,6 +53,7 @@ Outputs: the DP-2a files in overview section 4. Three notes for the commit and t
 
 - This spec is longer than one page (about 1,200 words), a stated exception accepted by the reviewer: the capture-gate and status rules are what the builder must not get wrong.
 
+- `domain/payments/src/composite-gates.adversarial.test.ts` (added by DP-1) must stay green.
 - The listed `ofr_3` tests contradict the spec, because two publishers in one PayPal order is the D1 shape. Their setup moves to a labelled "D1 dormant" helper, and their assertions stay.
 - `apps/web/src/webhook-support.ts:291` is changed, as a named exception, because 0011 makes its second-provider-order INSERT invalid. It now UPDATEs the placed row.
 
