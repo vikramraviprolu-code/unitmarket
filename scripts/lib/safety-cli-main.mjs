@@ -12,7 +12,7 @@
 //   resume  --operator <id> --reason <text> paypal_outbound on (BU-2, O-B6); terminal only, refuses in CI
 //                                           and AI sessions, needs an active approval row for the configured
 //                                           reference (UMS_OUTBOUND_APPROVAL_REF) and the scope typed back
-//                                           The app must be stopped first (single-opener lock): stop it, resume, restart.
+//                                           The app must not hold the database (single-opener lock): on a laptop stop it, resume, restart; on the host start it in maintenance mode first (D-037, MVPC-OWNER-STEPS.md Step 6).
 // The operator id names who is acting; the person at a TTY is the second factor the CLIs rely on.
 import { createInterface } from 'node:readline/promises';
 import { loadConfigFromProcess, terminalEnv } from '../../packages/config/src/index.ts';

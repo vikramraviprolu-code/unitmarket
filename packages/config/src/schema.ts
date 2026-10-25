@@ -35,6 +35,13 @@ export interface Config {
   corridors: string[];
   /** Reverse proxies in front of the app, 0 to 3 (UMS_TRUSTED_PROXIES). 0: X-Forwarded-For is never read. */
   trusted_proxies: number;
+  /**
+   * UMS_MAINTENANCE_FLAG (CO-7b, D-037): the path of the maintenance flag file, or null (no check). The
+   * file is created and removed by the owner in the host shell only; nothing in the app writes it. The
+   * app reads it once at boot (readMaintenanceFlag). Always an absolute, normal path named
+   * ums-maintenance; with a PGlite folder on disk it is that folder's sibling, never inside it.
+   */
+  maintenance_flag: string | null;
   env_label: 'Dry run' | 'Sandbox';
   node_env: 'development' | 'test' | 'production';
 }
@@ -60,6 +67,7 @@ export const ENV_NAMES = [
   'UMS_PUBLIC_ORIGIN',
   'UMS_CORRIDORS',
   'UMS_TRUSTED_PROXIES',
+  'UMS_MAINTENANCE_FLAG',
   'NEXT_PUBLIC_UMS_ENV_LABEL',
 ] as const;
 
@@ -67,6 +75,9 @@ export const ENV_NAMES = [
 export const KNOWN_CORRIDORS: readonly string[] = ['us-usd'];
 
 export const MIN_SECRET_BYTES = 32;
+
+/** The file name of the maintenance flag (CO-7b). The host tools derive the same name beside the data folder. */
+export const MAINTENANCE_FLAG_NAME = 'ums-maintenance';
 
 /** Operator TOTP keys (CO-6): at least 20 bytes (RFC 4226 section 4), a handful of operators. */
 export const MIN_TOTP_KEY_BYTES = 20;

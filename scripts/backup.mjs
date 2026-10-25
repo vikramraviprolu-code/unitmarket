@@ -1,6 +1,13 @@
 // Offline backup of the PGlite data directory (CO-10, nfr.md REL-5, REL-7).
 //
-//   node scripts/backup.mjs --dir <pglite dir> --out <folder outside the repo> --i-stopped-the-app
+//   node scripts/backup.mjs --dir <pglite dir> --out <folder outside the repo> (--i-stopped-the-app | --maintenance)
+//
+// ON THE HOST (Render, D-037, CO-7b) the app is up while this runs, in maintenance mode: it was started
+// with the flag file ums-maintenance beside the data folder (/var/data/ums-maintenance), so it never
+// opened the database and a restart would not open it either. `--maintenance` takes that flag, a plain
+// file the owner made in the host shell, as the proof that the app is down. It is only a proof: the lock
+// check below still runs and still refuses while a live app holds the lock. This command only looks at
+// the flag; it never creates, changes or removes it.
 //
 // STOP THE APP FIRST. Opening a PGlite data directory writes to it (recovery, checkpoint), so this is
 // not a read-only copy, and PGlite allows one process per directory. Until the single-opener lock
@@ -40,9 +47,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const MANIFEST_FORMAT = 1;
 export const LOCK_FILE = '.ums-open.lock';
+export const MAINTENANCE_FLAG = 'ums-maintenance';
 export const USAGE = [
-  'usage: backup.mjs --dir <pglite dir> --out <folder outside the repo> --i-stopped-the-app',
-  'note: stop the UnitMarket app first. Opening the data directory writes to it, and PGlite allows one process per directory.',
+  'usage: backup.mjs --dir <pglite dir> --out <folder outside the repo> (--i-stopped-the-app | --maintenance)',
+  'note: stop the UnitMarket app first. Opening the data directory writes to it, and PGlite allows one process per directory. On the host use --maintenance: it needs the maintenance flag file ums-maintenance beside the data folder, and still refuses while the app holds the lock.',
   'note: a backup holds personal data and session data (session ids, auth_subject, names, webhook payer data, idempotency responses). Keep it private, off shared storage.',
   'note: restoring an old backup brings back sessions that were revoked after it was taken.',
 ].join('\n');
@@ -65,6 +73,28 @@ export function realLoose(p) {
   return join(realpathSync(head), ...rest);
 }
 export const isInside = (child, parent) => child === parent || child.startsWith(parent + sep);
+
+/**
+ * CO-7b: the maintenance flag beside a data folder, as proof that the app is down (D-037). Returns its
+ * path when it is a plain file; otherwise refuses. It only looks (lstat); it never touches the flag.
+ */
+export function checkMaintenanceFlag(dataDir) {
+  const flag = join(dirname(resolve(dataDir)), MAINTENANCE_FLAG);
+  let st;
+  try {
+    st = lstatSync(flag);
+  } catch (e) {
+    throw new Refused(
+      `maintenance mode is not set: ${flag} cannot be read (${e?.code ?? 'error'}). On the host create it with "touch ${flag}", restart the app so it boots in maintenance mode, then run again`,
+    );
+  }
+  if (!st.isFile()) {
+    throw new Refused(
+      `the maintenance flag ${flag} is not a plain file; refusing. Remove it by hand and create it again with "touch"`,
+    );
+  }
+  return flag;
+}
 
 function isAlive(pid) {
   try {
@@ -121,23 +151,25 @@ const isoOf = (clock) =>
     .toISOString()
     .replace(/\.\d+Z$/, 'Z');
 
-/** @param {{ dir: string, out: string, appStopped?: boolean, clock?: { now(): Date }, warn?: (message: string) => void, onLockHeld?: (lockPath: string) => void }} options */
+/** @param {{ dir: string, out: string, appStopped?: boolean, maintenance?: boolean, clock?: { now(): Date }, warn?: (message: string) => void, onLockHeld?: (lockPath: string) => void }} options */
 export async function runBackup({
   dir,
   out,
   appStopped = false,
+  maintenance = false,
   clock,
   warn = (message) => void message,
   onLockHeld,
 }) {
   if (!dir || !out) throw new Refused(USAGE);
-  if (!appStopped) {
+  if (!appStopped && !maintenance) {
     throw new Refused(
-      'the app must be stopped first: opening the data directory writes to it and nothing here can see a running app. Stop it, then run again with --i-stopped-the-app',
+      'the app must be stopped first: opening the data directory writes to it and nothing here can see a running app. Stop it, then run again with --i-stopped-the-app. On the host, start the app in maintenance mode instead and run again with --maintenance',
     );
   }
   const dataDir = resolve(dir);
   const outDir = resolve(out);
+  if (maintenance) checkMaintenanceFlag(dataDir);
   if (!existsSync(join(dataDir, 'PG_VERSION'))) {
     throw new Refused(
       `${dataDir} is not a PGlite data directory (no PG_VERSION); refusing to create one`,
@@ -242,6 +274,10 @@ export function parseArgs(argv) {
       args.appStopped = true;
       continue;
     }
+    if (flag === '--maintenance') {
+      args.maintenance = true;
+      continue;
+    }
     if (flag !== '--dir' && flag !== '--out') return null;
     const value = argv[i + 1];
     if (value === undefined || value.startsWith('--')) return null;
@@ -262,6 +298,7 @@ export async function main(argv, io = { out: process.stdout, err: process.stderr
       dir: args.dir,
       out: args.out,
       appStopped: args.appStopped,
+      maintenance: args.maintenance,
       warn: (m) => io.err.write(`${m}\n`),
     });
     const rows = Object.values(res.manifest.tables).reduce((a, b) => a + b, 0);

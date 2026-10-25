@@ -8,6 +8,9 @@
 async function start(): Promise<void> {
   const { app } = await import('./server/access');
   const a = await app();
+  // CO-7b (D-037): maintenance mode starts nothing. The composition already refuses to open the
+  // database or build a loop; this stops before asking.
+  if (a.maintenance) return;
   const jobs = await a.startJobs();
   // Stop the loop on shutdown so no pass is cut off half way when the process is asked to end.
   const stop = (): void => {

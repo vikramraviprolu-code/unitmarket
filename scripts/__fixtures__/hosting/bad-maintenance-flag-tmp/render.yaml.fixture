@@ -1,0 +1,64 @@
+# Render blueprint for the hosted PayPal sandbox demo (CO-7). NAMES AND SAFE VALUES ONLY.
+# Every secret or owner-chosen variable is `sync: false` with no value: the owner enters it in the
+# Render dashboard. `pnpm check:hosting` fails on any unsafe setting in this file.
+# One process, one instance, one persistent disk (architecture 8). Do not raise numInstances: two
+# processes must never share one PGlite directory. Deploys are manual (reviewed tag only, RLR-1).
+services:
+  - type: web
+    name: unitmarket-sandbox
+    runtime: node
+    plan: starter
+    numInstances: 1
+    autoDeploy: false
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm --filter @umsbx/web build
+    startCommand: corepack pnpm --filter @umsbx/web start
+    healthCheckPath: /healthz
+    disk:
+      name: pglite-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22.22.0"
+      - key: NODE_ENV
+        value: "production"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: UMS_MODE
+        value: "sandbox"
+      # The owner flips this to on in the dashboard after the approval row exists.
+      - key: UMS_PAYPAL_CONNECT
+        value: "off"
+      - key: UMS_OUTBOUND_SCOPE
+        value: "mvp_c_refunds"
+      - key: UMS_DB
+        value: "pglite-disk"
+      - key: UMS_PGLITE_DIR
+        value: "/var/data/pglite"
+      - key: UMS_MAINTENANCE_FLAG
+        value: "/tmp/ums-maintenance"
+      # ASM-57: one proxy in front. Unverified; confirm on the first deploy.
+      - key: UMS_TRUSTED_PROXIES
+        value: "1"
+      - key: NEXT_PUBLIC_UMS_ENV_LABEL
+        value: "Sandbox"
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: UMS_OUTBOUND_APPROVAL_REF
+        sync: false
+      - key: UMS_SESSION_SECRET
+        sync: false
+      - key: UMS_APPROVAL_SECRET
+        sync: false
+      - key: UMS_LINK_SECRET
+        sync: false
+      - key: UMS_DEMO_PASSCODE_HASH
+        sync: false
+      - key: UMS_OPERATOR_TOTP_KEYS
+        sync: false
+      - key: UMS_PUBLIC_ORIGIN
+        sync: false

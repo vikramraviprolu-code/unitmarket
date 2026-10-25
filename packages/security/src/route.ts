@@ -89,6 +89,13 @@ export interface SecurityDeps {
   public_origin: string;
   /** How many reverse proxies sit in front (0 = none: X-Forwarded-For is never trusted). */
   trusted_proxies?: number;
+  /**
+   * CO-7b (D-037). True while the app runs in maintenance mode (decided once at boot, from the host's
+   * flag file). Every route except MAINTENANCE_ROUTES then answers 503 `maintenance` before it reads
+   * the method, the session, the body, the limiter or the database. It can only reduce what a route
+   * does; nothing here sets it, the composition root supplies it.
+   */
+  maintenance?: boolean;
 }
 
 export type HttpResult<O> =
@@ -101,6 +108,9 @@ export type HttpResult<O> =
     };
 
 export const MAX_BODY_CEILING = 1_048_576;
+
+/** CO-7b. The one route that keeps answering in maintenance mode: the health check (no restart loop). */
+export const MAINTENANCE_ROUTES: readonly string[] = ['/healthz'];
 
 /** CO-3. The one route that may declare `raw: true`; checked when withRoute is called. */
 export const RAW_BODY_ROUTES: readonly string[] = ['/api/webhooks/paypal'];
@@ -266,6 +276,14 @@ export function withRoute<I, O>(
       return json(status, raw ? {} : errorBody(code, message, req_id, fields), headers);
     };
 
+    // CO-7b: maintenance mode. First, before anything is read or looked up.
+    if (deps.maintenance === true && !MAINTENANCE_ROUTES.includes(meta.path))
+      return json(
+        503,
+        errorBody('maintenance', 'The service is down for maintenance.', req_id),
+        headers,
+      );
+
     let idem: IdemScope | null = null;
     try {
       if (req.method !== meta.method)
@@ -319,7 +337,11 @@ export function withRoute<I, O>(
       let record: SessionRecord | null = null;
       let actor: Actor = { kind: 'system' };
       if (meta.auth !== 'webhook') {
-        record = await resolveSessionRecord(deps, req.headers.get('cookie'));
+        // CO-7b: the one route left in maintenance mode never looks a session up (the database is closed).
+        record =
+          deps.maintenance === true
+            ? null
+            : await resolveSessionRecord(deps, req.headers.get('cookie'));
         if (meta.auth !== 'public') {
           if (record === null) return fail(401, 'unauthenticated', 'Sign in first.');
           if (record.actor.kind !== meta.auth)

@@ -35,6 +35,8 @@ services:
         value: "pglite-disk"
       - key: UMS_PGLITE_DIR
         value: "/var/data/pglite"
+      - key: UMS_MAINTENANCE_FLAG
+        value: "/var/data/ums-maintenance"
       # ASM-57: one proxy in front. Unverified; confirm on the first deploy.
       - key: UMS_TRUSTED_PROXIES
         value: "0"
