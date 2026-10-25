@@ -219,7 +219,12 @@ describe('migrations', () => {
       expect(sql, f).not.toMatch(
         /current_timestamp|clock_timestamp|statement_timestamp|transaction_timestamp/i,
       );
-      expect(sql, f).not.toMatch(/\bDEFAULT\b/i);
+      // The one allowed default (0010, D-041): publishers.payee_shared starts false for every row.
+      const withoutAllowed =
+        f === '0010_publisher_payee_shared.sql'
+          ? sql.replace(/payee_shared\s+boolean\s+NOT\s+NULL\s+DEFAULT\s+false/i, '')
+          : sql;
+      expect(withoutAllowed, f).not.toMatch(/\bDEFAULT\b/i);
       expect(sql, f).not.toMatch(/CREATE\s+EXTENSION/i);
     }
   });
@@ -263,7 +268,8 @@ describe('migrations', () => {
       `SELECT table_name, column_name FROM information_schema.columns
        WHERE table_schema = 'public' AND column_default IS NOT NULL AND table_name <> 'schema_migrations'`,
     );
-    expect(defaults.rows).toEqual([]);
+    // The one allowed default (0010, D-041): publishers.payee_shared is false unless set.
+    expect(defaults.rows).toEqual([{ table_name: 'publishers', column_name: 'payee_shared' }]);
   });
   it('ums_id refuses blank, padded and control-character ids', async () => {
     for (const bad of ['', ' x', 'x ', 'a\nb', 'a​b']) {
@@ -1342,5 +1348,177 @@ describe('review A: approval immutability (L3)', () => {
     // the allowed form still works
     await approval(200);
     await db.query(`UPDATE approvals SET used_at = $1 WHERE id = 'apr_200'`, [T15]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+describe('0010 publishers.payee_shared (DP-1, D-041)', () => {
+  const pub = (n: number, over: Record<string, unknown> = {}) =>
+    ins('publishers', {
+      id: `pub_s${n}`,
+      slug: `ps${n}`,
+      display_name: `Pub ${n}`,
+      country: 'US',
+      paypal_merchant_id: 'SBXPAYEESHARED1',
+      payee_verified_at: T,
+      ...over,
+    });
+  const isUnique = (e: unknown) => (e as { code?: unknown }).code === '23505';
+
+  it('0010 recorded by name', async () => {
+    const d = await openDatabase({ kind: 'pglite-memory' });
+    toClose.push(d);
+    const applied = await migrate(d, clock);
+    expect(applied).toContain('0010_publisher_payee_shared');
+    const rows = await d.query<{ version: string }>(
+      "SELECT version FROM schema_migrations WHERE version = '0010_publisher_payee_shared'",
+    );
+    expect(rows.rows).toEqual([{ version: '0010_publisher_payee_shared' }]);
+    expect(await migrate(d, clock)).toEqual([]);
+  });
+
+  it('payee_shared is a boolean NOT NULL column that defaults to false', async () => {
+    const c = await db.query<{ data_type: string; is_nullable: string; column_default: string }>(
+      `SELECT data_type, is_nullable, column_default FROM information_schema.columns
+        WHERE table_name = 'publishers' AND column_name = 'payee_shared'`,
+    );
+    expect(c.rows).toEqual([{ data_type: 'boolean', is_nullable: 'NO', column_default: 'false' }]);
+    await pub(1, { paypal_merchant_id: 'SBXPAYEEA' });
+    expect((await db.query('SELECT payee_shared FROM publishers')).rows).toEqual([
+      { payee_shared: false },
+    ]);
+    await expect(pub(2, { paypal_merchant_id: 'SBXPAYEEB', payee_shared: null })).rejects.toThrow();
+  });
+
+  it('two publishers with payee_shared may share a merchant id', async () => {
+    await pub(1, { payee_shared: true });
+    await pub(2, { payee_shared: true });
+    const r = await db.query('SELECT id FROM publishers WHERE paypal_merchant_id = $1', [
+      'SBXPAYEESHARED1',
+    ]);
+    expect(r.rows).toHaveLength(2);
+  });
+
+  it('two without the flag may not (23505)', async () => {
+    await pub(1);
+    const e = await pub(2).then(
+      () => null,
+      (x: unknown) => x,
+    );
+    expect(isUnique(e)).toBe(true);
+    expect((await db.query('SELECT id FROM publishers')).rows).toHaveLength(1);
+  });
+
+  it('the old plain unique constraint is gone and the partial index is in place', async () => {
+    const c = await db.query(
+      "SELECT 1 FROM pg_constraint WHERE conname = 'publishers_paypal_merchant_id_key'",
+    );
+    expect(c.rows).toEqual([]);
+    const i = await db.query<{ indexdef: string }>(
+      "SELECT indexdef FROM pg_indexes WHERE indexname = 'publishers_merchant_unshared'",
+    );
+    expect(i.rows).toHaveLength(1);
+    expect(i.rows[0]!.indexdef).toMatch(/UNIQUE/);
+    expect(i.rows[0]!.indexdef).toMatch(/paypal_merchant_id/);
+    expect(i.rows[0]!.indexdef).toMatch(/NOT payee_shared/);
+  });
+
+  it('one flagged and one unflagged with the same id: refused', async () => {
+    await pub(1, { payee_shared: true });
+    await expect(pub(2)).rejects.toThrow();
+    expect((await db.query('SELECT id FROM publishers')).rows).toHaveLength(1);
+    // and the other way round
+    await resetDatabase(db);
+    await pub(1);
+    await expect(pub(2, { payee_shared: true })).rejects.toThrow();
+    expect((await db.query('SELECT id FROM publishers')).rows).toHaveLength(1);
+  });
+
+  it('the rule holds on UPDATE too: setting an id or clearing the flag cannot create a clash', async () => {
+    await pub(1, { payee_shared: true });
+    await pub(2, { payee_shared: true });
+    await pub(3, { paypal_merchant_id: 'SBXPAYEEOTHER' });
+    // clearing the flag on one of a shared pair
+    await expect(
+      db.query(`UPDATE publishers SET payee_shared = false WHERE id = 'pub_s2'`),
+    ).rejects.toThrow();
+    // an unflagged publisher taking a shared id
+    await expect(
+      db.query(`UPDATE publishers SET paypal_merchant_id = 'SBXPAYEESHARED1' WHERE id = 'pub_s3'`),
+    ).rejects.toThrow();
+    // a flagged publisher taking an unflagged one's id
+    await expect(
+      db.query(
+        `UPDATE publishers SET payee_shared = true, paypal_merchant_id = 'SBXPAYEEOTHER' WHERE id = 'pub_s1'`,
+      ),
+    ).rejects.toThrow();
+    // an update that changes nothing about the id or flag is fine
+    await db.query(`UPDATE publishers SET display_name = 'Renamed' WHERE id = 'pub_s1'`);
+    // moving to a free id, flagged or not, is fine
+    await db.query(`UPDATE publishers SET paypal_merchant_id = 'SBXPAYEEFREE' WHERE id = 'pub_s3'`);
+  });
+
+  it('publishers without a merchant id are unlimited, flagged or not', async () => {
+    await pub(1, { paypal_merchant_id: null, payee_verified_at: null });
+    await pub(2, { paypal_merchant_id: null, payee_verified_at: null });
+    await pub(3, { paypal_merchant_id: null, payee_verified_at: null, payee_shared: true });
+    expect((await db.query('SELECT id FROM publishers')).rows).toHaveLength(3);
+  });
+
+  it('a logical export and import of a shared pair round-trips (the guard re-checks the load)', async () => {
+    const { exportSql, importSql } = await import('./export-sql');
+    await pub(1, { payee_shared: true });
+    await pub(2, { payee_shared: true });
+    const text = await exportSql(db, { utc: T });
+    const target = await fresh();
+    await importSql(target, text);
+    const r = await target.query<{ id: string; payee_shared: boolean }>(
+      'SELECT id, payee_shared FROM publishers ORDER BY id',
+    );
+    expect(r.rows).toEqual([
+      { id: 'pub_s1', payee_shared: true },
+      { id: 'pub_s2', payee_shared: true },
+    ]);
+  });
+
+  it('migration 0010 is forward-only and safe on a copy of an MVP-C-shaped database', async () => {
+    // A database migrated to 0009 only, holding what the MVP-C disk holds: harbour-ledger with the
+    // owner's merchant id, verified, and a second publisher with none.
+    const dir = mkdtempSync(join(tmpdir(), 'ums-mig10-'));
+    try {
+      const { writeFileSync } = await import('node:fs');
+      const common = new URL('../migrations/common/', import.meta.url);
+      for (const f of readdirSync(common).filter((n) => /^000[1-9]_.+\.sql$/.test(n))) {
+        writeFileSync(join(dir, f), readFileSync(new URL(f, common), 'utf8'));
+      }
+      const d = await openDatabase({ kind: 'pglite-memory' });
+      toClose.push(d);
+      expect((await applyMigrations(d, clock, dir)).at(-1)).toBe('0009_active_entitlement_unique');
+      const add = (id: string, slug: string, merchant: string | null) =>
+        d.query(
+          `INSERT INTO publishers (id, slug, display_name, country, paypal_merchant_id, payee_verified_at, created_at, updated_at)
+           VALUES ($1, $2, $2, 'US', $3, $4, $5, $5)`,
+          [id, slug, merchant, merchant === null ? null : T, T],
+        );
+      await add('pub_h', 'harbour-ledger', 'SBXMOWNERBUSINESS');
+      await add('pub_n', 'northfield-quarterly', null);
+      const before = (await d.query('SELECT * FROM publishers ORDER BY id')).rows;
+
+      expect(await migrate(d, clock)).toEqual(['0010_publisher_payee_shared']);
+      const after = await d.query<Record<string, unknown>>('SELECT * FROM publishers ORDER BY id');
+      // every old column value is kept; the new column is false for every existing row
+      expect(
+        after.rows.map(({ payee_shared, ...rest }) => ({ ...rest, flag: payee_shared })),
+      ).toEqual(before.map((r) => ({ ...r, flag: false })));
+      // the old uniqueness still holds for these rows (nothing is flagged)
+      await expect(add('pub_dup', 'dup', 'SBXMOWNERBUSINESS')).rejects.toThrow();
+      // forward-only: there is no down step and a second run is a no-op
+      expect(await migrate(d, clock)).toEqual([]);
+      expect(
+        readdirSync(common).filter((n) => /^0010_.+\.sql$/.test(n) && /down|rollback/i.test(n)),
+      ).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
