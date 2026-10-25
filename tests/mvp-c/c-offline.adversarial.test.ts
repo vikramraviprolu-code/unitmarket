@@ -199,7 +199,7 @@ describe('C-offline interception, bypass shapes', () => {
       expect(trace.calls).toEqual([label]);
     },
   );
-  it('C-offline the shared node:dns object itself is guarded: lookup called on it (require, getBuiltinModule) is recorded and refused', () => {
+  it('C-offline the shared node:dns object itself is guarded: lookup called on it through the CommonJS loader or getBuiltinModule is recorded and refused', () => {
     expect(hooks.sharedDns, 'the interception keeps the shared node:dns object').toBeDefined();
     expect(viaSharedDns(hooks.sharedDns)).toBe(true);
     expect(trace.calls).toEqual(['dns.lookup']);
