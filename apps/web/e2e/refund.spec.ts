@@ -1,0 +1,219 @@
+// CO-8 e2e (offline, dry run): the whole refund journey in a browser. A buyer pays; an operator signs in
+// with a TOTP code (the server holds the public RFC 6238 test key, see playwright.config.ts), refunds
+// part of it from /ops, and the buyer, who has the library item open, sees "Partially refunded" arrive
+// in an aria-live region without reloading. The operator then refunds the rest by keyboard, and the
+// buyer sees "Refunded" and cannot open the item. Runs before the ops stop drill (zz-ops-stop.spec.ts):
+// that stop stays in force for the life of the server and would block every PayPal call, refunds included.
+import { createHmac } from 'node:crypto';
+import { test, expect } from '@playwright/test';
+import type { Browser, BrowserContext, Page } from '@playwright/test';
+import { PASSCODE, TOTP_KEY_BYTES, buyerPage, expectDryRun, payWithScenario } from './support';
+
+async function nextCode(page: Page): Promise<string> {
+  // One step ahead of the server clock: the earlier sign-in spec used the current step, and a step
+  // may be used once, in rising order. The server accepts one step either side.
+  const res = await page.request.get('/healthz');
+  const serverMs = new Date(res.headers()['date'] ?? '').getTime();
+  expect(Number.isFinite(serverMs)).toBe(true);
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(Math.floor(serverMs / 30_000) + 1));
+  const mac = createHmac('sha1', TOTP_KEY_BYTES).update(msg).digest();
+  const o = (mac[19] ?? 0) & 15;
+  return String((mac.readUInt32BE(o) & 0x7fffffff) % 1_000_000).padStart(6, '0');
+}
+
+async function operatorWithCode(browser: Browser): Promise<{ ctx: BrowserContext; page: Page }> {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto('/signin?next=/ops');
+  await page.getByLabel('Who are you testing as?').selectOption('operator');
+  await page.getByLabel('Operator name').fill('vikram');
+  await page.getByLabel('Demo passcode').fill(PASSCODE);
+  await page.getByLabel('Authenticator code').fill(await nextCode(page));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: /Operations/ })).toBeVisible();
+  return { ctx, page };
+}
+
+const unitCard = (page: Page, title: string) =>
+  page.getByTestId('refund-unit').filter({ hasText: title });
+
+test.describe.serial('refund journey', () => {
+  let op: { ctx: BrowserContext; page: Page };
+  test.beforeAll(async ({ browser }) => {
+    op = await operatorWithCode(browser);
+  });
+  test.afterAll(async () => {
+    await op.ctx.close();
+  });
+
+  test('buyer buys; operator refunds part; buyer sees Partially refunded; operator refunds the rest by keyboard; buyer sees Refunded and cannot open it', async ({
+    browser,
+  }) => {
+    // 1. The buyer pays 2.00 for an online item.
+    const buyer = await buyerPage(browser, 'a');
+    await payWithScenario(buyer, { offer: 'dock-history', scenario: 'happy' });
+    await expect(buyer.getByTestId('order-live')).toContainText(
+      'Paid. Your item is in your library.',
+    );
+    await buyer.getByRole('link', { name: 'Open my library' }).click();
+    const item = buyer
+      .getByTestId('library-item')
+      .filter({ hasText: 'The dock that was never finished' });
+    await item.getByRole('link', { name: 'The dock that was never finished' }).click();
+    const status = buyer.locator('[aria-live="polite"][data-testid="library-status"]');
+    await expect(status).toContainText(/Ready, /);
+    await expectDryRun(buyer);
+
+    // 2. The operator sees the refund form (second-factor session) and refunds 0.75.
+    await op.page.goto('/ops');
+    await expect(op.page.getByTestId('refund-no-mfa')).toHaveCount(0);
+    const card = unitCard(op.page, 'The dock that was never finished');
+    await expect(card).toContainText('$2.00');
+    await expect(card.getByRole('button', { name: 'Refund the rest' })).toBeVisible();
+    await expect(async () => {
+      await card.getByLabel(/^Amount/).fill('0.75');
+      await card.getByLabel(/^Reason/).fill('Part of the article was missing');
+      await expect(card.getByRole('button', { name: 'Refund $0.75' })).toBeEnabled({
+        timeout: 1000,
+      });
+    }).toPass({ timeout: 20_000 });
+    await card.getByRole('button', { name: 'Refund $0.75' }).click();
+    const result = op.page.locator('[aria-live="polite"][data-testid="refund-result"]');
+    await expect(result).toContainText('Refunded $0.75');
+    await expect(result).toContainText('$1.25 is left to refund');
+    await expectDryRun(op.page);
+
+    // 3. The buyer, who did not reload, is told in the live region.
+    await expect(status).toContainText('Partially refunded: your access continues', {
+      timeout: 20_000,
+    });
+    await expect(buyer.getByTestId('library-refund-note')).toContainText(
+      'every item in the order continues',
+    );
+    await expect(buyer.getByRole('button', { name: 'Read online' })).toBeVisible();
+
+    // 4. The operator refunds the rest, by keyboard only: amount empty, reason typed, button by Enter.
+    await expect(
+      op.page.getByTestId('refund-unit').filter({ hasText: 'The dock that was never finished' }),
+    ).toContainText('$1.25');
+    const again = unitCard(op.page, 'The dock that was never finished');
+    await expect(async () => {
+      await again.getByLabel(/^Amount/).focus();
+      await op.page.keyboard.press('Tab');
+      await expect(again.getByLabel(/^Reason/)).toBeFocused();
+      await op.page.keyboard.type('Refund the rest, customer is unhappy');
+      await op.page.keyboard.press('Tab');
+      await expect(again.getByRole('button', { name: 'Refund the rest' })).toBeFocused({
+        timeout: 1000,
+      });
+      await expect(again.getByRole('button', { name: 'Refund the rest' })).toBeEnabled({
+        timeout: 1000,
+      });
+    }).toPass({ timeout: 20_000 });
+    await op.page.keyboard.press('Enter');
+    await expect(result).toContainText('Refunded $1.25');
+    await expect(result).toContainText('fully refunded');
+
+    // 5. The buyer sees Refunded and the item cannot be opened.
+    await expect(status).toContainText('Refunded: access has ended', { timeout: 20_000 });
+    await expect(buyer.getByRole('button', { name: 'Read online' })).toHaveCount(0);
+    await buyer.goto('/library');
+    const row = buyer
+      .getByTestId('library-item')
+      .filter({ hasText: 'The dock that was never finished' });
+    await expect(row.getByTestId('library-status')).toHaveText('Refunded: access has ended');
+    await expect(row.getByRole('button')).toHaveCount(0);
+
+    // 6. The receipt lists both refunds and the version.
+    await buyer.goto('/library');
+    await row.getByRole('link', { name: 'The dock that was never finished' }).click();
+    await buyer.getByRole('link', { name: 'View receipt' }).click();
+    await expectDryRun(buyer);
+    await expect(buyer.getByTestId('receipt-version')).toContainText('Version 3');
+    await expect(buyer.getByTestId('receipt-refund')).toHaveCount(2);
+    await expect(buyer.getByTestId('receipt-refunds')).toContainText('$0.75');
+    await expect(buyer.getByTestId('receipt-refunds')).toContainText('$1.25');
+    await buyer.context().close();
+  });
+
+  test('a download-and-keep item says the links stopped and the copy cannot be recalled', async ({
+    browser,
+  }) => {
+    const buyer = await buyerPage(browser, 'a');
+    await payWithScenario(buyer, {
+      offer: 'allotment-diary',
+      scenario: 'happy',
+      option: 'Download and keep',
+    });
+    await expect(buyer.getByTestId('order-live')).toContainText('Paid.');
+    await op.page.goto('/ops');
+    const card = unitCard(op.page, 'An allotment diary for a cold March');
+    await expect(async () => {
+      await card.getByLabel(/^Reason/).fill('Wrong file was delivered');
+      await expect(card.getByRole('button', { name: 'Refund the rest' })).toBeEnabled({
+        timeout: 1000,
+      });
+    }).toPass({ timeout: 20_000 });
+    await card.getByRole('button', { name: 'Refund the rest' }).click();
+    await expect(op.page.getByTestId('refund-result')).toContainText('fully refunded');
+    await buyer.goto('/library');
+    const row = buyer
+      .getByTestId('library-item')
+      .filter({ hasText: 'An allotment diary for a cold March' });
+    await expect(row.getByTestId('library-status')).toHaveText(
+      'Refunded: links have stopped. The copy you downloaded cannot be recalled.',
+    );
+    await expect(row.getByRole('button', { name: 'Download' })).toHaveCount(0);
+    await buyer.context().close();
+  });
+
+  test('an over-large amount is refused in plain words and nothing is refunded', async ({
+    browser,
+  }) => {
+    const buyer = await buyerPage(browser, 'a');
+    await payWithScenario(buyer, { offer: 'village-bus', scenario: 'happy' });
+    await op.page.goto('/ops');
+    const card = unitCard(op.page, 'How a village bus route is saved');
+    await expect(async () => {
+      await card.getByLabel(/^Amount/).fill('9.99');
+      await card.getByLabel(/^Reason/).fill('Trying too much on purpose');
+      await expect(card.getByRole('button', { name: 'Refund $9.99' })).toBeEnabled({
+        timeout: 1000,
+      });
+    }).toPass({ timeout: 20_000 });
+    await card.getByRole('button', { name: 'Refund $9.99' }).click();
+    await expect(op.page.getByTestId('error-state')).toContainText('more than is left to refund');
+    await expect(op.page.getByTestId('error-state')).toContainText('Nothing was refunded');
+    await buyer.context().close();
+  });
+});
+
+test.describe('who sees the refund form', () => {
+  test('an operator without the authenticator code sees no form, only how to get one', async ({
+    browser,
+  }) => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto('/signin?next=/ops');
+    await page.getByLabel('Who are you testing as?').selectOption('operator');
+    await page.getByLabel('Demo passcode').fill(PASSCODE);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: /Operations/ })).toBeVisible();
+    await expect(page.getByTestId('refund-no-mfa')).toContainText('authenticator code');
+    await expect(page.getByTestId('refund-unit')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Refund/ })).toHaveCount(0);
+    await ctx.close();
+  });
+
+  test('a buyer has no refund button anywhere and cannot reach /ops', async ({ browser }) => {
+    const buyer = await buyerPage(browser, 'a');
+    for (const path of ['/library', '/orders/none', '/receipts/none']) {
+      await buyer.goto(path);
+      await expect(buyer.getByRole('button', { name: /refund/i })).toHaveCount(0);
+    }
+    await buyer.goto('/ops');
+    expect(new URL(buyer.url()).pathname).toBe('/signin');
+    await buyer.context().close();
+  });
+});
