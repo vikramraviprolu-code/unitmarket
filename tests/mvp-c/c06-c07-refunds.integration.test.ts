@@ -6,7 +6,16 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { signIn } from '../../apps/web/src/support';
 import type { Session } from '../../apps/web/src/support';
-import { bootRig, buy, libraryOf, openLink, postRefund, receiptOf, orderStatus } from './c-support';
+import {
+  bootRig,
+  buy,
+  call,
+  libraryOf,
+  openLink,
+  postRefund,
+  receiptOf,
+  orderStatus,
+} from './c-support';
 import type { CRig } from './c-support';
 
 vi.mock('server-only', () => ({}));
@@ -15,14 +24,28 @@ describe('C-06 and C-07 refunds (operator route, offline)', () => {
   let rig: CRig;
   let op: Session;
   let buyerB: Session;
+  let content: typeof import('../../apps/web/src/app/c/[token]/route');
   beforeAll(async () => {
     rig = await bootRig();
+    content = await import('../../apps/web/src/app/c/[token]/route');
     op = await rig.operator('vikram');
     buyerB = (await signIn(rig.routes.session.POST, 'buyer-b'))!;
   }, 60_000);
   afterAll(async () => {
     await rig?.close();
   });
+
+  /** Issue a link through the library route and return its url (the content route path with the token). */
+  const issuedUrl = async (s: Session, entitlement_id: string): Promise<string> => {
+    const res = await openLink(rig, s, entitlement_id);
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { url: string }).url;
+  };
+  /** GET the content route with a url issued earlier. */
+  const openIssued = (s: Session, url: string): Promise<Response> => {
+    const token = decodeURIComponent(new URL(url, 'http://localhost:3000').pathname.split('/')[2]!);
+    return call(content.GET, { url, session: s, params: { token } });
+  };
 
   const refundCalls = (): number => rig.ops().filter((o) => o === 'refund_capture').length;
   const unit = async (unit_id: string) =>
@@ -189,7 +212,8 @@ describe('C-06 and C-07 refunds (operator route, offline)', () => {
         (i) => i.entitlement_id === u.entitlement_id,
       )!;
       expect(before.can_open).toBe(true);
-      expect((await openLink(rig, buyerB, u.entitlement_id)).status).toBe(200);
+      const issued = await issuedUrl(buyerB, u.entitlement_id);
+      expect((await openIssued(buyerB, issued)).status).toBe(200); // the link works before the refund
       expect((await receiptOf(rig, buyerB, u.order_id)).body.version).toBe(1);
 
       const res = await postRefund(rig, op, {
@@ -208,6 +232,8 @@ describe('C-06 and C-07 refunds (operator route, offline)', () => {
       expect(after.refunded).toBe(true);
       expect(after.status_text).toBe('Refunded: access has ended');
       expect((await openLink(rig, buyerB, u.entitlement_id)).status).toBeGreaterThanOrEqual(400);
+      // a link issued before the refund no longer opens the content (the reviewer's probe: 403)
+      expect((await openIssued(buyerB, issued)).status).toBe(403);
       const receipt = await receiptOf(rig, buyerB, u.order_id);
       expect(receipt.status).toBe(200);
       expect(receipt.body.version).toBe(2);
@@ -219,7 +245,8 @@ describe('C-06 and C-07 refunds (operator route, offline)', () => {
 
     it('C-07 a verified full refund of a keep item stops the links and says the downloaded copy cannot be recalled', async () => {
       const u = await buy(rig, { offer: 'harbour-fees', option: 'keep_retrieve', who: 'B' }); // 3.00
-      expect((await openLink(rig, buyerB, u.entitlement_id)).status).toBe(200);
+      const issued = await issuedUrl(buyerB, u.entitlement_id);
+      expect((await openIssued(buyerB, issued)).status).toBe(200); // the link works before the refund
       const res = await postRefund(rig, op, {
         unit_id: u.unit_id,
         amount_minor: 300,
@@ -234,7 +261,8 @@ describe('C-06 and C-07 refunds (operator route, offline)', () => {
         'Refunded: links have stopped. The copy you downloaded cannot be recalled.',
       );
       expect((await openLink(rig, buyerB, u.entitlement_id)).status).toBeGreaterThanOrEqual(400);
-      // a link issued before the refund no longer opens the content either
+      // a link issued before the refund no longer opens the content either (the reviewer's probe: 403)
+      expect((await openIssued(buyerB, issued)).status).toBe(403);
       const receipt = await receiptOf(rig, buyerB, u.order_id);
       expect(receipt.body.version).toBe(2);
       expect(receipt.body.refunds.map((r) => r.amount.minor)).toEqual([300]);

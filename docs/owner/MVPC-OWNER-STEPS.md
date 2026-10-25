@@ -75,11 +75,15 @@ Expected output: one line `<name>:<base32 secret>` and one `otpauth://` link.
 
 1. Scan the link (or type the secret) into your authenticator app. The account is named
    `UnitMarket Sandbox`.
-2. Copy only your own `<name>:<secret>` line. Sakthi sends Vikram his line over a private channel he
-   already trusts for secrets (not a ticket, not a chat group, not this repository), or types it
-   into the Render dashboard himself in Step 2.
-3. The value for Render is the two lines joined with a comma, with no spaces:
-   `vikram:<secret>,sakthi:<secret>`. Keep it in your password manager until Step 2.
+2. Copy only your own `<name>:<secret>` line. No key line ever travels to the other operator: not by
+   chat, e-mail, a ticket, a group message or this repository. Each operator types their own entry into
+   the host settings (Step 2), nobody else's.
+3. `UMS_OPERATOR_TOTP_KEYS` in Render holds the entries joined by a comma, with no spaces:
+   `vikram:<secret>,sakthi:<secret>`. Build it one entry at a time, each by its owner. Vikram creates the
+   value with his own entry only. Sakthi then opens the same variable in the Render dashboard himself,
+   under his own Render login (if the plan lets Vikram add a second login), and appends
+   `,sakthi:<secret>`. If Sakthi has no Render login, he adds his entry at Vikram's machine in person, with no screen share or recording running; otherwise the value holds Vikram's entry only for this sitting (Sakthi can still use Stop, which needs no code). Anyone who can open the service's Environment page can read the whole value, so that page is
+   for the two operators only.
 4. Clear the terminal scrollback and the clipboard. Never paste the secret or the link anywhere else.
    Do not screenshot this step.
 
@@ -99,7 +103,7 @@ shows the refund form; signing in with no code shows no refund form.
 | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`                                               | The Sandbox tab of Apps and Credentials. The ROTATED secret, as in MVP-B.                                                                      |
 | `UMS_SESSION_SECRET`, `UMS_APPROVAL_SECRET`, `UMS_LINK_SECRET`, `UMS_DEMO_PASSCODE_HASH` | `corepack pnpm owner:secrets` (type a passcode of at least 12 characters twice). Four `NAME=value` lines; the hash line starts with `scrypt:`. |
-| `UMS_OPERATOR_TOTP_KEYS`                                                                 | Step 1, `vikram:<secret>,sakthi:<secret>`.                                                                                                     |
+| `UMS_OPERATOR_TOTP_KEYS`                                                                 | Step 1: each operator enters their own `<name>:<secret>` entry; entries are joined by a comma.                                                 |
 | `UMS_OUTBOUND_APPROVAL_REF`                                                              | `D-0xx`, the new MVP-C reference.                                                                                                              |
 | `UMS_PUBLIC_ORIGIN`                                                                      | `https://<your-service>.onrender.com`, exactly, with no trailing slash.                                                                        |
 | `PAYPAL_WEBHOOK_ID`                                                                      | Leave empty for now; Step 4 gives you the value. If Render insists on a value, enter the word `pending` and replace it in Step 4.              |
@@ -126,18 +130,63 @@ Do this BEFORE the webhook is registered or switched on (hosting.md step 5).
    The "Outbound approval gate" block shows mode `sandbox` with the approval lock reading NO, "Calls left
    today" says `No active approval.`, and the Refunds section shows its form (without a code it says
    "Refunds need a sign-in with your authenticator code").
-2. Check the proxy depth. `UMS_TRUSTED_PROXIES=1` in `render.yaml` assumes exactly one proxy appends to
-   `X-Forwarded-For` (ASM-57, unverified). Method: from a machine whose public address you know, make
-   one request to `/healthz`. In the Render request log read the raw `X-Forwarded-For` of that request,
-   or temporarily log it, and count the entries the platform appended. One entry appended means 1 is
-   right. Remove any temporary logging afterwards.
-3. Write down the count. A wrong count is worse than 0:
-   - more proxies than 1: every client shares one limiter bucket, so an attacker's 60 refusals a minute
-     would make the webhook limiter turn PayPal's valid deliveries away with 429;
-   - fewer than 1: a client chooses its own bucket and the limiter stays empty.
-     If the count is not 1, STOP: do not register the webhook. Tell Sakthi. The value is corrected in
-     `render.yaml` through review (the checker pins `1`), not in the dashboard.
-4. Screenshot (crop out your address): the log line count, and `/ops` with the refund form.
+2. Check the proxy depth (ASM-57) with a test from outside, using `curl`. The depth must be right
+   BEFORE the webhook is registered in Step 4: a wrong count lets one client fill the limiter bucket that
+   PayPal's own deliveries share, or lets a client choose its own bucket. `UMS_TRUSTED_PROXIES=1` in
+   `render.yaml` assumes exactly one proxy appends to `X-Forwarded-For`. The test uses the sign-in limiter
+   (5 wrong passcodes per address and persona, then 429; one attempt comes back every 3 minutes, all 5 after 15 minutes) and the persona `buyer-b`, so
+   `buyer-a` and the operator are not locked out. Put only the host name in the variable, no
+   `https://`. The passcode value below is a made-up wrong one; never type the real passcode here.
+
+   ```
+   HOST=<your-service>.onrender.com
+   ```
+
+   (a) From machine A (your laptop on its usual network), make 5 wrong sign-ins and then a 6th:
+
+   ```
+   for i in 1 2 3 4 5 6; do
+     curl -sS -o /dev/null -w "wrong sign-in $i: %{http_code}\n" -X POST "https://$HOST/api/session" \
+       -H "Origin: https://$HOST" -H "Content-Type: application/json" \
+       --data '{"persona":"buyer-b","passcode":"not-the-passcode-0000"}'
+   done
+   ```
+
+   Expected: `401` five times, then `429` for the 6th. If the 6th is still `401`, the limiter is not
+   counting. If a `429` comes before the 6th, other clients share your bucket (or you ran this less than 15 minutes ago). If you see `403`,
+   `UMS_PUBLIC_ORIGIN` does not match the host name. In every such case STOP and tell Sakthi.
+
+   (b) Straight after (a), within 3 minutes of its first request (later, a returned attempt answers 401 for that reason alone), from machine A again, send the 6th request with a forged
+   `X-Forwarded-For` that you wrote yourself:
+
+   ```
+   curl -sS -o /dev/null -w "forged header: %{http_code}\n" -X POST "https://$HOST/api/session" \
+     -H "Origin: https://$HOST" -H "Content-Type: application/json" \
+     -H "X-Forwarded-For: 198.51.100.7" \
+     --data '{"persona":"buyer-b","passcode":"not-the-passcode-0000"}'
+   ```
+
+   Expected: `429`. If it answers `401`, the setting trusts an entry your client wrote, so a client
+   can pick its own bucket (the count is too high, or the platform appends nothing). STOP.
+
+   (c) From a second network (your phone's hotspot: join machine B or your laptop to it, so the public
+   address is not the one used in (a)), run one wrong sign-in, also within 3 minutes of the first request of (a) (the same reason):
+
+   ```
+   curl -sS -o /dev/null -w "second network: %{http_code}\n" -X POST "https://$HOST/api/session" \
+     -H "Origin: https://$HOST" -H "Content-Type: application/json" \
+     --data '{"persona":"buyer-b","passcode":"not-the-passcode-0000"}'
+   ```
+
+   Expected: `401`, not `429`. If it answers `429`, every client shares one bucket (more proxies than
+   the count): an attacker could fill it and PayPal's valid deliveries would be turned away. STOP.
+
+3. If (a), (b) and (c) all gave the expected codes, 1 is right and you go on. If any did not, do NOT
+   register the webhook. Tell Sakthi what each of the three printed. The value is corrected in
+   `render.yaml` through review (the checker pins `1`), not in the dashboard. The `buyer-b` bucket frees
+   itself after 15 minutes; Step 4 does not depend on it.
+4. Screenshot (crop out your address): the terminal with the three results, and `/ops` with the refund
+   form. The output holds no secret and no address.
 
 ## Step 4: register the webhook at PayPal (O-C3, 10 min)
 

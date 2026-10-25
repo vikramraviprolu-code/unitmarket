@@ -7,7 +7,14 @@
 // opens the same directory (breaking the dead process's lock), recovers, and within two job passes the
 // order is terminal or frozen with one sale. A third restart changes nothing. Only scripts may spawn
 // (S2). Nothing here reaches a network; the children trace net, tls, http, https, dns and fetch and
-// report zero. The child entry is written to a temp folder, so this file is the only one of the lane.
+// report zero, and each attempt is also sent as one message when it happens, so the child that is
+// killed mid-capture is watched while it runs and not only when it reports. The wrappers REFUSE (throw);
+// they do not call through.
+// The child entry is written to a temp folder, so this file is the only one of the lane. It stays a
+// string on purpose (CO-Gb L1): as a real file it would import node:net, tls, http, https, http2, dns
+// and diagnostics_channel (S2) and use Date.now() and new Date() (S6), and lint would need a new pinned
+// exemption for each. Inside the string those rules do not apply, and nothing here runs outside the
+// temp copy.
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -26,22 +33,36 @@ const ROOT = join(__dirname, '..');
 const CHILD = String.raw`
 import { pathToFileURL } from 'node:url';
 import { syncBuiltinESMExports } from 'node:module';
+import dc from 'node:diagnostics_channel';
 import net from 'node:net';
 import tls from 'node:tls';
 import http from 'node:http';
 import https from 'node:https';
+import http2 from 'node:http2';
 import dns from 'node:dns';
 
+// Every way to open a connection or resolve a name is refused: the wrapper sends one message to the
+// parent AT THE MOMENT of the attempt (so a child that is killed later has already told it) and throws.
 const trace = [];
-const wrap = (obj, name, label) => {
-  const original = obj[name];
-  obj[name] = (...a) => { trace.push(label); return original.apply(obj, a); };
+const report = (label) => {
+  trace.push(label);
+  try { process.send({ t: 'net', label }); } catch { /* the parent is gone */ }
 };
-for (const n of ['connect', 'createConnection']) wrap(net, n, 'net.' + n);
-wrap(tls, 'connect', 'tls.connect');
-for (const n of ['request', 'get']) { wrap(http, n, 'http.' + n); wrap(https, n, 'https.' + n); }
-for (const n of ['lookup', 'resolve', 'resolve4', 'resolve6']) wrap(dns, n, 'dns.' + n);
-globalThis.fetch = () => { trace.push('fetch'); return Promise.reject(new Error('fetch is not available')); };
+const refuse = (label) => () => { report(label); throw new Error(label + ': this child is offline'); };
+const guard = (obj, name, label) => { obj[name] = refuse(label); };
+for (const n of ['connect', 'createConnection']) guard(net, n, 'net.' + n);
+guard(tls, 'connect', 'tls.connect');
+for (const n of ['request', 'get']) { guard(http, n, 'http.' + n); guard(https, n, 'https.' + n); }
+guard(http2, 'connect', 'http2.connect');
+for (const n of ['lookup', 'resolve', 'resolve4', 'resolve6']) guard(dns, n, 'dns.' + n);
+// shapes that replacing module exports misses (CO-Gb L1)
+guard(net.Socket.prototype, 'connect', 'net.Socket.prototype.connect');
+guard(http.Agent.prototype, 'createConnection', 'http.Agent.prototype.createConnection');
+guard(https.Agent.prototype, 'createConnection', 'https.Agent.prototype.createConnection');
+for (const n of ['lookup', 'lookupService', 'resolve', 'resolve4', 'resolve6', 'resolveAny', 'resolveTxt', 'reverse']) guard(dns.promises, n, 'dns.promises.' + n);
+globalThis.fetch = () => { report('fetch'); return Promise.reject(new Error('fetch is not available')); };
+// the backstop: Node publishes this for every client socket, whatever route created it
+dc.subscribe('net.client.socket', () => report('net.client.socket'));
 syncBuiltinESMExports();
 
 const root = process.argv[2];
@@ -158,11 +179,43 @@ async function runJobs(limitMs) {
   return { snap, passes: all.size, passes_after_lease: afterLease.size, lease, resolved_after_ms: resolvedAtMs, ms: Date.now() - t0 };
 }
 
+// The canary: tries every shape above and counts the refusals. No app is needed.
+async function probeNet() {
+  const loop = '127.0.0.1';
+  const probes = [
+    () => net.connect(1, loop),
+    () => net.createConnection(1, loop),
+    () => tls.connect(1, loop),
+    () => http.request('http://127.0.0.1:1/'),
+    () => http.get('http://127.0.0.1:1/'),
+    () => https.request('https://127.0.0.1:1/'),
+    () => https.get('https://127.0.0.1:1/'),
+    () => dns.lookup('localhost', () => {}),
+    () => dns.resolve('localhost', () => {}),
+    () => new net.Socket().connect(1, loop),
+    () => dns.promises.lookup('localhost'),
+    () => dns.promises.resolve('localhost'),
+    () => http2.connect('http://127.0.0.1:1'),
+    () => new http.Agent().createConnection({ host: loop, port: 1 }),
+    () => new https.Agent().createConnection({ host: loop, port: 1 }),
+    () => globalThis.fetch('http://127.0.0.1:1/'),
+  ];
+  let refused = 0;
+  for (const probe of probes) {
+    try {
+      const r = probe();
+      if (r && typeof r.then === 'function') await r.then(() => {}, () => { refused += 1; });
+    } catch { refused += 1; }
+  }
+  return refused;
+}
+
 // The parent is gone (a failed test, a killed run): do not outlive it.
 process.on('disconnect', () => process.exit(0));
 
 process.on('message', async (m) => {
   try {
+    if (m.t === 'probe-net') { send({ t: 'probe-done', refused: await probeNet() }); return; }
     if (m.t === 'wire-reply') { pending.get(m.id)?.(m.result); pending.delete(m.id); return; }
     if (m.t === 'init') { await init(m.dir); send({ t: 'ready', trace }); return; }
     if (m.t === 'purchase') { await purchase(); return; }
@@ -280,6 +333,8 @@ function world() {
     send(m: Msg): void;
     exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
     traces: string[][];
+    /** CO-Gb L1: every network attempt the child made, as it made it (one message each, live). */
+    net: string[];
   }
   function start(): Running {
     // empty environment and no Node flags: sandbox mode refuses loader flags and proxy variables
@@ -292,6 +347,7 @@ function world() {
     const waiters: { t: string; ok: (m: Msg) => void; bad: (e: Error) => void }[] = [];
     const inbox: Msg[] = [];
     const traces: string[][] = [];
+    const net: string[] = [];
     let stderr = '';
     child.stderr?.on('data', (d: Buffer) => (stderr += d.toString()));
     child.stdout?.on('data', () => undefined);
@@ -306,6 +362,10 @@ function world() {
     };
     child.on('message', (raw) => {
       const m = raw as Msg;
+      if (m.t === 'net') {
+        net.push(String(m['label']));
+        return;
+      }
       if (m.t === 'wire') {
         const answer = paypal(m['req'] as WireReq, child);
         if (answer !== null && child.connected)
@@ -324,6 +384,7 @@ function world() {
     return {
       child,
       traces,
+      net,
       exited,
       send: (m) => void child.send(m),
       waitFor(t, ms = 60_000) {
@@ -352,9 +413,46 @@ function world() {
   };
 }
 
-const noSockets = (traces: string[][]) => expect(traces.flat()).toEqual([]);
+/** The child's final reports and the live messages it sent while it ran (a killed child sent only those). */
+const noSockets = (...children: Array<{ traces: string[][]; net: string[] }>) =>
+  expect(children.flatMap((c) => [...c.traces.flat(), ...c.net])).toEqual([]);
+
+// Every way a child could open a connection or resolve a name, as the child's own `probe-net` message
+// tries them (CO-Gb L1). Each is refused by the child's wrapper and sent to the parent when it happens.
+const PROBED = [
+  'net.connect',
+  'net.createConnection',
+  'tls.connect',
+  'http.request',
+  'http.get',
+  'https.request',
+  'https.get',
+  'dns.lookup',
+  'dns.resolve',
+  'net.Socket.prototype.connect',
+  'dns.promises.lookup',
+  'dns.promises.resolve',
+  'http2.connect',
+  'http.Agent.prototype.createConnection',
+  'https.Agent.prototype.createConnection',
+  'fetch',
+];
 
 describe('C-11 restart_mid_capture', () => {
+  it('C-11 the children watch the network while they run: every way to open a connection is refused and sent live, before any report', async () => {
+    const w = world();
+    const a = w.start();
+    await a.waitFor('up');
+    a.send({ t: 'probe-net' });
+    const done = await a.waitFor('probe-done', 15_000);
+    expect(done['refused']).toBe(PROBED.length);
+    // the live messages alone (no `ready` or `bye` report has been sent) name every probe, in order
+    expect(a.net).toEqual(PROBED);
+    expect(a.traces).toEqual([]);
+    a.child.kill('SIGKILL');
+    await a.exited;
+  }, 60_000);
+
   it('C-11 kill -9 between the capture send and its answer: after the restart the order is terminal or frozen within two job passes, with one sale', async () => {
     const w = world();
 
@@ -397,7 +495,7 @@ describe('C-11 restart_mid_capture', () => {
     b.send({ t: 'exit' });
     await b.waitFor('bye');
     await b.exited;
-    noSockets([...a.traces, ...b.traces]);
+    noSockets(a, b);
 
     // run 3: another restart changes nothing
     const c = w.start();
@@ -411,6 +509,6 @@ describe('C-11 restart_mid_capture', () => {
     c.send({ t: 'exit' });
     await c.waitFor('bye');
     await c.exited;
-    noSockets(c.traces);
+    noSockets(c);
   }, 300_000);
 });

@@ -13,17 +13,60 @@ no tokens, no raw ids. Simulation and fixtures prove the modelled cases only, no
 ## Verdict
 
 - [ ] APPROVED FOR SANDBOX DEMO
-- [x] APPROVED WITH CONDITIONS (proposed by the builder; the Opus gate review issues the verdict)
+- [x] APPROVED WITH CONDITIONS (Opus gate review of CO-G, merged as `4c3844d`; the builder had proposed the same)
 - [ ] NOT APPROVED
 
 Every acceptance row that needs neither PayPal nor a host passes offline through the public entry points
 (the route handlers and the page middleware of the real app, the approved sandbox transport over a fake
 Wire, a real child process for C-11), and the whole C run opens no socket. No critical or high finding is
-open. The window itself is not ready: three owner decisions are open (F-1 O-C8, F-2 certificate pin, F-3
+open. The window itself is not ready: three owner decisions were open (F-1 O-C8, F-2 certificate pin, F-3
 backup on the host), and without the first no sandbox call can be approved on the host and without the
 second no genuine delivery can be accepted. They fail closed, so none of them is a money-safety defect, but
-they block the owner window, so they are conditions, not footnotes. The builder rated them Medium; the
-reviewer may raise them.
+they block the owner window, so they are conditions, not footnotes. The gate review kept them as
+conditions W1 and W2 (F-3 goes with W1).
+
+### Conditions of the verdict (open items)
+
+The numbering W1 to W4 and C1 is the Opus gate review's (verdict APPROVED WITH CONDITIONS). A condition
+closes when its lane is merged or its decision row exists.
+
+| Id  | Condition                                                                                                                                                                                                        | Owner / lane                  | State                                       |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------- |
+| W1  | O-C8 decided (D-037, option a); lane CO-7b (maintenance mode) merged with tests; Step 6 has real commands                                                                                                        | CO-7b                         | closed: D-037, CO-7b merged as d889651      |
+| W2  | Certificate pin decision recorded (D-038, learn only) and its lane built, including ASM-71 (trust seeded at boot from the full pin)                                                                              | CO-1d                         | decided D-038; lane not merged: open        |
+| W3  | Owner decision rows: C-11 meaning of REL-2 (lease end plus 2 passes), ASM-61 accepted, ASM-68 accepted for the sitting, ASM-66 waived for the sitting, ASM-55 / O-C6 waived for the sitting                      | owner                         | closed: D-039 (1) to (3), D-040 (3) and (4) |
+| W4  | Sakthi runs gitleaks on the full history; the proxy count of 1 is confirmed by the Step 3 curl test before the webhook is registered                                                                             | Sakthi / owner, at the window | open                                        |
+| C1  | The gate review's test and owner-step corrections: network trace shapes (M1), C-11 child watched live (L1), C-07 old link (L2), refund booking rollback (M2), proxy-depth test (L3), TOTP keys without chat (L4) | lane CO-Gb (this change)      | closed when this lane merges                |
+
+**ASM-66 for the single sitting.** Waived by D-040 (3) for the single MVP-C sitting only: the connection is
+turned off at the end of the sitting, so the 7-day watch cannot lapse. CO-2b is required before the webhook
+stays live for more than 7 days.
+
+**ASM-71 (trust seeded at boot from the pin).** Added to the known items (F-6) and to W2: a restart must
+never be cold. The exact-host pin, the per-URL fetch budget (worst case 12 + 16 = 28 calls a day) and
+the boot seeding are the CO-1d acceptance; rotation under a sustained attack can stay unverifiable until
+the pin is updated, so webhook silence is alerted and the pin update is in the rotation runbook.
+
+### Decisions recorded after the offline run, D-037 to D-040 (`docs/decision-log.md`)
+
+- **D-037** (2026-10-25): O-C8 option (a), a hosted maintenance mode (flag file on the persistent disk,
+  shell only, no route; the app starts without the database, jobs or transport and answers 503 except
+  the health check; the unchanged `safety:approve` and `safety:resume` run in the host shell). Lane
+  CO-7b. All five locks stay. Unchecked: that the host's web shell passes the terminal check.
+- **D-038** (2026-10-25): certificate pin, learn only. A time-limited window records host, path, subject
+  and issuer of a delivery but still answers 503 and acts on nothing; the full pin is committed in a
+  reviewed change and deployed; trust is seeded at boot from the pin (ASM-71). Option B (a fetch script)
+  is not built. Needs a lane before Steps 7 and 9.
+- **D-039** (2026-10-25): three acceptances for the sitting. (1) C-11 and REL-2 mean lease end plus 2
+  passes (about 59 s after the restart); the lease is not shortened (closes F-4). (2) ASM-61: a partial
+  refund is a unit-level price adjustment and never revokes an item. (3) ASM-68: no reserve of calls for
+  new checkouts for this sitting only.
+- **D-040** (2026-10-25): four acceptances for the sitting. (1) `UMS_OPERATOR_TOTP_KEYS` lives only in the
+  host settings and in each operator's own `.env.local`, never in a cloud session. (2) The shared demo
+  passcode is accepted, with the known risk that its holder can lock an operator out of mfa sign-in for up
+  to 15 minutes (Stop still works); rotating `UMS_DEMO_PASSCODE_HASH` stops it. (3) ASM-66 is waived for
+  the single sitting; CO-2b is required before the webhook stays live for more than 7 days. (4) ASM-55
+  (real-Postgres race tests, O-C6) is waived for the sitting.
 
 ## Acceptance table (mvp-plan MVP-C, C-01 to C-13)
 
@@ -69,7 +112,7 @@ none
 - Impact: availability of the owner window only. No money or secret exposure.
 - Fix: the owner picks option (a) maintenance start or (b) operator-console approval; lane CO-7b is written and built; then Step 6 gets commands.
 - Files: `docs/design/hosting.md`, `docs/owner/MVPC-OWNER-STEPS.md` (Step 6)
-- Status: open, owner decision pending
+- Status: closed: D-037 option (a); CO-7b merged as d889651 (W1).
 
 #### F-2 The webhook certificate pin is empty and its learning method is undecided (ASM-64)
 
@@ -78,7 +121,7 @@ none
 - Impact: availability of the webhook path only.
 - Fix: the owner chooses Option A (a time-limited learn window recorded in the decision log) or Option B (an owner-run fetch script). Neither is built; the assistant did not choose.
 - Files: `packages/paypal/src/webhook-cert.ts`, `apps/web/src/server/webhook.ts`, `docs/owner/MVPC-OWNER-STEPS.md` (Step 7)
-- Status: open, owner decision pending
+- Status: decided D-038 (learn only, lane CO-1d, trust seeded at boot, ASM-71); open until that lane merges (W2)
 
 #### F-3 A backup on the host needs the app stopped (same cause as F-1)
 
@@ -87,7 +130,7 @@ none
 - Impact: recoverability on the host.
 - Fix: decided together with F-1.
 - Files: `scripts/backup.mjs`, `scripts/restore.mjs`
-- Status: open, owner decision pending
+- Status: closed with F-1: CO-7b merged as d889651; Step 11 is the hosted drill.
 
 ### Low
 
@@ -98,7 +141,7 @@ none
 - Impact: buyer-visible delay only.
 - Fix: the owner accepts "lease end plus 2 passes" as the meaning of REL-2, or shortens the lease with a reviewed change (a shorter lease raises the chance of two processes owning one operation).
 - Files: `domain/payments/src/recover.ts`, `domain/payments/src/capture.ts`, `scripts/c11-restart.integration.test.ts`
-- Status: open, owner to accept
+- Status: accepted, D-039 (1): the meaning of REL-2 is lease end plus 2 passes; the lease stays 60 s
 
 #### F-5 A refusal made by the route wrapper is neither audited nor logged
 
@@ -111,13 +154,14 @@ none
 
 #### F-6 Known open items carried from the register
 
-- ASM-61 (open, owner to accept): a partial refund never revokes an item, even when its amount equals one item's price in a multi-item unit. MVP-C units hold one item, so the offline rows do not meet it.
-- ASM-68 (open): no hard floor of calls is kept for a new checkout; money work may spend the daily capture reserve to zero. Not built.
+- ASM-61 (accepted, D-039 (2)): a partial refund never revokes an item, even when its amount equals one item's price in a multi-item unit. MVP-C units hold one item, so the offline rows do not meet it.
+- ASM-68 (accepted for this sitting only, D-039 (3); revisit before the app stays live): no hard floor of calls is kept for a new checkout; money work may spend the daily capture reserve to zero. Not built.
 - `offer_refund` recovery cases only request a refund. Nothing executes those requests and each blocks its unit with `refund_in_flight` until an operator withdraws it (ASSUMPTIONS, open items). Before any route calls `resolveCase`, `ResolveDeps` needs an `executeRefund`.
 - Wrapper-level refusals are not audited: F-5.
 - ASM-57 (unverified): `UMS_TRUSTED_PROXIES=1` for Render. Checked on the host in Step 3, before the webhook is switched on.
 - ASM-53 (unverified): GET order lists refunds under `purchase_units[].payments.refunds[]`. Seen in Step 10 or not at all.
-- ASM-63, ASM-65, ASM-66, ASM-69: held or open as registered; ASM-66 must be closed before the webhook goes live (CO-2b), see the register.
+- ASM-63, ASM-65, ASM-69: held or open as registered. ASM-66: waived for the single sitting (D-040 (3)); CO-2b is required before the webhook stays live for more than 7 days. ASM-55: waived for the sitting (D-040 (4), O-C6).
+- ASM-71 (open): hosted webhook go-live needs trust seeded at boot from the pin, a per-URL fetch budget and the exact-host pin (CO-1b review F1 to F3; lane CO-1d, W2).
 - Status: open
 
 ## Control checklist (nfr.md section 1.3, MVP-C)
@@ -189,6 +233,66 @@ reverted with `git checkout` (no product file is changed in any commit of this l
 | `unverifiable` answered 400 and `rejected`        | C-04                       | `expected 400 to be 503`                                                                                        |
 | over-refund check removed from `requestRefund`    | C-06 over-refund           | `expected 'refund_failed' to be 'over_refund'` (PayPal's own check caught it, the local one is the requirement) |
 | a bad signature answered 200                      | C-02                       | `expected [ 'forged signature', 200 ] to deeply equal [ 'forged signature', 400 ]`                              |
+
+## CO-Gb follow-up: corrections from the Opus gate review (lane CO-Gb, `feat/mvp-c-gate-hardening`)
+
+Spec `docs/specs/mvp-c-gate-hardening.md`. Tests and docs only; no product file changed. Offline; no
+secret read or written, no PayPal or network contact (every probe targets loopback port 1 or the name
+`localhost`, and is refused by the interception before it can connect).
+
+| Item | Finding                                                                                      | What changed                                                                                                                                                                                                                                                                                                                                                                    |
+| ---- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1   | The network trace replaced module exports only and missed five shapes                        | `tests/mvp-c/c-offline.adversarial.test.ts` now also guards `net.Socket.prototype.connect`, `dns.promises`, `node:dns/promises`, `node:http2` `connect` and the `createConnection` of `http.Agent` and `https.Agent`, and subscribes to the `net.client.socket` channel. Canary tests (below) prove a helper module sees the patched `node:net` and that each shape is recorded |
+| L1   | The killed C-11 child sent its trace only in `ready`                                         | `scripts/c11-restart.integration.test.ts`: every attempt is one message sent when it happens; the wrappers throw instead of calling through; the children also guard the five shapes and the channel; a child canary (`probe-net`) checks all 16 shapes arrive live. The child stays a string (a real file would need new S2 and S6 exemptions); a comment says so              |
+| L2   | The C-07 test claimed a pre-refund link stops opening and asserted nothing                   | `tests/mvp-c/c06-c07-refunds.integration.test.ts`: a link is issued and opened (200) before the refund; after a full refund `GET /c/[token]` with that url answers 403 for the keep item and for the online item                                                                                                                                                                |
+| M2   | Mutant at `refunds.ts:937` (`if (!(e instanceof LedgerRuleError)) throw e;`) survived        | `domain/payments/src/refunds.rollback.state.test.ts`: a plain `Error` on the ledger insert after PayPal completed a refund makes the booking reject, rolls back (request still `pending`, no ledger row, no `ledger_rule` alert, unit unchanged), and the next read-back books the refund once; a third read changes nothing                                                    |
+| L3   | Step 3 "check the log" cannot be carried out (the app logs only a keyed hash of the address) | `MVPC-OWNER-STEPS.md` Step 3 and `hosting.md` step 5: a test from outside with `curl` on the sign-in limiter: 5 wrong sign-ins then 429, the same 6th with a forged `X-Forwarded-For` still 429, one wrong sign-in from a phone hotspot 401. The depth must be right before the webhook is registered                                                                           |
+| L4   | Step 1 let Sakthi send Vikram his TOTP line                                                  | `MVPC-OWNER-STEPS.md` Step 1: each operator runs `totp:enrol` on their own machine and enters their own entry in the host settings; no key crosses chat                                                                                                                                                                                                                         |
+
+### Red evidence, CO-Gb
+
+Commit 1 holds the spec and the tests only; it was run before the harness and the child were changed.
+
+| Test                                                                                                                                                | Result before the change                                                                                                                        |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `c-offline.adversarial.test.ts`: seven bypass shapes (Socket connect, dns.promises, dns/promises named and default, http2, http Agent, https Agent) | 7 failed: `<shape> was not refused: expected false to be true`; the old harness recorded none of them.                                          |
+| same file, `net.client.socket` channel proof                                                                                                        | failed (the interception kept no unpatched functions)                                                                                           |
+| same file, helper sees patched `node:net` (default, named, namespace)                                                                               | passed (the old module replacement already reached them): the canary guards a regression, it was never red                                      |
+| `c11-restart.integration.test.ts`, child canary                                                                                                     | failed: `timeout waiting for probe-done` (the child had no live reporting)                                                                      |
+| `refunds.rollback.state.test.ts` with line 937 changed to `if (false) throw e;`                                                                     | failed: `promise resolved "{ ok: true, ... }" instead of rejecting`; passes on the real file                                                    |
+| `c06-c07-refunds.integration.test.ts` (L2)                                                                                                          | passed at once: the code was already right, the test did not look. The pre-refund 200 proves the url was live, so the 403 is the refund's doing |
+
+### Mutation re-run, `domain/payments/src/refunds.ts`
+
+Command (detached worktree at the CO-Gb test commit, product files identical to `main`): `corepack pnpm mutation --targets domain/payments/src/refunds.ts --require-targets --timeout 600 --test-cmd "corepack pnpm exec vitest run --maxWorkers=2 --bail 1 domain/payments/src/refunds"`.
+
+Result: **50/60 killed, 83.3 percent** (was 49/60, 81.7). **The mutant at line 937 is killed.** Ten survivors remain:
+296 (id validation), 456 (`lock: true` flag), 718, 753 (backoff constant), 780, 802, 981, 1074, 1113 and 1168.
+The mutation sample is the same 60 as in the first run, so the figures compare. An earlier attempt was
+killed by the container (memory pressure from parallel lanes) and left the file restored; this is the
+completed run.
+
+Line 718, `if (outcome.kind === 'unknown') return err({ code: 'unknown' });`, is an **equivalent mutant**:
+with the condition false the code falls through to `readBack(d, request_id)`, and an unknown outcome
+stores no `refund_id`, so `readBackChecked` returns `err({ code: 'unknown' })` with `blocked: false` at its
+first guard, the same answer, with no write and no PayPal call. No test can tell them apart.
+
+981, 1113 and 1168 are also equivalent: they change a return value that no caller reads (`book` at line 838;
+`closeRefundUnknown` at lines 1036 and 1047). 456 and 1074 drop a row lock; they show only with concurrent
+writers on real Postgres (ASM-55, waived for the sitting by D-040 (4)). 296, 753 and 780 are guards or a
+timing constant with no money effect. 802 changes only whether a blocked order read is retried, and is
+fail-safe.
+
+### Machine checks, CO-Gb
+
+Run in the worktree `sbx-wt-cogb` on `feat/mvp-c-gate-hardening` (Node 22.22.0, pnpm 10.34.7), offline, on a
+machine shared with other lanes.
+
+- `corepack pnpm lint`, `typecheck`, `format:check`, `check:isolation`, `check:no-live-host`, `check:secrets-names`, `check:routes` (18 route files), `check:hosting`: ok.
+- `corepack pnpm run ci`: exit 0, 310 files, 5321 passed, 1 expected fail, 2 skipped (was 309 files, 5301 passed).
+- `test:adversarial`: 42 files, 671 passed, 1 skipped; `test:integration`: 35 files, 421 passed; `test:unit`: 141 files, 2742 passed; `test:contract`: 16 files, 243 passed, 1 skipped; `test:golden`: 8 files, 27 passed.
+- Two separate runs of `test:state` and one of `test:integration` and `test:adversarial` were cut short by the container (a process was killed for memory with parallel lanes running: exit 143, or `Worker exited unexpectedly` in `apps/web/src/webhook.state.test.ts`, which passes alone: 21 passed). The figures above are from completed runs.
+- `lint-rules.test.ts` pins the one new named exemption (`tests/mvp-c/c-net-probe.ts`, `no-restricted-imports` only).
 
 ## Not tested, and assumptions
 
