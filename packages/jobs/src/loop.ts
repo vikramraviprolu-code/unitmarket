@@ -10,6 +10,11 @@
 // resend), bounded by the calls left, and every provider call keeps a gap of min_call_gap_ms.
 // Sandbox mode refuses to run without a call budget (money_only passes only) and refuses a re-read
 // cadence outside 1 ms to 24 h.
+// BU-9: a pass whose counts are all zero did nothing, so an overdue `nextDueAt` is no reason to wake
+// again after MIN_SLEEP_MS: the item that keeps it overdue is one the pass could not settle (an
+// unreadable or blocked order), and waking at once only reads it again. Such a pass sleeps up to
+// max_sleep_ms. A future due time is still waited for, and a pass that did something still comes
+// back after MIN_SLEEP_MS.
 import { nextDueAt, recoverOnStartup, runDue } from '@umsbx/payments';
 import type { PaymentsDeps } from '@umsbx/contracts';
 import { DEFAULT_CALL_GAP_MS, moneyCalls, pollAllowance, rateLimited } from './budget';
@@ -22,6 +27,11 @@ const MIN_SLEEP_MS = 100;
 const SANDBOX_MIN_REREAD_MS = 21_600_000;
 /** ... and a cadence above this would silently end the 7 day watch. */
 const MAX_REREAD_MS = 86_400_000;
+
+/** True when a pass of runDue did nothing at all: no item taken, nothing left unknown, closed or abandoned. */
+function idlePass(c: Awaited<ReturnType<typeof runDue>>): boolean {
+  return c.processed === 0 && c.still_unknown === 0 && c.expired === 0 && c.abandoned === 0;
+}
 
 export function startLoop(
   d: PaymentsDeps & { sweepWindows: (x: { max_items: number }) => Promise<{ ended: number }> },
@@ -123,6 +133,8 @@ export function startLoop(
       let delay = o.max_sleep_ms;
       let spent = false;
       let budgetUnknown = false;
+      // What the pass did; stays null when no pass ran or the counts are not readable.
+      let did: Awaited<ReturnType<typeof runDue>> | null = null;
       try {
         const paused = !(await d.switches.isOn('paypal_outbound'));
         if (paused) {
@@ -130,9 +142,9 @@ export function startLoop(
         } else if (noBudget) {
           spent = true;
           quota.left = Number.POSITIVE_INFINITY; // the gate decides
-          await runDue(run, { max_items: o.max_items, allow: 'money_only' });
+          did = await runDue(run, { max_items: o.max_items, allow: 'money_only' });
         } else if (o.callBudget === undefined) {
-          await runDue(d, { max_items: o.max_items });
+          did = await runDue(d, { max_items: o.max_items });
         } else {
           let reading: { snapshot: Awaited<ReturnType<CallBudget>> } | null = null;
           try {
@@ -158,20 +170,20 @@ export function startLoop(
             }
             spent = true;
             quota.left = Number.POSITIVE_INFINITY; // the gate decides
-            await runDue(run, { max_items: o.max_items, allow: 'money_only' });
+            did = await runDue(run, { max_items: o.max_items, allow: 'money_only' });
           } else if (reading !== null && reading.snapshot === null) {
             // Unlimited (dry run): nothing is counted, so nothing is held back either.
-            await runDue(d, { max_items: o.max_items });
+            did = await runDue(d, { max_items: o.max_items });
           } else if (reading !== null) {
             const snapshot = reading.snapshot as NonNullable<typeof reading.snapshot>;
             const allowance = pollAllowance(snapshot, d.config, o.max_items);
             if (allowance > 0) {
               quota.left = allowance;
-              await runDue(run, { max_items: allowance, allow: 'all' });
+              did = await runDue(run, { max_items: allowance, allow: 'all' });
             } else {
               spent = true;
               quota.left = moneyCalls(snapshot);
-              await runDue(run, { max_items: o.max_items, allow: 'money_only' });
+              did = await runDue(run, { max_items: o.max_items, allow: 'money_only' });
             }
           }
         }
@@ -182,7 +194,11 @@ export function startLoop(
         const next = paused || budgetUnknown || spent ? null : await nextDueAt(d.db, d.config);
         if (next !== null) {
           const wait = Date.parse(next) - d.clock.now().getTime();
-          delay = Math.min(o.max_sleep_ms, Math.max(MIN_SLEEP_MS, wait));
+          // BU-9: a pass that did nothing and still finds work overdue cannot settle it; do not
+          // spin on it. Without readable counts the old rule stands.
+          const idle = did !== null && did !== undefined && idlePass(did);
+          if (idle && wait <= 0) delay = o.max_sleep_ms;
+          else delay = Math.min(o.max_sleep_ms, Math.max(MIN_SLEEP_MS, wait));
         }
       } catch (e) {
         fail('jobs.loop.pass_failed', e);

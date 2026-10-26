@@ -18,11 +18,21 @@ import type {
 } from '@umsbx/contracts';
 import { declineUnits, ensureReadbackOp, readApplyGates } from './apply';
 import { onBuyerReturn } from './return';
+import { endWholeOrder } from './composite';
+import type { ProviderOrderState } from './composite';
 import { readAndApply, resendCreate, retryCapture, TERMINAL } from './reconcile';
 import { raiseOpsAlert, resumeRefund } from './refunds';
 import type { RefundOp } from './refunds';
 import { readbackKeyFor } from './keys';
-import { addMs, insertOperation, isoOf, loadOperation, loadOrder, lockOrderRows } from './store';
+import {
+  addMs,
+  insertOperation,
+  isoOf,
+  loadOperation,
+  loadOrder,
+  loadProviderOrders,
+  lockOrderRows,
+} from './store';
 import type { OperationRow, OrderRow } from './store';
 
 const earlier = (a: string, b: string): string => (Date.parse(a) <= Date.parse(b) ? a : b);
@@ -585,6 +595,9 @@ async function abandonOne(
     ).rows[0]?.provider_order_id;
     if (provider !== undefined && provider !== null) {
       const read = await d.paypal.getOrder(provider);
+      // PayPal has no such order (HTTP 404): nothing can be captured, so the checkout is over.
+      // Answering 'skipped' here left it overdue for ever, read again on every pass (BU-9).
+      if (read.kind === 'not_found') return abandonGone(d, order);
       if (read.kind !== 'order') return 'skipped'; // blocked or unreadable: the next pass tries again
       if (read.units.some((u) => u.capture !== null)) {
         // Money is already at PayPal: never abandon. Take the order over, tell a human, and let
@@ -620,6 +633,61 @@ async function abandonOne(
     return true;
   });
   return done ? 'abandoned' : 'handled';
+}
+
+const UNSENT_STATES: ReadonlySet<ProviderOrderState> = new Set([
+  'prepared',
+  'awaiting_buyer',
+  'approved',
+]);
+
+// BU-9: the PayPal order of a stale checkout is gone (not_found). The same abandon step as above,
+// with the facts checked again under the order lock: a capture operation that was sent or is unknown
+// may have taken money whose answer was lost, and a unit with a capture id has been paid; in both the
+// order stays as it is and the reconciler owns it. A pack is not decided here: one PayPal order that
+// is gone says nothing about the others, which this sweep does not read (DP-2b ports the pack pass).
+async function abandonGone(
+  d: PaymentsDeps,
+  order: OrderRow,
+): Promise<'abandoned' | 'handled' | 'skipped'> {
+  const done = await d.db.transaction(async (tx) => {
+    const locked = await lockOrderRows(tx, order.id);
+    if (locked === null || locked.status !== 'awaiting_buyer') return 'handled' as const;
+    const pos = await loadProviderOrders(tx, order.id);
+    const only = pos[0];
+    if (pos.length !== 1 || only === undefined || only.route !== 'single')
+      return 'skipped' as const;
+    // Only a PayPal order that no capture was ever aimed at: any state that says a capture was
+    // requested, claimed, unresolved or done keeps the order, whatever orders.status says.
+    if (!UNSENT_STATES.has(only.state)) return 'skipped' as const;
+    const inFlight = await tx.query(
+      "SELECT 1 FROM operations WHERE order_id = $1 AND kind = 'capture' AND state IN ('sent', 'unknown') LIMIT 1",
+      [order.id],
+    );
+    if (inFlight.rows.length > 0) return 'skipped' as const;
+    const paid = await tx.query(
+      'SELECT 1 FROM order_units WHERE order_id = $1 AND (capture_id IS NOT NULL OR captured_verified_at IS NOT NULL) LIMIT 1',
+      [order.id],
+    );
+    if (paid.rows.length > 0) return 'skipped' as const;
+    const at = nowIso(d);
+    await endWholeOrder(tx, d, order.id, 'abandoned');
+    await declineUnits(tx, d, order.id, 'abandoned');
+    await tx.query(
+      `UPDATE operations SET state = 'failed', failure_reason = 'declined', lease_until = NULL, next_retry_at = NULL, updated_at = $2
+       WHERE order_id = $1 AND state = 'prepared'`,
+      [order.id, at],
+    );
+    return 'abandoned' as const;
+  });
+  if (done === 'abandoned') {
+    d.log.log({
+      msg: 'payments.due.abandoned_not_found',
+      level: 'info',
+      fields: { order_ref: order.order_ref },
+    });
+  }
+  return done;
 }
 
 async function takeOver(d: PaymentsDeps, order: OrderRow): Promise<'handled' | 'skipped'> {
