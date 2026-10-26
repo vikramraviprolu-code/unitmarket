@@ -186,22 +186,18 @@ describe('a stale awaiting_buyer order whose PayPal order is gone (not_found)', 
     expect(await orderStatus(w, a.order_id)).toBe('awaiting_buyer');
   });
 
-  it('(a) only the gone order is abandoned: a stale order PayPal still knows is handled as before', async () => {
+  it('(a) only the gone order is touched by the new rule: an unapproved one PayPal knows is abandoned by the old rule, an approved one is still captured', async () => {
     w = await makeWorld();
     const lost = await awaiting(w);
     const known = await awaiting(w, { buyer_id: 'buy_B' });
+    const approvedKnown = await approved(w, { offers: ['ofr_2'] });
     gone(lost.provider_order_id);
     w.tick(DAY + 1000);
     const r = await runDue(w.deps, PASS);
-    expect(r.abandoned).toBe(2); // the known one was never approved: abandoned by the old rule
+    expect(r.abandoned).toBe(2); // the gone one, and the known one that nobody approved
     expect(reads(known.provider_order_id)).toBe(1);
     expect(await orderStatus(w, lost.order_id)).toBe('abandoned');
     expect(await orderStatus(w, known.order_id)).toBe('abandoned');
-    // an approved one that PayPal still knows is still captured, not abandoned
-    const approvedKnown = await approved(w, { offers: ['ofr_2'] });
-    w.tick(DAY + 1000);
-    const r2 = await runDue(w.deps, PASS);
-    expect(r2.abandoned).toBe(0);
     expect(w.paypal.count('capture')).toBe(1);
     expect(await orderStatus(w, approvedKnown.order_id)).toBe('paid');
   });
@@ -258,6 +254,22 @@ describe('(b) not_found, but money may be in flight: the order is kept', () => {
     ).toBe('unknown'); // still the reconciler's: polled on its own schedule, never failed here
     expect(w.paypal.count('capture')).toBe(0);
   });
+
+  for (const state of ['capture_requested', 'capture_claimed', 'unresolved', 'captured'] as const) {
+    it(`a PayPal order row already in state ${state} (an older writer left orders.status behind): not abandoned`, async () => {
+      w = await makeWorld();
+      const a = await awaiting(w);
+      gone(a.provider_order_id);
+      w.tick(DAY + 1000);
+      await w.rows('UPDATE provider_orders SET state = $2 WHERE order_id = $1', [
+        a.order_id,
+        state,
+      ]);
+      expect((await runDue(w.deps, PASS)).abandoned).toBe(0);
+      expect(await orderStatus(w, a.order_id)).toBe('awaiting_buyer');
+      expect(await unitStates(a.order_id)).toEqual(['expected']);
+    });
+  }
 
   it('a unit that already carries a capture: not abandoned (money has arrived)', async () => {
     w = await makeWorld();

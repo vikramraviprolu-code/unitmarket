@@ -521,6 +521,9 @@ describe('a spent allowance does not make the loop spin', () => {
   it('with an allowance the old rhythm stays: overdue work wakes the loop after 100 ms', async () => {
     vi.useFakeTimers();
     const x = world();
+    // BU-9: each pass does one item. An all-zero pass with work overdue now sleeps max_sleep_ms
+    // (loop.idle.integration.test.ts); a pass that did something still comes back after 100 ms.
+    vi.mocked(runDue).mockResolvedValue({ ...zero, processed: 1 });
     vi.mocked(nextDueAt).mockResolvedValue('2000-01-01T00:00:00.000Z');
     const loop = startLoop(x.d, {
       max_sleep_ms: 30_000,
