@@ -475,6 +475,37 @@ describe('outcome per PayPal order state', () => {
     }
   });
 
+  it('one minor unit refunded is a partial refund, not paid', async () => {
+    const p = await pack(w, 157, 'captured', 'captured');
+    await appendLedgerEntry(w.db, w.deps, {
+      unit_id: p.units.harbour,
+      capture_id: p.captures.harbour,
+      kind: 'refund',
+      amount: { currency: 'USD', minor: 1 },
+      refund_id: 'RF1C',
+      ref_entry_id: null,
+    });
+    await w.db.query(
+      "UPDATE order_units SET refunded_minor = 1, status = 'partially_refunded' WHERE id = $1",
+      [p.units.harbour],
+    );
+    await issue(w, p.order_id);
+    expect((await receiptOf(w, p.order_id)).lines.map((l) => l.outcome)).toEqual([
+      'partially_refunded',
+      'paid',
+    ]);
+  });
+
+  it('a line whose item has no entitlement row is waiting, never paid', async () => {
+    const p = await pack(w, 158, 'captured', 'awaiting_buyer');
+    await w.db.query("DELETE FROM access_windows WHERE entitlement_id = 'ent_158_2'");
+    await w.db.query("DELETE FROM entitlements WHERE id = 'ent_158_2'");
+    await issue(w, p.order_id);
+    const r = await receiptOf(w, p.order_id);
+    expect(r.lines.map((l) => l.outcome)).toEqual(['paid', 'waiting']);
+    expect(r.lines[1]!.delivery).toEqual([]);
+  });
+
   it('a refund moves only the line of its own publisher', async () => {
     const p = await pack(w, 160, 'captured', 'captured');
     await issue(w, p.order_id);

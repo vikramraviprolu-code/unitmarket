@@ -208,3 +208,57 @@ describe('INV7 fails on injected drift', () => {
     }
   });
 });
+
+describe('INV7 and the report around it', () => {
+  it('a verified unit with no sale row at all fails INV7 (the ledger is short by its amount)', async () => {
+    w = await makeWorld();
+    const a = await partialPack();
+    const quayside = await unitOf(a.order_id, 'pub_2');
+    await w.rows(
+      "UPDATE order_units SET status = 'captured_verified', capture_id = COALESCE(capture_id, 'FAKECAPV'), captured_verified_at = now() WHERE id = $1",
+      [quayside.id],
+    );
+    const found = await inv7();
+    expect(found.ok).toBe(false);
+    expect(found.detail).toContain('pub_2');
+    expect(found.detail).toContain('difference -400');
+  });
+
+  it('a report lists at most five violations and says so when there are more', async () => {
+    w = await makeWorld();
+    // six units: two buyers, a pack each, and one more article each
+    await paid(w, PACK);
+    await paid(w, { ...PACK, buyer_id: 'buy_B' });
+    await paid(w, { offers: ['ofr_2'] });
+    await paid(w, { offers: ['ofr_2'], buyer_id: 'buy_B' });
+    const units = await w.rows<{ id: string }>('SELECT id FROM order_units ORDER BY id');
+    expect(units).toHaveLength(6);
+    const drift = (id: string) =>
+      w.rows(
+        "UPDATE order_units SET refunded_minor = 100, status = 'partially_refunded' WHERE id = $1",
+        [id],
+      );
+    for (const u of units.slice(0, 5)) await drift(u.id);
+    const inv1 = async () => (await report()).find((r) => r.id === 'INV1')!;
+    let found = await inv1();
+    expect(found.detail).toMatch(/^.*: 5 violations: /);
+    expect(found.detail).not.toContain('...');
+    await drift(units[5]!.id);
+    found = await inv1();
+    expect(found.detail).toMatch(/: 6 violations: /);
+    expect(found.detail.endsWith('; ...')).toBe(true);
+    expect(found.detail.split('; ')).toHaveLength(6); // five units and the dots
+  });
+
+  it('INV3 says whether a captured unit has no items or items that are not paid', async () => {
+    w = await makeWorld();
+    await paid(w);
+    await w.rows(
+      "UPDATE entitlements SET money_state = 'pending', licence_state = NULL, access_state = 'locked'",
+    );
+    const inv3 = (await report()).find((r) => r.id === 'INV3')!;
+    expect(inv3.ok).toBe(false);
+    expect(inv3.detail).toContain('1 item(s) not paid');
+    expect(inv3.detail).not.toContain('no items');
+  });
+});

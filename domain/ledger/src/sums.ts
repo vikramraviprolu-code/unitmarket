@@ -41,29 +41,17 @@ export interface PublisherBalance extends UnitBalance {
 export function publisherBalances(
   rows: readonly { publisher_id: Id; entry: LedgerEntry }[],
 ): PublisherBalance[] {
+  // The key sorts as publisher id, then currency (NUL is below every character of an id).
   const groups = new Map<string, { publisher_id: Id; currency: string; entries: LedgerEntry[] }>();
   for (const { publisher_id, entry } of rows) {
     const currency = entry.amount.currency;
-    const key = JSON.stringify([publisher_id, currency]);
+    const key = `${publisher_id}\u0000${currency}`;
     const group = groups.get(key) ?? { publisher_id, currency, entries: [] };
     group.entries.push(entry);
     groups.set(key, group);
   }
-  return [...groups.values()]
-    .sort((a, b) =>
-      a.publisher_id !== b.publisher_id
-        ? a.publisher_id < b.publisher_id
-          ? -1
-          : 1
-        : a.currency < b.currency
-          ? -1
-          : a.currency > b.currency
-            ? 1
-            : 0,
-    )
-    .map((g) => ({
-      publisher_id: g.publisher_id,
-      currency: g.currency,
-      ...unitBalance(g.entries),
-    }));
+  return [...groups.keys()].sort().map((key) => {
+    const g = groups.get(key)!;
+    return { publisher_id: g.publisher_id, currency: g.currency, ...unitBalance(g.entries) };
+  });
 }

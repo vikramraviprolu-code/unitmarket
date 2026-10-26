@@ -219,15 +219,7 @@ export async function buildReceiptBody(
         ...(composite
           ? {
               publisher_display_name: names.get(item.publisher_id) ?? item.publisher_id,
-              outcome: paymentOutcome(
-                f ?? {
-                  unit_status: 'expected',
-                  po_state: null,
-                  verified: false,
-                  amount_minor: item.amount_minor,
-                  refunded_minor: 0,
-                },
-              ),
+              outcome: f === undefined ? 'waiting' : paymentOutcome(f),
             }
           : {}),
         delivery:
