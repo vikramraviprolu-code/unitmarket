@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { PaymentsDeps, ProviderEvent, SqlExecutor } from '@umsbx/contracts';
+import type { Logger, PaymentsDeps, ProviderEvent, SqlExecutor } from '@umsbx/contracts';
 import {
   beginCheckout,
   checkInvariants,
@@ -30,7 +30,22 @@ import {
 import type { Awaiting, OpsWorld } from './ops/support';
 
 let w: OpsWorld;
+
+/** A world whose log records every error event: a swallowed failure in a pass must fail the test, not hide in it. */
+const logged: string[] = [];
+async function world(): Promise<OpsWorld> {
+  const x = await makeWorld();
+  const log: Logger = {
+    log: (e) => {
+      if (e.level === 'error') logged.push(`${e.msg} ${JSON.stringify(e.fields)}`);
+    },
+    child: () => log,
+  };
+  x.deps = { ...x.deps, log };
+  return x;
+}
 afterEach(async () => {
+  expect(logged.splice(0)).toEqual([]);
   expect(w.paypal.violations).toEqual([]);
   await w.close();
 });
@@ -87,7 +102,7 @@ async function crashBetweenCaptures(): Promise<Awaited<ReturnType<typeof approve
 
 describe('many actors at once', () => {
   it('return, poll, sweep and webhook at once: one capture per PayPal order', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     const seen: string[] = [];
     w.paypal.beforeGet = async () => {
@@ -117,7 +132,7 @@ describe('many actors at once', () => {
   });
 
   it('after the first capture was sent, the status never goes back to awaiting_buyer, whoever acts', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     const seen: string[] = [];
     w.paypal.beforeGet = async () => {
@@ -207,7 +222,7 @@ describe('a process that dies between the captures', () => {
   it.each(crashes)(
     '%s: terminal within 2 passes after the lease ends',
     async (_name, arm, crash) => {
-      w = await makeWorld();
+      w = await world();
       const a = await approved(w, PACK);
       await arm(a);
       await crash(a);
@@ -231,7 +246,7 @@ describe('a process that dies between the captures', () => {
 
 describe('the PayPal calls of a crash between the captures', () => {
   it('PO2 capture never reaches PayPal: read first, the same key once, read back, nothing else', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     const base = w.paypal.count('get');
     w.paypal.beforeGet = async () => {
@@ -275,7 +290,7 @@ describe('a decline and a capture', () => {
       'capture after a turn',
       'pass after a turn',
     ]) {
-      w = await makeWorld();
+      w = await world();
       const a = await crashBetweenCaptures();
       w.clock.advance(25 * H + 1); // the deadline has passed: a decline is allowed on a no-capture read
       const row = (await loadProviderOrders(w.db, a.order_id))[1]!;
@@ -312,11 +327,11 @@ describe('a decline and a capture', () => {
       expect(w.paypal.violations).toEqual([]);
       await w.close();
     }
-    w = await makeWorld();
+    w = await world();
   });
 
   it('a send that appears between the fresh read and the decline stops the decline (condition 1, re-checked under the lock)', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push('real', {
       kind: 'payer_action',
@@ -335,7 +350,7 @@ describe('a decline and a capture', () => {
         armed = false;
         // another actor sends PO2's capture right now: its operation is unknown (the answer is lost)
         await w.rows(
-          `UPDATE operations SET state = 'unknown', next_retry_at = $2
+          `UPDATE operations SET state = 'unknown', next_retry_at = $2, reconcile_until = $2
             WHERE order_id = $1 AND kind = 'capture' AND provider_order_ref =
                   (SELECT id FROM provider_orders WHERE order_id = $1 AND position = 2)`,
           [a.order_id, new Date(w.clock.now().getTime() + H).toISOString()],
@@ -357,7 +372,7 @@ describe('a decline and a capture', () => {
   });
 
   it('a declined or frozen PayPal order is never captured, by any actor', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     w.paypal.void(poIds(a)[1]!);
     await runDue(w.deps, { max_items: 10 });
@@ -420,7 +435,7 @@ async function crashBetweenCaptures2(): Promise<Awaited<ReturnType<typeof approv
 
 describe('orders.status has one writer', () => {
   it('source scan: no UPDATE orders SET status outside composite.ts', async () => {
-    w = await makeWorld(); // for the afterEach check only
+    w = await world(); // for the afterEach check only
     const root = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
     const files: string[] = [];
     const walk = (dir: string): void => {
@@ -518,7 +533,7 @@ describe('lock order', () => {
   it('lock order spy: the continuation, the decline, the retry, the create resend, the sweep, recovery and the webhook take orders, provider_orders, operations first', async () => {
     const log: { table: string; sql: string }[][] = [];
     const run = async (name: string, f: (d: PaymentsDeps) => Promise<void>): Promise<void> => {
-      w = await makeWorld();
+      w = await world();
       const before = log.length;
       await f(spy(w.deps, log));
       expect(log.length, name).toBeGreaterThan(before);
@@ -608,6 +623,6 @@ describe('lock order', () => {
       const p = tables.indexOf('provider_orders');
       if (p >= 0 && o >= 0) expect(p, tx.map((l) => l.sql).join(' | ')).toBeGreaterThan(o);
     }
-    w = await makeWorld();
+    w = await world();
   });
 });

@@ -1,13 +1,28 @@
 // DP-2b (MVP-D): a verified webhook makes due the read-back of the PayPal order it names, and of no
 // other. Real PGlite, scripted PayPal. A pack is the approval of ofr_1 and ofr_3.
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ProviderEvent } from '@umsbx/contracts';
+import type { Logger, ProviderEvent } from '@umsbx/contracts';
 import { handleWebhook, onBuyerReturn } from './index';
 import { BUYER_A, approved, makeWorld, providerOrdersOf } from './ops/support';
 import type { Awaiting, OpsWorld } from './ops/support';
 
 let w: OpsWorld;
+
+/** A world whose log records every error event: a swallowed failure in a pass must fail the test, not hide in it. */
+const logged: string[] = [];
+async function world(): Promise<OpsWorld> {
+  const x = await makeWorld();
+  const log: Logger = {
+    log: (e) => {
+      if (e.level === 'error') logged.push(`${e.msg} ${JSON.stringify(e.fields)}`);
+    },
+    child: () => log,
+  };
+  x.deps = { ...x.deps, log };
+  return x;
+}
 afterEach(async () => {
+  expect(logged.splice(0)).toEqual([]);
   // A webhook never calls PayPal itself.
   expect(w.paypal.violations).toEqual([]);
   await w.close();
@@ -46,7 +61,7 @@ const readbacks = (order_id: string) =>
 
 describe('a webhook and a pack', () => {
   it("PO2 event makes only PO2's read-back due", async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     // PO1 captured and read back; PO2's capture answer is lost: nothing has read PO2 yet
     w.paypal.nextBy.set(poIds(a)[1]!, { lose_response: true });
@@ -90,7 +105,7 @@ describe('a webhook and a pack', () => {
   });
 
   it('an event for a PayPal order nobody has captured is a no-op, even when its sibling was captured', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push('real', { kind: 'blocked', by: 'kill_switch' });
     await onBuyerReturn(w.deps, { order_ref: a.order_ref, actor: BUYER_A });

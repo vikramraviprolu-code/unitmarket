@@ -3,7 +3,7 @@
 // (publisher 2): two units, two PayPal orders, one capture each. The rules under test are in
 // docs/specs/mvp-d-dp2b-reconcile-continuation.md and docs/specs/mvp-d-overview.md section 3.
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CaptureRes, PaymentsDeps } from '@umsbx/contracts';
+import type { CaptureRes, Logger, PaymentsDeps } from '@umsbx/contracts';
 import {
   beginCheckout,
   checkInvariants,
@@ -33,7 +33,22 @@ import {
 import type { Awaiting, OpsWorld } from './ops/support';
 
 let w: OpsWorld;
+
+/** A world whose log records every error event: a swallowed failure in a pass must fail the test, not hide in it. */
+const logged: string[] = [];
+async function world(): Promise<OpsWorld> {
+  const x = await makeWorld();
+  const log: Logger = {
+    log: (e) => {
+      if (e.level === 'error') logged.push(`${e.msg} ${JSON.stringify(e.fields)}`);
+    },
+    child: () => log,
+  };
+  x.deps = { ...x.deps, log };
+  return x;
+}
 afterEach(async () => {
+  expect(logged.splice(0)).toEqual([]);
   expect(w.paypal.violations).toEqual([]);
   await w.close();
 });
@@ -117,7 +132,7 @@ async function crashBetweenCaptures(
 
 describe('the continuation: a pack whose first capture was sent always finishes', () => {
   it('crash after PO1 captured: the next due pass captures PO2 once with umsK-<ref>-p2', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     expect(capCalls()).toHaveLength(1);
     const before = w.paypal.calls.length;
@@ -149,7 +164,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('kill switch between the captures: after reset exactly one PO2 capture', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push('real', { kind: 'blocked', by: 'kill_switch' });
     await ret(a.order_ref);
@@ -174,7 +189,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('lost lease on PO2 capture: one same-key resend', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     const base = w.paypal.count('get');
     w.paypal.beforeGet = async () => {
@@ -201,7 +216,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('PO2 GET COMPLETED after a lost capture answer: captured, never declined', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.nextBy.set(poIds(a)[1]!, { lose_response: true });
     const r = await ret(a.order_ref);
@@ -217,7 +232,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('PO2 GET VOIDED, no send: declined, paid_partial, partial alert', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     w.paypal.void(poIds(a)[1]!);
     await pass();
@@ -240,7 +255,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('PO2 VOIDED but a send is unknown: not declined', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     const base = w.paypal.count('get');
     w.paypal.beforeGet = async () => {
@@ -275,7 +290,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('ORDER_ALREADY_CAPTURED on PO2: read-back decides', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     const po2 = poIds(a)[1]!;
     // PO2 was captured out of band; the continuation's read is stale and still shows APPROVED
@@ -303,7 +318,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('PO2 captured out of band and read as COMPLETED: read-back and match, no capture of ours, one alert', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     const po2 = poIds(a)[1]!;
     await w.paypal.captureOrder({ provider_order_id: po2, request_id: 'oob-key', scenario: null });
@@ -319,7 +334,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('PO2 captured out of band with another payee: PO2 frozen, nothing unlocked for PO2, never captured again', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     const po2 = poIds(a)[1]!;
     await w.paypal.captureOrder({ provider_order_id: po2, request_id: 'oob-key', scenario: null });
@@ -336,7 +351,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('PO2 APPROVED but another payee on the fresh read: PO2 frozen only, never captured', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     w.paypal.tamperBy.set(poIds(a)[1]!, { payee: 'SBXEVILPAYEE' });
     await pass();
@@ -351,7 +366,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('payer_action on PO2 after PO1 captured: approve_url on PO2 only; declined after the deadline on a no-capture read', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     const before = await providerOrdersOf(w, a.order_id);
     w.paypal.queue.capture.push('real', {
@@ -386,7 +401,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('payer_action on PO2, the buyer approves again: captured with the next key', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push('real', {
       kind: 'payer_action',
@@ -405,7 +420,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('pack payer_action on the due path: only that PayPal order reopens; the order is never awaiting_buyer while PO1 is unresolved', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     const before = await providerOrdersOf(w, a.order_id);
     // PO1 is captured but PENDING at PayPal: it stays unresolved and polls
@@ -431,7 +446,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('D-014 cap reached: deadline applies', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     // a PayPal order that was reopened is polled on the backoff schedule counted from the first send:
     // 30 s after it for the second try, 3 minutes after the second reopen for the third look
@@ -454,7 +469,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('deadline, PO2 unreadable: one payment_unresolved alert', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     w.tick(PAST_DEADLINE);
     w.paypal.queue.get.push({ kind: 'timeout' });
@@ -473,7 +488,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('a PayPal order that waits for the buyer is read about once an hour, not on every pass (call budget)', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     const po2 = poIds(a)[1]!;
     w.paypal.orders.get(po2)!.status = 'CREATED'; // the buyer has not approved again
@@ -489,7 +504,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('PO2 APPROVED before the deadline is captured, not declined', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     w.tick(25 * H - 1_000);
     await pass();
@@ -497,7 +512,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('PO2 APPROVED after the deadline (case 2b): declined, never captured', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     w.tick(PAST_DEADLINE);
     await pass();
@@ -508,7 +523,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('continuation counted against the due budget', async () => {
-    w = await makeWorld();
+    w = await world();
     const a1 = await crashBetweenCaptures();
     const a2 = await crashBetweenCaptures({ buyer_id: 'buy_B', actor: BUYER_B });
     const r1 = await runDue(w.deps, { max_items: 1 });
@@ -524,7 +539,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('the continuation also runs in a money-only pass: a started pack always finishes', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     const r = await runDue(w.deps, { max_items: 10, allow: 'money_only' });
     expect(r.processed).toBe(1);
@@ -532,7 +547,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('D-02 PO1 DECLINED at capture, crash before PO2: continuation captures PO2, paid_partial, one partial_composite alert', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.nextBy.set(poIds(a)[0]!, { status: 'DECLINED', fee: null });
     const base = w.paypal.count('get');
@@ -555,7 +570,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('pack with nothing sent, PO1 reopened: not picked', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push({ kind: 'payer_action', redirect_url: AGAIN, debug_id: 'D' });
     await ret(a.order_ref);
@@ -569,7 +584,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   });
 
   it('a frozen PayPal order never reads "not charged": no pass, sweep or deadline moves it', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.tamperAfterCapture.set(poIds(a)[1]!, { payee: 'SBXEVILPAYEE' });
     await ret(a.order_ref);
@@ -591,7 +606,7 @@ describe('the continuation: a pack whose first capture was sent always finishes'
 
 describe('the pack window, the 24 h sweep and the abandonment on the due pass', () => {
   it('24 h sweep, nothing sent, PO2 unapproved: abandoned', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await awaiting(w, PACK);
     approvePo(w, a, 1); // approved at PayPal, but nobody returned
     w.tick(24 * H + 1);
@@ -607,7 +622,7 @@ describe('the pack window, the 24 h sweep and the abandonment on the due pass', 
   });
 
   it('24 h sweep, both APPROVED and nobody returned: captured once (P17)', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await awaiting(w, PACK);
     approvePo(w, a, 1);
     approvePo(w, a, 2);
@@ -621,7 +636,7 @@ describe('the pack window, the 24 h sweep and the abandonment on the due pass', 
   });
 
   it('window run out, both APPROVED: captured once (P17)', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await awaiting(w, PACK);
     approvePo(w, a, 1);
     await ret(a.order_ref); // PO1 approved, first_approved_at set; PO2 still awaiting the buyer
@@ -641,7 +656,7 @@ describe('the pack window, the 24 h sweep and the abandonment on the due pass', 
   });
 
   it('window run out on the due pass, no return: abandoned', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await awaiting(w, PACK);
     approvePo(w, a, 1);
     await ret(a.order_ref);
@@ -657,7 +672,7 @@ describe('the pack window, the 24 h sweep and the abandonment on the due pass', 
   });
 
   it('an approval that disappears after the window is abandoned by the next due pass, without a second return', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await awaiting(w, PACK);
     approvePo(w, a, 1);
     approvePo(w, a, 2);
@@ -674,7 +689,7 @@ describe('the pack window, the 24 h sweep and the abandonment on the due pass', 
   });
 
   it('a pack is never abandoned while capture_sent holds, however old', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     w.paypal.orders.get(poIds(a)[1]!)!.status = 'CREATED'; // never approved again
     w.tick(24 * H + 1);
@@ -685,7 +700,7 @@ describe('the pack window, the 24 h sweep and the abandonment on the due pass', 
   });
 
   it('a capture found on a pack nobody captured is never abandoned: taken over, alerted, read decides', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await awaiting(w, PACK);
     approvePo(w, a, 1);
     approvePo(w, a, 2);
@@ -709,7 +724,7 @@ describe('the pack window, the 24 h sweep and the abandonment on the due pass', 
   });
 
   it('nextDueAt wakes for the continuation, and for the pack window', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await awaiting(w, PACK);
     approvePo(w, a, 1);
     await ret(a.order_ref);
@@ -724,7 +739,7 @@ describe('the pack window, the 24 h sweep and the abandonment on the due pass', 
     expect(Date.parse(next!)).toBeLessThanOrEqual(w.clock.now().getTime() + H);
     await w.close();
 
-    w = await makeWorld();
+    w = await world();
     const b = await crashBetweenCaptures();
     const due = await nextDueAt(w.db, w.deps.config);
     expect(Date.parse(due!)).toBeLessThanOrEqual(w.clock.now().getTime());
@@ -735,7 +750,7 @@ describe('the pack window, the 24 h sweep and the abandonment on the due pass', 
 
 describe('create and expiry per PayPal order', () => {
   async function pack2CreateLost() {
-    w = await makeWorld();
+    w = await world();
     const p = await place(w, PACK);
     w.paypal.queue.create.push('real', { kind: 'timeout' });
     const c = await beginCheckout(w.deps, { order_id: p.order_id, actor: BUYER_A });
@@ -825,7 +840,7 @@ describe('create and expiry per PayPal order', () => {
 
 describe('the late and the stale answers of the capture retry', () => {
   it('late DUPLICATE_INVOICE_ID on a dead operation: no change', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await lostResponse(w);
     const order = (await loadOrder(w.db, a.order_id))!;
     const op = (await loadOperation(w.db, a.order_id, 'capture'))!;
@@ -843,7 +858,7 @@ describe('the late and the stale answers of the capture retry', () => {
   });
 
   it('DUPLICATE_INVOICE_ID on the retry of PO1 before any capture: the whole order is frozen', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push({ kind: 'timeout' });
     await ret(a.order_ref);
@@ -860,7 +875,7 @@ describe('the late and the stale answers of the capture retry', () => {
   });
 
   it('DUPLICATE_INVOICE_ID on the retry of PO2 after PO1 captured: PO2 frozen only', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push('real', { kind: 'timeout' });
     await ret(a.order_ref);
@@ -878,7 +893,7 @@ describe('the late and the stale answers of the capture retry', () => {
   });
 
   it('single payer_action: awaiting_buyer, unchanged', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w);
     w.paypal.queue.capture.push({ kind: 'timeout' });
     await ret(a.order_ref);
@@ -895,7 +910,7 @@ describe('the late and the stale answers of the capture retry', () => {
 
 describe('every PayPal order is read by its own stored id', () => {
   it('a poll reads every PayPal order and applies each read to its own slice', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.nextBy.set(poIds(a)[0]!, { lose_response: true });
     w.paypal.nextBy.set(poIds(a)[1]!, { lose_response: true });
@@ -914,7 +929,7 @@ describe('every PayPal order is read by its own stored id', () => {
   });
 
   it('the paid re-read reads a declined PayPal order too: a late capture there raises unexpected_capture and unlocks nothing', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     w.paypal.void(poIds(a)[1]!);
     await pass();
@@ -936,7 +951,7 @@ describe('every PayPal order is read by its own stored id', () => {
   });
 
   it('a unit we declined whose capture later shows COMPLETED raises unexpected_capture declined_unit_received and unlocks nothing', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await lostResponse(w); // single order: captured at PayPal, answer lost, unresolved
     const unit = (await unitRows(a.order_id))[0]!;
     expect(unit.status).not.toBe('captured_verified');
@@ -967,7 +982,7 @@ describe('every PayPal order is read by its own stored id', () => {
 
 describe('boundaries pinned by the mutation run (DP-2b)', () => {
   it('markUnknown on a capture operation with no PayPal order reference (an older row) moves the only PayPal order', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await sentCapture(w);
     await w.rows(
       "UPDATE operations SET provider_order_ref = NULL WHERE order_id = $1 AND kind = 'capture'",
@@ -995,7 +1010,7 @@ describe('boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('the end of the window with a failed read of a captured PayPal order raises nothing and closes its operation', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.nextBy.set(poIds(a)[1]!, { lose_response: true });
     await ret(a.order_ref);
@@ -1027,7 +1042,7 @@ describe('boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('24 h sweep: a PayPal order that is gone abandons a pack, but a single order is read again later', async () => {
-    w = await makeWorld();
+    w = await world();
     const pack = await awaiting(w, PACK);
     approvePo(w, pack, 1);
     w.paypal.orders.delete(poIds(pack)[1]!); // PO2 is gone at PayPal
@@ -1043,7 +1058,7 @@ describe('boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('a candidate that is skipped (the read is blocked) does not use up the budget of the pass', async () => {
-    w = await makeWorld();
+    w = await world();
     const a1 = await crashBetweenCaptures();
     const a2 = await crashBetweenCaptures({ buyer_id: 'buy_B', actor: BUYER_B });
     w.paypal.queue.get.push({ kind: 'blocked', by: 'kill_switch' });
@@ -1054,7 +1069,7 @@ describe('boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('a pack taken over by a capture found at the sweep: the deadline of a PayPal order nobody approved counts from the send', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await awaiting(w, PACK);
     approvePo(w, a, 1);
     await w.paypal.captureOrder({
@@ -1082,7 +1097,7 @@ describe('boundaries pinned by the mutation run (DP-2b)', () => {
   ] as const)(
     'the attempt cap: a reopened PayPal order with %i attempts used %s',
     async (attempts, key, final) => {
-      w = await makeWorld();
+      w = await world();
       const a = await crashBetweenCaptures();
       w.paypal.queue.capture.push({ kind: 'payer_action', redirect_url: AGAIN, debug_id: 'D' });
       await pass(); // the first try: payer_action, PO2 is reopened (prepared, send timestamp)
@@ -1106,7 +1121,7 @@ describe('boundaries pinned by the mutation run (DP-2b)', () => {
   );
 
   it('a capture that shows on a PayPal order we had reopened raises no alert: we sent it', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push('real', {
       kind: 'payer_action',
@@ -1132,7 +1147,7 @@ describe('boundaries pinned by the mutation run (DP-2b)', () => {
 
 describe('reconcile.ts boundaries pinned by the mutation run (DP-2b)', () => {
   it('a capture operation with no PayPal order reference finds its PayPal order by the id given, else the only one', async () => {
-    w = await makeWorld();
+    w = await world();
     const single = await lostResponse(w);
     await w.rows(
       "UPDATE operations SET provider_order_ref = NULL WHERE order_id = $1 AND kind = 'capture'",
@@ -1146,7 +1161,7 @@ describe('reconcile.ts boundaries pinned by the mutation run (DP-2b)', () => {
     expect(capCalls().length).toBe(sentBefore + 1);
     await w.close();
 
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push('real', { kind: 'timeout' });
     await ret(a.order_ref);
@@ -1179,7 +1194,7 @@ describe('reconcile.ts boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('DUPLICATE_INVOICE_ID on the retry of PO2 while PO1 is still unresolved: PO2 is held, PO1 is not touched', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push({ kind: 'timeout' }); // PO1: answer lost
     await ret(a.order_ref);
@@ -1203,7 +1218,7 @@ describe('reconcile.ts boundaries pinned by the mutation run (DP-2b)', () => {
 
   it('a create resend for a PayPal order that has moved on is not sent', async () => {
     const p = await (async () => {
-      w = await makeWorld();
+      w = await world();
       const placed = await place(w, PACK);
       w.paypal.queue.create.push('real', { kind: 'timeout' });
       await beginCheckout(w.deps, { order_id: placed.order_id, actor: BUYER_A });
@@ -1238,7 +1253,7 @@ describe('reconcile.ts boundaries pinned by the mutation run (DP-2b)', () => {
 
 describe('more boundaries pinned by the mutation run (DP-2b)', () => {
   it('operations with no PayPal order reference (older rows) are processed: a dead capture is read and sent again, a lost create is resent', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await deadCapture(w);
     await w.rows('UPDATE operations SET provider_order_ref = NULL WHERE order_id = $1', [
       a.order_id,
@@ -1264,7 +1279,7 @@ describe('more boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('the operations of a PayPal order that is over without money stop without a read, the pack goes on', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.nextBy.set(poIds(a)[1]!, { status: 'DECLINED', fee: null });
     await ret(a.order_ref);
@@ -1292,7 +1307,7 @@ describe('more boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('the end of the window of one PayPal order turns the items of that PayPal order unknown and no other', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.nextBy.set(poIds(a)[0]!, { status: 'PENDING', fee: null });
     await ret(a.order_ref); // PO1: captured but PENDING, unresolved
@@ -1315,7 +1330,7 @@ describe('more boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('the deadline of a PayPal order nobody approved counts from the first approval of the pack', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await awaiting(w, PACK);
     approvePo(w, a, 1);
     await ret(a.order_ref); // PO1 approved: the first approval of the pack
@@ -1334,7 +1349,7 @@ describe('more boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('a PayPal order that moved on between the list and the pick is left alone, with no read', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     const gets = callsOf(poIds(a)[1]!, 'get').length;
     let moved = false;
@@ -1362,7 +1377,7 @@ describe('more boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('an item that cannot be delivered is never charged by the continuation; once it can, the pack finishes', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     const head = w.content.heads.get('key-art_3')!;
     w.content.heads.delete('key-art_3'); // the content of PO2's article is gone
@@ -1377,7 +1392,7 @@ describe('more boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('the read-back after the continuation capture is not an order: PO2 is unresolved with its read-back operation, the next pass settles it', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     w.paypal.queue.get.push('real', { kind: 'timeout' }); // the fresh read is real, the read-back is lost
     await pass();
@@ -1401,7 +1416,7 @@ describe('more boundaries pinned by the mutation run (DP-2b)', () => {
   });
 
   it('a PayPal order held by the continuation says which unit: a unit mismatch names the unit, an order-level one none', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await crashBetweenCaptures();
     w.paypal.tamperBy.set(poIds(a)[1]!, { payee: 'SBXEVILPAYEE' });
     await pass();

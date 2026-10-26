@@ -9,11 +9,26 @@ import {
   requestRefund,
 } from './index';
 import { BUYER_A, OPERATOR, approved, makeWorld, paid, providerOrdersOf } from './ops/support';
-import type { PaymentsDeps } from '@umsbx/contracts';
+import type { Logger, PaymentsDeps } from '@umsbx/contracts';
 import type { Awaiting, OpsWorld } from './ops/support';
 
 let w: OpsWorld;
+
+/** A world whose log records every error event: a swallowed failure in a pass must fail the test, not hide in it. */
+const logged: string[] = [];
+async function world(): Promise<OpsWorld> {
+  const x = await makeWorld();
+  const log: Logger = {
+    log: (e) => {
+      if (e.level === 'error') logged.push(`${e.msg} ${JSON.stringify(e.fields)}`);
+    },
+    child: () => log,
+  };
+  x.deps = { ...x.deps, log };
+  return x;
+}
 afterEach(async () => {
+  expect(logged.splice(0)).toEqual([]);
   expect(w.paypal.violations).toEqual([]);
   await w.close();
 });
@@ -37,7 +52,7 @@ const opsOf = (order_id: string, kind: string) =>
 
 describe('recoverOnStartup with a pack', () => {
   it('a never-sent prepared PO2 capture is not marked unknown', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     // the kill switch stops PO2's capture after PO1 captured: prepared, never sent
     w.paypal.queue.capture.push('real', { kind: 'blocked', by: 'kill_switch' });
@@ -73,7 +88,7 @@ describe('recoverOnStartup with a pack', () => {
   });
 
   it('a reopened PO2 capture (prepared, send timestamp) is not marked unknown', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push('real', {
       kind: 'payer_action',
@@ -107,7 +122,7 @@ describe('recoverOnStartup with a pack', () => {
   });
 
   it('a sent PO2 capture is read first', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     const base = w.paypal.count('get');
     w.paypal.beforeGet = async () => {
@@ -132,7 +147,7 @@ describe('recoverOnStartup with a pack', () => {
   });
 
   it('an in-flight PO2 that nobody polls gets its own read-back operation, PO1 keeps its own', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push('real', { kind: 'timeout' });
     await ret(a.order_ref);
@@ -162,7 +177,7 @@ describe('recoverOnStartup with a pack', () => {
   });
 
   it('a PayPal order that moved on between the list and the lock is not repaired', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await approved(w, PACK);
     w.paypal.queue.capture.push('real', { kind: 'timeout' });
     await ret(a.order_ref);
@@ -200,7 +215,7 @@ describe('recoverOnStartup with a pack', () => {
   });
 
   it('a pending refund that nobody polls gets its read-back operation back and is counted as repaired', async () => {
-    w = await makeWorld();
+    w = await world();
     const a = await paid(w);
     const unit = (
       await w.rows<{ id: string }>('SELECT id FROM order_units WHERE order_id = $1', [a.order_id])
