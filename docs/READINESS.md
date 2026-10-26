@@ -8,13 +8,14 @@ One row per lane. A file existing or a branch being open is not readiness.
 
 ## Deploy hold (MVP-D)
 
-DP-2a is merged (6f39e96), but it must NOT be deployed to the host until DP-2b and DP-3 have merged. Until then, reconcile, due, recover and webhooks are not safe for two-publisher packs:
+State on 26 Oct 2026: DP-2a, DP-2b, DP-3 and DP-4 are merged. The three hazards that held the deploy are fixed in code: the create resend rebuilds one PayPal order with its own key (DP-2b), the payer_action reopen touches only its own PayPal order (DP-2b), and refund reads use the unit's own PayPal order (DP-3, Opus review 26 Oct: merge yes).
 
-- the create resend builds a whole-pack body;
-- the payer_action reopen writes both PayPal orders;
-- refund reads pick the first PayPal order.
+Still true, so a two-publisher run is NOT ready to be switched on:
 
-`render.yaml` has `autoDeploy: false`, so a merge does not deploy. Do not deploy by hand either.
+- DP-5 (web composite wording and boot seeding) and DP-6 (offline gate) are not built; they are parked until MVP-C closes (D-047).
+- A real MVP-D run needs the new approval row of D-042, inserted by the owner.
+- Hosting follows D-049 (Google Cloud). `render.yaml` keeps `autoDeploy: false` and nothing deploys by itself.
+- Known follow-ups (LOW, from the DP-2b, DP-3 and DP-4 reviews): receipt not reissued when a PayPal order is declined or held in `due.ts`; INV7 and reversal rows; merchant id redaction at the buyer API; hold wording can name the wrong item on a pack; title cap can split a surrogate pair; the overview says `mismatch` is set whenever a PayPal order is frozen but four freeze paths do not set it.
 
 ## RLS spike (lane 12, informational, not a gate)
 
