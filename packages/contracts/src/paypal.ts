@@ -105,9 +105,22 @@ export const CreateOrderReqSchema = z
     return_url: PayerReturnUrlSchema,
     cancel_url: PayerReturnUrlSchema,
     scenario: z.string().nullable(),
+    /**
+     * The invoice id of the one purchase unit (MVP-D: the po_ref of the PayPal order, so two PayPal
+     * orders of one UnitMarket order never collide on DUPLICATE_INVOICE_ID). Absent: the adapter
+     * derives it from order_ref, as before. Allowed with one unit only.
+     */
+    invoice_id: z.string().min(1).max(127).optional(),
   })
   .strict()
   .superRefine((r, ctx) => {
+    if (r.invoice_id !== undefined && r.units.length !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'invoice_id is allowed with exactly one unit',
+        path: ['invoice_id'],
+      });
+    }
     const first = r.units[0]?.amount.currency;
     if (r.units.some((u) => u.amount.currency !== first)) {
       ctx.addIssue({ code: 'custom', message: 'units must share one currency', path: ['units'] });

@@ -7,7 +7,9 @@
 //   INV4 the end of every access window equals the end the event log gives;
 //   INV5 every order in capture_requested, capture_claimed or unresolved has an operation that is
 //        `sent` or `unknown` (something is polling it), unless its create, capture or read-back
-//        gave up at the end of the 24 h window and a human was told (failed, window_expired);
+//        gave up at the end of the 24 h window and a human was told (failed, window_expired).
+//        Per PayPal order (DP-2a): every per-publisher PayPal order in one of those states has such
+//        an operation of its own, so a pack cannot hide an unpolled PayPal order behind a polled one;
 //   INV6 every open refund request (sent, unknown, pending) has a refund or refund read-back
 //        operation that is `sent` or `unknown`. A request nobody polls can stay open forever.
 import { computeWindow } from '@umsbx/access-clock';
@@ -162,6 +164,19 @@ async function inv5(db: SqlExecutor): Promise<Result> {
       ORDER BY o.id`,
   );
   const bad = rows.rows.map((r) => `order ${r.id} is ${r.status} and nothing polls it`);
+  // Per PayPal order, for a pack (a single order has one, and the order check above covers it).
+  const perPo = await db.query<{ id: string; order_id: string; state: string }>(
+    `SELECT p.id, p.order_id, p.state FROM provider_orders p
+      WHERE p.route = 'per_publisher' AND p.state IN ('capture_requested', 'capture_claimed', 'unresolved')
+        AND NOT EXISTS (SELECT 1 FROM operations o WHERE o.provider_order_ref = p.id AND o.state IN ('sent', 'unknown'))
+        AND NOT EXISTS (SELECT 1 FROM operations o WHERE o.provider_order_ref = p.id
+                          AND o.kind IN ('create', 'capture', 'readback')
+                          AND o.state = 'failed' AND o.failure_reason = 'window_expired')
+      ORDER BY p.order_id, p.id`,
+  );
+  for (const r of perPo.rows) {
+    bad.push(`provider order ${r.id} of order ${r.order_id} is ${r.state} and nothing polls it`);
+  }
   return {
     id: 'INV5',
     ok: bad.length === 0,

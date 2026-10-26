@@ -1,6 +1,7 @@
 // Types of lane 05a (payments core, part 1). Contract types come from @umsbx/contracts.
 import type { AccessState, EnvironmentLabel, Id, OrderStatus, WindowState } from '@umsbx/contracts';
 import type { VerifyError } from '@umsbx/approval';
+import type { ProviderOrderState } from './composite';
 
 export type PlaceError =
   | { code: 'approval'; error: VerifyError }
@@ -17,10 +18,17 @@ export interface OrderView {
   buyer_message: string;
   /** Operator-only detail (F-4): the PayPal reason code of a pending unit. Never shown to a buyer. */
   operator_note: string | null;
-  items: { article_id: Id; access: AccessState; window: WindowState }[];
+  items: { article_id: Id; publisher_id: Id; access: AccessState; window: WindowState }[];
   environment: EnvironmentLabel;
   /** Set when the buyer must go back to PayPal (payer action required, or the order awaits approval). */
   approve_url: string | null;
+  /**
+   * "Step k of N": which PayPal order the buyer approves next. Null for a single-publisher order and
+   * whenever the buyer has nothing left to approve.
+   */
+  progress: { step: number; of: number } | null;
+  /** The PayPal orders of the order by position, with our state for each (never PayPal's ids). */
+  provider_orders: { position: number; publisher_id: Id | null; state: ProviderOrderState }[];
 }
 
 /** Evidence from the delivery readiness probe, gathered before the transaction. */

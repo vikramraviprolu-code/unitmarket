@@ -725,7 +725,14 @@ export async function approved(
 ): Promise<Awaiting> {
   const a = await awaiting(w, o);
   for (const po of a.provider_orders) w.paypal.approve(po.provider_order_id as string);
-  return a;
+  // The engine only moves a PayPal order to `approved` when a read shows APPROVED (the return does
+  // that); a test that calls the capture gate directly needs the state the return would have set.
+  await w.rows(
+    `UPDATE provider_orders SET state = 'approved', status = 'APPROVED', first_approved_at = $2
+      WHERE order_id = $1 AND state = 'awaiting_buyer'`,
+    [a.order_id, w.clock.now().toISOString()],
+  );
+  return { ...a, provider_orders: await providerOrdersOf(w, a.order_id) };
 }
 /**
  * What the reconciler of lane 05b does: read, gather the gates, apply in one transaction. The

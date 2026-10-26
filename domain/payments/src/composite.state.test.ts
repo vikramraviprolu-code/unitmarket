@@ -4,6 +4,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { contentHash, makeToken } from '@umsbx/approval';
 import { beginCheckout, checkInvariants, loadOrderView, onBuyerReturn, placeOrder } from './index';
+import { captureOnce } from './capture';
+import { lockOrderGraph } from './composite';
+import { loadOrder } from './store';
 import {
   BUYER_A,
   approvePo,
@@ -24,6 +27,13 @@ afterEach(async () => {
 });
 
 const PACK = { offers: ['ofr_1', 'ofr_3'] };
+/** A snapshot as plain JSON, for the tests that forge one. */
+type Snap = {
+  settlement?: unknown;
+  total_minor: number;
+  publishers: { publisher_id: string; payee_merchant_id: string; amount_minor: number }[];
+  items: Record<string, unknown>[];
+};
 const ret = (ref: string) => onBuyerReturn(w.deps, { order_ref: ref, actor: BUYER_A });
 const orderRow = async (id: string) =>
   (
@@ -152,7 +162,7 @@ describe('place: a pack of two publishers', () => {
   it('place refuses a snapshot of two publishers without a settlement, or of three: no order, no unit, approval not used', async () => {
     w = await makeWorld();
     const craft = async (
-      mutate: (s: Record<string, any>) => Record<string, any>,
+      mutate: (s: Snap) => Snap,
       n: number,
     ): Promise<{ approval_id: string; token: string }> => {
       const g = await w.approval(PACK);
@@ -175,20 +185,20 @@ describe('place: a pack of two publishers', () => {
       return { approval_id, token };
     };
     const noSettlement = await craft((s) => {
-      delete s['settlement'];
+      delete s.settlement;
       return s;
     }, 1);
     const threePublishers = await craft((s) => {
-      delete s['settlement'];
-      const extra = { ...s['publishers'][1], publisher_id: 'pub_3', payee_merchant_id: 'MERCH3' };
-      s['publishers'].push(extra);
-      s['items'].push({
-        ...s['items'][1],
+      delete s.settlement;
+      const extra = { ...s.publishers[1]!, publisher_id: 'pub_3', payee_merchant_id: 'MERCH3' };
+      s.publishers.push(extra);
+      s.items.push({
+        ...s.items[1]!,
         article_id: 'art_9',
         publisher_id: 'pub_3',
         payee_merchant_id: 'MERCH3',
       });
-      s['total_minor'] += extra.amount_minor;
+      s.total_minor += extra.amount_minor;
       return s;
     }, 2);
     for (const a of [noSettlement, threePublishers]) {
@@ -613,9 +623,9 @@ describe('capture and read-back per PayPal order', () => {
     expect(await count(w, 'ledger_entries', "kind = 'sale'")).toBe(1);
     const caps = await ops(a.order_id, 'capture');
     expect(caps.map((c) => c.state)).toEqual(['confirmed', 'unknown']);
-    // the read-back of PO2 only is kept for the poll: umsB-<po_ref>
-    expect((await ops(a.order_id, 'readback')).map((o) => o.request_id)).toEqual([
-      `umsB-${a.order_ref}-p2`,
+    // PO1's read-back operation (umsB-<po_ref>) is settled; PO2's capture operation is the one polled.
+    expect((await ops(a.order_id, 'readback')).map((o) => [o.request_id, o.state])).toEqual([
+      [`umsB-${a.order_ref}-p1`, 'confirmed'],
     ]);
     // INV5 holds per PayPal order
     expect((await checkInvariants(w.db)).filter((i) => !i.ok)).toEqual([]);
@@ -673,6 +683,40 @@ describe('capture and read-back per PayPal order', () => {
     expect((await orderRow(a.order_id)).status).toBe('capture_requested');
   });
 
+  it('after PO1 captured, a mismatch on the status read of PO2 holds PO2 only: no PO2 capture, no partial alert', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    // reads: pass PO1, pass PO2, (capture PO1), read-back PO1, then the status read of PO2 (the 4th)
+    w.paypal.beforeGet = async () => {
+      if (w.paypal.count('get') === 4)
+        w.paypal.tamperBy.set(poIds(a)[1]!, { payee: 'SBXEVILPAYEE' });
+    };
+    const r = await ret(a.order_ref);
+    expect(r.ok && r.value.status).toBe('paid_partial');
+    expect(await states(a.order_id)).toEqual(['captured', 'frozen']);
+    expect(captureCalls().map((c) => c.provider_order_id)).toEqual([poIds(a)[0]]);
+    expect((await orderRow(a.order_id)).mismatch).toBe(true);
+    expect(await alerts('partial_composite')).toEqual([]);
+    expect((await unitRows(a.order_id)).map((u) => u.status)).toEqual([
+      'captured_verified',
+      'mismatch',
+    ]);
+    expect((await entRows(a.order_id)).map((e) => e.access_state)).toEqual(['available', 'locked']);
+  });
+
+  it('after PO1 captured, PO2 found VOIDED on its status read: left approved for the continuation, never "not charged" here', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.beforeGet = async () => {
+      if (w.paypal.count('get') === 4) w.paypal.void(poIds(a)[1]!);
+    };
+    const r = await ret(a.order_ref);
+    expect(r.ok && r.value.status).toBe('capture_requested');
+    expect(await states(a.order_id)).toEqual(['captured', 'approved']);
+    expect(captureCalls()).toHaveLength(1);
+    expect(await alerts('partial_composite')).toEqual([]);
+  });
+
   it('a second return never captures a PayPal order twice', async () => {
     w = await makeWorld();
     const a = await approved(w, PACK);
@@ -697,5 +741,205 @@ describe('capture and read-back per PayPal order', () => {
     expect(w.paypal.count('create')).toBe(2);
     expect(w.paypal.count('capture')).toBe(2);
     expect(w.paypal.count('get')).toBe(7);
+  });
+});
+
+describe('the return refuses what it must', () => {
+  it('a malformed order reference names no order: not_found, no PayPal call', async () => {
+    w = await makeWorld();
+    for (const ref of ['', 'a\u0000b', ' x']) {
+      expect(await ret(ref)).toEqual({ ok: false, error: { code: 'not_found' } });
+    }
+    expect(w.paypal.calls).toHaveLength(0);
+  });
+
+  it('an order flagged mismatch, or with a unit in mismatch, is frozen at the return: whole order, no read, no capture', async () => {
+    for (const flag of [
+      'UPDATE orders SET mismatch = true WHERE id = $1',
+      "UPDATE order_units SET status = 'mismatch', mismatch_reason = 'amount' WHERE order_id = $1 AND publisher_id = 'pub_2'",
+    ]) {
+      w = await makeWorld();
+      const a = await approved(w, PACK);
+      await w.rows(flag, [a.order_id]);
+      const before = w.paypal.calls.length;
+      expect(await ret(a.order_ref)).toEqual({ ok: false, error: { code: 'frozen' } });
+      expect(await states(a.order_id)).toEqual(['frozen', 'frozen']);
+      expect((await alerts('frozen_order')).map((x) => x.reason)).toEqual([
+        'return_on_flagged_order',
+      ]);
+      expect(w.paypal.calls.length).toBe(before);
+      await w.close();
+    }
+    w = await makeWorld();
+  });
+
+  it('a PayPal order whose approval went away (back to CREATED) sends the buyer back: not_approved, that order awaiting_buyer, nothing captured', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.orders.get(poIds(a)[1]!)!.status = 'CREATED';
+    expect(await ret(a.order_ref)).toEqual({ ok: false, error: { code: 'not_approved' } });
+    expect(await states(a.order_id)).toEqual(['approved', 'awaiting_buyer']);
+    expect((await orderRow(a.order_id)).status).toBe('awaiting_buyer');
+    expect(w.paypal.count('capture')).toBe(0);
+    // the buyer approves again and the pack goes through
+    w.paypal.approve(poIds(a)[1]!);
+    const again = await ret(a.order_ref);
+    expect(again.ok && again.value.status).toBe('paid');
+  });
+
+  it('a PayPal order that cannot be read in the pass leaves everything as it was: not_approved, nothing captured, nothing abandoned', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.queue.get.push({ kind: 'timeout' });
+    expect(await ret(a.order_ref)).toEqual({ ok: false, error: { code: 'not_approved' } });
+    expect(await states(a.order_id)).toEqual(['approved', 'approved']);
+    expect(w.paypal.count('capture')).toBe(0);
+  });
+
+  it('window run out and PO2 unreadable: nothing is abandoned on an answer that proves nothing', async () => {
+    w = await makeWorld();
+    const a = await awaiting(w, PACK);
+    approvePo(w, a, 1);
+    await ret(a.order_ref);
+    w.clock.advance(3_600_001);
+    w.paypal.queue.get.push({ kind: 'timeout' }, 'real');
+    const r = await ret(a.order_ref);
+    expect(r.ok && r.value.status).toBe('awaiting_buyer');
+    expect(await states(a.order_id)).toEqual(['approved', 'awaiting_buyer']);
+  });
+
+  it('window run out and the kill switch blocks a read: payments_paused, nothing abandoned', async () => {
+    w = await makeWorld();
+    const a = await awaiting(w, PACK);
+    approvePo(w, a, 1);
+    await ret(a.order_ref);
+    w.clock.advance(3_600_001);
+    w.paypal.queue.get.push('real', { kind: 'blocked', by: 'kill_switch' });
+    expect(await ret(a.order_ref)).toEqual({ ok: false, error: { code: 'payments_paused' } });
+    expect(await states(a.order_id)).toEqual(['approved', 'awaiting_buyer']);
+  });
+});
+
+describe('capture answers of one PayPal order of a pack', () => {
+  it("PO1 refused with a 400: PO1 is closed as not charged on the read, the alert is PO1's, PO2 is still captured", async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.queue.capture.push({
+      kind: 'rejected',
+      http: 400,
+      name: 'INVALID_REQUEST',
+      issue: null,
+      debug_id: 'D',
+    });
+    const r = await ret(a.order_ref);
+    expect(r.ok && r.value.status).toBe('paid_partial');
+    expect(await states(a.order_id)).toEqual(['declined', 'captured']);
+    expect((await ops(a.order_id, 'capture')).map((o) => o.state)).toEqual(['failed', 'confirmed']);
+    expect(
+      await w.rows<{ failure_reason: string }>(
+        "SELECT failure_reason FROM operations WHERE order_id = $1 AND kind = 'capture' AND state = 'failed'",
+        [a.order_id],
+      ),
+    ).toEqual([{ failure_reason: 'invalid_request' }]);
+    expect((await alerts('payment_unresolved')).map((x) => x.reason)).toEqual([
+      'capture_invalid_request_p1',
+    ]);
+    expect(await alerts('partial_composite')).toEqual([{ reason: 'partial' }]);
+    // a declined PayPal order is never captured again
+    await ret(a.order_ref);
+    expect(captureCalls()).toHaveLength(2);
+  });
+
+  it('DUPLICATE_INVOICE_ID on the capture of PO2 after PO1 captured: PO2 frozen only, the alert names PO2', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.queue.capture.push('real', {
+      kind: 'rejected',
+      http: 422,
+      name: 'UNPROCESSABLE_ENTITY',
+      issue: 'DUPLICATE_INVOICE_ID',
+      debug_id: 'D',
+    });
+    const r = await ret(a.order_ref);
+    expect(r.ok && r.value.status).toBe('paid_partial');
+    expect(await states(a.order_id)).toEqual(['captured', 'frozen']);
+    expect(await orderRow(a.order_id)).toMatchObject({ status: 'paid_partial', mismatch: true });
+    expect((await alerts('frozen_order')).map((x) => x.reason)).toEqual([
+      'duplicate_invoice_id_p2',
+    ]);
+    expect(await alerts('partial_composite')).toEqual([]);
+  });
+
+  it('captureOnce without a PayPal order named finds it by the PayPal id it is given', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    const order = (await loadOrder(w.db, a.order_id))!;
+    expect(await captureOnce(w.deps, order, poIds(a)[1]!, null)).toEqual({ kind: 'claim' });
+    expect(captureCalls().map((c) => c.provider_order_id)).toEqual([poIds(a)[1]]);
+    expect(await states(a.order_id)).toEqual(['approved', 'capture_claimed']);
+    await expect(captureOnce(w.deps, order, 'SBXNOSUCHORDER', null)).rejects.toThrow();
+  });
+
+  it('an answer that arrives after the PayPal order was declined meanwhile closes the operation as declined and leaves the order alone', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    const real = w.paypal.captureOrder.bind(w.paypal);
+    w.paypal.captureOrder = async (r) => {
+      if (r.provider_order_id === poIds(a)[1]) {
+        await w.rows(
+          "UPDATE provider_orders SET state = 'declined' WHERE order_id = $1 AND position = 2",
+          [a.order_id],
+        );
+      }
+      return real(r);
+    };
+    w.paypal.nextBy.set(poIds(a)[1]!, { lose_response: true });
+    await ret(a.order_ref);
+    const caps = await w.rows<{ state: string; failure_reason: string | null }>(
+      `SELECT o.state, o.failure_reason FROM operations o JOIN provider_orders p ON p.id = o.provider_order_ref
+        WHERE o.kind = 'capture' AND p.position = 2`,
+    );
+    expect(caps).toEqual([{ state: 'failed', failure_reason: 'declined' }]);
+    expect((await states(a.order_id))[1]).toBe('declined');
+  });
+});
+
+describe('a single order moved by a writer that still works on orders.status', () => {
+  it.each([
+    ['awaiting_buyer', 'prepared', 'awaiting_buyer'],
+    ['awaiting_buyer', 'approved', 'approved'],
+    ['awaiting_buyer', 'capture_requested', 'approved'],
+    ['awaiting_buyer', 'capture_claimed', 'approved'],
+    ['awaiting_buyer', 'unresolved', 'approved'],
+    ['capture_requested', 'approved', 'capture_requested'],
+    ['capture_claimed', 'capture_requested', 'capture_claimed'],
+    ['unresolved', 'capture_requested', 'unresolved'],
+    ['paid', 'capture_claimed', 'captured'],
+    ['paid_partial', 'unresolved', 'captured'],
+    ['failed', 'capture_requested', 'failed'],
+    ['failed', 'declined', 'declined'],
+    ['abandoned', 'awaiting_buyer', 'abandoned'],
+    ['frozen', 'capture_requested', 'frozen'],
+    ['created', 'prepared', 'prepared'],
+  ] as const)(
+    'order %s + PayPal order %s: the PayPal order becomes %s',
+    async (status, was, becomes) => {
+      w = await makeWorld();
+      const p = await place(w);
+      await w.rows('UPDATE orders SET status = $2 WHERE id = $1', [p.order_id, status]);
+      await w.rows('UPDATE provider_orders SET state = $2 WHERE order_id = $1', [p.order_id, was]);
+      await w.db.transaction((tx) => lockOrderGraph(tx, p.order_id));
+      expect(await states(p.order_id)).toEqual([becomes]);
+      // the order itself is never touched by the lock
+      expect((await orderRow(p.order_id)).status).toBe(status);
+    },
+  );
+
+  it('a pack is never brought in line with its order: only the single route has an older writer', async () => {
+    w = await makeWorld();
+    const p = await place(w, PACK);
+    await w.rows("UPDATE orders SET status = 'awaiting_buyer' WHERE id = $1", [p.order_id]);
+    await w.db.transaction((tx) => lockOrderGraph(tx, p.order_id));
+    expect(await states(p.order_id)).toEqual(['prepared', 'prepared']);
   });
 });

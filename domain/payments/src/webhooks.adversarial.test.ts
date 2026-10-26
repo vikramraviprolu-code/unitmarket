@@ -446,10 +446,10 @@ describe('hostile identifiers', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Lock order (D-020, docs/READINESS.md "Lock order"): orders -> operations -> order_units.
+// Lock order (D-020, docs/READINESS.md "Lock order"): orders -> provider_orders -> operations -> order_units.
 const RANK: Record<string, number> = {
   orders: 1,
-  provider_orders: 1,
+  provider_orders: 1.5,
   operations: 2,
   order_units: 3,
   refund_requests: 4,
@@ -557,7 +557,8 @@ describe('lock order', () => {
       }
     }
     expect(bad).toEqual([]);
-    expect([...touched].sort()).toEqual(['operations', 'orders']);
+    // lockOrderRows now also locks the order's provider orders (D-020, DP-2a), between the two.
+    expect([...touched].sort()).toEqual(['operations', 'orders', 'provider_orders']);
   });
 });
 

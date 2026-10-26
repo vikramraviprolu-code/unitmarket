@@ -197,7 +197,8 @@ describe('lock order', () => {
     const log: { table: string; sql: string }[][] = [];
     const d = spy(w.deps, log);
     const approval = await w.approval(PACK);
-    const placed = await placeOrder(d, {
+    // A new order's rows are rows nobody else can hold: placing is not a lock event, so it runs unspied.
+    const placed = await placeOrder(w.deps, {
       approval_id: approval.approval_id,
       token: approval.token,
       actor: BUYER_A,

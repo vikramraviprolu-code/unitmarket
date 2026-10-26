@@ -13,6 +13,7 @@ import type {
   PaymentsDeps,
   Result,
 } from '@umsbx/contracts';
+import { poRefFor } from './composite';
 import { requestIdFor } from './keys';
 import type { PlaceError } from './types';
 import { addMs } from './store';
@@ -50,6 +51,22 @@ export async function placeOrder(
         if (!verified.ok) return err({ code: 'approval', error: verified.error });
         const approval = verified.value;
         const snapshot = approval.snapshot;
+
+        // Two or more publishers settle as one PayPal order each (D2): valid only with the frozen
+        // settlement whose payment count equals the publisher count, and for two publishers at most.
+        // The schema stays permissive (old snapshots are re-parsed), so the shape is checked here,
+        // before anything is written or the approval is used.
+        const publisherCount = snapshot.publishers.length;
+        if (
+          publisherCount >= 2 &&
+          (snapshot.settlement === undefined ||
+            snapshot.settlement.route !== 'per_publisher' ||
+            snapshot.settlement.payments !== publisherCount ||
+            publisherCount > 2)
+        ) {
+          return err({ code: 'approval', error: { code: 'snapshot_tampered', http: 403 } });
+        }
+        const route = publisherCount >= 2 ? 'per_publisher' : 'single';
 
         const open = await tx.query(
           `SELECT id FROM orders WHERE buyer_id = $1 AND content_hash = $2 AND status NOT IN ${CLOSED} LIMIT 1`,
@@ -133,14 +150,29 @@ export async function placeOrder(
             at,
           ],
         );
-        // MVP-A: one PayPal order for the whole approval (route single). The per-publisher route
-        // (several rows here) belongs to MVP-D.
-        const provider_row = d.ids.next('pvo');
-        await tx.query(
-          `INSERT INTO provider_orders (id, order_id, provider_order_id, route, approve_url, status, created_at, updated_at)
-           VALUES ($1, $2, NULL, 'single', NULL, NULL, $3, $3)`,
-          [provider_row, order_id, at],
-        );
+        // One PayPal order for the whole approval (route single, order_ref as its reference), or one
+        // per publisher (route per_publisher, ordered by publisher id, <order_ref>-p<position>).
+        const providerRows = new Map<string, { id: Id; po_ref: Id }>();
+        for (const [k, p] of publishers.entries()) {
+          // route single has exactly one publisher, so one row; its position is 1 in both routes
+          const provider_row = d.ids.next('pvo');
+          const po_ref = poRefFor(order_ref, k + 1, route);
+          providerRows.set(p.publisher_id, { id: provider_row, po_ref });
+          await tx.query(
+            `INSERT INTO provider_orders (id, order_id, provider_order_id, route, approve_url, status, position, po_ref,
+               publisher_id, state, first_approved_at, created_at, updated_at)
+             VALUES ($1, $2, NULL, $3, NULL, NULL, $4, $5, $6, 'prepared', NULL, $7, $7)`,
+            [
+              provider_row,
+              order_id,
+              route,
+              k + 1,
+              po_ref,
+              route === 'single' ? null : p.publisher_id,
+              at,
+            ],
+          );
+        }
         for (const p of publishers) {
           const unit_id = unitIds.get(p.publisher_id) as Id;
           await tx.query(
@@ -151,7 +183,7 @@ export async function placeOrder(
             [
               unit_id,
               order_id,
-              provider_row,
+              (providerRows.get(p.publisher_id) as { id: Id }).id,
               p.publisher_id,
               p.payee_merchant_id,
               p.amount_minor,
@@ -174,18 +206,23 @@ export async function placeOrder(
             })),
           });
         }
-        await tx.query(
-          `INSERT INTO operations (id, order_id, unit_id, kind, state, attempt, request_id, first_sent_at, idem_safe_until,
-             lease_until, next_retry_at, reconcile_until, failure_reason, created_at, updated_at)
-           VALUES ($1, $2, NULL, 'create', 'prepared', 1, $3, NULL, NULL, $4, NULL, NULL, NULL, $5, $5)`,
-          [
-            d.ids.next('opr'),
-            order_id,
-            requestIdFor('create', order_ref),
-            addMs(at, d.config.operation_lease_ms),
-            at,
-          ],
-        );
+        // One create operation per PayPal order, keyed by its po_ref (umsC-<order_ref> for a single order).
+        for (const p of publishers) {
+          const row = providerRows.get(p.publisher_id) as { id: Id; po_ref: Id };
+          await tx.query(
+            `INSERT INTO operations (id, order_id, unit_id, kind, state, attempt, request_id, first_sent_at, idem_safe_until,
+               lease_until, next_retry_at, reconcile_until, failure_reason, created_at, updated_at, provider_order_ref)
+             VALUES ($1, $2, NULL, 'create', 'prepared', 1, $3, NULL, NULL, $4, NULL, NULL, NULL, $5, $5, $6)`,
+            [
+              d.ids.next('opr'),
+              order_id,
+              requestIdFor('create', row.po_ref),
+              addMs(at, d.config.operation_lease_ms),
+              at,
+              row.id,
+            ],
+          );
+        }
         await d.audit.record(tx, {
           actor: i.actor,
           action: 'order.placed',

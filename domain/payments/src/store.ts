@@ -15,6 +15,7 @@ import type {
   SqlExecutor,
   UnitStatus,
 } from '@umsbx/contracts';
+import type { ProviderOrderState } from './composite';
 
 export interface OrderRow {
   id: Id;
@@ -50,6 +51,11 @@ export interface OperationRow {
   order_id: Id;
   kind: OperationKind;
   state: OperationState;
+  /**
+   * The PayPal order the operation belongs to (0011); null for refund operations. Optional so that the
+   * background paths (DP-2b), which build their own row shapes, keep compiling until they use it.
+   */
+  provider_order_ref?: Id | null;
   attempt: number;
   request_id: string;
   first_sent_at: string | null;
@@ -63,6 +69,18 @@ export interface ProviderOrderRow {
   order_id: Id;
   provider_order_id: string | null;
   approve_url: string | null;
+  route: 'single' | 'per_publisher';
+  /** 1..N, ordered by publisher id (0011). */
+  position: number;
+  /** The reference of this PayPal order: order_ref for single, <order_ref>-p<position> otherwise. */
+  po_ref: Id;
+  publisher_id: Id | null;
+  /** Our state machine for this PayPal order (composite.ts); the engine decides on this alone. */
+  state: ProviderOrderState;
+  /** PayPal's last-seen order status text; informational only. */
+  status: string | null;
+  /** The moment we first saw an APPROVED read (not PayPal's time). */
+  first_approved_at: string | null;
 }
 
 type Raw = Record<string, unknown>;
@@ -110,6 +128,7 @@ const toOperation = (r: Raw): OperationRow => ({
   order_id: r['order_id'] as string,
   kind: r['kind'] as OperationKind,
   state: r['state'] as OperationState,
+  provider_order_ref: (r['provider_order_ref'] as string | null) ?? null,
   attempt: Number(r['attempt']),
   request_id: r['request_id'] as string,
   first_sent_at: isoOf(r['first_sent_at']),
@@ -153,14 +172,19 @@ export async function loadUnits(db: SqlExecutor, order_id: Id): Promise<UnitRow[
 }
 /**
  * LOCK ORDER (docs/READINESS.md "Lock order"). Every transaction that moves money takes its row
- * locks in one order: orders (and provider_orders), then operations, then order_units, then
- * refund_requests, then entitlements (with their windows and events), then ledger_entries and receipts.
- * This is the first step of that order: the order row, then every operation row of the order.
- * Taking all the operation rows at once means a later statement on any of them waits for nothing.
+ * locks in one order: orders, then provider_orders (by position), then operations, then order_units,
+ * then refund_requests, then entitlements (with their windows and events), then ledger_entries and
+ * receipts. This is the first step of that order: the order row, then every provider order of the
+ * order by position (DP-2a), then every operation row of the order.
+ * Taking all the rows at once means a later statement on any of them waits for nothing.
  */
 export async function lockOrderRows(db: SqlExecutor, order_id: Id): Promise<OrderRow | null> {
   const order = await loadOrder(db, order_id, { lock: true });
   if (order === null) return null;
+  await db.query(
+    'SELECT id FROM provider_orders WHERE order_id = $1 ORDER BY position FOR UPDATE',
+    [order_id],
+  );
   await db.query('SELECT id FROM operations WHERE order_id = $1 ORDER BY id FOR UPDATE', [
     order_id,
   ]);
@@ -207,21 +231,59 @@ export async function loadOperation(
   const row = found.rows[0];
   return row === undefined ? null : toOperation(row);
 }
+export const toProviderOrder = (r: Raw): ProviderOrderRow => ({
+  id: r['id'] as string,
+  order_id: r['order_id'] as string,
+  provider_order_id: (r['provider_order_id'] as string | null) ?? null,
+  approve_url: (r['approve_url'] as string | null) ?? null,
+  route: r['route'] as 'single' | 'per_publisher',
+  position: Number(r['position']),
+  po_ref: r['po_ref'] as string,
+  publisher_id: (r['publisher_id'] as string | null) ?? null,
+  state: r['state'] as ProviderOrderState,
+  status: (r['status'] as string | null) ?? null,
+  first_approved_at: isoOf(r['first_approved_at']),
+});
+/** Every PayPal order of the order, by position. */
 export async function loadProviderOrders(
   db: SqlExecutor,
   order_id: Id,
+  opts: { lock?: boolean } = {},
 ): Promise<ProviderOrderRow[]> {
   const found = await db.query<Raw>(
-    'SELECT id, order_id, provider_order_id, approve_url FROM provider_orders WHERE order_id = $1 ORDER BY id',
+    `SELECT * FROM provider_orders WHERE order_id = $1 ORDER BY position${
+      opts.lock === true ? ' FOR UPDATE' : ''
+    }`,
     [order_id],
   );
-  return found.rows.map((r) => ({
-    id: r['id'] as string,
-    order_id: r['order_id'] as string,
-    provider_order_id: (r['provider_order_id'] as string | null) ?? null,
-    approve_url: (r['approve_url'] as string | null) ?? null,
-  }));
+  return found.rows.map(toProviderOrder);
 }
+
+/**
+ * The operation of `kind` that belongs to one PayPal order. A single-route order keeps the reading
+ * it always had (the one operation of that kind of the order, including rows that carry no
+ * provider_order_ref because an older writer made them); a per-publisher order reads its own.
+ */
+export async function loadOperationFor(
+  db: SqlExecutor,
+  po: Pick<ProviderOrderRow, 'id' | 'order_id' | 'route'>,
+  kind: OperationKind,
+  opts: { lock?: boolean } = {},
+): Promise<OperationRow | null> {
+  if (po.route === 'single') return loadOperation(db, po.order_id, kind, opts);
+  const found = await db.query<Raw>(
+    `SELECT * FROM operations WHERE provider_order_ref = $1 AND kind = $2 ORDER BY created_at, id LIMIT 1${
+      opts.lock === true ? ' FOR UPDATE' : ''
+    }`,
+    [po.id, kind],
+  );
+  const row = found.rows[0];
+  return row === undefined ? null : toOperation(row);
+}
+
+/** The units that sit on one PayPal order. A single-route PayPal order carries every unit of its order. */
+export const unitsOf = (units: UnitRow[], po: Pick<ProviderOrderRow, 'id' | 'route'>): UnitRow[] =>
+  po.route === 'single' ? units : units.filter((u) => u.provider_order_ref === po.id);
 
 // Delay before the nth poll (1 based): the last configured value repeats.
 export function backoffMs(
@@ -253,13 +315,21 @@ export async function foreignCaptureIds(
   db: SqlExecutor,
   order_id: Id,
   shown: (string | null)[],
+  /** The units of the PayPal order being matched; capture ids of the other PayPal orders' units count as foreign. */
+  own_units?: Id[],
 ): Promise<string[]> {
   const ids = [...new Set(shown.filter((id): id is string => id !== null))];
   if (ids.length === 0) return [];
-  const found = await db.query<{ capture_id: string }>(
-    'SELECT capture_id FROM order_units WHERE capture_id = ANY($2::text[]) AND order_id <> $1 ORDER BY capture_id',
-    [order_id, ids],
-  );
+  const found =
+    own_units === undefined
+      ? await db.query<{ capture_id: string }>(
+          'SELECT capture_id FROM order_units WHERE capture_id = ANY($2::text[]) AND order_id <> $1 ORDER BY capture_id',
+          [order_id, ids],
+        )
+      : await db.query<{ capture_id: string }>(
+          'SELECT capture_id FROM order_units WHERE capture_id = ANY($1::text[]) AND id <> ALL($2::text[]) ORDER BY capture_id',
+          [ids, own_units],
+        );
   return found.rows.map((r) => r.capture_id);
 }
 
@@ -289,12 +359,15 @@ export async function insertOperation(
     reconcile_until: string | null;
     next_retry_at: string | null;
     at: string;
+    /** The PayPal order the operation belongs to; omitted by writers that predate 0011. */
+    provider_order_ref?: Id | null;
   },
 ): Promise<boolean> {
   const done = await tx.query(
     `INSERT INTO operations (id, order_id, unit_id, kind, state, attempt, request_id, first_sent_at,
-       idem_safe_until, lease_until, next_retry_at, reconcile_until, failure_reason, created_at, updated_at)
-     VALUES ($1, $2, NULL, $3, $4, 1, $5, NULL, NULL, $6, $7, $8, NULL, $9, $9)
+       idem_safe_until, lease_until, next_retry_at, reconcile_until, failure_reason, created_at, updated_at,
+       provider_order_ref)
+     VALUES ($1, $2, NULL, $3, $4, 1, $5, NULL, NULL, $6, $7, $8, NULL, $9, $9, $10)
      ON CONFLICT (request_id) DO NOTHING RETURNING id`,
     [
       r.id,
@@ -306,6 +379,7 @@ export async function insertOperation(
       r.next_retry_at,
       r.reconcile_until,
       r.at,
+      r.provider_order_ref ?? null,
     ],
   );
   return done.rows.length > 0;
