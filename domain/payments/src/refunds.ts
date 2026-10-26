@@ -11,6 +11,9 @@
 // requestRefund then answers unit_frozen. Nothing here ever clears the flag, not even a later clean
 // read; a human does. Access is never changed by a freeze. A request that was never executed can be
 // cancelled (cancelRefundRequest), which frees the unit.
+// MVP-D (DP-3): a pack has one PayPal order per publisher. Every refund read goes to the PayPal order
+// of the unit itself (providerOrderIdOfUnit), and a frozen SIBLING PayPal order does not freeze the
+// refund of a captured unit (frozenForUnit). A refund never touches the other unit.
 // Adapted from AIC_Hackathon_UnitMarket packages/core/payments/reconcile.ts (refund and reversal
 // steps) at a36ddc03fd0b962000f686291c145b50ee337f90. Owned by SBX lane 05b.
 import { applyMoneyEvent } from '@umsbx/entitlements';
@@ -86,6 +89,8 @@ interface UnitFacts {
   amount_minor: number;
   refunded_minor: number;
   verified: boolean;
+  /** The unit's own PayPal order (order_units.provider_order_ref); null on an old row. */
+  provider_order_ref: Id | null;
 }
 async function loadUnitFacts(
   tx: SqlExecutor,
@@ -96,7 +101,7 @@ async function loadUnitFacts(
   const r = (
     await tx.query<Record<string, unknown>>(
       `SELECT u.id, u.order_id, o.order_ref, o.currency, u.status, u.capture_id, u.amount_minor,
-              u.refunded_minor, (u.captured_verified_at IS NOT NULL) AS verified
+              u.refunded_minor, (u.captured_verified_at IS NOT NULL) AS verified, u.provider_order_ref
          FROM order_units u JOIN orders o ON o.id = u.order_id WHERE u.id = $1${
            lock ? ' FOR UPDATE OF u' : ''
          }`,
@@ -114,7 +119,84 @@ async function loadUnitFacts(
     amount_minor: Number(r['amount_minor']),
     refunded_minor: Number(r['refunded_minor']),
     verified: r['verified'] === true,
+    provider_order_ref: (r['provider_order_ref'] as string | null) ?? null,
   };
+}
+
+/**
+ * The PayPal order id of a unit's OWN PayPal order (DP-3, OQ-10). A pack has one PayPal order per
+ * publisher, and a capture is listed only on the order it was made on, so every refund read goes to
+ * `order_units.provider_order_ref`, never to the first PayPal order of the order. A unit with no
+ * stored reference falls back to the order's only `single` PayPal order (a row from before MVP-D);
+ * beside a `per_publisher` order it has no PayPal order and the caller treats the read as unusable
+ * (nothing is sent on it). Null when the PayPal order has no PayPal id yet.
+ */
+async function providerOrderIdOfUnit(
+  db: Pick<SqlExecutor, 'query'>,
+  unit_id: Id,
+): Promise<string | null> {
+  const found = await db.query<{ provider_order_id: string | null }>(
+    `SELECT p.provider_order_id FROM order_units u
+       JOIN provider_orders p ON p.order_id = u.order_id
+        AND (p.id = u.provider_order_ref OR (u.provider_order_ref IS NULL AND p.route = 'single'))
+      WHERE u.id = $1 ORDER BY p.position`,
+    [unit_id],
+  );
+  return found.rows[0]?.provider_order_id ?? null;
+}
+
+/**
+ * Does the order's hold stop a refund of THIS unit? `orders.mismatch` is one flag for the whole order.
+ * In a pack it is also set when the OTHER publisher's PayPal order is frozen (DP-3): that hold is
+ * about the other unit, so it does not block the refund of a unit whose own PayPal order captured.
+ * The flag is explained by the sibling alone only when all of this holds: the order is a pack, the
+ * unit's own PayPal order is captured, at least one other PayPal order is frozen, and every
+ * frozen_order alert of the order belongs to a frozen sibling (its unit is on a frozen sibling, or it
+ * carries the sibling's `_p<position>` suffix) and none comes from a refund list. Any other flag, an
+ * alert of the unit's own side or of a refund list, an unreadable case, keeps the whole order held.
+ */
+async function frozenForUnit(
+  tx: SqlExecutor,
+  unit: Pick<UnitFacts, 'id' | 'order_id' | 'provider_order_ref'>,
+): Promise<boolean> {
+  const flagged = await tx.query('SELECT 1 FROM orders WHERE id = $1 AND mismatch = true', [
+    unit.order_id,
+  ]);
+  if (flagged.rows.length === 0) return false;
+  const pos = (
+    await tx.query<{ id: string; state: string; position: number; route: string }>(
+      'SELECT id, state, position, route FROM provider_orders WHERE order_id = $1',
+      [unit.order_id],
+    )
+  ).rows;
+  const own = pos.find((p) => p.id === unit.provider_order_ref);
+  const siblings = pos.filter((p) => p.id !== unit.provider_order_ref && p.state === 'frozen');
+  // a unit with no stored PayPal order has no own order here: the whole order stays held
+  if (own === undefined || own.route !== 'per_publisher' || own.state !== 'captured') return true;
+  if (siblings.length === 0) return true;
+  const siblingUnits = new Set(
+    (
+      await tx.query<{ id: string }>(
+        'SELECT id FROM order_units WHERE order_id = $1 AND provider_order_ref = ANY($2::text[])',
+        [unit.order_id, siblings.map((p) => p.id)],
+      )
+    ).rows.map((r) => r.id),
+  );
+  const alerts = await tx.query<{
+    unit_id: string | null;
+    reason: string | null;
+    source: string | null;
+  }>(
+    `SELECT unit_id, detail ->> 'reason' AS reason, detail ->> 'source' AS source
+       FROM alerts WHERE order_id = $1 AND kind = 'frozen_order'`,
+    [unit.order_id],
+  );
+  const theirs = (a: (typeof alerts.rows)[number]): boolean =>
+    a.source !== 'refund_list' &&
+    (a.unit_id !== null
+      ? siblingUnits.has(a.unit_id)
+      : a.reason !== null && siblings.some((p) => a.reason?.endsWith(`_p${p.position}`) === true));
+  return !alerts.rows.every(theirs);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -157,10 +239,7 @@ export async function requestRefund(
       return err({ code: 'not_captured' as const });
     }
     // A frozen order (a refund list that did not add up) takes no new request until a human clears it.
-    const frozen = await tx.query('SELECT 1 FROM orders WHERE id = $1 AND mismatch = true', [
-      unit.order_id,
-    ]);
-    if (frozen.rows.length > 0) return err({ code: 'unit_frozen' as const });
+    if (await frozenForUnit(tx, unit)) return err({ code: 'unit_frozen' as const });
     // One open request per unit: a double click and a partial-then-remainder sequence cannot overlap.
     const inFlight = await tx.query(
       `SELECT 1 FROM refund_requests WHERE unit_id = $1 AND state IN ${IN_FLIGHT} LIMIT 1`,
@@ -390,14 +469,8 @@ async function remoteRemaining(
   d: PaymentsDeps,
   rq: Pick<RequestRow, 'unit_id' | 'capture_id' | 'currency'>,
 ): Promise<Remote> {
-  const found = (
-    await d.db.query<{ provider_order_id: string | null }>(
-      `SELECT p.provider_order_id FROM order_units u JOIN provider_orders p ON p.order_id = u.order_id
-        WHERE u.id = $1 ORDER BY (p.id IS NOT DISTINCT FROM u.provider_order_ref) DESC, p.id LIMIT 1`,
-      [rq.unit_id],
-    )
-  ).rows[0]?.provider_order_id;
-  if (found === undefined || found === null) return { kind: 'unavailable' };
+  const found = await providerOrderIdOfUnit(d.db, rq.unit_id);
+  if (found === null) return { kind: 'unavailable' };
   const read = await readOrderForRefund(d, found);
   if (read === null) return { kind: 'unavailable' };
   const unit = read.units.find((u) => u.capture?.capture_id === rq.capture_id);
@@ -791,14 +864,8 @@ async function readBackChecked(
   let capStatus: string | null = null;
   let capRefunded = 0;
   if (status === 'COMPLETED') {
-    const provider = (
-      await d.db.query<{ provider_order_id: string | null }>(
-        'SELECT provider_order_id FROM provider_orders WHERE order_id = $1 ORDER BY id LIMIT 1',
-        [unit.order_id],
-      )
-    ).rows[0]?.provider_order_id;
-    const read: OrderRead | null =
-      provider === undefined || provider === null ? null : await d.paypal.getOrder(provider);
+    const provider = await providerOrderIdOfUnit(d.db, rq.unit_id);
+    const read: OrderRead | null = provider === null ? null : await d.paypal.getOrder(provider);
     if (read !== null && read.kind === 'blocked') blocked = true;
     if (read !== null && read.kind === 'order') {
       const cap = read.units.find((u) => u.capture?.capture_id === rq.capture_id)?.capture;
@@ -1117,13 +1184,8 @@ export async function closeRefundUnknown(
   let excess: number | null = null;
   let readOk = false; // the order read showed this capture: what it shows is evidence
   if (rq.refund_id === null) {
-    const provider = (
-      await d.db.query<{ provider_order_id: string | null }>(
-        'SELECT provider_order_id FROM provider_orders WHERE order_id = $1 ORDER BY id LIMIT 1',
-        [unit.order_id],
-      )
-    ).rows[0]?.provider_order_id;
-    if (provider !== undefined && provider !== null) {
+    const provider = await providerOrderIdOfUnit(d.db, rq.unit_id);
+    if (provider !== null) {
       const read = await d.paypal.getOrder(provider);
       // A blocked read (call budget spent, kill switch, no approval, connect off) is no evidence at
       // all, not even "unreadable": the call never reached PayPal. Never close on it, window or not.
