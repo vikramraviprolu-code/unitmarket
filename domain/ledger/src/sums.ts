@@ -1,6 +1,6 @@
 // Origin: AIC_Hackathon_UnitMarket@a36ddc03fd0b962000f686291c145b50ee337f90:packages/core/ledger/ledger.ts (sums). Adapted; owned by SBX.
 // Pure sums over ledger rows (P11: the reconciler compares these with the PayPal read-back).
-import type { LedgerEntry } from '@umsbx/contracts';
+import type { Id, LedgerEntry } from '@umsbx/contracts';
 
 export interface UnitBalance {
   sold_minor: number;
@@ -27,4 +27,31 @@ export function unitBalance(entries: LedgerEntry[]): UnitBalance {
     reversed_minor: reversed,
     net_minor: sold - refunded - reversed,
   };
+}
+
+export interface PublisherBalance extends UnitBalance {
+  publisher_id: Id;
+  currency: string;
+}
+
+// The same sums per publisher and currency (MVP-D, P11 per publisher). The caller says whose each
+// row is: the publisher of the unit the row belongs to. A publisher with no row has no balance
+// here, which reads as 0. Fee rows never change the net, because unitBalance ignores them. The
+// result is ordered by publisher id and then currency, so it does not depend on the order of rows.
+export function publisherBalances(
+  rows: readonly { publisher_id: Id; entry: LedgerEntry }[],
+): PublisherBalance[] {
+  // The key sorts as publisher id, then currency (NUL is below every character of an id).
+  const groups = new Map<string, { publisher_id: Id; currency: string; entries: LedgerEntry[] }>();
+  for (const { publisher_id, entry } of rows) {
+    const currency = entry.amount.currency;
+    const key = `${publisher_id}\u0000${currency}`;
+    const group = groups.get(key) ?? { publisher_id, currency, entries: [] };
+    group.entries.push(entry);
+    groups.set(key, group);
+  }
+  return [...groups.keys()].sort().map((key) => {
+    const g = groups.get(key)!;
+    return { publisher_id: g.publisher_id, currency: g.currency, ...unitBalance(g.entries) };
+  });
 }

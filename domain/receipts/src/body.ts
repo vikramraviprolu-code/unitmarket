@@ -49,6 +49,35 @@ const NOT_STARTED: WindowState = {
 
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
+export type PaymentOutcome = NonNullable<ReceiptLine['outcome']>;
+
+// What the buyer is told about the payment of one item of a two-publisher order (MVP-D, OQ-16, OQ-8).
+// Cautious by order: a unit or a PayPal order on hold is `on_hold` whatever else is true (money may
+// have moved, and "not charged" would be a claim we cannot make); then a verified capture is paid
+// or refunded by what the unit says; only a declined, failed or abandoned PayPal order is
+// `not_charged`; everything else has not happened yet and is `waiting`.
+const UNIT_ON_HOLD: ReadonlySet<string> = new Set(['mismatch', 'reversal_suspected', 'reversed']);
+const NOT_CHARGED: ReadonlySet<string> = new Set(['declined', 'failed', 'abandoned']);
+
+export function paymentOutcome(f: {
+  unit_status: string;
+  po_state: string | null;
+  verified: boolean;
+  amount_minor: number;
+  refunded_minor: number;
+}): PaymentOutcome {
+  if (UNIT_ON_HOLD.has(f.unit_status) || f.po_state === 'frozen') return 'on_hold';
+  const notCharged = f.po_state !== null && NOT_CHARGED.has(f.po_state);
+  // A verified capture under a PayPal order we closed as not charged contradicts itself: say neither.
+  if (f.verified && notCharged) return 'on_hold';
+  if (f.verified) {
+    if (f.refunded_minor <= 0) return 'paid';
+    return f.refunded_minor >= f.amount_minor ? 'refunded' : 'partially_refunded';
+  }
+  if (notCharged) return 'not_charged';
+  return 'waiting';
+}
+
 export async function buildReceiptBody(
   db: SqlExecutor,
   order_id: Id,
@@ -116,6 +145,54 @@ export async function buildReceiptBody(
     )
   ).rows;
 
+  // A two-publisher order (the snapshot says so) names the publisher on each line and says what
+  // happened to that payment. A one-publisher order is written exactly as before.
+  const composite = snapshot.settlement !== undefined;
+  const facts = new Map<
+    string,
+    {
+      unit_status: string;
+      po_state: string | null;
+      verified: boolean;
+      amount_minor: number;
+      refunded_minor: number;
+    }
+  >();
+  const names = new Map<string, string>();
+  if (composite) {
+    const rows = await db.query<{
+      article_id: string;
+      unit_status: string;
+      po_state: string | null;
+      verified: boolean;
+      amount_minor: number | string;
+      refunded_minor: number | string;
+    }>(
+      `SELECT e.article_id, u.status AS unit_status, p.state AS po_state,
+              (u.captured_verified_at IS NOT NULL) AS verified, u.amount_minor, u.refunded_minor
+         FROM entitlements e
+         JOIN order_units u ON u.id = e.unit_id
+         LEFT JOIN provider_orders p ON p.id = u.provider_order_ref
+        WHERE u.order_id = $1`,
+      [order_id],
+    );
+    for (const r of rows.rows) {
+      facts.set(r.article_id, {
+        unit_status: r.unit_status,
+        po_state: r.po_state,
+        verified: r.verified,
+        amount_minor: Number(r.amount_minor),
+        refunded_minor: Number(r.refunded_minor),
+      });
+    }
+    const publishers = snapshot.publishers.map((p) => p.publisher_id);
+    const found = await db.query<{ id: string; display_name: string }>(
+      `SELECT id, display_name FROM publishers WHERE id IN (${publishers.map((_, i) => `$${String(i + 1)}`).join(', ')})`,
+      publishers,
+    );
+    for (const r of found.rows) names.set(r.id, r.display_name);
+  }
+
   const lines: ReceiptLine[] = [...snapshot.items]
     .sort((a, b) => byText(a.article_id, b.article_id))
     .map((item) => {
@@ -131,6 +208,7 @@ export async function buildReceiptBody(
               paused_at: ent.paused_at,
               credit_ms: Number(ent.credit_ms),
             });
+      const f = facts.get(item.article_id);
       return {
         article_id: item.article_id,
         article_sha256: item.article_sha256,
@@ -138,6 +216,12 @@ export async function buildReceiptBody(
         amount_minor: item.amount_minor,
         capture_id: ent?.capture_id ?? null,
         window,
+        ...(composite
+          ? {
+              publisher_display_name: names.get(item.publisher_id) ?? item.publisher_id,
+              outcome: f === undefined ? 'waiting' : paymentOutcome(f),
+            }
+          : {}),
         delivery:
           ent === undefined
             ? []

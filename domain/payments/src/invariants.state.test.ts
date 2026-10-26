@@ -27,10 +27,10 @@ const unit = async (order_id: string) =>
     .id;
 
 describe('checkInvariants passes after every scenario', () => {
-  it('reports the six invariants, in order, with a detail line each', async () => {
+  it('reports the seven invariants, in order, with a detail line each', async () => {
     w = await makeWorld();
     const r = await checkInvariants(w.db);
-    expect(r.map((x) => x.id)).toEqual(['INV1', 'INV2', 'INV3', 'INV4', 'INV5', 'INV6']);
+    expect(r.map((x) => x.id)).toEqual(['INV1', 'INV2', 'INV3', 'INV4', 'INV5', 'INV6', 'INV7']);
     expect(r.every((x) => x.ok && x.detail.length > 0)).toBe(true);
   });
   it('after a paid order, a failed order, a waiting order and an open capture', async () => {
@@ -90,7 +90,8 @@ describe('checkInvariants fails on injected drift', () => {
       "UPDATE order_units SET refunded_minor = 100, status = 'partially_refunded' WHERE order_id = $1",
       [a.order_id],
     );
-    expect(await failing()).toEqual(['INV1']);
+    // INV7 (DP-4) sees the same drift per publisher: the unit says 100 went back, the ledger does not.
+    expect(await failing()).toEqual(['INV1', 'INV7']);
     const inv1 = (await checkInvariants(w.db)).find((r) => r.id === 'INV1')!;
     expect(inv1.detail).toContain(await unit(a.order_id));
   });
