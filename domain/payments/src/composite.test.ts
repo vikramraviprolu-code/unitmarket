@@ -109,6 +109,14 @@ describe('deriveOrderStatus: rule 3, no capture sent', () => {
     expect(status(po('awaiting_buyer'), po('approved'))).toBe('awaiting_buyer');
     expect(status(po('approved'), po('approved'))).toBe('awaiting_buyer');
   });
+  it('rule 3: declined (no send) beside approved is not awaiting_buyer', () => {
+    // DP-2b: a declined PayPal order with no send of its own is treated like a failed one.
+    expect(status(po('declined'), po('approved'))).toBe('failed');
+    expect(status(po('approved'), po('declined'))).toBe('failed');
+    expect(status(po('declined'), po('awaiting_buyer'))).toBe('failed');
+    // ... while a decline AFTER a send still lets the pack finish (M-C, rule 2).
+    expect(status(po('declined', true), po('approved'))).toBe('capture_requested');
+  });
   it('a single PayPal order reopened after payer_action (approved, first_sent_at kept) goes back to awaiting_buyer', () => {
     expect(status(po('approved', true))).toBe('awaiting_buyer');
   });

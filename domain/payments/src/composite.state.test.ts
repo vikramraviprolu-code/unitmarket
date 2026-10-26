@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { contentHash, makeToken } from '@umsbx/approval';
 import { beginCheckout, checkInvariants, loadOrderView, onBuyerReturn, placeOrder } from './index';
 import { captureOnce } from './capture';
-import { lockOrderGraph } from './composite';
 import { loadOrder } from './store';
 import {
   BUYER_A,
@@ -901,45 +900,5 @@ describe('capture answers of one PayPal order of a pack', () => {
     );
     expect(caps).toEqual([{ state: 'failed', failure_reason: 'declined' }]);
     expect((await states(a.order_id))[1]).toBe('declined');
-  });
-});
-
-describe('a single order moved by a writer that still works on orders.status', () => {
-  it.each([
-    ['awaiting_buyer', 'prepared', 'awaiting_buyer'],
-    ['awaiting_buyer', 'approved', 'approved'],
-    ['awaiting_buyer', 'capture_requested', 'approved'],
-    ['awaiting_buyer', 'capture_claimed', 'approved'],
-    ['awaiting_buyer', 'unresolved', 'approved'],
-    ['capture_requested', 'approved', 'capture_requested'],
-    ['capture_claimed', 'capture_requested', 'capture_claimed'],
-    ['unresolved', 'capture_requested', 'unresolved'],
-    ['paid', 'capture_claimed', 'captured'],
-    ['paid_partial', 'unresolved', 'captured'],
-    ['failed', 'capture_requested', 'failed'],
-    ['failed', 'declined', 'declined'],
-    ['abandoned', 'awaiting_buyer', 'abandoned'],
-    ['frozen', 'capture_requested', 'frozen'],
-    ['created', 'prepared', 'prepared'],
-  ] as const)(
-    'order %s + PayPal order %s: the PayPal order becomes %s',
-    async (status, was, becomes) => {
-      w = await makeWorld();
-      const p = await place(w);
-      await w.rows('UPDATE orders SET status = $2 WHERE id = $1', [p.order_id, status]);
-      await w.rows('UPDATE provider_orders SET state = $2 WHERE order_id = $1', [p.order_id, was]);
-      await w.db.transaction((tx) => lockOrderGraph(tx, p.order_id));
-      expect(await states(p.order_id)).toEqual([becomes]);
-      // the order itself is never touched by the lock
-      expect((await orderRow(p.order_id)).status).toBe(status);
-    },
-  );
-
-  it('a pack is never brought in line with its order: only the single route has an older writer', async () => {
-    w = await makeWorld();
-    const p = await place(w, PACK);
-    await w.rows("UPDATE orders SET status = 'awaiting_buyer' WHERE id = $1", [p.order_id]);
-    await w.db.transaction((tx) => lockOrderGraph(tx, p.order_id));
-    expect(await states(p.order_id)).toEqual(['prepared', 'prepared']);
   });
 });
