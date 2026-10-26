@@ -794,8 +794,8 @@ async function abandonOne(
     // Never after a send, whatever the status says; and only an order that still waits for the buyer.
     if ((await poFacts(tx, order.id)).some(isSent)) return false;
     if (graph.order.status !== 'created' && graph.order.status !== 'awaiting_buyer') return false;
+    // The status is created or awaiting_buyer, so some PayPal order is still open and moves.
     const moved = await endWholeOrder(tx, d, order.id, 'abandoned');
-    if (moved.length === 0) return false;
     await declineMoved(tx, d, order.id, moved, graph.pos, 'abandoned');
     await tx.query(
       `UPDATE operations SET state = 'failed', failure_reason = 'declined', lease_until = NULL, next_retry_at = NULL, updated_at = $2

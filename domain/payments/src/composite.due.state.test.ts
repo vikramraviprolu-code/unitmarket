@@ -24,6 +24,7 @@ import {
   awaiting,
   count,
   deadCapture,
+  paid,
   lostResponse,
   makeWorld,
   sentCapture,
@@ -1442,5 +1443,88 @@ describe('more boundaries pinned by the mutation run (DP-2b)', () => {
         [b.order_id],
       ),
     ).toEqual([{ unit_id: null, reason: 'precapture_reference_p2' }]);
+  });
+});
+
+describe('last survivors of the mutation run (DP-2b)', () => {
+  it('a PayPal order that is unresolved with no capture operation is read and left alone, no error', async () => {
+    w = await world();
+    const a = await deadCapture(w);
+    // an older row: the PayPal order is unresolved, nothing but a read-back operation polls it
+    await w.rows("UPDATE provider_orders SET state = 'unresolved' WHERE order_id = $1", [
+      a.order_id,
+    ]);
+    await w.rows("DELETE FROM operations WHERE order_id = $1 AND kind = 'capture'", [a.order_id]);
+    await w.insert('operations', {
+      id: 'opr_readback_old',
+      order_id: a.order_id,
+      unit_id: null,
+      kind: 'readback',
+      state: 'unknown',
+      attempt: 1,
+      request_id: `umsB-${a.order_ref}`,
+      next_retry_at: w.clock.now().toISOString(),
+      reconcile_until: new Date(w.clock.now().getTime() + 24 * H).toISOString(),
+      provider_order_ref: (
+        await w.rows<{ id: string }>('SELECT id FROM provider_orders WHERE order_id = $1', [
+          a.order_id,
+        ])
+      )[0]!.id,
+    });
+    const before = capCalls().length;
+    await pass();
+    expect(capCalls().length).toBe(before); // nothing to retry: no capture operation
+    expect(await states(a.order_id)).toEqual(['unresolved']);
+  });
+
+  it('what the sweep leaves of the budget goes to the paid re-read: one item per abandoned order', async () => {
+    w = await world();
+    const done = await paid(w);
+    const x = await awaiting(w, { buyer_id: 'buy_B', actor: BUYER_B, offers: ['ofr_1'] });
+    const y = await awaiting(w, { offers: ['ofr_2'] });
+    w.tick(24 * H + 1);
+    const gets = callsOf(done.provider_order_id, 'get').length;
+    const r = await runDue(w.deps, { max_items: 3 });
+    expect(r.abandoned).toBe(2);
+    expect((await orderRow(x.order_id)).status).toBe('abandoned');
+    expect((await orderRow(y.order_id)).status).toBe('abandoned');
+    expect(callsOf(done.provider_order_id, 'get').length).toBe(gets + 1); // the third item: the re-read
+  });
+
+  it('a pack that gets a capture sent while the sweep is reading it is not abandoned', async () => {
+    w = await world();
+    const a = await awaiting(w, PACK);
+    approvePo(w, a, 1);
+    w.tick(24 * H + 1);
+    let armed = true;
+    w.paypal.beforeGet = async () => {
+      if (!armed) return;
+      armed = false;
+      // another actor sends PO1's capture while the sweep reads
+      await w.rows(
+        "UPDATE provider_orders SET state = 'capture_requested' WHERE order_id = $1 AND position = 1",
+        [a.order_id],
+      );
+    };
+    const r = await pass();
+    expect(r.abandoned).toBe(0);
+    expect(await states(a.order_id)).toEqual(['capture_requested', 'awaiting_buyer']);
+  });
+
+  it('a capture found by the sweep leaves the order unresolved even when the read after the take-over fails', async () => {
+    w = await world();
+    const a = await awaiting(w);
+    w.paypal.approve(a.provider_order_id);
+    await w.paypal.captureOrder({
+      provider_order_id: a.provider_order_id,
+      request_id: 'oob-key',
+      scenario: null,
+    });
+    w.tick(24 * H + 1);
+    w.paypal.queue.get.push('real', { kind: 'timeout' });
+    await pass();
+    expect(await states(a.order_id)).toEqual(['unresolved']);
+    expect((await orderRow(a.order_id)).status).toBe('unresolved');
+    expect((await alerts('unexpected_capture')).map((x) => x.reason)).toEqual(['abandon_sweep']);
   });
 });
