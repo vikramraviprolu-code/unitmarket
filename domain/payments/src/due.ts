@@ -135,10 +135,46 @@ const CONTINUATION = `
               OR (s.state NOT IN ('prepared', 'awaiting_buyer', 'approved') AND c.first_sent_at IS NOT NULL))
     ) sib ON sib.sent_at IS NOT NULL
    WHERE po.state IN ('approved', 'awaiting_buyer') AND po.provider_order_id IS NOT NULL`;
-const continuationEvery = (c: Pick<DomainConfig, 'reconcile_backoff_ms'> | undefined): number => {
-  const v = c === undefined ? undefined : c.reconcile_backoff_ms[0];
-  return typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 30_000;
-};
+interface Candidate {
+  id: Id;
+  order_id: Id;
+  /** The last time anything touched the PayPal order. */
+  updated_at: string;
+  /** When the latest sibling was sent: the poll schedule of a waiting PayPal order is counted from it. */
+  sent_at: string;
+  fresh: boolean;
+}
+async function continuationCandidates(db: SqlExecutor): Promise<Candidate[]> {
+  const found = await db.query<Record<string, unknown>>(
+    `SELECT k.id, k.order_id, k.updated_at, k.sent_at, k.fresh FROM (${CONTINUATION}) k ORDER BY k.updated_at, k.id LIMIT 200`,
+  );
+  return found.rows.map((r) => ({
+    id: r['id'] as string,
+    order_id: r['order_id'] as string,
+    updated_at: isoOf(r['updated_at']) as string,
+    sent_at: isoOf(r['sent_at']) as string,
+    fresh: r['fresh'] === true,
+  }));
+}
+const DEFAULT_BACKOFF = [30_000, 120_000, 600_000, 3_600_000];
+/**
+ * When a candidate is next due. One nothing has touched since its sibling was sent is due at once. One
+ * that was touched (a reopen, a pass that changed nothing) is polled on the backoff schedule counted
+ * from the send of its sibling (30 s, 2 min, 10 min, 1 h, 1 h ...), so a PayPal order that waits for
+ * the buyer costs about one read an hour, not one per pass.
+ */
+function dueOfCandidate(
+  config: Partial<Pick<DomainConfig, 'reconcile_backoff_ms'>>,
+  c: Candidate,
+): string {
+  if (c.fresh) return c.updated_at;
+  return nextPollAt(
+    { reconcile_backoff_ms: config.reconcile_backoff_ms ?? DEFAULT_BACKOFF },
+    c.sent_at,
+    c.updated_at,
+    addMs(c.sent_at, 365 * 86_400_000),
+  );
+}
 
 export async function nextDueAt(
   db: SqlExecutor,
@@ -146,11 +182,6 @@ export async function nextDueAt(
     Partial<Pick<DomainConfig, 'reread_paid_every_ms' | 'pack_approval_window_ms'>> &
     Partial<Pick<DomainConfig, 'reconcile_backoff_ms'>> = { abandoned_checkout_ms: 86_400_000 },
 ): Promise<IsoUtc | null> {
-  const every = continuationEvery(
-    config.reconcile_backoff_ms === undefined
-      ? undefined
-      : { reconcile_backoff_ms: config.reconcile_backoff_ms },
-  );
   const found = await db.query<Record<string, unknown>>(
     `SELECT
        (SELECT min(next_retry_at) FROM operations WHERE state = 'unknown') AS retry_at,
@@ -159,8 +190,6 @@ export async function nextDueAt(
            OR (o.status = 'created' AND ${NOT_SENT})) AS waiting_at,
        (SELECT min(p.first_approved_at) FROM provider_orders p JOIN orders o ON o.id = p.order_id
          WHERE o.status = 'awaiting_buyer' AND p.route = 'per_publisher') AS pack_at,
-       (SELECT min(CASE WHEN k.fresh THEN k.updated_at ELSE k.updated_at + interval '${every} milliseconds' END)
-          FROM (${CONTINUATION}) k) AS continue_at,
        (SELECT min(w.next_at) FROM (${paidWatch(rereadMs(config))}) w
          WHERE w.next_at < w.verified_at + interval '7 days') AS reread_at`,
   );
@@ -177,8 +206,7 @@ export async function nextDueAt(
   const pack = isoOf(row['pack_at']);
   if (pack !== null)
     times.push(addMs(pack, config.pack_approval_window_ms ?? PACK_WINDOW_DEFAULT_MS));
-  const cont = isoOf(row['continue_at']);
-  if (cont !== null) times.push(cont);
+  for (const c of await continuationCandidates(db)) times.push(dueOfCandidate(config, c));
   const reread = isoOf(row['reread_at']);
   if (reread !== null) times.push(reread);
   return times.reduce<string | null>((first, t) => (first === null ? t : earlier(first, t)), null);
@@ -827,30 +855,23 @@ const hasCapture = (r: Read): boolean => r.units.some((u) => u.capture !== null)
 
 async function continuePacks(d: PaymentsDeps, budget: number, out: Counts): Promise<number> {
   if (budget <= 0) return budget;
-  const every = continuationEvery(d.config);
-  const found = await d.db.query<Record<string, unknown>>(
-    `SELECT k.id, k.order_id, k.updated_at, k.fresh FROM (${CONTINUATION}) k ORDER BY k.updated_at, k.id LIMIT 200`,
-  );
-  for (const row of found.rows) {
+  for (const c of await continuationCandidates(d.db)) {
     if (budget <= 0) break;
-    // A candidate nothing has touched since its sibling was sent is due now; a touched one waits.
-    const touched = isoOf(row['updated_at']) as string;
-    if (row['fresh'] !== true && Date.parse(touched) + every > Date.parse(nowIso(d))) continue;
-    const id = row['id'] as string;
+    if (Date.parse(dueOfCandidate(d.config, c)) > Date.parse(nowIso(d))) continue;
     let result: 'done' | 'skipped';
     try {
-      result = await continueOne(d, id, row['order_id'] as string);
+      result = await continueOne(d, c.id, c.order_id);
     } catch (e) {
       d.log.log({
         msg: 'payments.due.item_failed',
         level: 'error',
         fields: {
-          provider_order: id,
+          provider_order: c.id,
           kind: 'continuation',
           error: e instanceof Error ? e.message : 'unknown',
         },
       });
-      await touchPo(d, id);
+      await touchPo(d, c.id);
       result = 'done';
     }
     if (result === 'skipped') continue;

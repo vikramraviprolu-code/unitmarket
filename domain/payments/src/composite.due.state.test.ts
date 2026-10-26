@@ -425,12 +425,17 @@ describe('the continuation: a pack whose first capture was sent always finishes'
   it('D-014 cap reached: deadline applies', async () => {
     w = await makeWorld();
     const a = await crashBetweenCaptures();
-    for (const key of [`umsK-${a.order_ref}-p2`, `umsK-${a.order_ref}-p2-2`]) {
+    // a PayPal order that was reopened is polled on the backoff schedule counted from the first send:
+    // 30 s after it for the second try, 3 minutes after the second reopen for the third look
+    for (const [key, wait] of [
+      [`umsK-${a.order_ref}-p2`, 31_000],
+      [`umsK-${a.order_ref}-p2-2`, 180_000],
+    ] as const) {
       w.paypal.queue.capture.push({ kind: 'payer_action', redirect_url: AGAIN, debug_id: 'D' });
       await pass();
       expect(callsOf(poIds(a)[1]!, 'capture').at(-1)!.request_id).toBe(key);
       expect(await states(a.order_id)).toEqual(['captured', 'approved']);
-      w.tick(31_000);
+      w.tick(wait);
     }
     // both keys are spent (1 + max_capture_retries): the next no-capture read ends PO2 at once
     await pass();
@@ -448,15 +453,31 @@ describe('the continuation: a pack whose first capture was sent always finishes'
     await pass();
     expect(await alerts('payment_unresolved')).toEqual([{ reason: 'deadline_unreadable_p2' }]);
     expect(await states(a.order_id)).toEqual(['captured', 'approved']);
-    w.tick(31_000);
+    w.tick(H + 1_000); // an hour is the poll rate by now
     w.paypal.queue.get.push({ kind: 'timeout' });
     await pass();
     expect(await alerts('payment_unresolved')).toHaveLength(1);
     expect(await states(a.order_id)).toEqual(['captured', 'approved']);
     // readable again: no capture on the fresh read past the deadline, so PO2 is declined
-    w.tick(31_000);
+    w.tick(H + 1_000);
     await pass();
     expect(await states(a.order_id)).toEqual(['captured', 'declined']);
+  });
+
+  it('a PayPal order that waits for the buyer is read about once an hour, not on every pass (call budget)', async () => {
+    w = await makeWorld();
+    const a = await crashBetweenCaptures();
+    const po2 = poIds(a)[1]!;
+    w.paypal.orders.get(po2)!.status = 'CREATED'; // the buyer has not approved again
+    const before = callsOf(po2, 'get').length;
+    for (let minute = 5; minute <= 6 * 60; minute += 5) {
+      w.tick(5 * 60_000);
+      await pass();
+    }
+    const reads = callsOf(po2, 'get').length - before;
+    expect(reads).toBeGreaterThanOrEqual(5);
+    expect(reads).toBeLessThanOrEqual(10); // 72 passes in 6 h, a handful of reads
+    expect(await states(a.order_id)).toEqual(['captured', 'approved']);
   });
 
   it('PO2 APPROVED before the deadline is captured, not declined', async () => {
