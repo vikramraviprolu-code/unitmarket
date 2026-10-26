@@ -4,7 +4,9 @@
 # Creates the resources for the hosted sandbox demo in YOUR Google Cloud project. Run it yourself in
 # Cloud Shell, signed in as yourself. It is safe to run again: each step looks first and keeps what exists.
 # It prints names only, never a secret value. The database password is made here, goes straight into
-# Secret Manager as the DATABASE_URL secret, and is never shown or stored anywhere else.
+# Secret Manager as the DATABASE_URL secret, and is never shown or stored anywhere else. The two gcloud
+# commands that take it as an argument run with gcloud file logging off, because gcloud writes every
+# argument to ~/.config/gcloud/logs otherwise.
 #
 # What it creates: the APIs, one Artifact Registry repository, one runtime service account (secret
 # accessor on the listed secrets and Cloud SQL client, nothing else), one Cloud SQL for PostgreSQL 16
@@ -141,9 +143,9 @@ else
   DB_PASSWORD="$(openssl rand -hex 24)"
   HAS_USER="$(gcloud sql users list --instance="$SQL_INSTANCE" --filter="name=${SQL_USER}" --format='value(name)' --project="$PROJECT_ID")"
   if [ -n "$HAS_USER" ]; then
-    gcloud sql users set-password "$SQL_USER" --instance="$SQL_INSTANCE" --password="$DB_PASSWORD" --project="$PROJECT_ID" >/dev/null
+    CLOUDSDK_CORE_DISABLE_FILE_LOGGING=1 gcloud sql users set-password "$SQL_USER" --instance="$SQL_INSTANCE" --password="$DB_PASSWORD" --project="$PROJECT_ID" >/dev/null
   else
-    gcloud sql users create "$SQL_USER" --instance="$SQL_INSTANCE" --password="$DB_PASSWORD" --project="$PROJECT_ID" >/dev/null
+    CLOUDSDK_CORE_DISABLE_FILE_LOGGING=1 gcloud sql users create "$SQL_USER" --instance="$SQL_INSTANCE" --password="$DB_PASSWORD" --project="$PROJECT_ID" >/dev/null
   fi
   printf 'postgres://%s:%s@/%s?host=/cloudsql/%s:%s:%s' "$SQL_USER" "$DB_PASSWORD" "$SQL_DB" "$PROJECT_ID" "$REGION" "$SQL_INSTANCE" |
     gcloud secrets versions add DATABASE_URL --data-file=- --project="$PROJECT_ID" >/dev/null

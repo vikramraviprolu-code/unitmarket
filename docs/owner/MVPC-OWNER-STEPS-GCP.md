@@ -53,6 +53,8 @@ before you start. Section "Cancel" below ends it.
 
 ## Step B: create the resources (setup.sh, 15 min)
 
+Run this only after the Postgres adapter (lane PG-1) is merged. Until then the app cannot start on Postgres, and `setup.sh` would start the database (about USD 30 a month) for nothing.
+
 ```
 bash infra/gcp/setup.sh "$PROJECT_ID" "$REGION"
 ```
@@ -103,7 +105,7 @@ Expected: ten names, the nine above and `DATABASE_URL`.
 
 ## Step E: the service address (reviewed change, before the first deploy)
 
-`infra/gcp/service.yaml` holds `UMS_PUBLIC_ORIGIN: "https://pending.invalid"`. The app refuses browser
+`infra/gcp/service.yaml` holds `UMS_PUBLIC_ORIGIN: 'https://pending.invalid'`. The app refuses browser
 sign-in while the origin does not match the address in the browser (the CSRF check), so the real address
 goes in through a reviewed change, then a new reviewed tag.
 
@@ -178,6 +180,7 @@ checked here.
 
    ```
    gcloud auth login
+   gcloud auth application-default login
    gcloud config set project <your project id>
    ```
 
@@ -335,7 +338,10 @@ Every gcloud command and flag name in `infra/gcp` and in this file was checked a
 - Costs in "What this builds".
 - `setup.sh` hands the generated database password to `gcloud sql users create` as an argument for a few
   seconds (its other form is an interactive prompt). On Cloud Shell only you can see the process list. It
-  is never printed or stored outside Secret Manager.
+  is never printed or stored outside Secret Manager. Both commands run with `CLOUDSDK_CORE_DISABLE_FILE_LOGGING=1`
+  because gcloud otherwise writes every argument, password included, to `~/.config/gcloud/logs`. If you ran an
+  earlier copy of `setup.sh` without that setting, delete `~/.config/gcloud/logs` in Cloud Shell and reset the
+  password (delete the `DATABASE_URL` secret versions and run `setup.sh` again).
 - Any `gcloud` default prompt: scripts never log in; if gcloud asks to install a component, answer yes.
 - Docker build: not run here (no daemon in the build container); the first Cloud Build run is the first
   test of `infra/gcp/Dockerfile`.
