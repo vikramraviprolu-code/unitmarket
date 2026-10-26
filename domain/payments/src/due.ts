@@ -624,12 +624,11 @@ async function expireRead(d: PaymentsDeps, op: DueOp): Promise<void> {
 async function processCreate(d: PaymentsDeps, op: DueOp, out: Counts): Promise<void> {
   const order = await loadOrder(d.db, op.order_id);
   if (order === null) return;
-  const pos = await loadProviderOrders(d.db, op.order_id);
-  const po = poOfClaimed(pos, [op]);
+  const po = poOfClaimed(await loadProviderOrders(d.db, op.order_id), [op]);
+  if (po === undefined) return;
   // The checkout moved on without this operation hearing of it: this PayPal order is no longer waiting
   // for its create (for a single order that is the order status, as ever).
-  const moved = po === undefined ? order.status !== 'created' : po.state !== 'prepared';
-  if (moved) {
+  if (po.state !== 'prepared') {
     await d.db.query(
       `UPDATE operations SET state = 'confirmed', lease_until = NULL, next_retry_at = NULL, updated_at = $2 WHERE id = $1 AND state = 'unknown'`,
       [op.id, nowIso(d)],
@@ -659,8 +658,7 @@ async function processCreate(d: PaymentsDeps, op: DueOp, out: Counts): Promise<v
 async function expireCreate(d: PaymentsDeps, op: DueOp): Promise<void> {
   await d.db.transaction(async (tx) => {
     const at = nowIso(d);
-    const graph = await lockOrderGraph(tx, op.order_id);
-    if (graph === null) return;
+    const graph = await lockGraph(tx, op.order_id);
     const closed = await tx.query(
       `UPDATE operations SET state = 'failed', failure_reason = 'window_expired', lease_until = NULL, next_retry_at = NULL, updated_at = $2
        WHERE id = $1 AND state = 'unknown' RETURNING id`,
@@ -836,7 +834,7 @@ async function takeOver(
     if (ids.length > 0) await refreshOrder(tx, d, order.id);
     return ids;
   });
-  if (taken.length === 0) return 'handled';
+  // Nothing taken (the PayPal orders moved on meanwhile): the empty list reads nothing.
   const fresh = await loadOrder(d.db, order.id);
   if (fresh !== null) await readAndApply(d, fresh, 'poll', taken);
   return 'handled';
@@ -860,7 +858,7 @@ async function continuePacks(d: PaymentsDeps, budget: number, out: Counts): Prom
     if (Date.parse(dueOfCandidate(d.config, c)) > Date.parse(nowIso(d))) continue;
     let result: 'done' | 'skipped';
     try {
-      result = await continueOne(d, c.id, c.order_id);
+      result = await continueOne(d, c.id, c.order_id, c.sent_at);
     } catch (e) {
       d.log.log({
         msg: 'payments.due.item_failed',
@@ -898,24 +896,16 @@ async function deadlineOf(
   d: PaymentsDeps,
   pos: readonly ProviderOrderRow[],
   po: ProviderOrderRow,
+  sent_at: string,
 ): Promise<{ at: string; capped: boolean }> {
   const firsts = pos
     .map((p) => p.first_approved_at)
     .filter((t): t is string => t !== null)
     .sort();
-  let base = po.first_approved_at ?? firsts[0] ?? null;
-  if (base === null) {
-    base = isoOf(
-      (
-        await d.db.query<{ at: unknown }>(
-          "SELECT min(first_sent_at) AS at FROM operations WHERE order_id = $1 AND kind = 'capture' AND first_sent_at IS NOT NULL",
-          [po.order_id],
-        )
-      ).rows[0]?.at,
-    );
-  }
+  // The first approval we saw (of this PayPal order, else of the pack); with none, the send of its sibling.
+  const base = po.first_approved_at ?? firsts[0] ?? sent_at;
   const window = d.config.pack_approval_window_ms ?? PACK_WINDOW_DEFAULT_MS;
-  const at = addMs(base ?? nowIso(d), window + d.config.reconcile_window_ms);
+  const at = addMs(base, window + d.config.reconcile_window_ms);
   const cap = await loadOperationFor(d.db, po, 'capture');
   let capped = false;
   if (cap !== null && cap.state === 'prepared' && cap.first_sent_at !== null) {
@@ -929,7 +919,12 @@ async function deadlineOf(
   return { at, capped };
 }
 
-async function continueOne(d: PaymentsDeps, po_id: Id, order_id: Id): Promise<'done' | 'skipped'> {
+async function continueOne(
+  d: PaymentsDeps,
+  po_id: Id,
+  order_id: Id,
+  sent_at: string,
+): Promise<'done' | 'skipped'> {
   const order = await loadOrder(d.db, order_id);
   const pos = await loadProviderOrders(d.db, order_id);
   const po = pos.find((p) => p.id === po_id);
@@ -941,7 +936,7 @@ async function continueOne(d: PaymentsDeps, po_id: Id, order_id: Id): Promise<'d
   // 1. Read it fresh.
   const read = await d.paypal.getOrder(po.provider_order_id);
   if (read.kind === 'blocked') return 'skipped';
-  const deadline = await deadlineOf(d, pos, po);
+  const deadline = await deadlineOf(d, pos, po, sent_at);
   const passed = deadline.capped || Date.parse(nowIso(d)) >= Date.parse(deadline.at);
   if (read.kind !== 'order' && read.kind !== 'not_found') {
     // An answer that proves nothing: not charged is never concluded from it. At the deadline a human is told once.
@@ -1023,18 +1018,17 @@ async function continueOne(d: PaymentsDeps, po_id: Id, order_id: Id): Promise<'d
 
   // 5. Capture it through the DP-2a gate with its own key, then read it back.
   if (po.state === 'awaiting_buyer') {
-    const approved = await d.db.transaction(async (tx) => {
+    // The gate needs `approved`. If another actor moved the PayPal order meanwhile, the gate refuses (lost).
+    await d.db.transaction(async (tx) => {
       await lockGraph(tx, order_id);
       const at = nowIso(d);
-      if (!(await setPoState(tx, po.id, 'approved', at, ['awaiting_buyer']))) return false;
+      if (!(await setPoState(tx, po.id, 'approved', at, ['awaiting_buyer']))) return;
       await tx.query(
         `UPDATE provider_orders SET first_approved_at = COALESCE(first_approved_at, $2), status = 'APPROVED' WHERE id = $1`,
         [po.id, at],
       );
       await refreshOrder(tx, d, order_id);
-      return true;
     });
-    if (!approved) return 'done';
   }
   const outcome = await captureOnce(d, order, po.provider_order_id, null, po);
   switch (outcome.kind) {

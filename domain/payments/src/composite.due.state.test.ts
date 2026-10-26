@@ -12,7 +12,8 @@ import {
   reconcileOrder,
   runDue,
 } from './index';
-import { retryCapture } from './reconcile';
+import { markUnknown } from './due';
+import { resendCreate, retryCapture } from './reconcile';
 import { loadOperation, loadOrder } from './store';
 import { reapply } from './support';
 import {
@@ -24,6 +25,7 @@ import {
   count,
   lostResponse,
   makeWorld,
+  sentCapture,
   place,
   providerOrdersOf,
 } from './ops/support';
@@ -264,6 +266,11 @@ describe('the continuation: a pack whose first capture was sent always finishes'
     await pass();
     expect(await states(a.order_id)).toEqual(['captured', 'unresolved']);
     expect(await alerts('partial_composite')).toEqual([]);
+    // the window end touches the items of PO2 only: they become unknown, PO1's stay captured
+    expect((await entRows(a.order_id)).map((e) => e.money_state)).toEqual(['captured', 'unknown']);
+    expect((await alerts('payment_unresolved')).map((x) => x.reason)).toEqual([
+      'window_expired_p2',
+    ]);
   });
 
   it('ORDER_ALREADY_CAPTURED on PO2: read-back decides', async () => {
@@ -954,5 +961,276 @@ describe('every PayPal order is read by its own stored id', () => {
     expect(after.status).toBe('declined');
     expect(await sales()).toBe(0);
     expect((await entRows(a.order_id)).map((e) => e.access_state)).toEqual(['locked']);
+  });
+});
+
+describe('boundaries pinned by the mutation run (DP-2b)', () => {
+  it('markUnknown on a capture operation with no PayPal order reference (an older row) moves the only PayPal order', async () => {
+    w = await makeWorld();
+    const a = await sentCapture(w);
+    await w.rows(
+      "UPDATE operations SET provider_order_ref = NULL WHERE order_id = $1 AND kind = 'capture'",
+      [a.order_id],
+    );
+    const op = (await loadOperation(w.db, a.order_id, 'capture'))!;
+    expect(op.provider_order_ref ?? null).toBeNull();
+    expect(await states(a.order_id)).toEqual(['capture_requested']);
+    await w.db.transaction((tx) =>
+      markUnknown(
+        tx,
+        w.deps,
+        {
+          id: op.id,
+          order_id: a.order_id,
+          kind: 'capture',
+          first_sent_at: op.first_sent_at,
+          request_id: op.request_id,
+        },
+        'sent',
+      ),
+    );
+    expect(await states(a.order_id)).toEqual(['unresolved']);
+    expect((await orderRow(a.order_id)).status).toBe('unresolved');
+  });
+
+  it('the end of the window with a failed read of a captured PayPal order raises nothing and closes its operation', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.nextBy.set(poIds(a)[1]!, { lose_response: true });
+    await ret(a.order_ref);
+    expect(await states(a.order_id)).toEqual(['captured', 'unresolved']);
+    // PO1's read-back is open again and its window has ended; the read fails
+    await w.rows(
+      `UPDATE operations SET state = 'unknown', next_retry_at = $2, reconcile_until = $3
+        WHERE order_id = $1 AND kind = 'readback'
+          AND provider_order_ref = (SELECT id FROM provider_orders WHERE order_id = $1 AND position = 1)`,
+      [
+        a.order_id,
+        w.clock.now().toISOString(),
+        new Date(w.clock.now().getTime() - 1_000).toISOString(),
+      ],
+    );
+    w.paypal.queue.get.push({ kind: 'timeout' });
+    await pass();
+    expect(await alerts('payment_unresolved')).toEqual([]);
+    expect(
+      (
+        await w.rows<{ state: string; failure_reason: string | null }>(
+          `SELECT o.state, o.failure_reason FROM operations o JOIN provider_orders p ON p.id = o.provider_order_ref
+            WHERE o.order_id = $1 AND o.kind = 'readback' AND p.position = 1`,
+          [a.order_id],
+        )
+      )[0],
+    ).toEqual({ state: 'failed', failure_reason: 'window_expired' });
+    expect(await states(a.order_id)).toEqual(['captured', 'unresolved']);
+  });
+
+  it('24 h sweep: a PayPal order that is gone abandons a pack, but a single order is read again later', async () => {
+    w = await makeWorld();
+    const pack = await awaiting(w, PACK);
+    approvePo(w, pack, 1);
+    w.paypal.orders.delete(poIds(pack)[1]!); // PO2 is gone at PayPal
+    const single = await awaiting(w, { buyer_id: 'buy_B', actor: BUYER_B, offers: ['ofr_2'] });
+    w.paypal.orders.delete(single.provider_order_id);
+    w.tick(24 * H + 1);
+    const r = await pass();
+    expect(await states(pack.order_id)).toEqual(['abandoned', 'abandoned']);
+    expect((await orderRow(pack.order_id)).status).toBe('abandoned');
+    // the single order keeps its older rule: an answer that is not an order is skipped, not abandoned
+    expect((await orderRow(single.order_id)).status).toBe('awaiting_buyer');
+    expect(r.abandoned).toBe(1);
+  });
+
+  it('a candidate that is skipped (the read is blocked) does not use up the budget of the pass', async () => {
+    w = await makeWorld();
+    const a1 = await crashBetweenCaptures();
+    const a2 = await crashBetweenCaptures({ buyer_id: 'buy_B', actor: BUYER_B });
+    w.paypal.queue.get.push({ kind: 'blocked', by: 'kill_switch' });
+    const r = await runDue(w.deps, { max_items: 1 });
+    expect(r.processed).toBe(1);
+    const statuses = [(await orderRow(a1.order_id)).status, (await orderRow(a2.order_id)).status];
+    expect(statuses.sort()).toEqual(['capture_requested', 'paid']);
+  });
+
+  it('a pack taken over by a capture found at the sweep: the deadline of a PayPal order nobody approved counts from the send', async () => {
+    w = await makeWorld();
+    const a = await awaiting(w, PACK);
+    approvePo(w, a, 1);
+    await w.paypal.captureOrder({
+      provider_order_id: poIds(a)[0]!,
+      request_id: 'oob-key',
+      scenario: null,
+    });
+    w.tick(24 * H + 1);
+    await pass(); // taken over: PO1 captured; PO2 never approved (first_approved_at is empty)
+    expect(await states(a.order_id)).toEqual(['captured', 'awaiting_buyer']);
+    const sentAt = w.clock.now().getTime();
+    w.tick(24 * H); // the window and the reconcile window (25 h) have not passed since the send
+    await pass();
+    expect(await states(a.order_id)).toEqual(['captured', 'awaiting_buyer']);
+    w.tick(2 * H);
+    expect(w.clock.now().getTime() - sentAt).toBeGreaterThan(25 * H);
+    await pass();
+    expect(await states(a.order_id)).toEqual(['captured', 'declined']);
+    expect((await orderRow(a.order_id)).status).toBe('paid_partial');
+  });
+
+  it.each([
+    [3, 'umsK-%-p2-2', 'captured'],
+    [4, null, 'declined'],
+  ] as const)(
+    'the attempt cap: a reopened PayPal order with %i attempts used %s',
+    async (attempts, key, final) => {
+      w = await makeWorld();
+      const a = await crashBetweenCaptures();
+      w.paypal.queue.capture.push({ kind: 'payer_action', redirect_url: AGAIN, debug_id: 'D' });
+      await pass(); // the first try: payer_action, PO2 is reopened (prepared, send timestamp)
+      expect(await states(a.order_id)).toEqual(['captured', 'approved']);
+      await w.rows(
+        `UPDATE operations SET attempt = $2 WHERE order_id = $1 AND kind = 'capture'
+            AND provider_order_ref = (SELECT id FROM provider_orders WHERE order_id = $1 AND position = 2)`,
+        [a.order_id, attempts],
+      );
+      w.tick(180_000);
+      await pass();
+      const sent = callsOf(poIds(a)[1]!, 'capture').map((c) => c.request_id);
+      if (key === null) {
+        // one attempt more than 2 x (1 + max_capture_retries) would be made: nothing is sent, the PayPal order ends
+        expect(sent).toHaveLength(1);
+      } else {
+        expect(sent.at(-1)).toBe(key.replace('%', a.order_ref));
+      }
+      expect((await states(a.order_id))[1]).toBe(final);
+    },
+  );
+
+  it('a capture that shows on a PayPal order we had reopened raises no alert: we sent it', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.queue.capture.push('real', {
+      kind: 'payer_action',
+      redirect_url: AGAIN,
+      debug_id: 'D',
+    });
+    await ret(a.order_ref);
+    expect(await states(a.order_id)).toEqual(['captured', 'approved']);
+    // PayPal captured it after all (the buyer approved again and a capture of ours was in flight elsewhere)
+    await w.paypal.captureOrder({
+      provider_order_id: poIds(a)[1]!,
+      request_id: 'late-key',
+      scenario: null,
+    });
+    w.tick(31_000);
+    await pass();
+    expect(await states(a.order_id)).toEqual(['captured', 'captured']);
+    expect(await alerts('unexpected_capture')).toEqual([]);
+    // its prepared capture operation has nothing left to send
+    expect((await capOps(a.order_id)).map((o) => o.state)).toEqual(['confirmed', 'confirmed']);
+  });
+});
+
+describe('reconcile.ts boundaries pinned by the mutation run (DP-2b)', () => {
+  it('a capture operation with no PayPal order reference finds its PayPal order by the id given, else the only one', async () => {
+    w = await makeWorld();
+    const single = await lostResponse(w);
+    await w.rows(
+      "UPDATE operations SET provider_order_ref = NULL WHERE order_id = $1 AND kind = 'capture'",
+      [single.order_id],
+    );
+    const order = (await loadOrder(w.db, single.order_id))!;
+    const op = (await loadOperation(w.db, single.order_id, 'capture'))!;
+    // a single order: whatever id is given, its only PayPal order is meant
+    const sentBefore = capCalls().length;
+    expect(['claim', 'unknown']).toContain(await retryCapture(w.deps, order, op, 'SBXNOSUCHORDER'));
+    expect(capCalls().length).toBe(sentBefore + 1);
+    await w.close();
+
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.queue.capture.push('real', { kind: 'timeout' });
+    await ret(a.order_ref);
+    expect(await states(a.order_id)).toEqual(['captured', 'unresolved']);
+    await w.rows(
+      "UPDATE operations SET provider_order_ref = NULL WHERE order_id = $1 AND kind = 'capture'",
+      [a.order_id],
+    );
+    const packOrder = (await loadOrder(w.db, a.order_id))!;
+    const packOp = (
+      await w.rows<{ id: string }>(
+        "SELECT id FROM operations WHERE order_id = $1 AND kind = 'capture' AND state = 'unknown'",
+        [a.order_id],
+      )
+    )[0]!;
+    const row = (await loadOperation(w.db, a.order_id, 'capture'))!;
+    const unknownOp = { ...row, id: packOp.id, state: 'unknown' as const };
+    // an id that names no PayPal order of the pack: the operation belongs to none, nothing is sent
+    await expect(retryCapture(w.deps, packOrder, unknownOp, 'SBXNOSUCHORDER')).rejects.toThrow(
+      'belongs to no provider order',
+    );
+    // the id of PO1 (captured) names PO1: it is not in flight, so nothing is sent
+    expect(await retryCapture(w.deps, packOrder, unknownOp, poIds(a)[0]!)).toBe('lost');
+    // the id of PO2 names PO2: the same key is sent once
+    const before = capCalls().length;
+    const res = await retryCapture(w.deps, packOrder, unknownOp, poIds(a)[1]!);
+    expect(['claim', 'unknown']).toContain(res);
+    expect(capCalls().length).toBe(before + 1);
+    expect(capCalls().at(-1)!.provider_order_id).toBe(poIds(a)[1]);
+  });
+
+  it('DUPLICATE_INVOICE_ID on the retry of PO2 while PO1 is still unresolved: PO2 is held, PO1 is not touched', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.queue.capture.push({ kind: 'timeout' }); // PO1: answer lost
+    await ret(a.order_ref);
+    w.paypal.queue.capture.push({ kind: 'timeout' }); // PO2 sent by the continuation: answer lost
+    await pass();
+    expect(await states(a.order_id)).toEqual(['unresolved', 'unresolved']);
+    // PO1 is not due yet; PO2's retry is answered with a duplicate invoice id
+    await w.rows(
+      `UPDATE operations SET next_retry_at = $2 WHERE order_id = $1 AND kind = 'capture'
+          AND provider_order_ref = (SELECT id FROM provider_orders WHERE order_id = $1 AND position = 1)`,
+      [a.order_id, new Date(w.clock.now().getTime() + 5 * H).toISOString()],
+    );
+    w.paypal.queue.capture.push(DUPLICATE);
+    w.tick(31_000);
+    await pass();
+    expect(await states(a.order_id)).toEqual(['unresolved', 'frozen']);
+    expect((await alerts('frozen_order')).map((x) => x.reason)).toEqual([
+      'duplicate_invoice_id_p2',
+    ]);
+  });
+
+  it('a create resend for a PayPal order that has moved on is not sent', async () => {
+    const p = await (async () => {
+      w = await makeWorld();
+      const placed = await place(w, PACK);
+      w.paypal.queue.create.push('real', { kind: 'timeout' });
+      await beginCheckout(w.deps, { order_id: placed.order_id, actor: BUYER_A });
+      return placed;
+    })();
+    const order = (await loadOrder(w.db, p.order_id))!;
+    const op = (
+      await w.rows<{ id: string }>(
+        "SELECT id FROM operations WHERE order_id = $1 AND kind = 'create' AND state = 'unknown'",
+        [p.order_id],
+      )
+    )[0]!;
+    const row = (await loadOperation(w.db, p.order_id, 'create'))!;
+    const creates = w.paypal.count('create');
+    // PO2 has moved on (a human or a sweep); the operation is still unknown
+    await w.rows(
+      "UPDATE provider_orders SET state = 'abandoned' WHERE order_id = $1 AND position = 2",
+      [p.order_id],
+    );
+    const unknownOp = { ...row, id: op.id, state: 'unknown' as const };
+    // attempt must match the stored one for the claim; the guard has to refuse before it
+    const stored = (
+      await w.rows<{ attempt: number; request_id: string }>(
+        'SELECT attempt, request_id FROM operations WHERE id = $1',
+        [op.id],
+      )
+    )[0]!;
+    expect(await resendCreate(w.deps, order, { ...unknownOp, ...stored })).toBe('lost');
+    expect(w.paypal.count('create')).toBe(creates);
   });
 });

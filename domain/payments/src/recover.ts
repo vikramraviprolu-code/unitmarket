@@ -8,7 +8,7 @@ import type { PaymentsDeps } from '@umsbx/contracts';
 import { ensureReadbackOp } from './apply';
 import { requestIdFor } from './keys';
 import { ensureRefundReadbackOp } from './refunds';
-import { lockOrderGraph } from './composite';
+import { lockGraph } from './composite';
 import { isoOf, loadOperationByRequestId, lockOrderRows } from './store';
 import { markUnknown, runDue } from './due';
 
@@ -64,20 +64,20 @@ async function repairUnpolled(d: PaymentsDeps): Promise<number> {
   let repaired = 0;
   const orders = await d.db.query<{ id: string; order_id: string }>(UNPOLLED_ORDERS);
   for (const { id, order_id } of orders.rows) {
-    await d.db.transaction(async (tx) => {
-      const graph = await lockOrderGraph(tx, order_id);
-      if (graph === null) return;
+    const done = await d.db.transaction(async (tx) => {
+      const graph = await lockGraph(tx, order_id);
       // Re-checked under the lock: the PayPal order may have moved on since the list was read.
       const po = graph.pos.find((p) => p.id === id);
       if (
         po === undefined ||
         !['capture_requested', 'capture_claimed', 'unresolved'].includes(po.state)
       ) {
-        return;
+        return false;
       }
       await ensureReadbackOp(tx, d, graph.order, d.clock.now().toISOString(), po);
+      return true;
     });
-    repaired += 1;
+    if (done) repaired += 1;
   }
   const refunds = await d.db.query<{ id: string; order_id: string }>(UNPOLLED_REFUNDS);
   for (const r of refunds.rows) {

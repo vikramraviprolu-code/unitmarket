@@ -350,6 +350,10 @@ describe('a decline and a capture', () => {
         a.order_id,
       ]),
     ).toEqual([]);
+    // the PayPal order waits for the next round: an immediate second pass does not read it again
+    const gets = w.paypal.calls.length;
+    await runDue(w.deps, { max_items: 10 });
+    expect(w.paypal.calls.length).toBe(gets);
   });
 
   it('a declined or frozen PayPal order is never captured, by any actor', async () => {
