@@ -54,6 +54,7 @@ import {
   openedMessage,
   restoredMessage,
 } from './messages';
+import type { OrderTitles } from './messages';
 
 export type CaseError = {
   code: 'not_found' | 'not_owner' | 'wrong_state' | 'not_operator' | 'duplicate_open';
@@ -244,6 +245,45 @@ async function lockTarget(
     : { order_id: row.id, entitlement_id: null, buyer_id: row.buyer_id };
 }
 
+/** Unit statuses that are ready in the library: money taken and still held (not refunded, not reversed). */
+const READY_UNIT_STATUSES: readonly string[] = ['captured_verified', 'partially_refunded'];
+/** PayPal order states (provider_orders.state) that are "not charged". `frozen` is on hold, not this. */
+const NOT_CHARGED_PO_STATES: readonly string[] = ['declined', 'failed', 'abandoned'];
+
+/**
+ * The titles of the items of an order, sorted into ready, held and not charged by the state of the
+ * PayPal order each item's unit is on (DP-3, OQ-8). Read-only; the titles are the buyer's own order's,
+ * so the message names nothing else. A unit with a verified capture is ready whatever its PayPal order
+ * says (money was taken); otherwise a frozen PayPal order holds it, and only a declined, failed or
+ * abandoned one is "not charged". An item whose unit has no PayPal order row is named nowhere.
+ */
+async function titlesOfOrder(tx: SqlExecutor, order_id: Id): Promise<OrderTitles> {
+  const rows = await tx.query<{ po_state: string; unit_status: string; title: string }>(
+    `SELECT p.state AS po_state, u.status AS unit_status, a.title
+       FROM order_units u
+       JOIN provider_orders p ON p.order_id = u.order_id
+        AND (p.id = u.provider_order_ref OR (u.provider_order_ref IS NULL AND p.route = 'single'))
+       JOIN entitlements e ON e.unit_id = u.id
+       JOIN articles a ON a.id = e.article_id
+      WHERE u.order_id = $1
+      ORDER BY p.position, a.id`,
+    [order_id],
+  );
+  const ready: string[] = [];
+  const held: string[] = [];
+  const not_charged: string[] = [];
+  for (const r of rows.rows) {
+    if (READY_UNIT_STATUSES.includes(r.unit_status)) {
+      ready.push(r.title);
+    } else if (r.po_state === 'frozen' && !VERIFIED_UNIT_STATUSES.includes(r.unit_status)) {
+      held.push(r.title);
+    } else if (NOT_CHARGED_PO_STATES.includes(r.po_state) && r.unit_status !== 'mismatch') {
+      not_charged.push(r.title);
+    }
+  }
+  return { ready, held, not_charged };
+}
+
 /** Who may open: the actor must be the kind that `opened_by` names. */
 function checkOpener(i: OpenInput): CaseError | null {
   switch (i.opened_by) {
@@ -279,7 +319,13 @@ async function openIn(
   const now = d.clock.now();
   const stamp = now.toISOString();
   const id = d.ids.next('cas');
-  const message = openedMessage(i.kind, i.opened_by);
+  const message = openedMessage(
+    i.kind,
+    i.opened_by,
+    i.kind === 'partial_composite' || i.kind === 'frozen_order'
+      ? await titlesOfOrder(tx, target.order_id)
+      : undefined,
+  );
   await tx.query(
     `INSERT INTO recovery_cases (id, kind, state, order_id, entitlement_id, buyer_id, opened_by, sla_due_at, credit_ms, buyer_message, created_at, updated_at)
      VALUES ($1, $2, 'open', $3, $4, $5, $6, $7, 0, $8, $9, $9)`,
