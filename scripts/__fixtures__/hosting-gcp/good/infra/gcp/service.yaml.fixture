@@ -1,0 +1,22 @@
+# Fixed, non-secret environment values for the Cloud Run service (GCP-1, D-049). deploy.sh passes this
+# file to "gcloud run deploy --env-vars-file". It is a flat map of quoted strings. Secret values are
+# NOT here: deploy.sh maps them from Secret Manager by name (--set-secrets), and
+# "node scripts/check-hosting-gcp.mjs" (pnpm check:hosting-gcp) fails if a secret name or value
+# shows up in this file. The secret names are the ones in infra/gcp/set-secret.sh, plus DATABASE_URL.
+#
+# UMS_PAYPAL_CONNECT stays off here. The owner turns the connection on only by hand, after the
+# approval row exists (docs/owner/MVPC-OWNER-STEPS-GCP.md), and a redeploy from this file puts it back
+# to off, which is the safe direction.
+NODE_ENV: "production"
+NEXT_TELEMETRY_DISABLED: "1"
+UMS_MODE: "sandbox"
+UMS_PAYPAL_CONNECT: "off"
+UMS_OUTBOUND_SCOPE: "mvp_c_refunds"
+UMS_DB: "postgres"
+# One proxy in front (Cloud Run's front end). UNVERIFIED until the curl test of Step 3 in the owner
+# steps passes; a wrong count is worse than 0.
+UMS_TRUSTED_PROXIES: "1"
+NEXT_PUBLIC_UMS_ENV_LABEL: "Sandbox"
+# Not a secret. The placeholder below is replaced, through a reviewed change, with the service URL
+# (https://<service>-<project number>.<region>.run.app, no trailing slash) before the first real use.
+UMS_PUBLIC_ORIGIN: "https://pending.invalid"
