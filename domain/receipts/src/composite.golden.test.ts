@@ -451,6 +451,30 @@ describe('outcome per PayPal order state', () => {
     expect(r.lines[1]!.outcome).toBe('on_hold');
   });
 
+  it('a verified capture under a PayPal order closed as not charged reads on hold, never paid and never not charged', async () => {
+    const p = await pack(w, 155, 'captured', 'captured');
+    await w.db.query("UPDATE provider_orders SET state = 'declined' WHERE id = 'por_155_2'");
+    await issue(w, p.order_id);
+    const r = await receiptOf(w, p.order_id);
+    expect(r.lines.map((l) => l.outcome)).toEqual(['paid', 'on_hold']);
+    expect(renderReceiptHtml(r)).not.toContain('You were not charged');
+  });
+
+  it('a publisher name is escaped on the page', async () => {
+    await w.db.query("UPDATE publishers SET display_name = $1 WHERE id = 'pub_2'", [
+      '<script>alert(1)</script> & "Co"',
+    ]);
+    try {
+      const p = await pack(w, 156, 'captured', 'awaiting_buyer');
+      await issue(w, p.order_id);
+      const html = renderReceiptHtml(await receiptOf(w, p.order_id));
+      expect(html).not.toContain('<script>');
+      expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;Co&quot;');
+    } finally {
+      await w.db.query("UPDATE publishers SET display_name = 'Quayside Press' WHERE id = 'pub_2'");
+    }
+  });
+
   it('a refund moves only the line of its own publisher', async () => {
     const p = await pack(w, 160, 'captured', 'captured');
     await issue(w, p.order_id);

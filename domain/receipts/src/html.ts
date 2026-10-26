@@ -41,6 +41,17 @@ const DELIVERY_TEXT: Record<string, string> = {
   revoked: 'Access revoked',
 };
 
+// What a line of a two-publisher order says about its payment. "Not charged" and "On hold" are
+// the only words for a PayPal order that did not complete; they are never swapped (OQ-8).
+const OUTCOME_TEXT: Record<NonNullable<Receipt['lines'][number]['outcome']>, string> = {
+  paid: 'Paid',
+  waiting: 'Waiting for this payment to be confirmed',
+  not_charged: 'You were not charged for this item',
+  on_hold: 'On hold while we check it',
+  refunded: 'Refunded',
+  partially_refunded: 'Partly refunded',
+};
+
 /**
  * The label is derived from the receipt's own environment. A caller may pass one; a label that
  * contradicts the environment is refused, so a dry run can never read "Sandbox" or the reverse.
@@ -64,8 +75,18 @@ export function renderReceiptHtml(r: Receipt, label?: 'Dry run' | 'Sandbox'): st
       return `<section>
 <h3>Article ${esc(l.article_id)}</h3>
 <dl>
-<dt>Option</dt><dd>${esc(l.option)}</dd>
-<dt>Amount</dt><dd>${money(l.amount_minor, cur)}</dd>
+<dt>Option</dt><dd>${esc(l.option)}</dd>${
+        l.publisher_display_name === undefined
+          ? ''
+          : `
+<dt>Publisher</dt><dd>${esc(l.publisher_display_name)}</dd>`
+      }
+<dt>Amount</dt><dd>${money(l.amount_minor, cur)}</dd>${
+        l.outcome === undefined
+          ? ''
+          : `
+<dt>Payment</dt><dd>${esc(OUTCOME_TEXT[l.outcome])}</dd>`
+      }
 <dt>Article sha256</dt><dd><code>${esc(l.article_sha256)}</code></dd>
 <dt>Capture id</dt><dd>${l.capture_id === null ? 'not captured' : esc(l.capture_id)}</dd>
 <dt>Access window</dt><dd>${esc(w.state)}; started ${esc(w.started_at ?? 'not yet')}; ends ${esc(w.ends_at ?? 'not set')}; credit ${esc(w.credit_ms)} ms</dd>

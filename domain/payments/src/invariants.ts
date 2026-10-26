@@ -14,10 +14,11 @@
 //        operation that is `sent` or `unknown`. A request nobody polls can stay open forever.
 import { computeWindow } from '@umsbx/access-clock';
 import { AccessPolicySchema } from '@umsbx/contracts';
-import type { AccessEvent, AccessEventKind, Id, SqlExecutor } from '@umsbx/contracts';
+import type { AccessEvent, AccessEventKind, Id, LedgerEntry, SqlExecutor } from '@umsbx/contracts';
+import { publisherBalances } from '@umsbx/ledger';
 
 type Result = {
-  id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6';
+  id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7';
   ok: boolean;
   detail: string;
 };
@@ -201,6 +202,88 @@ async function inv6(db: SqlExecutor): Promise<Result> {
   };
 }
 
+async function inv7(db: SqlExecutor): Promise<Result> {
+  // What the units say each publisher is owed: verified captured amount minus refunded, by currency.
+  const units = await db.query<{
+    publisher_id: string;
+    currency: string;
+    expected: string | number;
+  }>(
+    `SELECT u.publisher_id, o.currency, sum(u.amount_minor - u.refunded_minor) AS expected
+       FROM order_units u JOIN orders o ON o.id = u.order_id
+      WHERE u.captured_verified_at IS NOT NULL
+      GROUP BY u.publisher_id, o.currency`,
+  );
+  // What the ledger says, one row per entry with the publisher of its unit.
+  const entries = await db.query<{
+    id: string;
+    unit_id: string;
+    capture_id: string;
+    kind: LedgerEntry['kind'];
+    amount_minor: string | number;
+    currency: string;
+    refund_id: string | null;
+    ref_entry_id: string | null;
+    environment: LedgerEntry['environment'];
+    created_at: string;
+    publisher_id: string;
+  }>(
+    `SELECT l.id, l.unit_id, l.capture_id, l.kind, l.amount_minor, l.currency, l.refund_id,
+            l.ref_entry_id, l.environment, u.publisher_id,
+            to_char(l.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at
+       FROM ledger_entries l JOIN order_units u ON u.id = l.unit_id`,
+  );
+  const net = new Map<string, number>();
+  for (const b of publisherBalances(
+    entries.rows.map((r) => ({
+      publisher_id: r.publisher_id,
+      entry: {
+        id: r.id,
+        unit_id: r.unit_id,
+        capture_id: r.capture_id,
+        kind: r.kind,
+        amount: { currency: r.currency, minor: Number(r.amount_minor) },
+        refund_id: r.refund_id,
+        ref_entry_id: r.ref_entry_id,
+        created_at: r.created_at,
+        environment: r.environment,
+      },
+    })),
+  )) {
+    net.set(JSON.stringify([b.publisher_id, b.currency]), b.net_minor);
+  }
+  const expected = new Map<string, number>();
+  for (const r of units.rows) {
+    expected.set(JSON.stringify([r.publisher_id, r.currency]), Number(r.expected));
+  }
+  const bad: string[] = [];
+  const keys = [...new Set([...net.keys(), ...expected.keys()])].sort();
+  for (const key of keys) {
+    const [publisher, currency] = JSON.parse(key) as [string, string];
+    const ledger = net.get(key) ?? 0;
+    const owed = expected.get(key) ?? 0;
+    if (ledger !== owed) {
+      bad.push(
+        `publisher ${publisher} (${currency}): ledger net ${ledger}, verified captured minus refunded ${owed}, difference ${ledger - owed}`,
+      );
+    }
+  }
+  // A capture id on two units would let one capture's money count for two publishers.
+  const shared = await db.query<{ capture_id: string; units: string | number }>(
+    `SELECT capture_id, count(*) AS units FROM order_units WHERE capture_id IS NOT NULL
+      GROUP BY capture_id HAVING count(*) > 1 ORDER BY capture_id`,
+  );
+  for (const r of shared.rows) bad.push(`capture ${r.capture_id} is on ${Number(r.units)} units`);
+  return {
+    id: 'INV7',
+    ok: bad.length === 0,
+    detail: describe(
+      'per publisher, ledger net equals verified captured minus refunded, and a capture belongs to one unit',
+      bad,
+    ),
+  };
+}
+
 export async function checkInvariants(db: SqlExecutor): Promise<Result[]> {
   return [
     await inv1(db),
@@ -209,5 +292,6 @@ export async function checkInvariants(db: SqlExecutor): Promise<Result[]> {
     await inv4(db),
     await inv5(db),
     await inv6(db),
+    await inv7(db),
   ];
 }

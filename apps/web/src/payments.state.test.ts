@@ -86,7 +86,7 @@ const offers = async (): Promise<string[]> =>
     .map((o) => o.offer_code);
 
 describe('the real payments engine behind the facade', () => {
-  it('a happy dry-run journey pays, unlocks the item and keeps all six invariants', async () => {
+  it('a happy dry-run journey pays, unlocks the item and keeps all seven invariants', async () => {
     const [offer] = await offers();
     const order = await payWith(offer!, 'happy');
     const view = await app.engine.orderView({ order_ref: order.order_ref, actor });
@@ -106,6 +106,7 @@ describe('the real payments engine behind the facade', () => {
       'INV4',
       'INV5',
       'INV6',
+      'INV7',
     ]);
     expect(ops?.invariants.every((v) => v.ok)).toBe(true);
   });
@@ -212,7 +213,7 @@ describe('ops snapshot, jobs and health', () => {
     });
     expect(snap?.kill_switch.outbound_on).toBe(true);
     expect(snap?.kill_switch.changed_by).toBe('seed:dryrun');
-    expect(snap?.invariants.length).toBe(6);
+    expect(snap?.invariants.length).toBe(7);
     expect(snap?.jobs.last_pass_at).toBeNull();
   });
 
