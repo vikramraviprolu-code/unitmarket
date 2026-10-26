@@ -28,6 +28,47 @@ describe('receipts', () => {
       }).success,
     ).toBe(false);
   });
+  // DP-4 (MVP-D, OQ-16): a line of a two-publisher order says whose it is and what happened to its
+  // payment. Both keys are optional so every stored receipt of a one-publisher order stays valid, and
+  // they come together or not at all.
+  it('ReceiptLine: publisher_display_name and outcome are optional, together, and closed', () => {
+    for (const outcome of [
+      'paid',
+      'not_charged',
+      'waiting',
+      'on_hold',
+      'refunded',
+      'partially_refunded',
+    ]) {
+      const r = ReceiptLineSchema.safeParse({
+        ...line,
+        publisher_display_name: 'Harbour Ledger',
+        outcome,
+      });
+      expect(r.success, outcome).toBe(true);
+    }
+    expect(ReceiptLineSchema.safeParse(line).success).toBe(true);
+    expect(
+      ReceiptLineSchema.safeParse({ ...line, publisher_display_name: 'Harbour Ledger' }).success,
+    ).toBe(false);
+    expect(ReceiptLineSchema.safeParse({ ...line, outcome: 'paid' }).success).toBe(false);
+    expect(
+      ReceiptLineSchema.safeParse({ ...line, publisher_display_name: 'H', outcome: 'charged' })
+        .success,
+    ).toBe(false);
+    expect(
+      ReceiptLineSchema.safeParse({ ...line, publisher_display_name: '', outcome: 'paid' }).success,
+    ).toBe(false);
+    // closed: no merchant id can ride along on a line
+    expect(
+      ReceiptLineSchema.safeParse({
+        ...line,
+        publisher_display_name: 'H',
+        outcome: 'paid',
+        payee_merchant_id: 'MERCH1',
+      }).success,
+    ).toBe(false);
+  });
   it('Receipt', () => {
     const policy = {
       id: 'pol_1',

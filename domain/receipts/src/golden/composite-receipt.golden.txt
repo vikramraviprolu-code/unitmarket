@@ -1,0 +1,31 @@
+# DP-4 golden (OQ-16, OQ-8): the receipt of one order of two PayPal orders. Hand-reviewed. A change to
+# this file is a change to what the buyer is shown. Columns of a line: article | publisher (receipt
+# body) | option | amount | outcome | publisher (page) | payment text (page).
+== after PO1 verified
+version: 1
+environment: dryrun
+label: Dry run
+total: USD 6.50
+line: art_1_1 | Harbour Ledger | keep_retrieve | USD 4.00 | paid | Harbour Ledger | Paid
+line: art_1_2 | Quayside Press | online_read | USD 2.50 | waiting | Quayside Press | Waiting for this payment to be confirmed
+== after PO2 declined
+version: 1
+environment: dryrun
+label: Dry run
+total: USD 6.50
+line: art_2_1 | Harbour Ledger | keep_retrieve | USD 4.00 | paid | Harbour Ledger | Paid
+line: art_2_2 | Quayside Press | online_read | USD 2.50 | not_charged | Quayside Press | You were not charged for this item
+== after a PO2 hold
+version: 1
+environment: dryrun
+label: Dry run
+total: USD 6.50
+line: art_3_1 | Harbour Ledger | keep_retrieve | USD 4.00 | paid | Harbour Ledger | Paid
+line: art_3_2 | Quayside Press | online_read | USD 2.50 | on_hold | Quayside Press | On hold while we check it
+== sandbox label
+version: 1
+environment: sandbox
+label: Sandbox
+total: USD 6.50
+line: art_4_1 | Harbour Ledger | keep_retrieve | USD 4.00 | paid | Harbour Ledger | Paid
+line: art_4_2 | Quayside Press | online_read | USD 2.50 | waiting | Quayside Press | Waiting for this payment to be confirmed
