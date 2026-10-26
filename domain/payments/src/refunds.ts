@@ -139,7 +139,7 @@ async function providerOrderIdOfUnit(
     `SELECT p.provider_order_id FROM order_units u
        JOIN provider_orders p ON p.order_id = u.order_id
         AND (p.id = u.provider_order_ref OR (u.provider_order_ref IS NULL AND p.route = 'single'))
-      WHERE u.id = $1 ORDER BY p.position LIMIT 1`,
+      WHERE u.id = $1 ORDER BY p.position`,
     [unit_id],
   );
   return found.rows[0]?.provider_order_id ?? null;
@@ -163,7 +163,6 @@ async function frozenForUnit(
     unit.order_id,
   ]);
   if (flagged.rows.length === 0) return false;
-  if (unit.provider_order_ref === null) return true;
   const pos = (
     await tx.query<{ id: string; state: string; position: number; route: string }>(
       'SELECT id, state, position, route FROM provider_orders WHERE order_id = $1',
@@ -172,6 +171,7 @@ async function frozenForUnit(
   ).rows;
   const own = pos.find((p) => p.id === unit.provider_order_ref);
   const siblings = pos.filter((p) => p.id !== unit.provider_order_ref && p.state === 'frozen');
+  // a unit with no stored PayPal order has no own order here: the whole order stays held
   if (own === undefined || own.route !== 'per_publisher' || own.state !== 'captured') return true;
   if (siblings.length === 0) return true;
   const siblingUnits = new Set(

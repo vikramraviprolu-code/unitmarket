@@ -322,6 +322,18 @@ describe('a frozen sibling PayPal order', () => {
     expect(r).toEqual({ ok: false, error: { code: 'unit_frozen' } });
   });
 
+  it('a unit with no stored PayPal order cannot be shown to be clear of the hold: it stays blocked', async () => {
+    const { harbour } = await frozenSibling();
+    await w.rows('UPDATE order_units SET provider_order_ref = NULL WHERE id = $1', [harbour.id]);
+    const r = await requestRefund(w.deps, {
+      unit_id: harbour.id,
+      amount: usd(100),
+      reason: 'x',
+      actor: OPERATOR,
+    });
+    expect(r).toEqual({ ok: false, error: { code: 'unit_frozen' } });
+  });
+
   it('a single-route order keeps the old rule: any mismatch flag blocks', async () => {
     w = await makeRemainingWorld();
     const a = await paid(w);
