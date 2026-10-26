@@ -451,6 +451,20 @@ describe('outcome per PayPal order state', () => {
     expect(r.lines[1]!.outcome).toBe('on_hold');
   });
 
+  it('a frozen PayPal order reads on hold even while its unit is still expected (no capture sent, nothing in mismatch)', async () => {
+    const p = await pack(w, 159, 'captured', 'frozen');
+    await w.db.query(
+      "UPDATE order_units SET status = 'expected', mismatch_reason = NULL WHERE id = $1",
+      [p.units.quayside],
+    );
+    await issue(w, p.order_id);
+    const r = await receiptOf(w, p.order_id);
+    expect(r.lines.map((l) => l.outcome)).toEqual(['paid', 'on_hold']);
+    const html = renderReceiptHtml(r);
+    expect(html).toContain('On hold while we check it');
+    expect(html).not.toContain('You were not charged');
+  });
+
   it('a verified capture under a PayPal order closed as not charged reads on hold, never paid and never not charged', async () => {
     const p = await pack(w, 155, 'captured', 'captured');
     await w.db.query("UPDATE provider_orders SET state = 'declined' WHERE id = 'por_155_2'");
