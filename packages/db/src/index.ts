@@ -1,6 +1,8 @@
-// @umsbx/db: PGlite driver, migration runner and the complete MVP-A schema (lane 12).
+// @umsbx/db: PGlite and Postgres drivers, migration runner and the complete MVP-A schema (lane 12).
 export const PACKAGE_NAME = '@umsbx/db' as const;
-export type { DbTarget, SqlDriver } from './driver';
+export type { DbTarget, PgOptions, SqlDriver } from './driver';
+export { parsePgUrl, PgConfigError, PgConnectionError } from './pg';
+export type { ParsedPgUrl } from './pg';
 export { openDatabase } from './pglite';
 export type { OpenOptions } from './pglite';
 export {
@@ -14,7 +16,13 @@ export {
   processIsAlive,
 } from './lock';
 export type { LockDeps, LockHandle, LockInfo, LockInspection, LockRefusalCode } from './lock';
-export { migrate, applyMigrations, listMigrations, MIGRATIONS_ROOT } from './migrate';
+export {
+  migrate,
+  applyMigrations,
+  listMigrations,
+  MIGRATIONS_ROOT,
+  MIGRATE_LOCK_KEY,
+} from './migrate';
 export type { MigrationSet } from './migrate';
 export { tablesInDependencyOrder } from './export-sql';
 export { withSerializationRetry, isRetryableSqlError } from './retry';

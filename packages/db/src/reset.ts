@@ -30,6 +30,15 @@ export async function resetDatabase(
       "resetDatabase refused: the target is not an in-memory test database (pass confirm: 'RESET_TEST_DATABASE' for a disposable disk database)",
     );
   }
+  // A real Postgres is only ever reset when it is a disposable test database by name (PG-1).
+  if (db.target === 'postgres') {
+    const name = await db.query<{ n: string }>('SELECT current_database() AS n');
+    if (!(name.rows[0]?.n ?? '').startsWith('ums_test_')) {
+      throw new Error(
+        "resetDatabase refused: a postgres target must be a database whose name starts with 'ums_test_'",
+      );
+    }
+  }
   const tables = await db.query<{ tablename: string }>(
     "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'schema_migrations' ORDER BY tablename",
   );

@@ -1,8 +1,32 @@
-// The driver abstraction. PGlite now; a node-postgres adapter (dialect 'pg') arrives later and
-// needs its own owner approval for the `pg` dependency. Plain Database port from lane 01 F1.
+// The driver abstraction. PGlite (default) and node-postgres (dialect 'pg', PG-1, D-050) both sit
+// behind the plain Database port from lane 01 F1.
 import type { Database } from '@umsbx/contracts';
 
-export type DbTarget = { kind: 'pglite-memory' } | { kind: 'pglite-disk'; dir: string };
+/** Named options of the Postgres target. Every one has a safe default (pg.ts). */
+export interface PgOptions {
+  /** Most connections the pool opens. Whole number 1 to 100; default 5. */
+  pool_max?: number;
+  /** Server-side statement timeout in milliseconds; default 30000. */
+  statement_timeout_ms?: number;
+  /** Time allowed to open a connection (and to wait for a free one) in milliseconds; default 10000. */
+  connect_timeout_ms?: number;
+}
+
+/**
+ * `postgres` takes the DATABASE_URL value (a secret: the driver never logs it and scrubs it from
+ * every error). Forms: postgres://u:p@host:5432/db?sslmode=require and the Cloud SQL socket form
+ * postgres://u:p@/db?host=/cloudsql/PROJECT:REGION:INSTANCE.
+ */
+export type DbTarget =
+  | { kind: 'pglite-memory' }
+  | { kind: 'pglite-disk'; dir: string }
+  | ({ kind: 'postgres'; url: string } & PgOptions);
 
 // `target` says where the driver runs; resetDatabase (tests only) reads it.
-export type SqlDriver = Database & { close(): Promise<void>; readonly target: DbTarget['kind'] };
+// `withAdvisoryLock` exists on the Postgres driver only: it holds a session-level advisory lock on a
+// dedicated connection (outside the pool) while `fn` runs. migrate() uses it when present.
+export type SqlDriver = Database & {
+  close(): Promise<void>;
+  readonly target: DbTarget['kind'];
+  withAdvisoryLock?<T>(key: string, fn: () => Promise<T>): Promise<T>;
+};
