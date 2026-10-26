@@ -1527,4 +1527,59 @@ describe('last survivors of the mutation run (DP-2b)', () => {
     expect((await orderRow(a.order_id)).status).toBe('unresolved');
     expect((await alerts('unexpected_capture')).map((x) => x.reason)).toEqual(['abandon_sweep']);
   });
+
+  it('markUnknown moves the PayPal order of the operation, not its sibling', async () => {
+    w = await world();
+    const a = await approved(w, PACK);
+    const base = w.paypal.count('get');
+    w.paypal.beforeGet = async () => {
+      if (w.paypal.count('get') === base + 4) {
+        w.paypal.beforeGet = null;
+        w.faults.dieBeforeCapture = true;
+      }
+    };
+    await expect(ret(a.order_ref)).rejects.toThrow('died before the capture');
+    w.faults.dieBeforeCapture = false;
+    expect(await states(a.order_id)).toEqual(['captured', 'capture_requested']);
+    const op = (
+      await w.rows<{ id: string; request_id: string; first_sent_at: string | null }>(
+        `SELECT o.id, o.request_id, o.first_sent_at FROM operations o JOIN provider_orders p ON p.id = o.provider_order_ref
+          WHERE o.order_id = $1 AND o.kind = 'capture' AND p.position = 2`,
+        [a.order_id],
+      )
+    )[0]!;
+    await w.db.transaction((tx) =>
+      markUnknown(
+        tx,
+        w.deps,
+        {
+          id: op.id,
+          order_id: a.order_id,
+          kind: 'capture',
+          first_sent_at: op.first_sent_at,
+          request_id: op.request_id,
+        },
+        'sent',
+      ),
+    );
+    expect(await states(a.order_id)).toEqual(['captured', 'unresolved']);
+    expect((await orderRow(a.order_id)).status).toBe('unresolved');
+  });
+
+  it('a PayPal order whose unit already holds a capture id is never declined, and waits for the next round', async () => {
+    w = await world();
+    const a = await crashBetweenCaptures();
+    await w.rows(
+      "UPDATE order_units SET capture_id = 'SBXFAKECAPCLAIMED' WHERE order_id = $1 AND publisher_id = 'pub_2'",
+      [a.order_id],
+    );
+    w.paypal.void(poIds(a)[1]!);
+    w.tick(31_000); // a touch is told from "nothing touched it yet" by time
+    await pass();
+    expect(await states(a.order_id)).toEqual(['captured', 'approved']);
+    expect(await alerts('partial_composite')).toEqual([]);
+    const calls = w.paypal.calls.length;
+    await pass(); // not read again at once
+    expect(w.paypal.calls.length).toBe(calls);
+  });
 });
