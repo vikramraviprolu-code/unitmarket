@@ -4,12 +4,26 @@
 // provider order id is used and none from the URL (P6). Read before capturing; a mismatch freezes
 // the order with nothing charged; delivery readiness is checked before any charge; one gated
 // capture; the claim is stored; a separate read-back decides everything else.
-import { applyMoneyEvent, getEntitlementForBuyer } from '@umsbx/entitlements';
+// MVP-D (DP-2a): an order is one PayPal order (single) or one per publisher (a pack). Every awaiting
+// PayPal order is read by its stored id; nothing is captured until every one is approved; one pass
+// reads and matches every PayPal order before the first capture; then each approved PayPal order is
+// captured in position order, with its own key, and read back on its own.
+import { getEntitlementForBuyer } from '@umsbx/entitlements';
 import { IdSchema, err, ok } from '@umsbx/contracts';
-import type { Actor, Id, PaymentsDeps, Result, SqlExecutor } from '@umsbx/contracts';
+import type { Actor, Id, OrderRead, PaymentsDeps, Result, SqlExecutor } from '@umsbx/contracts';
 import { raiseAlert } from './alerts';
-import { applyReadback, ensureReadbackOp, readApplyGates } from './apply';
-import { captureOnce, claimPrecheck, releasePrecheck } from './capture';
+import { applyReadback, declineUnits, ensureReadbackOp, readApplyGates } from './apply';
+import { captureOnce, claimPrecheck, reasonFor, releasePrecheck } from './capture';
+import { nextApproval } from './checkout';
+import {
+  endWholeOrder,
+  expectedFor,
+  lockGraph,
+  lockOrderGraph,
+  poIn,
+  refreshOrder,
+  setPoState,
+} from './composite';
 import { matchReadback } from './match';
 import {
   claimsOf,
@@ -18,14 +32,19 @@ import {
   loadOrderByRef,
   loadProviderOrders,
   loadUnits,
+  unitsOf,
 } from './store';
-import type { OrderRow, UnitRow } from './store';
+import type { OrderRow, ProviderOrderRow, UnitRow } from './store';
 import type { OrderView } from './types';
 
 type ReturnError = {
   code:
     'not_found' | 'not_approved' | 'frozen' | 'not_charged_content_unavailable' | 'payments_paused';
 };
+type Answer = Result<OrderView, ReturnError>;
+type Read = OrderRead;
+
+const PACK_WINDOW_DEFAULT_MS = 3_600_000;
 
 export async function onBuyerReturn(
   d: PaymentsDeps,
@@ -52,23 +71,21 @@ export async function onBuyerReturn(
 
   // The switch is read outside any transaction: the port may use the database itself.
   if (!(await d.switches.isOn('checkout_enabled'))) return err({ code: 'payments_paused' });
-  const provider = (await loadProviderOrders(d.db, order.id))[0];
-  if (provider === undefined || provider.provider_order_id === null) {
+  // The PayPal orders as the engine sees them (a single order moved by an older writer is brought in line).
+  const pos = await d.db.transaction(async (tx) => (await lockOrderGraph(tx, order.id))?.pos ?? []);
+  const lease = pos[0];
+  if (lease === undefined || pos.some((p) => p.provider_order_id === null)) {
     return err({ code: 'not_approved' });
   }
-  const provider_order_id = provider.provider_order_id;
 
   // An order flagged mismatch, or with a unit in mismatch, is never captured, whatever the order
   // status says now (H1): the flag is a fact a human must clear.
   const flagged = await loadUnits(d.db, order.id);
   if (order.mismatch || flagged.some((u) => u.status === 'mismatch')) {
     await d.db.transaction(async (tx) => {
-      const at = d.clock.now().toISOString();
-      const moved = await tx.query(
-        "UPDATE orders SET status = 'frozen', mismatch = true, updated_at = $2 WHERE id = $1 AND status = 'awaiting_buyer' RETURNING id",
-        [order.id, at],
-      );
-      if (moved.rows.length === 0) return;
+      const graph = await lockGraph(tx, order.id);
+      if (graph.order.status !== 'awaiting_buyer') return;
+      await endWholeOrder(tx, d, order.id, 'frozen');
       await raiseAlert(tx, d, {
         kind: 'frozen_order',
         order_id: order.id,
@@ -81,165 +98,212 @@ export async function onBuyerReturn(
   }
 
   // The pre-gate: one of many concurrent returns reads; the others answer from the database.
-  if (!(await claimPrecheck(d, order))) return ok(await loadOrderView(d.db, order.id));
-  const early = await precapture(d, order, provider_order_id, scenario).catch(
-    async (e: unknown) => {
-      await releasePrecheck(d, order);
-      throw e;
-    },
-  );
-  if (early !== null) {
-    await releasePrecheck(d, order);
-    return early;
+  if (!(await claimPrecheck(d, order, lease))) return ok(await loadOrderView(d.db, order.id));
+  // The lease is always given back: it only touches a capture operation that is still `prepared`, and
+  // one that was sent or settled has nothing to release.
+  try {
+    return await settle(d, order, scenario);
+  } finally {
+    await releasePrecheck(d, order, lease);
   }
+}
 
-  // 4. The one gated capture.
-  const outcome = await captureOnce(d, order, provider_order_id, scenario);
-  switch (outcome.kind) {
-    case 'lost':
-    case 'unknown':
-      return ok(await loadOrderView(d.db, order.id));
-    case 'blocked':
-      return err({ code: 'payments_paused' });
-    case 'capped':
-      await releasePrecheck(d, order);
-      return err({ code: 'not_approved' });
-    case 'not_approved':
-      return err({ code: 'not_approved' });
-    case 'frozen':
-      return err({ code: 'frozen' });
-    case 'payer_action':
-      return ok(await loadOrderView(d.db, order.id));
-    case 'claim':
-    case 'read_decides':
-      break;
-  }
+const isApproved = (r: Read): boolean => r.kind === 'order' && r.status === 'APPROVED';
+const hasCapture = (r: Read): boolean =>
+  r.kind === 'order' && r.units.some((u) => u.capture !== null);
 
-  // 5. A separate read of the order; the claim never unlocks anything by itself.
-  const after = await d.paypal.getOrder(provider_order_id, scenario);
-  if (after.kind !== 'order') {
-    await d.db.transaction(async (tx) => {
-      const at = d.clock.now().toISOString();
-      const current = await loadOrder(tx, order.id, { lock: true });
-      if (current === null) return;
-      if (current.status === 'capture_requested' || current.status === 'capture_claimed') {
-        await tx.query("UPDATE orders SET status = 'unresolved', updated_at = $2 WHERE id = $1", [
-          order.id,
-          at,
-        ]);
-      }
-      await ensureReadbackOp(tx, d, current, at);
-    });
-    return ok(await loadOrderView(d.db, order.id));
-  }
-  const postGates = await readApplyGates(d, order.id);
-  await d.db.transaction((tx) =>
-    applyReadback(tx, d, { order_id: order.id, read: after, trigger: 'capture', gates: postGates }),
-  );
-  return ok(await loadOrderView(d.db, order.id));
+async function readOf(
+  d: PaymentsDeps,
+  po: ProviderOrderRow,
+  scenario: string | null,
+): Promise<Read> {
+  return d.paypal.getOrder(po.provider_order_id as string, scenario);
 }
 
 /**
- * Steps 1 to 3 of the return: the pre-capture read, the pre-capture match and the delivery
- * readiness. Returns the answer to give when the capture must not go ahead, or null to go on.
+ * Steps 1 to 4 of the return, for every PayPal order of the order: read the ones awaiting the buyer
+ * (step A), wait or abandon while one is still unapproved (B), the pass over all of them before the
+ * first capture (C), then the gated captures and read-backs in position order (D).
  */
-async function precapture(
-  d: PaymentsDeps,
-  order: OrderRow,
-  provider_order_id: string,
-  scenario: string | null,
-): Promise<Result<OrderView, ReturnError> | null> {
-  // 1. Pre-capture read of the order, with the stored provider id only.
-  const read = await d.paypal.getOrder(provider_order_id, scenario);
-  if (read.kind === 'blocked') return err({ code: 'payments_paused' });
-  if (read.kind !== 'order' || read.status !== 'APPROVED') {
-    // Not capturable now. A parallel return may have captured it a moment ago: then the database,
-    // not this read, tells the buyer where the order stands.
-    const current = await loadOrder(d.db, order.id);
-    if (current !== null && current.status !== 'awaiting_buyer') {
-      return current.status === 'frozen'
-        ? err({ code: 'frozen' })
-        : ok(await loadOrderView(d.db, order.id));
-    }
-    return err({ code: 'not_approved' });
+async function settle(d: PaymentsDeps, order: OrderRow, scenario: string | null): Promise<Answer> {
+  const view = async (): Promise<Answer> => ok(await loadOrderView(d.db, order.id));
+  const fail = (code: ReturnError['code']): Answer => err({ code });
+  const reload = async (): Promise<ProviderOrderRow[]> => loadProviderOrders(d.db, order.id);
+  let pos = await reload();
+  const single = pos.length === 1;
+  const reads = new Map<Id, Read>();
+
+  // A. Every PayPal order awaiting the buyer is read by its stored id. An APPROVED read moves it to
+  // approved; the first approval sets first_approved_at (when WE first saw it).
+  for (const po of pos) {
+    if (po.state === 'awaiting_buyer') reads.set(po.id, await readOf(d, po, scenario));
+  }
+  if ([...reads.values()].some((r) => r.kind === 'blocked')) return fail('payments_paused');
+  const nowApproved = pos.filter(
+    (p) => p.state === 'awaiting_buyer' && isApproved(reads.get(p.id)!),
+  );
+  if (nowApproved.length > 0) {
+    await d.db.transaction(async (tx) => {
+      await lockGraph(tx, order.id);
+      const at = d.clock.now().toISOString();
+      for (const po of nowApproved) {
+        if (await setPoState(tx, po.id, 'approved', at, ['awaiting_buyer'])) {
+          await tx.query(
+            `UPDATE provider_orders SET first_approved_at = COALESCE(first_approved_at, $2), status = 'APPROVED' WHERE id = $1`,
+            [po.id, at],
+          );
+        }
+      }
+      await refreshOrder(tx, d, order.id);
+    });
+    pos = await reload();
   }
 
-  // 2. Pre-capture check with empty claims: any difference freezes the order; nothing is captured.
-  const units = await loadUnits(d.db, order.id);
-  const match = matchReadback({
-    expected: order.expected,
-    read,
-    provider_order_id,
-    claims: claimsOf(units).map((c) => ({ ...c, capture_id: null, claimed_at: null })),
-    foreign_capture_ids: await foreignCaptureIds(
-      d.db,
-      order.id,
-      read.units.map((u) => (u.capture === null ? null : u.capture.capture_id)),
-    ),
-  });
-  const orderField = match.level === 'order' ? match.field : null;
-  const badUnits =
-    match.level === 'units' ? match.units.filter((u) => u.result !== 'no_capture') : [];
-  if (orderField !== null || badUnits.length > 0) {
+  // B. Some PayPal order is still awaiting the buyer.
+  const waiting = pos.filter((p) => p.state === 'awaiting_buyer');
+  if (waiting.length > 0) {
+    if (single) {
+      // Not capturable now. A parallel return may have captured it a moment ago: then the database,
+      // not this read, tells the buyer where the order stands.
+      const current = await loadOrder(d.db, order.id);
+      if (current !== null && current.status !== 'awaiting_buyer') {
+        return current.status === 'frozen' ? fail('frozen') : view();
+      }
+      return fail('not_approved');
+    }
+    const first = pos
+      .map((p) => (p.first_approved_at === null ? null : Date.parse(p.first_approved_at)))
+      .filter((t): t is number => t !== null)
+      .sort((a, b) => a - b)[0];
+    const window = d.config.pack_approval_window_ms ?? PACK_WINDOW_DEFAULT_MS;
+    if (first !== undefined && Date.parse(d.clock.now().toISOString()) >= first + window) {
+      // The window is over: every PayPal order is read. All APPROVED would go on to capture (P17);
+      // otherwise the whole pack is abandoned and nothing is charged.
+      for (const po of pos) if (!reads.has(po.id)) reads.set(po.id, await readOf(d, po, scenario));
+      if ([...reads.values()].some((r) => r.kind === 'blocked')) return fail('payments_paused');
+      const definite = (r: Read): boolean => r.kind === 'order' || r.kind === 'not_found';
+      if (
+        waiting.every((p) => definite(reads.get(p.id)!)) &&
+        !pos.every((p) => isApproved(reads.get(p.id)!))
+      ) {
+        await abandonPack(d, order);
+        return view();
+      }
+      if (!pos.every((p) => isApproved(reads.get(p.id)!))) return view();
+    } else {
+      return view();
+    }
+  }
+
+  // C. The pass: every PayPal order is read (those not read yet) and matched against its own slice,
+  // and every item is checked for readiness, before the first capture.
+  for (const po of pos) if (!reads.has(po.id)) reads.set(po.id, await readOf(d, po, scenario));
+  if ([...reads.values()].some((r) => r.kind === 'blocked')) return fail('payments_paused');
+  const allUnits = await loadUnits(d.db, order.id);
+  const orderFields: { po: ProviderOrderRow; field: string }[] = [];
+  const badUnits: { po: ProviderOrderRow; unit: UnitRow; field: string }[] = [];
+  for (const po of pos) {
+    const read = reads.get(po.id)!;
+    if (read.kind !== 'order' || read.status !== 'APPROVED') continue;
+    const mine = unitsOf(allUnits, po);
+    const match = matchReadback({
+      expected: expectedFor(
+        order.expected,
+        mine.map((u) => u.reference_id),
+      ),
+      read,
+      provider_order_id: po.provider_order_id as string,
+      claims: claimsOf(mine).map((c) => ({ ...c, capture_id: null, claimed_at: null })),
+      foreign_capture_ids: await foreignCaptureIds(
+        d.db,
+        order.id,
+        read.units.map((u) => (u.capture === null ? null : u.capture.capture_id)),
+        mine.map((u) => u.id),
+      ),
+    });
+    if (match.level === 'order') orderFields.push({ po, field: match.field });
+    else {
+      for (const u of match.units.filter((x) => x.result !== 'no_capture')) {
+        const unit = mine.find((x) => x.reference_id === u.reference_id);
+        if (unit !== undefined) {
+          badUnits.push({
+            po,
+            unit,
+            field: u.result === 'mismatch' ? (u.field ?? 'unknown') : 'capture_before_capture',
+          });
+        }
+      }
+    }
+  }
+  if (orderFields.length > 0 || badUnits.length > 0) {
+    // Any mismatch freezes the whole order; nothing is captured (a whole-order outcome).
     await d.db.transaction(async (tx) => {
+      await lockGraph(tx, order.id);
       const at = d.clock.now().toISOString();
-      await tx.query(
-        "UPDATE orders SET status = 'frozen', mismatch = true, updated_at = $2 WHERE id = $1 AND status = 'awaiting_buyer'",
-        [order.id, at],
-      );
-      if (orderField !== null) {
+      await endWholeOrder(tx, d, order.id, 'frozen');
+      for (const o of orderFields) {
         await raiseAlert(tx, d, {
           kind: 'frozen_order',
           order_id: order.id,
           unit_id: null,
-          reason: `precapture_${orderField}`,
-          detail: { field: orderField, phase: 'pre_capture' },
+          reason: reasonFor(o.po, `precapture_${o.field}`),
+          detail: { field: o.field, phase: 'pre_capture' },
         });
       }
       for (const bad of badUnits) {
-        const unit = units.find((u) => u.reference_id === bad.reference_id);
-        if (unit === undefined) continue;
-        const field =
-          bad.result === 'mismatch' ? (bad.field ?? 'unknown') : 'capture_before_capture';
         await tx.query(
           "UPDATE order_units SET status = 'mismatch', mismatch_reason = $2, updated_at = $3 WHERE id = $1 AND captured_verified_at IS NULL",
-          [unit.id, field, at],
+          [bad.unit.id, bad.field, at],
         );
         await raiseAlert(tx, d, {
           kind: 'frozen_order',
           order_id: order.id,
-          unit_id: unit.id,
-          reason: `precapture_unit_${field}`,
-          detail: { field, phase: 'pre_capture' },
+          unit_id: bad.unit.id,
+          reason: `precapture_unit_${bad.field}`,
+          detail: { field: bad.field, phase: 'pre_capture' },
         });
       }
     });
-    return err({ code: 'frozen' });
+    return fail('frozen');
+  }
+  // A PayPal order that has lapsed (VOIDED, or not found, with no capture) abandons the whole pack:
+  // nothing was captured, nothing is charged, and nobody is told it is on hold.
+  const lapsed = (r: Read): boolean =>
+    r.kind === 'not_found' || (r.kind === 'order' && r.status === 'VOIDED' && !hasCapture(r));
+  if (!single && pos.some((p) => lapsed(reads.get(p.id)!))) {
+    await abandonPack(d, order);
+    return view();
+  }
+  // Not capturable now (an approval that went away, an unreadable order): back to the buyer.
+  const unusable = pos.filter((p) => !isApproved(reads.get(p.id)!));
+  if (unusable.length > 0) {
+    const current = await loadOrder(d.db, order.id);
+    if (current !== null && current.status !== 'awaiting_buyer') {
+      return current.status === 'frozen' ? fail('frozen') : view();
+    }
+    await d.db.transaction(async (tx) => {
+      await lockGraph(tx, order.id);
+      const at = d.clock.now().toISOString();
+      for (const po of unusable) {
+        const r = reads.get(po.id)!;
+        // The read is a real order that is simply not approved (any more): the buyer approves again.
+        if (r.kind === 'order' && r.status !== 'VOIDED' && r.status !== 'COMPLETED') {
+          await setPoState(tx, po.id, 'awaiting_buyer', at, ['approved']);
+        }
+      }
+      await refreshOrder(tx, d, order.id);
+    });
+    return fail('not_approved');
   }
 
-  // 3. Delivery readiness before charging, for every item (A-17). Outside any transaction.
+  // Delivery readiness before charging, for every item (A-17). Outside any transaction.
   const gates = await readApplyGates(d, order.id);
   if (gates.not_ready.length > 0) {
     await d.db.transaction(async (tx) => {
-      const at = d.clock.now().toISOString();
-      const failed = await tx.query(
-        "UPDATE orders SET status = 'failed', updated_at = $2 WHERE id = $1 AND status = 'awaiting_buyer' RETURNING id",
-        [order.id, at],
-      );
-      if (failed.rows.length === 0) return;
-      for (const unit of units) {
-        await tx.query(
-          "UPDATE order_units SET status = 'declined', status_reason = 'content_unavailable', updated_at = $2 WHERE id = $1",
-          [unit.id, at],
-        );
-        const ents = await tx.query<{ id: string }>(
-          'SELECT id FROM entitlements WHERE unit_id = $1 ORDER BY article_id',
-          [unit.id],
-        );
-        for (const e of ents.rows) {
-          await applyMoneyEvent(tx, d, { entitlement_id: e.id, event: 'declined' });
-        }
-      }
+      const graph = await lockGraph(tx, order.id);
+      if (graph.order.status !== 'awaiting_buyer') return;
+      await endWholeOrder(tx, d, order.id, 'failed');
+      await declineUnits(tx, d, order.id, 'content_unavailable');
       for (const n of gates.not_ready) {
         await raiseAlert(tx, d, {
           kind: 'content_unavailable',
@@ -250,9 +314,151 @@ async function precapture(
         });
       }
     });
-    return err({ code: 'not_charged_content_unavailable' });
+    return fail('not_charged_content_unavailable');
   }
-  return null;
+
+  // D. The gated captures, in position order, each with its own key; each is read back on its own.
+  let called = 0;
+  for (const po of pos) {
+    const first = called === 0;
+    const stop = view;
+    // A status-only read showing APPROVED: the pass read serves until something was captured; after
+    // that a PayPal order is read again, and a problem holds that PayPal order only.
+    let read = reads.get(po.id)!;
+    if (!first) {
+      read = await readOf(d, po, scenario);
+      if (!isApproved(read)) return stop();
+      const mine = unitsOf(allUnits, po);
+      const m = matchReadback({
+        expected: expectedFor(
+          order.expected,
+          mine.map((u) => u.reference_id),
+        ),
+        read: read as Extract<Read, { kind: 'order' }>,
+        provider_order_id: po.provider_order_id as string,
+        claims: claimsOf(mine).map((c) => ({ ...c, capture_id: null, claimed_at: null })),
+        foreign_capture_ids: [],
+      });
+      const bad =
+        m.level === 'order'
+          ? [{ field: m.field, unit: null as UnitRow | null }]
+          : m.units
+              .filter((u) => u.result !== 'no_capture')
+              .map((u) => ({
+                field: u.result === 'mismatch' ? (u.field ?? 'unknown') : 'capture_before_capture',
+                unit: mine.find((x) => x.reference_id === u.reference_id) ?? null,
+              }));
+      if (bad.length > 0) {
+        await holdOne(d, order, po, bad);
+        return stop();
+      }
+    }
+    const outcome = await captureOnce(d, order, po.provider_order_id as string, scenario, po);
+    if (outcome.kind !== 'lost' && outcome.kind !== 'capped') called += 1;
+    switch (outcome.kind) {
+      case 'lost':
+        return first ? view() : stop();
+      case 'capped':
+        return first ? fail('not_approved') : stop();
+      case 'blocked':
+        return first ? fail('payments_paused') : stop();
+      case 'unknown':
+      case 'payer_action':
+        return stop();
+      case 'not_approved':
+        return first ? fail('not_approved') : stop();
+      case 'frozen':
+        if (first && pos.length === 1) return fail('frozen');
+        continue;
+      case 'claim':
+      case 'read_decides':
+        break;
+    }
+
+    // A separate read of this PayPal order; the claim never unlocks anything by itself.
+    const after = await readOf(d, po, scenario);
+    if (after.kind !== 'order') {
+      await d.db.transaction(async (tx) => {
+        const at = d.clock.now().toISOString();
+        const graph = await lockGraph(tx, order.id);
+        const cur = poIn(graph, po.id);
+        if (cur.state === 'capture_requested' || cur.state === 'capture_claimed') {
+          await setPoState(tx, po.id, 'unresolved', at, [cur.state]);
+          await refreshOrder(tx, d, order.id);
+        }
+        await ensureReadbackOp(tx, d, graph.order, at, cur);
+      });
+      return stop();
+    }
+    const postGates = await readApplyGates(d, order.id);
+    const report = await d.db.transaction((tx) =>
+      applyReadback(tx, d, {
+        order_id: order.id,
+        read: after,
+        trigger: 'capture',
+        gates: postGates,
+        provider_order_ref: po.id,
+      }),
+    );
+    void report;
+    // An unresolved PayPal order is the reconciler's; the rest of the pack waits for the continuation.
+    const now = (await reload()).find((p) => p.id === po.id);
+    if (
+      now?.state === 'unresolved' ||
+      now?.state === 'capture_claimed' ||
+      now?.state === 'capture_requested'
+    ) {
+      return stop();
+    }
+  }
+  return view();
+}
+
+/** One PayPal order fails the check after another was captured: only that PayPal order is held. */
+async function holdOne(
+  d: PaymentsDeps,
+  order: OrderRow,
+  po: ProviderOrderRow,
+  bad: { field: string; unit: UnitRow | null }[],
+): Promise<void> {
+  await d.db.transaction(async (tx) => {
+    await lockGraph(tx, order.id);
+    const at = d.clock.now().toISOString();
+    await setPoState(tx, po.id, 'frozen', at, ['approved']);
+    for (const b of bad) {
+      if (b.unit !== null) {
+        await tx.query(
+          "UPDATE order_units SET status = 'mismatch', mismatch_reason = $2, updated_at = $3 WHERE id = $1 AND captured_verified_at IS NULL",
+          [b.unit.id, b.field, at],
+        );
+      }
+      await raiseAlert(tx, d, {
+        kind: 'frozen_order',
+        order_id: order.id,
+        unit_id: b.unit === null ? null : b.unit.id,
+        reason:
+          b.unit === null ? reasonFor(po, `precapture_${b.field}`) : `precapture_unit_${b.field}`,
+        detail: { field: b.field, phase: 'pre_capture' },
+      });
+    }
+    await refreshOrder(tx, d, order.id);
+  });
+}
+
+/** The pack is abandoned: nothing was captured. Every open PayPal order is abandoned, in one transaction. */
+async function abandonPack(d: PaymentsDeps, order: OrderRow): Promise<void> {
+  await d.db.transaction(async (tx) => {
+    const graph = await lockGraph(tx, order.id);
+    if (graph.order.status !== 'awaiting_buyer') return;
+    const at = d.clock.now().toISOString();
+    await endWholeOrder(tx, d, order.id, 'abandoned');
+    await declineUnits(tx, d, order.id, 'abandoned');
+    await tx.query(
+      `UPDATE operations SET state = 'failed', failure_reason = 'declined', lease_until = NULL, next_retry_at = NULL, updated_at = $2
+       WHERE order_id = $1 AND state = 'prepared'`,
+      [order.id, at],
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -271,8 +477,8 @@ export async function loadOrderView(db: SqlExecutor, order_id: Id): Promise<Orde
   const order = await loadOrder(db, order_id);
   if (order === null) throw new Error(`loadOrderView: unknown order ${order_id}`);
   const units = await loadUnits(db, order.id);
-  const ids = await db.query<{ id: string; article_id: string }>(
-    `SELECT e.id, e.article_id FROM entitlements e JOIN order_units u ON u.id = e.unit_id
+  const ids = await db.query<{ id: string; article_id: string; publisher_id: string }>(
+    `SELECT e.id, e.article_id, u.publisher_id FROM entitlements e JOIN order_units u ON u.id = e.unit_id
       WHERE u.order_id = $1 ORDER BY e.article_id, e.id`,
     [order.id],
   );
@@ -281,10 +487,16 @@ export async function loadOrderView(db: SqlExecutor, order_id: Id): Promise<Orde
   for (const e of ids.rows) {
     const v = await getEntitlementForBuyer(db, { entitlement_id: e.id, buyer_id: order.buyer_id });
     if (v === null) continue;
-    items.push({ article_id: v.article_id, access: v.access, window: v.window });
+    items.push({
+      article_id: v.article_id,
+      publisher_id: e.publisher_id,
+      access: v.access,
+      window: v.window,
+    });
     money.push(v.money);
   }
-  const provider = (await loadProviderOrders(db, order.id))[0];
+  const pos = await loadProviderOrders(db, order.id);
+  const next = order.status === 'awaiting_buyer' ? nextApproval(pos) : null;
   return {
     order_id: order.id,
     order_ref: order.order_ref,
@@ -296,7 +508,13 @@ export async function loadOrderView(db: SqlExecutor, order_id: Id): Promise<Orde
         : null,
     items,
     environment: order.environment,
-    approve_url: order.status === 'awaiting_buyer' ? (provider?.approve_url ?? null) : null,
+    approve_url: next === null ? null : next.approve_url,
+    progress: next === null || pos.length < 2 ? null : { step: next.po.position, of: pos.length },
+    provider_orders: pos.map((p) => ({
+      position: p.position,
+      publisher_id: p.publisher_id,
+      state: p.state,
+    })),
   };
 }
 

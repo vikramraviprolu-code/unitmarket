@@ -32,7 +32,11 @@ const MAX_CUSTOM = 255;
 const MAX_INVOICE = 127;
 
 const invoiceIdFor = (r: CreateOrderReq, index: number): string =>
-  r.units.length === 1 ? r.order_ref : `${r.order_ref}-${index}`;
+  r.invoice_id !== undefined
+    ? r.invoice_id
+    : r.units.length === 1
+      ? r.order_ref
+      : `${r.order_ref}-${index}`;
 
 /** Local checks before anything is sent. Null means the request may go. */
 export function checkCreate(r: CreateOrderReq): PayPalFail | null {

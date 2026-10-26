@@ -17,6 +17,9 @@ export type AlertKind =
   // A PAYMENT.CAPTURE.REVERSED webhook, unproven until a read shows it (ASM-63). Ops see it; recovery
   // keeps it out of ALERT_CASE_KINDS, so no case opens and the buyer is told nothing.
   | 'reversal_hint'
+  // MVP-D: a pack ended paid_partial with at least one PayPal order not charged (declined, failed or
+  // abandoned). Once per order, reason `partial`. A frozen PayPal order is on hold and never raises it.
+  | 'partial_composite'
   | 'refund_unbooked'
   | 'refund_failed'
   | 'refund_unresolved';

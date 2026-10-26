@@ -41,6 +41,9 @@ export const DomainConfigSchema = z
     reread_paid_every_ms: ms.positive().max(86_400_000).optional(),
     /** 500: at most 2 provider calls a second (PERF-9) */
     min_call_gap_ms: ms.optional(),
+    // MVP-D (additive, optional: the engine defaults to 3600000 when it is absent).
+    /** 3600000: how long after the first approval of a pack the rest must be approved (P17, ASM-75) */
+    pack_approval_window_ms: ms.positive().optional(),
   })
   .strict();
 export type DomainConfig = z.infer<typeof DomainConfigSchema>;

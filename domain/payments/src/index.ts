@@ -7,6 +7,8 @@ export { placeOrder } from './place';
 export { beginCheckout } from './checkout';
 export { onBuyerReturn, loadOrderView } from './return';
 export { matchReadback } from './match';
+export { deriveOrderStatus, expectedFor, poRefFor } from './composite';
+export type { Derived, PoFacts, ProviderOrderState } from './composite';
 export type { MatchInput } from './match';
 export { applyReadback, readApplyGates, ensureReadbackOp } from './apply';
 export { raiseAlert } from './alerts';

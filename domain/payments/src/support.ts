@@ -55,7 +55,7 @@ export interface FakeCall {
 interface FakeOrder {
   id: string;
   req: CreateOrderReq;
-  status: 'CREATED' | 'APPROVED' | 'COMPLETED';
+  status: 'CREATED' | 'APPROVED' | 'COMPLETED' | 'VOIDED';
   capture: {
     capture_id: string;
     status: CaptureStatus;
@@ -86,8 +86,23 @@ export interface FakePayPal extends PayPalPort {
   count(op: FakeCall['op']): number;
   /** The buyer approves at PayPal. */
   approve(provider_order_id: string): void;
-  /** Overrides consumed in order, one per call of that kind. */
-  queue: { create: CreateOrderRes[]; get: (OrderRead | 'real')[]; capture: CaptureRes[] };
+  /** PayPal voids the order (it lapsed). */
+  void(provider_order_id: string): void;
+  /**
+   * Overrides consumed in order, one per call of that kind. 'real' lets one call through unchanged,
+   * so a scripted answer can be aimed at the second capture of a pack.
+   */
+  queue: {
+    create: (CreateOrderRes | 'real')[];
+    get: (OrderRead | 'real')[];
+    capture: (CaptureRes | 'real')[];
+  };
+  /** Per PayPal order, replaces fields of `next` for the capture of that order only (MVP-D). */
+  nextBy: Map<string, Partial<FakePayPal['next']>>;
+  /** Per PayPal order, replaces fields of `tamper` for every read of that order only (MVP-D). */
+  tamperBy: Map<string, Tamper>;
+  /** Per PayPal order, applied to the reads of that order once a capture exists (MVP-D). */
+  tamperAfterCapture: Map<string, Tamper>;
   /** What a capture does at PayPal. */
   next: {
     status: CaptureStatus;
@@ -137,7 +152,12 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
     }
   };
 
-  const read = (o: FakeOrder, t: Tamper): OrderRead => {
+  const read = (o: FakeOrder, base: Tamper): OrderRead => {
+    const t: Tamper = {
+      ...base,
+      ...fake.tamperBy.get(o.id),
+      ...(o.capture === null ? {} : fake.tamperAfterCapture.get(o.id)),
+    };
     const units = o.req.units.map((u, k) => ({
       reference_id: t.reference_id ?? u.reference_id,
       payee_merchant_id: t.payee ?? u.payee_merchant_id,
@@ -186,6 +206,9 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
     violations,
     orders,
     queue: { create: [], get: [], capture: [] },
+    nextBy: new Map(),
+    tamperBy: new Map(),
+    tamperAfterCapture: new Map(),
     next: { status: 'COMPLETED', reason: null, fee: 45, lose_response: false },
     tamper: {},
     captureIdSeed: 0,
@@ -199,6 +222,11 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
       const o = orders.get(id);
       if (o === undefined) throw new Error(`unknown provider order ${id}`);
       o.status = 'APPROVED';
+    },
+    void(id) {
+      const o = orders.get(id);
+      if (o === undefined) throw new Error(`unknown provider order ${id}`);
+      o.status = 'VOIDED';
     },
     async createOrder(req) {
       guard('create');
@@ -219,7 +247,7 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
         return res;
       };
       const forced = fake.queue.create.shift();
-      if (forced !== undefined) return remember(forced);
+      if (forced !== undefined && forced !== 'real') return remember(forced);
       n += 1;
       const id = `SBXFAKEORD${String(n).padStart(5, '0')}`;
       orders.set(id, { id, req, status: 'CREATED', capture: null, capture_request_id: null });
@@ -262,7 +290,7 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
         return res;
       };
       const forced = fake.queue.capture.shift();
-      if (forced !== undefined) return remember(forced);
+      if (forced !== undefined && forced !== 'real') return remember(forced);
       const o = orders.get(r.provider_order_id);
       if (o === undefined) return { kind: 'not_found', debug_id: null };
       if (o.status !== 'APPROVED') {
@@ -275,17 +303,18 @@ export function makeFakePayPal(inTx: () => boolean, clock: { now(): Date }): Fak
         });
       }
       n += 1;
+      const next = { ...fake.next, ...fake.nextBy.get(o.id) };
       o.capture = {
         capture_id: `SBXFAKECAP${String(n).padStart(5, '0')}`,
-        status: fake.next.status,
-        reason: fake.next.reason,
-        fee: fake.next.fee,
+        status: next.status,
+        reason: next.reason,
+        fee: next.fee,
       };
       o.capture_request_id = r.request_id;
       o.status = 'COMPLETED';
       const claim = remember(claimOf(o, 201));
       if (fake.crashAfterCapture) throw new Error('process died after the capture');
-      if (fake.next.lose_response) return { kind: 'timeout' };
+      if (next.lose_response) return { kind: 'timeout' };
       return claim;
     },
     getCapture: () => Promise.reject(new Error('getCapture is not used by lane 05a')),
@@ -586,9 +615,65 @@ export interface Placed {
   order_id: Id;
   order_ref: Id;
 }
+export interface PlaceOptions {
+  /**
+   * D1 dormant (MVP-D, DP-2a). Before MVP-D an approval of two publishers was one PayPal order with
+   * two purchase units. D2 now places one PayPal order per publisher; this option rewrites the
+   * placed rows back into the old single-route shape (one provider order, every unit on it) so the
+   * tests of the engine's one-order-many-units paths keep their meaning. The route is dormant: no
+   * product code creates this shape any more.
+   */
+  d1?: boolean;
+}
+/** The rows of one placed order, by position. */
+export interface ProviderOrderInfo {
+  position: number;
+  po_ref: string;
+  provider_order_id: string | null;
+  approve_url: string | null;
+  publisher_id: string | null;
+  state: string;
+}
+export const providerOrdersOf = (w: World, order_id: Id): Promise<ProviderOrderInfo[]> =>
+  w.rows<ProviderOrderInfo>(
+    `SELECT position, po_ref, provider_order_id, approve_url, publisher_id, state
+       FROM provider_orders WHERE order_id = $1 ORDER BY position`,
+    [order_id],
+  );
+
+/** D1 dormant: one provider order for every unit of the order, the old single-route rows. */
+export async function collapseToD1Dormant(w: World, order_id: Id): Promise<void> {
+  const pos = await w.rows<{ id: string; position: number }>(
+    'SELECT id, position FROM provider_orders WHERE order_id = $1 ORDER BY position',
+    [order_id],
+  );
+  const keep = pos[0];
+  if (keep === undefined) throw new Error('collapseToD1Dormant: no provider order');
+  for (const extra of pos.slice(1)) {
+    await w.rows('UPDATE order_units SET provider_order_ref = $2 WHERE provider_order_ref = $1', [
+      extra.id,
+      keep.id,
+    ]);
+    await w.rows('DELETE FROM operations WHERE provider_order_ref = $1', [extra.id]);
+    await w.rows('DELETE FROM provider_orders WHERE id = $1', [extra.id]);
+  }
+  await w.rows(
+    `UPDATE provider_orders SET route = 'single', publisher_id = NULL, position = 1,
+            po_ref = (SELECT order_ref FROM orders WHERE id = $2)
+      WHERE id = $1`,
+    [keep.id, order_id],
+  );
+  await w.rows(
+    `UPDATE operations SET request_id = 'umsC-' || (SELECT order_ref FROM orders WHERE id = $2)
+      WHERE provider_order_ref = $1 AND kind = 'create'`,
+    [keep.id, order_id],
+  );
+}
 export async function place(
   w: World,
-  o: Parameters<World['approval']>[0] & { actor?: typeof BUYER_A | typeof BUYER_B } = {},
+  o: Parameters<World['approval']>[0] & {
+    actor?: typeof BUYER_A | typeof BUYER_B;
+  } & PlaceOptions = {},
 ): Promise<Placed> {
   const approval = await w.approval(o);
   const r = await placeOrder(w.deps, {
@@ -597,11 +682,15 @@ export async function place(
     actor: o.actor ?? { kind: 'buyer', buyer_id: o.buyer_id ?? 'buy_A' },
   });
   if (!r.ok) throw new Error(`placeOrder refused: ${JSON.stringify(r.error)}`);
+  if (o.d1 === true) await collapseToD1Dormant(w, r.value.order_id);
   return { approval, order_id: r.value.order_id, order_ref: r.value.order_ref };
 }
 export interface Awaiting extends Placed {
   approve_url: string;
+  /** The first PayPal order (position 1); the only one unless the approval has two publishers. */
   provider_order_id: string;
+  /** Every PayPal order of the order, by position. */
+  provider_orders: ProviderOrderInfo[];
 }
 /** placeOrder + beginCheckout; the order waits for the buyer at PayPal. */
 export async function awaiting(
@@ -615,32 +704,51 @@ export async function awaiting(
     scenario: o.scenario ?? null,
   });
   if (!c.ok) throw new Error(`beginCheckout refused: ${JSON.stringify(c.error)}`);
-  const rows = await w.rows<{ provider_order_id: string }>(
-    'SELECT provider_order_id FROM provider_orders WHERE order_id = $1',
-    [p.order_id],
-  );
-  return { ...p, approve_url: c.value.approve_url, provider_order_id: rows[0]!.provider_order_id };
+  const provider_orders = await providerOrdersOf(w, p.order_id);
+  return {
+    ...p,
+    approve_url: c.value.approve_url,
+    provider_order_id: provider_orders[0]!.provider_order_id as string,
+    provider_orders,
+  };
 }
-/** ... and the buyer has approved at PayPal. */
+/** The buyer approves one PayPal order (position 1 unless said). */
+export function approvePo(w: World, a: Awaiting, position = 1): void {
+  const po = a.provider_orders.find((x) => x.position === position);
+  if (po?.provider_order_id === null || po === undefined) throw new Error('no such PayPal order');
+  w.paypal.approve(po.provider_order_id);
+}
+/** ... and the buyer has approved at PayPal (every PayPal order of the order). */
 export async function approved(
   w: World,
   o: Parameters<typeof awaiting>[1] = {},
 ): Promise<Awaiting> {
   const a = await awaiting(w, o);
-  w.paypal.approve(a.provider_order_id);
-  return a;
+  for (const po of a.provider_orders) w.paypal.approve(po.provider_order_id as string);
+  // The engine only moves a PayPal order to `approved` when a read shows APPROVED (the return does
+  // that); a test that calls the capture gate directly needs the state the return would have set.
+  await w.rows(
+    `UPDATE provider_orders SET state = 'approved', status = 'APPROVED', first_approved_at = $2
+      WHERE order_id = $1 AND state = 'awaiting_buyer'`,
+    [a.order_id, w.clock.now().toISOString()],
+  );
+  return { ...a, provider_orders: await providerOrdersOf(w, a.order_id) };
 }
-/** What the reconciler of lane 05b does: read, gather the gates, apply in one transaction. */
+/**
+ * What the reconciler of lane 05b does: read, gather the gates, apply in one transaction. The
+ * PayPal order is the one at `position` (1 unless the order has two).
+ */
 export async function reapply(
   w: World,
   order_id: Id,
   trigger: 'poll' | 'webhook' | 'return' | 'capture' = 'poll',
   gates = true,
+  position = 1,
 ): Promise<ApplyReport> {
   const o = (
     await w.rows<{ provider_order_id: string }>(
-      'SELECT provider_order_id FROM provider_orders WHERE order_id = $1',
-      [order_id],
+      'SELECT provider_order_id FROM provider_orders WHERE order_id = $1 AND position = $2',
+      [order_id, position],
     )
   )[0]!;
   const read = await w.paypal.getOrder(o.provider_order_id);

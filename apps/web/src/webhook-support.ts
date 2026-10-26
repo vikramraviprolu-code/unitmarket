@@ -287,9 +287,12 @@ export async function seedCapturingOrder(
   });
   if (!placed.ok) throw new Error(`place failed: ${placed.error.code}`);
   const at = new Date(NOW_MS).toISOString();
+  // Migration 0011 (DP-2a): placeOrder already wrote the one provider order of this single-publisher
+  // order (position 1, state prepared), so the PayPal order id is set on that row. A second INSERT
+  // would be a second PayPal order for the same publisher, which the schema now refuses.
   await app.db.query(
-    `INSERT INTO provider_orders (id, order_id, provider_order_id, route, status, created_at, updated_at)
-     VALUES ('por_co3test0000000000000000001', $1, $2, 'single', 'APPROVED', $3, $3)`,
+    `UPDATE provider_orders SET provider_order_id = $2, status = 'APPROVED', state = 'capture_requested', updated_at = $3
+      WHERE order_id = $1`,
     [placed.value.order_id, provider_order_id, at],
   );
   await app.db.query(

@@ -1,10 +1,11 @@
 // Adapted from AIC_Hackathon_UnitMarket packages/core/payments/capture.ts at
 // a36ddc03fd0b962000f686291c145b50ee337f90. Owned by SBX lane 05a.
-// P4: the one gated capture and the recording of its answer. A capture answer is a claim: it is
+// P4: the one gated capture and the recording of its answer, per PayPal order (DP-2a). A capture answer is a claim: it is
 // stored per unit and never unlocks anything. The provider is called outside any transaction (P14).
 import { CaptureResSchema } from '@umsbx/contracts';
 import type { CaptureRes, Id, PaymentsDeps, ProviderOrderId } from '@umsbx/contracts';
 import { raiseAlert } from './alerts';
+import { lockGraph, poIn, refreshOrder, setPoState } from './composite';
 import { captureKeyNumber, requestIdFor } from './keys';
 import { ensureReadbackOp } from './apply';
 import {
@@ -12,11 +13,11 @@ import {
   backoffMs,
   canStoreCaptureId,
   insertOperation,
-  loadOperation,
+  loadOperationFor,
+  loadProviderOrders,
   loadUnits,
-  lockOrderRows,
 } from './store';
-import type { OperationRow, OrderRow } from './store';
+import type { OperationRow, OrderRow, ProviderOrderRow } from './store';
 
 class Lost extends Error {}
 
@@ -38,14 +39,50 @@ type Gated =
   | { kind: 'lost' }
   | { kind: 'capped' };
 
+/** An alert reason that tells the PayPal orders of one pack apart (alerts are unique per order and reason). */
+export const reasonFor = (
+  po: Pick<ProviderOrderRow, 'route' | 'position'>,
+  base: string,
+): string => (po.route === 'single' ? base : `${base}_p${po.position}`);
+
+/** The PayPal order a caller means: the one given, else the one of the order that holds this PayPal id. */
+async function resolvePo(
+  d: PaymentsDeps,
+  order: OrderRow,
+  provider_order_id: string | null,
+  po?: ProviderOrderRow,
+): Promise<ProviderOrderRow> {
+  if (po !== undefined) return po;
+  const all = await loadProviderOrders(d.db, order.id);
+  const found =
+    provider_order_id === null
+      ? all[0]
+      : (all.find((p) => p.provider_order_id === provider_order_id) ??
+        (all.length === 1 ? all[0] : undefined));
+  if (found === undefined) throw new Error(`order ${order.id} has no such provider order`);
+  return found;
+}
+
+/** The capture operation row of one PayPal order, as a SQL filter (a single order keeps its order-wide reading). */
+const poFilter = (po: ProviderOrderRow, at: number): { sql: string; params: unknown[] } =>
+  po.route === 'single'
+    ? { sql: '', params: [] }
+    : { sql: ` AND provider_order_ref = $${at}`, params: [po.id] };
+
 /**
  * The cheap pre-gate (review LOW): before a return pays for its pre-capture read it takes a short
  * lease on the capture operation row (a compare-and-set on lease_until). Of 20 concurrent returns
  * one holds the lease and reads; the others answer from the database. The holder gives the lease
  * back with releasePrecheck when it does not go on to capture. A lease that is never given back
- * (a dead process) runs out after operation_lease_ms.
+ * (a dead process) runs out after operation_lease_ms. For a pack the lease is taken on the capture
+ * operation of the PayPal order given (the first one when none is).
  */
-export async function claimPrecheck(d: PaymentsDeps, order: OrderRow): Promise<boolean> {
+export async function claimPrecheck(
+  d: PaymentsDeps,
+  order: OrderRow,
+  po?: ProviderOrderRow,
+): Promise<boolean> {
+  const target = await resolvePo(d, order, null, po);
   return d.db.transaction(async (tx) => {
     const at = d.clock.now().toISOString();
     const lease = addMs(at, d.config.operation_lease_ms);
@@ -54,72 +91,83 @@ export async function claimPrecheck(d: PaymentsDeps, order: OrderRow): Promise<b
       order_id: order.id,
       kind: 'capture',
       state: 'prepared',
-      request_id: requestIdFor('capture', order.order_ref),
+      request_id: requestIdFor('capture', target.po_ref),
       lease_until: lease,
       reconcile_until: null,
       next_retry_at: null,
       at,
+      provider_order_ref: target.id,
     });
     if (inserted) return true;
+    const f = poFilter(target, 4);
     const won = await tx.query(
       `UPDATE operations SET lease_until = $2, updated_at = $3
-       WHERE order_id = $1 AND kind = 'capture' AND state = 'prepared' AND lease_until <= $3 RETURNING id`,
-      [order.id, lease, at],
+       WHERE order_id = $1 AND kind = 'capture' AND state = 'prepared' AND lease_until <= $3${f.sql} RETURNING id`,
+      [order.id, lease, at, ...f.params],
     );
     return won.rows.length > 0;
   });
 }
 
-export async function releasePrecheck(d: PaymentsDeps, order: OrderRow): Promise<void> {
+export async function releasePrecheck(
+  d: PaymentsDeps,
+  order: OrderRow,
+  po?: ProviderOrderRow,
+): Promise<void> {
+  const target = await resolvePo(d, order, null, po);
   const at = d.clock.now().toISOString();
+  const f = poFilter(target, 3);
   await d.db.query(
     `UPDATE operations SET lease_until = $2, updated_at = $2
-     WHERE order_id = $1 AND kind = 'capture' AND state = 'prepared'`,
-    [order.id, at],
+     WHERE order_id = $1 AND kind = 'capture' AND state = 'prepared'${f.sql}`,
+    [order.id, at, ...f.params],
   );
 }
 
 /**
- * The gate (nfr.md P3, P4, D-014). The capture operation row is inserted `prepared` (once: its
- * request id is unique) and then moved to `sent` by a conditional UPDATE; of any number of
- * concurrent returns exactly one gets a row back and may call PayPal. The order moves
- * awaiting_buyer to capture_requested in the same transaction, so a failure of either rolls back
- * both.
+ * The gate (nfr.md P3, P4, D-014). The capture operation row of the PayPal order is inserted
+ * `prepared` (once: its request id is unique) and then moved to `sent` by a conditional UPDATE; of
+ * any number of concurrent returns exactly one gets a row back and may call PayPal. The gate keys on
+ * the PayPal order's own state: it must be `approved`, and it moves to `capture_requested` in the
+ * same transaction as the operation's prepared to sent, so a failure of either rolls back both. The
+ * order status is then derived (composite.ts), never set here.
  *
  * A try after a definitive answer (payer_action, ORDER_NOT_APPROVED) is a new attempt with a new
- * key umsK-<ref>-<n>: PayPal replays the stored answer for a key it has seen, and the old key may
+ * key umsK-<po_ref>-<n>: PayPal replays the stored answer for a key it has seen, and the old key may
  * be past its 6 h retention. The caller has read the order just before and seen no capture. At most
- * 1 + max_capture_retries attempts are ever sent; after that nothing is sent and a human is alerted.
+ * 1 + max_capture_retries keys are ever used per PayPal order; after that nothing is sent and a human
+ * is alerted.
  */
-async function gate(d: PaymentsDeps, order: OrderRow): Promise<Gated> {
+async function gate(d: PaymentsDeps, order: OrderRow, target: ProviderOrderRow): Promise<Gated> {
   try {
     return await d.db.transaction(async (tx): Promise<Gated> => {
       const at = d.clock.now().toISOString();
-      // Lock order first, then the operations: the order every other writer uses (store.ts).
-      const current = await lockOrderRows(tx, order.id);
-      if (current === null || current.status !== 'awaiting_buyer') throw new Lost();
-      let op = await loadOperation(tx, order.id, 'capture', { lock: true });
+      // Lock order first (orders, provider_orders, operations): the order every other writer uses.
+      const po = poIn(await lockGraph(tx, order.id), target.id);
+      if (po.state !== 'approved') throw new Lost();
+      let op = await loadOperationFor(tx, po, 'capture', { lock: true });
       if (op === null) {
         await insertOperation(tx, {
           id: d.ids.next('opr'),
           order_id: order.id,
           kind: 'capture',
           state: 'prepared',
-          request_id: requestIdFor('capture', order.order_ref),
+          request_id: requestIdFor('capture', po.po_ref),
           lease_until: addMs(at, d.config.operation_lease_ms),
           reconcile_until: null,
           next_retry_at: null,
           at,
+          provider_order_ref: po.id,
         });
-        op = await loadOperation(tx, order.id, 'capture', { lock: true });
+        op = await loadOperationFor(tx, po, 'capture', { lock: true });
       }
-      if (op === null) throw new Error(`capture operation of ${order.id} vanished`);
+      if (op === null) throw new Error(`capture operation of ${po.id} vanished`);
       if (op.state !== 'prepared') throw new Lost();
       const sentBefore = op.first_sent_at !== null;
       const attempt = sentBefore ? op.attempt + 1 : op.attempt;
       // D-014: the cap counts keys, not sends. A same-key resend (a lost answer) is not a new
       // attempt; the total of sends is bounded separately.
-      const keyNumber = captureKeyNumber(order.order_ref, op.request_id) + (sentBefore ? 1 : 0);
+      const keyNumber = captureKeyNumber(po.po_ref, op.request_id) + (sentBefore ? 1 : 0);
       if (
         keyNumber > 1 + d.config.max_capture_retries ||
         attempt > 2 * (1 + d.config.max_capture_retries)
@@ -128,12 +176,12 @@ async function gate(d: PaymentsDeps, order: OrderRow): Promise<Gated> {
           kind: 'payment_unresolved',
           order_id: order.id,
           unit_id: null,
-          reason: 'capture_attempts_exhausted',
+          reason: reasonFor(po, 'capture_attempts_exhausted'),
           detail: { attempt: op.attempt },
         });
         return { kind: 'capped' };
       }
-      const request_id = requestIdFor('capture', order.order_ref, keyNumber);
+      const request_id = requestIdFor('capture', po.po_ref, keyNumber);
       const won = await tx.query(
         `UPDATE operations SET state = 'sent', attempt = $5, request_id = $6, first_sent_at = $2,
            idem_safe_until = $3, lease_until = $4, updated_at = $2
@@ -149,12 +197,8 @@ async function gate(d: PaymentsDeps, order: OrderRow): Promise<Gated> {
         ],
       );
       if (won.rows.length === 0) throw new Lost();
-      const moved = await tx.query(
-        `UPDATE orders SET status = 'capture_requested', updated_at = $2
-         WHERE id = $1 AND status = 'awaiting_buyer' RETURNING id`,
-        [order.id, at],
-      );
-      if (moved.rows.length === 0) throw new Lost();
+      if (!(await setPoState(tx, po.id, 'capture_requested', at, ['approved']))) throw new Lost();
+      await refreshOrder(tx, d, order.id);
       return {
         kind: 'go',
         op_id: op.id,
@@ -173,14 +217,21 @@ async function gate(d: PaymentsDeps, order: OrderRow): Promise<Gated> {
   }
 }
 
-/** Gate, call, record. At most one call per order in flight (the gate), never inside a transaction. */
+/**
+ * Gate, call, record. At most one call per PayPal order in flight (the gate), never inside a
+ * transaction. Every answer changes the state of THAT PayPal order only; the order status follows
+ * from deriveOrderStatus. `po` names the PayPal order; when omitted it is the one of this order that
+ * holds `provider_order_id`.
+ */
 export async function captureOnce(
   d: PaymentsDeps,
   order: OrderRow,
   provider_order_id: ProviderOrderId,
   scenario: string | null,
+  po?: ProviderOrderRow,
 ): Promise<CaptureOutcome> {
-  const gated = await gate(d, order);
+  const target = await resolvePo(d, order, provider_order_id, po);
+  const gated = await gate(d, order, target);
   if (gated.kind !== 'go') return gated;
 
   // Outside any transaction (P14). If the process dies here the operation stays `sent`: the
@@ -195,23 +246,25 @@ export async function captureOnce(
 
   return d.db.transaction(async (tx): Promise<CaptureOutcome> => {
     const at = d.clock.now().toISOString();
-    // The answer is recorded under the same lock order as everything else: order, then operation.
-    // The order may have moved on while the call was open (a concurrent read froze it, a poll
-    // verified it, the sweeper gave the call up): the answer then changes the operation only.
-    const current = await lockOrderRows(tx, order.id);
-    if (current === null) throw new Error(`order ${order.id} vanished`);
-    const op = await loadOperation(tx, order.id, 'capture', { lock: true });
-    if (op === null) throw new Error(`capture operation of ${order.id} vanished`);
-    const live = current.status === 'capture_requested';
-    const money = current.status === 'paid' || current.status === 'paid_partial';
-    // Guarded: only the state this call set may be left by this call (H1, M2).
-    const setOrder = async (status: string, mismatch = false): Promise<void> => {
+    // The answer is recorded under the same lock order as everything else: order, provider orders,
+    // operations. The PayPal order may have moved on while the call was open (a concurrent read froze
+    // it, a poll verified it, the sweeper gave the call up): the answer then changes the operation only.
+    const graph = await lockGraph(tx, order.id);
+    const current = graph.order;
+    const po = poIn(graph, target.id);
+    const op = await loadOperationFor(tx, po, 'capture', { lock: true });
+    if (op === null) throw new Error(`capture operation of ${po.id} vanished`);
+    const live = po.state === 'capture_requested';
+    const money = po.state === 'captured';
+    // Guarded: only the state this call set may be left by this call (H1, M2). Writes this PayPal
+    // order's state only, then the order status is derived.
+    const setState = async (
+      state: 'unresolved' | 'capture_claimed' | 'approved' | 'frozen',
+    ): Promise<void> => {
       if (!live) return;
-      await tx.query(
-        `UPDATE orders SET status = $2, mismatch = mismatch OR $3, updated_at = $4
-         WHERE id = $1 AND status = 'capture_requested'`,
-        [order.id, status, mismatch, at],
-      );
+      if (await setPoState(tx, po.id, state, at, ['capture_requested'])) {
+        await refreshOrder(tx, d, order.id);
+      }
     };
     const setOp = async (set: string, params: unknown[] = []): Promise<void> => {
       await tx.query(
@@ -219,16 +272,16 @@ export async function captureOnce(
         [op.id, at, ...params],
       );
     };
-    // An order that is no longer ours: the operation is closed to match where the order stands.
+    // A PayPal order that is no longer ours: the operation is closed to match where it stands.
     const settleDead = async (): Promise<void> => {
       if (money) {
         await setOp("state = 'confirmed', lease_until = NULL, next_retry_at = NULL");
-      } else if (current.status === 'frozen' || current.status === 'failed') {
+      } else if (po.state === 'frozen' || po.state === 'failed' || po.state === 'declined') {
         await setOp(
           "state = 'failed', failure_reason = $3, lease_until = NULL, next_retry_at = NULL",
-          [current.status === 'frozen' ? 'mismatch' : 'declined'],
+          [po.state === 'frozen' ? 'mismatch' : 'declined'],
         );
-      } else if (current.status === 'abandoned') {
+      } else if (po.state === 'abandoned') {
         await setOp(
           "state = 'failed', failure_reason = 'declined', lease_until = NULL, next_retry_at = NULL",
         );
@@ -245,7 +298,7 @@ export async function captureOnce(
         "state = 'unknown', lease_until = NULL, reconcile_until = $3, next_retry_at = $4",
         [until, addMs(at, wait)],
       );
-      await setOrder('unresolved');
+      await setState('unresolved');
       return { kind: 'unknown' };
     };
     const reopen = async (): Promise<boolean> => {
@@ -256,11 +309,11 @@ export async function captureOnce(
       // Nothing was captured; the operation keeps its attempt count and the next try is a new
       // attempt (see gate). The lease is over: the next return may take the pre-gate at once.
       await setOp("state = 'prepared', lease_until = $2");
-      await setOrder('awaiting_buyer');
+      await setState('approved');
       return true;
     };
     const notLive = (): CaptureOutcome =>
-      current.status === 'frozen' ? { kind: 'frozen' } : { kind: 'lost' };
+      po.state === 'frozen' ? { kind: 'frozen' } : { kind: 'lost' };
 
     if (res.kind === 'claim' && res.http !== 202) {
       const units = await loadUnits(tx, order.id);
@@ -269,10 +322,11 @@ export async function captureOnce(
       );
       for (const claim of claims) {
         const unit = units.find((u) => u.reference_id === claim.reference_id);
-        // A claim for an unknown reference, or for a unit already settled, is ignored: the read
-        // will show anything that matters.
+        // A claim for an unknown reference, for a unit of another PayPal order, or for a unit already
+        // settled, is ignored: the read will show anything that matters.
         if (
           unit === undefined ||
+          unit.provider_order_ref !== po.id ||
           unit.captured_verified_at !== null ||
           unit.status === 'mismatch'
         ) {
@@ -288,10 +342,10 @@ export async function captureOnce(
         );
       }
       await setOp("state = 'confirmed', lease_until = NULL, next_retry_at = NULL");
-      await setOrder('capture_claimed');
+      await setState('capture_claimed');
       // H-1: the claim is stored together with the thing that will read it back. If the process
-      // dies before the post-capture read, the poll of this operation finishes the order.
-      if (live) await ensureReadbackOp(tx, d, current, at);
+      // dies before the post-capture read, the poll of this operation finishes the PayPal order.
+      if (live) await ensureReadbackOp(tx, d, current, at, po);
       return { kind: 'claim' };
     }
     if (res.kind === 'claim') return unknown(null); // 202: accepted, no final units
@@ -314,16 +368,17 @@ export async function captureOnce(
           at,
         ],
       );
-      await setOrder('awaiting_buyer');
+      await setState('approved');
       return { kind: 'blocked' };
     }
     if (res.kind === 'payer_action') {
       const reopened = await reopen();
       if (!reopened) return notLive();
       if (res.redirect_url !== null) {
+        // This PayPal order's approve url only: the buyer approves this one again.
         await tx.query(
-          'UPDATE provider_orders SET approve_url = $2, updated_at = $3 WHERE order_id = $1',
-          [order.id, res.redirect_url, at],
+          'UPDATE provider_orders SET approve_url = $2, updated_at = $3 WHERE id = $1',
+          [po.id, res.redirect_url, at],
         );
       }
       return { kind: 'payer_action', redirect_url: res.redirect_url };
@@ -339,12 +394,12 @@ export async function captureOnce(
         [res.http === 400 ? 'invalid_request' : 'rejected'],
       );
       if (res.issue === 'DUPLICATE_INVOICE_ID') {
-        await setOrder('frozen', true);
+        await setState('frozen');
         await raiseAlert(tx, d, {
           kind: 'frozen_order',
           order_id: order.id,
           unit_id: null,
-          reason: 'duplicate_invoice_id',
+          reason: reasonFor(po, 'duplicate_invoice_id'),
           detail: { debug_id: res.debug_id },
         });
         return { kind: 'frozen' };
@@ -355,14 +410,14 @@ export async function captureOnce(
           kind: 'payment_unresolved',
           order_id: order.id,
           unit_id: null,
-          reason: 'capture_invalid_request',
+          reason: reasonFor(po, 'capture_invalid_request'),
           detail: { debug_id: res.debug_id },
         });
       }
-      // Any other refusal: the read decides. The order is closed as not charged only when the
+      // Any other refusal: the read decides. The PayPal order is closed as not charged only when the
       // read shows no capture (applyReadback), declined only when it shows DECLINED or FAILED.
       if (!live) return notLive();
-      await setOrder('unresolved');
+      await setState('unresolved');
       return { kind: 'read_decides' };
     }
     // timeout, unavailable, in_progress (409), not_found: the capture may have happened.

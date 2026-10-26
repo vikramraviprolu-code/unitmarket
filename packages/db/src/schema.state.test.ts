@@ -179,6 +179,7 @@ describe('migrations', () => {
     ]);
     expect(first).toContain('0008_access_events_unique');
     expect(first).toContain('0009_active_entitlement_unique');
+    expect(first).toContain('0011_provider_order_state');
     expect(await migrate(d, clock)).toEqual([]);
     const rows = await d.query<{ version: string; applied_at: Date | string }>(
       'SELECT version, applied_at FROM schema_migrations ORDER BY version',
@@ -672,6 +673,10 @@ describe('money constraints', () => {
         route: 'single',
         approve_url: null,
         status: null,
+        // 0011: position, po_ref and state are required (DP-2a); one row per n on the same order.
+        position: n,
+        po_ref: `ord_1-p${n}`,
+        state: 'prepared',
         ...over,
       });
     await p(1);
@@ -1153,6 +1158,10 @@ describe('review A: provider order approve_url (M2)', () => {
         route: 'single',
         approve_url: url,
         status: null,
+        // 0011: position, po_ref and state are required (DP-2a); one row per n on the same order.
+        position: n,
+        po_ref: `ord_1-p${n}`,
+        state: 'prepared',
       });
     await po(1, null);
     await po(2, 'https://www.sandbox.paypal.com/checkoutnow?token=ABC');
@@ -1504,7 +1513,12 @@ describe('0010 publishers.payee_shared (DP-1, D-041)', () => {
       await add('pub_n', 'northfield-quarterly', null);
       const before = (await d.query('SELECT * FROM publishers ORDER BY id')).rows;
 
-      expect(await migrate(d, clock)).toEqual(['0010_publisher_payee_shared']);
+      // 0011 (DP-2a) exists now, so migrating the 0009 copy applies both, in order; the 0010 checks
+      // below are unchanged.
+      expect(await migrate(d, clock)).toEqual([
+        '0010_publisher_payee_shared',
+        '0011_provider_order_state',
+      ]);
       const after = await d.query<Record<string, unknown>>('SELECT * FROM publishers ORDER BY id');
       // every old column value is kept; the new column is false for every existing row
       expect(

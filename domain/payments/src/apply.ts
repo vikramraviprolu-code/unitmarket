@@ -12,16 +12,10 @@ import { applyMoneyEvent } from '@umsbx/entitlements';
 import { appendLedgerEntry } from '@umsbx/ledger';
 import { issueReceiptIfChanged } from '@umsbx/receipts';
 import { ApprovalSnapshotSchema } from '@umsbx/contracts';
-import type {
-  CoreDeps,
-  Id,
-  OrderRead,
-  OrderStatus,
-  PaymentsDeps,
-  SqlExecutor,
-} from '@umsbx/contracts';
+import type { CoreDeps, Id, OrderRead, PaymentsDeps, SqlExecutor } from '@umsbx/contracts';
 import { raiseAlert } from './alerts';
-import type { AlertKind } from './alerts';
+import { expectedFor, lockGraph, refreshOrder, setPoState } from './composite';
+import type { ProviderOrderState } from './composite';
 import { readbackKeyFor } from './keys';
 import { matchReadback } from './match';
 import {
@@ -31,13 +25,13 @@ import {
   claimsOf,
   foreignCaptureIds,
   insertOperation,
-  loadOperation,
+  loadOperationFor,
   loadOrder,
   loadProviderOrders,
   loadUnits,
-  lockOrderRows,
+  unitsOf,
 } from './store';
-import type { OrderRow, UnitRow } from './store';
+import type { OrderRow, ProviderOrderRow, UnitRow } from './store';
 import type { ApplyGates, ApplyReport, ReadinessEvidence } from './types';
 
 type Read = Extract<OrderRead, { kind: 'order' }>;
@@ -77,19 +71,29 @@ export async function readApplyGates(d: PaymentsDeps, order_id: Id): Promise<App
   return { unlock_enabled, readiness, not_ready };
 }
 
-const WRITABLE: ReadonlySet<OrderStatus> = new Set([
+const WRITABLE: ReadonlySet<ProviderOrderState> = new Set([
   'capture_requested',
   'capture_claimed',
   'unresolved',
-  'paid',
-  'paid_partial',
+  'captured',
 ]);
-const IN_FLIGHT: ReadonlySet<OrderStatus> = new Set([
+const IN_FLIGHT: ReadonlySet<ProviderOrderState> = new Set([
   'capture_requested',
   'capture_claimed',
   'unresolved',
 ]);
 
+type AlertFn = (a: Parameters<typeof raiseAlert>[2]) => Promise<void>;
+const suffixed = (po: Pick<ProviderOrderRow, 'route' | 'position'>, base: string): string =>
+  po.route === 'single' ? base : `${base}_p${po.position}`;
+
+/**
+ * One read of ONE PayPal order, matched against the slice of the expected transaction that belongs to
+ * it and applied in the caller's transaction (DP-2a). The PayPal order is `provider_order_ref`, else the
+ * one of this order that holds the PayPal id the read carries, else (a single order) its only one. Only
+ * that PayPal order's units, operations and state change; orders.status then follows from
+ * deriveOrderStatus. A single-route order behaves exactly as before.
+ */
 export async function applyReadback(
   tx: SqlExecutor,
   d: CoreDeps,
@@ -98,19 +102,22 @@ export async function applyReadback(
     read: Read;
     trigger: 'return' | 'capture' | 'poll' | 'webhook';
     gates?: ApplyGates;
+    provider_order_ref?: Id;
   },
 ): Promise<ApplyReport> {
-  // Lock order: the order row and its operations first (store.ts lockOrderRows).
-  const order = await lockOrderRows(tx, i.order_id);
-  if (order === null) throw new Error(`applyReadback: unknown order ${i.order_id}`);
-  const providers = await loadProviderOrders(tx, order.id);
-  const provider = providers[0];
-  if (providers.length !== 1 || provider === undefined || provider.provider_order_id === null) {
-    // The per-publisher route (several PayPal orders per order) is MVP-D.
-    throw new Error(`applyReadback: order ${order.id} needs exactly one stored provider order`);
+  // Lock order: the order, its PayPal orders, its operations first (store.ts lockOrderRows).
+  const { order, pos } = await lockGraph(tx, i.order_id);
+  const po =
+    i.provider_order_ref !== undefined
+      ? pos.find((p) => p.id === i.provider_order_ref)
+      : (pos.find((p) => p.provider_order_id === i.read.provider_order_id) ??
+        (pos.length === 1 ? pos[0] : undefined));
+  if (po === undefined || po.provider_order_id === null) {
+    throw new Error(`applyReadback: order ${order.id} needs the stored provider order of the read`);
   }
   const at = d.clock.now().toISOString();
-  const units = await loadUnits(tx, order.id);
+  const allUnits = await loadUnits(tx, order.id);
+  const units = unitsOf(allUnits, po);
   const report: ApplyReport = {
     order_status: order.status,
     unlocked: [],
@@ -119,27 +126,32 @@ export async function applyReadback(
     mismatched: [],
     alerts: [],
   };
-  const alert = async (a: Parameters<typeof raiseAlert>[2]): Promise<void> => {
+  const alert: AlertFn = async (a) => {
     const raised = await raiseAlert(tx, d, a);
     if (raised !== null) report.alerts.push(raised);
   };
 
   const match = matchReadback({
-    expected: order.expected,
+    expected: expectedFor(
+      order.expected,
+      units.map((u) => u.reference_id),
+    ),
     read: i.read,
-    provider_order_id: provider.provider_order_id,
+    provider_order_id: po.provider_order_id,
     claims: claimsOf(units),
     foreign_capture_ids: await foreignCaptureIds(
       tx,
       order.id,
       i.read.units.map((u) => (u.capture === null ? null : u.capture.capture_id)),
+      units.map((u) => u.id),
     ),
   });
 
-  // P7: an order-level failure freezes the order and changes no unit.
+  // P7: an order-level failure freezes the PayPal order and changes no unit.
   if (match.level === 'order') {
     report.mismatched = units.map((u) => u.id);
-    await freezeOrMark(tx, order, report, alert, `read_${match.field}`, at, i.trigger);
+    await freezePo(tx, d, order, po, report, alert, `read_${match.field}`, at, i.trigger);
+    await receiptIfMoney(tx, d, order.id);
     return report;
   }
 
@@ -165,23 +177,25 @@ export async function applyReadback(
         detail: { field: m.field, trigger: i.trigger },
       });
     }
-    await freezeOrMark(tx, order, report, alert, null, at, i.trigger);
+    await freezePo(tx, d, order, po, report, alert, null, at, i.trigger);
+    await receiptIfMoney(tx, d, order.id);
     return report;
   }
 
-  if (order.status === 'frozen') {
+  if (po.state === 'frozen') {
     // A human decides; a clean read later changes nothing by itself.
     return report;
   }
-  if (!WRITABLE.has(order.status)) {
-    // created, awaiting_buyer, failed, abandoned: a capture was not requested (or was given up),
-    // so evidence of one is something a human must look at, never an unlock.
+  if (!WRITABLE.has(po.state)) {
+    // Not captured yet (prepared, awaiting the buyer, approved), or given up (failed, declined,
+    // abandoned): a capture was not requested, so evidence of one is something a human must look at,
+    // never an unlock.
     if (match.units.some((m) => m.result !== 'no_capture')) {
       await alert({
         kind: 'unexpected_capture',
         order_id: order.id,
         unit_id: null,
-        reason: `status_${order.status}`,
+        reason: `status_${po.route === 'single' ? order.status : po.state}`,
         detail: { trigger: i.trigger },
       });
     }
@@ -257,12 +271,12 @@ export async function applyReadback(
     // no_capture: nothing to record.
   }
 
-  // P8: terminal units, the order status and the operations.
-  const fresh = await loadUnits(tx, order.id);
-  // A unit in mismatch is unverified money a human must look at: the order is frozen, never
+  // P8: terminal units, the PayPal order's state, the order status and the operations.
+  const fresh = unitsOf(await loadUnits(tx, order.id), po);
+  // A unit in mismatch is unverified money a human must look at: the PayPal order is frozen, never
   // failed ("You were not charged" would be false), whatever the read says now (H1).
   const stuck = fresh.find((u) => u.status === 'mismatch' && u.captured_verified_at === null);
-  if (stuck !== undefined && order.status !== 'paid' && order.status !== 'paid_partial') {
+  if (stuck !== undefined && po.state !== 'captured') {
     await alert({
       kind: 'frozen_order',
       order_id: order.id,
@@ -271,54 +285,59 @@ export async function applyReadback(
       detail: { field: stuck.mismatch_reason, trigger: i.trigger },
     });
     report.mismatched.push(stuck.id);
-    await freezeOrMark(tx, order, report, alert, null, at, i.trigger);
+    await freezePo(tx, d, order, po, report, alert, null, at, i.trigger);
+    await receiptIfMoney(tx, d, order.id);
     return report;
   }
   const verified = fresh.filter((u) => u.captured_verified_at !== null).length;
   const terminal = fresh.every(
     (u) => u.captured_verified_at !== null || u.status === 'declined' || u.status === 'mismatch',
   );
-  let status: OrderStatus = order.status;
+  let next: ProviderOrderState = po.state;
   if (terminal) {
-    status = verified === fresh.length ? 'paid' : verified > 0 ? 'paid_partial' : 'failed';
-    if (order.status === 'paid_partial' && status === 'paid') status = 'paid';
-  } else if (IN_FLIGHT.has(order.status)) {
-    status = 'unresolved';
-    if (await refusedWithoutCapture(tx, order, i.read)) {
+    next = verified > 0 ? 'captured' : 'declined';
+  } else if (IN_FLIGHT.has(po.state)) {
+    next = 'unresolved';
+    if (await refusedWithoutCapture(tx, po, i.read)) {
       // PayPal refused the capture for good and the read shows no capture on any unit: nothing
-      // was charged. The order is closed as not charged (M3).
-      await declineUnits(tx, d, order.id, 'capture_refused');
-      status = 'failed';
+      // was charged. The PayPal order is closed as not charged (M3).
+      await declineUnits(tx, d, order.id, 'capture_refused', po);
+      next = 'declined';
       report.declined.push(
         ...fresh.filter((u) => u.captured_verified_at === null).map((u) => u.id),
       );
     }
   }
-  if (status !== order.status) {
-    await tx.query('UPDATE orders SET status = $2, updated_at = $3 WHERE id = $1', [
-      order.id,
-      status,
-      at,
-    ]);
-  }
-  report.order_status = status;
-  await settleOperations(tx, d, order, status, i.read, at);
+  if (next !== po.state) await setPoState(tx, po.id, next, at, [po.state]);
+  report.order_status = (await refreshOrder(tx, d, order.id)).status;
+  await settleOperations(tx, d, order, po, next, i.read, at);
 
-  if (verified > 0) await issueReceiptIfChanged(tx, d, { order_id: order.id });
+  await receiptIfMoney(tx, d, order.id);
   return report;
 }
 
 // ---------------------------------------------------------------------------------------------
 
-/** Items of a failed order: units declined with a reason, entitlements denied. */
+/** A receipt exists once any unit of the order is verified; a new version only when its body changed. */
+async function receiptIfMoney(tx: SqlExecutor, d: CoreDeps, order_id: Id): Promise<void> {
+  const any = await tx.query(
+    'SELECT 1 FROM order_units WHERE order_id = $1 AND captured_verified_at IS NOT NULL LIMIT 1',
+    [order_id],
+  );
+  if (any.rows.length > 0) await issueReceiptIfChanged(tx, d, { order_id });
+}
+
+/** Items of a failed order (or of one PayPal order of it): units declined with a reason, entitlements denied. */
 export async function declineUnits(
   tx: SqlExecutor,
   d: CoreDeps,
   order_id: Id,
   reason: string,
+  po?: Pick<ProviderOrderRow, 'id' | 'route'>,
 ): Promise<void> {
   const at = d.clock.now().toISOString();
-  for (const unit of await loadUnits(tx, order_id)) {
+  const all = await loadUnits(tx, order_id);
+  for (const unit of po === undefined ? all : unitsOf(all, po)) {
     await tx.query(
       `UPDATE order_units SET status = 'declined', status_reason = $2, updated_at = $3
        WHERE id = $1 AND captured_verified_at IS NULL`,
@@ -338,11 +357,11 @@ export async function declineUnits(
 // no capture on any unit.
 async function refusedWithoutCapture(
   tx: SqlExecutor,
-  order: OrderRow,
+  po: ProviderOrderRow,
   read: Read,
 ): Promise<boolean> {
   if (read.units.some((u) => u.capture !== null)) return false;
-  const cap = await loadOperation(tx, order.id, 'capture');
+  const cap = await loadOperationFor(tx, po, 'capture');
   return (
     cap !== null &&
     cap.state === 'failed' &&
@@ -367,34 +386,38 @@ async function eachEntitlement(
   for (const e of found.rows) await f(e.id, e.article_id);
 }
 
-// A bad read. An unpaid order freezes for a human; a paid one stays paid and is flagged, because
-// money was taken and a later clean read must still be able to book a refund.
-async function freezeOrMark(
+// A bad read of one PayPal order. A PayPal order not captured yet freezes for a human; a captured one
+// stays captured and is flagged, because money was taken and a later clean read must still be able to
+// book a refund. Only this PayPal order is held: the others of the pack keep their state, and the order
+// status is derived from all of them.
+async function freezePo(
   tx: SqlExecutor,
+  d: CoreDeps,
   order: OrderRow,
+  po: ProviderOrderRow,
   report: ApplyReport,
-  alert: (a: {
-    kind: AlertKind;
-    order_id: Id;
-    unit_id: Id | null;
-    reason: string;
-    detail?: Record<string, string | number | boolean | null>;
-  }) => Promise<void>,
+  alert: AlertFn,
   orderReason: string | null,
   at: string,
   trigger: string,
 ): Promise<void> {
-  const kept = order.status === 'paid' || order.status === 'paid_partial';
   if (orderReason !== null) {
     await alert({
       kind: 'frozen_order',
       order_id: order.id,
       unit_id: null,
-      reason: orderReason,
+      reason: suffixed(po, orderReason),
       detail: { trigger },
     });
   }
-  if (kept) {
+  const terminal =
+    po.state === 'captured' ||
+    po.state === 'frozen' ||
+    po.state === 'failed' ||
+    po.state === 'declined' ||
+    po.state === 'abandoned';
+  if (terminal) {
+    // Already stopped (or paid): the alert above records the new problem and the flag is set.
     await tx.query('UPDATE orders SET mismatch = true, updated_at = $2 WHERE id = $1', [
       order.id,
       at,
@@ -402,26 +425,16 @@ async function freezeOrMark(
     report.order_status = order.status;
     return;
   }
-  if (order.status === 'frozen' || order.status === 'failed' || order.status === 'abandoned') {
-    // Already stopped; the alert above records the new problem.
-    await tx.query('UPDATE orders SET mismatch = true, updated_at = $2 WHERE id = $1', [
-      order.id,
-      at,
-    ]);
-    report.order_status = order.status;
-    return;
-  }
-  await tx.query(
-    "UPDATE orders SET status = 'frozen', mismatch = true, updated_at = $2 WHERE id = $1",
-    [order.id, at],
-  );
+  await setPoState(tx, po.id, 'frozen', at, [po.state]);
   // An unknown capture operation ends here: the evidence is wrong, not missing.
   await tx.query(
     `UPDATE operations SET state = 'failed', failure_reason = 'mismatch', lease_until = NULL, next_retry_at = NULL, updated_at = $2
-     WHERE order_id = $1 AND kind IN ('capture', 'readback') AND state = 'unknown'`,
-    [order.id, at],
+     WHERE order_id = $1 AND kind IN ('capture', 'readback') AND state = 'unknown'
+       AND ($3 = 'single' OR provider_order_ref = $4)`,
+    [order.id, at, po.route, po.id],
   );
-  report.order_status = 'frozen';
+  await tx.query('UPDATE orders SET mismatch = true WHERE id = $1', [order.id]);
+  report.order_status = (await refreshOrder(tx, d, order.id)).status;
 }
 
 // Compare-and-set: of a webhook and a poller racing, one wins and books.
@@ -529,13 +542,15 @@ async function startAccess(
   });
 }
 
-// Operations after a read: a capture whose answer was lost is settled by a read that shows a
-// capture; an unresolved order keeps one read-back operation for the reconciler (lane 05b).
+// Operations after a read of one PayPal order: a capture whose answer was lost is settled by a read
+// that shows a capture; an unresolved PayPal order keeps one read-back operation for the reconciler
+// (lane 05b).
 async function settleOperations(
   tx: SqlExecutor,
   d: CoreDeps,
   order: OrderRow,
-  status: OrderStatus,
+  po: ProviderOrderRow,
+  state: ProviderOrderState,
   read: Read,
   at: string,
 ): Promise<void> {
@@ -543,14 +558,14 @@ async function settleOperations(
   if (seen) {
     await tx.query(
       `UPDATE operations SET state = 'confirmed', lease_until = NULL, next_retry_at = NULL, updated_at = $2
-       WHERE order_id = $1 AND kind = 'capture' AND state = 'unknown'`,
-      [order.id, at],
+       WHERE order_id = $1 AND kind = 'capture' AND state = 'unknown' AND ($3 = 'single' OR provider_order_ref = $4)`,
+      [order.id, at, po.route, po.id],
     );
   }
-  if (status === 'unresolved') {
-    await ensureReadbackOp(tx, d, order, at);
+  if (state === 'unresolved') {
+    await ensureReadbackOp(tx, d, order, at, po);
   } else {
-    const existing = await loadOperation(tx, order.id, 'readback', { lock: true });
+    const existing = await loadOperationFor(tx, po, 'readback', { lock: true });
     if (existing !== null && existing.state !== 'confirmed' && existing.state !== 'failed') {
       await tx.query(
         `UPDATE operations SET state = 'confirmed', lease_until = NULL, next_retry_at = NULL, updated_at = $2 WHERE id = $1`,
@@ -561,17 +576,22 @@ async function settleOperations(
 }
 
 /**
- * An order whose evidence is missing keeps exactly one read-back operation in state unknown, so
- * the reconciler (lane 05b) polls it with backoff until reconcile_until.
+ * A PayPal order whose evidence is missing keeps exactly one read-back operation in state unknown, so
+ * the reconciler (lane 05b) polls it with backoff until reconcile_until. `po` is the PayPal order; when
+ * omitted it is the first one of the order (the only one for a single order).
  */
 export async function ensureReadbackOp(
   tx: SqlExecutor,
   d: CoreDeps,
   order: OrderRow,
   at: string,
+  po?: ProviderOrderRow,
 ): Promise<void> {
-  const existing = await loadOperation(tx, order.id, 'readback', { lock: true });
-  const cap = await loadOperation(tx, order.id, 'capture');
+  const target = po ?? (await loadProviderOrders(tx, order.id))[0];
+  if (target === undefined)
+    throw new Error(`ensureReadbackOp: order ${order.id} has no provider order`);
+  const existing = await loadOperationFor(tx, target, 'readback', { lock: true });
+  const cap = await loadOperationFor(tx, target, 'capture');
   const until = addMs(cap?.first_sent_at ?? at, d.config.reconcile_window_ms);
   if (existing === null) {
     await insertOperation(tx, {
@@ -579,11 +599,12 @@ export async function ensureReadbackOp(
       order_id: order.id,
       kind: 'readback',
       state: 'unknown',
-      request_id: readbackKeyFor(order.order_ref),
+      request_id: readbackKeyFor(target.po_ref),
       lease_until: null,
       reconcile_until: until,
       next_retry_at: addMs(at, backoffMs(d.config, 1)),
       at,
+      provider_order_ref: target.id,
     });
   } else if (existing.state !== 'unknown') {
     await tx.query(

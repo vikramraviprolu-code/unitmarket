@@ -374,7 +374,7 @@ describe('a refund seen before 05b books it', () => {
 describe('several publishers in one order', () => {
   it('one unit matched, the other pending: the first unlocks, the order stays unresolved', async () => {
     w = await makeWorld();
-    const a = await sentCapture({ offers: ['ofr_1', 'ofr_3'] });
+    const a = await sentCapture({ offers: ['ofr_1', 'ofr_3'], d1: true });
     const base = await readOf(a);
     // Units are in publisher order: pub_1 then pub_2.
     let r = setCapture(base, 0, { id: 'CAP1', status: 'COMPLETED' });
@@ -395,7 +395,7 @@ describe('several publishers in one order', () => {
 
   it('one unit matched, the other declined: paid_partial', async () => {
     w = await makeWorld();
-    const a = await sentCapture({ offers: ['ofr_1', 'ofr_3'] });
+    const a = await sentCapture({ offers: ['ofr_1', 'ofr_3'], d1: true });
     let r = setCapture(await readOf(a), 0, { id: 'CAP1', status: 'COMPLETED' });
     r = setCapture(r, 1, { id: 'CAP2', status: 'DECLINED', fee: null });
     const report = await apply(a.order_id, r);
@@ -405,7 +405,7 @@ describe('several publishers in one order', () => {
 
   it('one unit matched, the other mismatched: nothing unlocks from that read and the order freezes', async () => {
     w = await makeWorld();
-    const a = await sentCapture({ offers: ['ofr_1', 'ofr_3'] });
+    const a = await sentCapture({ offers: ['ofr_1', 'ofr_3'], d1: true });
     let r = setCapture(await readOf(a), 0, { id: 'CAP1', status: 'COMPLETED' });
     r = setCapture(r, 1, { id: 'CAP2', status: 'COMPLETED' });
     r = withUnit(r, 1, (u) => ({ ...u, amount: { ...u.amount, minor: u.amount.minor + 1 } }));
