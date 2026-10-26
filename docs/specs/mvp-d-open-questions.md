@@ -38,7 +38,7 @@ Revision 3, after the second Opus review (at 933b7f4) and the owner rows D-041 a
 - **Partial**, used only when a payment was declined, failed or abandoned: "Part of your order did not go through. <ready> are ready in your library. You were not charged for <failed>. If you would rather have a refund for what you paid, tell us on the help page."
 - **Hold, with ready items** (L-6): "<held> is on hold while we check it. <ready> are ready in your library." This is never "not charged".
 - **Hold, nothing ready**: the existing "Your order is on hold while we check it…".
-- **Step page**: "Step 2 of 2: approve your payment to <publisher> at PayPal. If you do not approve within <N> minutes, the whole order is cancelled and nothing is charged."
+- **Step page**: "Step 2 of 2: approve your payment to <publisher> at PayPal. If you do not approve within <N> minutes, the whole order may be cancelled and nothing is charged." Use "is cancelled" only when DP-2b's due pass enforces the window (its test `window run out on the due pass, no return: abandoned` is merged and green); otherwise the return path alone enforces it, and "is" would be a promise the app cannot keep for a buyer who never comes back.
 - **Cancel page**: "You did not approve this payment at PayPal. Nothing was charged. If you approved another payment of this order, it will not be taken unless you approve the rest."
 - **Refund note**: "A copy you already downloaded cannot be recalled."
 

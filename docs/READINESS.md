@@ -6,6 +6,16 @@ One row per lane. A file existing or a branch being open is not readiness.
 | ------------------- | ---------------------------------------------------- | --------------- |
 | 12 runtime, obs, db | built on branch feat/runtime-obs-db, awaiting review | RLS spike below |
 
+## Deploy hold (MVP-D)
+
+DP-2a is merged (6f39e96), but it must NOT be deployed to the host until DP-2b and DP-3 have merged. Until then, reconcile, due, recover and webhooks are not safe for two-publisher packs:
+
+- the create resend builds a whole-pack body;
+- the payer_action reopen writes both PayPal orders;
+- refund reads pick the first PayPal order.
+
+`render.yaml` has `autoDeploy: false`, so a merge does not deploy. Do not deploy by hand either.
+
 ## RLS spike (lane 12, informational, not a gate)
 
 Question: does PGlite 0.5.10 enforce row-level security under `SET ROLE`?
