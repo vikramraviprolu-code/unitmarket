@@ -100,3 +100,20 @@ What it never does: change any of the five locks, widen scope, amount or budget,
 How the owner uses it (commands and screenshots: `docs/owner/MVPC-OWNER-STEPS.md` Step 6): open the Render shell, `touch /var/data/ums-maintenance`, restart the service, wait for `/healthz` to say `maintenance: true`, run the unchanged `corepack pnpm safety:approve` and `corepack pnpm safety:resume` (a terminal is required and the scope is typed back), `rm /var/data/ums-maintenance`, restart. For a backup or a restore on the host use the same state and pass `--maintenance` (`scripts/backup.mjs`, `scripts/restore.mjs`): the flag must be a plain file beside the data folder, and backup still refuses while a live app holds the lock.
 
 Limits: a flag made while the app runs normally changes nothing until a restart (the app still holds the lock, and every host tool still refuses). Removing the flag does not leave maintenance mode until a restart. If the site shows `maintenance` after the work is done, the flag is still there. UNVERIFIED: that Render's web shell passes the terminal check of `safety:approve` and `safety:resume` on the chosen plan; if it does not, the commands refuse and nothing is approved.
+
+## Google Cloud: Cloud Run and Cloud SQL (GCP-1, D-049)
+
+Supersedes the Render default for the MVP-C hosted window and for judging until 15 Dec 2026. Render and a Compute Engine VM with the embedded database stay documented fallbacks. The earlier table row that rules Cloud Run out is about PGlite on a local disk; with Cloud SQL for PostgreSQL there is no disk to keep, so it no longer applies.
+
+What runs: one Cloud Run service, exactly one instance (min 1, max 1, CPU always allocated, because the job loop runs inside the app), 2 GiB, concurrency 20, public ingress (PayPal's webhooks must reach it; the app verifies each delivery), startup probe `/healthz`. One Cloud SQL for PostgreSQL 16 instance: daily backups, point in time recovery, deletion protection, SSL only, no authorized networks, reached only through the Cloud SQL connector (a socket in the container) or the Auth Proxy (the owner's terminal). Secrets are in Secret Manager and mapped by name; the fixed, non-secret values are `infra/gcp/service.yaml`. The runtime service account holds secret accessor on the listed secrets and Cloud SQL client, nothing else.
+
+Kit: `infra/gcp/{Dockerfile,setup.sh,set-secret.sh,deploy.sh,service.yaml,monitoring.sh}`, guarded by `pnpm check:hosting-gcp` (in `ci`) with the same posture as `render.yaml` and `pnpm check:hosting`: `UMS_PAYPAL_CONNECT` is `off` in the file, `UMS_DB` is `postgres`, max instances 1, min instances 1, `--no-cpu-throttling`, no `NODE_OPTIONS`, proxy or CA variable, no maintenance flag, no literal secret, no PayPal host, `--allow-unauthenticated` only on the app service, every script `set -euo pipefail`, refusing without an active gcloud account, printing no secret. Owner procedure: `docs/owner/MVPC-OWNER-STEPS-GCP.md`.
+
+Differences from Render that matter:
+
+- No maintenance mode (D-037 is not used here). The operator commands run at the owner's own terminal through the Auth Proxy against the hosted database while the app runs.
+- `UMS_TRUSTED_PROXIES=1` is again an assumption until the curl test of Step 3 passes on the new front end. The count is corrected in `infra/gcp/service.yaml` through review.
+- A Cloud Run deploy starts the new revision before the old one stops, so two instances (one per revision) can overlap for a short time. Max instances is per revision. UNVERIFIED how the job loop behaves in the overlap; deploy when nothing is in flight.
+- Secrets change only with a new revision (the kit maps `latest`); redeploying the same tag is enough.
+- `UMS_PUBLIC_ORIGIN` is the service URL and is committed in `service.yaml` through a reviewed change before the first real use.
+- Not done by the kit: an egress firewall (UNVERIFIED, optional), a custom domain, a Git trigger (auto deploy stays off; deploys are manual from a reviewed tag, RLR-1).
