@@ -289,7 +289,9 @@ describe('the continuation: a pack whose first capture was sent always finishes'
     expect(await states(a.order_id)).toEqual(['captured', 'captured']);
     expect((await orderRow(a.order_id)).status).toBe('paid');
     expect(await sales()).toBe(2);
-    expect(callsOf(po2, 'capture').filter((c) => c.request_id?.startsWith('umsK-'))).toHaveLength(1);
+    expect(callsOf(po2, 'capture').filter((c) => c.request_id?.startsWith('umsK-'))).toHaveLength(
+      1,
+    );
   });
 
   it('PO2 captured out of band and read as COMPLETED: read-back and match, no capture of ours, one alert', async () => {
@@ -298,7 +300,9 @@ describe('the continuation: a pack whose first capture was sent always finishes'
     const po2 = poIds(a)[1]!;
     await w.paypal.captureOrder({ provider_order_id: po2, request_id: 'oob-key', scenario: null });
     await pass();
-    expect(callsOf(po2, 'capture').filter((c) => c.request_id?.startsWith('umsK-'))).toHaveLength(0);
+    expect(callsOf(po2, 'capture').filter((c) => c.request_id?.startsWith('umsK-'))).toHaveLength(
+      0,
+    );
     expect(await states(a.order_id)).toEqual(['captured', 'captured']);
     expect(await sales()).toBe(2);
     expect((await alerts('unexpected_capture')).map((x) => x.reason)).toEqual([
@@ -317,7 +321,9 @@ describe('the continuation: a pack whose first capture was sent always finishes'
     expect(await orderRow(a.order_id)).toMatchObject({ status: 'paid_partial', mismatch: true });
     expect((await entRows(a.order_id)).map((e) => e.access_state)).toEqual(['available', 'locked']);
     expect(await sales()).toBe(1);
-    expect(callsOf(po2, 'capture').filter((c) => c.request_id?.startsWith('umsK-'))).toHaveLength(0);
+    expect(callsOf(po2, 'capture').filter((c) => c.request_id?.startsWith('umsK-'))).toHaveLength(
+      0,
+    );
     expect(await alerts('partial_composite')).toEqual([]);
   });
 

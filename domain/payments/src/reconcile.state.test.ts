@@ -18,6 +18,7 @@ import {
   place,
   sentCapture,
   START,
+  setOrderStatus,
 } from './ops/support';
 import type { OpsWorld } from './ops/support';
 
@@ -543,7 +544,7 @@ describe('what a pass passes on and records', () => {
     const p = await place(w);
     w.paypal.queue.create.push({ kind: 'timeout' });
     await beginCheckout(w.deps, { order_id: p.order_id, actor: BUYER_A });
-    await w.db.query("UPDATE orders SET status = 'awaiting_buyer' WHERE id = $1", [p.order_id]);
+    await setOrderStatus(w.db, p.order_id, 'awaiting_buyer');
     w.tick(31_000);
     await runDue(w.deps, { max_items: 10 });
     expect(w.paypal.count('create')).toBe(1);

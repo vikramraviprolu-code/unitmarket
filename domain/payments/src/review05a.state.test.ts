@@ -23,6 +23,7 @@ import {
   makeWorld,
   place,
   reapply,
+  setOrderStatus,
 } from './support';
 import type { World } from './support';
 import type { CaptureRes, SqlExecutor } from '@umsbx/contracts';
@@ -153,7 +154,7 @@ describe('H1 probe A: a held capture while a concurrent read freezes the order',
       "UPDATE order_units SET status = 'mismatch', mismatch_reason = 'amount' WHERE order_id = $1",
       [a.order_id],
     );
-    await w.rows("UPDATE orders SET status = 'unresolved' WHERE id = $1", [a.order_id]);
+    await setOrderStatus(w.db, a.order_id, 'unresolved');
     const rep = await reapply(w, a.order_id);
     expect(rep.order_status).toBe('frozen');
     expect((await order(a.order_id)).status).toBe('frozen');
@@ -712,9 +713,8 @@ describe('M4: reconcile.ts', () => {
     const release = holdCapture();
     const p = retryCapture(w.deps, order, op, a.provider_order_id);
     await until(() => w.paypal.count('capture') === 2);
-    await w.db.query("UPDATE orders SET status = 'frozen', mismatch = true WHERE id = $1", [
-      a.order_id,
-    ]);
+    await setOrderStatus(w.db, a.order_id, 'frozen');
+    await w.db.query('UPDATE orders SET mismatch = true WHERE id = $1', [a.order_id]);
     w.paypal.queue.capture.push({ kind: 'timeout' });
     release();
     await p;
@@ -728,7 +728,7 @@ describe('M4: reconcile.ts', () => {
     const release = holdCapture();
     const p = retryCapture(w.deps, order, op, a.provider_order_id);
     await until(() => w.paypal.count('capture') === 2);
-    await w.db.query("UPDATE orders SET status = 'paid' WHERE id = $1", [a.order_id]);
+    await setOrderStatus(w.db, a.order_id, 'paid');
     w.paypal.queue.capture.push({ kind: 'timeout' });
     release();
     await p;
@@ -742,7 +742,7 @@ describe('M4: reconcile.ts', () => {
     const release = holdCapture();
     const p = retryCapture(w.deps, order, op, a.provider_order_id);
     await until(() => w.paypal.count('capture') === 2);
-    await w.db.query("UPDATE orders SET status = 'abandoned' WHERE id = $1", [a.order_id]);
+    await setOrderStatus(w.db, a.order_id, 'abandoned');
     w.paypal.queue.capture.push({ kind: 'timeout' });
     release();
     await p;

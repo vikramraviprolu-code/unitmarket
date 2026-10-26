@@ -763,6 +763,54 @@ export async function reapply(
     }),
   );
 }
+/**
+ * DP-2b: move the status of an order the way an old writer did (a raw UPDATE, which tests use to put
+ * an order in a state nothing else reaches) and bring the PayPal order of a SINGLE order in line, with
+ * the mapping that the removed DP-2a shim used (`legacyState`). The engine decides on the state of the
+ * PayPal order, so a test that moves only orders.status would no longer move the order.
+ */
+export async function setOrderStatus(
+  db: Pick<SqlExecutor, 'query'>,
+  order_id: Id,
+  status: string,
+): Promise<void> {
+  await db.query('UPDATE orders SET status = $2 WHERE id = $1', [order_id, status]);
+  const pos = await db.query<{ id: string; state: string }>(
+    "SELECT id, state FROM provider_orders WHERE order_id = $1 AND route = 'single'",
+    [order_id],
+  );
+  for (const po of pos.rows) {
+    const target = legacyPoState(status, po.state);
+    if (target !== null) {
+      await db.query('UPDATE provider_orders SET state = $2 WHERE id = $1', [po.id, target]);
+    }
+  }
+}
+function legacyPoState(status: string, now: string): string | null {
+  const set = (s: string): string | null => (s === now ? null : s);
+  switch (status) {
+    case 'awaiting_buyer':
+      if (now === 'prepared') return 'awaiting_buyer';
+      return now === 'capture_requested' || now === 'capture_claimed' || now === 'unresolved'
+        ? 'approved'
+        : null;
+    case 'capture_requested':
+    case 'capture_claimed':
+    case 'unresolved':
+      return set(status);
+    case 'paid':
+    case 'paid_partial':
+      return set('captured');
+    case 'failed':
+      return now === 'failed' || now === 'declined' ? null : 'failed';
+    case 'abandoned':
+      return set('abandoned');
+    case 'frozen':
+      return set('frozen');
+    default:
+      return null;
+  }
+}
 export const count = async (w: World, table: string, where = 'true'): Promise<number> =>
   Number(
     (await w.rows<{ n: string }>(`SELECT count(*)::int AS n FROM ${table} WHERE ${where}`))[0]!.n,

@@ -37,10 +37,11 @@ import type {
   SqlExecutor,
   WebhookVerdict,
 } from '@umsbx/contracts';
+import { lockOrderGraph } from './composite';
 import { readbackKeyFor } from './keys';
 import { raiseOpsAlert } from './refunds';
-import { addMs, insertOperation, loadOperation, lockOrderRows } from './store';
-import type { OperationRow, OrderRow } from './store';
+import { addMs, insertOperation, loadOperationFor } from './store';
+import type { OperationRow, OrderRow, ProviderOrderRow } from './store';
 
 export interface WebhookInput {
   verdict: WebhookVerdict;
@@ -151,32 +152,44 @@ export function planReadback(
 
 // ---------------------------------------------------------------------------------------------
 
-async function findOrderId(tx: SqlExecutor, t: NonNullable<Target>): Promise<Id | null> {
+interface Named {
+  order_id: Id;
+  /** The PayPal order the event names, when it can be told (a unit's, or the stored provider order id). */
+  po_id: Id | null;
+}
+
+async function findTarget(tx: SqlExecutor, t: NonNullable<Target>): Promise<Named | null> {
   const sql =
     t.by === 'capture_id'
-      ? 'SELECT order_id FROM order_units WHERE capture_id = $1'
+      ? 'SELECT order_id, provider_order_ref AS po_id FROM order_units WHERE capture_id = $1'
       : t.by === 'refund_id'
-        ? 'SELECT u.order_id FROM refund_requests r JOIN order_units u ON u.id = r.unit_id WHERE r.refund_id = $1'
-        : 'SELECT order_id FROM provider_orders WHERE provider_order_id = $1';
-  const found = await tx.query<{ order_id: string }>(sql, [t.key]);
-  return found.rows[0]?.order_id ?? null;
+        ? `SELECT u.order_id, u.provider_order_ref AS po_id FROM refund_requests r
+            JOIN order_units u ON u.id = r.unit_id WHERE r.refund_id = $1`
+        : 'SELECT order_id, id AS po_id FROM provider_orders WHERE provider_order_id = $1';
+  const found = await tx.query<{ order_id: string; po_id: string | null }>(sql, [t.key]);
+  const row = found.rows[0];
+  return row === undefined ? null : { order_id: row.order_id, po_id: row.po_id };
 }
-async function findOrderOf(tx: SqlExecutor, targets: NonNullable<Target>[]): Promise<Id | null> {
+async function findOrderOf(tx: SqlExecutor, targets: NonNullable<Target>[]): Promise<Named | null> {
   for (const t of targets) {
-    const id = await findOrderId(tx, t);
-    if (id !== null) return id;
+    const named = await findTarget(tx, t);
+    if (named !== null) return named;
   }
   return null;
 }
 
-/** Make the read-back due now, once. Returns 'coalesced' when nothing had to change. */
+/**
+ * Make the read-back of ONE PayPal order due now, once. Returns 'coalesced' when nothing had to
+ * change. Only the PayPal order the event names is touched; its sibling's read-back is left as it is.
+ */
 async function enqueueReadback(
   tx: SqlExecutor,
   d: CoreDeps,
   order: OrderRow,
+  po: ProviderOrderRow,
   at: string,
 ): Promise<'enqueued' | 'coalesced'> {
-  const existing = await loadOperation(tx, order.id, 'readback', { lock: true });
+  const existing = await loadOperationFor(tx, po, 'readback', { lock: true });
   const plan = planReadback(existing, at);
   if (plan === 'keep') return 'coalesced';
   if (plan === 'create' || existing === null) {
@@ -185,11 +198,12 @@ async function enqueueReadback(
       order_id: order.id,
       kind: 'readback',
       state: 'unknown',
-      request_id: readbackKeyFor(order.order_ref),
+      request_id: readbackKeyFor(po.po_ref),
       lease_until: null,
       reconcile_until: addMs(at, d.config.reconcile_window_ms),
       next_retry_at: at,
       at,
+      provider_order_ref: po.id,
     });
   } else if (plan === 'advance') {
     await tx.query(
@@ -208,6 +222,21 @@ async function enqueueReadback(
   }
   return 'enqueued';
 }
+
+/** A PayPal order's state as the order status wantsReadback reads: only a capture started (or tried) wakes it. */
+const STATUS_OF_PO: Record<ProviderOrderRow['state'], OrderStatus> = {
+  prepared: 'created',
+  awaiting_buyer: 'awaiting_buyer',
+  approved: 'awaiting_buyer',
+  capture_requested: 'capture_requested',
+  capture_claimed: 'capture_claimed',
+  unresolved: 'unresolved',
+  captured: 'paid',
+  declined: 'failed',
+  frozen: 'frozen',
+  failed: 'failed',
+  abandoned: 'abandoned',
+};
 
 // sha256 of the UTF-8 bytes of a header value that is only ever hashed (never stored), computed by the
 // database so that no node module is needed. It is passed as hex, so any content (NUL, lone
@@ -267,22 +296,30 @@ async function intake(d: CoreDeps, i: WebhookInput, e: ProviderEvent): Promise<W
     const row = stored.rows[0] as { id: string } | undefined;
     if (row === undefined) return { http: 200, outcome: 'duplicate' };
 
-    const order_id = await findOrderOf(tx, targets);
-    const order = order_id === null ? null : await lockOrderRows(tx, order_id);
+    const named = await findOrderOf(tx, targets);
+    // Lock order (D-020): the order, its PayPal orders, its operations.
+    const graph = named === null ? null : await lockOrderGraph(tx, named.order_id);
+    const order = graph === null ? null : graph.order;
+    // The PayPal order the event names. A single order has one; an event that names a pack's order by
+    // something that is not one PayPal order (a refund of a unit with none) makes nothing due.
+    const po =
+      graph === null
+        ? undefined
+        : named?.po_id != null
+          ? graph.pos.find((p) => p.id === named.po_id)
+          : graph.pos.length === 1
+            ? graph.pos[0]
+            : undefined;
     let outcome: 'enqueued' | 'coalesced' | 'no_op' = 'no_op';
+    // Has a capture been tried for this PayPal order? A single order keeps its older reading (any capture
+    // operation); a pack's PayPal order counts only when its capture was really sent, so the prepared
+    // operation of a PayPal order that is still waiting for its capture makes nothing due.
+    const cap = po === undefined ? null : await loadOperationFor(tx, po, 'capture');
+    const triedCapture = cap !== null && (po?.route === 'single' || cap.first_sent_at !== null);
     const captured =
-      order !== null &&
-      wantsReadback(
-        order.status,
-        (
-          await tx.query(
-            "SELECT 1 FROM operations WHERE order_id = $1 AND kind = 'capture' LIMIT 1",
-            [order.id],
-          )
-        ).rows.length > 0,
-      );
-    if (order !== null && captured) {
-      outcome = await enqueueReadback(tx, d, order, at);
+      order !== null && po !== undefined && wantsReadback(STATUS_OF_PO[po.state], triedCapture);
+    if (order !== null && po !== undefined && captured) {
+      outcome = await enqueueReadback(tx, d, order, po, at);
       // A reversal is a hint (ASM-63): one alert for a human, the unit is not touched. Only a read
       // that shows the evidence moves it. The alert is unique per kind, order, unit and reason.
       if (e.type === 'PAYMENT.CAPTURE.REVERSED') {

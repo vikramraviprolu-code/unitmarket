@@ -24,6 +24,7 @@ export {
   count,
   place,
   providerOrdersOf,
+  setOrderStatus,
 } from '../support';
 export type { Awaiting, ProviderOrderInfo, World } from '../support';
 

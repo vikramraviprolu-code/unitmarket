@@ -67,6 +67,14 @@ export interface Derived {
 }
 
 /**
+ * A capture was sent for this PayPal order (overview section 3): it is in flight or captured, or its
+ * own capture operation has first_sent_at and it is not back to `approved` (or earlier). A decline,
+ * a freeze or a failure after the send still counts (M-C).
+ */
+export const isSent = (p: Pick<PoFacts, 'state' | 'capture_first_sent'>): boolean =>
+  IMPLIES_SENT.has(p.state) || (p.capture_first_sent && !NOT_SENT_BY_FLAG.has(p.state));
+
+/**
  * The status of the order, from its PayPal orders alone. Pure. The first rule that matches wins.
  * A PayPal order counts as SENT when its own capture operation has first_sent_at and its state is not
  * approved (a capture reopened after payer_action or ORDER_NOT_APPROVED keeps its first_sent_at but
@@ -90,17 +98,15 @@ export function deriveOrderStatus(pos: readonly PoFacts[]): Derived {
     return out('failed');
   }
   // Rule 2.
-  const sent = pos.some(
-    (p) => IMPLIES_SENT.has(p.state) || (p.capture_first_sent && !NOT_SENT_BY_FLAG.has(p.state)),
-  );
-  if (sent) {
+  if (pos.some(isSent)) {
     if (has('unresolved')) return out('unresolved');
     if (has('capture_claimed')) return out('capture_claimed');
     return out('capture_requested');
   }
-  // Rule 3.
+  // Rule 3. A `declined` PayPal order with no send of its own is treated like a failed one (DP-2b):
+  // it never lets the order read awaiting_buyer beside an approved sibling.
   if (has('frozen')) return out('frozen');
-  if (has('failed')) return out('failed');
+  if (has('failed') || has('declined')) return out('failed');
   if (has('abandoned')) return out('abandoned');
   if (has('prepared')) return out('created');
   return out('awaiting_buyer');
@@ -141,24 +147,13 @@ export interface OrderGraph {
 
 /**
  * Lock the order, its PayPal orders by position and its operations (lockOrderRows), then read the
- * PayPal orders. For a single-route order whose status was moved by a writer that still works on
- * orders.status alone (reconcile, the due pass, recovery, webhooks: DP-2b), the one provider order
- * is brought in line with the order first, with the mapping 0011 uses for old rows. Per-publisher
- * orders are never touched here.
+ * PayPal orders. Every writer works on the state of one PayPal order (DP-2b removed the DP-2a shim that
+ * brought a single order's PayPal order in line with an order status moved by an older writer).
  */
 export async function lockOrderGraph(tx: SqlExecutor, order_id: Id): Promise<OrderGraph | null> {
   const order = await lockOrderRows(tx, order_id);
   if (order === null) return null;
-  let pos = await loadProviderOrders(tx, order_id);
-  const only = pos[0];
-  if (pos.length === 1 && only !== undefined && only.route === 'single') {
-    const target = legacyState(order.status, only.state);
-    if (target !== null) {
-      await tx.query('UPDATE provider_orders SET state = $2 WHERE id = $1', [only.id, target]);
-      pos = await loadProviderOrders(tx, order_id);
-    }
-  }
-  return { order, pos };
+  return { order, pos: await loadProviderOrders(tx, order_id) };
 }
 
 /** lockOrderGraph for a transaction whose order must exist (it was read a moment ago): throws if it is gone. */
@@ -173,33 +168,6 @@ export function poIn(graph: OrderGraph, id: Id): ProviderOrderRow {
   const po = graph.pos.find((p) => p.id === id);
   if (po === undefined) throw new Error(`provider order ${id} vanished`);
   return po;
-}
-
-/** The state a single-route PayPal order must have when the order status says `status`, or null if it already agrees. */
-function legacyState(status: OrderStatus, now: ProviderOrderState): ProviderOrderState | null {
-  const set = (s: ProviderOrderState): ProviderOrderState | null => (s === now ? null : s);
-  switch (status) {
-    case 'created':
-      return null;
-    case 'awaiting_buyer':
-      if (now === 'prepared') return 'awaiting_buyer';
-      return now === 'capture_requested' || now === 'capture_claimed' || now === 'unresolved'
-        ? 'approved'
-        : null;
-    case 'capture_requested':
-    case 'capture_claimed':
-    case 'unresolved':
-      return set(status);
-    case 'paid':
-    case 'paid_partial':
-      return set('captured');
-    case 'failed':
-      return now === 'failed' || now === 'declined' ? null : 'failed';
-    case 'abandoned':
-      return set('abandoned');
-    case 'frozen':
-      return set('frozen');
-  }
 }
 
 /** Facts for deriveOrderStatus, read in the caller's transaction. */
