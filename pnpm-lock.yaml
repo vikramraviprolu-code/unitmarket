@@ -556,6 +556,9 @@ importers:
       '@umsbx/entitlements':
         specifier: workspace:*
         version: link:../../domain/entitlements
+      '@umsbx/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
       '@umsbx/ledger':
         specifier: workspace:*
         version: link:../../domain/ledger

@@ -747,19 +747,21 @@ async function abandonOne(
   d: PaymentsDeps,
   order: OrderRow,
 ): Promise<'abandoned' | 'handled' | 'skipped'> {
+  let gone = false;
   if (order.status === 'awaiting_buyer') {
     if (!(await d.switches.isOn('paypal_outbound'))) return 'skipped';
     const pos = (await loadProviderOrders(d.db, order.id)).filter(
       (p) =>
         p.provider_order_id !== null && (p.state === 'awaiting_buyer' || p.state === 'approved'),
     );
-    const single = pos.length === 1 && pos[0]?.route === 'single';
     const reads = new Map<Id, OrderRead>();
+    // A PayPal order that no longer exists (HTTP 404) is a definite answer: nothing can be captured
+    // on it, so the checkout is over (BU-9), for a single order and for a pack (it lapsed).
     for (const po of pos) {
       const read = await d.paypal.getOrder(po.provider_order_id as string);
-      // blocked or unreadable: the next pass tries again. A PayPal order that is gone is a definite
-      // answer for a pack (it lapsed); a single order keeps its older rule.
-      if (read.kind !== 'order' && !(read.kind === 'not_found' && !single)) return 'skipped';
+      // blocked or unreadable: the next pass tries again
+      if (read.kind !== 'order' && read.kind !== 'not_found') return 'skipped';
+      if (read.kind === 'not_found') gone = true;
       reads.set(po.id, read);
     }
     const found = pos.filter((p) => {
@@ -788,12 +790,32 @@ async function abandonOne(
       if (now === null || now.status !== 'awaiting_buyer') return 'handled';
     }
   }
-  const done = await d.db.transaction(async (tx) => {
+  const done = await d.db.transaction(async (tx): Promise<'abandoned' | 'handled' | 'skipped'> => {
     const at = nowIso(d);
     const graph = await lockGraph(tx, order.id);
-    // Never after a send, whatever the status says; and only an order that still waits for the buyer.
-    if ((await poFacts(tx, order.id)).some(isSent)) return false;
-    if (graph.order.status !== 'created' && graph.order.status !== 'awaiting_buyer') return false;
+    // Only an order that still waits for the buyer.
+    if (graph.order.status !== 'created' && graph.order.status !== 'awaiting_buyer') {
+      return 'handled';
+    }
+    // Never after a send, whatever the status says.
+    const facts = await poFacts(tx, order.id);
+    if (facts.some(isSent)) return gone ? 'skipped' : 'handled';
+    if (gone) {
+      // BU-9, re-checked under the lock: a capture operation that was sent or is unknown may have taken
+      // money whose answer was lost, a unit with a capture id has been paid, and a PayPal order a capture
+      // was aimed at is not decided here: the order stays as it is and the reconciler owns it.
+      if (graph.pos.some((p) => !UNSENT_STATES.has(p.state))) return 'skipped';
+      const inFlight = await tx.query(
+        "SELECT 1 FROM operations WHERE order_id = $1 AND kind = 'capture' AND state IN ('sent', 'unknown') LIMIT 1",
+        [order.id],
+      );
+      if (inFlight.rows.length > 0) return 'skipped';
+      const paid = await tx.query(
+        'SELECT 1 FROM order_units WHERE order_id = $1 AND (capture_id IS NOT NULL OR captured_verified_at IS NOT NULL) LIMIT 1',
+        [order.id],
+      );
+      if (paid.rows.length > 0) return 'skipped';
+    }
     // The status is created or awaiting_buyer, so some PayPal order is still open and moves.
     const moved = await endWholeOrder(tx, d, order.id, 'abandoned');
     await declineMoved(tx, d, order.id, moved, graph.pos, 'abandoned');
@@ -802,10 +824,23 @@ async function abandonOne(
        WHERE order_id = $1 AND state = 'prepared'`,
       [order.id, at],
     );
-    return true;
+    return 'abandoned';
   });
-  return done ? 'abandoned' : 'handled';
+  if (done === 'abandoned' && gone) {
+    d.log.log({
+      msg: 'payments.due.abandoned_not_found',
+      level: 'info',
+      fields: { order_ref: order.order_ref },
+    });
+  }
+  return done;
 }
+
+const UNSENT_STATES: ReadonlySet<ProviderOrderRow['state']> = new Set([
+  'prepared',
+  'awaiting_buyer',
+  'approved',
+]);
 
 async function takeOver(
   d: PaymentsDeps,

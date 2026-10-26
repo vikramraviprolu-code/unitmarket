@@ -129,6 +129,9 @@ describe('startLoop', () => {
   it('something already due runs again at once (a short floor, no spinning)', async () => {
     vi.useFakeTimers();
     const { d, clock } = makeDeps();
+    // BU-9: the passes do something (one item each). An all-zero pass with work overdue is the case
+    // that now sleeps max_sleep_ms, tested in loop.idle.integration.test.ts.
+    vi.mocked(runDue).mockResolvedValue({ ...zero, processed: 1 });
     vi.mocked(nextDueAt).mockImplementation(() =>
       Promise.resolve(new Date(clock.now().getTime() - 5000).toISOString()),
     );

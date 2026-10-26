@@ -1042,7 +1042,7 @@ describe('boundaries pinned by the mutation run (DP-2b)', () => {
     expect(await states(a.order_id)).toEqual(['captured', 'unresolved']);
   });
 
-  it('24 h sweep: a PayPal order that is gone abandons a pack, but a single order is read again later', async () => {
+  it('24 h sweep: a PayPal order that is gone abandons a pack and a single order (BU-9), each read once', async () => {
     w = await world();
     const pack = await awaiting(w, PACK);
     approvePo(w, pack, 1);
@@ -1053,9 +1053,9 @@ describe('boundaries pinned by the mutation run (DP-2b)', () => {
     const r = await pass();
     expect(await states(pack.order_id)).toEqual(['abandoned', 'abandoned']);
     expect((await orderRow(pack.order_id)).status).toBe('abandoned');
-    // the single order keeps its older rule: an answer that is not an order is skipped, not abandoned
-    expect((await orderRow(single.order_id)).status).toBe('awaiting_buyer');
-    expect(r.abandoned).toBe(1);
+    expect((await orderRow(single.order_id)).status).toBe('abandoned');
+    expect(r.abandoned).toBe(2);
+    expect(capCalls()).toHaveLength(0);
   });
 
   it('a candidate that is skipped (the read is blocked) does not use up the budget of the pass', async () => {
