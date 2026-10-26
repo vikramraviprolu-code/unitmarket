@@ -16,6 +16,7 @@
     "@umsbx/db": "workspace:*",
     "@umsbx/delivery": "workspace:*",
     "@umsbx/entitlements": "workspace:*",
+    "@umsbx/jobs": "workspace:*",
     "@umsbx/ledger": "workspace:*",
     "@umsbx/library": "workspace:*",
     "@umsbx/obs": "workspace:*",
