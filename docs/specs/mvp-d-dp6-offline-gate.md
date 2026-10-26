@@ -25,10 +25,10 @@ Also covered:
 The gate report lists D-01 (real half) as "owner window" and D-02 real as "not attempted" (D-042). `docs/owner/MVPD-OWNER-STEPS.md` follows the style of `MVPC-OWNER-STEPS.md`:
 
 - Prerequisites: D-041 and D-042 recorded. The sitting is local (the owner's laptop) with the webhook OFF. The coordinator decided this so that ASM-66 does not arise. A hosted webhook run added later needs its own ASM-66 waiver.
-- The approval row: the owner writes the decision-log row with the fields D-042 lists. The operations list leaves out `verify_webhook_postback` and `fetch_webhook_cert`, and leaves out `refund_capture` and `get_refund` unless a real composite refund is in the sitting. The owner then inserts the matching `outbound_approvals` row with `pnpm safety:approve` at his own TTY. The calls-per-day figure is derived from the overview's call budget (at most 13 per happy pack, plus continuation reads).
+- The approval row: the owner writes the decision-log row with the fields D-042 lists. The operations list leaves out `verify_webhook_postback` and `fetch_webhook_cert`, and leaves out `refund_capture` and `get_refund` unless a real composite refund is in the sitting. The owner then inserts the matching `outbound_approvals` row with `pnpm safety:approve` at his own TTY. The calls-per-day figure is derived from the overview's call budget (12 per happy pack, plus continuation reads).
 - `pnpm safety:resume` at the owner's TTY, after the approve step above.
 - One two-publisher pack through both approvals, within the pack window.
-- The evidence to bring back: two order ids and two capture ids (last 6 characters), debug ids, a `provider_calls` count of at most 13 for a happy pack (more only if the continuation ran, with the reason), and the sentence "Two publishers settled as two PayPal orders into one test merchant account; multi-merchant payout not demonstrated" (D-041).
+- The evidence to bring back: two order ids and two capture ids (last 6 characters), debug ids, a `provider_calls` count of 12 for a happy pack (more only if the continuation ran, with the reason), and the sentence "Two publishers settled as two PayPal orders into one test merchant account; multi-merchant payout not demonstrated" (D-041).
 - The stop conditions: any capture before both approvals, any create with two units, any create body naming a payee, any `DUPLICATE_INVOICE_ID`, and any payee in a read-back other than the stored one.
 - `safety:stop` at the end.
 

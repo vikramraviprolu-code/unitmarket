@@ -88,7 +88,7 @@ What does not exist, or contradicts D2:
 | DP-5 web composite                       | Pack selection, approval blocks, "Step 2 of 2", static `/checkout/cancel`, per-item lines, dry run per PayPal order, boot seeding on the MVP-C disk                                              | 1.0 d  | medium | D-041 (decided), OQ-8 (open) |
 | DP-6 offline gate                        | D-01 to D-07 twins, continuation twins, no-socket proof, evidence, owner steps against D-042                                                                                                     | 0.75 d | medium | D-041, D-042 (decided)       |
 
-Order: DP-1, DP-2a, DP-2b, then DP-3 and DP-4 in parallel (disjoint files), then DP-5, then DP-6. Total about 5.8 lane-days. `apps/web` and `apps/web/composition.server.ts` are held only by DP-5, with one named exception: DP-2a edits `apps/web/src/webhook-support.ts`, a test-support file, because migration 0011 breaks its INSERT. Migrations: 0010 (DP-1), 0011 (DP-2a). **Do not deploy DP-2a or DP-2b to the host before DP-3 merges**: refund reads still pick the order's first provider order until then.
+Order: DP-1, DP-2a, DP-2b, then DP-3 and DP-4 in parallel (disjoint files), then DP-5, then DP-6. Total about 5.8 lane-days. `apps/web` and `apps/web/composition.server.ts` are held only by DP-5, with one named exception: DP-2a edits `apps/web/src/webhook-support.ts`, a test-support file, because migration 0011 breaks its INSERT. Migrations: 0010 (DP-1), 0011 (DP-2a). **Deploy hold: do not deploy DP-2a (merged as 6f39e96) or DP-2b to the host until DP-2b and DP-3 have both merged.** Until then, reconcile, due, recover and webhooks are not safe for packs, and refund reads still pick the order's first PayPal order. `render.yaml` has `autoDeploy: false`, so merging does not deploy; do not deploy by hand either.
 
 ## 3. Shared names and rules (every lane uses these)
 
@@ -113,7 +113,7 @@ Order: DP-1, DP-2a, DP-2b, then DP-3 and DP-4 in parallel (disjoint files), then
     - any `unresolved` → `unresolved`;
     - otherwise any `capture_claimed` → `capture_claimed`;
     - otherwise → `capture_requested`. This covers captured+approved, captured+capture_requested, approved+capture_requested, sent-frozen+approved and sent-declined+approved (M-C). A `single` order has one PayPal order; once reopened it is `approved`, so it is not sent and rule 3 gives `awaiting_buyer`, as today.
-  - **Rule 3: no capture sent.** Checked in this order: any `frozen` → `frozen`; any `failed` → `failed`; any `abandoned` → `abandoned`; any `prepared` → `created`; otherwise → `awaiting_buyer`.
+  - **Rule 3: no capture sent.** Checked in this order: any `frozen` → `frozen`; any `failed` or `declined` → `failed` (a `declined` PayPal order with no send, beside an `approved` one, never derives `awaiting_buyer`; DP-2b changes `composite.ts` ~102 to match); any `abandoned` → `abandoned`; any `prepared` → `created`; otherwise → `awaiting_buyer`.
   - **Whole-order outcomes.** These are: a create rejected, `DUPLICATE_INVOICE_ID` at create, a mismatch in the pre-capture pass, an item not ready, a lapsed order, and a pack abandon. Each writes the same terminal state to every non-terminal PayPal order of the order in one transaction, so rule 3 never sees a held order beside a waiting one.
   - **Consequences.**
     - A `single` order whose capture was reopened after a definitive no-capture answer goes back to `awaiting_buyer`, as today.
@@ -127,12 +127,12 @@ Order: DP-1, DP-2a, DP-2b, then DP-3 and DP-4 in parallel (disjoint files), then
   - `frozen_order` for each held provider order.
   - `payment_unresolved` when a provider order cannot be read at its deadline (DP-2b).
 - **Config.** `pack_approval_window_ms`, default 3 600 000. When it has passed since `first_approved_at`, every provider order is read: if all are APPROVED, the pack is captured (P17); otherwise the whole pack is `abandoned`, nothing charged.
-- **Call budget.** A happy composite uses at most 13 PayPal calls:
-  - 1 token, 2 creates, 2 return reads;
-  - 1 pre-capture pass read (PO1; PO2's pass read is its return read in the same handler call);
-  - 1 status read (PO2; PO1's status read is the pass read);
-  - 2 captures, 2 order GETs, 2 capture GETs.
-  - The continuation in DP-2b may add reads. This figure feeds the D-042 calls-per-day value.
+- **Call budget.** A happy pack uses 12 PayPal calls, as built in DP-2a:
+  - 1 token and 2 creates;
+  - 7 reads: 2 return reads, 1 pre-capture pass read, 2 status reads before the captures, and 2 order GETs after them;
+  - 2 captures.
+  - There is no capture GET: the engine never used `getCapture`, and the order GET carries every matched field.
+  - D-042's calls-per-day figure is 12 per pack plus whatever DP-2b's continuation adds.
 - **Test payee ids.** `SBXPAYEEHARBOUR1` and `SBXPAYEEQUAYSIDE2` (distinct, fake). In sandbox, both publishers map to the owner's id (D-041).
 
 ## 4. Files each lane touches
@@ -153,7 +153,7 @@ Order: DP-1, DP-2a, DP-2b, then DP-3 and DP-4 in parallel (disjoint files), then
   - `apps/web/src/webhook-support.ts` (exception: the INSERT becomes an UPDATE of the placed row);
   - setup only ("D1 dormant" helper): `apply.state`, `capture.mutpay.state`, `due.budget.adversarial`, `due.budget.state`, `invariants.state`, `payments.adversarial`, `place.state`, `refunds.complete.adversarial`, `refunds.complete.state`, `refunds.remaining.state`, `return.state`, `review05a.state`, `webhooks.adversarial`, `webhooks.state`. These are the files that use `ofr_3`; the builder confirms which of them place two publishers in one order.
 - **DP-2b:**
-  - `domain/payments/src/{reconcile.ts, due.ts, recover.ts, webhooks.ts}`;
+  - `domain/payments/src/{reconcile.ts, due.ts, recover.ts, webhooks.ts}`, plus `composite.ts` (delete `legacyState`; rule 3 counts `declined` as `failed`) and `composite.test.ts`;
   - new tests: `composite.due.state.test.ts`, `composite.recover.state.test.ts`, `composite.webhooks.state.test.ts`, `composite.continuation.adversarial.test.ts`.
 - **DP-3:**
   - `domain/payments/src/refunds.ts`, `refunds.composite.state.test.ts`;
