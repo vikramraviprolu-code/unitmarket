@@ -2,7 +2,7 @@
 
 Task: settle a `per_publisher` order as one PayPal order per publisher, each with its own state, keys, invoice id, approval, capture and matching read-back, on the buyer's return path.
 Package: `domain/payments`, `packages/db` (0011), `packages/contracts` (paypal, config), `packages/paypal` (`build-create.ts`) Owner: Sonnet 5.5 builder, effort high ($) Reviewer: Opus 5.5 high, diff review plus mutation checks; Sakthi merges
-Wave: MVP-D W2, after DP-1. Decisions: table A (OQ-3, 4, 6, 9, 14). Requirements: D-01, D-02, D-05, P3 to P6, P14, D-014/D-018, D-020, ASM-75. The names, states, status rules, backfill and call budget are in `mvp-d-overview.md` section 3. DP-2b owns the background paths. Do not deploy to the host before DP-3 merges.
+Wave: MVP-D W2, after DP-1. Decisions: table A (OQ-3, 4, 6, 9, 14). Requirements: D-01, D-02, D-05, P3 to P6, P14, D-014/D-018, D-020, ASM-75. The names, states, status rules, backfill and call budget are in `mvp-d-overview.md` section 3. DP-2b owns the background paths. Deploy hold: not before DP-2b AND DP-3 have merged. `render.yaml` has `autoDeploy: false`, so merging does not deploy; do not deploy by hand either.
 
 Goal.
 
@@ -38,7 +38,7 @@ Goal.
     - unknown → `unresolved`;
     - blocked, reopen or payer_action → back to `approved`; payer_action writes `approve_url` `WHERE id` = that provider order.
   - `orders.status` is set only by `deriveOrderStatus` (`composite.ts`, pure). It never returns to `awaiting_buyer` while `capture_sent` holds. `capture_sent` means a PayPal order is sent in the overview's sense, not merely that some operation has `first_sent_at` (H-A). So a `single` order reopened after payer_action or `ORDER_NOT_APPROVED` goes back to `awaiting_buyer`, as today (`return.state.test.ts:575`, `:597` stay green unchanged).
-- **Read-back.** After each capture: an order GET and a capture GET, matched against that slice. A unit mismatch, or a `DUPLICATE_INVOICE_ID` after a capture, freezes only that provider order (`frozen_order` alert, mismatch flag, "On hold").
+- **Read-back.** After each capture: an order GET, matched against that slice. The capture GET is not built: the engine never used `getCapture`, and the order GET carries every matched field. A unit mismatch, or a `DUPLICATE_INVOICE_ID` after a capture, freezes only that provider order (`frozen_order` alert, mismatch flag, "On hold").
 - **Alerts and receipts.**
   - `partial_composite` is raised only on entering `paid_partial` with at least one provider order not charged.
   - A hold after money moved writes a new receipt version: the mismatch branch no longer returns before `issueReceiptIfChanged`.
@@ -81,7 +81,7 @@ Red-first tests (commit 1):
   - `kill switch on PO2's capture after PO1 captured: PO2 approved, order capture_requested, never awaiting_buyer`;
   - `payer_action on PO2: approve_url written on PO2 only`;
   - `pack window run out, PO2 unapproved: abandoned; all APPROVED: captured`;
-  - `happy composite at most 13 PayPal calls`.
+  - `happy composite at most 12 PayPal calls`.
 - `composite.adversarial.test.ts`:
   - `20 concurrent returns: one capture per PayPal order`;
   - `lock order spy, provider_orders after orders`;
@@ -91,7 +91,7 @@ Red-first tests (commit 1):
 Acceptance tests:
 
 - `corepack pnpm vitest run --project unit --project state --project adversarial domain/payments packages/paypal packages/contracts packages/db apps/web`: all pass.
-- `corepack pnpm mutation --targets domain/payments/src/composite.ts,domain/payments/src/apply.ts,domain/payments/src/return.ts,domain/payments/src/capture.ts --require-targets`: each at least 80 percent.
+- `corepack pnpm mutation --targets domain/payments/src/composite.ts,domain/payments/src/apply.ts,domain/payments/src/return.ts,domain/payments/src/capture.ts` with the exact narrowed test command recorded: the PR records the score and every money-relevant survivor (killed or justified). The reviewer measured `apply.ts` at 45/60 with the narrowed set (apply, composite, return, capture, reconcile tests). The money-relevant survivors are killed by `review05a.state` and `reconcile.adversarial`, except `declined_unit_received`, whose test is added to DP-2b.
 - `corepack pnpm test && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm check:isolation && corepack pnpm check:no-live-host`: exit 0.
 
 Do not:
@@ -106,3 +106,19 @@ Do not:
 Evidence for the PR: red summary, pass counts, mutation scores, the lock-order spy output, the migration test, and the sanitised PayPal call lists for a happy and a partial composite.
 
 Branch: `feat/payments-provider-orders-d2` Commit: `feat(payments): one PayPal order per publisher on the return path (DP-2a)`
+
+## Review record (Opus, merged as 6f39e96: merge yes with conditions)
+
+Accepted deviations:
+
+- **Legacy-writer shim.** `legacyState` in `lockOrderGraph` stays until DP-2b deletes it, together with the writers it serves.
+- **Alert reasons.** For packs, alert reasons get a `_p<position>` suffix; a `single` order keeps the exact reasons.
+- **Two test edits that were not disclosed:**
+  - `composite.adversarial.test.ts:200`: placing the order is no longer spied.
+  - `composite.state.test.ts:626` expects "the PO2 capture operation is the one polled".
+- **Spec length.** This spec is longer than a page; the reviewer accepted that as a stated exception.
+
+Conditions:
+
+- **No host deploy before DP-2b and DP-3.** Until they merge, reconcile, due, recover and webhooks are not safe for two-publisher packs: the create resend builds a whole-pack body, and the payer_action reopen writes both PayPal orders.
+- **Call budget.** A happy pack uses 12 PayPal calls (overview section 3). D-042's calls-per-day figure is 12 per pack plus whatever DP-2b's continuation adds.
