@@ -14,6 +14,7 @@ import {
   orderStatus,
   place,
   START,
+  setOrderStatus,
 } from './ops/support';
 import type { OpsWorld } from './ops/support';
 
@@ -56,7 +57,7 @@ async function readyRetry(): Promise<{
 function moveDuringCall(status: string, order_id: string): void {
   const real = w.paypal.captureOrder.bind(w.paypal);
   w.paypal.captureOrder = async (r) => {
-    await w.db.query('UPDATE orders SET status = $2 WHERE id = $1', [order_id, status]);
+    await setOrderStatus(w.db, order_id, status);
     return real(r);
   };
 }

@@ -17,23 +17,49 @@ import type {
   SqlExecutor,
 } from '@umsbx/contracts';
 import { declineUnits, ensureReadbackOp, readApplyGates } from './apply';
+import { captureOnce, reasonFor } from './capture';
+import {
+  endWholeOrder,
+  expectedFor,
+  isSent,
+  lockGraph,
+  lockOrderGraph,
+  poFacts,
+  poIn,
+  refreshOrder,
+  setPoState,
+} from './composite';
+import { captureKeyNumber, readbackKeyFor } from './keys';
+import { matchReadback } from './match';
 import { onBuyerReturn } from './return';
-import { endWholeOrder } from './composite';
-import type { ProviderOrderState } from './composite';
-import { readAndApply, resendCreate, retryCapture, TERMINAL } from './reconcile';
+import {
+  applyOneRead,
+  declineMoved,
+  readAndApply,
+  resendCreate,
+  retryCapture,
+  TERMINAL,
+} from './reconcile';
 import { raiseOpsAlert, resumeRefund } from './refunds';
 import type { RefundOp } from './refunds';
-import { readbackKeyFor } from './keys';
 import {
   addMs,
+  claimsOf,
+  foreignCaptureIds,
   insertOperation,
   isoOf,
   loadOperation,
+  loadOperationFor,
   loadOrder,
   loadProviderOrders,
+  loadUnits,
   lockOrderRows,
+  unitsOf,
 } from './store';
-import type { OperationRow, OrderRow } from './store';
+import type { OperationRow, OrderRow, ProviderOrderRow, UnitRow } from './store';
+
+type Read = Extract<OrderRead, { kind: 'order' }>;
+const PACK_WINDOW_DEFAULT_MS = 3_600_000;
 
 const earlier = (a: string, b: string): string => (Date.parse(a) <= Date.parse(b) ? a : b);
 
@@ -92,10 +118,69 @@ const paidWatch = (every: number): string => `
 // Orders that never got to the buyer: nothing was sent, or a create is still being settled elsewhere.
 const NOT_SENT = `NOT EXISTS (SELECT 1 FROM operations p WHERE p.order_id = o.id AND p.kind = 'create' AND p.state IN ('sent', 'unknown'))`;
 
+// The continuation (DP-2b): a PayPal order of a pack still waiting for its capture (approved, or still
+// awaiting the buyer) whose sibling had a capture sent (overview section 3: its own capture operation
+// has first_sent_at and its state is not approved, or it is in flight or captured). `sent_at` is when
+// the latest sibling was sent. A candidate is `fresh` when nothing has touched it since: it is due at
+// once; one that was touched (a reopen, a pass that changed nothing) is due `every` ms after that.
+const CONTINUATION = `
+  SELECT po.id, po.order_id, po.updated_at, sib.sent_at, (po.updated_at <= sib.sent_at) AS fresh
+    FROM provider_orders po
+    JOIN LATERAL (
+      SELECT max(COALESCE(c.first_sent_at, s.updated_at)) AS sent_at
+        FROM provider_orders s
+        LEFT JOIN operations c ON c.provider_order_ref = s.id AND c.kind = 'capture'
+       WHERE s.order_id = po.order_id AND s.id <> po.id
+         AND (s.state IN ('capture_requested', 'capture_claimed', 'unresolved', 'captured')
+              OR (s.state NOT IN ('prepared', 'awaiting_buyer', 'approved') AND c.first_sent_at IS NOT NULL))
+    ) sib ON sib.sent_at IS NOT NULL
+   WHERE po.state IN ('approved', 'awaiting_buyer') AND po.provider_order_id IS NOT NULL`;
+interface Candidate {
+  id: Id;
+  order_id: Id;
+  /** The last time anything touched the PayPal order. */
+  updated_at: string;
+  /** When the latest sibling was sent: the poll schedule of a waiting PayPal order is counted from it. */
+  sent_at: string;
+  fresh: boolean;
+}
+async function continuationCandidates(db: SqlExecutor): Promise<Candidate[]> {
+  const found = await db.query<Record<string, unknown>>(
+    `SELECT k.id, k.order_id, k.updated_at, k.sent_at, k.fresh FROM (${CONTINUATION}) k ORDER BY k.updated_at, k.id LIMIT 200`,
+  );
+  return found.rows.map((r) => ({
+    id: r['id'] as string,
+    order_id: r['order_id'] as string,
+    updated_at: isoOf(r['updated_at']) as string,
+    sent_at: isoOf(r['sent_at']) as string,
+    fresh: r['fresh'] === true,
+  }));
+}
+const DEFAULT_BACKOFF = [30_000, 120_000, 600_000, 3_600_000];
+/**
+ * When a candidate is next due. One nothing has touched since its sibling was sent is due at once. One
+ * that was touched (a reopen, a pass that changed nothing) is polled on the backoff schedule counted
+ * from the send of its sibling (30 s, 2 min, 10 min, 1 h, 1 h ...), so a PayPal order that waits for
+ * the buyer costs about one read an hour, not one per pass.
+ */
+function dueOfCandidate(
+  config: Partial<Pick<DomainConfig, 'reconcile_backoff_ms'>>,
+  c: Candidate,
+): string {
+  if (c.fresh) return c.updated_at;
+  return nextPollAt(
+    { reconcile_backoff_ms: config.reconcile_backoff_ms ?? DEFAULT_BACKOFF },
+    c.sent_at,
+    c.updated_at,
+    addMs(c.sent_at, 365 * 86_400_000),
+  );
+}
+
 export async function nextDueAt(
   db: SqlExecutor,
   config: Pick<DomainConfig, 'abandoned_checkout_ms'> &
-    Partial<Pick<DomainConfig, 'reread_paid_every_ms'>> = { abandoned_checkout_ms: 86_400_000 },
+    Partial<Pick<DomainConfig, 'reread_paid_every_ms' | 'pack_approval_window_ms'>> &
+    Partial<Pick<DomainConfig, 'reconcile_backoff_ms'>> = { abandoned_checkout_ms: 86_400_000 },
 ): Promise<IsoUtc | null> {
   const found = await db.query<Record<string, unknown>>(
     `SELECT
@@ -103,6 +188,8 @@ export async function nextDueAt(
        (SELECT min(lease_until) FROM operations WHERE state = 'sent') AS lease_at,
        (SELECT min(o.created_at) FROM orders o WHERE o.status = 'awaiting_buyer'
            OR (o.status = 'created' AND ${NOT_SENT})) AS waiting_at,
+       (SELECT min(p.first_approved_at) FROM provider_orders p JOIN orders o ON o.id = p.order_id
+         WHERE o.status = 'awaiting_buyer' AND p.route = 'per_publisher') AS pack_at,
        (SELECT min(w.next_at) FROM (${paidWatch(rereadMs(config))}) w
          WHERE w.next_at < w.verified_at + interval '7 days') AS reread_at`,
   );
@@ -115,6 +202,11 @@ export async function nextDueAt(
   if (lease !== null) times.push(lease);
   const waiting = isoOf(row['waiting_at']);
   if (waiting !== null) times.push(addMs(waiting, config.abandoned_checkout_ms));
+  // The pack approval window runs from the first approval we saw; the due pass enforces it.
+  const pack = isoOf(row['pack_at']);
+  if (pack !== null)
+    times.push(addMs(pack, config.pack_approval_window_ms ?? PACK_WINDOW_DEFAULT_MS));
+  for (const c of await continuationCandidates(db)) times.push(dueOfCandidate(config, c));
   const reread = isoOf(row['reread_at']);
   if (reread !== null) times.push(reread);
   return times.reduce<string | null>((first, t) => (first === null ? t : earlier(first, t)), null);
@@ -131,6 +223,7 @@ const toDueOp = (r: Record<string, unknown>): DueOp => ({
   order_id: r['order_id'] as string,
   kind: r['kind'] as OperationRow['kind'],
   state: r['state'] as OperationRow['state'],
+  provider_order_ref: (r['provider_order_ref'] as string | null) ?? null,
   attempt: Number(r['attempt']),
   request_id: r['request_id'] as string,
   first_sent_at: isoOf(r['first_sent_at']),
@@ -151,7 +244,7 @@ const ended = (op: Pick<OperationRow, 'reconcile_until'>, at: string): boolean =
  */
 export async function markUnknown(
   tx: SqlExecutor,
-  d: Pick<PaymentsDeps, 'clock' | 'config'>,
+  d: Pick<PaymentsDeps, 'clock' | 'config' | 'ids'>,
   op: { id: Id; order_id: Id; kind: string; first_sent_at: string | null; request_id: string },
   from: 'sent' | 'prepared',
 ): Promise<boolean> {
@@ -167,11 +260,24 @@ export async function markUnknown(
   );
   if (moved.rows.length === 0) return false;
   if (op.kind === 'capture') {
-    await tx.query(
-      `UPDATE orders SET status = 'unresolved', updated_at = $2
-       WHERE id = $1 AND status IN ('capture_requested', 'capture_claimed')`,
-      [op.order_id, at],
-    );
+    // The PayPal order of this capture goes back to unresolved; the order status follows (composite.ts).
+    const ref = (
+      await tx.query<{ provider_order_ref: string | null }>(
+        'SELECT provider_order_ref FROM operations WHERE id = $1',
+        [op.id],
+      )
+    ).rows[0]?.provider_order_ref;
+    const pos = await loadProviderOrders(tx, op.order_id);
+    const po =
+      ref === undefined || ref === null
+        ? pos.length === 1
+          ? pos[0]
+          : undefined
+        : pos.find((p) => p.id === ref);
+    if (po !== undefined) {
+      await setPoState(tx, po.id, 'unresolved', at, ['capture_requested', 'capture_claimed']);
+      await refreshOrder(tx, d, op.order_id);
+    }
   }
   if (op.kind === 'refund') {
     await tx.query(
@@ -220,7 +326,9 @@ const MONEY_KINDS = "('capture', 'readback')";
 // that closing in place shows a money_only pass needs it (the close costs a read of the order).
 const MONEY_OR_CALL_FREE = `(kind IN ${MONEY_KINDS}
           OR (kind = 'create' AND ((idem_safe_until IS NOT NULL AND idem_safe_until <= $1)
-                OR EXISTS (SELECT 1 FROM orders o WHERE o.id = operations.order_id AND o.status <> 'created')))
+                OR EXISTS (SELECT 1 FROM provider_orders p WHERE p.id = operations.provider_order_ref AND p.state <> 'prepared')
+                OR (provider_order_ref IS NULL
+                    AND EXISTS (SELECT 1 FROM orders o WHERE o.id = operations.order_id AND o.status <> 'created'))))
           OR (kind = 'refund_readback' AND reconcile_until IS NOT NULL AND reconcile_until <= $1)
           OR (kind = 'refund' AND first_sent_at IS NOT NULL AND reconcile_until IS NOT NULL AND reconcile_until <= $1))`;
 
@@ -251,13 +359,15 @@ export async function runDue(
                next_retry_at, id LIMIT $2`,
     [at, i.max_items * 2],
   );
-  // One item per order for reads (one read serves the capture and the read-back operation), one per
-  // operation otherwise; items keep the order of their earliest operation.
+  // One item per PayPal order for reads (one read serves its capture and its read-back operation), one
+  // per operation otherwise; items keep the order of their earliest operation.
   const items = new Map<string, DueOp[]>();
   for (const row of rows.rows) {
     const op = toDueOp(row);
     const key =
-      op.kind === 'capture' || op.kind === 'readback' ? `order:${op.order_id}` : `op:${op.id}`;
+      op.kind === 'capture' || op.kind === 'readback'
+        ? `po:${op.provider_order_ref ?? op.order_id}`
+        : `op:${op.id}`;
     items.set(key, [...(items.get(key) ?? []), op]);
   }
   for (const group of items.values()) {
@@ -289,6 +399,9 @@ export async function runDue(
     }
   }
 
+  // A pack whose first capture was sent always finishes: money work, so it also runs when the polling
+  // allowance is spent. Each PayPal order picked costs one item of the budget.
+  budget = await continuePacks(d, budget, out);
   if (moneyOnly) return out;
   budget = await sweepAbandoned(d, budget, out);
   await rereadPaid(d, budget, out);
@@ -344,7 +457,23 @@ async function rescheduleAll(d: PaymentsDeps, ids: Id[]): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// reads: capture and read-back operations of one order
+// reads: capture and read-back operations of one PayPal order
+
+const SETTLED_PO: ReadonlySet<ProviderOrderRow['state']> = new Set([
+  'declined',
+  'failed',
+  'abandoned',
+  'frozen',
+]);
+
+/** The PayPal order the claimed operations belong to: their own reference, else the only one. */
+function poOfClaimed(
+  pos: readonly ProviderOrderRow[],
+  claimed: readonly DueOp[],
+): ProviderOrderRow | undefined {
+  const ref = claimed.find((o) => o.provider_order_ref !== null)?.provider_order_ref ?? null;
+  return ref !== null ? pos.find((p) => p.id === ref) : pos.length === 1 ? pos[0] : undefined;
+}
 
 async function processRead(
   d: PaymentsDeps,
@@ -354,6 +483,7 @@ async function processRead(
 ): Promise<void> {
   const order = await loadOrder(d.db, order_id);
   if (order === null) return;
+  const po = poOfClaimed(await loadProviderOrders(d.db, order_id), claimed);
   if (TERMINAL.has(order.status)) {
     // Frozen, failed or abandoned: a human's or finished. The operations stop here.
     await d.db.query(
@@ -363,46 +493,57 @@ async function processRead(
     );
     return;
   }
+  if (po !== undefined && SETTLED_PO.has(po.state)) {
+    // This PayPal order is over without money (or on hold) while the pack goes on: its operations stop.
+    await d.db.query(
+      `UPDATE operations SET state = 'failed', failure_reason = $2, lease_until = NULL, next_retry_at = NULL, updated_at = $3
+       WHERE order_id = $1 AND kind IN ('capture', 'readback') AND state = 'unknown'
+         AND (provider_order_ref = $4 OR (provider_order_ref IS NULL AND $5 = 'single'))`,
+      [order_id, po.state === 'frozen' ? 'mismatch' : 'declined', nowIso(d), po.id, po.route],
+    );
+    return;
+  }
   // Read first, always (RB-2). At the end of the window this is the last read.
-  const outcome = await readAndApply(d, order, 'poll');
+  const outcome = await readAndApply(d, order, 'poll', po === undefined ? undefined : [po.id]);
   if (outcome.kind === 'paused') {
     await release(d, claimed);
     return;
   }
-  if (outcome.kind === 'applied') {
-    const again = await maybeRetryCapture(d, order_id, outcome.read);
+  if (outcome.kind === 'applied' && po !== undefined) {
+    const again = await maybeRetryCapture(d, order, po, outcome.read);
     if (again === 'paused') {
       await release(d, claimed);
       return;
     }
   }
-  await settleRead(d, order_id, claimed, out);
+  await settleRead(d, order_id, claimed, out, po);
 }
 
 // P3: a capture whose answer was lost and a read that shows no capture on any unit, an approved
 // order, inside 5 h of the first send, once (1 + max_capture_retries sends), and only when the
-// content is deliverable: send again with the same key, then read again.
+// content is deliverable: send again with the same key, then read again. Per PayPal order, with that
+// PayPal order's own operation and key.
 async function maybeRetryCapture(
   d: PaymentsDeps,
-  order_id: Id,
-  read: Extract<OrderRead, { kind: 'order' }>,
+  order: OrderRow,
+  po: ProviderOrderRow,
+  read: Read,
 ): Promise<'done' | 'paused'> {
-  const cap = await loadOperation(d.db, order_id, 'capture');
-  const order = await loadOrder(d.db, order_id);
-  if (cap === null || order === null || cap.state !== 'unknown' || order.status !== 'unresolved') {
-    return 'done';
-  }
+  // The operation is read fresh; the capture retry takes the locks and refuses a PayPal order that is
+  // not in flight any more, so the rows passed in need not be current.
+  const cap = await loadOperationFor(d.db, po, 'capture');
+  if (cap === null || cap.state !== 'unknown') return 'done';
   if (read.status !== 'APPROVED' || read.units.some((u) => u.capture !== null)) return 'done';
   if (cap.idem_safe_until === null || Date.parse(nowIso(d)) >= Date.parse(cap.idem_safe_until)) {
     return 'done';
   }
   if (cap.attempt > d.config.max_capture_retries) return 'done';
-  if ((await readApplyGates(d, order_id)).not_ready.length > 0) return 'done';
-  const sent = await retryCapture(d, order, cap, read.provider_order_id);
+  if ((await readApplyGates(d, order.id)).not_ready.length > 0) return 'done';
+  const sent = await retryCapture(d, order, cap, read.provider_order_id, po);
   if (sent !== 'claim') return 'done';
-  const fresh = await loadOrder(d.db, order_id);
+  const fresh = await loadOrder(d.db, order.id);
   if (fresh === null) return 'done';
-  const second = await readAndApply(d, fresh, 'poll');
+  const second = await readAndApply(d, fresh, 'poll', [po.id]);
   return second.kind === 'paused' ? 'paused' : 'done';
 }
 
@@ -412,10 +553,13 @@ async function settleRead(
   order_id: Id,
   claimed: DueOp[],
   out: Counts,
+  po: ProviderOrderRow | undefined,
 ): Promise<void> {
   const unknown = await d.db.query<Record<string, unknown>>(
-    `SELECT * FROM operations WHERE order_id = $1 AND kind IN ('capture', 'readback') AND state = 'unknown' ORDER BY created_at, id`,
-    [order_id],
+    `SELECT * FROM operations WHERE order_id = $1 AND kind IN ('capture', 'readback') AND state = 'unknown'
+        AND ($2::text IS NULL OR provider_order_ref = $2 OR (provider_order_ref IS NULL AND $3 = 'single'))
+      ORDER BY created_at, id`,
+    [order_id, po === undefined ? null : po.id, po === undefined ? null : po.route],
   );
   const claimedIds = new Set(claimed.map((o) => o.id));
   let closed = false;
@@ -435,21 +579,29 @@ async function settleRead(
 // The 24 h window ended with the evidence still missing or pending: the operation fails with
 // window_expired, the items not yet decided become unknown, one alert goes to a human, and the order
 // stays as it is. Nothing is failed automatically when a provider order exists, nothing is recharged.
+// For a pack only the items of this PayPal order become unknown.
 async function expireRead(d: PaymentsDeps, op: DueOp): Promise<void> {
   await d.db.transaction(async (tx) => {
     const at = nowIso(d);
-    const order = await lockOrderRows(tx, op.order_id);
+    const graph = await lockOrderGraph(tx, op.order_id);
+    const order = graph?.order ?? null;
+    const po =
+      graph === null || op.provider_order_ref === null
+        ? undefined
+        : graph.pos.find((p) => p.id === op.provider_order_ref);
     await tx.query(
       `UPDATE operations SET state = 'failed', failure_reason = 'window_expired', lease_until = NULL, next_retry_at = NULL, updated_at = $2
        WHERE id = $1 AND state = 'unknown'`,
       [op.id, at],
     );
     if (order === null || order.status === 'paid' || order.status === 'paid_partial') return;
+    if (po !== undefined && po.state === 'captured') return;
     const open = await tx.query<{ id: string }>(
       `SELECT e.id FROM entitlements e JOIN order_units u ON u.id = e.unit_id
         WHERE u.order_id = $1 AND u.captured_verified_at IS NULL AND u.status NOT IN ('declined', 'mismatch')
+          AND ($2::text IS NULL OR u.provider_order_ref = $2)
         ORDER BY e.id`,
-      [op.order_id],
+      [op.order_id, po !== undefined && po.route === 'per_publisher' ? po.id : null],
     );
     for (const e of open.rows) {
       // A refused transition (an item already denied) is not an error here.
@@ -459,7 +611,7 @@ async function expireRead(d: PaymentsDeps, op: DueOp): Promise<void> {
       kind: 'payment_unresolved',
       order_id: op.order_id,
       unit_id: null,
-      reason: 'window_expired',
+      reason: po === undefined ? 'window_expired' : reasonFor(po, 'window_expired'),
       detail: { operation_id: op.id, kind: op.kind },
     });
   });
@@ -471,8 +623,11 @@ async function expireRead(d: PaymentsDeps, op: DueOp): Promise<void> {
 async function processCreate(d: PaymentsDeps, op: DueOp, out: Counts): Promise<void> {
   const order = await loadOrder(d.db, op.order_id);
   if (order === null) return;
-  if (order.status !== 'created') {
-    // The checkout moved on without this operation hearing of it.
+  const po = poOfClaimed(await loadProviderOrders(d.db, op.order_id), [op]);
+  if (po === undefined) return;
+  // The checkout moved on without this operation hearing of it: this PayPal order is no longer waiting
+  // for its create (for a single order that is the order status, as ever).
+  if (po.state !== 'prepared') {
     await d.db.query(
       `UPDATE operations SET state = 'confirmed', lease_until = NULL, next_retry_at = NULL, updated_at = $2 WHERE id = $1 AND state = 'unknown'`,
       [op.id, nowIso(d)],
@@ -495,34 +650,27 @@ async function processCreate(d: PaymentsDeps, op: DueOp, out: Counts): Promise<v
   }
 }
 
-// No resend after the window and no way to look the order up: the create is closed. With no PayPal
-// order id ever stored the order failed and nothing can have been charged (the buyer never had a
-// way to pay); with one it stays unresolved. Either way a human gets one alert.
+// No resend after the window and no way to look the order up: the create is closed. A PayPal order
+// that never got a provider order id never existed at PayPal and nothing can have been charged (the
+// buyer never had a way to pay): the whole order fails, every PayPal order of it. With an id stored
+// it stays unresolved. Either way a human gets one alert.
 async function expireCreate(d: PaymentsDeps, op: DueOp): Promise<void> {
   await d.db.transaction(async (tx) => {
     const at = nowIso(d);
-    await lockOrderRows(tx, op.order_id);
+    const graph = await lockGraph(tx, op.order_id);
     const closed = await tx.query(
       `UPDATE operations SET state = 'failed', failure_reason = 'window_expired', lease_until = NULL, next_retry_at = NULL, updated_at = $2
        WHERE id = $1 AND state = 'unknown' RETURNING id`,
       [op.id, at],
     );
     if (closed.rows.length === 0) return;
-    const stored = await tx.query(
-      'SELECT 1 FROM provider_orders WHERE order_id = $1 AND provider_order_id IS NOT NULL LIMIT 1',
-      [op.order_id],
-    );
-    if (stored.rows.length === 0) {
-      await tx.query("UPDATE orders SET status = 'failed', updated_at = $2 WHERE id = $1", [
-        op.order_id,
-        at,
-      ]);
-      await declineUnits(tx, d, op.order_id, 'create_unresolved');
+    const po = poOfClaimed(graph.pos, [op]);
+    if (po === undefined || po.provider_order_id === null) {
+      const moved = await endWholeOrder(tx, d, op.order_id, 'failed');
+      await declineMoved(tx, d, op.order_id, moved, graph.pos, 'create_unresolved');
     } else {
-      await tx.query("UPDATE orders SET status = 'unresolved', updated_at = $2 WHERE id = $1", [
-        op.order_id,
-        at,
-      ]);
+      await setPoState(tx, po.id, 'unresolved', at, ['prepared', 'awaiting_buyer', 'approved']);
+      await refreshOrder(tx, d, op.order_id);
     }
     await raiseOpsAlert(tx, d, {
       kind: 'payment_unresolved',
@@ -558,16 +706,24 @@ async function processRefund(d: PaymentsDeps, op: DueOp, out: Counts): Promise<v
 }
 
 // ---------------------------------------------------------------------------------------------
-// abandoned checkouts (P17)
+// abandoned checkouts (P17): the 24 h sweep, and the pack approval window on the due pass
 
 async function sweepAbandoned(d: PaymentsDeps, budget: number, out: Counts): Promise<number> {
   if (budget <= 0) return budget;
-  const cutoff = addMs(nowIso(d), -d.config.abandoned_checkout_ms);
+  const at = nowIso(d);
+  const cutoff = addMs(at, -d.config.abandoned_checkout_ms);
+  // A pack whose approval window has run out since we first saw an approval is due as well, so the
+  // step-page promise ("the whole order is cancelled") holds for a buyer who never comes back.
+  const windowCutoff = addMs(at, -(d.config.pack_approval_window_ms ?? PACK_WINDOW_DEFAULT_MS));
   const waiting = await d.db.query<{ id: string }>(
     `SELECT o.id FROM orders o
-      WHERE o.created_at <= $1 AND (o.status = 'awaiting_buyer' OR (o.status = 'created' AND ${NOT_SENT}))
+      WHERE (o.status = 'awaiting_buyer' OR (o.status = 'created' AND ${NOT_SENT}))
+        AND (o.created_at <= $1
+             OR (o.status = 'awaiting_buyer'
+                 AND (SELECT min(q.first_approved_at) FROM provider_orders q
+                       WHERE q.order_id = o.id AND q.route = 'per_publisher') <= $3))
       ORDER BY o.created_at, o.id LIMIT $2`,
-    [cutoff, budget],
+    [cutoff, budget, windowCutoff],
   );
   for (const { id } of waiting.rows) {
     const order = await loadOrder(d.db, id);
@@ -581,106 +737,96 @@ async function sweepAbandoned(d: PaymentsDeps, budget: number, out: Counts): Pro
   return budget;
 }
 
+/**
+ * Nothing was sent for this order and it waited too long (24 h, or a pack past its window). Every
+ * PayPal order is read (the stored id only). Money already at PayPal on any of them: never abandon,
+ * take it over. All APPROVED: the capture path of a return, once (P17). Anything else: the whole order
+ * is abandoned, nothing charged. A pack is never abandoned while a capture was sent.
+ */
 async function abandonOne(
   d: PaymentsDeps,
   order: OrderRow,
 ): Promise<'abandoned' | 'handled' | 'skipped'> {
+  let gone = false;
   if (order.status === 'awaiting_buyer') {
     if (!(await d.switches.isOn('paypal_outbound'))) return 'skipped';
-    const provider = (
-      await d.db.query<{ provider_order_id: string | null }>(
-        'SELECT provider_order_id FROM provider_orders WHERE order_id = $1 ORDER BY id LIMIT 1',
-        [order.id],
-      )
-    ).rows[0]?.provider_order_id;
-    if (provider !== undefined && provider !== null) {
-      const read = await d.paypal.getOrder(provider);
-      // PayPal has no such order (HTTP 404): nothing can be captured, so the checkout is over.
-      // Answering 'skipped' here left it overdue for ever, read again on every pass (BU-9).
-      if (read.kind === 'not_found') return abandonGone(d, order);
-      if (read.kind !== 'order') return 'skipped'; // blocked or unreadable: the next pass tries again
-      if (read.units.some((u) => u.capture !== null)) {
-        // Money is already at PayPal: never abandon. Take the order over, tell a human, and let
-        // the read decide what is paid.
-        return takeOver(d, order);
-      }
-      if (read.status === 'APPROVED') {
-        // The buyer approved and never came back: the same capture path as a return, once.
-        const r = await onBuyerReturn(d, {
-          order_ref: order.order_ref,
-          actor: { kind: 'buyer', buyer_id: order.buyer_id },
-        });
-        if (!r.ok && r.error.code === 'payments_paused') return 'skipped';
-        const now = await loadOrder(d.db, order.id);
-        if (now === null || now.status !== 'awaiting_buyer') return 'handled';
-      }
+    const pos = (await loadProviderOrders(d.db, order.id)).filter(
+      (p) =>
+        p.provider_order_id !== null && (p.state === 'awaiting_buyer' || p.state === 'approved'),
+    );
+    const reads = new Map<Id, OrderRead>();
+    // A PayPal order that no longer exists (HTTP 404) is a definite answer: nothing can be captured
+    // on it, so the checkout is over (BU-9), for a single order and for a pack (it lapsed).
+    for (const po of pos) {
+      const read = await d.paypal.getOrder(po.provider_order_id as string);
+      // blocked or unreadable: the next pass tries again
+      if (read.kind !== 'order' && read.kind !== 'not_found') return 'skipped';
+      if (read.kind === 'not_found') gone = true;
+      reads.set(po.id, read);
+    }
+    const found = pos.filter((p) => {
+      const r = reads.get(p.id);
+      return r !== undefined && r.kind === 'order' && r.units.some((u) => u.capture !== null);
+    });
+    if (found.length > 0) {
+      // Money is already at PayPal: never abandon. Take the order over, tell a human, and let the
+      // read decide what is paid.
+      return takeOver(d, order, found);
+    }
+    const allApproved =
+      pos.length > 0 &&
+      pos.every((p) => {
+        const r = reads.get(p.id);
+        return r !== undefined && r.kind === 'order' && r.status === 'APPROVED';
+      });
+    if (allApproved) {
+      // The buyer approved and never came back: the same capture path as a return, once.
+      const r = await onBuyerReturn(d, {
+        order_ref: order.order_ref,
+        actor: { kind: 'buyer', buyer_id: order.buyer_id },
+      });
+      if (!r.ok && r.error.code === 'payments_paused') return 'skipped';
+      const now = await loadOrder(d.db, order.id);
+      if (now === null || now.status !== 'awaiting_buyer') return 'handled';
     }
   }
-  const done = await d.db.transaction(async (tx) => {
+  const done = await d.db.transaction(async (tx): Promise<'abandoned' | 'handled' | 'skipped'> => {
     const at = nowIso(d);
-    await lockOrderRows(tx, order.id);
-    const moved = await tx.query(
-      `UPDATE orders SET status = 'abandoned', updated_at = $2 WHERE id = $1 AND status IN ('created', 'awaiting_buyer') RETURNING id`,
-      [order.id, at],
-    );
-    if (moved.rows.length === 0) return false;
-    await declineUnits(tx, d, order.id, 'abandoned');
+    const graph = await lockGraph(tx, order.id);
+    // Only an order that still waits for the buyer.
+    if (graph.order.status !== 'created' && graph.order.status !== 'awaiting_buyer') {
+      return 'handled';
+    }
+    // Never after a send, whatever the status says.
+    const facts = await poFacts(tx, order.id);
+    if (facts.some(isSent)) return gone ? 'skipped' : 'handled';
+    if (gone) {
+      // BU-9, re-checked under the lock: a capture operation that was sent or is unknown may have taken
+      // money whose answer was lost, a unit with a capture id has been paid, and a PayPal order a capture
+      // was aimed at is not decided here: the order stays as it is and the reconciler owns it.
+      if (graph.pos.some((p) => !UNSENT_STATES.has(p.state))) return 'skipped';
+      const inFlight = await tx.query(
+        "SELECT 1 FROM operations WHERE order_id = $1 AND kind = 'capture' AND state IN ('sent', 'unknown') LIMIT 1",
+        [order.id],
+      );
+      if (inFlight.rows.length > 0) return 'skipped';
+      const paid = await tx.query(
+        'SELECT 1 FROM order_units WHERE order_id = $1 AND (capture_id IS NOT NULL OR captured_verified_at IS NOT NULL) LIMIT 1',
+        [order.id],
+      );
+      if (paid.rows.length > 0) return 'skipped';
+    }
+    // The status is created or awaiting_buyer, so some PayPal order is still open and moves.
+    const moved = await endWholeOrder(tx, d, order.id, 'abandoned');
+    await declineMoved(tx, d, order.id, moved, graph.pos, 'abandoned');
     await tx.query(
       `UPDATE operations SET state = 'failed', failure_reason = 'declined', lease_until = NULL, next_retry_at = NULL, updated_at = $2
        WHERE order_id = $1 AND state = 'prepared'`,
       [order.id, at],
     );
-    return true;
+    return 'abandoned';
   });
-  return done ? 'abandoned' : 'handled';
-}
-
-const UNSENT_STATES: ReadonlySet<ProviderOrderState> = new Set([
-  'prepared',
-  'awaiting_buyer',
-  'approved',
-]);
-
-// BU-9: the PayPal order of a stale checkout is gone (not_found). The same abandon step as above,
-// with the facts checked again under the order lock: a capture operation that was sent or is unknown
-// may have taken money whose answer was lost, and a unit with a capture id has been paid; in both the
-// order stays as it is and the reconciler owns it. A pack is not decided here: one PayPal order that
-// is gone says nothing about the others, which this sweep does not read (DP-2b ports the pack pass).
-async function abandonGone(
-  d: PaymentsDeps,
-  order: OrderRow,
-): Promise<'abandoned' | 'handled' | 'skipped'> {
-  const done = await d.db.transaction(async (tx) => {
-    const locked = await lockOrderRows(tx, order.id);
-    if (locked === null || locked.status !== 'awaiting_buyer') return 'handled' as const;
-    const pos = await loadProviderOrders(tx, order.id);
-    const only = pos[0];
-    if (pos.length !== 1 || only === undefined || only.route !== 'single')
-      return 'skipped' as const;
-    // Only a PayPal order that no capture was ever aimed at: any state that says a capture was
-    // requested, claimed, unresolved or done keeps the order, whatever orders.status says.
-    if (!UNSENT_STATES.has(only.state)) return 'skipped' as const;
-    const inFlight = await tx.query(
-      "SELECT 1 FROM operations WHERE order_id = $1 AND kind = 'capture' AND state IN ('sent', 'unknown') LIMIT 1",
-      [order.id],
-    );
-    if (inFlight.rows.length > 0) return 'skipped' as const;
-    const paid = await tx.query(
-      'SELECT 1 FROM order_units WHERE order_id = $1 AND (capture_id IS NOT NULL OR captured_verified_at IS NOT NULL) LIMIT 1',
-      [order.id],
-    );
-    if (paid.rows.length > 0) return 'skipped' as const;
-    const at = nowIso(d);
-    await endWholeOrder(tx, d, order.id, 'abandoned');
-    await declineUnits(tx, d, order.id, 'abandoned');
-    await tx.query(
-      `UPDATE operations SET state = 'failed', failure_reason = 'declined', lease_until = NULL, next_retry_at = NULL, updated_at = $2
-       WHERE order_id = $1 AND state = 'prepared'`,
-      [order.id, at],
-    );
-    return 'abandoned' as const;
-  });
-  if (done === 'abandoned') {
+  if (done === 'abandoned' && gone) {
     d.log.log({
       msg: 'payments.due.abandoned_not_found',
       level: 'info',
@@ -690,29 +836,383 @@ async function abandonGone(
   return done;
 }
 
-async function takeOver(d: PaymentsDeps, order: OrderRow): Promise<'handled' | 'skipped'> {
+const UNSENT_STATES: ReadonlySet<ProviderOrderRow['state']> = new Set([
+  'prepared',
+  'awaiting_buyer',
+  'approved',
+]);
+
+async function takeOver(
+  d: PaymentsDeps,
+  order: OrderRow,
+  found: readonly ProviderOrderRow[],
+): Promise<'handled' | 'skipped'> {
+  const taken = await d.db.transaction(async (tx) => {
+    const at = nowIso(d);
+    const graph = await lockGraph(tx, order.id);
+    const ids: Id[] = [];
+    for (const f of found) {
+      const po = poIn(graph, f.id);
+      if (!(await setPoState(tx, po.id, 'unresolved', at, ['awaiting_buyer', 'approved'])))
+        continue;
+      ids.push(po.id);
+      await raiseOpsAlert(tx, d, {
+        kind: 'unexpected_capture',
+        order_id: order.id,
+        unit_id: null,
+        reason: reasonFor(po, 'abandon_sweep'),
+        detail: { trigger: 'abandon_sweep' },
+      });
+      await ensureReadbackOp(tx, d, graph.order, at, { ...po, state: 'unresolved' });
+    }
+    if (ids.length > 0) await refreshOrder(tx, d, order.id);
+    return ids;
+  });
+  // Nothing taken (the PayPal orders moved on meanwhile): the empty list reads nothing.
+  const fresh = await loadOrder(d.db, order.id);
+  if (fresh !== null) await readAndApply(d, fresh, 'poll', taken);
+  return 'handled';
+}
+
+// ---------------------------------------------------------------------------------------------
+// the continuation (DP-2b): a pack whose first capture was sent always finishes
+//
+// Every PayPal order of the pack that is still waiting (approved, or still awaiting the buyer) while a
+// sibling had a capture sent is picked here: read fresh, then captured with its own key after a match,
+// or read back when a capture is already there, or ended as not charged (declined) only on the strict
+// rule. The sweep never sees these orders (it looks only at awaiting_buyer), and a pack is never
+// abandoned once a capture was sent.
+
+const hasCapture = (r: Read): boolean => r.units.some((u) => u.capture !== null);
+
+async function continuePacks(d: PaymentsDeps, budget: number, out: Counts): Promise<number> {
+  if (budget <= 0) return budget;
+  for (const c of await continuationCandidates(d.db)) {
+    if (budget <= 0) break;
+    if (Date.parse(dueOfCandidate(d.config, c)) > Date.parse(nowIso(d))) continue;
+    let result: 'done' | 'skipped';
+    try {
+      result = await continueOne(d, c.id, c.order_id, c.sent_at);
+    } catch (e) {
+      d.log.log({
+        msg: 'payments.due.item_failed',
+        level: 'error',
+        fields: {
+          provider_order: c.id,
+          kind: 'continuation',
+          error: e instanceof Error ? e.message : 'unknown',
+        },
+      });
+      await touchPo(d, c.id);
+      result = 'done';
+    }
+    if (result === 'skipped') continue;
+    budget -= 1;
+    out.processed += 1;
+  }
+  return budget;
+}
+
+/** Wait for the next round: the PayPal order is picked again `every` ms from now, not at once. */
+async function touchPo(d: PaymentsDeps, po_id: Id): Promise<void> {
+  await d.db.query(
+    "UPDATE provider_orders SET updated_at = $2 WHERE id = $1 AND state IN ('approved', 'awaiting_buyer')",
+    [po_id, nowIso(d)],
+  );
+}
+
+/**
+ * The deadline of a PayPal order that is waiting for its capture: its first approval (or the first
+ * approval of the pack, or the first send) plus the pack window plus the reconcile window, or the D-014
+ * key cap, whichever comes first. `capped` says the keys are used up: the next try would be refused.
+ */
+async function deadlineOf(
+  d: PaymentsDeps,
+  pos: readonly ProviderOrderRow[],
+  po: ProviderOrderRow,
+  sent_at: string,
+): Promise<{ at: string; capped: boolean }> {
+  const firsts = pos
+    .map((p) => p.first_approved_at)
+    .filter((t): t is string => t !== null)
+    .sort();
+  // The first approval we saw (of this PayPal order, else of the pack); with none, the send of its sibling.
+  const base = po.first_approved_at ?? firsts[0] ?? sent_at;
+  const window = d.config.pack_approval_window_ms ?? PACK_WINDOW_DEFAULT_MS;
+  const at = addMs(base, window + d.config.reconcile_window_ms);
+  const cap = await loadOperationFor(d.db, po, 'capture');
+  let capped = false;
+  if (cap !== null && cap.state === 'prepared' && cap.first_sent_at !== null) {
+    // The same arithmetic as the capture gate (capture.ts): the next try is a new key.
+    const keyNumber = captureKeyNumber(po.po_ref, cap.request_id) + 1;
+    const attempt = cap.attempt + 1;
+    capped =
+      keyNumber > 1 + d.config.max_capture_retries ||
+      attempt > 2 * (1 + d.config.max_capture_retries);
+  }
+  return { at, capped };
+}
+
+async function continueOne(
+  d: PaymentsDeps,
+  po_id: Id,
+  order_id: Id,
+  sent_at: string,
+): Promise<'done' | 'skipped'> {
+  const order = await loadOrder(d.db, order_id);
+  const pos = await loadProviderOrders(d.db, order_id);
+  const po = pos.find((p) => p.id === po_id);
+  if (order === null || po === undefined || po.provider_order_id === null) return 'skipped';
+  if (po.state !== 'approved' && po.state !== 'awaiting_buyer') return 'skipped';
+  // Outside any transaction: the port may use the database itself.
+  if (!(await d.switches.isOn('paypal_outbound'))) return 'skipped';
+
+  // 1. Read it fresh.
+  const read = await d.paypal.getOrder(po.provider_order_id);
+  if (read.kind === 'blocked') return 'skipped';
+  const deadline = await deadlineOf(d, pos, po, sent_at);
+  const passed = deadline.capped || Date.parse(nowIso(d)) >= Date.parse(deadline.at);
+  if (read.kind !== 'order' && read.kind !== 'not_found') {
+    // An answer that proves nothing: not charged is never concluded from it. At the deadline a human is told once.
+    if (passed) {
+      await d.db.transaction((tx) =>
+        raiseOpsAlert(tx, d, {
+          kind: 'payment_unresolved',
+          order_id,
+          unit_id: null,
+          reason: reasonFor(po, 'deadline_unreadable'),
+          detail: { phase: 'continuation' },
+        }),
+      );
+    }
+    await touchPo(d, po.id);
+    return 'done';
+  }
+
+  // 2. A capture is there (COMPLETED, or any capture on a unit): read-back and match. That ends in
+  // `captured` or `frozen`, never in `declined`.
+  if (read.kind === 'order' && hasCapture(read)) {
+    await readBackFound(d, order, po, read);
+    return 'done';
+  }
+  // 3. Case 2a: VOIDED or gone, with no capture on the unit. Case 2b: the deadline has passed and the
+  // fresh read shows no capture, whatever the status.
+  if (read.kind === 'not_found' || read.status === 'VOIDED') {
+    if (!(await declinePo(d, order_id, po.id, 'approval_lapsed'))) await touchPo(d, po.id);
+    return 'done';
+  }
+  if (passed) {
+    if (!(await declinePo(d, order_id, po.id, 'deadline_passed'))) await touchPo(d, po.id);
+    return 'done';
+  }
+  if (read.status !== 'APPROVED') {
+    await touchPo(d, po.id); // the buyer has to act at PayPal; the pack waits
+    return 'done';
+  }
+
+  // 4. APPROVED, no capture: the match must hold before anything is sent.
+  const mine = unitsOf(await loadUnits(d.db, order_id), po);
+  const m = matchReadback({
+    expected: expectedFor(
+      order.expected,
+      mine.map((u) => u.reference_id),
+    ),
+    read,
+    provider_order_id: po.provider_order_id,
+    claims: claimsOf(mine).map((c) => ({ ...c, capture_id: null, claimed_at: null })),
+    foreign_capture_ids: await foreignCaptureIds(
+      d.db,
+      order_id,
+      read.units.map((u) => (u.capture === null ? null : u.capture.capture_id)),
+      mine.map((u) => u.id),
+    ),
+  });
+  const bad =
+    m.level === 'order'
+      ? [{ field: m.field, unit: null as UnitRow | null }]
+      : m.units
+          .filter((u) => u.result !== 'no_capture')
+          .map((u) => ({
+            field: u.result === 'mismatch' ? (u.field ?? 'unknown') : 'capture_before_capture',
+            unit: mine.find((x) => x.reference_id === u.reference_id) ?? null,
+          }));
+  if (bad.length > 0) {
+    await holdPo(d, order, po, bad);
+    return 'done';
+  }
+  // Paused checkout, or an item that cannot be delivered: nothing is sent into a locked door.
+  if (!(await d.switches.isOn('checkout_enabled'))) {
+    await touchPo(d, po.id);
+    return 'done';
+  }
+  if ((await readApplyGates(d, order_id)).not_ready.length > 0) {
+    await touchPo(d, po.id);
+    return 'done';
+  }
+
+  // 5. Capture it through the DP-2a gate with its own key, then read it back.
+  if (po.state === 'awaiting_buyer') {
+    // The gate needs `approved`. If another actor moved the PayPal order meanwhile, the gate refuses (lost).
+    await d.db.transaction(async (tx) => {
+      await lockGraph(tx, order_id);
+      const at = nowIso(d);
+      if (!(await setPoState(tx, po.id, 'approved', at, ['awaiting_buyer']))) return;
+      await tx.query(
+        `UPDATE provider_orders SET first_approved_at = COALESCE(first_approved_at, $2), status = 'APPROVED' WHERE id = $1`,
+        [po.id, at],
+      );
+      await refreshOrder(tx, d, order_id);
+    });
+  }
+  const outcome = await captureOnce(d, order, po.provider_order_id, null, po);
+  switch (outcome.kind) {
+    case 'lost':
+    case 'capped':
+      await touchPo(d, po.id);
+      return 'done';
+    case 'blocked':
+    case 'unknown':
+    case 'payer_action':
+    case 'not_approved':
+    case 'frozen':
+      return 'done';
+    case 'claim':
+    case 'read_decides':
+      break;
+  }
+  // A separate read of this PayPal order; the claim never unlocks anything by itself.
+  const after = await d.paypal.getOrder(po.provider_order_id);
+  if (after.kind !== 'order') {
+    await d.db.transaction(async (tx) => {
+      const at = nowIso(d);
+      const graph = await lockGraph(tx, order_id);
+      const cur = poIn(graph, po.id);
+      if (cur.state === 'capture_requested' || cur.state === 'capture_claimed') {
+        await setPoState(tx, po.id, 'unresolved', at, [cur.state]);
+        await refreshOrder(tx, d, order_id);
+      }
+      await ensureReadbackOp(tx, d, graph.order, at, cur);
+    });
+    return 'done';
+  }
+  await applyOneRead(d, order, po, after, 'capture');
+  return 'done';
+}
+
+/** A capture shows on a PayPal order we still thought waiting: it becomes unresolved and the read is applied (match, verify or freeze). */
+async function readBackFound(
+  d: PaymentsDeps,
+  order: OrderRow,
+  po: ProviderOrderRow,
+  read: Read,
+): Promise<void> {
+  const cap = await loadOperationFor(d.db, po, 'capture');
+  const weSent = cap !== null && cap.first_sent_at !== null;
   const moved = await d.db.transaction(async (tx) => {
     const at = nowIso(d);
-    await lockOrderRows(tx, order.id);
-    const won = await tx.query(
-      "UPDATE orders SET status = 'unresolved', updated_at = $2 WHERE id = $1 AND status = 'awaiting_buyer' RETURNING id",
-      [order.id, at],
+    const graph = await lockGraph(tx, order.id);
+    const cur = poIn(graph, po.id);
+    if (!(await setPoState(tx, cur.id, 'unresolved', at, ['awaiting_buyer', 'approved']))) {
+      return false;
+    }
+    if (!weSent) {
+      // Money nobody here sent: a human must know how it came about; the read decides what is paid.
+      await raiseOpsAlert(tx, d, {
+        kind: 'unexpected_capture',
+        order_id: order.id,
+        unit_id: null,
+        reason: reasonFor(cur, 'continuation_capture_found'),
+        detail: { trigger: 'continuation' },
+      });
+    }
+    // A capture operation that was waiting to be sent has nothing left to send.
+    await tx.query(
+      `UPDATE operations SET state = 'confirmed', lease_until = NULL, next_retry_at = NULL, updated_at = $2
+        WHERE order_id = $1 AND kind = 'capture' AND state = 'prepared' AND provider_order_ref = $3`,
+      [order.id, at, cur.id],
     );
-    if (won.rows.length === 0) return false;
-    await raiseOpsAlert(tx, d, {
-      kind: 'unexpected_capture',
-      order_id: order.id,
-      unit_id: null,
-      reason: 'abandon_sweep',
-      detail: { trigger: 'abandon_sweep' },
-    });
-    await ensureReadbackOp(tx, d, { ...order, status: 'unresolved' }, at);
+    await ensureReadbackOp(tx, d, graph.order, at, { ...cur, state: 'unresolved' });
+    await refreshOrder(tx, d, order.id);
     return true;
   });
-  if (!moved) return 'handled';
-  const fresh = await loadOrder(d.db, order.id);
-  if (fresh !== null) await readAndApply(d, fresh, 'poll');
-  return 'handled';
+  if (moved) await applyOneRead(d, order, po, read, 'poll');
+}
+
+/**
+ * A PayPal order ends `declined` (not charged) only on the strict rule: condition 1 (it is waiting, and
+ * none of its capture operations is `sent` or `unknown`, and no unit holds a capture id) checked again
+ * under the order's locks, in this transaction; the caller has a fresh read that shows no capture (2a or
+ * 2b). The capture gate takes the same lock, so a decline and a capture exclude each other.
+ */
+async function declinePo(
+  d: PaymentsDeps,
+  order_id: Id,
+  po_id: Id,
+  reason: string,
+): Promise<boolean> {
+  return d.db.transaction(async (tx) => {
+    const at = nowIso(d);
+    const graph = await lockGraph(tx, order_id);
+    const po = poIn(graph, po_id);
+    if (po.state !== 'approved' && po.state !== 'awaiting_buyer') return false;
+    const live = await tx.query(
+      `SELECT 1 FROM operations WHERE order_id = $1 AND kind = 'capture' AND provider_order_ref = $2
+          AND state IN ('sent', 'unknown') LIMIT 1`,
+      [order_id, po.id],
+    );
+    if (live.rows.length > 0) return false;
+    const claimed = await tx.query(
+      'SELECT 1 FROM order_units WHERE provider_order_ref = $1 AND capture_id IS NOT NULL LIMIT 1',
+      [po.id],
+    );
+    if (claimed.rows.length > 0) return false;
+    if (!(await setPoState(tx, po.id, 'declined', at, ['approved', 'awaiting_buyer'])))
+      return false;
+    await declineUnits(tx, d, order_id, reason, po);
+    await tx.query(
+      `UPDATE operations SET state = 'failed', failure_reason = 'declined', lease_until = NULL, next_retry_at = NULL, updated_at = $3
+        WHERE order_id = $1 AND state = 'prepared' AND provider_order_ref = $2`,
+      [order_id, po.id, at],
+    );
+    await refreshOrder(tx, d, order_id);
+    return true;
+  });
+}
+
+/** The fresh read of a waiting PayPal order does not match: only that PayPal order is held. */
+async function holdPo(
+  d: PaymentsDeps,
+  order: OrderRow,
+  po: ProviderOrderRow,
+  bad: { field: string; unit: UnitRow | null }[],
+): Promise<void> {
+  await d.db.transaction(async (tx) => {
+    await lockGraph(tx, order.id);
+    const at = nowIso(d);
+    if (!(await setPoState(tx, po.id, 'frozen', at, ['approved', 'awaiting_buyer']))) return;
+    for (const b of bad) {
+      if (b.unit !== null) {
+        await tx.query(
+          "UPDATE order_units SET status = 'mismatch', mismatch_reason = $2, updated_at = $3 WHERE id = $1 AND captured_verified_at IS NULL",
+          [b.unit.id, b.field, at],
+        );
+      }
+      await raiseOpsAlert(tx, d, {
+        kind: 'frozen_order',
+        order_id: order.id,
+        unit_id: b.unit === null ? null : b.unit.id,
+        reason:
+          b.unit === null ? reasonFor(po, `precapture_${b.field}`) : `precapture_unit_${b.field}`,
+        detail: { field: b.field, phase: 'continuation' },
+      });
+    }
+    await tx.query(
+      `UPDATE operations SET state = 'failed', failure_reason = 'mismatch', lease_until = NULL, next_retry_at = NULL, updated_at = $3
+        WHERE order_id = $1 AND state = 'prepared' AND provider_order_ref = $2`,
+      [order.id, po.id, at],
+    );
+    await refreshOrder(tx, d, order.id);
+  });
 }
 
 // ---------------------------------------------------------------------------------------------

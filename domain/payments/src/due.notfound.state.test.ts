@@ -345,25 +345,37 @@ describe('(c) a read that proves nothing keeps the order', () => {
   }
 });
 
-describe('(e) a pack (two PayPal orders) is left as it was', () => {
+describe('(e) a pack (two PayPal orders): DP-2b ports the pack pass', () => {
   const PACK = { offers: ['ofr_1', 'ofr_3'] };
-  it('both PayPal orders gone: skipped, nothing abandoned or declined, one read per pass, order still overdue', async () => {
+  it('both PayPal orders gone: the whole pack is abandoned on the first pass, nothing charged, never read again', async () => {
     w = await makeWorld();
     const a = await awaiting(w, PACK);
     expect(a.provider_orders).toHaveLength(2);
     for (const po of a.provider_orders) gone(po.provider_order_id as string);
     w.tick(DAY + 1000);
-    for (let i = 0; i < 3; i += 1) {
-      const r = await runDue(w.deps, PASS);
-      expect(r).toEqual(ZERO);
+    const first = await runDue(w.deps, PASS);
+    expect(first).toEqual({ ...ZERO, processed: 1, abandoned: 1 });
+    for (let i = 0; i < 2; i += 1) {
       w.tick(1000);
+      expect(await runDue(w.deps, PASS)).toEqual(ZERO);
     }
-    expect(await orderStatus(w, a.order_id)).toBe('awaiting_buyer');
-    expect(await poStates(a.order_id)).toEqual(['awaiting_buyer', 'awaiting_buyer']);
-    expect(await unitStates(a.order_id)).toEqual(['expected', 'expected']);
+    expect(await orderStatus(w, a.order_id)).toBe('abandoned');
+    expect(await poStates(a.order_id)).toEqual(['abandoned', 'abandoned']);
+    expect(await unitStates(a.order_id)).toEqual(['declined', 'declined']);
     expect(await alertCount(a.order_id)).toBe(0);
-    // the sweep reads one PayPal order per pass, as before
-    expect(w.paypal.calls.filter((c) => c.op === 'get')).toHaveLength(3);
+    // each PayPal order is read once by the pass that ends the pack, never again
+    expect(w.paypal.calls.filter((c) => c.op === 'get')).toHaveLength(2);
+    expect(w.paypal.count('capture')).toBe(0);
+  });
+
+  it('one PayPal order gone, the other approved: the whole pack is abandoned, nothing captured', async () => {
+    w = await makeWorld();
+    const a = await awaiting(w, PACK);
+    w.paypal.approve(a.provider_orders[0]!.provider_order_id as string);
+    gone(a.provider_orders[1]!.provider_order_id as string);
+    w.tick(DAY + 1000);
+    expect((await runDue(w.deps, PASS)).abandoned).toBe(1);
+    expect(await poStates(a.order_id)).toEqual(['abandoned', 'abandoned']);
     expect(w.paypal.count('capture')).toBe(0);
   });
 

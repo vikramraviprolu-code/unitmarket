@@ -13,6 +13,7 @@ import {
   makeWorld,
   reapply,
   sha256ForArticle,
+  setOrderStatus,
 } from './support';
 import type { Awaiting, World } from './support';
 
@@ -302,7 +303,7 @@ describe('pending, declined, mismatch', () => {
   it('a matching capture on a failed order is not unlocked; it raises an alert for a human', async () => {
     w = await makeWorld();
     const a = await sentCapture();
-    await w.db.query("UPDATE orders SET status = 'failed' WHERE id = $1", [a.order_id]);
+    await setOrderStatus(w.db, a.order_id, 'failed');
     const report = await apply(a.order_id, await readOf(a));
     expect(report.unlocked).toEqual([]);
     expect(report.alerts).toContain('unexpected_capture');

@@ -20,6 +20,7 @@ import {
   paid,
   place,
   sentCapture,
+  setOrderStatus,
 } from './ops/support';
 import type { OpsWorld } from './ops/support';
 
@@ -273,7 +274,7 @@ describe('a create that is closed after 5 h with a provider order on record', ()
       "UPDATE provider_orders SET provider_order_id = 'SBXFAKEORD99999' WHERE order_id = $1",
       [p.order_id],
     );
-    await w.db.query("UPDATE orders SET status = 'awaiting_buyer' WHERE id = $1", [p.order_id]);
+    await setOrderStatus(w.db, p.order_id, 'awaiting_buyer');
     const creates = w.paypal.count('create');
     w.tick(31_000);
     await runDue(w.deps, { max_items: 10 });

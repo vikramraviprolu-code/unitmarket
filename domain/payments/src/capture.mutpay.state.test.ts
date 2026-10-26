@@ -6,7 +6,16 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { captureOnce, claimPrecheck } from './capture';
 import { loadOrder } from './store';
 import type { CaptureOutcome } from './capture';
-import { alertKinds, approved, makeWorld, opOf, ops, orderStatus, paid } from './ops/support';
+import {
+  alertKinds,
+  approved,
+  makeWorld,
+  opOf,
+  ops,
+  orderStatus,
+  paid,
+  setOrderStatus,
+} from './ops/support';
 import type { Awaiting, OpsWorld } from './ops/support';
 
 let w: OpsWorld;
@@ -37,7 +46,7 @@ async function send(a: Awaiting): Promise<CaptureOutcome> {
 function moveDuringCall(status: string, order_id: string): void {
   const real = w.paypal.captureOrder.bind(w.paypal);
   w.paypal.captureOrder = async (r) => {
-    await w.db.query('UPDATE orders SET status = $2 WHERE id = $1', [order_id, status]);
+    await setOrderStatus(w.db, order_id, status);
     return real(r);
   };
 }

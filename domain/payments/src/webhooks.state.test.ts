@@ -14,6 +14,7 @@ import {
   makeWorld,
   ops,
   paid,
+  setOrderStatus,
 } from './ops/support';
 import type { OpsWorld } from './ops/support';
 
@@ -776,7 +777,7 @@ describe('R2: a webhook only wakes an order somebody has captured', () => {
     await world();
     const a = await approved(w);
     if (withOp) await addCaptureOp(a.order_id);
-    await w.rows('UPDATE orders SET status = $2 WHERE id = $1', [a.order_id, status]);
+    await setOrderStatus(w.db, a.order_id, status);
     const before = await opRows(a.order_id);
     expect(
       await deliver(
