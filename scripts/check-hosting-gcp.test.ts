@@ -18,6 +18,7 @@ const KIT = [
 const SCRIPTS = KIT.filter((f) => f.endsWith('.sh'));
 
 // Forbidden strings are assembled at run time so this file holds none of them.
+const PUB = 'NEXT_' + 'PUBLIC';
 const LIVE_HOST = 'api-m.' + 'paypal.com';
 const SANDBOX_HOST = 'api-m.sandbox.' + 'paypal.com';
 const GOOGLE_KEY = 'AIza' + 'Sy' + 'A'.repeat(33);
@@ -59,15 +60,15 @@ const CASES: Case[] = [
   [
     'connect on in service.yaml',
     'service.yaml',
-    'UMS_PAYPAL_CONNECT: "off"',
-    'UMS_PAYPAL_CONNECT: "on"',
+    "UMS_PAYPAL_CONNECT: 'off'",
+    "UMS_PAYPAL_CONNECT: 'on'",
     'paypal-connect',
   ],
   [
-    'connect on, single quotes',
+    'connect on, double quotes',
     'service.yaml',
-    'UMS_PAYPAL_CONNECT: "off"',
-    "UMS_PAYPAL_CONNECT: 'on'",
+    "UMS_PAYPAL_CONNECT: 'off'",
+    'UMS_PAYPAL_CONNECT: "on"',
     'paypal-connect',
   ],
   [
@@ -77,7 +78,7 @@ const CASES: Case[] = [
     '  --port=8080 \\\n  --update-env-vars=UMS_PAYPAL_CONNECT=on \\\n',
     'paypal-connect',
   ],
-  ['connect missing', 'service.yaml', 'UMS_PAYPAL_CONNECT: "off"\n', '', 'paypal-connect'],
+  ['connect missing', 'service.yaml', "UMS_PAYPAL_CONNECT: 'off'\n", '', 'paypal-connect'],
   [
     'env flags bypass the file',
     'deploy.sh',
@@ -96,11 +97,11 @@ const CASES: Case[] = [
   [
     'database not postgres',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "pglite-disk"',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'pglite-disk'",
     'db-kind',
   ],
-  ['database missing', 'service.yaml', 'UMS_DB: "postgres"\n', '', 'db-kind'],
+  ['database missing', 'service.yaml', "UMS_DB: 'postgres'\n", '', 'db-kind'],
   [
     'database set in a script',
     'deploy.sh',
@@ -181,8 +182,8 @@ const CASES: Case[] = [
   [
     'NODE_OPTIONS in service.yaml',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "postgres"\nNODE_OPTIONS: "--max-old-space-size=1536"',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nNODE_OPTIONS: '--max-old-space-size=1536'",
     'forbidden-name',
   ],
   [
@@ -195,15 +196,15 @@ const CASES: Case[] = [
   [
     'proxy variable',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "postgres"\nHTTPS_PROXY: "x"',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nHTTPS_PROXY: 'x'",
     'forbidden-name',
   ],
   [
     'proxy variable lower case',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "postgres"\nhttp_proxy: "x"',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nhttp_proxy: 'x'",
     'forbidden-name',
   ],
   [
@@ -216,30 +217,30 @@ const CASES: Case[] = [
   [
     'TLS verification off',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "postgres"\nNODE_TLS_REJECT_UNAUTHORIZED: "0"',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nNODE_TLS_REJECT_UNAUTHORIZED: '0'",
     'forbidden-name',
   ],
   [
     'maintenance flag',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "postgres"\nUMS_MAINTENANCE_FLAG: "/tmp/ums-maintenance"',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nUMS_MAINTENANCE_FLAG: '/tmp/ums-maintenance'",
     'forbidden-name',
   ],
   [
     'learn window variable',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "postgres"\nUMS_WEBHOOK_CERT_LEARN_UNTIL: "2026-10-26T18:00:00Z"',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nUMS_WEBHOOK_CERT_LEARN_UNTIL: '2026-10-26T18:00:00Z'",
     'forbidden-name',
   ],
   // hosts
   [
     'live PayPal host',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    `# talks to https://${LIVE_HOST}/v1\nUMS_DB: "postgres"`,
+    "UMS_DB: 'postgres'",
+    `# talks to https://${LIVE_HOST}/v1\nUMS_DB: 'postgres'`,
     'paypal-host',
   ],
   [
@@ -256,7 +257,7 @@ const CASES: Case[] = [
     `ENV X=${LIVE_HOST.toUpperCase()}\nEXPOSE 8080`,
     'paypal-host',
   ],
-  ['live word in a value', 'service.yaml', 'UMS_MODE: "sandbox"', 'UMS_MODE: "live"', 'live-value'],
+  ['live word in a value', 'service.yaml', "UMS_MODE: 'sandbox'", "UMS_MODE: 'live'", 'live-value'],
   [
     'production word outside NODE_ENV',
     'monitoring.sh',
@@ -266,7 +267,7 @@ const CASES: Case[] = [
   ],
   // bytes
   ['non-ASCII byte', 'monitoring.sh', 'echo "== APIs"', '# café\necho "== APIs"', 'bytes'],
-  ['carriage return', 'service.yaml', 'UMS_DB: "postgres"\n', 'UMS_DB: "postgres"\r\n', 'bytes'],
+  ['carriage return', 'service.yaml', "UMS_DB: 'postgres'\n", "UMS_DB: 'postgres'\r\n", 'bytes'],
   ['tab character', 'setup.sh', 'echo "== billing"', '\techo "== billing"', 'bytes'],
   ['BOM', 'service.yaml', '# Fixed,', '﻿# Fixed,', 'bytes'],
   ['NEL character', 'setup.sh', 'echo "== billing"', '# a\u0085b\necho "== billing"', 'bytes'],
@@ -381,8 +382,8 @@ const CASES: Case[] = [
   ...SECRET_NAMES.slice(0, 3).map((n): Case => [
     `${n} given a value in service.yaml`,
     'service.yaml',
-    'UMS_DB: "postgres"',
-    `UMS_DB: "postgres"\n${n}: "x"`,
+    "UMS_DB: 'postgres'",
+    `UMS_DB: 'postgres'\n${n}: 'x'`,
     'secret-in-env',
   ]),
   [
@@ -402,8 +403,8 @@ const CASES: Case[] = [
   [
     'private key header',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    `# ${PEM}\nUMS_DB: "postgres"`,
+    "UMS_DB: 'postgres'",
+    `# ${PEM}\nUMS_DB: 'postgres'`,
     'secret-literal',
   ],
   [
@@ -423,8 +424,8 @@ const CASES: Case[] = [
   [
     'database URL secret listed in service.yaml',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "postgres"\nDATABASE_URL: "x"',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nDATABASE_URL: 'x'",
     'secret-in-env',
   ],
   [
@@ -451,111 +452,111 @@ const CASES: Case[] = [
     'secret-names',
   ],
   // service.yaml values and names
-  ['mode offline', 'service.yaml', 'UMS_MODE: "sandbox"', 'UMS_MODE: "offline"', 'fixed-value'],
+  ['mode offline', 'service.yaml', "UMS_MODE: 'sandbox'", "UMS_MODE: 'offline'", 'fixed-value'],
   [
     'proxies 2',
     'service.yaml',
-    'UMS_TRUSTED_PROXIES: "1"',
-    'UMS_TRUSTED_PROXIES: "2"',
+    "UMS_TRUSTED_PROXIES: '1'",
+    "UMS_TRUSTED_PROXIES: '2'",
     'fixed-value',
   ],
   [
     'proxies 0',
     'service.yaml',
-    'UMS_TRUSTED_PROXIES: "1"',
-    'UMS_TRUSTED_PROXIES: "0"',
+    "UMS_TRUSTED_PROXIES: '1'",
+    "UMS_TRUSTED_PROXIES: '0'",
     'fixed-value',
   ],
   [
     'scope changed',
     'service.yaml',
-    'UMS_OUTBOUND_SCOPE: "mvp_c_refunds"',
-    'UMS_OUTBOUND_SCOPE: "mvp_b_polling"',
+    "UMS_OUTBOUND_SCOPE: 'mvp_c_refunds'",
+    "UMS_OUTBOUND_SCOPE: 'mvp_b_polling'",
     'fixed-value',
   ],
   [
     'node env changed',
     'service.yaml',
-    'NODE_ENV: "production"',
-    'NODE_ENV: "development"',
+    "NODE_ENV: 'production'",
+    "NODE_ENV: 'development'",
     'fixed-value',
   ],
   [
     'telemetry changed',
     'service.yaml',
-    'NEXT_TELEMETRY_DISABLED: "1"',
-    'NEXT_TELEMETRY_DISABLED: "0"',
+    "NEXT_TELEMETRY_DISABLED: '1'",
+    "NEXT_TELEMETRY_DISABLED: '0'",
     'fixed-value',
   ],
-  ['fixed value missing', 'service.yaml', 'UMS_MODE: "sandbox"\n', '', 'fixed-value'],
+  ['fixed value missing', 'service.yaml', "UMS_MODE: 'sandbox'\n", '', 'fixed-value'],
   [
     'label changed',
     'service.yaml',
-    'NEXT_PUBLIC_UMS_ENV_LABEL: "Sandbox"',
-    'NEXT_PUBLIC_UMS_ENV_LABEL: "Dry run"',
+    `${PUB}_UMS_ENV_LABEL: 'Sandbox'`,
+    `${PUB}_UMS_ENV_LABEL: 'Dry run'`,
     'fixed-value',
   ],
   [
     'unknown name',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "postgres"\nSOME_OTHER_NAME: "x"',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nSOME_OTHER_NAME: 'x'",
     'unknown-name',
   ],
   [
     'public name',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "postgres"\nNEXT_PUBLIC_API_TOKEN: "x"',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nNEXT_PUBLIC_API_TOKEN: 'x'",
     'public-name',
   ],
-  ['unquoted value', 'service.yaml', 'UMS_DB: "postgres"', 'UMS_DB: postgres', 'value-type'],
+  ['unquoted value', 'service.yaml', "UMS_DB: 'postgres'", 'UMS_DB: postgres', 'value-type'],
   [
     'bare number',
     'service.yaml',
-    'NEXT_TELEMETRY_DISABLED: "1"',
+    "NEXT_TELEMETRY_DISABLED: '1'",
     'NEXT_TELEMETRY_DISABLED: 1',
     'value-type',
   ],
   [
     'trailing comment on a value',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "postgres" # ok',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres' # ok",
     'value-type',
   ],
   [
     'duplicate key',
     'service.yaml',
-    'UMS_DB: "postgres"',
-    'UMS_DB: "postgres"\nUMS_DB: "postgres"',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nUMS_DB: 'postgres'",
     'duplicate-key',
   ],
   [
     'origin over plain http',
     'service.yaml',
-    'UMS_PUBLIC_ORIGIN: "https://pending.invalid"',
-    'UMS_PUBLIC_ORIGIN: "http://localhost:3000"',
+    "UMS_PUBLIC_ORIGIN: 'https://pending.invalid'",
+    "UMS_PUBLIC_ORIGIN: 'http://localhost:3000'",
     'origin',
   ],
   [
     'origin on another host',
     'service.yaml',
-    'UMS_PUBLIC_ORIGIN: "https://pending.invalid"',
-    'UMS_PUBLIC_ORIGIN: "https://shop.example.test"',
+    "UMS_PUBLIC_ORIGIN: 'https://pending.invalid'",
+    "UMS_PUBLIC_ORIGIN: 'https://shop.example.test'",
     'origin',
   ],
   [
     'origin with a path',
     'service.yaml',
-    'UMS_PUBLIC_ORIGIN: "https://pending.invalid"',
-    'UMS_PUBLIC_ORIGIN: "https://svc-1.europe-west1.run.app/x"',
+    "UMS_PUBLIC_ORIGIN: 'https://pending.invalid'",
+    "UMS_PUBLIC_ORIGIN: 'https://svc-1.europe-west1.run.app/x'",
     'origin',
   ],
   [
     'origin missing',
     'service.yaml',
-    'UMS_PUBLIC_ORIGIN: "https://pending.invalid"\n',
+    "UMS_PUBLIC_ORIGIN: 'https://pending.invalid'\n",
     '',
     'origin',
   ],
@@ -674,8 +675,8 @@ describe('check-hosting-gcp', () => {
     expect(r.out).not.toContain(GOOGLE_KEY);
     const dir2 = mutate(
       'service.yaml',
-      'UMS_DB: "postgres"',
-      'UMS_DB: "postgres"\nPAYPAL_CLIENT_SECRET: "value-0042-not-real"',
+      "UMS_DB: 'postgres'",
+      "UMS_DB: 'postgres'\nPAYPAL_CLIENT_SECRET: 'value-0042-not-real'",
     );
     const r2 = runGuard(GUARD, dir2);
     expect(r2.out).toContain('PAYPAL_CLIENT_SECRET');
@@ -723,9 +724,9 @@ describe('check-hosting-gcp', () => {
     ]) {
       const fromRender = render.match(new RegExp(`key: ${k}\\n\\s+value: '([^']*)'`))?.[1];
       expect(fromRender, k).toBeDefined();
-      expect(svc, k).toContain(`${k}: "${fromRender}"`);
+      expect(svc, k).toContain(`${k}: '${fromRender}'`);
     }
-    expect(svc).toContain('UMS_DB: "postgres"');
+    expect(svc).toContain("UMS_DB: 'postgres'");
     expect(svc).not.toContain('UMS_MAINTENANCE_FLAG:');
     expect(svc).not.toContain('UMS_PGLITE_DIR');
   });

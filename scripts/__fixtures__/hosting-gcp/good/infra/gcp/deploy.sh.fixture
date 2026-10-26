@@ -105,7 +105,7 @@ SERVICE_URL="$(gcloud run services describe "$SERVICE" --region="$REGION" --proj
 echo
 echo "deployed $SERVICE from tag $TAG"
 echo "service URL: $SERVICE_URL"
-if ! grep -q "^UMS_PUBLIC_ORIGIN: \"${SERVICE_URL}\"\$" "${HERE}/service.yaml"; then
+if ! grep -qxF "UMS_PUBLIC_ORIGIN: '${SERVICE_URL}'" "${HERE}/service.yaml"; then
   echo "NOTE: UMS_PUBLIC_ORIGIN in service.yaml is not this URL. Browser sign-in is refused until a reviewed"
   echo "change sets it to the URL above and you deploy the new tag."
 fi
