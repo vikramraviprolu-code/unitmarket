@@ -510,7 +510,7 @@ async function processRead(
     return;
   }
   if (outcome.kind === 'applied' && po !== undefined) {
-    const again = await maybeRetryCapture(d, order_id, po.id, outcome.read);
+    const again = await maybeRetryCapture(d, order, po, outcome.read);
     if (again === 'paused') {
       await release(d, claimed);
       return;
@@ -525,13 +525,12 @@ async function processRead(
 // PayPal order's own operation and key.
 async function maybeRetryCapture(
   d: PaymentsDeps,
-  order_id: Id,
-  po_id: Id,
+  order: OrderRow,
+  po: ProviderOrderRow,
   read: Read,
 ): Promise<'done' | 'paused'> {
-  const po = (await loadProviderOrders(d.db, order_id)).find((p) => p.id === po_id);
-  const order = await loadOrder(d.db, order_id);
-  if (po === undefined || order === null || po.state !== 'unresolved') return 'done';
+  // The operation is read fresh; the capture retry takes the locks and refuses a PayPal order that is
+  // not in flight any more, so the rows passed in need not be current.
   const cap = await loadOperationFor(d.db, po, 'capture');
   if (cap === null || cap.state !== 'unknown') return 'done';
   if (read.status !== 'APPROVED' || read.units.some((u) => u.capture !== null)) return 'done';
@@ -539,10 +538,10 @@ async function maybeRetryCapture(
     return 'done';
   }
   if (cap.attempt > d.config.max_capture_retries) return 'done';
-  if ((await readApplyGates(d, order_id)).not_ready.length > 0) return 'done';
+  if ((await readApplyGates(d, order.id)).not_ready.length > 0) return 'done';
   const sent = await retryCapture(d, order, cap, read.provider_order_id, po);
   if (sent !== 'claim') return 'done';
-  const fresh = await loadOrder(d.db, order_id);
+  const fresh = await loadOrder(d.db, order.id);
   if (fresh === null) return 'done';
   const second = await readAndApply(d, fresh, 'poll', [po.id]);
   return second.kind === 'paused' ? 'paused' : 'done';

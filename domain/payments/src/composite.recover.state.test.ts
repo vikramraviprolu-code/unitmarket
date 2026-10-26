@@ -1,8 +1,15 @@
 // DP-2b (MVP-D): startup recovery selects by the state of the PayPal order, not by the order status.
 // Real PGlite, scripted PayPal. A pack is the approval of ofr_1 and ofr_3: two PayPal orders.
 import { afterEach, describe, expect, it } from 'vitest';
-import { checkInvariants, onBuyerReturn, recoverOnStartup } from './index';
-import { BUYER_A, approved, makeWorld, providerOrdersOf } from './ops/support';
+import {
+  checkInvariants,
+  executeRefund,
+  onBuyerReturn,
+  recoverOnStartup,
+  requestRefund,
+} from './index';
+import { BUYER_A, OPERATOR, approved, makeWorld, paid, providerOrdersOf } from './ops/support';
+import type { PaymentsDeps } from '@umsbx/contracts';
 import type { Awaiting, OpsWorld } from './ops/support';
 
 let w: OpsWorld;
@@ -152,5 +159,73 @@ describe('recoverOnStartup with a pack', () => {
     ]);
     expect(po2.po_ref).toBe(`${a.order_ref}-p2`);
     expect((await checkInvariants(w.db)).filter((i) => !i.ok)).toEqual([]);
+  });
+
+  it('a PayPal order that moved on between the list and the lock is not repaired', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.queue.capture.push('real', { kind: 'timeout' });
+    await ret(a.order_ref);
+    await w.rows(
+      "UPDATE operations SET state = 'confirmed', lease_until = NULL, next_retry_at = NULL WHERE order_id = $1 AND state IN ('unknown', 'sent')",
+      [a.order_id],
+    );
+    await w.rows(
+      "DELETE FROM operations WHERE order_id = $1 AND kind = 'readback' AND provider_order_ref = (SELECT id FROM provider_orders WHERE order_id = $1 AND position = 2)",
+      [a.order_id],
+    );
+    let moved = false;
+    const d2: PaymentsDeps = {
+      ...w.restart(),
+      db: {
+        ...w.deps.db,
+        query: async (sql: string, params?: unknown[]) => {
+          const r = await w.deps.db.query(sql, params);
+          if (!moved && sql.includes('FROM provider_orders po')) {
+            moved = true;
+            await w.rows(
+              "UPDATE provider_orders SET state = 'declined' WHERE order_id = $1 AND position = 2",
+              [a.order_id],
+            );
+          }
+          return r;
+        },
+      } as PaymentsDeps['db'],
+    };
+    w.switches.paypal_outbound = false; // repair only
+    const r = await recoverOnStartup(d2);
+    expect(moved).toBe(true);
+    expect(r.repaired).toBe(0);
+    expect(await opsOf(a.order_id, 'readback')).toHaveLength(1); // PO1's only
+  });
+
+  it('a pending refund that nobody polls gets its read-back operation back and is counted as repaired', async () => {
+    w = await makeWorld();
+    const a = await paid(w);
+    const unit = (
+      await w.rows<{ id: string }>('SELECT id FROM order_units WHERE order_id = $1', [a.order_id])
+    )[0]!.id;
+    const r1 = await requestRefund(w.deps, {
+      unit_id: unit,
+      amount: null,
+      reason: 'x',
+      actor: OPERATOR,
+    });
+    if (!r1.ok) throw new Error('request refused');
+    w.refundNext.status = 'PENDING';
+    await executeRefund(w.deps, { refund_request_id: r1.value.refund_request_id });
+    await w.rows(
+      "UPDATE operations SET state = 'confirmed', lease_until = NULL, next_retry_at = NULL WHERE order_id = $1 AND kind IN ('refund', 'refund_readback') AND state IN ('sent', 'unknown')",
+      [a.order_id],
+    );
+    w.switches.paypal_outbound = false;
+    const r = await recoverOnStartup(w.restart());
+    expect(r.repaired).toBe(1);
+    expect(
+      await w.rows(
+        "SELECT state FROM operations WHERE order_id = $1 AND kind = 'refund_readback' ORDER BY created_at",
+        [a.order_id],
+      ),
+    ).toEqual([{ state: 'unknown' }]);
   });
 });

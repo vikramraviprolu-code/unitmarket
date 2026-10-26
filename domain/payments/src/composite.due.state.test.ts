@@ -3,7 +3,7 @@
 // (publisher 2): two units, two PayPal orders, one capture each. The rules under test are in
 // docs/specs/mvp-d-dp2b-reconcile-continuation.md and docs/specs/mvp-d-overview.md section 3.
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CaptureRes } from '@umsbx/contracts';
+import type { CaptureRes, PaymentsDeps } from '@umsbx/contracts';
 import {
   beginCheckout,
   checkInvariants,
@@ -15,7 +15,7 @@ import {
 import { markUnknown } from './due';
 import { resendCreate, retryCapture } from './reconcile';
 import { loadOperation, loadOrder } from './store';
-import { reapply } from './support';
+import { reapply, sha256ForArticle } from './support';
 import {
   BUYER_A,
   BUYER_B,
@@ -23,6 +23,7 @@ import {
   approved,
   awaiting,
   count,
+  deadCapture,
   lostResponse,
   makeWorld,
   sentCapture,
@@ -1232,5 +1233,199 @@ describe('reconcile.ts boundaries pinned by the mutation run (DP-2b)', () => {
     )[0]!;
     expect(await resendCreate(w.deps, order, { ...unknownOp, ...stored })).toBe('lost');
     expect(w.paypal.count('create')).toBe(creates);
+  });
+});
+
+describe('more boundaries pinned by the mutation run (DP-2b)', () => {
+  it('operations with no PayPal order reference (older rows) are processed: a dead capture is read and sent again, a lost create is resent', async () => {
+    w = await makeWorld();
+    const a = await deadCapture(w);
+    await w.rows('UPDATE operations SET provider_order_ref = NULL WHERE order_id = $1', [
+      a.order_id,
+    ]);
+    w.tick(61_000);
+    await pass();
+    expect(capCalls().map((c) => c.request_id)).toEqual([
+      `umsK-${a.order_ref}`,
+      `umsK-${a.order_ref}`,
+    ]);
+    expect((await orderRow(a.order_id)).status).toBe('paid');
+
+    const b = await place(w, { buyer_id: 'buy_B', actor: BUYER_B, offers: ['ofr_2'] });
+    w.paypal.queue.create.push({ kind: 'timeout' });
+    await beginCheckout(w.deps, { order_id: b.order_id, actor: BUYER_B });
+    await w.rows('UPDATE operations SET provider_order_ref = NULL WHERE order_id = $1', [
+      b.order_id,
+    ]);
+    w.tick(31_000);
+    await pass();
+    expect(await states(b.order_id)).toEqual(['awaiting_buyer']);
+    expect((await orderRow(b.order_id)).status).toBe('awaiting_buyer');
+  });
+
+  it('the operations of a PayPal order that is over without money stop without a read, the pack goes on', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.nextBy.set(poIds(a)[1]!, { status: 'DECLINED', fee: null });
+    await ret(a.order_ref);
+    expect(await states(a.order_id)).toEqual(['captured', 'declined']);
+    await w.rows(
+      `UPDATE operations SET state = 'unknown', next_retry_at = $2, reconcile_until = $3
+        WHERE order_id = $1 AND kind = 'readback'
+          AND provider_order_ref = (SELECT id FROM provider_orders WHERE order_id = $1 AND position = 2)`,
+      [
+        a.order_id,
+        w.clock.now().toISOString(),
+        new Date(w.clock.now().getTime() + H).toISOString(),
+      ],
+    );
+    const gets = callsOf(poIds(a)[1]!, 'get').length;
+    await pass();
+    expect(callsOf(poIds(a)[1]!, 'get')).toHaveLength(gets);
+    expect(
+      await w.rows(
+        `SELECT o.state, o.failure_reason FROM operations o JOIN provider_orders p ON p.id = o.provider_order_ref
+          WHERE o.order_id = $1 AND o.kind = 'readback' AND p.position = 2`,
+        [a.order_id],
+      ),
+    ).toEqual([{ state: 'failed', failure_reason: 'declined' }]);
+  });
+
+  it('the end of the window of one PayPal order turns the items of that PayPal order unknown and no other', async () => {
+    w = await makeWorld();
+    const a = await approved(w, PACK);
+    w.paypal.nextBy.set(poIds(a)[0]!, { status: 'PENDING', fee: null });
+    await ret(a.order_ref); // PO1: captured but PENDING, unresolved
+    w.paypal.queue.capture.push({ kind: 'timeout' });
+    await pass(); // the continuation sends PO2; its answer is lost
+    expect(await states(a.order_id)).toEqual(['unresolved', 'unresolved']);
+    // PO1 is polled much later; PO2's window ends now
+    await w.rows(
+      `UPDATE operations SET next_retry_at = $2, reconcile_until = $2
+        WHERE order_id = $1 AND state = 'unknown'
+          AND provider_order_ref = (SELECT id FROM provider_orders WHERE order_id = $1 AND position = 1)`,
+      [a.order_id, new Date(w.clock.now().getTime() + 100 * H).toISOString()],
+    );
+    w.tick(25 * H);
+    await pass();
+    expect((await entRows(a.order_id)).map((e) => e.money_state)).toEqual(['pending', 'unknown']);
+    expect((await alerts('payment_unresolved')).map((x) => x.reason)).toEqual([
+      'window_expired_p2',
+    ]);
+  });
+
+  it('the deadline of a PayPal order nobody approved counts from the first approval of the pack', async () => {
+    w = await makeWorld();
+    const a = await awaiting(w, PACK);
+    approvePo(w, a, 1);
+    await ret(a.order_ref); // PO1 approved: the first approval of the pack
+    w.tick(30 * 60_000);
+    await w.paypal.captureOrder({
+      provider_order_id: poIds(a)[0]!,
+      request_id: 'oob-key',
+      scenario: null,
+    });
+    w.tick(31 * 60_000);
+    await pass(); // the window has run out: the capture found is taken over
+    expect(await states(a.order_id)).toEqual(['captured', 'awaiting_buyer']);
+    w.tick(24 * H); // 25 h and a minute after the first approval, 24 h after the take-over
+    await pass();
+    expect(await states(a.order_id)).toEqual(['captured', 'declined']);
+  });
+
+  it('a PayPal order that moved on between the list and the pick is left alone, with no read', async () => {
+    w = await makeWorld();
+    const a = await crashBetweenCaptures();
+    const gets = callsOf(poIds(a)[1]!, 'get').length;
+    let moved = false;
+    const d2: PaymentsDeps = {
+      ...w.deps,
+      db: {
+        ...w.deps.db,
+        query: async (sql: string, params?: unknown[]) => {
+          const r = await w.deps.db.query(sql, params);
+          if (!moved && sql.includes('sib.sent_at')) {
+            moved = true;
+            await w.rows(
+              "UPDATE provider_orders SET state = 'declined' WHERE order_id = $1 AND position = 2",
+              [a.order_id],
+            );
+          }
+          return r;
+        },
+      } as PaymentsDeps['db'],
+    };
+    const r = await runDue(d2, { max_items: 10 });
+    expect(moved).toBe(true);
+    expect(r.processed).toBe(0);
+    expect(callsOf(poIds(a)[1]!, 'get')).toHaveLength(gets);
+  });
+
+  it('an item that cannot be delivered is never charged by the continuation; once it can, the pack finishes', async () => {
+    w = await makeWorld();
+    const a = await crashBetweenCaptures();
+    const head = w.content.heads.get('key-art_3')!;
+    w.content.heads.delete('key-art_3'); // the content of PO2's article is gone
+    await pass();
+    expect(capCalls()).toHaveLength(1);
+    expect(await states(a.order_id)).toEqual(['captured', 'approved']);
+    w.content.heads.set('key-art_3', { ...head, sha256: sha256ForArticle('art_3') });
+    w.tick(31_000);
+    await pass();
+    expect(await states(a.order_id)).toEqual(['captured', 'captured']);
+    expect(capCalls()).toHaveLength(2);
+  });
+
+  it('the read-back after the continuation capture is not an order: PO2 is unresolved with its read-back operation, the next pass settles it', async () => {
+    w = await makeWorld();
+    const a = await crashBetweenCaptures();
+    w.paypal.queue.get.push('real', { kind: 'timeout' }); // the fresh read is real, the read-back is lost
+    await pass();
+    expect(callsOf(poIds(a)[1]!, 'capture')).toHaveLength(1);
+    expect(await states(a.order_id)).toEqual(['captured', 'unresolved']);
+    expect(
+      (
+        await w.rows<{ request_id: string; state: string }>(
+          `SELECT o.request_id, o.state FROM operations o JOIN provider_orders p ON p.id = o.provider_order_ref
+            WHERE o.order_id = $1 AND o.kind = 'readback' AND p.position = 2`,
+          [a.order_id],
+        )
+      )[0],
+    ).toEqual({ request_id: `umsB-${a.order_ref}-p2`, state: 'unknown' });
+    expect(await sales()).toBe(1); // a claim alone books nothing
+    w.tick(31_000);
+    await pass();
+    expect(await states(a.order_id)).toEqual(['captured', 'captured']);
+    expect(await sales()).toBe(2);
+    expect(callsOf(poIds(a)[1]!, 'capture')).toHaveLength(1);
+  });
+
+  it('a PayPal order held by the continuation says which unit: a unit mismatch names the unit, an order-level one none', async () => {
+    w = await makeWorld();
+    const a = await crashBetweenCaptures();
+    w.paypal.tamperBy.set(poIds(a)[1]!, { payee: 'SBXEVILPAYEE' });
+    await pass();
+    const unit2 = (
+      await w.rows<{ id: string }>(
+        "SELECT id FROM order_units WHERE order_id = $1 AND publisher_id = 'pub_2'",
+        [a.order_id],
+      )
+    )[0]!.id;
+    expect(
+      await w.rows<{ unit_id: string | null; reason: string }>(
+        "SELECT unit_id, detail ->> 'reason' AS reason FROM alerts WHERE kind = 'frozen_order' AND order_id = $1",
+        [a.order_id],
+      ),
+    ).toEqual([{ unit_id: unit2, reason: 'precapture_unit_payee' }]);
+
+    const b = await crashBetweenCaptures({ buyer_id: 'buy_B', actor: BUYER_B });
+    w.paypal.tamperBy.set(poIds(b)[1]!, { custom_id: 'SOMEOTHERREF' });
+    await pass();
+    expect(
+      await w.rows<{ unit_id: string | null; reason: string }>(
+        "SELECT unit_id, detail ->> 'reason' AS reason FROM alerts WHERE kind = 'frozen_order' AND order_id = $1",
+        [b.order_id],
+      ),
+    ).toEqual([{ unit_id: null, reason: 'precapture_reference_p2' }]);
   });
 });
