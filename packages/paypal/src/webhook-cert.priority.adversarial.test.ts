@@ -38,7 +38,7 @@ function setup(answer: (r: OutboundRequest) => TransportResult) {
     stamps.push({ path: r.path, at: clock.now().getTime() });
     return answer(r);
   });
-  const source = createCertificateSource({ transport: t, clock });
+  const source = createCertificateSource({ expected_pins: [], transport: t, clock });
   /** one POST with a signature made now, as a PayPal retry would carry */
   const post = (cert_url: string, key = signer.privateKey) =>
     verifyWebhook(
@@ -151,7 +151,7 @@ describe('trust is earned by a genuine signature only', () => {
     const { clock, t, post, source } = setup(legitOnly);
     await post(LEGIT);
     expect(source.stats().trusted_urls).toEqual([LEGIT]);
-    const restarted = createCertificateSource({ transport: t, clock });
+    const restarted = createCertificateSource({ expected_pins: [], transport: t, clock });
     expect(restarted.stats().trusted_urls).toEqual([]);
     const base = t.calls.length;
     for (let i = 0; i < 10; i++) await restarted.get(attacker(i + 500));

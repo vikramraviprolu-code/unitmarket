@@ -68,7 +68,7 @@
 import { X509Certificate } from 'node:crypto';
 import type { KeyObject } from 'node:crypto';
 import type { Clock, Logger, Transport } from '@umsbx/contracts';
-import { guard } from '@umsbx/transport';
+import { CERT_HOST_SUFFIX, guard } from '@umsbx/transport';
 
 export interface WebhookCertificate {
   public_key: KeyObject;
@@ -149,7 +149,20 @@ export interface CertPin {
  * committed here through a reviewed change, as a code constant (no configuration can change it).
  * Subject and issuer are the one-line forms the learn record shows, e.g. `CN=example, O=Example`.
  */
-export const EXPECTED_CERT_PINS: readonly CertPin[] = [];
+export const EXPECTED_CERT_PINS: readonly CertPin[] = [
+  // Learned on 2026-10-27 in the MVP-C learn window (D-038, D-043) from the real sandbox events of one
+  // purchase on the hosted app: the `webhook.cert_learned` log entry, same one-line forms. The simulator
+  // sends unsigned mock events and produced nothing to learn. Valid until 2027-01-26T23:59:59Z, SHA-256
+  // fingerprint of the certificate D8:5B:1A:41:3B:FB:82:72:14:72:7F:D5:84:37:58:AE:EB:C8:BF:B9:B4:49:B0:D9:62:EE:21:6B:7B:E9:C8:56
+  // (for the record only: the pin is host, subject and issuer, because PayPal rotates the certificate file).
+  {
+    // the learned host is `api` plus the sandbox suffix; the sandbox host name lives only in transport endpoints
+    host: `api${CERT_HOST_SUFFIX}`,
+    subject:
+      'jurisdictionC=US, jurisdictionST=Delaware, businessCategory=Private Organization, serialNumber=3014267, C=US, ST=California, L=San Jose, O=PayPal\\, Inc., CN=messageverificationcerts.sandbox.paypal.com',
+    issuer: 'C=US, O=DigiCert Inc, CN=DigiCert EV RSA CA G2',
+  },
+];
 
 /** A pin with all three fields set, whose host is one the transport guard allows for certificates. */
 export function isFullPin(p: unknown): p is CertPin {

@@ -59,7 +59,7 @@ function realSource() {
   const transport = fakeTransport(() => pemResponse(pem));
   return {
     transport,
-    source: createCertificateSource({ transport, clock: mutableClock(NOW_ISO) }),
+    source: createCertificateSource({ expected_pins: [], transport, clock: mutableClock(NOW_ISO) }),
   };
 }
 
@@ -322,7 +322,11 @@ describe('certificate cannot be had: unverifiable (503), never a forgery', () =>
 
   it('fetch blocked', async () => {
     const t = fakeTransport(() => ({ kind: 'blocked', by: 'egress' }));
-    const source = createCertificateSource({ transport: t, clock: mutableClock(NOW_ISO) });
+    const source = createCertificateSource({
+      expected_pins: [],
+      transport: t,
+      clock: mutableClock(NOW_ISO),
+    });
     expect(await run(deliver(f), { certificates: source })).toEqual(unverifiable);
     expect(t.calls).toHaveLength(1);
   });
@@ -336,7 +340,11 @@ describe('certificate cannot be had: unverifiable (503), never a forgery', () =>
       { kind: 'network_error', code: 'ECONNRESET' } as const,
     ]) {
       const t = fakeTransport(() => answer);
-      const source = createCertificateSource({ transport: t, clock: mutableClock(NOW_ISO) });
+      const source = createCertificateSource({
+        expected_pins: [],
+        transport: t,
+        clock: mutableClock(NOW_ISO),
+      });
       expect(await run(deliver(f), { certificates: source })).toEqual(unverifiable);
     }
   });
@@ -345,7 +353,11 @@ describe('certificate cannot be had: unverifiable (503), never a forgery', () =>
     const t = fakeTransport(() => {
       throw new Error('socket exploded');
     });
-    const source = createCertificateSource({ transport: t, clock: mutableClock(NOW_ISO) });
+    const source = createCertificateSource({
+      expected_pins: [],
+      transport: t,
+      clock: mutableClock(NOW_ISO),
+    });
     expect(await run(deliver(f), { certificates: source })).toEqual(unverifiable);
   });
 
@@ -378,7 +390,11 @@ describe('certificate cannot be had: unverifiable (503), never a forgery', () =>
     ];
     for (const pem of pems) {
       const t = fakeTransport(() => pemResponse(pem));
-      const source = createCertificateSource({ transport: t, clock: mutableClock(NOW_ISO) });
+      const source = createCertificateSource({
+        expected_pins: [],
+        transport: t,
+        clock: mutableClock(NOW_ISO),
+      });
       expect(await run(deliver(f), { certificates: source })).toEqual(unverifiable);
     }
   });
@@ -391,7 +407,11 @@ describe('certificate cannot be had: unverifiable (503), never a forgery', () =>
       notAfter: new Date('2027-01-01T00:00:00Z'),
     });
     const t = fakeTransport(() => pemResponse(pem));
-    const source = createCertificateSource({ transport: t, clock: mutableClock(NOW_ISO) });
+    const source = createCertificateSource({
+      expected_pins: [],
+      transport: t,
+      clock: mutableClock(NOW_ISO),
+    });
     expect(await run(deliver(f, { key: ec.privateKey }), { certificates: source })).toEqual(
       unverifiable,
     );

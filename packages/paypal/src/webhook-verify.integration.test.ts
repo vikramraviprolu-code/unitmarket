@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LogEvent, Secret } from '@umsbx/contracts';
 import { createPayPalAdapter } from './adapter';
+import { createCertificateSource } from './webhook-cert';
 import type { AdapterDeps } from './adapter';
 import { memoryLogger, mutableClock } from './test-support';
 import {
@@ -51,6 +52,9 @@ function setup(over: Partial<AdapterDeps> = {}, answer?: Parameters<typeof fakeT
       return Promise.resolve();
     },
     webhook_id: WEBHOOK_ID,
+    // The real certificate source with no pin: the default source now carries the learned PayPal sandbox
+    // pin (D-043), which these synthetic certificates are not. The pin itself is tested in webhook-cert tests.
+    certificates: createCertificateSource({ transport, clock, log, expected_pins: [] }),
     ...over,
   });
   return { adapter, transport, clock, log, records };

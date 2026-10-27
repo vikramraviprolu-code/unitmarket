@@ -27,7 +27,11 @@ const pem = (over: Partial<Parameters<typeof certificatePem>[0]> = {}) =>
   });
 const build = (answer: Parameters<typeof fakeTransport>[0] = () => pemResponse(pem())) => {
   const t = fakeTransport(answer);
-  const source = createCertificateSource({ transport: t, clock: mutableClock(NOW) });
+  const source = createCertificateSource({
+    expected_pins: [],
+    transport: t,
+    clock: mutableClock(NOW),
+  });
   return { t, source };
 };
 

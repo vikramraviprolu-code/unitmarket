@@ -29,6 +29,19 @@ import type { WebhookRig } from './webhook-support';
 
 vi.mock('server-only', () => ({}));
 
+// The learn window is tested with no pin (the state it exists for). The repository now carries the
+// learned PayPal sandbox pin (D-043), so these tests hold the pin empty, the same way webhook.integration
+// holds it through a holder.
+vi.mock('@umsbx/paypal', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@umsbx/paypal')>();
+  return {
+    ...actual,
+    get EXPECTED_CERT_PINS() {
+      return [];
+    },
+  };
+});
+
 const FACT_KEYS = [
   'fingerprint_sha256',
   'host',
