@@ -20,10 +20,11 @@ export const ADVISORY_LOCK_WAIT_MS = 120_000;
 const APPLICATION_NAME = 'umsbx';
 const IDLE_TIMEOUT_MS = 10_000;
 /**
- * A fixed session option. node-postgres treats an empty `options` as unset and then reads PGOPTIONS
- * from the environment; naming a harmless value here means the environment cannot change the session.
+ * A fixed, empty-in-effect session option. node-postgres treats an empty `options` as unset and then
+ * reads PGOPTIONS from the environment; a blank string is truthy, so the environment cannot supply
+ * one, and the server reads no setting from it.
  */
-const SESSION_OPTIONS = '-c client_min_messages=warning';
+const SESSION_OPTIONS = ' ';
 /** A held lease checks its connection this often; a check that gets no answer in this time ends the lease. */
 export const LEASE_HEARTBEAT_MS = 5_000;
 

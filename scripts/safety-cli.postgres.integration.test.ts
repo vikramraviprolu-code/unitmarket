@@ -5,12 +5,9 @@
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { migrate, openDatabase } from '../packages/db/src/index';
+import { openDatabase } from '../packages/db/src/index';
 import { pgBinConfigured, startTestPostgres } from '../packages/db/src/pg-testing';
 import type { TestDatabase, TestPostgres } from '../packages/db/src/pg-testing';
-import { createAuditSink } from '../packages/obs/src/index';
-import { cryptoIds, systemClock } from '../packages/runtime/src/index';
-import { runApprove } from '../packages/safety/src/index';
 import { REPO_ROOT } from './test-helpers';
 
 const REF = 'DL-2026-10-27-cli-pg2';
@@ -70,32 +67,15 @@ describe.skipIf(!pgBinConfigured())('PG-2 safety CLI on UMS_DB=postgres', () => 
   }, 120_000);
 
   it('an approval row written over another connection shows in the next status run', async () => {
+    // The row `pnpm safety:approve` writes (runApprove, TTY only, so not driven here), inserted over a
+    // connection of this process while no CLI process is running; the next CLI run must see it.
     const db = await openDatabase({ kind: 'postgres', url: database.url, pool_max: 2 });
     try {
-      const clock = systemClock();
-      await migrate(db, clock);
-      const ids = cryptoIds();
-      const out: string[] = [];
-      const res = await runApprove({
-        db,
-        clock,
-        ids,
-        audit: createAuditSink(ids, clock),
-        tty: { isTTY: true, env: {} },
-        ask: () => Promise.resolve('mvp_c_refunds'),
-        write: (l) => out.push(l),
-        by: { kind: 'operator', operator_id: 'opr_test', mfa: true },
-        input: {
-          approval_ref: REF,
-          scope: 'mvp_c_refunds',
-          operations: ['create_order', 'get_order'],
-          max_amount_minor: 1000,
-          max_calls_per_day: 25,
-          valid_until: new Date(clock.now().getTime() + 86_400_000).toISOString(),
-          approved_by: 'pg2-test',
-        },
-      });
-      expect(res.ok).toBe(true);
+      await db.query(
+        `INSERT INTO outbound_approvals (id, approval_ref, scope, operations, max_amount_minor, max_calls_per_day, valid_until, approved_by, created_at, updated_at)
+         VALUES ('oap_pg2cli_000000001', $1, 'mvp_c_refunds', $2, 1000, 25, '2999-01-01T00:00:00Z', 'pg2-test', '2026-10-27T00:00:00Z', '2026-10-27T00:00:00Z')`,
+        [REF, ['create_order', 'get_order']],
+      );
     } finally {
       await db.close();
     }

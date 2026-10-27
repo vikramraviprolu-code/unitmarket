@@ -1163,6 +1163,10 @@ describe('named exemptions (D-015)', () => {
         'tests/mvp-c/c-offline.adversarial.test.ts -> sbx/no-package-escape',
         // CO-Gb: the C-offline canary helper imports the network modules to show what the interception sees.
         'tests/mvp-c/c-net-probe.ts -> no-restricted-imports',
+        // PG-2: the real-Postgres race and wiring tests drive the web composition and the C rig by relative path.
+        'tests/mvp-c-pg/**/*.ts -> sbx/no-package-escape',
+        'apps/web/src/postgres/boot.postgres.integration.test.ts -> sbx/no-package-escape',
+        'scripts/safety-cli.postgres.integration.test.ts -> sbx/no-package-escape',
         'apps/web/src/lib/client-api.ts -> no-restricted-globals',
         'packages/paypal/src/paypal.sandbox.contract.test.ts -> no-restricted-syntax,sbx/no-global-alias',
         'domain/library/src/world.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
