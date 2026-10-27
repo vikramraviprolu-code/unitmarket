@@ -24,6 +24,15 @@ export function pgBinDir(): string {
   return fromEnv !== undefined && fromEnv !== '' ? fromEnv : DEFAULT_BIN;
 }
 
+/**
+ * True when the owner or CI asked for real-Postgres suites (UMS_TEST_PG_BIN is set, PG-2) and the
+ * binaries are there. The PG-2 race and wiring suites run only then.
+ */
+export function pgBinConfigured(): boolean {
+  const fromEnv = process.env['UMS_TEST_PG_BIN'];
+  return fromEnv !== undefined && fromEnv !== '' && pgAvailable();
+}
+
 /** True when initdb and postgres are present, so a real-Postgres suite can run. */
 export function pgAvailable(): boolean {
   const bin = pgBinDir();

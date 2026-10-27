@@ -78,11 +78,15 @@ describe('a credit and a full refund for one item racing', () => {
     expect(cut).toBeGreaterThan(0);
     expect(events.slice(cut + 1)).toEqual([]);
     expect(events.filter((k) => k === 'revoked')).toHaveLength(1);
+    // PG-2: the promise order is not the commit order on a real Postgres (the two transactions run on
+    // different connections), so the expected credit is derived from the order the log shows: 2 h only
+    // when the credit was granted before the revoke, otherwise the credit was refused and is 0.
+    const granted = events.slice(0, cut).includes('credit_granted');
     expect(await state(id)).toMatchObject({
       access_state: 'revoked',
       money_state: 'refunded',
       wstate: 'revoked',
-      credit_ms: creditFirst ? 2 * H : 0,
+      credit_ms: granted ? 2 * H : 0,
     });
   });
 
