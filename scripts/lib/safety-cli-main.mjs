@@ -47,12 +47,14 @@ if (!['status', 'stop', 'approve', 'resume'].includes(command ?? '')) {
 const loaded = loadConfigFromProcess();
 if (!loaded.ok) fail(`boot refused: ${loaded.error.code} (${loaded.error.name})`, 78);
 const config = loaded.value;
-if (config.db.kind === 'postgres') fail('the postgres target is not supported by this CLI yet', 2);
-
 const clock = systemClock();
 const ids = cryptoIds();
 // A live holder of the data directory (CO-9 lock) is one line and exit 1, not a stack trace.
-const db = await openDatabase(config.db).catch((e) => {
+// PG-2: the same config path as the app. The URL is a secret: it is revealed here, once, for the driver,
+// which scrubs it from every error; nothing below prints it.
+const target =
+  config.db.kind === 'postgres' ? { kind: 'postgres', url: config.db.url.reveal() } : config.db;
+const db = await openDatabase(target).catch((e) => {
   fail(e instanceof Error ? e.message : String(e));
   throw e; // not reached: fail() exits
 });

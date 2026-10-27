@@ -15,11 +15,49 @@
 // unreadable or blocked order), and waking at once only reads it again. Such a pass sleeps up to
 // max_sleep_ms. A future due time is still waited for, and a pass that did something still comes
 // back after MIN_SLEEP_MS.
+// PG-2 (D-049): with a `leader` election (Postgres only) the body runs only while this process holds
+// the lease. Without the lease the loop retries the election every few seconds and runs nothing, not
+// even recovery. Recovery runs once per leadership term. A lease that is lost ends the term at once:
+// no new pass starts, and a pass already running can no longer reach the provider (its calls answer
+// `blocked`), so a successor never works beside a predecessor's tail. stop() gives the lease back.
 import { nextDueAt, recoverOnStartup, runDue } from '@umsbx/payments';
 import type { PaymentsDeps } from '@umsbx/contracts';
 import { DEFAULT_CALL_GAP_MS, moneyCalls, pollAllowance, rateLimited } from './budget';
 import type { CallBudget, CallQuota } from './budget';
 import { recordPass } from './health';
+
+/** A leader lease as the loop needs it. @umsbx/db's AdvisoryLease fits this shape. */
+export interface LeaderLease {
+  held(): boolean;
+  /** Resolves once the lease is gone, whatever the reason. */
+  readonly lost: Promise<void>;
+  release(): Promise<void>;
+}
+/** Tries once, without waiting, to become the one loop. null: another process leads. */
+export interface LeaderElection {
+  tryAcquire(): Promise<LeaderLease | null>;
+}
+/** The session advisory lock key of the one job loop (PG-2). */
+export const LEADER_LOCK_KEY = 'umsbx:job-loop-leader';
+/** How long a process that is not the leader waits before asking again. */
+export const DEFAULT_LEADER_RETRY_MS = 3_000;
+
+/**
+ * Wraps the provider port so that, once the lease is gone, every call answers `blocked` without
+ * reaching the provider. Payments treats `blocked` as a pause: no attempt is spent, nothing is sent.
+ */
+function ledBy<T extends object>(port: T, leading: () => boolean): T {
+  return new Proxy(port, {
+    get(target, key, receiver) {
+      const value: unknown = Reflect.get(target, key, receiver);
+      if (typeof value !== 'function') return value;
+      return async (...args: unknown[]): Promise<unknown> => {
+        if (!leading()) return { kind: 'blocked', by: 'kill_switch' };
+        return (value as (...a: unknown[]) => unknown).apply(target, args);
+      };
+    },
+  });
+}
 
 /** A pass that finds more due work runs again soon, but never spins. */
 const MIN_SLEEP_MS = 100;
@@ -43,9 +81,15 @@ export function startLoop(
     callBudget?: CallBudget;
     /** Waiting between two provider calls (default: a timer). Tests move the fake clock here. */
     gap_sleep?: (ms: number) => Promise<void>;
+    /** Postgres only: the loop runs only while it holds the lease (PG-2). */
+    leader?: LeaderElection;
+    /** Wait between two elections of a process that is not the leader (default 3 s). */
+    leader_retry_ms?: number;
   },
 ): { stop(): Promise<void> } {
   let stopped = false;
+  let term: LeaderLease | null = null;
+  const leading = (): boolean => o.leader === undefined || (term !== null && term.held());
   let wake: (() => void) | null = null;
   const fail = (msg: string, e: unknown): void => {
     d.log.log({
@@ -106,12 +150,14 @@ export function startLoop(
   // to the calls the pass was allowed.
   let nullLogged = false;
   const quota: CallQuota = { left: Number.POSITIVE_INFINITY };
+  // Every provider call of every pass, recovery included, goes through this guard in leader mode.
+  const led: typeof d = o.leader === undefined ? d : { ...d, paypal: ledBy(d.paypal, leading) };
   const run: typeof d =
     o.callBudget === undefined && !noBudget
-      ? d
+      ? led
       : {
-          ...d,
-          paypal: rateLimited(d.paypal, {
+          ...led,
+          paypal: rateLimited(led.paypal, {
             quota,
             gap_ms: d.config.min_call_gap_ms ?? DEFAULT_CALL_GAP_MS,
             now: () => d.clock.now().getTime(),
@@ -119,9 +165,11 @@ export function startLoop(
           }),
         };
 
-  const running = (async (): Promise<void> => {
-    // Recovery runs once per process: a caller that has already run it (composition's startJobs)
-    // passes recover_on_start: false. Run twice, it would take over operations of a live pass.
+  /** Recovery and passes for as long as this process may run them (the whole life without a leader). */
+  const body = async (): Promise<void> => {
+    // Recovery runs once per process, or once per leadership term: a caller that has already run it
+    // (composition's startJobs, no leader) passes recover_on_start: false. Run twice, it would take
+    // over operations of a live pass.
     if (o.recover_on_start !== false) {
       try {
         await recoverOnStartup(run);
@@ -129,7 +177,7 @@ export function startLoop(
         fail('jobs.loop.recovery_failed', e);
       }
     }
-    while (!stopped) {
+    while (!stopped && leading()) {
       let delay = o.max_sleep_ms;
       let spent = false;
       let budgetUnknown = false;
@@ -144,7 +192,7 @@ export function startLoop(
           quota.left = Number.POSITIVE_INFINITY; // the gate decides
           did = await runDue(run, { max_items: o.max_items, allow: 'money_only' });
         } else if (o.callBudget === undefined) {
-          did = await runDue(d, { max_items: o.max_items });
+          did = await runDue(led, { max_items: o.max_items });
         } else {
           let reading: { snapshot: Awaited<ReturnType<CallBudget>> } | null = null;
           try {
@@ -173,7 +221,7 @@ export function startLoop(
             did = await runDue(run, { max_items: o.max_items, allow: 'money_only' });
           } else if (reading !== null && reading.snapshot === null) {
             // Unlimited (dry run): nothing is counted, so nothing is held back either.
-            did = await runDue(d, { max_items: o.max_items });
+            did = await runDue(led, { max_items: o.max_items });
           } else if (reading !== null) {
             const snapshot = reading.snapshot as NonNullable<typeof reading.snapshot>;
             const allowance = pollAllowance(snapshot, d.config, o.max_items);
@@ -203,8 +251,48 @@ export function startLoop(
       } catch (e) {
         fail('jobs.loop.pass_failed', e);
       }
-      if (stopped) break;
+      if (stopped || !leading()) break;
       await sleep(delay);
+    }
+  };
+
+  const running = (async (): Promise<void> => {
+    if (o.leader === undefined) {
+      await body();
+      return;
+    }
+    const retryMs = o.leader_retry_ms ?? DEFAULT_LEADER_RETRY_MS;
+    while (!stopped) {
+      let lease: LeaderLease | null = null;
+      try {
+        lease = await o.leader.tryAcquire();
+      } catch (e) {
+        // Not elected: never run as if elected. The error text is the driver's scrubbed message.
+        fail('jobs.loop.leader_election_failed', e);
+      }
+      if (lease === null) {
+        if (!stopped) await sleep(retryMs);
+        continue;
+      }
+      if (stopped) {
+        await lease.release().catch(() => undefined);
+        break;
+      }
+      term = lease;
+      void lease.lost.then(() => wake?.());
+      d.log.log({ msg: 'jobs.loop.leader_acquired', level: 'info', fields: {} });
+      try {
+        await body();
+      } finally {
+        if (!lease.held() && !stopped) {
+          d.log.log({
+            msg: 'jobs.loop.leader_lost',
+            level: 'warn',
+            fields: { detail: 'the lock connection ended; the loop stops and asks again' },
+          });
+        }
+        await lease.release().catch((e: unknown) => fail('jobs.loop.leader_release_failed', e));
+      }
     }
   })();
 

@@ -91,7 +91,7 @@ import {
   executeRefund,
   requestRefund,
 } from '@umsbx/payments';
-import { health as jobsHealth, startLoop } from '@umsbx/jobs';
+import { health as jobsHealth, LEADER_LOCK_KEY, startLoop } from '@umsbx/jobs';
 import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
 import {
@@ -136,6 +136,12 @@ export interface AppOptions {
    * createApp refuses it unless NODE_ENV is test.
    */
   webhook_certificates?: NonNullable<AdapterDeps['certificates']>;
+  /**
+   * PG-2 (tests): `leader: 'off'` runs the job loop without the Postgres leader lock, to show what the
+   * lock prevents; `leader_retry_ms` shortens the wait between two elections. Refused unless
+   * NODE_ENV is test.
+   */
+  test_loop?: { leader?: 'off'; leader_retry_ms?: number };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -508,6 +514,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       throw new Error('boot refused: test_domain outside NODE_ENV=test');
     if (opts.webhook_certificates !== undefined)
       throw new Error('boot refused: webhook_certificates outside NODE_ENV=test');
+    if (opts.test_loop !== undefined)
+      throw new Error('boot refused: test_loop outside NODE_ENV=test');
   }
   const environment = envLabel(config);
   const clock: Clock = systemClock();
@@ -536,14 +544,22 @@ function buildApp(config: Config, opts: AppOptions): App {
   const open = (): Promise<SqlDriver> => {
     if (maintenance) return Promise.reject(new MaintenanceError());
     driver ??= (async () => {
-      if (config.db.kind === 'postgres') throw new Error('postgres is not wired in MVP-A');
+      // PG-2: the URL is a secret. It is revealed here, once, and handed to the driver, which never
+      // logs it and scrubs it from every error it raises; nothing in this file prints it.
       const d = await openDatabase(
-        config.db.kind === 'pglite-disk'
-          ? { kind: 'pglite-disk', dir: config.db.dir }
-          : { kind: 'pglite-memory' },
+        config.db.kind === 'postgres'
+          ? { kind: 'postgres', url: config.db.url.reveal() }
+          : config.db.kind === 'pglite-disk'
+            ? { kind: 'pglite-disk', dir: config.db.dir }
+            : { kind: 'pglite-memory' },
       );
-      await migrate(d, clock);
-      await seed(d);
+      try {
+        await migrate(d, clock);
+        await seed(d);
+      } catch (e) {
+        await d.close().catch(() => undefined);
+        throw e;
+      }
       return d;
     })();
     return driver;
@@ -595,7 +611,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     }
   };
   const db: Database = {
-    dialect: 'pglite',
+    dialect: config.db.kind === 'postgres' ? 'pg' : 'pglite',
     query: async (sql, params) => (await open()).query(sql, params),
     exec: async (sql) => (await open()).exec(sql),
     transaction: async <T>(fn: (tx: SqlExecutor) => Promise<T>) => (await open()).transaction(fn),
@@ -1357,11 +1373,19 @@ function buildApp(config: Config, opts: AppOptions): App {
       // CO-7b: no recovery pass, no loop, no database. Nothing to stop.
       if (maintenance) return { stop: async () => undefined };
       if (loop !== null) return loop;
-      await open();
+      const drv = await open();
       logSelfcheckOnce();
-      // Recovery first, and awaited: a boot that returns has already read what was in flight. It
-      // runs once per process: the loop is told not to recover again.
-      await recoverOnStartup(paymentsDeps);
+      // PG-2 (D-049): on Postgres the loop runs only while this process holds the leader lock, so a
+      // second process (a rollout overlap, a stray local run) never works beside the first. The test
+      // seam can turn the lock off to show what it prevents.
+      const lockOf = opts.test_loop?.leader === 'off' ? undefined : drv.tryAdvisoryLock?.bind(drv);
+      const led = lockOf !== undefined;
+      // Without the lock (PGlite is one process by its single-opener lock): recovery first, and
+      // awaited: a boot that returns has already read what was in flight. It runs once per process:
+      // the loop is told not to recover again. With the lock, recovery belongs to the leader: the
+      // loop runs it at the start of each leadership term, so a process that is not the leader never
+      // takes over operations of the live one.
+      if (!led) await recoverOnStartup(paymentsDeps);
       // One loop per approval (ASM-67): `loop` above is the only one this app starts.
       let running: { stop(): Promise<void> };
       try {
@@ -1370,7 +1394,15 @@ function buildApp(config: Config, opts: AppOptions): App {
           {
             max_sleep_ms: config.node_env === 'test' ? 200 : 5_000,
             max_items: 100,
-            recover_on_start: false,
+            recover_on_start: led,
+            ...(led
+              ? {
+                  leader: { tryAcquire: () => lockOf(LEADER_LOCK_KEY) },
+                  ...(opts.test_loop?.leader_retry_ms === undefined
+                    ? {}
+                    : { leader_retry_ms: opts.test_loop.leader_retry_ms }),
+                }
+              : {}),
             // Sandbox: the loop spends the approval's own call budget, and never reads null (a
             // missing approval is a reading of 0 remaining). Dry run counts nothing.
             ...(config.mode === 'sandbox' ? { callBudget } : {}),

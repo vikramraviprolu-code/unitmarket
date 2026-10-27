@@ -24,6 +24,15 @@ export function pgBinDir(): string {
   return fromEnv !== undefined && fromEnv !== '' ? fromEnv : DEFAULT_BIN;
 }
 
+/**
+ * True when the owner or CI asked for real-Postgres suites (UMS_TEST_PG_BIN is set, PG-2) and the
+ * binaries are there. The PG-2 race and wiring suites run only then.
+ */
+export function pgBinConfigured(): boolean {
+  const fromEnv = process.env['UMS_TEST_PG_BIN'];
+  return fromEnv !== undefined && fromEnv !== '' && pgAvailable();
+}
+
 /** True when initdb and postgres are present, so a real-Postgres suite can run. */
 export function pgAvailable(): boolean {
   const bin = pgBinDir();
@@ -47,6 +56,11 @@ export interface TestPostgres {
 }
 
 let counter = 0;
+
+/** The server and initdb get a minimal environment (no PG* variables, no secrets). */
+function childEnv(): NodeJS.ProcessEnv {
+  return { PATH: process.env['PATH'] ?? '', LANG: 'C' } as unknown as NodeJS.ProcessEnv;
+}
 
 function urlFor(socketDir: string, database: string): string {
   return `postgres://postgres@:${PORT}/${database}?host=${encodeURIComponent(socketDir)}`;
@@ -126,7 +140,7 @@ export async function startTestPostgres(): Promise<TestPostgres> {
       '--no-sync',
       '--wal-segsize=1',
     ],
-    { ...ids, encoding: 'utf8', env: { PATH: process.env['PATH'] ?? '', LANG: 'C' } },
+    { ...ids, encoding: 'utf8', env: childEnv() },
   );
   if (init.status !== 0) {
     cleanup();
@@ -169,7 +183,7 @@ export async function startTestPostgres(): Promise<TestPostgres> {
     {
       ...ids,
       stdio: ['ignore', logFd, logFd],
-      env: { PATH: process.env['PATH'] ?? '', LANG: 'C' },
+      env: childEnv(),
     },
   );
   closeSync(logFd);

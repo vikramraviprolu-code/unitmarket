@@ -1,6 +1,6 @@
 // @umsbx/db: PGlite and Postgres drivers, migration runner and the complete MVP-A schema (lane 12).
 export const PACKAGE_NAME = '@umsbx/db' as const;
-export type { DbTarget, PgOptions, SqlDriver } from './driver';
+export type { AdvisoryLease, DbTarget, PgOptions, SqlDriver } from './driver';
 export { parsePgUrl, PgConfigError, PgConnectionError } from './pg';
 export type { ParsedPgUrl } from './pg';
 export { openDatabase } from './pglite';

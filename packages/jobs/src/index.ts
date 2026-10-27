@@ -1,5 +1,6 @@
 // @umsbx/jobs: the job loop that drives payments' due work (lane 05b).
 export const PACKAGE_NAME = '@umsbx/jobs' as const;
-export { startLoop } from './loop';
+export { startLoop, DEFAULT_LEADER_RETRY_MS, LEADER_LOCK_KEY } from './loop';
+export type { LeaderElection, LeaderLease } from './loop';
 export { health } from './health';
 export type { CallBudget, CallBudgetSnapshot } from './budget';

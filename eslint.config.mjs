@@ -1478,6 +1478,16 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/no-package-escape'],
   },
   {
+    files: [
+      'tests/mvp-c-pg/**/*.ts',
+      'apps/web/src/postgres/boot.postgres.integration.test.ts',
+      'scripts/safety-cli.postgres.integration.test.ts',
+    ],
+    reason:
+      'PG-2 (real-Postgres race and wiring tests): they import the web composition, the C rig and the throwaway-Postgres test helper (packages/db/src/pg-testing.ts, not a package export) by relative path, like the CO-G tests above. They run only when UMS_TEST_PG_BIN is set, on a unix-socket server in a temp directory; no file names a sealed identifier',
+    off: ['sbx/no-package-escape'],
+  },
+  {
     files: ['tests/mvp-c/c-net-probe.ts'],
     reason:
       'CO-Gb (gate review M1): the canary helper imports node:net, dns, dns/promises, http, https and http2 the way product code does, to show that the C-offline interception sees every way to open a connection. Every probe targets loopback port 1 or the name localhost and is refused by the interception; no request leaves the machine. no-restricted-imports only',

@@ -1,7 +1,8 @@
-// CO-9 / ASM-55: the PGlite single-process facts behind the waiver of real-Postgres race tests hold
-// only while no Postgres target can boot. This pins that an app built with UMS_DB=postgres refuses to
-// start with a clear message and opens no socket (net, tls, dns, http, https, fetch all traced).
-// Offline; the connection string is a placeholder with no credentials.
+// CO-9 / ASM-55, rewritten by PG-2 (the spec for this lane contradicts the old "postgres is not wired"
+// refusal: UMS_DB=postgres now boots, see apps/web/src/postgres/boot.postgres.integration.test.ts).
+// What stays pinned here, offline and with every socket route traced: a configuration that cannot be
+// used (a bad URL, a missing URL) is refused at boot with a fixed message, opens no socket, and never
+// prints the connection string.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../composition.server';
 import { testEnv } from './support';
@@ -44,28 +45,30 @@ afterEach(() => {
 });
 
 const POSTGRES_URL = 'postgres://app@db.invalid/unitmarket';
+// A port out of range: the URL is parsed (and refused) before any connection is attempted.
+const BAD_PORT_URL = 'postgres://app:hunter2hunter2@db.invalid:99999/unitmarket';
 
-describe('CO-9: UMS_DB=postgres is refused', () => {
+describe('UMS_DB=postgres: unusable configuration is refused without a socket', () => {
   it('control: the same environment with the in-memory target boots', async () => {
     const app = createApp(await testEnv({ UMS_DB: 'pglite-memory' }));
     await app.ready();
     await app.close();
   });
 
-  it('config accepts the postgres value, so the refusal below is the composition', async () => {
+  it('config accepts the postgres value', async () => {
     const app = createApp(await testEnv({ UMS_DB: 'postgres', DATABASE_URL: POSTGRES_URL }));
     expect(app.config.db.kind).toBe('postgres');
   });
 
-  it('the app does not start: ready() rejects with a clear message', async () => {
-    const app = createApp(await testEnv({ UMS_DB: 'postgres', DATABASE_URL: POSTGRES_URL }));
-    await expect(app.ready()).rejects.toThrowError(/postgres is not wired/i);
-    await expect(app.ready()).rejects.toThrowError(/postgres/i); // stays refused on a second try
-    await app.close().catch(() => undefined); // close() re-raises the refused open; tolerated here
+  it('a URL that does not parse: ready() rejects with a fixed message, and stays refused on a second try', async () => {
+    const app = createApp(await testEnv({ UMS_DB: 'postgres', DATABASE_URL: BAD_PORT_URL }));
+    await expect(app.ready()).rejects.toThrowError(/invalid database configuration: bad port/);
+    await expect(app.ready()).rejects.toThrowError(/invalid database configuration/);
+    await app.close().catch(() => undefined);
   });
 
   it('opens no socket and makes no lookup or request', async () => {
-    const app = createApp(await testEnv({ UMS_DB: 'postgres', DATABASE_URL: POSTGRES_URL }));
+    const app = createApp(await testEnv({ UMS_DB: 'postgres', DATABASE_URL: BAD_PORT_URL }));
     await app.ready().catch(() => undefined);
     await app.close().catch(() => undefined);
     expect(trace.calls).toEqual([]);
@@ -77,13 +80,15 @@ describe('CO-9: UMS_DB=postgres is refused', () => {
     expect(trace.calls).toEqual([]);
   });
 
-  it('the message never prints the connection string', async () => {
-    const app = createApp(await testEnv({ UMS_DB: 'postgres', DATABASE_URL: POSTGRES_URL }));
+  it('the message never prints the connection string, the host or the password', async () => {
+    const app = createApp(await testEnv({ UMS_DB: 'postgres', DATABASE_URL: BAD_PORT_URL }));
     const e = await app.ready().then(
       () => null,
       (err: unknown) => err as Error,
     );
-    expect(e?.message ?? '').not.toContain('db.invalid');
+    const text = `${e?.message ?? ''}\n${e?.stack ?? ''}`;
+    for (const needle of ['db.invalid', 'hunter2hunter2', 'postgres://'])
+      expect(text).not.toContain(needle);
     await app.close().catch(() => undefined);
   });
 });
