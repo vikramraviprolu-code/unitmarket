@@ -125,14 +125,13 @@ bash infra/gcp/deploy.sh "$PROJECT_ID" "$REGION" TAG
 
 It refuses unless the checkout is exactly the tag, clean, every secret has a value and the database is
 running. Then Cloud Build builds the image (about 10 minutes the first time) and Cloud Run deploys it
-from `service.yaml`, with `UMS_PAYPAL_CONNECT=off`. Open `https://<service URL>/healthz`. Expected:
-`{"ok":true,"environment":"sandbox"}`. The app logs `maintenance.unconfigured` once at boot; that is
+from `service.yaml`, with `UMS_PAYPAL_CONNECT=off`. Open `https://<service URL>/signin` (not `/healthz`: Google reserves that path on `run.app` addresses and answers it with its own 404 page, the deploy's own startup check still uses it from inside). Expected: HTTP 200. The app logs `maintenance.unconfigured` once at boot; that is
 expected (D-044).
 
 Redeploying the same tag keeps the image and makes a new revision, which also picks up a changed secret.
 A redeploy always puts `UMS_PAYPAL_CONNECT` back to `off`.
 
-Paste back: the `deployed ...` and `service URL:` lines, and the `/healthz` answer.
+Paste back: the `deployed ...` and `service URL:` lines, and the `/signin` HTTP status.
 
 If the build stops with a permission error naming the Compute Engine default service account, UNVERIFIED
 fix (grants the build roles to that account in your own project; run once, then run deploy.sh again):
@@ -162,7 +161,7 @@ deployed with a new tag.
 bash infra/gcp/monitoring.sh "$PROJECT_ID" "$REGION" <your e-mail> <Sakthi's e-mail> <monthly budget>
 ```
 
-Two uptime checks every 5 minutes (`/healthz` and the buyer home page `/`), an alert policy for each that
+Two uptime checks every 5 minutes (the sign-in page `/signin` and the buyer home page `/`), an alert policy for each that
 e-mails both of you, and a monthly budget alert at 50, 90 and 100 percent of the amount you give (a plain
 number in your billing currency, for example 60). The e-mail addresses go on the command line; they are
 not stored in the repository. Screenshot the Monitoring uptime page (no tokens); a day later, its report.

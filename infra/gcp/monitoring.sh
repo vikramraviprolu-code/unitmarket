@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # monitoring.sh PROJECT_ID REGION EMAIL_ONE EMAIL_TWO BUDGET_AMOUNT   (GCP-1, D-049, C-13)
 #
-# Adds, after the first deploy: two uptime checks every 5 minutes (/healthz and the buyer home page /),
+# Adds, after the first deploy: two uptime checks every 5 minutes (the sign-in page /signin and the buyer home page /; Google reserves /healthz on run.app addresses and answers it with its own 404),
 # an alert policy for each that e-mails BOTH addresses, and a monthly budget alert of BUDGET_AMOUNT in
 # the billing account's currency (for example 60). Safe to run again: it keeps what exists. It prints
 # names only. The notification channel commands use "gcloud beta", which needs the beta component
@@ -106,7 +106,7 @@ make_check() {
 }
 
 echo "== uptime checks and alert policies"
-make_check "ums-healthz" "/healthz"
+make_check "ums-signin" "/signin"
 make_check "ums-buyer-home" "/"
 
 echo "== budget alert"
