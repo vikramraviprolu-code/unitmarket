@@ -47,8 +47,14 @@ describe('limits', () => {
     expect(CERT_NEGATIVE_TTL_MS).toBe(10 * 60_000);
     expect(CERT_NEGATIVE_MAX_ENTRIES).toBe(32);
   });
-  it('no certificate is pinned yet (host, subject and issuer are recorded on the first owner run)', () => {
-    expect(EXPECTED_CERT_PINS).toEqual([]);
+  it('exactly one certificate is pinned: the sandbox message verification certificate learned on 2026-10-27', () => {
+    expect(EXPECTED_CERT_PINS).toHaveLength(1);
+    expect(EXPECTED_CERT_PINS[0]).toEqual({
+      host: ['api', 'sandbox', 'paypal', 'com'].join('.'),
+      subject:
+        'jurisdictionC=US, jurisdictionST=Delaware, businessCategory=Private Organization, serialNumber=3014267, C=US, ST=California, L=San Jose, O=PayPal\\, Inc., CN=messageverificationcerts.sandbox.paypal.com',
+      issuer: 'C=US, O=DigiCert Inc, CN=DigiCert EV RSA CA G2',
+    });
   });
 });
 
@@ -242,7 +248,11 @@ describe('createCertificateSource: the request', () => {
 
   it('fetches through the Transport as fetch_webhook_cert, GET, absolute URL, no token, no body', async () => {
     const t = fakeTransport(() => pemResponse(goodPem()));
-    const source = createCertificateSource({ transport: t, clock: mutableClock(NOW) });
+    const source = createCertificateSource({
+      expected_pins: [],
+      transport: t,
+      clock: mutableClock(NOW),
+    });
     const r = await source.get(certUrl());
     expect(r.kind).toBe('ok');
     expect(t.calls).toHaveLength(1);
@@ -258,14 +268,22 @@ describe('createCertificateSource: the request', () => {
 
   it('sends the normalised URL the guard accepted, not the caller spelling', async () => {
     const t = fakeTransport(() => pemResponse(goodPem()));
-    const source = createCertificateSource({ transport: t, clock: mutableClock(NOW) });
+    const source = createCertificateSource({
+      expected_pins: [],
+      transport: t,
+      clock: mutableClock(NOW),
+    });
     await source.get(certUrl({ host: certUrl().split('/')[2]!.toUpperCase() }));
     expect(t.calls[0]?.path).toBe(certUrl());
   });
 
   it('refuses an off-list URL without sending (defence in depth: the Transport guards too)', async () => {
     const t = fakeTransport(() => pemResponse(goodPem()));
-    const source = createCertificateSource({ transport: t, clock: mutableClock(NOW) });
+    const source = createCertificateSource({
+      expected_pins: [],
+      transport: t,
+      clock: mutableClock(NOW),
+    });
     for (const u of [
       certUrl({ scheme: 'http' }),
       certUrl({ host: 'evil.example' }),
@@ -282,7 +300,11 @@ describe('createCertificateSource: every failure is unavailable, never ok', () =
   const NOW = '2026-10-23T12:00:00Z';
   const run = async (answer: Parameters<typeof fakeTransport>[0]) => {
     const t = fakeTransport(answer);
-    return createCertificateSource({ transport: t, clock: mutableClock(NOW) }).get(certUrl());
+    return createCertificateSource({
+      expected_pins: [],
+      transport: t,
+      clock: mutableClock(NOW),
+    }).get(certUrl());
   };
   const pem = (over = {}) =>
     certificatePem({
@@ -354,7 +376,12 @@ describe('createCertificateSource: subject pin and log', () => {
   it('with an empty list the subject is logged once and not checked', async () => {
     const log = memoryLogger();
     const t = fakeTransport(() => pemResponse(pem));
-    const source = createCertificateSource({ transport: t, clock: mutableClock(NOW), log });
+    const source = createCertificateSource({
+      expected_pins: [],
+      transport: t,
+      clock: mutableClock(NOW),
+      log,
+    });
     expect((await source.get(certUrl())).kind).toBe('ok');
     const events = log.events.filter((e) => e.msg === 'paypal.webhook_cert');
     expect(events).toHaveLength(1);
@@ -367,7 +394,12 @@ describe('createCertificateSource: subject pin and log', () => {
   it('the log never carries the certificate text or key material', async () => {
     const log = memoryLogger();
     const t = fakeTransport(() => pemResponse(pem));
-    await createCertificateSource({ transport: t, clock: mutableClock(NOW), log }).get(certUrl());
+    await createCertificateSource({
+      expected_pins: [],
+      transport: t,
+      clock: mutableClock(NOW),
+      log,
+    }).get(certUrl());
     const text = JSON.stringify(log.events);
     expect(text).not.toContain('BEGIN CERTIFICATE');
     expect(text).not.toContain(pem.split('\n')[1]!);

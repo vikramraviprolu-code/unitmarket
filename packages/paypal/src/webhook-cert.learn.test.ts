@@ -45,9 +45,10 @@ const pem = (over: Partial<Parameters<typeof certificatePem>[0]> = {}) =>
 describe('the pin is a full pin', () => {
   const full: CertPin = { host: HOST, subject: 'CN=a.invalid', issuer: 'CN=b.invalid' };
 
-  it('is empty in the repository until the owner window has run', () => {
-    expect(EXPECTED_CERT_PINS).toEqual([]);
-    expect(pinComplete(EXPECTED_CERT_PINS)).toBe(false);
+  it('holds the one certificate the owner window learned (D-043) and that pin is complete', () => {
+    expect(EXPECTED_CERT_PINS).toHaveLength(1);
+    expect(EXPECTED_CERT_PINS.every((p) => isFullPin(p))).toBe(true);
+    expect(pinComplete(EXPECTED_CERT_PINS)).toBe(true);
   });
   it('a pin with exact host, subject and issuer is full; a list is complete only if every entry is full', () => {
     expect(isFullPin(full)).toBe(true);
@@ -105,7 +106,13 @@ describe('inspect: describe, never trust', () => {
     const t = fakeTransport(answer);
     const clock = mutableClock(NOW);
     const log = memoryLogger();
-    const source = createCertificateSource({ transport: t, clock, log, ...extra });
+    const source = createCertificateSource({
+      expected_pins: [],
+      transport: t,
+      clock,
+      log,
+      ...extra,
+    });
     return { t, clock, log, source };
   };
 
@@ -194,7 +201,11 @@ describe('inspect: describe, never trust', () => {
       await gate;
       return pemResponse(pem());
     });
-    const s2 = createCertificateSource({ transport: slow, clock: mutableClock(NOW) });
+    const s2 = createCertificateSource({
+      expected_pins: [],
+      transport: slow,
+      clock: mutableClock(NOW),
+    });
     const p1 = s2.inspect(urlN(1));
     const p2 = s2.inspect(urlN(1));
     release();
@@ -218,7 +229,11 @@ describe('inspect uses the existing budgets and widens none', () => {
   const build = () => {
     const t = fakeTransport(() => pemResponse(pem()));
     const clock = mutableClock(NOW_);
-    return { t, clock, source: createCertificateSource({ transport: t, clock }) };
+    return {
+      t,
+      clock,
+      source: createCertificateSource({ expected_pins: [], transport: t, clock }),
+    };
   };
 
   it('cold start: inspect and get share the 6 an hour; the 7th fetch of either kind is refused without a call', async () => {
@@ -257,7 +272,7 @@ describe('inspect uses the existing budgets and widens none', () => {
   it('a failed URL is remembered for 10 minutes and is not fetched again by inspect', async () => {
     const t = fakeTransport(() => ({ kind: 'timeout' }));
     const clock = mutableClock(NOW_);
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     expect(await source.inspect(urlN(1))).toEqual({ kind: 'unavailable', why: 'fetch' });
     expect(await source.inspect(urlN(1))).toEqual({ kind: 'unavailable', why: 'fetch' });
     expect(t.calls).toHaveLength(1);
@@ -272,7 +287,11 @@ describe('inspect: every failure is unavailable, never facts', () => {
     const t = fakeTransport(answer);
     return {
       t,
-      r: await createCertificateSource({ transport: t, clock: mutableClock(NOW) }).inspect(urlN(1)),
+      r: await createCertificateSource({
+        expected_pins: [],
+        transport: t,
+        clock: mutableClock(NOW),
+      }).inspect(urlN(1)),
     };
   };
   it('blocked, timeout, throwing transport, 404, 500, a redirect answer: fetch', async () => {

@@ -40,7 +40,7 @@ function world(validUntil = '2036-01-01T00:00:00Z') {
     stamps.push({ path: r.path, at: clock.now().getTime() });
     return r.path.includes('FAIL') ? NOT_FOUND : pemResponse(pemUntil(validUntil));
   });
-  const source = createCertificateSource({ transport: t, clock });
+  const source = createCertificateSource({ expected_pins: [], transport: t, clock });
   return { clock, t, source, stamps };
 }
 
@@ -147,7 +147,7 @@ describe('the trusted list', () => {
     const { source, clock, t } = world();
     await source.get(url('A'));
     source.trust(url('A'));
-    const restarted = createCertificateSource({ transport: t, clock });
+    const restarted = createCertificateSource({ expected_pins: [], transport: t, clock });
     expect(restarted.stats().trusted_urls).toEqual([]);
   });
 });

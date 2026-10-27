@@ -46,7 +46,7 @@ describe('probe 1: 50 posts, 50 distinct allow-listed URLs, all answered 404', (
   it('at most 6 transport calls, and every post is unverifiable', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => NOT_FOUND);
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     const verdicts = [];
     for (let i = 0; i < 50; i++) verdicts.push(await post(source, clock, urlN(i)));
     expect(t.calls.length).toBeLessThanOrEqual(6);
@@ -59,7 +59,7 @@ describe('probe 2: 50 posts for one URL that answers 404', () => {
   it('one transport call', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => NOT_FOUND);
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     for (let i = 0; i < 50; i++)
       expect((await post(source, clock, urlN(1))).kind).toBe('unverifiable');
     expect(t.calls).toHaveLength(1);
@@ -68,7 +68,7 @@ describe('probe 2: 50 posts for one URL that answers 404', () => {
   it('spelling the same URL differently does not get past the negative cache', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => NOT_FOUND);
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     const host = certUrl().split('/')[2] as string;
     await post(source, clock, urlN(1));
     await post(source, clock, urlN(1).replace(host, host.toUpperCase()));
@@ -80,7 +80,7 @@ describe('probe 3: 20 posts cycling 10 valid URLs (more than the 8-entry cache h
   it('at most 6 transport calls', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => pemResponse(pem()));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     for (let i = 0; i < 20; i++) await post(source, clock, urlN(i % 10));
     expect(t.calls.length).toBeLessThanOrEqual(6);
   });
@@ -90,7 +90,7 @@ describe('the global budget: 6 fetches per rolling hour of the injected clock', 
   it('the 7th fetch inside an hour makes no transport call and is unverifiable', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => NOT_FOUND);
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     for (let i = 0; i < 6; i++) await source.get(urlN(i));
     expect(t.calls).toHaveLength(6);
     expect(await source.get(urlN(6))).toEqual({ kind: 'unavailable', why: 'fetch' });
@@ -100,7 +100,7 @@ describe('the global budget: 6 fetches per rolling hour of the injected clock', 
   it('the hour rolls: the first fetch leaves the window at exactly one hour', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => NOT_FOUND);
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     for (let i = 0; i < 6; i++) {
       await source.get(urlN(i));
       clock.advance(i === 0 ? 10 * MINUTE : 1000);
@@ -119,7 +119,7 @@ describe('the global budget: 6 fetches per rolling hour of the injected clock', 
   it('one old fetch is forgotten after the hour: six more are then allowed', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => NOT_FOUND);
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     await source.get(urlN(0));
     clock.advance(2 * HOUR);
     for (let i = 1; i <= 7; i++) await source.get(urlN(i));
@@ -130,7 +130,7 @@ describe('the global budget: 6 fetches per rolling hour of the injected clock', 
   it('all 6 slots are usable again after the hour', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => NOT_FOUND);
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     for (let i = 0; i < 6; i++) await source.get(urlN(i));
     expect(t.calls).toHaveLength(6);
     clock.advance(HOUR);
@@ -143,7 +143,7 @@ describe('the global budget: 6 fetches per rolling hour of the injected clock', 
   it('a refused lookup is not remembered as a failure: it can be fetched once the budget is back', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport((r) => (r.path.includes('GOOD') ? pemResponse(pem()) : NOT_FOUND));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     for (let i = 0; i < 6; i++) await source.get(urlN(i));
     const good = certUrl({ path: '/v1/notifications/certs/CERT-GOOD' });
     expect((await source.get(good)).kind).toBe('unavailable');
@@ -155,7 +155,7 @@ describe('the global budget: 6 fetches per rolling hour of the injected clock', 
   it('a lookup answered from either cache costs nothing against the budget', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport((r) => (r.path.includes('GOOD') ? pemResponse(pem()) : NOT_FOUND));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     const good = certUrl({ path: '/v1/notifications/certs/CERT-GOOD' });
     await source.get(good);
     await source.get(urlN(1));
@@ -173,7 +173,7 @@ describe('the global budget: 6 fetches per rolling hour of the injected clock', 
       release = res;
     });
     const t = fakeTransport((_r, n) => (n === 1 ? gate : NOT_FOUND));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     const all = Array.from({ length: 50 }, () => source.get(urlN(1)));
     await Promise.resolve();
     release(pemResponse(pem()));
@@ -188,7 +188,7 @@ describe('the global budget: 6 fetches per rolling hour of the injected clock', 
     const t = fakeTransport(() => {
       throw new Error('boom');
     });
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     for (let i = 0; i < 20; i++) await source.get(urlN(i));
     expect(t.calls).toHaveLength(6);
   });
@@ -198,7 +198,7 @@ describe('a legitimate delivery survives an attack', () => {
   it('after the legitimate certificate is cached, 50 attacker URLs that all answer with a valid certificate do not evict it', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => pemResponse(pem()));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     expect((await post(source, clock, certUrl())).kind).toBe('verified');
     expect(t.calls).toHaveLength(1);
     for (let i = 0; i < 50; i++) await post(source, clock, urlN(i));
@@ -213,7 +213,7 @@ describe('a legitimate delivery survives an attack', () => {
   it('hour after hour of attack, a legitimate delivery that keeps arriving is never fetched again', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => pemResponse(pem()));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     await post(source, clock, certUrl());
     const legit = t.calls.length;
     for (let hour = 0; hour < 20; hour++) {
@@ -227,7 +227,7 @@ describe('a legitimate delivery survives an attack', () => {
   it('attack first, legitimate later: the legitimate URL is fetched as soon as the budget allows', async () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => pemResponse(pem()));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     for (let i = 0; i < 50; i++) await post(source, clock, urlN(i));
     expect((await post(source, clock, certUrl())).kind).toBe('unverifiable'); // PayPal retries
     clock.advance(HOUR + 1);
@@ -240,7 +240,7 @@ describe('nothing grows without bound', () => {
     const clock = mutableClock(NOW_ISO);
     // half the URLs answer 404, half a valid certificate
     const t = fakeTransport((r) => (r.path.endsWith('0') ? pemResponse(pem()) : NOT_FOUND));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     let n = 0;
     for (let minute = 0; minute < 24 * 60; minute += 5) {
       for (let k = 0; k < 20; k++) await source.get(urlN(n++));
@@ -258,6 +258,7 @@ describe('nothing grows without bound', () => {
     const clock = mutableClock(NOW_ISO);
     const t = fakeTransport(() => NOT_FOUND);
     const source = createCertificateSource({
+      expected_pins: [],
       transport: t,
       clock,
       limits: { fetches_per_hour: 1000, failures_max: 3 },
@@ -274,6 +275,7 @@ describe('nothing grows without bound', () => {
 
   it('the production limits are the documented ones', () => {
     const source = createCertificateSource({
+      expected_pins: [],
       transport: fakeTransport(() => NOT_FOUND),
       clock: mutableClock(NOW_ISO),
     });

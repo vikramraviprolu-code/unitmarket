@@ -25,7 +25,7 @@ describe('certificate source state over time (fake clock, fake transport)', () =
   it('one fetch serves many lookups of one URL within 24 hours; the 25th hour fetches again', async () => {
     const clock = mutableClock(T0);
     const t = fakeTransport(() => pemResponse(pemValidUntil('2036-01-01T00:00:00Z')));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     for (let i = 0; i < 20; i++) expect((await source.get(certUrl())).kind).toBe('ok');
     expect(t.calls).toHaveLength(1);
     clock.advance(24 * HOUR);
@@ -43,7 +43,7 @@ describe('certificate source state over time (fake clock, fake transport)', () =
       n += 1;
       return pemResponse(pemValidUntil(n === 1 ? '2026-10-23T14:00:00Z' : '2036-01-01T00:00:00Z'));
     });
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     await source.get(certUrl());
     clock.advance(2 * HOUR);
     expect((await source.get(certUrl())).kind).toBe('ok');
@@ -56,7 +56,7 @@ describe('certificate source state over time (fake clock, fake transport)', () =
   it('the cache holds 8 URLs: after 9 distinct URLs the first is fetched again, the last 8 are not', async () => {
     const clock = mutableClock(T0);
     const t = fakeTransport(() => pemResponse(pemValidUntil('2036-01-01T00:00:00Z')));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     const urls = Array.from({ length: 9 }, (_, i) =>
       certUrl({ path: `/v1/notifications/certs/CERT-SYN-${i + 1}` }),
     );
@@ -83,7 +83,7 @@ describe('certificate source state over time (fake clock, fake transport)', () =
       pemResponse(pemValidUntil('2036-01-01T00:00:00Z')),
     ];
     const t = fakeTransport((_r, n) => answers[n - 1] as TransportResult);
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     expect(await source.get(certUrl())).toEqual({ kind: 'unavailable', why: 'fetch' });
     clock.advance(10 * MINUTE - 1);
     expect(await source.get(certUrl())).toEqual({ kind: 'unavailable', why: 'fetch' });
@@ -101,7 +101,7 @@ describe('certificate source state over time (fake clock, fake transport)', () =
   it('every kind of failure is cached with its reason', async () => {
     const clock = mutableClock(T0);
     const t = fakeTransport(() => pemResponse(pemValidUntil('2026-10-01T00:00:00Z')));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     expect(await source.get(certUrl())).toEqual({ kind: 'unavailable', why: 'validity' });
     expect(await source.get(certUrl())).toEqual({ kind: 'unavailable', why: 'validity' });
     expect(t.calls).toHaveLength(1);
@@ -110,7 +110,7 @@ describe('certificate source state over time (fake clock, fake transport)', () =
   it('a certificate that is expired when fetched is not cached as a success', async () => {
     const clock = mutableClock(T0);
     const t = fakeTransport(() => pemResponse(pemValidUntil('2026-10-01T00:00:00Z')));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     expect(await source.get(certUrl())).toEqual({ kind: 'unavailable', why: 'validity' });
     clock.advance(10 * MINUTE);
     await source.get(certUrl());
@@ -124,7 +124,7 @@ describe('certificate source state over time (fake clock, fake transport)', () =
       release = res;
     });
     const t = fakeTransport(() => gate);
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     const all = Array.from({ length: 50 }, () => source.get(certUrl()));
     await Promise.resolve();
     release(pemResponse(pemValidUntil('2036-01-01T00:00:00Z')));
@@ -140,7 +140,7 @@ describe('certificate source state over time (fake clock, fake transport)', () =
         ? { kind: 'timeout' }
         : pemResponse(pemValidUntil('2036-01-01T00:00:00Z')),
     );
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     const a = certUrl({ path: '/v1/notifications/certs/CERT-A' });
     const b = certUrl({ path: '/v1/notifications/certs/CERT-B' });
     const [ra1, ra2, rb] = await Promise.all([source.get(a), source.get(a), source.get(b)]);
@@ -158,7 +158,7 @@ describe('certificate source state over time (fake clock, fake transport)', () =
   it('the host is part of the cache key', async () => {
     const clock = mutableClock(T0);
     const t = fakeTransport(() => pemResponse(pemValidUntil('2036-01-01T00:00:00Z')));
-    const source = createCertificateSource({ transport: t, clock });
+    const source = createCertificateSource({ expected_pins: [], transport: t, clock });
     await source.get(certUrl());
     await source.get(certUrl({ host: certHost(['certs']) }));
     expect(t.calls).toHaveLength(2);
