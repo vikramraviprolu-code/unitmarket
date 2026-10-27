@@ -113,7 +113,19 @@ export async function startTestPostgres(): Promise<TestPostgres> {
 
   const init = spawnSync(
     join(bin, 'initdb'),
-    ['-D', data, '-U', 'postgres', '-A', 'trust', '-E', 'UTF8', '--locale=C', '--no-sync'],
+    [
+      '-D',
+      data,
+      '-U',
+      'postgres',
+      '-A',
+      'trust',
+      '-E',
+      'UTF8',
+      '--locale=C',
+      '--no-sync',
+      '--wal-segsize=1',
+    ],
     { ...ids, encoding: 'utf8', env: { PATH: process.env['PATH'] ?? '', LANG: 'C' } },
   );
   if (init.status !== 0) {
@@ -139,6 +151,14 @@ export async function startTestPostgres(): Promise<TestPostgres> {
       'synchronous_commit=off',
       '-c',
       'full_page_writes=off',
+      '-c',
+      'wal_level=minimal',
+      '-c',
+      'max_wal_senders=0',
+      '-c',
+      'min_wal_size=4MB',
+      '-c',
+      'max_wal_size=32MB',
       '-c',
       'max_connections=300',
       '-c',

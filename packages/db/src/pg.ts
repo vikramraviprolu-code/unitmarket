@@ -71,7 +71,7 @@ function decode(s: string): string {
  * Parses postgres://u:p@host:5432/db?sslmode=require and the socket form
  * postgres://u:p@/db?host=/cloudsql/PROJECT:REGION:INSTANCE. Only `sslmode` and `host` are read from
  * the query; other parameters are ignored (the driver sets application_name and the timeouts itself).
- * TLS: sslmode=disable is off; allow, prefer, require, no-verify encrypt without checking the chain;
+ * TLS: sslmode 'disable' is off; 'allow', 'prefer', 'require' and 'no-verify' encrypt without checking the chain;
  * verify-ca and verify-full check it. With no sslmode a socket or local host is plain and every other
  * host is encrypted without a chain check (safer than plain, and Cloud SQL public addresses use a
  * private CA).

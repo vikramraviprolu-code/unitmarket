@@ -35,6 +35,7 @@ const FS_IMPORT =
 const FS_ALLOWED = new Set([
   'packages/db/src/lock.ts', // the single-opener lock, inside the PGlite folder
   'packages/db/src/migrate.ts', // reads migration files
+  'packages/db/src/pg-testing.ts', // test-only throwaway Postgres in a temp dir (PG-1); nothing imports it in production
   'packages/transport/src/fixture-store.ts', // reads recorded fixtures
   'packages/transport/src/recorder.ts', // owner-run recorder
   'tools/spike-kit/src/git-head.ts', // owner-run spike kit
