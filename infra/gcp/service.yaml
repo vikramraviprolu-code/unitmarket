@@ -19,4 +19,4 @@ UMS_TRUSTED_PROXIES: '1'
 NEXT_PUBLIC_UMS_ENV_LABEL: 'Sandbox'
 # Not a secret. The placeholder below is replaced, through a reviewed change, with the service URL
 # (https://<service>-<project number>.<region>.run.app, no trailing slash) before the first real use.
-UMS_PUBLIC_ORIGIN: 'https://pending.invalid'
+UMS_PUBLIC_ORIGIN: 'https://unitmarket-sandbox-626887286871.europe-west3.run.app'
