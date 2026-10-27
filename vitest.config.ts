@@ -21,12 +21,16 @@ const project = (name: string, include: string[], extraExclude: string[] = []) =
     exclude: [...exclude, ...extraExclude],
     testTimeout: 30_000,
     hookTimeout: 60_000,
+    // PG-1: a no-op unless UMS_TEST_DB=postgres (then every in-memory test database is a database on
+    // one throwaway real Postgres; see packages/db/src/pg-test-setup.ts).
+    setupFiles: ['packages/db/src/pg-test-setup.ts'],
   },
 });
 
 export default defineConfig({
   test: {
     maxWorkers: 2,
+    globalSetup: ['packages/db/src/pg-global-setup.ts'],
     projects: [
       project('unit', forms(''), [
         '**/*.{state,contract,integration,adversarial,golden}.test.{ts,tsx}',

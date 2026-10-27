@@ -25,12 +25,35 @@ export function listMigrations(dir: string, prefix = ''): Migration[] {
     }));
 }
 
+/** Key of the session advisory lock a Postgres run holds while it applies migrations (PG-1). */
+export const MIGRATE_LOCK_KEY = 'ums.migrate';
+
+type LockableDatabase = Database & {
+  withAdvisoryLock?<T>(key: string, fn: () => Promise<T>): Promise<T>;
+};
+
 // Lower level: apply a directory of migrations. Versions are recorded as prefix + file name.
+// On Postgres the whole run holds a session advisory lock (the driver's withAdvisoryLock), taken
+// before the first statement, so two processes that boot together apply each migration once: the
+// second waits, then reads schema_migrations and finds nothing left to do. PGlite has one opener.
 export async function applyMigrations(
   db: Database,
   clock: Clock,
   dir: string,
   prefix = '',
+): Promise<string[]> {
+  const lockable = db as LockableDatabase;
+  if (typeof lockable.withAdvisoryLock === 'function') {
+    return lockable.withAdvisoryLock(MIGRATE_LOCK_KEY, () => applyUnlocked(db, clock, dir, prefix));
+  }
+  return applyUnlocked(db, clock, dir, prefix);
+}
+
+async function applyUnlocked(
+  db: Database,
+  clock: Clock,
+  dir: string,
+  prefix: string,
 ): Promise<string[]> {
   await db.exec(
     'CREATE TABLE IF NOT EXISTS schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL)',

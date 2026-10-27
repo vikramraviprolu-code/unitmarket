@@ -3,6 +3,7 @@ import type { SqlDriver, DbTarget } from './driver';
 import { withSerializationRetry } from './retry';
 import type { SqlExecutor } from '@umsbx/contracts';
 import { acquireLock } from './lock';
+import { openPg } from './pg';
 import type { LockDeps } from './lock';
 
 function executor(q: Pick<PGlite, 'query' | 'exec'>): SqlExecutor {
@@ -22,8 +23,10 @@ export type OpenOptions = LockDeps;
 
 // Opens PGlite in memory or on a data directory on disk (one long-running process owns the dir).
 // A disk target first takes `<dir>/.ums-open.lock` (lock.ts): a second opener gets DbInUseError, and
-// close() or process exit removes the lock. Memory targets take no lock.
+// close() or process exit removes the lock. Memory targets take no lock. A postgres target goes to pg.ts.
 export async function openDatabase(t: DbTarget, opts: OpenOptions = {}): Promise<SqlDriver> {
+  // Postgres (PG-1): pooled node-postgres driver; no lock file (that lock is PGlite only).
+  if (t.kind === 'postgres') return openPg(t);
   const lock = t.kind === 'pglite-disk' ? acquireLock(t.dir, opts) : null;
   try {
     const driver = await openPglite(t);
@@ -44,7 +47,7 @@ export async function openDatabase(t: DbTarget, opts: OpenOptions = {}): Promise
   }
 }
 
-async function openPglite(t: DbTarget): Promise<SqlDriver> {
+async function openPglite(t: Exclude<DbTarget, { kind: 'postgres' }>): Promise<SqlDriver> {
   const pg = t.kind === 'pglite-memory' ? new PGlite() : new PGlite(t.dir);
   await pg.waitReady;
   // Marks the in-memory target for the TRUNCATE guard (migration 0001); disk targets never get it.

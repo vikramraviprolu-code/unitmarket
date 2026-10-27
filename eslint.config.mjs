@@ -1305,6 +1305,25 @@ const packageEntries = [
       ),
     ],
   }),
+  // PG-1: the throwaway-Postgres test helpers read UMS_TEST_PG_BIN and UMS_TEST_DB (process.env) and
+  // spawn initdb and postgres (node:child_process). Test-only files, listed by name; every other
+  // import, network and time rule still applies to them.
+  entry(
+    [
+      'packages/db/src/pg-testing.ts',
+      'packages/db/src/pg-global-setup.ts',
+      'packages/db/src/pg-test-setup.ts',
+    ],
+    {
+      allow: { childProcess: true, env: true },
+      extra: [
+        pat(
+          pkg([...DOMAIN, 'paypal', 'transport', 'safety', 'web', 'jobs', 'security', 'model']),
+          'db is a driver layer: no domain or provider imports.',
+        ),
+      ],
+    },
+  ),
   ...pair('packages/obs', {
     extra: [pat(others(['contracts', 'obs']), 'obs imports only contracts.')],
   }),
