@@ -66,7 +66,7 @@ describe.skipIf(!PG_ON)('PG-2 job loop leader on real Postgres', () => {
     nodes.push(n);
     return n;
   };
-  const passAt = async (n: Node) => (await n.app.health()).last_pass_at;
+  const passAt = async (n: Node) => (await n.app.engine.health()).last_pass_at;
   const acquired = (n: Node) =>
     n.lines.filter((l) => l.includes('jobs.loop.leader_acquired')).length;
   const lost = (n: Node) => n.lines.filter((l) => l.includes('jobs.loop.leader_lost')).length;
@@ -109,14 +109,12 @@ describe.skipIf(!PG_ON)('PG-2 job loop leader on real Postgres', () => {
     b.jobs = await b.app.startJobs();
     await sleep(500);
     expect(await passAt(b)).toBeNull(); // a leads; b waits
-    const t0 = Date.now();
     await a.jobs.stop();
     a.jobs = null;
     await vi.waitFor(async () => expect(await passAt(b)).not.toBeNull(), {
       timeout: 8_000,
       interval: 50,
     });
-    expect(Date.now() - t0).toBeLessThan(8_000);
     expect(acquired(b)).toBe(1);
   }, 60_000);
 
@@ -220,7 +218,9 @@ describe.skipIf(!PG_ON)('PG-2 job loop leader on real Postgres', () => {
         nodes.push(n);
         loops.push(n);
       }
-      [loops[0]!.jobs, loops[1]!.jobs] = await Promise.all(loops.map((n) => n.app.startJobs()));
+      const started = await Promise.all(loops.map((n) => n.app.startJobs()));
+      loops[0]!.jobs = started[0] ?? null;
+      loops[1]!.jobs = started[1] ?? null;
       await vi.waitFor(async () => expect(await orderStatus(rig, placed.order_id)).toBe('paid'), {
         timeout: 40_000,
         interval: 100,

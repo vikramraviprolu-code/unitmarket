@@ -31,7 +31,7 @@ const config = {
     '@umsbx/security',
     '@umsbx/transport',
   ],
-  serverExternalPackages: ['@electric-sql/pglite'],
+  serverExternalPackages: ['@electric-sql/pglite', 'pg'],
   outputFileTracingRoot: resolve(here, '../..'),
   // Route files export `routeMeta` (read by scripts/route-inventory.mjs), which Next's generated
   // route type check does not know. `pnpm typecheck` (tsc) covers these files instead.

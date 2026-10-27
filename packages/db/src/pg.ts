@@ -9,7 +9,7 @@
 // `pg` is loaded on first use (dynamic import) so a PGlite-only process never loads it.
 import type { Pool, PoolClient, Client, ClientConfig } from 'pg';
 import type { SqlExecutor } from '@umsbx/contracts';
-import type { DbTarget, PgOptions, SqlDriver } from './driver';
+import type { AdvisoryLease, DbTarget, PgOptions, SqlDriver } from './driver';
 import { withSerializationRetry } from './retry';
 
 export const DEFAULT_POOL_MAX = 5;
@@ -19,6 +19,13 @@ export const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 export const ADVISORY_LOCK_WAIT_MS = 120_000;
 const APPLICATION_NAME = 'umsbx';
 const IDLE_TIMEOUT_MS = 10_000;
+/**
+ * A fixed session option. node-postgres treats an empty `options` as unset and then reads PGOPTIONS
+ * from the environment; naming a harmless value here means the environment cannot change the session.
+ */
+const SESSION_OPTIONS = '-c client_min_messages=warning';
+/** A held lease checks its connection this often; a check that gets no answer in this time ends the lease. */
+export const LEASE_HEARTBEAT_MS = 5_000;
 
 /** A DATABASE_URL that cannot be used. The message is a fixed reason; it never quotes the input. */
 export class PgConfigError extends Error {
@@ -209,13 +216,15 @@ export async function openPg(t: Extract<DbTarget, { kind: 'postgres' }>): Promis
     password: parsed.password,
     database: parsed.database,
     application_name: APPLICATION_NAME,
+    options: SESSION_OPTIONS,
     types: {
       getTypeParser: ((oid: number, format?: 'text' | 'binary') =>
         oid === INT8 && format !== 'binary'
           ? parseInt8
           : types.getTypeParser(oid as never, format as never)) as never,
     },
-    ...(parsed.ssl === false ? {} : { ssl: parsed.ssl }),
+    // Always explicit: an unset `ssl` makes node-postgres read PGSSLMODE from the environment.
+    ssl: parsed.ssl,
   };
   const pool: Pool = new Pool({
     ...base,
@@ -304,7 +313,12 @@ export async function openPg(t: Extract<DbTarget, { kind: 'postgres' }>): Promis
       }
       live = false;
       try {
-        await client.query('COMMIT');
+        // A COMMIT of an aborted transaction does not raise: the server answers with the command
+        // ROLLBACK. That is a failed transaction, not a success.
+        const done = await client.query('COMMIT');
+        if ((done as { command?: unknown }).command === 'ROLLBACK') {
+          throw new Error('transaction was rolled back by the server at commit');
+        }
       } catch (e) {
         try {
           await client.query('ROLLBACK');
@@ -358,6 +372,84 @@ export async function openPg(t: Extract<DbTarget, { kind: 'postgres' }>): Promis
     }
   };
 
+  /**
+   * Leader lease: a session-level pg_try_advisory_lock on a dedicated connection outside the pool.
+   * Returns null when another session holds the key. The lease ends (held() false, `lost` resolved)
+   * when the connection drops, when a heartbeat gets no answer, on release() and on close().
+   */
+  const tryAdvisoryLock = async (key: string): Promise<AdvisoryLease | null> => {
+    assertOpen();
+    const client = new Client({ ...base, keepAlive: true, query_timeout: LEASE_HEARTBEAT_MS });
+    let held = false;
+    let ended = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let resolveLost: () => void = () => undefined;
+    const lost = new Promise<void>((r) => {
+      resolveLost = r;
+    });
+    const finish = (): void => {
+      held = false;
+      ended = true;
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+      lockClients.delete(client);
+      resolveLost();
+    };
+    client.on('error', finish);
+    client.on('end', finish);
+    lockClients.add(client);
+    try {
+      await client.connect();
+    } catch (e) {
+      finish();
+      await client.end().catch(() => undefined);
+      throw new PgConnectionError(connectCode(e));
+    }
+    let got = false;
+    try {
+      const r = await client.query<{ ok: boolean }>(
+        'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS ok',
+        [key],
+      );
+      got = r.rows[0]?.ok === true;
+    } catch (e) {
+      finish();
+      await client.end().catch(() => undefined);
+      throw scrub(e);
+    }
+    if (!got) {
+      finish();
+      await client.end().catch(() => undefined);
+      return null;
+    }
+    if (ended) return null; // the connection dropped between the answer and here: not a lease
+    held = true;
+    timer = setInterval(() => {
+      client.query('SELECT 1').catch(() => {
+        // no answer: the lease is over; ending the connection frees the lock if the server is alive
+        finish();
+        client.end().catch(() => undefined);
+      });
+    }, LEASE_HEARTBEAT_MS);
+    timer.unref();
+    return {
+      held: () => held && !closed,
+      lost,
+      release: async () => {
+        const wasEnded = ended;
+        finish();
+        if (!wasEnded) {
+          try {
+            await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [key]);
+          } catch {
+            /* ending the connection below releases every session lock anyway */
+          }
+        }
+        await client.end().catch(() => undefined);
+      },
+    };
+  };
+
   const close = (): Promise<void> => {
     closed = true;
     closing ??= (async () => {
@@ -375,6 +467,7 @@ export async function openPg(t: Extract<DbTarget, { kind: 'postgres' }>): Promis
     transaction,
     close,
     withAdvisoryLock,
+    tryAdvisoryLock,
   });
 }
 

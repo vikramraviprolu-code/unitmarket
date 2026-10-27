@@ -2,7 +2,7 @@
 // spies (as in loop.test.ts) and the election by a fake: no database here. The real-Postgres side is
 // tests/mvp-c-pg.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PaymentsDeps, SwitchName } from '@umsbx/contracts';
+import type { PaymentsDeps } from '@umsbx/contracts';
 import { nextDueAt, recoverOnStartup, runDue } from '@umsbx/payments';
 import { fakeClock } from '@umsbx/runtime';
 import { startLoop } from './loop';
@@ -32,7 +32,7 @@ function makeDeps() {
     ids: { next: () => 'x', nonce: () => 'n' },
     log,
     audit: { record: () => Promise.resolve() },
-    switches: { isOn: (_n: SwitchName) => Promise.resolve(true) },
+    switches: { isOn: () => Promise.resolve(true) },
     config: { abandoned_checkout_ms: 86_400_000 },
     environment: 'dryrun',
     paypal: { ping },
@@ -60,10 +60,9 @@ function lease() {
 }
 
 const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-const until = async (f: () => boolean, ms = 3_000) => {
-  const end = Date.now() + ms;
-  while (!f()) {
-    if (Date.now() > end) throw new Error('condition not reached');
+const until = async (f: () => boolean, tries = 600) => {
+  for (let i = 0; !f(); i += 1) {
+    if (i > tries) throw new Error('condition not reached');
     await pause(5);
   }
 };
@@ -129,17 +128,23 @@ describe('PG-2 leader lease', () => {
     const { d } = makeDeps();
     const first = lease();
     const second = lease();
-    const answers: (ReturnType<typeof lease> | null)[] = [first, null, null, second];
-    const tryAcquire = vi.fn(() => Promise.resolve(answers.shift() ?? null));
+    let next: ReturnType<typeof lease> | null = first;
+    const tryAcquire = vi.fn(() => {
+      const give = next;
+      next = null; // each lease is given out once; the test decides when the next one is available
+      return Promise.resolve(give);
+    });
     const loop = startLoop(d, { ...opts, leader: { tryAcquire } });
     await until(() => vi.mocked(runDue).mock.calls.length >= 2);
     first.lose();
     await pause(5); // the loop has noticed
     const frozen = vi.mocked(runDue).mock.calls.length;
-    await pause(40);
+    const asked = tryAcquire.mock.calls.length;
+    await pause(60);
     // at most one pass that was already running when the lease went; no new pass until re-elected
     expect(vi.mocked(runDue).mock.calls.length - frozen).toBeLessThanOrEqual(1);
-    await until(() => tryAcquire.mock.calls.length >= 4);
+    expect(tryAcquire.mock.calls.length).toBeGreaterThan(asked); // it keeps asking
+    next = second;
     const before = vi.mocked(runDue).mock.calls.length;
     await until(() => vi.mocked(runDue).mock.calls.length > before + 1);
     expect(recoverOnStartup).toHaveBeenCalledTimes(2); // once per leadership term
@@ -193,9 +198,11 @@ describe('PG-2 leader lease', () => {
       leader: { tryAcquire: () => Promise.resolve(null) },
     });
     await pause(20);
-    const t = Date.now();
-    await loop.stop();
-    expect(Date.now() - t).toBeLessThan(1_000);
+    const outcome = await Promise.race([
+      loop.stop().then(() => 'stopped'),
+      pause(1_000).then(() => 'too slow'),
+    ]);
+    expect(outcome).toBe('stopped');
   });
 
   it('without a leader option nothing changes: recovery on start, then passes', async () => {

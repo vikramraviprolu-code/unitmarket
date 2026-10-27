@@ -57,6 +57,11 @@ export interface TestPostgres {
 
 let counter = 0;
 
+/** The server and initdb get a minimal environment (no PG* variables, no secrets). */
+function childEnv(): NodeJS.ProcessEnv {
+  return { PATH: process.env['PATH'] ?? '', LANG: 'C' } as unknown as NodeJS.ProcessEnv;
+}
+
 function urlFor(socketDir: string, database: string): string {
   return `postgres://postgres@:${PORT}/${database}?host=${encodeURIComponent(socketDir)}`;
 }
@@ -135,7 +140,7 @@ export async function startTestPostgres(): Promise<TestPostgres> {
       '--no-sync',
       '--wal-segsize=1',
     ],
-    { ...ids, encoding: 'utf8', env: { PATH: process.env['PATH'] ?? '', LANG: 'C' } },
+    { ...ids, encoding: 'utf8', env: childEnv() },
   );
   if (init.status !== 0) {
     cleanup();
@@ -178,7 +183,7 @@ export async function startTestPostgres(): Promise<TestPostgres> {
     {
       ...ids,
       stdio: ['ignore', logFd, logFd],
-      env: { PATH: process.env['PATH'] ?? '', LANG: 'C' },
+      env: childEnv(),
     },
   );
   closeSync(logFd);
