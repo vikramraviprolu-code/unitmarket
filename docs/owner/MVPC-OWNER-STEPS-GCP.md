@@ -53,7 +53,7 @@ before you start. Section "Cancel" below ends it.
 
 ## Step B: create the resources (setup.sh, 15 min)
 
-Run this only after the Postgres adapter (lane PG-1) is merged. Until then the app cannot start on Postgres, and `setup.sh` would start the database (about USD 30 a month) for nothing.
+The Postgres adapter and the Postgres wiring (lanes PG-1 and PG-2) are merged on main, so the app can start on Postgres. `setup.sh` starts the database (about USD 30 a month), so run it when you are ready to deploy.
 
 ```
 bash infra/gcp/setup.sh "$PROJECT_ID" "$REGION"
