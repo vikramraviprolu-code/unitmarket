@@ -69,7 +69,7 @@ image repository, expected service URL). If any step failed: the last 10 lines.
 
 ## Step C: store the secrets (set-secret.sh, 15 min)
 
-Nine names. For each, run the line, then type the value twice at the hidden prompt. Nothing is shown. It
+Ten names. For each, run the line, then type the value twice at the hidden prompt. Nothing is shown. It
 refuses without a real terminal, so do not pipe into it.
 
 ```
@@ -81,11 +81,12 @@ bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_SESSION_SECRET
 bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_APPROVAL_SECRET
 bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_LINK_SECRET
 bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_DEMO_PASSCODE_HASH
+bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OWN_MERCHANT_ID
 bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OPERATOR_TOTP_KEYS
 ```
 
 Where each value comes from is the table in Step 2 of the Render file, with these differences:
-`PAYPAL_WEBHOOK_ID` is the word `pending` until Step 4 gives you the real id (then run the same line again
+`UMS_OWN_MERCHANT_ID` is your own sandbox Business merchant id (13 characters, from `.env.local` on your Mac; not a secret, but never committed; without it the app marks no publisher payee as verified and every approval is refused; run `bash infra/gcp/setup.sh "$PROJECT_ID" "$REGION"` again first if the container does not exist yet, it is safe to repeat). `PAYPAL_WEBHOOK_ID` is the word `pending` until Step 4 gives you the real id (then run the same line again
 with the real value and redeploy, Step F); `UMS_PUBLIC_ORIGIN` is not stored here, it is a plain value in
 `infra/gcp/service.yaml` (Step E). The four server secrets and the passcode hash come from
 `corepack pnpm owner:secrets` run on your own machine, never in Cloud Shell history you cannot clear.
@@ -101,7 +102,7 @@ Paste back: the lines `stored: <NAME> version <n>` (name and number only).
 gcloud secrets list --project="$PROJECT_ID" --format='value(name)'
 ```
 
-Expected: ten names, the nine above and `DATABASE_URL`.
+Expected: eleven names, the ten above and `DATABASE_URL`.
 
 ## Step E: the service address (reviewed change, before the first deploy)
 

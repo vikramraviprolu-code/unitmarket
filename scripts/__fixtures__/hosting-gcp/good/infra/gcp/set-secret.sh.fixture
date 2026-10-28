@@ -21,7 +21,7 @@ NAME="$3"
 [[ "$PROJECT_ID" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || die "PROJECT_ID is not a Google Cloud project id"
 [[ "$REGION" =~ ^[a-z]+-[a-z]+[0-9]+$ ]] || die "REGION is not a region name such as europe-west1"
 case "$NAME" in
-  PAYPAL_CLIENT_ID | PAYPAL_CLIENT_SECRET | PAYPAL_WEBHOOK_ID | UMS_OUTBOUND_APPROVAL_REF | UMS_SESSION_SECRET | UMS_APPROVAL_SECRET | UMS_LINK_SECRET | UMS_DEMO_PASSCODE_HASH | UMS_OPERATOR_TOTP_KEYS) ;;
+  PAYPAL_CLIENT_ID | PAYPAL_CLIENT_SECRET | PAYPAL_WEBHOOK_ID | UMS_OUTBOUND_APPROVAL_REF | UMS_SESSION_SECRET | UMS_APPROVAL_SECRET | UMS_LINK_SECRET | UMS_DEMO_PASSCODE_HASH | UMS_OWN_MERCHANT_ID | UMS_OPERATOR_TOTP_KEYS) ;;
   *) die "NAME is not one of the allowed secret names" ;;
 esac
 [ -t 0 ] && [ -t 2 ] || die "refused: a real terminal is needed for the hidden prompt (no pipe, no here-document)"

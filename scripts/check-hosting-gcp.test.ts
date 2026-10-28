@@ -33,6 +33,7 @@ const SECRET_NAMES = [
   'UMS_APPROVAL_SECRET',
   'UMS_LINK_SECRET',
   'UMS_DEMO_PASSCODE_HASH',
+  'UMS_OWN_MERCHANT_ID',
   'UMS_OPERATOR_TOTP_KEYS',
 ];
 
@@ -698,13 +699,15 @@ describe('check-hosting-gcp', () => {
     }
   });
 
-  it('the secret names are the sync:false names of render.yaml minus UMS_PUBLIC_ORIGIN', () => {
+  it('the secret names are the sync:false names of render.yaml minus UMS_PUBLIC_ORIGIN, plus UMS_OWN_MERCHANT_ID', () => {
     const render = readFileSync(join(REPO_ROOT, 'render.yaml'), 'utf8');
     const fromRender = [...render.matchAll(/- key: ([A-Z0-9_]+)\n\s+sync: false\n/g)]
       .map((m) => m[1] as string)
       .filter((n) => n !== 'UMS_PUBLIC_ORIGIN')
       .sort();
-    expect(fromRender).toEqual([...SECRET_NAMES].sort());
+    // UMS_OWN_MERCHANT_ID is an addition of the Google Cloud kit: Cloud Run reads env vars from a file in
+    // the repository, and the owner's merchant id must never be committed, so the kit stores it as a secret.
+    expect([...fromRender, 'UMS_OWN_MERCHANT_ID'].sort()).toEqual([...SECRET_NAMES].sort());
     const setSecret = readFileSync(join(REPO_ROOT, 'infra', 'gcp', 'set-secret.sh'), 'utf8');
     for (const n of SECRET_NAMES) expect(setSecret).toContain(n);
     expect(setSecret).not.toContain('UMS_PUBLIC_ORIGIN |');
