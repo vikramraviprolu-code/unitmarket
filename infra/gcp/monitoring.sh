@@ -44,7 +44,7 @@ HOST="${SERVICE_URL#https://}"
 echo "== e-mail channels (gcloud beta)"
 CHANNELS=""
 for EMAIL in "$EMAIL_ONE" "$EMAIL_TWO"; do
-  CHANNEL="$(gcloud beta monitoring channels list --project="$PROJECT_ID" --type=email --filter="labels.email_address=${EMAIL}" --format='value(name)')"
+  CHANNEL="$(gcloud beta monitoring channels list --project="$PROJECT_ID" --type=email --filter="labels.email_address=\"${EMAIL}\"" --format='value(name)')"
   if [ -z "$CHANNEL" ]; then
     CHANNEL="$(gcloud beta monitoring channels create --project="$PROJECT_ID" --display-name="UnitMarket alert" --type=email --channel-labels="email_address=${EMAIL}" --format='value(name)')"
     echo "created a channel"
