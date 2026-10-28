@@ -34,7 +34,7 @@ and the Postgres race runs of lane PG-2 (80 rounds, D-045).
 3. The simulator in the PayPal dashboard sends unsigned mock events: they do not teach the certificate
    (D-053). Only a real purchase does.
 4. `gcloud run services logs read` shows blank lines for the app's JSON logs; use `gcloud logging read`.
-5. The pin made 34 offline tests fail (they assumed an empty pin list). Fixed in lane CO-1e, merged.
+5. The pin made 34 offline tests fail (they assumed an empty pin list). Fixed in the cert pin commit `c0da141`.
 
 ## Open items before closure
 
