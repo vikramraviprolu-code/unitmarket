@@ -32,11 +32,12 @@ unset ACTIVE_ACCOUNT
 
 gcloud secrets describe "$NAME" --project="$PROJECT_ID" >/dev/null 2>&1 || die "the secret $NAME does not exist; run setup.sh first"
 
+# IFS= keeps leading and trailing spaces in the value; -r keeps backslashes as typed.
 VALUE=""
 CONFIRM=""
-read -r -s -p "Value for $NAME (hidden): " VALUE
+IFS= read -r -s -p "Value for $NAME (hidden): " VALUE
 echo >&2
-read -r -s -p "Type it again (hidden): " CONFIRM
+IFS= read -r -s -p "Type it again (hidden): " CONFIRM
 echo >&2
 [ -n "$VALUE" ] || die "empty value refused"
 [ "$VALUE" = "$CONFIRM" ] || die "the two entries differ; nothing was stored"

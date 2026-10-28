@@ -9,7 +9,11 @@
 // db-kind, fixed-value, unknown-name, public-name, value-type, duplicate-key, origin, env-flags,
 // env-file, max-instances, min-instances, cpu-throttling, resources, probe, ingress, unauthenticated,
 // auto-deploy, deploy-shape, literal-project, literal-value, docker-node, docker-user, docker-cmd,
-// docker-env.
+// docker-env; GCP-2 adds sql-network, sql-protection, sql-ssl, sql-connector, sql-storage, iam-role, scaling,
+// read-ifs, image-tag and docker-workdir.
+//
+// Pinned forms (GCP-2): an instance flag is `--max-instances=1` or `--max-instances 1`; a service.yaml
+// value is `KEY: 'value'` or `KEY: "value"` with nothing else on the line.
 //
 // Every file must be printable ASCII plus LF: a CR, a tab or any other byte can hide text from a reader
 // that splits lines differently from the shell or the YAML reader.
@@ -147,7 +151,12 @@ function main() {
       const url = l.raw.match(/postgres(?:ql)?:\/\/[^\s:/@]+:([^@\s]*)@/);
       if (url && !/^(?:\$|%s)/.test(url[1]))
         fail('secret-literal', `${f}:${l.no} holds a database URL with a literal password`);
-      for (const tok of l.raw.split(/[^A-Za-z0-9+_-]/))
+      // A base image digest (@sha256:<64 hex>) on a FROM line is not a secret; anywhere else it is a token.
+      const scan =
+        f === 'Dockerfile' && /^FROM\s/.test(l.raw)
+          ? l.raw.replace(/@sha256:[0-9a-f]{64}(?![0-9A-Za-z])/, '@sha256:')
+          : l.raw;
+      for (const tok of scan.split(/[^A-Za-z0-9+_-]/))
         if (tok.length >= 32 && /\d/.test(tok) && /[A-Za-z]/.test(tok) && !/^[A-Z0-9_]+$/.test(tok))
           fail('secret-literal', `${f}:${l.no} holds a long random-looking token`);
       for (const n of SECRETS) {
@@ -191,10 +200,17 @@ function main() {
   const count = (re) => code.flatMap((s) => [...s.text.matchAll(re)].map((m) => ({ s, m })));
   const only = (hits, name, rule, want) => {
     if (hits.length !== 1 || hits[0].s.f !== 'deploy.sh' || hits[0].m[1] !== want)
-      fail(rule, `${name} must appear exactly once, in deploy.sh, as ${name}=${want}`);
+      fail(
+        rule,
+        `${name} must appear exactly once, in deploy.sh, as ${name}=${want} or ${name} ${want}`,
+      );
   };
-  only(count(/--max-instances(?:=(\S*))?/g), '--max-instances', 'max-instances', '1');
-  only(count(/--min-instances(?:=(\S*))?/g), '--min-instances', 'min-instances', '1');
+  only(count(/--max-instances(?:[=\s]+(\S+))?/g), '--max-instances', 'max-instances', '1');
+  only(count(/--min-instances(?:[=\s]+(\S+))?/g), '--min-instances', 'min-instances', '1');
+  if (
+    count(/(?<![A-Za-z0-9-])--(?:scaling|max|min)(?![A-Za-z0-9-])|\bupdate-scaling\b/g).length > 0
+  )
+    fail('scaling', 'only --max-instances and --min-instances in deploy.sh set the scale');
   for (const f of Object.keys(files))
     if (/\bmaxScale\b/.test(files[f])) fail('max-instances', `${f} sets a maxScale annotation`);
   for (const f of Object.keys(files))
@@ -205,10 +221,13 @@ function main() {
   if (count(/(?<!no-)--cpu-throttling\b/g).length > 0)
     fail('cpu-throttling', '--cpu-throttling (CPU only while serving) is not allowed');
   if (
-    count(/--env-vars-file/g).length === 0 ||
+    count(/--env-vars-file/g).length !== 1 ||
     !/--env-vars-file="\$\{HERE\}\/service\.yaml"/.test(files['deploy.sh'] ?? '')
   )
-    fail('env-file', 'deploy.sh must pass --env-vars-file="${HERE}/service.yaml"');
+    fail(
+      'env-file',
+      'deploy.sh must pass --env-vars-file="${HERE}/service.yaml", once and only that',
+    );
   if (count(/--(?:set|update|remove)-env-vars|--clear-env-vars/g).length > 0)
     fail('env-flags', 'environment values must come from service.yaml only');
   for (const h of count(/--(?:set|update)-env-vars[= ]\S*?\b([A-Z][A-Z0-9_]*)=/g))
@@ -253,6 +272,87 @@ function main() {
   )
     fail('unauthenticated', '--allow-unauthenticated is only for the app service deploy, once');
 
+  // ---- the database instance and IAM (GCP-2) ----------------------------------------------------
+  if (count(/(?<![A-Za-z0-9-])--authorized-networks\b/g).length > 0)
+    fail(
+      'sql-network',
+      'no --authorized-networks, with any value: only the connector or the Auth Proxy',
+    );
+  if (
+    count(/(?<![A-Za-z0-9-])--no-(?:deletion-protection|backup|enable-point-in-time-recovery)\b/g)
+      .length > 0
+  )
+    fail(
+      'sql-protection',
+      'deletion protection, backups and point in time recovery may not be switched off',
+    );
+  const creates = code.filter((s) =>
+    /\bgcloud\s+(?:beta\s+)?sql\s+instances\s+create\b/.test(s.text),
+  );
+  if (files['setup.sh'] && creates.length !== 1)
+    fail('sql-protection', 'setup.sh must hold exactly one gcloud sql instances create');
+  else if (creates.length === 1) {
+    const c = creates[0].text;
+    const need = (flag) => new RegExp(`(?<![A-Za-z0-9-])${flag}(?![A-Za-z0-9=-])`).test(c);
+    for (const flag of ['--deletion-protection', '--backup', '--enable-point-in-time-recovery'])
+      if (!need(flag))
+        fail('sql-protection', `the instance needs ${flag} (no value, not switched off)`);
+  }
+  const flagValues = (re) => code.flatMap((s) => [...s.text.matchAll(re)].map((m) => m[1]));
+  const ssl = flagValues(/(?<![A-Za-z0-9-])--ssl-mode(?:[=\s]+(\S*))?/g);
+  if ((files['setup.sh'] && ssl.length === 0) || ssl.some((v) => v !== 'ENCRYPTED_ONLY'))
+    fail('sql-ssl', 'the instance needs --ssl-mode=ENCRYPTED_ONLY, and no other --ssl-mode');
+  const conn = flagValues(/(?<![A-Za-z0-9-])--connector-enforcement(?:[=\s]+(\S*))?/g);
+  if ((files['setup.sh'] && conn.length === 0) || conn.some((v) => v !== 'REQUIRED'))
+    fail(
+      'sql-connector',
+      'the instance needs --connector-enforcement=REQUIRED, and no other value',
+    );
+  const lim = flagValues(/(?<![A-Za-z0-9-])--storage-auto-increase-limit(?:[=\s]+(\S*))?/g);
+  if (
+    (files['setup.sh'] && lim.length === 0) ||
+    lim.some((v) => !/^[1-9][0-9]{0,2}$/.test(v ?? '') || Number(v) > 100)
+  )
+    fail('sql-storage', 'the instance needs --storage-auto-increase-limit=N (GB), N from 1 to 100');
+  for (const s of code) {
+    if (/\broles\/(?:owner|editor)\b/.test(s.text))
+      fail('iam-role', `${s.f}:${s.no} names roles/owner or roles/editor`);
+    const bind = /\b(?:add-iam-policy-binding|set-iam-policy|remove-iam-policy-binding)\b/.test(
+      s.text,
+    );
+    const roles = [...s.text.matchAll(/--role[=\s]+"?([^"\s]+)"?/g)].map((m) => m[1]);
+    if (/\bprojects\s+add-iam-policy-binding\b/.test(s.text)) {
+      if (roles.length !== 1 || roles[0] !== 'roles/cloudsql.client')
+        fail(
+          'iam-role',
+          `${s.f}:${s.no} a project-level binding may only be roles/cloudsql.client`,
+        );
+    } else if (/\bsecrets\s+add-iam-policy-binding\b/.test(s.text)) {
+      if (roles.length !== 1 || roles[0] !== 'roles/secretmanager.secretAccessor')
+        fail(
+          'iam-role',
+          `${s.f}:${s.no} a secret binding may only be roles/secretmanager.secretAccessor`,
+        );
+    } else if (bind)
+      fail('iam-role', `${s.f}:${s.no} an IAM binding that is not in the reviewed kit`);
+    else if (/\broles\/secretmanager\b/.test(s.text))
+      fail('iam-role', `${s.f}:${s.no} a Secret Manager role outside a per-secret binding`);
+  }
+  // The image tag carries the commit as well as the tag name (GCP-2).
+  if (files['deploy.sh']) {
+    const d = files['deploy.sh'];
+    const images = d.match(/^IMAGE=.*$/gm) ?? [];
+    if (
+      images.length !== 1 ||
+      !/^IMAGE="[^"]*\/\$\{SERVICE\}:\$\{TAG\}-\$\{COMMIT\}"$/.test(images[0]) ||
+      !/^COMMIT="\$\{TAG_COMMIT:0:12\}"$/m.test(d)
+    )
+      fail(
+        'image-tag',
+        'the image tag must be ${TAG}-${COMMIT}, with COMMIT the first 12 characters of the tag commit',
+      );
+  }
+
   // ---- scripts -----------------------------------------------------------------------------------
   for (const f of SCRIPTS) {
     if (!files[f]) continue;
@@ -262,8 +362,22 @@ function main() {
     for (const s of stmts[f]) {
       if (/^set\s+\+[A-Za-z]|^set\s+\+o\b/.test(s.text))
         fail('strict-mode', `${f}:${s.no} switches a safety option off`);
-      if (/^set\s+-[A-Za-z]*[xv]|\s-o\s+(?:xtrace|verbose)\b|\bbash\s+-[A-Za-z]*x/.test(s.text))
+      if (
+        /\bset\s+-[A-Za-z]*[xv]|\s-o\s+(?:xtrace|verbose)\b|\bbash\s+-[A-Za-z]*x|\bxtrace\b|\bBASH_XTRACEFD\b|\bPS4\b/.test(
+          s.text,
+        )
+      )
         fail('print-secret', `${f}:${s.no} turns tracing on, which would print secrets`);
+      // GCP-2: no copy of a value to a file or a dump of the shell state. Applied to every script.
+      if (
+        /(?<![A-Za-z0-9_./-])tee(?![A-Za-z0-9_-])|\b(?:declare|typeset)\s+-[A-Za-z]*p|\bexport\s+-[A-Za-z]*p\b|\bprintenv\b/.test(
+          s.text,
+        )
+      )
+        fail(
+          'print-secret',
+          `${f}:${s.no} copies or dumps shell state (tee, declare -p, export -p, printenv)`,
+        );
       if (
         /\b(?:echo|printf|cat|tee|die)\b[^|]*\$\{?[A-Za-z_]*(?:PASS|SECRET|TOKEN|VALUE|DATABASE_URL|CONFIRM|CREDENTIAL|KEY)/.test(
           s.text,
@@ -294,12 +408,19 @@ function main() {
     const reads = stmts['set-secret.sh'].filter((s) => /\bread\b/.test(s.text));
     if (reads.length === 0)
       fail('terminal-check', 'set-secret.sh must read the value with a hidden prompt');
-    for (const s of reads)
+    for (const s of reads) {
       if (!/\bread\s+(?:-[A-Za-z]+\s+)*-[A-Za-z]*s[A-Za-z]*\s/.test(s.text))
         fail(
           'terminal-check',
           `set-secret.sh:${s.no} reads without -s (the typed value would show)`,
         );
+      const flags = s.text.replace(/^.*?\bread\b/, '').split(/["$]/)[0];
+      if (!/^IFS= read\s/.test(s.text) || !/(?:^|\s)-[A-Za-z]*r[A-Za-z]*(?=\s)/.test(flags))
+        fail(
+          'read-ifs',
+          `set-secret.sh:${s.no} must read with IFS= read -r so spaces and backslashes are kept`,
+        );
+    }
     const m = t.match(/case "\$NAME" in\n([\s\S]*?)\) ;;/);
     const got = m
       ? m[1]
@@ -323,15 +444,16 @@ function main() {
     const seen = new Set();
     for (const l of lines['service.yaml']) {
       if (l.comment || l.raw.trim() === '') continue;
-      const m = l.raw.match(/^([A-Za-z_][A-Za-z0-9_]*): '([^'\\]*)'$/);
+      const m = l.raw.match(/^([A-Za-z_][A-Za-z0-9_]*): (?:'([^'\\]*)'|"([^"\\]*)")$/);
       if (!m) {
         fail(
           'value-type',
-          `service.yaml:${l.no} must be KEY: 'quoted value' with nothing else on the line`,
+          `service.yaml:${l.no} must be KEY: 'value' or KEY: "value" (a quoted string, nothing else on the line)`,
         );
         continue;
       }
-      const [, key, value] = m;
+      const key = m[1];
+      const value = m[2] ?? m[3];
       if (seen.has(key)) fail('duplicate-key', `service.yaml:${l.no} repeats ${key}`);
       seen.add(key);
       if (SECRETS.has(key))
@@ -370,8 +492,24 @@ function main() {
     const froms = ds.filter((s) => /^FROM\b/.test(s.text));
     if (froms.length === 0) fail('docker-node', 'the Dockerfile has no FROM');
     for (const s of froms)
-      if (!/^FROM node:22\.22\.0(?:-[a-z0-9.]+)*(?: AS [a-z]+)?$/.test(s.text))
-        fail('docker-node', `Dockerfile:${s.no} must start from node:22.22.0`);
+      if (!/^FROM node:22\.22\.0(?:-[a-z0-9.]+)*@sha256:[0-9a-f]{64}(?: AS [a-z]+)?$/.test(s.text))
+        fail(
+          'docker-node',
+          `Dockerfile:${s.no} must start from node:22.22.0 pinned by an @sha256 digest`,
+        );
+    // Every stage keeps WORKDIR /app: the migrations path is resolved at build time (GCP-2).
+    let stage = -1;
+    const workdirs = [];
+    for (const s of ds) {
+      if (/^FROM\b/.test(s.text)) {
+        stage += 1;
+        workdirs[stage] = [];
+      } else if (stage >= 0 && /^WORKDIR\b/.test(s.text)) workdirs[stage].push(s.text);
+    }
+    workdirs.forEach((w, i) => {
+      if (w.length === 0 || w.some((x) => x !== 'WORKDIR /app'))
+        fail('docker-workdir', `Dockerfile stage ${i + 1} must use WORKDIR /app, and only that`);
+    });
     const users = ds.filter((s) => /^USER\b/.test(s.text));
     const last = users[users.length - 1];
     if (!last || /^USER\s+(?:root|0)(?::.*)?$/.test(last.text))
