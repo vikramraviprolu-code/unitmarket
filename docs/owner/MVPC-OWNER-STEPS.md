@@ -61,7 +61,13 @@ corepack pnpm run ci                      # ends without an error (takes several
 ```
 
 Off any VPN. A normal terminal window. No proxy variables. Run the first line in every NEW terminal
-window.
+window. After every later `git pull`, rebuild before you start the app locally:
+`corepack pnpm --filter @umsbx/web build` (a stale build gives an internal 500). Use `http://localhost:3000`,
+not the machine's network address.
+
+If you host on Google Cloud, `docs/owner/MVPC-OWNER-STEPS-GCP.md` replaces Steps 2, 6, 8, 11 and 13 of this
+document (it says which of its own steps does so) and adapts Steps 3, 4 and 7; Steps 1, 9, 10 and 12 still
+apply as written.
 
 ## Step 1: enrol the operators' authenticator keys (O-C5, 10 min each, on each operator's own machine)
 
@@ -467,7 +473,9 @@ percent a month.
 ## Step 13: finish (10 min)
 
 1. Press "Stop PayPal now" on `/ops` (reason "end of MVP-C session"), then set `UMS_PAYPAL_CONNECT` back
-   to `off` in the Render dashboard and let it redeploy.
+   to `off` in the host settings (Render dashboard, or on Google Cloud the next deploy resets it to `off`)
+   and let it redeploy. From your own terminal you can also run
+   `corepack pnpm safety:stop --operator <name> --reason "end of MVP-C session"`.
 2. Confirm `/ops` shows `paypal_outbound` off and the transport line not approved.
 3. Close the terminals, clear the clipboard and the scrollback. If any secret was ever pasted somewhere
    it should not have been, rotate it within the hour and note it in `docs/decision-log.md` (Credentials

@@ -140,6 +140,11 @@ corepack pnpm --filter @umsbx/web build
 corepack pnpm --filter @umsbx/web start
 ```
 
+Rebuild after EVERY `git pull` (the `build` line above): `start` serves the last build, and a stale build
+gives an internal 500 on checkout. Always use `http://localhost:3000`, never the machine's network address
+(the sign-in cookie is only accepted on `localhost`). Safari does not keep it over plain http: use Chrome
+(Incognito is fine).
+
 Leave this window open. Open `http://localhost:3000/ops` and sign in as `operator`. The gate block
 must show all five locks open and the transport line `sandbox (approved)`. If any lock shows
 missing, stop (Ctrl-C) and tell Sakthi.
