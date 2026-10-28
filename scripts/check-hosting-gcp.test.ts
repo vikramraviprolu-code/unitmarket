@@ -24,6 +24,8 @@ const SANDBOX_HOST = 'api-m.sandbox.' + 'paypal.com';
 const GOOGLE_KEY = 'AIza' + 'Sy' + 'A'.repeat(33);
 const PEM = '-----BEGIN ' + 'PRIVATE KEY-----';
 const HEX_TOKEN = '3f9a' + 'c27d41'.repeat(6);
+// GCP-2: the base image digest taken from the real Cloud Build log of 27 Oct.
+const BASE_DIGEST = 'dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94';
 const SECRET_NAMES = [
   'PAYPAL_CLIENT_ID',
   'PAYPAL_CLIENT_SECRET',
@@ -565,15 +567,15 @@ const CASES: Case[] = [
   [
     'image base not Node 22.22.0',
     'Dockerfile',
-    'FROM node:22.22.0-bookworm-slim AS build',
-    'FROM node:20-bookworm-slim AS build',
+    `FROM node:22.22.0-bookworm-slim@sha256:${BASE_DIGEST} AS build`,
+    `FROM node:20-bookworm-slim@sha256:${BASE_DIGEST} AS build`,
     'docker-node',
   ],
   [
     'final stage not Node 22.22.0',
     'Dockerfile',
-    'FROM node:22.22.0-bookworm-slim\n',
-    'FROM node:latest\n',
+    `FROM node:22.22.0-bookworm-slim@sha256:${BASE_DIGEST}\nENV`,
+    'FROM node:latest\nENV',
     'docker-node',
   ],
   ['runs as root', 'Dockerfile', 'USER node\n', '', 'docker-user'],
@@ -609,6 +611,352 @@ const CASES: Case[] = [
   ],
   // files of the kit
   ['setup.sh removed', 'setup.sh', '', '', 'kit-files'],
+];
+
+// GCP-2: refusals found by the GCP-1 review. Same shape as CASES: one line of the clean kit changes.
+const BIND = '  --role="roles/cloudsql.client"';
+const CREATE_END = '    --ssl-mode=ENCRYPTED_ONLY \\\n';
+const GCP2_CASES: Case[] = [
+  // the database instance keeps no network exposure
+  [
+    'authorized networks with a value',
+    'setup.sh',
+    CREATE_END,
+    `${CREATE_END}    --authorized-networks=203.0.113.0/24 \\\n`,
+    'sql-network',
+  ],
+  [
+    'authorized networks without a value',
+    'setup.sh',
+    CREATE_END,
+    `${CREATE_END}    --authorized-networks= \\\n`,
+    'sql-network',
+  ],
+  [
+    'authorized networks added later',
+    'setup.sh',
+    'echo "== database $SQL_DB"',
+    'gcloud sql instances patch "$SQL_INSTANCE" --authorized-networks=203.0.113.7/32 --project="$PROJECT_ID"\necho "== database $SQL_DB"',
+    'sql-network',
+  ],
+  // deletion protection, backups, point in time recovery
+  [
+    'deletion protection off at creation',
+    'setup.sh',
+    '    --deletion-protection \\\n',
+    '    --no-deletion-protection \\\n',
+    'sql-protection',
+  ],
+  [
+    'deletion protection removed',
+    'setup.sh',
+    '    --deletion-protection \\\n',
+    '',
+    'sql-protection',
+  ],
+  [
+    'deletion protection switched off later',
+    'setup.sh',
+    'echo "== database $SQL_DB"',
+    'gcloud sql instances patch "$SQL_INSTANCE" --no-deletion-protection --project="$PROJECT_ID"\necho "== database $SQL_DB"',
+    'sql-protection',
+  ],
+  ['backups off', 'setup.sh', '    --backup \\\n', '    --no-backup \\\n', 'sql-protection'],
+  ['backups removed', 'setup.sh', '    --backup \\\n', '', 'sql-protection'],
+  [
+    'point in time recovery switched off',
+    'setup.sh',
+    '    --enable-point-in-time-recovery \\\n',
+    '    --no-enable-point-in-time-recovery \\\n',
+    'sql-protection',
+  ],
+  [
+    'point in time recovery removed',
+    'setup.sh',
+    '    --enable-point-in-time-recovery \\\n',
+    '',
+    'sql-protection',
+  ],
+  // encrypted connections only, through the connector only
+  [
+    'ssl mode allows unencrypted',
+    'setup.sh',
+    '--ssl-mode=ENCRYPTED_ONLY',
+    '--ssl-mode=ALLOW_UNENCRYPTED_AND_ENCRYPTED',
+    'sql-ssl',
+  ],
+  [
+    'ssl mode other value, space form',
+    'setup.sh',
+    '--ssl-mode=ENCRYPTED_ONLY',
+    '--ssl-mode TRUSTED_CLIENT_CERTIFICATE_REQUIRED',
+    'sql-ssl',
+  ],
+  ['ssl mode removed', 'setup.sh', CREATE_END, '', 'sql-ssl'],
+  [
+    'connector enforcement not required',
+    'setup.sh',
+    '--connector-enforcement=REQUIRED',
+    '--connector-enforcement=NOT_REQUIRED',
+    'sql-connector',
+  ],
+  [
+    'connector enforcement removed',
+    'setup.sh',
+    '    --connector-enforcement=REQUIRED \\\n',
+    '',
+    'sql-connector',
+  ],
+  // storage cannot grow without a limit
+  [
+    'storage limit removed',
+    'setup.sh',
+    '    --storage-auto-increase-limit=30 \\\n',
+    '',
+    'sql-storage',
+  ],
+  [
+    'storage limit zero (unlimited)',
+    'setup.sh',
+    '--storage-auto-increase-limit=30',
+    '--storage-auto-increase-limit=0',
+    'sql-storage',
+  ],
+  [
+    'storage limit very large',
+    'setup.sh',
+    '--storage-auto-increase-limit=30',
+    '--storage-auto-increase-limit=5000',
+    'sql-storage',
+  ],
+  // IAM: the runtime account stays small
+  ['runtime account is owner', 'setup.sh', BIND, '  --role="roles/owner"', 'iam-role'],
+  ['runtime account is editor', 'setup.sh', BIND, '  --role="roles/editor"', 'iam-role'],
+  [
+    'secret accessor bound on the project',
+    'setup.sh',
+    BIND,
+    '  --role="roles/secretmanager.secretAccessor"',
+    'iam-role',
+  ],
+  [
+    'secret admin bound on the project',
+    'setup.sh',
+    BIND,
+    '  --role="roles/secretmanager.admin"',
+    'iam-role',
+  ],
+  ['another role bound on the project', 'setup.sh', BIND, '  --role="roles/run.admin"', 'iam-role'],
+  [
+    'secret admin bound on one secret',
+    'setup.sh',
+    '--role="roles/secretmanager.secretAccessor"',
+    '--role="roles/secretmanager.admin"',
+    'iam-role',
+  ],
+  // scaling stays at the pinned instance flags
+  [
+    'scaling flag',
+    'deploy.sh',
+    '  --port=8080 \\\n',
+    '  --port=8080 \\\n  --scaling=5 \\\n',
+    'scaling',
+  ],
+  [
+    'service level max',
+    'deploy.sh',
+    '  --port=8080 \\\n',
+    '  --port=8080 \\\n  --max=5 \\\n',
+    'scaling',
+  ],
+  [
+    'service level min, space form',
+    'deploy.sh',
+    '  --port=8080 \\\n',
+    '  --port=8080 \\\n  --min 0 \\\n',
+    'scaling',
+  ],
+  [
+    'update-scaling command',
+    'setup.sh',
+    'echo "== billing"',
+    'gcloud run services update-scaling x --max-instances=1\necho "== billing"',
+    'scaling',
+  ],
+  [
+    'max instances 2, space form',
+    'deploy.sh',
+    '--max-instances=1',
+    '--max-instances 2',
+    'max-instances',
+  ],
+  [
+    'min instances 0, space form',
+    'deploy.sh',
+    '--min-instances=1',
+    '--min-instances 0',
+    'min-instances',
+  ],
+  // one environment file
+  [
+    'second env vars file',
+    'deploy.sh',
+    '  --port=8080 \\\n',
+    '  --port=8080 \\\n  --env-vars-file=/tmp/extra.yaml \\\n',
+    'env-file',
+  ],
+  [
+    'second env vars file, space form',
+    'deploy.sh',
+    '  --port=8080 \\\n',
+    '  --port=8080 \\\n  --env-vars-file /tmp/extra.yaml \\\n',
+    'env-file',
+  ],
+  // nothing may copy, trace or dump a secret value
+  [
+    'tee on the secret value',
+    'set-secret.sh',
+    'RESULT="$(printf \'%s\' "$VALUE" | gcloud',
+    'RESULT="$(printf \'%s\' "$VALUE" | tee /tmp/v | gcloud',
+    'print-secret',
+  ],
+  [
+    'tee in setup.sh',
+    'setup.sh',
+    'unset DB_PASSWORD',
+    'true | tee /tmp/p >/dev/null\n  unset DB_PASSWORD',
+    'print-secret',
+  ],
+  [
+    'declare -p',
+    'set-secret.sh',
+    'unset CONFIRM',
+    'declare -p VALUE\nunset CONFIRM',
+    'print-secret',
+  ],
+  [
+    'set -x in the middle of a statement',
+    'set-secret.sh',
+    'unset CONFIRM',
+    'true && set -x\nunset CONFIRM',
+    'print-secret',
+  ],
+  [
+    'set -x after a semicolon in setup.sh',
+    'setup.sh',
+    'unset DB_PASSWORD',
+    'true; set -x\n  unset DB_PASSWORD',
+    'print-secret',
+  ],
+  [
+    'xtrace through shopt',
+    'set-secret.sh',
+    'unset CONFIRM',
+    'shopt -o -s xtrace\nunset CONFIRM',
+    'print-secret',
+  ],
+  [
+    'printenv',
+    'set-secret.sh',
+    'unset CONFIRM',
+    'printenv >/dev/null\nunset CONFIRM',
+    'print-secret',
+  ],
+  // the typed value is kept as typed
+  [
+    'first read without IFS=',
+    'set-secret.sh',
+    'IFS= read -r -s -p "Value',
+    'read -r -s -p "Value',
+    'read-ifs',
+  ],
+  [
+    'second read without IFS=',
+    'set-secret.sh',
+    'IFS= read -r -s -p "Type',
+    'read -r -s -p "Type',
+    'read-ifs',
+  ],
+  [
+    'read without -r',
+    'set-secret.sh',
+    'IFS= read -r -s -p "Type',
+    'IFS= read -s -p "Type',
+    'read-ifs',
+  ],
+  // the image is tagged by commit and built from a pinned base
+  [
+    'image tag without the commit',
+    'deploy.sh',
+    '${SERVICE}:${TAG}-${COMMIT}"',
+    '${SERVICE}:${TAG}"',
+    'image-tag',
+  ],
+  [
+    'image tag latest',
+    'deploy.sh',
+    '${SERVICE}:${TAG}-${COMMIT}"',
+    '${SERVICE}:latest"',
+    'image-tag',
+  ],
+  [
+    'build stage not pinned by digest',
+    'Dockerfile',
+    `@sha256:${BASE_DIGEST} AS build`,
+    ' AS build',
+    'docker-node',
+  ],
+  [
+    'final stage not pinned by digest',
+    'Dockerfile',
+    `@sha256:${BASE_DIGEST}\nENV`,
+    '\nENV',
+    'docker-node',
+  ],
+  [
+    'digest too short',
+    'Dockerfile',
+    `@sha256:${BASE_DIGEST} AS build`,
+    '@sha256:dd9d2197 AS build',
+    'docker-node',
+  ],
+  [
+    'digest-shaped token outside FROM',
+    'Dockerfile',
+    'EXPOSE 8080',
+    `ENV BASE_NOTE=sha256:${BASE_DIGEST}\nEXPOSE 8080`,
+    'secret-literal',
+  ],
+  [
+    'final stage without WORKDIR /app',
+    'Dockerfile',
+    'WORKDIR /app\nCOPY --from=build --chown',
+    'COPY --from=build --chown',
+    'docker-workdir',
+  ],
+  [
+    'build stage WORKDIR changed',
+    'Dockerfile',
+    'WORKDIR /app\nCOPY . .',
+    'WORKDIR /srv\nCOPY . .',
+    'docker-workdir',
+  ],
+  // service.yaml: a double-quoted wrong value is still wrong
+  [
+    'database not postgres, double quotes',
+    'service.yaml',
+    "UMS_DB: 'postgres'",
+    'UMS_DB: "pglite-disk"',
+    'db-kind',
+  ],
+  ['mismatched quotes', 'service.yaml', "UMS_DB: 'postgres'", 'UMS_DB: \'postgres"', 'value-type'],
+];
+
+// Legal formatting the guard must accept (it was refused before GCP-2): one edit, still ok.
+const ACCEPTED: [name: string, file: string, find: string, replace: string][] = [
+  ['--max-instances 1 with a space', 'deploy.sh', '--max-instances=1', '--max-instances 1'],
+  ['--min-instances 1 with a space', 'deploy.sh', '--min-instances=1', '--min-instances 1'],
+  ['UMS_DB in double quotes', 'service.yaml', "UMS_DB: 'postgres'", 'UMS_DB: "postgres"'],
 ];
 
 describe('check-hosting-gcp', () => {
@@ -648,6 +996,84 @@ describe('check-hosting-gcp', () => {
     expect(r.status).toBe(1);
     expect(r.out).toContain(`hosting-gcp: FAIL ${rule}`);
     expect(r.out).not.toContain('hosting-gcp ok');
+  });
+
+  it('GCP-2: has no duplicate case name', () => {
+    const names = [...CASES, ...GCP2_CASES].map((c) => c[0]);
+    expect(new Set(names).size).toBe(names.length);
+    expect(GCP2_CASES.length).toBeGreaterThanOrEqual(40);
+  });
+
+  it.each(GCP2_CASES)('GCP-2 refuses: %s', (_name, file, find, replace, rule) => {
+    const r = runGuard(GUARD, mutate(file, find, replace));
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(`hosting-gcp: FAIL ${rule}`);
+    expect(r.out).not.toContain('hosting-gcp ok');
+  });
+
+  it.each(ACCEPTED)('GCP-2 accepts: %s', (_name, file, find, replace) => {
+    const r = runGuard(GUARD, mutate(file, find, replace));
+    expect(r.out).toContain('hosting-gcp ok');
+    expect(r.status).toBe(0);
+  });
+
+  it('GCP-2: the real kit carries the hardening settings', () => {
+    const read = (f: string) => readFileSync(join(REPO_ROOT, 'infra', 'gcp', f), 'utf8');
+    const setup = read('setup.sh');
+    for (const flag of [
+      'gcloud beta sql instances create',
+      '--connector-enforcement=REQUIRED',
+      '--storage-auto-increase-limit=30',
+      '--ssl-mode=ENCRYPTED_ONLY',
+      '--deletion-protection',
+      '--enable-point-in-time-recovery',
+    ])
+      expect(setup, flag).toContain(flag);
+    expect(setup).not.toMatch(/^[^#\n]*--authorized-networks/m);
+    expect(read('set-secret.sh')).toContain(
+      'IFS= read -r -s -p "Value for $NAME (hidden): " VALUE',
+    );
+    expect(read('set-secret.sh')).toContain(
+      'IFS= read -r -s -p "Type it again (hidden): " CONFIRM',
+    );
+    expect(read('deploy.sh')).toContain('${SERVICE}:${TAG}-${COMMIT}"');
+    const docker = read('Dockerfile');
+    const from = docker.split('\n').filter((l) => l.startsWith('FROM '));
+    expect(from).toHaveLength(2);
+    for (const l of from) expect(l).toContain(`node:22.22.0-bookworm-slim@sha256:${BASE_DIGEST}`);
+    expect(docker).not.toContain('copies only the build output');
+  });
+
+  it('GCP-2: the owner steps carry the facts of the first real deploy', () => {
+    const doc = readFileSync(join(REPO_ROOT, 'docs', 'owner', 'MVPC-OWNER-STEPS-GCP.md'), 'utf8');
+    for (const text of [
+      // (a) reading logs
+      "gcloud logging read '",
+      'jsonPayload.msg=~"webhook"',
+      "--format='json(timestamp,jsonPayload)'",
+      'shows blank lines for our JSON logs',
+      // (b) the learn window
+      'one real purchase',
+      'unsigned mock events',
+      '7 of the 8 events',
+      // (c) the proxy value is dropped
+      'unset DATABASE_URL',
+      // (d) warnings
+      'Never run `delete` or `--no-deletion-protection` on `unitmarket-sbx-pg`',
+      'deletes all data after 30 days',
+      'does not cap spending',
+      'disable the old versions',
+      // (e) order of Step I item 5
+      'is repeated after Step J',
+      // (f) rebuild after a pull
+      'corepack pnpm --filter @umsbx/web build',
+      // (g) /healthz
+      'Google reserves `/healthz` on `run.app` addresses',
+    ])
+      expect(doc, text).toContain(text);
+    // (h) ten secrets to set, eleven names in Secret Manager
+    expect(doc).toContain('Ten names.');
+    expect(doc).toContain('Expected: eleven names');
   });
 
   it('refuses an extra file in the kit', () => {

@@ -10,8 +10,8 @@
 #
 # What it creates: the APIs, one Artifact Registry repository, one runtime service account (secret
 # accessor on the listed secrets and Cloud SQL client, nothing else), one Cloud SQL for PostgreSQL 16
-# instance (backups, point in time recovery, deletion protection, no authorized networks), one database,
-# one database user, and the empty secret containers.
+# instance (backups, point in time recovery, deletion protection, no authorized networks, connector
+# enforcement, a storage limit), one database, one database user, and the empty secret containers.
 set -euo pipefail
 
 die() {
@@ -106,8 +106,10 @@ echo "== Cloud SQL instance $SQL_INSTANCE (this can take 10 minutes)"
 if gcloud sql instances describe "$SQL_INSTANCE" --project="$PROJECT_ID" >/dev/null 2>&1; then
   echo "kept $SQL_INSTANCE"
 else
-  # No --authorized-networks: nothing outside Google's connector or the Auth Proxy can connect.
-  gcloud sql instances create "$SQL_INSTANCE" \
+  # No authorized networks, and connector enforcement REQUIRED: only Google's connector (Cloud Run's
+  # built-in one) or the Auth Proxy can connect. "gcloud beta" because the storage limit flag is
+  # not in the general availability command (checked with --help). The limit is in GB.
+  gcloud beta sql instances create "$SQL_INSTANCE" \
     --database-version=POSTGRES_16 \
     --edition=ENTERPRISE \
     --tier="$SQL_TIER" \
@@ -116,6 +118,7 @@ else
     --storage-type=SSD \
     --storage-size=10GB \
     --storage-auto-increase \
+    --storage-auto-increase-limit=30 \
     --backup \
     --backup-start-time=03:00 \
     --retained-backups-count=7 \
@@ -123,6 +126,7 @@ else
     --retained-transaction-log-days=7 \
     --deletion-protection \
     --ssl-mode=ENCRYPTED_ONLY \
+    --connector-enforcement=REQUIRED \
     --project="$PROJECT_ID" >/dev/null
   echo "created $SQL_INSTANCE"
 fi
