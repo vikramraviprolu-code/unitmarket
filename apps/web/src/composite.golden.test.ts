@@ -119,7 +119,7 @@ describe('composite copy (golden)', () => {
       `cancel page, heading: ${CANCEL_HEADING}`,
       `cancel page, body (valid ref): ${CANCEL_BODY}`,
       `cancel page, body (no valid ref): ${CANCEL_BODY_NO_REF}`,
-      `cancel page, order window (valid ref): ${CANCEL_WINDOW_LINE}`,
+      `cancel page, back sentence (valid ref): ${CANCEL_WINDOW_LINE}`,
       `cancel page, back link (valid ref): ${CANCEL_BACK_LINK}`,
       `item line, ready: ${LINE_TEXT.ready}`,
       `item line, paid but not unlocked: ${LINE_TEXT.paid_locked}`,

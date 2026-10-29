@@ -17,13 +17,11 @@ describe('cancel page with a valid ref', () => {
     expect(v.back_href).toBe(`/checkout/return?ref=${REF}`);
     expect(v.body).toBe(CANCEL_BODY);
     expect(v.window_line).toBe(CANCEL_WINDOW_LINE);
-    expect(CANCEL_WINDOW_LINE).toBe(
-      'If the order window is still open, you can go back to your order and approve this payment.',
-    );
+    expect(CANCEL_WINDOW_LINE).toBe('You can go back to your order to see where it stands.');
     expect(CANCEL_BACK_LINK).toBe('Go back to your order');
   });
-  it('accepts the id alphabet of the engine (prefix, underscore, letters and digits)', () => {
-    for (const ok of ['ord_1', 'ref_w10', 'ord_ABCDEF0123456789abcdef']) {
+  it('accepts the ids the engine generates (`ord_` and base32 letters and digits)', () => {
+    for (const ok of ['ord_1', 'ord_w10', 'ord_ABCDEF0123456789abcdef']) {
       expect(cancelView(ok).back_href, ok).toBe(`/checkout/return?ref=${ok}`);
     }
   });
@@ -34,6 +32,12 @@ describe('cancel page with a missing or bad ref', () => {
     undefined,
     '',
     ' ',
+    'abc',
+    'ref_w10',
+    'ord_',
+    'ORD_1',
+    'ord1',
+    `ord_${'x'.repeat(61)}`,
     'x'.repeat(65),
     'x'.repeat(201),
     '../etc/passwd',

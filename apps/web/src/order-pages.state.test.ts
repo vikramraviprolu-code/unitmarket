@@ -1,7 +1,9 @@
 // DP-5b (M2, L3): the cancel page keeps its promises (static, scoped, with a way forward) and the
 // disabled pack button points at its hint. Rendered or read as the page is; no server, no PayPal.
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { App } from '../composition.server';
+import { HARBOUR_TIDE, bootPackApp, buyer, startPack } from './composite-support';
 import { CANCEL_BODY, CANCEL_BODY_NO_REF, CANCEL_WINDOW_LINE } from './lib/composite-copy';
 
 const read = (rel: string): string => readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -51,6 +53,9 @@ describe('the cancel page (M2, H1)', () => {
     const all = `${CANCEL_BODY} ${CANCEL_BODY_NO_REF} ${CANCEL_WINDOW_LINE}`;
     expect(all).not.toMatch(/\d+\s*(minutes|hours|min)\b/i);
     expect(all).not.toMatch(/the other payment from the order page/);
+    // No promise to approve: the order page has no approve action for a single-publisher order (see
+    // the test below). The link sentence says only that the buyer can see where the order stands.
+    expect(CANCEL_WINDOW_LINE).not.toMatch(/approve|window is still open/i);
     expect(src).not.toMatch(/\d+\s*(minutes|hours|min)\b/i);
   });
 
@@ -72,5 +77,47 @@ describe('the pack button hint (L3)', () => {
     expect(src).toMatch(
       /id="pack-hint"[^>]*>\s*Select two or more articles to buy them together\./,
     );
+  });
+});
+
+// WHY the cancel page's sentence makes no promise to approve (DP-5b, round 2). The cancel page links to
+// /checkout/return, which calls onBuyerReturn and, when no payment is ready to show as a next step,
+// sends the buyer to the order page. For a SINGLE-publisher order that is awaiting the buyer, the
+// order page shows the status and lines only: it has no approve action and no approve link. A line
+// "you can approve this payment from your order" would be false there. The sentence says only that the
+// buyer can go back to see where the order stands. This test pins that fact; it changes no behaviour.
+vi.mock('server-only', () => ({}));
+
+describe('a single-publisher order awaiting the buyer offers no approve action on the order page', () => {
+  let app: App;
+  beforeAll(async () => {
+    app = await bootPackApp();
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('the return shows no next payment, and neither the order view nor the order page carries an approve action', async () => {
+    const A = await buyer(app, 'a');
+    const started = await startPack(app, A, [HARBOUR_TIDE]);
+    expect(started.checkout.progress).toBeNull(); // one PayPal order: not a pack
+    // What /checkout/return does for the buyer coming back from the cancel page: onBuyerReturn.
+    const r = await app.engine.payments.onBuyerReturn({
+      order_ref: started.order_ref,
+      actor: A,
+      scenario: null,
+    });
+    // No "Step N of M" page (that needs `next`): the return page falls through to the order page.
+    expect(r.ok && r.value.next !== null).toBe(false);
+    // The order page is built from this view and from OrderStatus.tsx.
+    const v = (await app.engine.orderView({ order_ref: started.order_ref, actor: A }))!;
+    expect(v.status).toBe('awaiting_buyer');
+    expect(Object.keys(v)).not.toContain('approve_url');
+    expect(JSON.stringify(v)).not.toMatch(/approve_url|checkoutnow|dry-run/i);
+    const page = read('./app/orders/[ref]/OrderStatus.tsx').replace(/\/\/.*$/gm, '');
+    const hrefs = [...page.matchAll(/href=(?:\{[^}]*\}|"[^"]*")/g)].map((m) => m[0]);
+    expect(hrefs.length).toBeGreaterThan(0);
+    for (const h of hrefs) expect(h, h).not.toMatch(/approve|checkout|dry-run|return/i);
+    expect(page).not.toMatch(/<form|<button|approve_url|onClick/);
   });
 });

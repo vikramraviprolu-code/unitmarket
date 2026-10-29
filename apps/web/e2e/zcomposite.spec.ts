@@ -157,7 +157,7 @@ test.describe('composite pack on the dry run (keyboard only)', () => {
   }) => {
     const page = await buyerPage(browser, 'b');
     // No ref (or a bad one): no promise and no link back, only the library.
-    for (const bad of ['', '?ref=', '?ref=../ops', '?ref=javascript:alert(1)']) {
+    for (const bad of ['', '?ref=', '?ref=abc', '?ref=../ops', '?ref=javascript:alert(1)']) {
       await page.goto(`/checkout/cancel${bad}`);
       await expect(page.getByTestId('cancel-body')).toHaveText(
         'You did not approve this payment at PayPal. Nothing was charged for this payment.',
@@ -177,7 +177,7 @@ test.describe('composite pack on the dry run (keyboard only)', () => {
       'You did not approve this payment at PayPal. Nothing was charged for this payment. If you approved another payment of this order, it will not be taken unless you approve the rest.',
     );
     await expect(page.getByTestId('cancel-window')).toHaveText(
-      'If the order window is still open, you can go back to your order and approve this payment.',
+      'You can go back to your order to see where it stands.',
     );
     const back = page.getByTestId('cancel-back');
     await expect(back).toHaveText('Go back to your order');
