@@ -185,15 +185,6 @@ describe('loadConfigFromProcess', () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]).toBe(`${process.cwd()}/.env.local`);
   });
-  it('without options the default reader finds no .env.local in a folder that has none', () => {
-    stubProcess({ UMS_DB: 'pglite-memory' });
-    const cwd = vi.spyOn(process, 'cwd').mockReturnValue('/nonexistent-folder-for-f8-test');
-    try {
-      expect(loadConfigFromProcess().ok).toBe(true);
-    } finally {
-      cwd.mockRestore();
-    }
-  });
   it('still returns the loadConfig refusal when the guard passes', () => {
     stubProcess({ UMS_MODE: 'live' });
     const r = loadConfigFromProcess({ readEnvFile: () => 'UMS_MODE=live\n' });

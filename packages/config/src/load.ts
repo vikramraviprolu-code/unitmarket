@@ -2,7 +2,9 @@
 // plain object, so tests never touch the real environment.
 import { err, ok } from '@umsbx/contracts';
 import type { Result } from '@umsbx/contracts';
-import { posix } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join, posix } from 'node:path';
+import { parseEnv } from 'node:util';
 import type { BootRefusal } from './refusal';
 import { BOOT_REFUSAL_EXIT_CODE, refusalLine } from './refusal';
 import { makeSecret } from './secret';
@@ -406,12 +408,68 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
   });
 }
 
+// F8 (D-059): Node's --env-file-if-exists and Next never replace a value the process already holds, so a
+// terminal that still exports DATABASE_URL, UMS_DB or UMS_PAYPAL_CONNECT silently beats .env.local.
+// The names below are compared with the file; every other name, every secret included, never is.
+const GUARDED_NAMES: readonly string[] = [
+  'UMS_MODE',
+  'UMS_PAYPAL_CONNECT',
+  'UMS_DB',
+  'UMS_PGLITE_DIR',
+  'DATABASE_URL',
+  'UMS_OUTBOUND_APPROVAL_REF',
+  'UMS_OUTBOUND_SCOPE',
+  'UMS_OWN_MERCHANT_ID',
+  'UMS_PUBLIC_ORIGIN',
+];
+
+/** Reads a file as text; null when it does not exist. */
+export type EnvFileReader = (path: string) => string | null;
+
+/**
+ * The first guarded name for which the process holds a value and the file holds a different one or none.
+ * A name the process does not hold is skipped (the file was not loaded, as in tests). Returns the name,
+ * never a value. Parsed with util.parseEnv, the parser behind --env-file.
+ */
+export function findEnvOverride(env: Env, fileText: string): string | null {
+  const file = parseEnv(fileText);
+  for (const name of GUARDED_NAMES) {
+    const held = env[name];
+    if (held === undefined) continue;
+    if (file[name] !== held) return name;
+  }
+  return null;
+}
+
+const defaultReadEnvFile: EnvFileReader = (path) => {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw e;
+  }
+};
+
+function envFileRefusal(env: Env, read: EnvFileReader): BootRefusal | null {
+  const text = read(join(process.cwd(), '.env.local'));
+  if (text === null) return null;
+  const name = findEnvOverride(env, text);
+  return name === null ? null : { code: 'env_overrides_file', name };
+}
+
 // Refuses to boot with exit code 78. The message names the variable and the rule, never a value.
+// With readEnvFile the env is also checked against .env.local first (loadConfigFromProcess does the same).
 export function bootOrExit(
   env: Env,
   exit: (code: number) => never,
   write: (line: string) => void,
+  readEnvFile?: EnvFileReader,
 ): Config {
+  const overridden = readEnvFile === undefined ? null : envFileRefusal(env, readEnvFile);
+  if (overridden !== null) {
+    write(refusalLine(overridden));
+    return exit(BOOT_REFUSAL_EXIT_CODE);
+  }
   const r = loadConfig(env, { execArgv: process.execArgv });
   if (!r.ok) {
     write(refusalLine(r.error));
@@ -433,7 +491,17 @@ export function terminalEnv(): Record<string, string | undefined> {
   };
 }
 
-/** The one place that hands the real environment to loadConfig. */
-export function loadConfigFromProcess(): Result<Config, BootRefusal> {
+export interface ProcessLoadOptions {
+  /** Reads .env.local; the default reads the file with fs and gives null when it is missing. */
+  readEnvFile?: EnvFileReader;
+}
+
+/**
+ * The one place that hands the real environment to loadConfig. A .env.local in the current folder that
+ * the process environment overrides (see findEnvOverride) is refused before loadConfig runs.
+ */
+export function loadConfigFromProcess(opts: ProcessLoadOptions = {}): Result<Config, BootRefusal> {
+  const overridden = envFileRefusal(process.env, opts.readEnvFile ?? defaultReadEnvFile);
+  if (overridden !== null) return err<BootRefusal>(overridden);
   return loadConfig(process.env, { execArgv: process.execArgv });
 }
