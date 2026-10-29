@@ -38,10 +38,7 @@ describe('D-04 unverified_payee_refused', () => {
     rig = await bootDRig();
   }, 60_000);
 
-  it.each([
-    ['quayside-gazette', QUAY_MARKET],
-    ['harbour-ledger', HARBOUR_TIDE],
-  ] as const)(
+  it.each(['quayside-gazette', 'harbour-ledger'] as const)(
     'D-04 no snapshot is made for a pack when %s has no payee_verified_at: 409, no approval, no order, no PayPal call',
     async (slug) => {
       await rig.rows('UPDATE publishers SET payee_verified_at = NULL WHERE slug = $1', [slug]);
