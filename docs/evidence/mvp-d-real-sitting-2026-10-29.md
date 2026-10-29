@@ -67,6 +67,22 @@ render, and the owner reported clicking twice at one point.
 A real decline (D-02, fixture only), stopping between the two captures, a refund of one publisher of a pack,
 the 60 minute pack window running out, a second pack, and the webhook for a pack.
 
+## Hosted database check after D-059 (from the hosted `/ops` page, 29 Oct, evening)
+
+Seen on the hosted `/ops` page (operator view, signed in with the new hosted passcode): `paypal_outbound` Off
+(last change by operator:vikram at 18:10 UTC, reason "wrong database, MVP-D"), connect flag off, 288 of 300 calls
+left under D-052 (unchanged, so no hosted call was made), five orders all `paid` (totals 1.20, 0.40, 2.50, 1.25
+and 0.40 USD), 25 operations all `confirmed`, no alerts, invariants INV1 to INV7 all hold.
+
+Reading of the orders (from amounts and the earlier library screenshot, not from the database): the 2.50, 1.25
+and one 0.40 order match the real MVP-C purchases in the Business account activity on 27 and 28 Oct. The 1.20
+order (Quayside, read online) matches no Business account payment and is very probably the rehearsal's pretend
+order written to the hosted database by mistake. The second 0.40 order is not identified from this view. Not
+verified further: the table shows no dates, and the hosted database was not queried. The Quayside publisher and
+its two offers were also seeded into the hosted catalogue by the rehearsal boot. Nothing can reach PayPal from
+the hosted app while its connect flag is off. The order rows are append-only and stay; a later note should say
+which one is the rehearsal order if it matters for the submission.
+
 ## Gate condition C5
 
 Closed: the owner inserted the approval row himself at his own terminal (D-057, laptop database). The first
