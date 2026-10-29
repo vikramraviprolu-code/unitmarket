@@ -1,9 +1,9 @@
 # MVP-D evidence: the real two-publisher sitting (29 Oct 2026)
 
-Status: the pack paid correctly at PayPal as two separate payments. Three owner confirmations are still open
-(listed under Open confirmations), so the row for the full D-01 real half is PASS WITH CONFIRMATIONS OPEN, not
-a clean PASS. A row is PASS only when the owner's own run was seen by the coordinator (screenshot or terminal
-output, no secret, no raw id). "Proves the modelled and observed cases only, not PayPal compatibility in
+Status: the pack paid correctly at PayPal as two separate payments. The D-01 real half is PASS. Two rows
+(4.2 and 4.3) rest on the owner's statement in the session, not on a screenshot seen by the coordinator, and are
+marked OWNER-REPORTED. A row is otherwise PASS only when the owner's own run was seen by the coordinator
+(screenshot or terminal output, no secret, no raw id). "Proves the modelled and observed cases only, not PayPal compatibility in
 general."
 
 Approval basis: D-057 (scope `mvp_c_refunds`, five operations `oauth_token`, `create_order`, `get_order`,
@@ -26,27 +26,28 @@ The hosted app was stopped (connect flag off, kill switch off since 18:10 UTC) a
 
 ## Checks and what was seen
 
-| Check                                                        | Result             | What was seen                                                                                                                         |
-| ------------------------------------------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Step 2 approval row and switch                               | PASS               | `safety:status` showed `db=pglite-disk`, `paypal_outbound=on`, `60 of 60`, per-order cap 2000, the five operations, valid until 01:00 |
-| Step 3 `/ops` before the pack                                | PASS               | five locks yes, `PayPal calls: allowed by the five locks`, the shared payee line, label Sandbox, no orders, all invariants hold       |
-| Step 4.1 pack approval page                                  | PASS               | two blocks (Harbour $0.40, Quayside $0.90), the text "2 payments", total $1.30, frozen price with a countdown                         |
-| Step 4.2 PayPal address starts with the sandbox host         | NOT SEEN           | the owner did not show it to the coordinator                                                                                          |
-| Step 4.3 "Step 2 of 2" page and no payment between approvals | NOT SEEN           | no screenshot; the owner has not said whether the Business tab was empty between the two approvals                                    |
-| Step 4.5 order page, library, receipt                        | PASS               | order page "ready in your library" for both items, library with two entries, receipt total $1.30 (see findings F1 and F2)             |
-| Step 5.1 PayPal Business activity                            | PASS               | two separate Completed payments, 0.90 USD and 0.40 USD, same minute (20:03 CET); not one payment for the sum                          |
-| Step 5.2 `/ops` order row                                    | PASS               | one order, status `paid`, total $1.30                                                                                                 |
-| Step 5.3 call budget                                         | PASS WITH A REASON | 47 of 60 left, 13 calls used (12 expected); 44 to 47 is accepted when a reason is noted                                               |
-| Step 6 finish                                                | PASS               | `safety:stop` then `safety:status`: `paypal_outbound=off`, 47 of 60                                                                   |
+| Check                                                        | Result             | What was seen                                                                                                                                                           |
+| ------------------------------------------------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Step 2 approval row and switch                               | PASS               | `safety:status` showed `db=pglite-disk`, `paypal_outbound=on`, `60 of 60`, per-order cap 2000, the five operations, valid until 01:00                                   |
+| Step 3 `/ops` before the pack                                | PASS               | five locks yes, `PayPal calls: allowed by the five locks`, the shared payee line, label Sandbox, no orders, all invariants hold                                         |
+| Step 4.1 pack approval page                                  | PASS               | two blocks (Harbour $0.40, Quayside $0.90), the text "2 payments", total $1.30, frozen price with a countdown                                                           |
+| Step 4.2 PayPal address starts with the sandbox host         | OWNER-REPORTED     | the owner confirmed in the session that the address started with the sandbox host on both approval pages; no screenshot shown                                           |
+| Step 4.3 "Step 2 of 2" page and no payment between approvals | OWNER-REPORTED     | the owner confirmed the Business account showed no payment between the two approvals and that the second click was the "Step 2 of 2" button; no screenshot of that page |
+| Step 4.5 order page, library, receipt                        | PASS               | order page "ready in your library" for both items, library with two entries, receipt total $1.30 (see findings F1 and F2)                                               |
+| Step 5.1 PayPal Business activity                            | PASS               | two separate Completed payments, 0.90 USD and 0.40 USD, same minute (20:03 CET); not one payment for the sum                                                            |
+| Step 5.2 `/ops` order row                                    | PASS               | one order, status `paid`, total $1.30                                                                                                                                   |
+| Step 5.3 call budget                                         | PASS WITH A REASON | 47 of 60 left, 13 calls used (12 expected); 44 to 47 is accepted when a reason is noted                                                                                 |
+| Step 6 finish                                                | PASS               | `safety:stop` then `safety:status`: `paypal_outbound=off`, 47 of 60                                                                                                     |
 
 Reason for the 13th call (probable, not verified in the log): the return page reads the order again on every
 render, and the owner reported clicking twice at one point.
 
-## Open confirmations (the owner)
+## Owner confirmations (received in the session after the sitting)
 
-1. The address bar started with the sandbox PayPal host on both approval pages (yes or no).
-2. Between the two PayPal approvals the Business account showed no payment for this pack (yes, no, or not looked at).
-3. The two clicks: the second click was the "Step 2 of 2" button (yes), or one button needed two clicks (a finding).
+1. The address bar started with the sandbox PayPal host on both approval pages: yes.
+2. Between the two PayPal approvals the Business account showed no payment for this pack: yes.
+3. The two clicks were the two approvals; the second click was the "Step 2 of 2" button: yes. This leaves the
+   one extra call (13 instead of 12) with the probable reason already noted.
 
 ## Findings (none blocks the next step)
 
@@ -74,4 +75,4 @@ D-057 stays there until 2026-10-30T01:00:00Z with the hosted connect flag off.
 
 ## Owner follow-ups
 
-Delete `apps/web/.env.local` (the copy for the build). Answer the three confirmations. Sakthi reviews this note.
+Done: `apps/web/.env.local` deleted and the three confirmations answered. Open: Sakthi reviews this note.
