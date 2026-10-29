@@ -7,10 +7,12 @@ import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Actor } from '@umsbx/contracts';
 import type { App } from '../composition.server';
+import type { LineKind } from './lib/composite-copy';
 import {
   BUY_SELECTED,
   CANCEL_BODY,
   CANCEL_HEADING,
+  CANCEL_WINDOW_LINE,
   LINE_TEXT,
   MIXED_CURRENCY_TEXT,
   TOO_MANY_PUBLISHERS_TEXT,
@@ -20,6 +22,7 @@ import {
   stepHeading,
 } from './lib/composite-copy';
 import {
+  CAPTURED_THEN_HELD,
   HARBOUR_FEES,
   HARBOUR_FERRY,
   HARBOUR_KNOTS,
@@ -30,6 +33,7 @@ import {
   buyer,
   runPackByPublisher,
 } from './composite-support';
+import { orderTone } from './lib/order-status';
 
 vi.mock('server-only', () => ({}));
 
@@ -54,6 +58,7 @@ async function view(actor: Actor, order_ref: string, label: string): Promise<str
   const items = [...v.items].sort((x, y) => (x.publisher ?? '').localeCompare(y.publisher ?? ''));
   return [
     `${label}: ${v.buyer_message}`,
+    `${label}, tone: ${orderTone(v)}`,
     ...items.map(
       (it, i) => `${label}, line ${String(i + 1)}: ${it.title}, ${it.publisher}: ${it.line}`,
     ),
@@ -74,15 +79,12 @@ describe('composite copy (golden)', () => {
       [HARBOUR]: 'happy',
       [QUAYSIDE]: 'mismatch_payee',
     });
+    // A real pack: one PayPal order captured and read back, the other held after its capture. Reached
+    // through the engine on the dry-run model (DP-5b), not by writing a state into the table.
     const frozen = await runPackByPublisher(app, B, [HARBOUR_FEES, QUAY_WALK], {
       [HARBOUR]: 'happy',
-      [QUAYSIDE]: 'happy',
+      [QUAYSIDE]: CAPTURED_THEN_HELD,
     });
-    await app.db.query(
-      `UPDATE provider_orders SET state = 'frozen'
-        WHERE order_id = $1 AND publisher_id = (SELECT id FROM publishers WHERE slug = 'quayside-gazette')`,
-      [frozen.order_id],
-    );
     const lines = [
       `approve, pack notice: ${packNotice(2)}`,
       `discover, select button: ${BUY_SELECTED}`,
@@ -94,6 +96,7 @@ describe('composite copy (golden)', () => {
       `step page, deadline (30 minute window): ${stepDeadline(30)}`,
       `cancel page, heading: ${CANCEL_HEADING}`,
       `cancel page, body: ${CANCEL_BODY}`,
+      `cancel page, order window: ${CANCEL_WINDOW_LINE}`,
       `item line, ready: ${LINE_TEXT.ready}`,
       `item line, paid but not unlocked: ${LINE_TEXT.paid_locked}`,
       `item line, refunded: ${LINE_TEXT.refunded}`,
@@ -131,4 +134,95 @@ describe('composite copy (golden)', () => {
     expect(golden).toMatch(/ and .* are on hold while we check them\./);
     expect(golden).toMatch(/is on hold while we check it\./);
   });
+
+  // L4 (DP-5b): "was not charged" is tied to the KIND of the item line, not only to the sentence.
+  it('"was not charged" appears only on rows whose item kind is not_charged, never on a hold or ready row', () => {
+    const KIND_OF_TEXT = new Map(
+      (Object.entries(LINE_TEXT) as [LineKind, string][]).map(([k, t]) => [t, k]),
+    );
+    const NOT_CHARGED_KINDS = new Set<LineKind>(['declined', 'abandoned']);
+    const verdict = checkNotChargedRows(
+      golden.split('\n').filter((l) => l !== ''),
+      KIND_OF_TEXT,
+      NOT_CHARGED_KINDS,
+    );
+    expect(verdict.problems).toEqual([]);
+    // The check has teeth: the kinds ready, declined and hold are all present, and it catches a hold said to be not charged.
+    expect(verdict.kinds.sort()).toEqual(['declined', 'hold', 'ready']);
+    const bad = golden.replace(
+      'A morning walk along the old quay is on hold while we check it.',
+      'A morning walk along the old quay was not charged.',
+    );
+    expect(
+      checkNotChargedRows(
+        bad.split('\n').filter((l) => l !== ''),
+        KIND_OF_TEXT,
+        NOT_CHARGED_KINDS,
+      ).problems.length,
+    ).toBeGreaterThan(0);
+    const badLine = golden.replace(
+      'Why ferry timetables slip in winter, Harbour Ledger Review (fictional): Ready in your library',
+      'Why ferry timetables slip in winter, Harbour Ledger Review (fictional): Not charged: PayPal declined this payment',
+    );
+    expect(
+      checkNotChargedRows(
+        badLine.split('\n').filter((l) => l !== ''),
+        KIND_OF_TEXT,
+        NOT_CHARGED_KINDS,
+      ).problems.length,
+    ).toBeGreaterThan(0);
+  });
 });
+
+/**
+ * For each pack in the golden rows: the item lines give each title its kind (the text after the last
+ * colon is one of LINE_TEXT); the banner's "was/were not charged" sentence may name a title only if
+ * its kind is declined or abandoned, and must name every title of those kinds. A line row that says
+ * "Not charged" must be a declined or abandoned kind.
+ */
+function checkNotChargedRows(
+  rows: string[],
+  kindOfText: Map<string, LineKind>,
+  notCharged: Set<LineKind>,
+): { problems: string[]; kinds: string[] } {
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  const packs = rows.filter((r) => r.startsWith('pack, ') && !/, (line \d+|tone):/.test(r));
+  for (const banner of packs) {
+    const label = banner.slice(0, banner.indexOf(': '));
+    const text = banner.slice(label.length + 2);
+    const lines = rows
+      .filter((r) => r.startsWith(`${label}, line `))
+      .map((r) => {
+        const body = r.slice(r.indexOf(': ') + 2);
+        // the line text may itself hold a colon ("Not charged: ..."): find the known text at the end
+        const hit = [...kindOfText.keys()].find((t) => body.endsWith(`: ${t}`));
+        return {
+          title: body.slice(0, body.indexOf(', ')),
+          kind: hit === undefined ? null : kindOfText.get(hit)!,
+        };
+      });
+    const sentence = text.split('. ').find((x) => /not charged\.?$/.test(x)) ?? '';
+    for (const l of lines) {
+      if (l.kind === null) {
+        problems.push(`${label}: unknown line text for ${l.title}`);
+        continue;
+      }
+      seen.add(l.kind);
+      const named = sentence.includes(l.title);
+      if (named !== notCharged.has(l.kind)) {
+        problems.push(
+          `${label}: "${l.title}" is ${l.kind} but ${named ? 'is' : 'is not'} said to be not charged`,
+        );
+      }
+    }
+  }
+  for (const r of rows.filter((x) => /, line \d+: /.test(x))) {
+    if (/: Not charged/.test(r)) {
+      const hit = [...kindOfText.keys()].find((t) => r.endsWith(`: ${t}`));
+      const kind = hit === undefined ? null : kindOfText.get(hit)!;
+      if (kind === null || !notCharged.has(kind)) problems.push(`line says Not charged: ${r}`);
+    }
+  }
+  return { problems, kinds: [...seen] };
+}

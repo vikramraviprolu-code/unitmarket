@@ -7,7 +7,8 @@ step page, button: Approve payment 2 of 2 at PayPal
 step page, deadline (60 minute window): If you do not approve within 60 minutes, the whole order may be cancelled and nothing is charged.
 step page, deadline (30 minute window): If you do not approve within 30 minutes, the whole order may be cancelled and nothing is charged.
 cancel page, heading: You did not approve this payment
-cancel page, body: You did not approve this payment at PayPal. Nothing was charged. If you approved another payment of this order, it will not be taken unless you approve the rest.
+cancel page, body: You did not approve this payment at PayPal. Nothing was charged for this payment. If you approved another payment of this order, it will not be taken unless you approve the rest.
+cancel page, order window: If the order window is still open, you can still approve the other payment from the order page.
 item line, ready: Ready in your library
 item line, paid but not unlocked: Paid. Not unlocked yet
 item line, refunded: Refunded
@@ -20,14 +21,18 @@ item line, approved, other payment open: Approved at PayPal. Waiting for the oth
 item line, confirming: Confirming payment
 item line, pending: Payment pending at PayPal
 pack, both ready: Reading a tide table in ten minutes and Why the quayside market moved indoors are ready in your library.
+pack, both ready, tone: success
 pack, both ready, line 1: Reading a tide table in ten minutes, Harbour Ledger Review (fictional): Ready in your library
 pack, both ready, line 2: Why the quayside market moved indoors, Quayside Gazette (fictional): Ready in your library
 pack, one ready, one declined: Why ferry timetables slip in winter is ready in your library. A morning walk along the old quay was not charged.
+pack, one ready, one declined, tone: success
 pack, one ready, one declined, line 1: Why ferry timetables slip in winter, Harbour Ledger Review (fictional): Ready in your library
 pack, one ready, one declined, line 2: A morning walk along the old quay, Quayside Gazette (fictional): Not charged: PayPal declined this payment
 pack, payee mismatch: A notebook of six working knots and Why the quayside market moved indoors are on hold while we check them.
+pack, payee mismatch, tone: warn
 pack, payee mismatch, line 1: A notebook of six working knots, Harbour Ledger Review (fictional): On hold while we check it
 pack, payee mismatch, line 2: Why the quayside market moved indoors, Quayside Gazette (fictional): On hold while we check it
 pack, captured then frozen: What a small harbour charges and why is ready in your library. A morning walk along the old quay is on hold while we check it.
+pack, captured then frozen, tone: warn
 pack, captured then frozen, line 1: What a small harbour charges and why, Harbour Ledger Review (fictional): Ready in your library
 pack, captured then frozen, line 2: A morning walk along the old quay, Quayside Gazette (fictional): On hold while we check it

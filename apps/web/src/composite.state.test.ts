@@ -10,6 +10,7 @@ import type { App } from '../composition.server';
 import { bootTestApp, call, signIn } from './support';
 import type { Session } from './support';
 import {
+  CAPTURED_THEN_HELD,
   HARBOUR_FEES,
   HARBOUR_FERRY,
   HARBOUR_KNOTS,
@@ -26,6 +27,7 @@ import {
   orderText,
   proposalFor,
   runPack,
+  runPackByPublisher,
   startPack,
 } from './composite-support';
 import { stepDeadline, stepHeading, windowMinutes } from './lib/composite-copy';
@@ -209,15 +211,14 @@ describe('partial and held packs', () => {
   });
 
   it('captured PayPal order frozen after its capture: "On hold while we check it", never "Payment confirmed"', async () => {
-    const run = await runPack(app, B, [QUAY_WALK, HARBOUR_TIDE], ['happy', 'happy']);
-    expect((await app.engine.orderView({ order_ref: run.order_ref, actor: B }))?.status).toBe(
-      'paid',
-    );
-    await app.db.query(
-      `UPDATE provider_orders SET state = 'frozen' WHERE order_id = $1 AND position = 2`,
-      [run.order_id],
-    );
+    // DP-5b: a real pack. One PayPal order is captured and read back; the other shows another payee
+    // after its capture and is held. No state is written by hand.
+    const run = await runPackByPublisher(app, B, [QUAY_WALK, HARBOUR_TIDE], {
+      'Harbour Ledger Review (fictional)': 'happy',
+      'Quayside Gazette (fictional)': CAPTURED_THEN_HELD,
+    });
     const v = await app.engine.orderView({ order_ref: run.order_ref, actor: B });
+    expect(v?.status).toBe('paid_partial');
     const lines = v!.items.map((i) => i.line);
     expect(lines.filter((l) => l === HOLD).length).toBe(1);
     expect(lines.filter((l) => l === READY).length).toBe(1);

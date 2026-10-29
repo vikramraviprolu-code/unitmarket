@@ -34,6 +34,11 @@ async function pickTwo(
   await page.getByLabel('What do you need?').fill(need);
   await key(page, page.getByRole('button', { name: 'Find articles' }), 'Enter');
   await expect(page.getByTestId('fit-card').first()).toBeVisible();
+  // DP-5b L3: the disabled button is described by the hint beside it.
+  await expect(page.getByRole('button', { name: 'Buy selected together' })).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Buy selected together' }),
+  ).toHaveAccessibleDescription('Select two or more articles to buy them together.');
   await key(page, page.getByLabel(/I accept the terms of purchase/), 'Space');
   await key(page, page.getByRole('checkbox', { name: harbourTitle }), 'Space');
   await key(page, page.getByRole('checkbox', { name: quaysideTitle }), 'Space');
@@ -143,9 +148,14 @@ test.describe('composite pack on the dry run (keyboard only)', () => {
       page.getByRole('heading', { name: 'You did not approve this payment' }),
     ).toBeVisible();
     await expect(page.getByTestId('cancel-body')).toHaveText(
-      'You did not approve this payment at PayPal. Nothing was charged. If you approved another payment of this order, it will not be taken unless you approve the rest.',
+      'You did not approve this payment at PayPal. Nothing was charged for this payment. If you approved another payment of this order, it will not be taken unless you approve the rest.',
     );
+    // DP-5b M2: a way forward, in words that claim no more than the page can know.
+    await expect(page.getByTestId('cancel-window')).toHaveText(
+      'If the order window is still open, you can still approve the other payment from the order page.',
+    );
+    await expect(page.getByRole('link', { name: 'My library' })).toBeVisible();
     await expectDryRun(page);
-    await shot(page, 'dp5-cancel');
+    await shot(page, 'dp5b-cancel');
   });
 });
