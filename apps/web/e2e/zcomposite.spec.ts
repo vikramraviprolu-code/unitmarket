@@ -18,6 +18,9 @@ const shot = async (page: Page, name: string): Promise<void> => {
   await page.screenshot({ path: `${SHOTS}${name}.png`, fullPage: true });
 };
 
+/** The ref of the settled order of the partial journey (buyer B), used by the cancel page test. */
+let settledOrderRef = '';
+
 /** Keyboard only: focus the control, then press the key a person would. */
 async function key(page: Page, target: ReturnType<Page['locator']>, k: 'Space' | 'Enter') {
   await target.focus();
@@ -34,6 +37,11 @@ async function pickTwo(
   await page.getByLabel('What do you need?').fill(need);
   await key(page, page.getByRole('button', { name: 'Find articles' }), 'Enter');
   await expect(page.getByTestId('fit-card').first()).toBeVisible();
+  // DP-5b L3: the disabled button is described by the hint beside it.
+  await expect(page.getByRole('button', { name: 'Buy selected together' })).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Buy selected together' }),
+  ).toHaveAccessibleDescription('Select two or more articles to buy them together.');
   await key(page, page.getByLabel(/I accept the terms of purchase/), 'Space');
   await key(page, page.getByRole('checkbox', { name: harbourTitle }), 'Space');
   await key(page, page.getByRole('checkbox', { name: quaysideTitle }), 'Space');
@@ -92,6 +100,13 @@ test.describe('composite pack on the dry run (keyboard only)', () => {
     );
     await expectDryRun(page);
     await shot(page, 'dp5-step-2-of-2');
+    // DP-5b H1: PayPal's cancel URL carries the order ref; the cancel page's link goes back to this
+    // same Step 2 of 2 page while a payment still waits.
+    const ref = new URL(page.url()).searchParams.get('ref') ?? '';
+    expect(ref).toMatch(/^ord_/);
+    await page.goto(`/checkout/cancel?ref=${encodeURIComponent(ref)}`);
+    await key(page, page.getByTestId('cancel-back'), 'Enter');
+    await expect(page.getByTestId('step-heading')).toContainText(/^Step 2 of 2/);
     // No automatic redirect: the page stays until the buyer presses the one button.
     await page.waitForTimeout(1500);
     await expect(page).toHaveURL(/\/checkout\/return/);
@@ -122,6 +137,7 @@ test.describe('composite pack on the dry run (keyboard only)', () => {
     await key(page, page.getByRole('link', { name: /Approve payment 2 of 2 at PayPal/ }), 'Enter');
     await approveNext(page, { harbour: 'declined', quayside: 'happy' });
     await expect(page).toHaveURL(/\/orders\//);
+    settledOrderRef = decodeURIComponent(new URL(page.url()).pathname.split('/').pop() ?? '');
     const live = page.getByTestId('order-live');
     await expect(live).toHaveAttribute('aria-live', 'polite');
     await expect(
@@ -136,16 +152,43 @@ test.describe('composite pack on the dry run (keyboard only)', () => {
     await shot(page, 'dp5-order-partial');
   });
 
-  test('the cancel page says nothing was charged and is static', async ({ browser }) => {
-    const page = await buyerPage(browser, 'a');
-    await page.goto('/checkout/cancel');
+  test('the cancel page says nothing was charged, is static, and links back to the order', async ({
+    browser,
+  }) => {
+    const page = await buyerPage(browser, 'b');
+    // No ref (or a bad one): no promise and no link back, only the library.
+    for (const bad of ['', '?ref=', '?ref=abc', '?ref=../ops', '?ref=javascript:alert(1)']) {
+      await page.goto(`/checkout/cancel${bad}`);
+      await expect(page.getByTestId('cancel-body')).toHaveText(
+        'You did not approve this payment at PayPal. Nothing was charged for this payment.',
+      );
+      await expect(page.getByTestId('cancel-window')).toHaveCount(0);
+      await expect(page.getByTestId('cancel-back')).toHaveCount(0);
+      await expect(page.getByRole('main').getByRole('link', { name: 'My library' })).toBeVisible();
+    }
+    // A valid ref: the sentence and the link; the link keeps the promise (it ends on the order page
+    // here, because this order is settled; the happy journey shows the Step 2 of 2 landing).
+    expect(settledOrderRef).toMatch(/^ord_/);
+    await page.goto(`/checkout/cancel?ref=${encodeURIComponent(settledOrderRef)}`);
     await expect(
       page.getByRole('heading', { name: 'You did not approve this payment' }),
     ).toBeVisible();
     await expect(page.getByTestId('cancel-body')).toHaveText(
-      'You did not approve this payment at PayPal. Nothing was charged. If you approved another payment of this order, it will not be taken unless you approve the rest.',
+      'You did not approve this payment at PayPal. Nothing was charged for this payment. If you approved another payment of this order, it will not be taken unless you approve the rest.',
     );
+    await expect(page.getByTestId('cancel-window')).toHaveText(
+      'You can go back to your order to see where it stands.',
+    );
+    const back = page.getByTestId('cancel-back');
+    await expect(back).toHaveText('Go back to your order');
+    await expect(back).toHaveAttribute(
+      'href',
+      `/checkout/return?ref=${encodeURIComponent(settledOrderRef)}`,
+    );
+    await expect(page.getByRole('main').getByRole('link', { name: 'My library' })).toBeVisible();
     await expectDryRun(page);
-    await shot(page, 'dp5-cancel');
+    await shot(page, 'dp5b-cancel');
+    await key(page, back, 'Enter');
+    await expect(page).toHaveURL(new RegExp(`/orders/${settledOrderRef}$`));
   });
 });

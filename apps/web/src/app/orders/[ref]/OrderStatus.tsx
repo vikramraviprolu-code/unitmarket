@@ -3,33 +3,26 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getJson } from '../../../lib/client-api';
 import type { OrderView } from '../../../lib/view-types';
+import { keepPolling, orderTone } from '../../../lib/order-status';
 import { StatusBanner } from '../../../ui/StatusBanner';
-
-const TERMINAL = new Set(['paid', 'paid_partial', 'failed', 'abandoned', 'frozen']);
 
 // Live status in an aria-live region (A11Y-4). Polls while the order is not terminal; one text change
 // per status change, never a flicker.
 export function OrderStatus({ initial }: { initial: OrderView }) {
   const [view, setView] = useState(initial);
+  // A frozen order, or any order with an item on hold, is settled, but its case appears a moment
+  // later (the recovery rules run in the job loop), so keep looking until the case shows.
+  const polling = keepPolling(view);
   useEffect(() => {
-    // A frozen order is settled, but its case appears a moment later (the recovery rules run in
-    // the job loop), so keep looking until the case shows.
-    if (TERMINAL.has(view.status) && !(view.status === 'frozen' && view.open_case === null)) return;
+    if (!polling) return;
     const t = setInterval(() => {
       void getJson<OrderView>(`/api/orders/${encodeURIComponent(view.order_ref)}`).then((r) => {
         if (r.ok) setView(r.data);
       });
     }, 3000);
     return () => clearInterval(t);
-  }, [view.status, view.order_ref, view.open_case]);
-  const tone =
-    view.status === 'paid' || view.status === 'paid_partial'
-      ? 'success'
-      : view.status === 'frozen'
-        ? 'warn'
-        : view.status === 'failed'
-          ? 'error'
-          : 'info';
+  }, [polling, view.order_ref]);
+  const tone = orderTone(view);
   return (
     <>
       <div aria-live="polite" aria-atomic="true" data-testid="order-live">

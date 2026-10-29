@@ -11,7 +11,11 @@
 // injected), and its answers are synthetic: they are not PayPal evidence. Only type imports.
 import type { Clock, OutboundRequest, TransportResult } from '@umsbx/contracts';
 
-/** Scenario ids a tester can pick on the dry-run checkout page. All are lane 03 fixture scenarios. */
+/**
+ * Scenario ids a tester can pick on the dry-run checkout page. All of them are lane 03 fixture
+ * scenarios. `mismatch_payee_after_capture` (DP-5b) is not: it is a scenario of this model only, for
+ * tests, and is deliberately not listed here (isScenarioId accepts any id of the right shape).
+ */
 export const DRYRUN_SCENARIOS: readonly { id: string; label: string }[] = [
   { id: 'happy', label: 'Payment goes through' },
   { id: 'capture_202', label: 'PayPal answers "accepted" (claim only)' },
@@ -218,8 +222,13 @@ export function createDryRunModel(clock: Clock, opts: DryRunModelOptions = {}): 
         scenario === 'mismatch_amount'
           ? { ...u.amount, value: fromMinor(Math.max(0, toMinor(u.amount.value) - 1)) }
           : u.amount;
-      const payee =
-        scenario === 'mismatch_payee' ? { merchant_id: 'SBXMERCHANT99' } : (u.payee ?? undefined);
+      // mismatch_payee_after_capture (DP-5b): the payee reads right until the payment is captured, then
+      // another one. It lets a test reach "captured, then held" through the engine. It is not listed
+      // for the dry-run page (DRYRUN_SCENARIOS).
+      const wrongPayee =
+        scenario === 'mismatch_payee' ||
+        (scenario === 'mismatch_payee_after_capture' && u.capture !== null);
+      const payee = wrongPayee ? { merchant_id: 'SBXMERCHANT99' } : (u.payee ?? undefined);
       return {
         reference_id: u.reference_id,
         custom_id: u.custom_id,

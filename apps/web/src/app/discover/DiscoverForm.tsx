@@ -166,12 +166,15 @@ export function DiscoverForm({ signedIn }: { signedIn: boolean }) {
                 type="button"
                 className="btn"
                 disabled={picked.length < 2}
+                aria-describedby={picked.length < 2 ? 'pack-hint' : undefined}
                 onClick={() => void buySelected(result.proposal_id)}
               >
                 {BUY_SELECTED}
               </button>
               {picked.length < 2 ? (
-                <span className="muted">Select two or more articles to buy them together.</span>
+                <span id="pack-hint" className="muted">
+                  Select two or more articles to buy them together.
+                </span>
               ) : null}
             </div>
           </section>

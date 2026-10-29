@@ -16,6 +16,14 @@ export const QUAY_MARKET: Offer = ['quayside-gazette', 'market-hall-move'];
 export const QUAY_WALK: Offer = ['quayside-gazette', 'quay-walk'];
 export const NORTH_ALLOTMENT: Offer = ['northfield-quarterly', 'allotment-diary'];
 
+/**
+ * Dry-run scenario for a pack's second payment (DP-5b): PayPal shows the right payee until the payment
+ * is captured, then another one. The engine captures it, reads it back, finds the difference and holds
+ * that PayPal order only, so the order is `paid_partial` with one item ready and one on hold. It is a
+ * scenario of the order model only; the dry-run page does not list it.
+ */
+export const CAPTURED_THEN_HELD = 'mismatch_payee_after_capture';
+
 export const OWNER_ID = 'SBXOWNERTEST1';
 export const OTHER_ID = 'SBXOWNERTEST2';
 
