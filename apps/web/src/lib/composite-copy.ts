@@ -25,14 +25,14 @@ export const stepDeadline = (minutes: number): string =>
 export const CANCEL_HEADING = 'You did not approve this payment';
 // "Nothing was charged" is said of the payment the buyer cancelled only (D-051): the page cannot know
 // the state of the rest of the order. It names no window length: it is a static page, and the length
-// is configured (pack_approval_window_ms), so it is not typed here. The window sentence and the link
-// back are shown only with a valid order ref (lib/cancel-view.ts); the link keeps the promise: it goes
-// to the return page, which shows the payment still waiting (Step N of M) or the order page.
+// is configured (pack_approval_window_ms), so it is not typed here. The sentence and the link back are
+// shown only with a valid order ref (lib/cancel-view.ts). The link goes to the return page, which shows
+// the payment still waiting (Step N of M) or the order page. The sentence promises no approve action:
+// a single-publisher order's order page has none (pinned in order-pages.state.test.ts).
 export const CANCEL_BODY_NO_REF =
   'You did not approve this payment at PayPal. Nothing was charged for this payment.';
 export const CANCEL_BODY = `${CANCEL_BODY_NO_REF} If you approved another payment of this order, it will not be taken unless you approve the rest.`;
-export const CANCEL_WINDOW_LINE =
-  'If the order window is still open, you can go back to your order and approve this payment.';
+export const CANCEL_WINDOW_LINE = 'You can go back to your order to see where it stands.';
 export const CANCEL_BACK_LINK = 'Go back to your order';
 
 /** What one item of a pack says, from stored facts only. */
