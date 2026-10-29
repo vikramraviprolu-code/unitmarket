@@ -23,9 +23,11 @@ export default async function CheckoutCancel({
       {view.window_line === null ? null : <p data-testid="cancel-window">{view.window_line}</p>}
       <div className="actions">
         {view.back_href === null ? null : (
-          <Link className="btn btn-primary" data-testid="cancel-back" href={view.back_href}>
+          // A plain anchor on purpose: /checkout/return acts only on a full page navigation
+          // (return-guard.ts); a client-side Link would make it show its confirm button first.
+          <a className="btn btn-primary" data-testid="cancel-back" href={view.back_href}>
             {CANCEL_BACK_LINK}
-          </Link>
+          </a>
         )}
         <Link className="btn" href="/library">
           My library
