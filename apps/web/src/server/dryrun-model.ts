@@ -109,6 +109,9 @@ export function createDryRunModel(clock: Clock, opts: DryRunModelOptions = {}): 
       : null;
   const orders = new Map<string, ModelOrder>();
   const replays = new Map<string, Stored>();
+  // D-033: the owner's account refuses an invoice id it has already seen for the same payee. A payee
+  // that is left out is the account's own (D-028), so it is one payee too.
+  const invoices = new Set<string>();
   let n = 0;
   let refundN = 0;
   let debug = 0;
@@ -266,6 +269,23 @@ export function createDryRunModel(clock: Clock, opts: DryRunModelOptions = {}): 
     if (units.length === 0) {
       return fail(400, 'INVALID_REQUEST', 'MISSING_REQUIRED_PARAMETER', 'purchase_units');
     }
+    const seen = units.filter(isRec).map((u) => {
+      const payee = isRec(u.payee) && typeof u.payee.merchant_id === 'string' ? u.payee : null;
+      const who = payee === null ? (ownPayee?.merchant_id ?? '') : String(payee.merchant_id);
+      return typeof u.invoice_id === 'string' && u.invoice_id !== ''
+        ? `${who}|${u.invoice_id}`
+        : null;
+    });
+    const fresh = seen.filter((k): k is string => k !== null);
+    if (fresh.some((k) => invoices.has(k)) || new Set(fresh).size !== fresh.length) {
+      return fail(
+        422,
+        'UNPROCESSABLE_ENTITY',
+        'DUPLICATE_INVOICE_ID',
+        'Duplicate Invoice ID detected. To avoid a potential duplicate transaction your account setting requires that Invoice Id be unique for each transaction.',
+      );
+    }
+    for (const k of fresh) invoices.add(k);
     n += 1;
     const id = `SBXMODELORD${String(n).padStart(6, '0')}`;
     const now = stamp();

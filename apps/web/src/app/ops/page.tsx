@@ -2,13 +2,17 @@ import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { app } from '../../server/access';
 import { currentActor } from '../../server/session';
-import { EnvLabel } from '../../ui/EnvLabel';
+import { EnvLabel, envText } from '../../ui/EnvLabel';
 import { formatMinor, formatDateTime } from '../../lib/format';
 import { gateLines } from '../../lib/gate-lines';
 import { StopButton } from './StopButton';
 import { RefundPanel } from './RefundPanel';
 
 export const metadata: Metadata = { title: 'Operations' };
+
+// The account's kind comes from the stored environment, not from a typed word (P16).
+const envWord = (environment: Parameters<typeof envText>[0]): string =>
+  envText(environment).toLowerCase();
 
 export default async function Ops() {
   const actor = await currentActor();
@@ -71,6 +75,16 @@ export default async function Ops() {
           {snap.jobs.due} due.
         </dd>
       </dl>
+
+      {snap.shared_payee === null ? null : (
+        <p data-testid="ops-shared-payee">
+          {snap.shared_payee.publishers === 2
+            ? 'Both publishers'
+            : `All ${String(snap.shared_payee.publishers)} publishers`}{' '}
+          are paid into the owner&apos;s {envWord(snap.environment)} account (…
+          {snap.shared_payee.last4}).
+        </p>
+      )}
 
       <h2>Outbound approval gate</h2>
       <ul data-testid="ops-gate">

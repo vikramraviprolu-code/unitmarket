@@ -34,6 +34,23 @@ export function OrderStatus({ initial }: { initial: OrderView }) {
     <>
       <div aria-live="polite" aria-atomic="true" data-testid="order-live">
         <StatusBanner tone={tone} live={false} title={view.buyer_message} />
+        <ul>
+          {view.items.map((i) => (
+            <li key={i.article_id} data-testid="order-item">
+              {i.title}
+              {i.publisher === undefined ? '' : `, ${i.publisher}`}:{' '}
+              {i.line !== undefined
+                ? i.line
+                : i.access === 'available'
+                  ? 'ready'
+                  : i.access === 'locked'
+                    ? 'not unlocked yet'
+                    : i.access === 'revoked'
+                      ? 'access has ended'
+                      : i.access}
+            </li>
+          ))}
+        </ul>
       </div>
       {view.open_case !== null ? (
         <p data-testid="order-case">
@@ -41,20 +58,6 @@ export function OrderStatus({ initial }: { initial: OrderView }) {
         </p>
       ) : null}
       {view.refund_line !== null ? <p data-testid="order-refund">{view.refund_line}</p> : null}
-      <ul>
-        {view.items.map((i) => (
-          <li key={i.article_id}>
-            {i.title}:{' '}
-            {i.access === 'available'
-              ? 'ready'
-              : i.access === 'locked'
-                ? 'not unlocked yet'
-                : i.access === 'revoked'
-                  ? 'access has ended'
-                  : i.access}
-          </li>
-        ))}
-      </ul>
       <div className="actions">
         {view.status === 'paid' || view.status === 'paid_partial' ? (
           <>
