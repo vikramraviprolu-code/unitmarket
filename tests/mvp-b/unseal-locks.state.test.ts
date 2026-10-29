@@ -590,13 +590,17 @@ describe('BU-7 own payee seed (D-028)', () => {
   });
 
   describe('sandbox seed of the MVP-B publisher payee', () => {
-    it('own id set: harbour-ledger gets it, verified now; the other publisher stays unset', async () => {
+    it('own id set: harbour-ledger and quayside-gazette get it, verified now; any other publisher stays unset (DP-5, D-041)', async () => {
       const app = await boot({ UMS_OWN_MERCHANT_ID: OWN_ID });
       const rows = await publishers(app);
       const harbour = rows.find((r) => r.slug === 'harbour-ledger');
       expect(harbour?.paypal_merchant_id).toBe(OWN_ID);
       expect(harbour?.payee_verified_at).not.toBeNull();
-      const rest = rows.filter((r) => r.slug !== 'harbour-ledger');
+      // DP-5 (decision D-041): the second MVP-D publisher is paid into the owner's own sandbox account too.
+      const quayside = rows.find((r) => r.slug === 'quayside-gazette');
+      expect(quayside?.paypal_merchant_id).toBe(OWN_ID);
+      expect(quayside?.payee_verified_at).not.toBeNull();
+      const rest = rows.filter((r) => r.slug !== 'harbour-ledger' && r.slug !== 'quayside-gazette');
       expect(rest.length).toBeGreaterThan(0);
       for (const r of rest) {
         expect(r.paypal_merchant_id).toBeNull();
