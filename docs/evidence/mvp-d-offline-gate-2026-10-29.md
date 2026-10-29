@@ -15,10 +15,14 @@ no tokens, no raw ids. Simulation and fixtures prove the modelled cases only, no
 - [x] APPROVED WITH CONDITIONS (the builder's proposal; the Opus gate review decides)
 - [ ] NOT APPROVED
 
-Every acceptance row of the MVP-D table that needs no PayPal passes offline through the public entry points
-(the approval, order and checkout route handlers, the engine and the job loop of the real app, the approved
-sandbox transport behind the real scoped gate and a real approval row, a fake Wire that plays the dry-run
-order model), and the whole D run opens no socket. No critical or high finding is open. The window itself is
+Every acceptance row of the MVP-D table that needs no PayPal passes offline through the app's own entry points. Exactly: the order and checkout steps go through the route handlers
+(`POST /api/orders`, `POST /api/orders/[ref]/checkout`), as do the approval in D-04 and D-07 and the library
+read; the approval in the other twins (`engine.requestApproval`) and the buyer's return
+(`engine.payments.onBuyerReturn`) go through the engine facade; the job loop is the app's own (`startJobs`). Direct
+database writes are setup only (marking a publisher unverified, adding a ledger row for the INV7 drift check,
+flipping the kill switch, which the ops Stop button does in the app). The twins run over the approved sandbox
+transport behind the real scoped gate and a real approval row, with a fake Wire that plays the dry-run order
+model, and the whole D run opens no socket. No critical or high finding is open. The window itself is
 not ready: it needs the owner's approval row (D-042) at his own terminal, two people following the owner steps
 live, and the lane review. The real half of D-01 is an **owner window**; D-02 real is **not attempted** (D-042).
 The conditions below close when their decision rows and lanes exist; none is a money-safety defect (each fails
@@ -26,12 +30,19 @@ closed).
 
 ### Conditions of the verdict (open items)
 
-| Id  | Condition                                                                                                                                                                           | Owner / lane         | State |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ----- |
-| W1  | The owner writes the approval decision row (fields as D-042 lists; the next free `D-0xx`), S merges it, V inserts the matching `outbound_approvals` row and runs `safety:resume`    | owner (V), S         | open  |
-| W2  | The real sitting follows `docs/owner/MVPD-OWNER-STEPS.md` with the webhook OFF and the sitting local (ASM-78); D-052 is expired and not extended (D-056)                            | owner, S             | open  |
-| W3  | Sakthi runs `gitleaks git --no-banner --redact` on the full history (the binary is not in this container)                                                                           | Sakthi               | open  |
-| W4  | Mutation checks on the four targets (`composite.ts`, `apply.ts`, `due.ts`, `ledger/sums.ts`) were not run here (D-048: optional, at most 20 minutes in total); the reviewer decides | Opus review / Sakthi | open  |
+W1 to W4 are the builder's; C1 to C5 are the Opus gate review's (GATE APPROVED WITH CONDITIONS, merge yes). C1 and C2 cover the same ground as the builder's `ci` and W3 and are kept separate so each has its own tick.
+
+| Id  | Condition                                                                                                                                                                           | Owner / lane         | State                   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ----------------------- |
+| W1  | The owner writes the approval decision row (fields as D-042 lists; the next free `D-0xx`), S merges it, V inserts the matching `outbound_approvals` row and runs `safety:resume`    | owner (V), S         | open                    |
+| W2  | The real sitting follows `docs/owner/MVPD-OWNER-STEPS.md` with the webhook OFF and the sitting local (ASM-78); D-052 is expired and not extended (D-056)                            | owner, S             | open                    |
+| W3  | Sakthi runs `gitleaks git --no-banner --redact` on the full history (the binary is not in this container)                                                                           | Sakthi               | open                    |
+| W4  | Mutation checks on the four targets (`composite.ts`, `apply.ts`, `due.ts`, `ledger/sums.ts`) were not run here (D-048: optional, at most 20 minutes in total); the reviewer decides | Opus review / Sakthi | open                    |
+| C1  | Sakthi runs `corepack pnpm run ci` to exit 0 on the merge commit after DP-5b merges. The cancelled run in this report is not a pass                                                 | Sakthi               | open                    |
+| C2  | Sakthi runs `gitleaks git --no-banner --redact` on the full history                                                                                                                 | Sakthi               | open                    |
+| C3  | `tests/mvp-d` is run again on `main` after DP-5b merges                                                                                                                             | Sakthi               | open                    |
+| C4  | The documentation fixes of the gate review (this change)                                                                                                                            | DP-6                 | closed with this change |
+| C5  | The owner writes the `D-0xx` row, Sakthi merges it, and the owner inserts the approval himself with `safety:approve`                                                                | owner (V), S         | open                    |
 
 ## Acceptance table (mvp-plan MVP-D, D-01 to D-07)
 

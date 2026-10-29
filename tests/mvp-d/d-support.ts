@@ -69,7 +69,7 @@ export const D042_OPERATIONS = [
   'capture_order',
   'get_capture',
 ] as const;
-/** The calls per day the owner steps ask for (MVPD-OWNER-STEPS.md, Step 3). */
+/** The calls per day the owner steps ask for (MVPD-OWNER-STEPS.md, Prerequisite 4 and Step 2). */
 export const D042_MAX_CALLS = 60;
 /** The cap per PayPal order, in minor units (D-042: the pack total is bounded only by twice this). */
 export const D042_CAP_MINOR = 2000;
@@ -368,7 +368,7 @@ export async function postCheckout(
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 }
 
-/** Approval, order and eager checkout (both PayPal orders created) through the three routes. */
+/** Approval (engine facade), then order and eager checkout (both PayPal orders created) through the two routes. */
 export async function startPack(
   rig: DRig,
   who: 'A' | 'B',

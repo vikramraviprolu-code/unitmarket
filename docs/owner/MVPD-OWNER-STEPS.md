@@ -1,5 +1,7 @@
 # MVP-D owner steps (two publishers, one approval, two PayPal orders)
 
+Nothing connects to PayPal until the written D-0xx row is merged and the owner has inserted the approval with `safety:approve` at their own terminal. D-052 expires on 2026-10-30 12:00 UTC and D-055 was dropped (D-056): there is no extension.
+
 For two people on a call: **Vikram** (V) holds the credentials and the keyboard; **Sakthi** (S) oversees. Time:
 about 90 minutes in one sitting. The assistant never sees your credentials, never runs these steps and never
 holds a key. All rules of `docs/owner/SPIKE-RUNBOOK.md` ("What you never share or paste anywhere", machine
@@ -46,9 +48,12 @@ Either person can call STOP. V presses "Stop PayPal now" on `/ops` first, then t
    - the cap **per PayPal order**: 2000 minor units (20 USD), with the plain sentence "the pack total is not
      enforced by the gate and is bounded only by twice the cap";
    - calls per day: **60**. One happy pack uses 12 PayPal calls (1 token, 2 creates, 7 reads, 2 captures). The
-     60 covers two packs (24), the continuation reads of a pack that stops between its captures (about 12),
+     60 covers two packs (24), the continuation reads of a pack that stops between its captures (about 3 to 5 more calls, up to 12 with margin),
      and the job loop's polling, which may use at most half of the day's budget (ASM-52). Do not raise it;
-   - `valid_until`: the end of the sitting day (`YYYY-MM-DDT23:59:00Z`), never more than 7 days;
+   - `valid_until`: **at least 3 hours after the planned end of the sitting** (so a pack stopped between its two
+     captures can still be finished within the same approval), never more than 7 days. The sitting itself
+     **must never cross 00:00 UTC**: the daily call budget resets there and the 60 calls would no longer mean
+     what this list says. Plan the start so the whole sitting, with a margin, ends before midnight UTC;
    - the operator `vikram`;
    - the payee mapping: both publishers into the owner's sandbox Business account (last 4 only: `…XXXX`), the
      payee left out per D-028; **any create body naming a payee is a stop**;
@@ -58,7 +63,12 @@ Either person can call STOP. V presses "Stop PayPal now" on `/ops` first, then t
    - references: D-028, D-029, D-035, D-037, D-041, D-042, D-056.
      The row holds no credential, no full merchant id and no order id.
 5. Your sandbox Business account's receiving preference for USD is not "ask me" or "block" (as in MVP-B).
-6. The **pack window** is 60 minutes from the first approval (`pack_approval_window_ms`). You will finish in
+6. **No overlap with the hosted MVP-C app (D-054).** Hold the sitting after D-052 expires (2026-10-30 12:00 UTC)
+   or only when Sakthi has confirmed that nobody is testing on the hosted app. Both use the same sandbox Business
+   account, so a payment made by someone else would be mistaken for this pack's. In Steps 4 and 5, match the
+   PayPal activity rows to this pack by **time and amount** (the two amounts of the pack, within the minutes of
+   the sitting), never by "two rows appeared".
+7. The **pack window** is 60 minutes from the first approval (`pack_approval_window_ms`). You will finish in
    under 15. If the window runs out with only one approval, nothing is charged and the pack is abandoned.
 
 ## Step 0: machine check (5 min, V types, S watches)
@@ -105,7 +115,7 @@ PAYPAL_CLIENT_SECRET=<the ROTATED secret, pasted after clicking Show>
 Do **not** set `PAYPAL_WEBHOOK_ID`, `UMS_WEBHOOK_CERT_LEARN_UNTIL` or `UMS_OPERATOR_TOTP_KEYS` (no webhook, no
 refund in this sitting). `UMS_OWN_MERCHANT_ID` is the same value as in MVP-B; it is never committed and never
 pasted anywhere except its last 4 characters. Save, close the editor, never print the file, clear the
-clipboard. Copy it for the build: `cp .env.local apps/web/.env.local` (deleted in Step 8).
+clipboard. Copy it for the build: `cp .env.local apps/web/.env.local` (deleted in Step 6).
 
 ## Step 2: the approval row and the switch (app NOT running, 5 min)
 
@@ -115,7 +125,7 @@ in an AI session; do not pipe or script them):
 ```
 corepack pnpm safety:approve --operator vikram --ref D-0xx --scope mvp_c_refunds \
   --ops oauth_token,create_order,get_order,capture_order,get_capture \
-  --max-amount 2000 --max-calls 60 --valid-until <YYYY-MM-DDT23:59:00Z> --approved-by vikram
+  --max-amount 2000 --max-calls 60 --valid-until <YYYY-MM-DDTHH:MM:00Z, at least 3 hours after the planned end> --approved-by vikram
 ```
 
 Expected: one line `Approving oauth_token, create_order, get_order, capture_order, get_capture up to 2000 minor
@@ -129,11 +139,23 @@ Then:
 
 ```
 corepack pnpm safety:resume --operator vikram --reason "MVP-D session"
+```
+
+Expected: `Turning paypal_outbound on for approval D-0xx: scope mvp_c_refunds, 60 calls a day, up to 2000 minor
+units per order.`, then `Type the scope name (mvp_c_refunds) to confirm:`. V types `mvp_c_refunds`. S checks the
+scope, the 60 and the 2000 before V presses Enter. Then:
+
+```
 corepack pnpm safety:status
 ```
 
-Expected: `switch paypal_outbound=on` and `budget D-0xx: 60 of 60 calls left today; per-order cap 2000
-minor; valid until <date>; operations oauth_token, create_order, get_order, capture_order, get_capture`.
+Expected: `switch paypal_outbound=on` and, on one line (the operations are joined by commas with no space, so
+a literal comparison works):
+
+```
+budget D-0xx: 60 of 60 calls left today; per-order cap 2000 minor; valid until <date>; operations oauth_token,create_order,get_order,capture_order,get_capture
+```
+
 Screenshot the status output (it holds no secret). Note the number of calls left: **60**.
 
 ## Step 3: build and start the app (5 min)
@@ -169,8 +191,9 @@ Harbour item and one Quayside item**, each a single option; both are far below t
    the sandbox **Personal** account and approves payment 1.
 3. V returns to the app. S checks that the page says **"Step 2 of 2"**, names the second publisher, and shows
    one button to the next approval; there is no automatic redirect. In the Business account's activity (V's
-   other tab, crop to date, amount and status) **no payment exists yet**: nothing was captured after the first
-   approval. If a payment already shows: STOP (Step 7, item 1).
+   other tab, crop to date, amount and status) **no payment exists yet for this pack's amounts and times**:
+   nothing was captured after the first approval. Match by time and amount; a row from someone else is not this
+   pack's. If a payment already shows: STOP (Step 7, item 1).
 4. V presses the button, logs in again if asked, approves payment 2 at PayPal, and returns.
 5. The order page shows **both items "Ready in your library"** (one line per item), and the library holds two
    entries. The receipt (one version) names both publishers. S reads the status: `Paid`.
@@ -181,18 +204,21 @@ last 6 characters of ids.
 
 If V closes the browser between the approvals, V reopens the order from the library and uses the
 stored link on the "Step 2 of 2" page. If more than 60 minutes passed since the first approval, the whole pack
-is cancelled and nothing is charged: say so and stop; do not start a second pack unless Step 2's budget still
-holds 12 more calls.
+is cancelled and nothing is charged: say so and stop. A second pack is allowed **only** if the first ended with zero captures (abandoned or never
+approved) **and** at least 24 calls are left on `safety:status`; otherwise end the sitting.
 
 ## Step 5: read the books (10 min)
 
 1. **PayPal Business account** (V's other tab, sandbox dashboard, activity): crop to date, amount, status.
-   Expected: **two** payments, one for each item, both into this one account, both Completed. A single payment
+   Expected: **two** payments matching this pack's two amounts and the minutes of Step 4, one for each item, both into this one account, both Completed. A single payment
    for the sum, or one that contains two items: STOP (Step 7, item 2).
 2. `/ops` (operator): the order row `paid`; the shared-payee line unchanged.
 3. Stop the app (Ctrl-C in its window), then V runs `corepack pnpm safety:status` and S reads the budget line.
-   Expected: **48 of 60** calls left (12 used by a happy pack; a different number is allowed only for the
-   reasons in "What to bring back", item 4). The status command needs the app stopped (the database lock).
+   Expected: **48 of 60** calls left (12 used by a happy pack). **44 to 47 left is accepted when a reason is
+   noted**: reloading the return page or restarting the app adds calls, because the return page reads the order
+   again on every render (`apps/web/src/app/checkout/return/page.tsx` calls the return handler each time).
+   **STOP** only when one pack used more than about 16 calls or the drop cannot be explained. The status command
+   needs the app stopped (the database lock).
 
 ## Step 6: finish (5 min, V types)
 
@@ -222,6 +248,13 @@ pass, V writes down what was on screen, and S tells the coordinator. Nothing in 
    charge in an amount you did not expect; the budget falling faster than 12 per pack; a lock shown missing;
    the pack window running out; a payment declined on its own (do not try again, bring the screen).
 
+**STOP after a capture.** If a STOP happens when at least one capture has been sent (one payment exists in the
+Business account, or the order page says `Confirming payment` or shows one item ready and one waiting): keep the
+data folder as it is (do not delete or recreate it), write down what the screen shows (order status, which item
+is ready, the PayPal activity rows with time and amount), and do not retry, re-approve or start another pack. The
+coordinator decides whether V runs `safety:resume` (within `valid_until`) so the continuation can finish the pack;
+that takes about 3 to 5 more calls. Never resume on your own.
+
 D-02 real is not attempted. If a decline happens by itself, that is a finding to bring back, not a retry.
 
 ## What to bring back to Sakthi
@@ -232,11 +265,12 @@ No secret, no full id, no merchant id, no token. S writes these into the evidenc
    and the receipt show shortened ids; the PayPal transaction detail shows the capture (transaction) id. If the
    app shows none of them, write "not shown" and say where you looked.
 2. **Debug ids.** The app stores one per PayPal call in its call records, but no owner command lists them yet
-   (open finding F-2 of the gate report). Bring any `PayPal-Debug-Id` you can see in the developer dashboard,
+   (open finding F-1 of the gate report). Bring any `PayPal-Debug-Id` you can see in the developer dashboard,
    otherwise write "debug ids: not available to the owner".
 3. The `safety:status` output before (60 of 60) and after (Step 5).
-4. **The `provider_calls` count: 12 for a happy pack** (the drop in "calls left" is the count). More only if the
-   continuation ran (a pack stopped between its two captures and was finished), and then with the reason.
+4. **The `provider_calls` count: 12 for a happy pack** (the drop in "calls left" is the count). More (up to 16) only with a
+   reason written next to it: the continuation ran (a pack stopped between its two captures and was finished),
+   a return page was reloaded, or the app restarted.
 5. The sentence, copied exactly (D-041): **"Two publishers settled as two PayPal orders into one test merchant
    account; multi-merchant payout not demonstrated."**
 6. The screenshots listed in Steps 2 to 5.
