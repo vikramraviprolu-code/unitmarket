@@ -11,6 +11,8 @@ import type { LineKind } from './lib/composite-copy';
 import {
   BUY_SELECTED,
   CANCEL_BODY,
+  CANCEL_BACK_LINK,
+  CANCEL_BODY_NO_REF,
   CANCEL_HEADING,
   CANCEL_WINDOW_LINE,
   LINE_TEXT,
@@ -53,8 +55,8 @@ afterAll(async () => {
   await app.close();
 });
 
-async function view(actor: Actor, order_ref: string, label: string): Promise<string[]> {
-  const v = (await app.engine.orderView({ order_ref, actor }))!;
+async function view(a: App, actor: Actor, order_ref: string, label: string): Promise<string[]> {
+  const v = (await a.engine.orderView({ order_ref, actor }))!;
   const items = [...v.items].sort((x, y) => (x.publisher ?? '').localeCompare(y.publisher ?? ''));
   return [
     `${label}: ${v.buyer_message}`,
@@ -85,6 +87,26 @@ describe('composite copy (golden)', () => {
       [HARBOUR]: 'happy',
       [QUAYSIDE]: CAPTURED_THEN_HELD,
     });
+    // The stored-state shape kept from DP-5: the order is `paid` and one PayPal order is then set to
+    // frozen by hand. A second app so that no article is bought twice. Not reachable by the engine;
+    // it pins the words and the tone for that stored shape too.
+    const stored = await bootPackApp();
+    let storedRows: string[] = [];
+    try {
+      const SB = await buyer(stored, 'b');
+      const run = await runPackByPublisher(stored, SB, [HARBOUR_FEES, QUAY_WALK], {
+        [HARBOUR]: 'happy',
+        [QUAYSIDE]: 'happy',
+      });
+      await stored.db.query(
+        `UPDATE provider_orders SET state = 'frozen'
+          WHERE order_id = $1 AND publisher_id = (SELECT id FROM publishers WHERE slug = 'quayside-gazette')`,
+        [run.order_id],
+      );
+      storedRows = await view(stored, SB, run.order_ref, 'pack, paid then frozen by update');
+    } finally {
+      await stored.close();
+    }
     const lines = [
       `approve, pack notice: ${packNotice(2)}`,
       `discover, select button: ${BUY_SELECTED}`,
@@ -95,8 +117,10 @@ describe('composite copy (golden)', () => {
       `step page, deadline (60 minute window): ${stepDeadline(60)}`,
       `step page, deadline (30 minute window): ${stepDeadline(30)}`,
       `cancel page, heading: ${CANCEL_HEADING}`,
-      `cancel page, body: ${CANCEL_BODY}`,
-      `cancel page, order window: ${CANCEL_WINDOW_LINE}`,
+      `cancel page, body (valid ref): ${CANCEL_BODY}`,
+      `cancel page, body (no valid ref): ${CANCEL_BODY_NO_REF}`,
+      `cancel page, order window (valid ref): ${CANCEL_WINDOW_LINE}`,
+      `cancel page, back link (valid ref): ${CANCEL_BACK_LINK}`,
       `item line, ready: ${LINE_TEXT.ready}`,
       `item line, paid but not unlocked: ${LINE_TEXT.paid_locked}`,
       `item line, refunded: ${LINE_TEXT.refunded}`,
@@ -108,10 +132,11 @@ describe('composite copy (golden)', () => {
       `item line, approved, other payment open: ${LINE_TEXT.approved}`,
       `item line, confirming: ${LINE_TEXT.confirming}`,
       `item line, pending: ${LINE_TEXT.pending}`,
-      ...(await view(A, both.order_ref, 'pack, both ready')),
-      ...(await view(A, declined.order_ref, 'pack, one ready, one declined')),
-      ...(await view(B, mismatch.order_ref, 'pack, payee mismatch')),
-      ...(await view(B, frozen.order_ref, 'pack, captured then frozen')),
+      ...(await view(app, A, both.order_ref, 'pack, both ready')),
+      ...(await view(app, A, declined.order_ref, 'pack, one ready, one declined')),
+      ...(await view(app, B, mismatch.order_ref, 'pack, payee mismatch')),
+      ...(await view(app, B, frozen.order_ref, 'pack, captured then frozen')),
+      ...storedRows,
     ];
     // The banner line has no "line N" suffix; the engine lines do. Same shape as the file.
     expect(lines.join('\n') + '\n').toBe(golden);

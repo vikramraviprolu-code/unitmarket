@@ -7,8 +7,10 @@ step page, button: Approve payment 2 of 2 at PayPal
 step page, deadline (60 minute window): If you do not approve within 60 minutes, the whole order may be cancelled and nothing is charged.
 step page, deadline (30 minute window): If you do not approve within 30 minutes, the whole order may be cancelled and nothing is charged.
 cancel page, heading: You did not approve this payment
-cancel page, body: You did not approve this payment at PayPal. Nothing was charged for this payment. If you approved another payment of this order, it will not be taken unless you approve the rest.
-cancel page, order window: If the order window is still open, you can still approve the other payment from the order page.
+cancel page, body (valid ref): You did not approve this payment at PayPal. Nothing was charged for this payment. If you approved another payment of this order, it will not be taken unless you approve the rest.
+cancel page, body (no valid ref): You did not approve this payment at PayPal. Nothing was charged for this payment.
+cancel page, order window (valid ref): If the order window is still open, you can go back to your order and approve this payment.
+cancel page, back link (valid ref): Go back to your order
 item line, ready: Ready in your library
 item line, paid but not unlocked: Paid. Not unlocked yet
 item line, refunded: Refunded
@@ -36,3 +38,7 @@ pack, captured then frozen: What a small harbour charges and why is ready in you
 pack, captured then frozen, tone: warn
 pack, captured then frozen, line 1: What a small harbour charges and why, Harbour Ledger Review (fictional): Ready in your library
 pack, captured then frozen, line 2: A morning walk along the old quay, Quayside Gazette (fictional): On hold while we check it
+pack, paid then frozen by update: What a small harbour charges and why is ready in your library. A morning walk along the old quay is on hold while we check it.
+pack, paid then frozen by update, tone: warn
+pack, paid then frozen by update, line 1: What a small harbour charges and why, Harbour Ledger Review (fictional): Ready in your library
+pack, paid then frozen by update, line 2: A morning walk along the old quay, Quayside Gazette (fictional): On hold while we check it

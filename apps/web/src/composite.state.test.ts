@@ -31,6 +31,7 @@ import {
   startPack,
 } from './composite-support';
 import { stepDeadline, stepHeading, windowMinutes } from './lib/composite-copy';
+import { orderTone } from './lib/order-status';
 
 vi.mock('server-only', () => ({}));
 
@@ -226,6 +227,36 @@ describe('partial and held packs', () => {
     expect(all).not.toMatch(/Payment confirmed|Confirming payment|^Paid\./m);
     expect(all).not.toMatch(/not charged/i);
     expect(v!.buyer_message).toMatch(/on hold/i);
+  });
+
+  it('stored shape: order paid, then a PayPal order set to frozen: hold wording and the warning tone', async () => {
+    // The DP-5 case kept beside the real-engine one above. The engine never leaves an order `paid` with
+    // a frozen PayPal order, but the page must still never show such a stored shape as a success. A
+    // second app, so that no article is bought twice.
+    const other = await bootPackApp();
+    try {
+      const actor = await buyer(other, 'b');
+      const run = await runPack(other, actor, [QUAY_WALK, HARBOUR_TIDE], ['happy', 'happy']);
+      expect((await other.engine.orderView({ order_ref: run.order_ref, actor }))?.status).toBe(
+        'paid',
+      );
+      await other.db.query(
+        `UPDATE provider_orders SET state = 'frozen' WHERE order_id = $1 AND position = 2`,
+        [run.order_id],
+      );
+      const v = await other.engine.orderView({ order_ref: run.order_ref, actor });
+      expect(v?.status).toBe('paid');
+      const lines = v!.items.map((i) => i.line);
+      expect(lines.filter((l) => l === HOLD).length).toBe(1);
+      expect(lines.filter((l) => l === READY).length).toBe(1);
+      const all = [v!.buyer_message, ...lines].join('\n');
+      expect(all).not.toMatch(/Payment confirmed|Confirming payment|^Paid\./m);
+      expect(all).not.toMatch(/not charged/i);
+      expect(v!.buyer_message).toMatch(/on hold/i);
+      expect(orderTone(v!)).toBe('warn');
+    } finally {
+      await other.close();
+    }
   });
 
   it('the single-publisher order keeps its old words for a frozen PayPal order too', async () => {
