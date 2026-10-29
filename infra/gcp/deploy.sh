@@ -9,6 +9,8 @@
 # inside the app (D-049). Ingress is public because PayPal's webhooks must reach it; the app verifies
 # every delivery itself. Secrets are mapped from Secret Manager by name. Fixed values come from
 # service.yaml. UMS_PAYPAL_CONNECT is off in that file, so a deploy always leaves the connection off.
+# The image is tagged TAG-COMMIT (the first 12 characters of the commit id), so a moved git tag builds a new
+# image and never reuses an old one.
 set -euo pipefail
 
 die() {
@@ -35,7 +37,6 @@ SERVICE="unitmarket-sandbox"
 AR_REPO="unitmarket"
 SQL_INSTANCE="unitmarket-sbx-pg"
 RUNTIME_SA="ums-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
-IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${SERVICE}:${TAG}"
 CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
 SECRET_NAMES="DATABASE_URL PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID UMS_OUTBOUND_APPROVAL_REF UMS_SESSION_SECRET UMS_APPROVAL_SECRET UMS_LINK_SECRET UMS_DEMO_PASSCODE_HASH UMS_OWN_MERCHANT_ID UMS_OPERATOR_TOTP_KEYS"
 
@@ -45,7 +46,12 @@ TAG_COMMIT="$(git rev-parse --verify "refs/tags/${TAG}^{commit}" 2>/dev/null || 
 [ -n "$TAG_COMMIT" ] || die "no git tag $TAG here; fetch tags and check it out"
 [ "$TAG_COMMIT" = "$(git rev-parse HEAD)" ] || die "HEAD is not the tag $TAG; check it out first"
 [ -z "$(git status --porcelain)" ] || die "the working tree differs from the tag; deploy from a clean checkout"
+# The image tag carries the commit as well as the tag name, so a git tag that was moved can never
+# reuse an image built from another commit.
+COMMIT="${TAG_COMMIT:0:12}"
+[[ "$COMMIT" =~ ^[0-9a-f]{12}$ ]] || die "could not read the commit id of $TAG"
 unset TAG_COMMIT
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${SERVICE}:${TAG}-${COMMIT}"
 
 echo "== every secret needs a value"
 MISSING=""
@@ -61,7 +67,7 @@ SQL_STATE="$(gcloud sql instances describe "$SQL_INSTANCE" --format='value(state
 
 echo "== image $IMAGE"
 if gcloud artifacts docker images describe "$IMAGE" --project="$PROJECT_ID" >/dev/null 2>&1; then
-  echo "kept the image already built for $TAG"
+  echo "kept the image already built for $TAG at $COMMIT"
 else
   BUILD_CONFIG="$(mktemp)"
   trap 'rm -f "$BUILD_CONFIG"' EXIT
@@ -103,7 +109,7 @@ gcloud run deploy "$SERVICE" \
 
 SERVICE_URL="$(gcloud run services describe "$SERVICE" --region="$REGION" --project="$PROJECT_ID" --format='value(status.url)')"
 echo
-echo "deployed $SERVICE from tag $TAG"
+echo "deployed $SERVICE from tag $TAG at commit $COMMIT"
 echo "service URL: $SERVICE_URL"
 if ! grep -qxF "UMS_PUBLIC_ORIGIN: '${SERVICE_URL}'" "${HERE}/service.yaml"; then
   echo "NOTE: UMS_PUBLIC_ORIGIN in service.yaml is not this URL. Browser sign-in is refused until a reviewed"

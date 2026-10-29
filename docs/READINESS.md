@@ -12,10 +12,19 @@ State on 26 Oct 2026: DP-2a, DP-2b, DP-3 and DP-4 are merged. The three hazards 
 
 Still true, so a two-publisher run is NOT ready to be switched on:
 
-- DP-5 (web composite wording and boot seeding) and DP-6 (offline gate) are not built; they are parked until MVP-C closes (D-047).
+- DP-5 (web composite wording and boot seeding) is in build since 29 Oct (MVP-C closed, D-054); DP-6 (offline gate) is not built.
 - A real MVP-D run needs the new approval row of D-042, inserted by the owner.
 - Hosting follows D-049 (Google Cloud). `render.yaml` keeps `autoDeploy: false` and nothing deploys by itself.
-- Known follow-ups (LOW, from the DP-2b, DP-3 and DP-4 reviews): receipt not reissued when a PayPal order is declined or held in `due.ts`; INV7 and reversal rows; merchant id redaction at the buyer API; hold wording can name the wrong item on a pack; title cap can split a surrogate pair; the overview says `mismatch` is set whenever a PayPal order is frozen but four freeze paths do not set it.
+- DP-2c (engine follow-ups from the DP-2b, DP-3 and DP-4 reviews, LOW, no money outcome changed). Done: (1) `due.ts` now reissues the receipt with `issueReceiptIfChanged` (the function `apply.ts` uses) when the due pass ends a PayPal order as declined (`declinePo`) or held (`holdPo`), and on the two whole-order ends (`expireCreate`, `abandonOne`, where no unit is verified so nothing is written); a new version appears only when the body changed, so a second pass changes nothing. (2) The four `setPoState(..., 'frozen')` paths outside `apply.ts` (`capture.ts` first send, `reconcile.ts` retry, `return.ts` `holdOne`, `due.ts` `holdPo`) already set `orders.mismatch`, through `refreshOrder` in the same transaction (`deriveOrderStatus` sets `mismatch` whenever a PayPal order is frozen); the overview is right and was not changed, and `freeze.mismatch.state.test.ts` now pins the flag on each path. (4) INV7 counts `reversal` rows in the ledger net but INV1 ignores them and ties `refunded_minor` to `refund` rows, so the two checks disagree on reversal rows: a future reversal booking must keep INV1 and INV7 both true, so the booking lane must change one check or add a separate reversed amount (moving `refunded_minor` alone breaks INV1); no reversal ledger row is booked today; `invariants.reversal.state.test.ts` pins this, and the check itself is unchanged. Not done: (3) the title cap that can split a surrogate pair is not in `domain/payments` or `packages/paypal` (no title is cut for a PayPal order); the only cut is `cleanTitle` in `domain/recovery/src/messages.ts` (`slice(0, TITLE_MAX)`), a different package, so it waits for its own spec. Also open and outside DP-2c: merchant id redaction at the buyer API; hold wording can name the wrong item on a pack; `return.ts` `holdOne`, `capture.ts` and `reconcile.ts` freeze a PayPal order after a capture without reissuing the receipt.
+
+## Hosting follow-ups after the GCP-2 review (29 Oct 2026)
+
+GCP-2 (deploy kit hardening) is merged (Opus: merge yes, no high finding) and is not deployed. Known gaps for a later lane (GCP-3), none blocking:
+
+- The checker misses a `#` comment inside a line continuation (it joins lines, bash ends the command at the comment), re-spelled tracing (`set -e -x`, `/usr/bin/tee`, `declare -x -p`, bare `set` or `declare`), and an image tag edit that bypasses the `IMAGE` rule (`--image` in the deploy, an indented reassignment).
+- The owner document has no command to apply `--connector-enforcement=REQUIRED` and `--storage-auto-increase-limit=30` to the EXISTING instance `unitmarket-sbx-pg` (`setup.sh` keeps an existing instance). Flags validated from help only: `gcloud beta sql instances patch unitmarket-sbx-pg --connector-enforcement=REQUIRED --storage-auto-increase-limit=30 --diff`. Not run. Do it only in a quiet window, with Sakthi's approval, and check `/signin` and the logs afterwards; rollback `--connector-enforcement=NOT_REQUIRED`. Whether Cloud Run's built-in socket works under REQUIRED is unverified.
+- The owner steps order around the PayPal connection switch (Step I item 5, learn window, pin deploy) should be stated once in sequence.
+- The first deploy after this merge rebuilds the image once (about 10 minutes) and is the first real build of the digest-pinned Dockerfile.
 
 ## RLS spike (lane 12, informational, not a gate)
 

@@ -1,4 +1,4 @@
-# MVP-C owner steps on Google Cloud (GCP-1, D-049)
+# MVP-C owner steps on Google Cloud (GCP-1, D-049; hardened in GCP-2)
 
 For: Vikram, with Sakthi beside you or on a call. This file replaces only the host-specific steps of
 `docs/owner/MVPC-OWNER-STEPS.md` (Render, Steps 2, 6, 8 and 11 there). Everything else in that file
@@ -15,12 +15,25 @@ non-secret output only. The kit is in `infra/gcp` and is checked by `corepack pn
 Placeholders: `PROJECT_ID` is your Google Cloud project id and `REGION` a region such as `europe-west1`.
 Neither is written in the repository. `TAG` is the reviewed tag Sakthi tells you.
 
+## Read this first: four things that cost money or data
+
+- Never run `delete` or `--no-deletion-protection` on `unitmarket-sbx-pg`. It holds every order, grant and
+  ledger row. Only the restore drill clone (Step K) may be deleted.
+- Shutting down the project (Step L) deletes all data after 30 days. Take what you need to keep before.
+- A budget alert (Step H) only e-mails you. It does not cap spending: nothing stops the services at the
+  amount. Look at the billing page yourself.
+- When you rotate a secret (a new value with `set-secret.sh`), disable the old versions afterwards
+  (console, Secret Manager, the secret, Versions, Disable). `deploy.sh` maps `latest`, but an old enabled
+  version stays readable by the runtime account.
+
 ## What this builds
 
 One Cloud Run service `unitmarket-sandbox`: exactly one instance (min 1, max 1), CPU always allocated,
 2 GiB, public HTTPS (PayPal's webhooks must reach it; the app verifies every delivery itself). One Cloud
 SQL for PostgreSQL 16 instance with daily backups, point in time recovery, deletion protection, no
-authorized networks, reached only through the Cloud SQL connector. Secrets in Secret Manager, mapped to
+authorized networks, encrypted connections only, a 30 GB limit on storage growth, reached only through
+the Cloud SQL connector (`setup.sh` sets connector enforcement to REQUIRED; an instance created by an
+earlier copy of `setup.sh` keeps its old settings, ask Sakthi before changing it). Secrets in Secret Manager, mapped to
 the service by name. A runtime service account that can read those secrets and use Cloud SQL, nothing
 else. Maintenance mode (D-037) is not used on this host: the operator commands run at your own terminal
 through the Cloud SQL Auth Proxy (Step I).
@@ -70,7 +83,8 @@ image repository, expected service URL). If any step failed: the last 10 lines.
 ## Step C: store the secrets (set-secret.sh, 15 min)
 
 Ten names. For each, run the line, then type the value twice at the hidden prompt. Nothing is shown. It
-refuses without a real terminal, so do not pipe into it.
+refuses without a real terminal, so do not pipe into it. Spaces at the start or end of the value are kept
+as typed (so do not type any by accident).
 
 ```
 bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" PAYPAL_CLIENT_ID
@@ -126,11 +140,13 @@ bash infra/gcp/deploy.sh "$PROJECT_ID" "$REGION" TAG
 
 It refuses unless the checkout is exactly the tag, clean, every secret has a value and the database is
 running. Then Cloud Build builds the image (about 10 minutes the first time) and Cloud Run deploys it
-from `service.yaml`, with `UMS_PAYPAL_CONNECT=off`. Open `https://<service URL>/signin` (not `/healthz`: Google reserves that path on `run.app` addresses and answers it with its own 404 page, the deploy's own startup check still uses it from inside). Expected: HTTP 200. The app logs `maintenance.unconfigured` once at boot; that is
+from `service.yaml`, with `UMS_PAYPAL_CONNECT=off`. Open `https://<service URL>/signin` (not `/healthz`: Google reserves `/healthz` on `run.app` addresses and answers it with its own 404 page; the deploy's own startup check still uses it from inside). Expected: HTTP 200. The app logs `maintenance.unconfigured` once at boot; that is
 expected (D-044).
 
-Redeploying the same tag keeps the image and makes a new revision, which also picks up a changed secret.
-A redeploy always puts `UMS_PAYPAL_CONNECT` back to `off`.
+The image is tagged `TAG-<first 12 characters of the commit id>`. Redeploying the same tag at the same
+commit keeps the image and makes a new revision, which also picks up a changed secret. A tag that was
+moved to another commit builds a new image. A redeploy always puts `UMS_PAYPAL_CONNECT` back to `off`:
+the connection stays off until Step I item 5 is done again (after every deploy, so also after Step J).
 
 Paste back: the `deployed ...` and `service URL:` lines, and the `/signin` HTTP status.
 
@@ -193,7 +209,8 @@ checked here.
    cloud-sql-proxy --port 5433 <PROJECT_ID>:<REGION>:unitmarket-sbx-pg
    ```
 
-3. In the first window, in the repository at the reviewed tag, build the connection value from the
+3. In the first window, in the repository at the reviewed tag (after every `git pull` on the Mac,
+   rebuild first: `corepack pnpm --filter @umsbx/web build`), build the connection value from the
    secret without printing it, and keep it in this shell only:
 
    ```
@@ -211,7 +228,9 @@ connect=off db=postgres`.
 4. Insert the approval row and turn the switch on: run the commands of Step 6 items 4 and 5 of the Render
    file unchanged (`safety:approve ...`, then `safety:resume ...`; type the scope name when asked). Skip
    its items 1 to 3 and 7 (flag, restart, maintenance): there is no flag here.
-5. Connection on (Step 8, items 1 and 2), only when Step G, Step 4 and items 4 above are done:
+5. Connection on (Step 8, items 1 and 2). Order: Step G (the proxy depth test) and Step 4 (the webhook
+   registration, with its id stored and the tag redeployed, Step J) come first, then items 1 to 4 above.
+   A redeploy resets the connection to `off`, so this item is repeated after Step J:
 
    ```
    gcloud run services update unitmarket-sandbox --region="$REGION" --project="$PROJECT_ID" \
@@ -228,7 +247,7 @@ connect=off db=postgres`.
      --update-env-vars=UMS_PAYPAL_CONNECT=off
    ```
 
-7. When done, stop the proxy (Ctrl+C) and close the window; the shell variable disappears with it.
+7. When done, stop the proxy (Ctrl+C), run `unset DATABASE_URL` and close the window.
 
 ## Step J: webhook and learn window (Steps 4 and 7)
 
@@ -236,19 +255,24 @@ Step 4 as written, with the webhook URL `https://<service URL>/api/webhooks/payp
 id (`set-secret.sh ... PAYPAL_WEBHOOK_ID`) and redeploy the same tag (Step F).
 
 Step 7 as written, with these host-specific commands instead of the Render dashboard (UTC time of the
-form `2026-10-26T18:30:00Z`, at most 60 minutes ahead, D-043):
+form `2026-10-26T18:30:00Z`, at most 60 minutes ahead, D-043). The window needs one real purchase: the
+PayPal webhook simulator sends unsigned mock events and teaches the app nothing (D-053), so make one real
+sandbox purchase while the window is open. The webhook is registered with 7 of the 8 events, because the
+sandbox does not offer `CHECKOUT.PAYMENT-APPROVAL.REVERSED`; that is accepted (D-053, polling reconciles):
 
 ```
 gcloud run services update unitmarket-sandbox --region="$REGION" --project="$PROJECT_ID" \
   --update-env-vars=UMS_WEBHOOK_CERT_LEARN_UNTIL=<UTC time>
-gcloud run services logs read unitmarket-sandbox --region="$REGION" --project="$PROJECT_ID" --limit=100
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="unitmarket-sandbox" AND jsonPayload.msg=~"webhook"' --project="$PROJECT_ID" --limit=50 --freshness=1h --format='json(timestamp,jsonPayload)'
 gcloud run services update unitmarket-sandbox --region="$REGION" --project="$PROJECT_ID" \
   --remove-env-vars=UMS_WEBHOOK_CERT_LEARN_UNTIL
 ```
 
-The second command shows the `webhook.cert_learned` log line to copy (text, no secret). Remove the
+The second command shows the `webhook.cert_learned` log line to copy (text, no secret). Read the logs
+with `gcloud logging read` as written, because `gcloud run services logs read` shows blank lines for our JSON logs. Remove the
 variable straight after (the third command); a redeploy from `service.yaml` also removes it, because the
 kit never sets it. Steps 9 and 10 as written; read the `webhook.delivery` lines with the second command.
+After the redeploy of this step, repeat Step I item 5 (the connection is off again).
 
 ## Step K: backup and restore drill (replaces Step 11, C-10, 30 min)
 
@@ -296,7 +320,8 @@ Write what you did and how long it took. A backup or a clone holds session data:
    `docs/decision-log.md`.
 4. Cancel after 15 Dec 2026, or earlier when judging no longer needs it. The database has deletion
    protection, so the plain way is to shut the whole project down in the console (Settings, Shut down),
-   which stops all charges after the retention days. Keep the reminder in your calendar.
+   which stops all charges after the retention days. Shutting down deletes all data after 30 days, so
+   take what you need first. Keep the reminder in your calendar.
 
 ## What to bring back to Sakthi
 
@@ -336,6 +361,13 @@ Every gcloud command and flag name in `infra/gcp` and in this file was checked a
   one, so for a short time two instances (one per revision) can both run the job loop. Deploy only when
   no payment is in flight, and tell Sakthi if you see two sets of job log lines.
 - Costs in "What this builds".
+- GCP-2: the Cloud Logging filter keys `resource.type="cloud_run_revision"`, `resource.labels.service_name`
+  and `jsonPayload.msg` in Step J (the flags `--freshness`, `--limit`, `--project` and `--format` exist in
+  `gcloud logging read --help`). `gcloud beta sql instances create` with `--storage-auto-increase-limit` (the
+  flag is in the beta command only, in the SDK checked) and `--connector-enforcement=REQUIRED`: the flag
+  names and values exist in `--help`; that Cloud Run's built-in Cloud SQL connection works under REQUIRED
+  is from the Google documentation, not tested here. The base image digest comes from the real Cloud
+  Build log of 27 Oct 2026.
 - `setup.sh` hands the generated database password to `gcloud sql users create` as an argument for a few
   seconds (its other form is an interactive prompt). On Cloud Shell only you can see the process list. It
   is never printed or stored outside Secret Manager. Both commands run with `CLOUDSDK_CORE_DISABLE_FILE_LOGGING=1`
