@@ -15,3 +15,5 @@ Acceptance (run, paste output): commit 1 holds only the new tests and is run red
 Do not: touch `domain/*`, `packages/*`, migrations; add a dependency; contact any network or PayPal; read or write a secret; edit an existing test except to follow a stated item (list each); hard-code "Sandbox" or "Dry run".
 Disk: `df -h /` before heavy steps; stop under 800 MB free.
 Evidence: red summary, pass counts, a screenshot of the held pack order page (warning tone) and the new cancel page, a cost line.
+
+Amendment (coordinator, H1 fix round): the cancel page may read `?ref=` from PayPal's cancel URL, shape-check it with the id check the engine uses (plus the id alphabet) and render one link "Go back to your order" to `/checkout/return?ref=<ref>` only for a valid ref. "No id from the URL" now means: no lookup and no action on the id. The new window sentence is "If the order window is still open, you can go back to your order and approve this payment." It replaces the "approve the other payment from the order page" wording, which was false.
