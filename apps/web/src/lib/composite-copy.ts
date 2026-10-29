@@ -23,8 +23,13 @@ export const stepDeadline = (minutes: number): string =>
   `If you do not approve within ${String(minutes)} minutes, the whole order may be cancelled and nothing is charged.`;
 
 export const CANCEL_HEADING = 'You did not approve this payment';
+// "Nothing was charged" is said of the payment the buyer cancelled only (D-051): the page cannot know
+// the state of the rest of the order. It names no window length: it is a static page, and the length
+// is configured (pack_approval_window_ms), so it is not typed here.
 export const CANCEL_BODY =
-  'You did not approve this payment at PayPal. Nothing was charged. If you approved another payment of this order, it will not be taken unless you approve the rest.';
+  'You did not approve this payment at PayPal. Nothing was charged for this payment. If you approved another payment of this order, it will not be taken unless you approve the rest.';
+export const CANCEL_WINDOW_LINE =
+  'If the order window is still open, you can still approve the other payment from the order page.';
 
 /** What one item of a pack says, from stored facts only. */
 export type LineKind =

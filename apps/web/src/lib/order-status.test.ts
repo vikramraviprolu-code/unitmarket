@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { keepPolling, orderTone } from './order-status';
 
-type V = Parameters<typeof orderTone>[0];
+type V = Parameters<typeof keepPolling>[0];
 const item = (kind?: string): V['items'][number] => ({
   article_id: 'art_x',
   title: 'T',

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { CANCEL_BODY, CANCEL_HEADING } from '../../../lib/composite-copy';
+import { CANCEL_BODY, CANCEL_HEADING, CANCEL_WINDOW_LINE } from '../../../lib/composite-copy';
 
 export const metadata: Metadata = { title: 'Payment not approved' };
 
@@ -12,6 +12,7 @@ export default function CheckoutCancel() {
     <>
       <h1>{CANCEL_HEADING}</h1>
       <p data-testid="cancel-body">{CANCEL_BODY}</p>
+      <p data-testid="cancel-window">{CANCEL_WINDOW_LINE}</p>
       <p>
         <Link className="btn" href="/library">
           My library

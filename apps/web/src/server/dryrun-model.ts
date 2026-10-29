@@ -218,8 +218,13 @@ export function createDryRunModel(clock: Clock, opts: DryRunModelOptions = {}): 
         scenario === 'mismatch_amount'
           ? { ...u.amount, value: fromMinor(Math.max(0, toMinor(u.amount.value) - 1)) }
           : u.amount;
-      const payee =
-        scenario === 'mismatch_payee' ? { merchant_id: 'SBXMERCHANT99' } : (u.payee ?? undefined);
+      // mismatch_payee_after_capture (DP-5b): the payee reads right until the payment is captured, then
+      // another one. It lets a test reach "captured, then held" through the engine. It is not listed
+      // for the dry-run page (DRYRUN_SCENARIOS).
+      const wrongPayee =
+        scenario === 'mismatch_payee' ||
+        (scenario === 'mismatch_payee_after_capture' && u.capture !== null);
+      const payee = wrongPayee ? { merchant_id: 'SBXMERCHANT99' } : (u.payee ?? undefined);
       return {
         reference_id: u.reference_id,
         custom_id: u.custom_id,

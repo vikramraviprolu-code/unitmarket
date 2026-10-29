@@ -52,7 +52,8 @@ describe('a real pack: one payment captured, the other held after its capture', 
     expect(orderTone(v)).toBe('warn');
 
     // The recovery rules run in the job loop; until the case shows, the page keeps looking.
-    if (v.open_case === null) expect(keepPolling(v)).toBe(true);
+    expect(v.open_case).toBeNull();
+    expect(keepPolling(v)).toBe(true);
     const jobs = await app.startJobs();
     try {
       let seen = v;
