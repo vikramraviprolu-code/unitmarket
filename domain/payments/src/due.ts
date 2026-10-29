@@ -8,6 +8,7 @@
 // it in sandbox mode, BU-5) run from the same pass. A pass can be limited to the money work
 // (`allow: 'money_only'`) when the job loop has spent its polling allowance of the day's calls.
 import { applyMoneyEvent } from '@umsbx/entitlements';
+import { issueReceiptIfChanged } from '@umsbx/receipts';
 import type {
   DomainConfig,
   Id,
@@ -466,6 +467,16 @@ const SETTLED_PO: ReadonlySet<ProviderOrderRow['state']> = new Set([
   'frozen',
 ]);
 
+/**
+ * DP-2c: a PayPal order of a pack that the due pass ends without money (declined, failed, abandoned or
+ * frozen) changes what the receipt shows for its items (not charged, on hold). The receipt is reissued
+ * with the same function apply.ts uses: a new version only when the body changed, and none at all while
+ * no unit of the order is verified (then the call answers `no_verified_capture` and writes nothing).
+ */
+async function reissueReceipt(tx: SqlExecutor, d: PaymentsDeps, order_id: Id): Promise<void> {
+  await issueReceiptIfChanged(tx, d, { order_id });
+}
+
 /** The PayPal order the claimed operations belong to: their own reference, else the only one. */
 function poOfClaimed(
   pos: readonly ProviderOrderRow[],
@@ -668,6 +679,7 @@ async function expireCreate(d: PaymentsDeps, op: DueOp): Promise<void> {
     if (po === undefined || po.provider_order_id === null) {
       const moved = await endWholeOrder(tx, d, op.order_id, 'failed');
       await declineMoved(tx, d, op.order_id, moved, graph.pos, 'create_unresolved');
+      await reissueReceipt(tx, d, op.order_id);
     } else {
       await setPoState(tx, po.id, 'unresolved', at, ['prepared', 'awaiting_buyer', 'approved']);
       await refreshOrder(tx, d, op.order_id);
@@ -819,6 +831,7 @@ async function abandonOne(
     // The status is created or awaiting_buyer, so some PayPal order is still open and moves.
     const moved = await endWholeOrder(tx, d, order.id, 'abandoned');
     await declineMoved(tx, d, order.id, moved, graph.pos, 'abandoned');
+    await reissueReceipt(tx, d, order.id);
     await tx.query(
       `UPDATE operations SET state = 'failed', failure_reason = 'declined', lease_until = NULL, next_retry_at = NULL, updated_at = $2
        WHERE order_id = $1 AND state = 'prepared'`,
@@ -1175,6 +1188,7 @@ async function declinePo(
       [order_id, po.id, at],
     );
     await refreshOrder(tx, d, order_id);
+    await reissueReceipt(tx, d, order_id);
     return true;
   });
 }
@@ -1212,6 +1226,7 @@ async function holdPo(
       [order.id, po.id, at],
     );
     await refreshOrder(tx, d, order.id);
+    await reissueReceipt(tx, d, order.id);
   });
 }
 

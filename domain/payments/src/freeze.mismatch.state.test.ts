@@ -37,6 +37,12 @@ const orderRow = async (id: string) =>
     )
   )[0]!;
 
+const frozenAlerts = (order_id: string) =>
+  w.rows<{ reason: string; phase: string | null }>(
+    "SELECT detail ->> 'reason' AS reason, detail ->> 'phase' AS phase FROM alerts WHERE kind = 'frozen_order' AND order_id = $1 ORDER BY created_at, id",
+    [order_id],
+  );
+
 describe('DP-2c item 2: a frozen PayPal order always sets orders.mismatch', () => {
   it('capture.ts: DUPLICATE_INVOICE_ID on the first send of PO2 after PO1 was captured', async () => {
     w = await makeWorld();
@@ -44,6 +50,9 @@ describe('DP-2c item 2: a frozen PayPal order always sets orders.mismatch', () =
     w.paypal.queue.capture.push('real', DUPLICATE);
     await ret(a.order_ref);
     expect(await states(a.order_id)).toEqual(['captured', 'frozen']);
+    expect(await frozenAlerts(a.order_id)).toEqual([
+      { reason: 'duplicate_invoice_id_p2', phase: null },
+    ]);
     expect(await orderRow(a.order_id)).toMatchObject({ status: 'paid_partial', mismatch: true });
   });
 
@@ -57,6 +66,9 @@ describe('DP-2c item 2: a frozen PayPal order always sets orders.mismatch', () =
     w.tick(31_000);
     await runDue(w.deps, { max_items: 10 });
     expect(await states(a.order_id)).toEqual(['captured', 'frozen']);
+    expect(await frozenAlerts(a.order_id)).toEqual([
+      { reason: 'duplicate_invoice_id_p2', phase: null },
+    ]);
     expect(await orderRow(a.order_id)).toMatchObject({ status: 'paid_partial', mismatch: true });
   });
 
@@ -74,6 +86,9 @@ describe('DP-2c item 2: a frozen PayPal order always sets orders.mismatch', () =
     await ret(a.order_ref);
     w.paypal.beforeGet = null;
     expect(await states(a.order_id)).toEqual(['captured', 'frozen']);
+    expect(await frozenAlerts(a.order_id)).toEqual([
+      { reason: 'precapture_unit_payee', phase: 'pre_capture' },
+    ]);
     expect(await orderRow(a.order_id)).toMatchObject({ status: 'paid_partial', mismatch: true });
   });
 
@@ -93,6 +108,9 @@ describe('DP-2c item 2: a frozen PayPal order always sets orders.mismatch', () =
     w.paypal.tamperBy.set(poIds(a)[1]!, { payee: 'SBXEVILPAYEE' });
     await runDue(w.deps, { max_items: 10 });
     expect(await states(a.order_id)).toEqual(['captured', 'frozen']);
+    expect(await frozenAlerts(a.order_id)).toEqual([
+      { reason: 'precapture_unit_payee', phase: 'continuation' },
+    ]);
     expect(await orderRow(a.order_id)).toMatchObject({ status: 'paid_partial', mismatch: true });
   });
 });
