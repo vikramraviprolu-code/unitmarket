@@ -1,8 +1,11 @@
 // DP-2c item 4 (MVP-D): INV7 counts `reversal` rows in the ledger net (sale minus refunds minus
-// reversals) but compares that net with the units' `amount_minor - refunded_minor`. RULE FOR A FUTURE
-// REVERSAL BOOKING: it must move BOTH the ledger (a `reversal` row) and the unit's `refunded_minor` in
-// the same transaction, or INV7 fails for the publisher. This file pins the current behaviour; the check
-// itself is unchanged (docs/READINESS.md, DP-2c). Drift is injected with test-only SQL. Real PGlite.
+// reversals) and compares that net with the units' `amount_minor - refunded_minor`, while INV1 counts
+// only `refund` rows and ties `refunded_minor` to them. So the two checks disagree on reversal rows.
+// RULE FOR A FUTURE REVERSAL BOOKING: it must keep INV1 and INV7 both true. Moving `refunded_minor`
+// alone satisfies INV7 and breaks INV1; the booking lane must change one check or add a separate
+// reversed amount. No reversal ledger row is booked anywhere today. This file pins the current
+// behaviour of INV7 only; the check itself is unchanged (docs/READINESS.md, DP-2c). Drift is injected
+// with test-only SQL. Real PGlite.
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkInvariants } from './index';
 import { makeWorld, paid } from './ops/support';
