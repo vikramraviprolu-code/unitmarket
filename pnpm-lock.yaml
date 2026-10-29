@@ -816,6 +816,75 @@ importers:
         specifier: 0.0.1
         version: 0.0.1
 
+  tests/mvp-d:
+    dependencies:
+      '@umsbx/access-clock':
+        specifier: workspace:*
+        version: link:../../domain/access-clock
+      '@umsbx/approval':
+        specifier: workspace:*
+        version: link:../../domain/approval
+      '@umsbx/catalogue':
+        specifier: workspace:*
+        version: link:../../domain/catalogue
+      '@umsbx/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/delivery':
+        specifier: workspace:*
+        version: link:../../domain/delivery
+      '@umsbx/entitlements':
+        specifier: workspace:*
+        version: link:../../domain/entitlements
+      '@umsbx/ledger':
+        specifier: workspace:*
+        version: link:../../domain/ledger
+      '@umsbx/library':
+        specifier: workspace:*
+        version: link:../../domain/library
+      '@umsbx/obs':
+        specifier: workspace:*
+        version: link:../../packages/obs
+      '@umsbx/offer-entry':
+        specifier: workspace:*
+        version: link:../../domain/offer-entry
+      '@umsbx/payments':
+        specifier: workspace:*
+        version: link:../../domain/payments
+      '@umsbx/paypal':
+        specifier: workspace:*
+        version: link:../../packages/paypal
+      '@umsbx/receipts':
+        specifier: workspace:*
+        version: link:../../domain/receipts
+      '@umsbx/recovery':
+        specifier: workspace:*
+        version: link:../../domain/recovery
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@umsbx/safety':
+        specifier: workspace:*
+        version: link:../../packages/safety
+      '@umsbx/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+      '@umsbx/testkit':
+        specifier: workspace:*
+        version: link:../../packages/testkit
+      '@umsbx/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
+      server-only:
+        specifier: 0.0.1
+        version: 0.0.1
+
   tools/spike-kit: {}
 
 packages:
