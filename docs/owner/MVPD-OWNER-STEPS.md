@@ -17,6 +17,18 @@ proves the modelled cases only, not PayPal compatibility.
 PayPal, the offline twin uses a fixture), the hosted webhook (see below), the hosted app (D-052 expired on
 30 Oct 12:00 UTC and was not extended, D-056), and a second merchant account (D-041: a stretch item).
 
+## Values for the sitting of 29 Oct 2026 (decision D-057)
+
+Start **20:30 CET = 19:30 UTC**. Planned end **21:00 UTC (22:00 CET)**. The sitting must end before 00:00 UTC. The approval reference is **D-057**; wherever this document says `D-0xx`, use `D-057`. Step 2 is then, typed by V:
+
+```
+corepack pnpm safety:approve --operator vikram --ref D-057 --scope mvp_c_refunds \
+  --ops oauth_token,create_order,get_order,capture_order,get_capture \
+  --max-amount 2000 --max-calls 60 --valid-until 2026-10-30T01:00:00Z --approved-by vikram
+```
+
+S checks the line printed back: the five operation names, 2000, 60, and `until 2026-10-30T01:00:00Z`. V may choose an earlier `--valid-until` (never later, and still at least 3 hours after the real end). Expected after `safety:status`: `budget D-057: 60 of 60 calls left today`. The hosted MVP-C app must be idle (Prerequisite 6): S confirms, and V presses "Stop PayPal now" on the hosted `/ops` page before Step 0.
+
 ## Who does what
 
 | Person     | Does                                                                                                                                                                                              | Never does                                                                                                           |
