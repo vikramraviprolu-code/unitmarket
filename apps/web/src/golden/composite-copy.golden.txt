@@ -28,6 +28,6 @@ pack, one ready, one declined, line 2: A morning walk along the old quay, Quaysi
 pack, payee mismatch: A notebook of six working knots and Why the quayside market moved indoors are on hold while we check them.
 pack, payee mismatch, line 1: A notebook of six working knots, Harbour Ledger Review (fictional): On hold while we check it
 pack, payee mismatch, line 2: Why the quayside market moved indoors, Quayside Gazette (fictional): On hold while we check it
-pack, captured then frozen: The dock that was never finished is ready in your library. A morning walk along the old quay is on hold while we check it.
-pack, captured then frozen, line 1: The dock that was never finished, Harbour Ledger Review (fictional): Ready in your library
+pack, captured then frozen: What a small harbour charges and why is ready in your library. A morning walk along the old quay is on hold while we check it.
+pack, captured then frozen, line 1: What a small harbour charges and why, Harbour Ledger Review (fictional): Ready in your library
 pack, captured then frozen, line 2: A morning walk along the old quay, Quayside Gazette (fictional): On hold while we check it

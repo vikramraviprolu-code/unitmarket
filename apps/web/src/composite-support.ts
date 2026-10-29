@@ -11,7 +11,7 @@ export type Offer = readonly [publisher: string, code: string];
 export const HARBOUR_TIDE: Offer = ['harbour-ledger', 'tide-tables'];
 export const HARBOUR_FERRY: Offer = ['harbour-ledger', 'ferry-timetables'];
 export const HARBOUR_KNOTS: Offer = ['harbour-ledger', 'knot-notebook'];
-export const HARBOUR_DOCK: Offer = ['harbour-ledger', 'dock-history'];
+export const HARBOUR_FEES: Offer = ['harbour-ledger', 'harbour-fees'];
 export const QUAY_MARKET: Offer = ['quayside-gazette', 'market-hall-move'];
 export const QUAY_WALK: Offer = ['quayside-gazette', 'quay-walk'];
 export const NORTH_ALLOTMENT: Offer = ['northfield-quarterly', 'allotment-diary'];
@@ -53,8 +53,22 @@ export async function proposalFor(
       source: 'direct',
       option: page.options[0]!.option,
     });
-    if (!q.ok || q.value.kind !== 'quote') throw new Error(`no quote for ${offer_code}`);
-    quotes.push({ quote_id: q.value.quote_id, offer_id: q.value.offer_id });
+    if (q.ok && q.value.kind === 'quote') {
+      quotes.push({ quote_id: q.value.quote_id, offer_id: q.value.offer_id });
+    } else {
+      // A currency the buyer's corridor does not serve gives no quote; the stored row is still what the
+      // approval reads, so the mixed-currency refusal can be reached the way a stale proposal would.
+      const id = `quo_raw_${offer_code}`;
+      await app.db.query(
+        `INSERT INTO quotes (id, buyer_id, offer_id, offer_version, option, price_minor, currency, corridor_id, source, expires_at, created_at, updated_at)
+         SELECT $1, $2, o.id, o.version, $3, $4, o.currency,
+                (SELECT id FROM corridors WHERE currency = o.currency LIMIT 1), 'direct',
+                '2999-01-01T00:00:00.000Z', '2026-10-29T00:00:00.000Z', '2026-10-29T00:00:00.000Z'
+           FROM offers o WHERE o.id = $5`,
+        [id, actor.buyer_id, page.options[0]!.option, page.options[0]!.price_minor, page.offer_id],
+      );
+      quotes.push({ quote_id: id, offer_id: page.offer_id });
+    }
   }
   const n = (await app.db.query<{ c: string | number }>('SELECT count(*) AS c FROM proposals'))
     .rows[0]!.c;

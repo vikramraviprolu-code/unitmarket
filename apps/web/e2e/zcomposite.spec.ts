@@ -1,8 +1,12 @@
 // DP-5 (MVP-D) e2e, offline on the dry run, keyboard only: a buyer picks two items from two
 // publishers, approves once in UnitMarket, then once per publisher at the pretend PayPal with
-// "Step 2 of 2" between, and sees one line per item. The partial journey declines the second
-// payment. Screenshots go to e2e/shots. Each journey uses its own buyer and its own articles
-// (dock-history and the two Quayside articles are used by no other spec).
+// "Step 2 of 2" between, and sees one line per item. The partial journey declines the Harbour
+// payment. Screenshots go to e2e/shots.
+//
+// File name and order: this spec is named so that it runs after refund.spec.ts and before
+// zz-ops-stop.spec.ts. Both journeys use buyer B and the Harbour articles harbour-fees and
+// knot-notebook, which refund.spec.ts has already bought and fully refunded (so they can be bought
+// again), and which no later spec needs. The Playwright filter `composite.spec.ts` matches it.
 import { mkdirSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
@@ -20,11 +24,14 @@ async function key(page: Page, target: ReturnType<Page['locator']>, k: 'Space' |
   await page.keyboard.press(k);
 }
 
-async function pickTwo(page: Page, harbourTitle: RegExp, quaysideTitle: RegExp): Promise<void> {
+async function pickTwo(
+  page: Page,
+  need: string,
+  harbourTitle: RegExp,
+  quaysideTitle: RegExp,
+): Promise<void> {
   await page.goto('/discover');
-  await page
-    .getByLabel('What do you need?')
-    .fill('dock history and the quay market walk, under $5, read online');
+  await page.getByLabel('What do you need?').fill(need);
   await key(page, page.getByRole('button', { name: 'Find articles' }), 'Enter');
   await expect(page.getByTestId('fit-card').first()).toBeVisible();
   await key(page, page.getByLabel(/I accept the terms of purchase/), 'Space');
@@ -45,24 +52,38 @@ async function toDryRun(page: Page): Promise<void> {
   await expectDryRun(page);
 }
 
-async function approveDryRunStep(page: Page, n: number, scenario: string): Promise<void> {
-  const form = page.getByTestId(`dryrun-step-${String(n)}`);
+/** The next dry-run payment still awaiting approval, with the outcome chosen per publisher. */
+async function approveNext(
+  page: Page,
+  outcome: { harbour: string; quayside: string },
+): Promise<void> {
+  const form = page
+    .locator('[data-testid^="dryrun-step-"]')
+    .filter({ has: page.getByRole('button', { name: /^Approve payment \d of 2 \(dry run\)$/ }) })
+    .first();
+  const heading = (await form.getByRole('heading').textContent()) ?? '';
+  const scenario = heading.includes('Harbour') ? outcome.harbour : outcome.quayside;
   await form.getByRole('combobox').focus();
   await form.getByRole('combobox').selectOption(scenario);
   await key(
     page,
-    form.getByRole('button', { name: new RegExp(`Approve payment ${String(n)} of 2`) }),
+    form.getByRole('button', { name: /^Approve payment \d of 2 \(dry run\)$/ }),
     'Enter',
   );
 }
 
 test.describe('composite pack on the dry run (keyboard only)', () => {
   test('happy: two approvals with Step 2 of 2 between, two lines ready', async ({ browser }) => {
-    const page = await buyerPage(browser, 'a');
-    await pickTwo(page, /dock that was never finished/i, /quayside market moved indoors/i);
+    const page = await buyerPage(browser, 'b');
+    await pickTwo(
+      page,
+      'harbour charges and the quayside market, under $5',
+      /small harbour charges/i,
+      /quayside market moved indoors/i,
+    );
     await shot(page, 'dp5-approve');
     await toDryRun(page);
-    await approveDryRunStep(page, 1, 'happy');
+    await approveNext(page, { harbour: 'happy', quayside: 'happy' });
     await expect(page.getByTestId('step-heading')).toContainText(
       /^Step 2 of 2: approve your payment to .+ at PayPal$/,
     );
@@ -76,7 +97,7 @@ test.describe('composite pack on the dry run (keyboard only)', () => {
     await expect(page).toHaveURL(/\/checkout\/return/);
     await key(page, page.getByRole('link', { name: /Approve payment 2 of 2 at PayPal/ }), 'Enter');
     await expect(page).toHaveURL(/\/checkout\/dry-run\//);
-    await approveDryRunStep(page, 2, 'happy');
+    await approveNext(page, { harbour: 'happy', quayside: 'happy' });
     await expect(page).toHaveURL(/\/orders\//);
     const items = page.getByTestId('order-item');
     await expect(items).toHaveCount(2);
@@ -89,12 +110,17 @@ test.describe('composite pack on the dry run (keyboard only)', () => {
     browser,
   }) => {
     const page = await buyerPage(browser, 'b');
-    await pickTwo(page, /dock that was never finished/i, /morning walk along the old quay/i);
+    await pickTwo(
+      page,
+      'a notebook of six working knots and a walk along the old quay, under $5',
+      /six working knots/i,
+      /morning walk along the old quay/i,
+    );
     await toDryRun(page);
-    await approveDryRunStep(page, 1, 'happy');
+    await approveNext(page, { harbour: 'declined', quayside: 'happy' });
     await expect(page.getByTestId('step-heading')).toContainText(/^Step 2 of 2/);
     await key(page, page.getByRole('link', { name: /Approve payment 2 of 2 at PayPal/ }), 'Enter');
-    await approveDryRunStep(page, 2, 'declined');
+    await approveNext(page, { harbour: 'declined', quayside: 'happy' });
     await expect(page).toHaveURL(/\/orders\//);
     const live = page.getByTestId('order-live');
     await expect(live).toHaveAttribute('aria-live', 'polite');

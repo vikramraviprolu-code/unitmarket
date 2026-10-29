@@ -29,7 +29,9 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
     actor,
     scenario: a.environment === 'dryrun' ? (input.scenario ?? null) : null,
   });
-  if (r.ok) return { status: 200, body: { approve_url: r.value.approve_url } };
+  // `progress` is the buyer's next step of a pack ({ step, of }); null for a one-publisher order.
+  if (r.ok)
+    return { status: 200, body: { approve_url: r.value.approve_url, progress: r.value.progress } };
   if (r.error.code === 'not_found')
     return { status: 404, code: 'not_found', message: 'We could not find that order.' };
   if (r.error.code === 'payments_paused')

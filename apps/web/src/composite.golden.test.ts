@@ -20,7 +20,7 @@ import {
   stepHeading,
 } from './lib/composite-copy';
 import {
-  HARBOUR_DOCK,
+  HARBOUR_FEES,
   HARBOUR_FERRY,
   HARBOUR_KNOTS,
   HARBOUR_TIDE,
@@ -74,7 +74,7 @@ describe('composite copy (golden)', () => {
       [HARBOUR]: 'happy',
       [QUAYSIDE]: 'mismatch_payee',
     });
-    const frozen = await runPackByPublisher(app, B, [HARBOUR_DOCK, QUAY_WALK], {
+    const frozen = await runPackByPublisher(app, B, [HARBOUR_FEES, QUAY_WALK], {
       [HARBOUR]: 'happy',
       [QUAYSIDE]: 'happy',
     });

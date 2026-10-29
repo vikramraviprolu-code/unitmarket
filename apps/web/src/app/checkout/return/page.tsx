@@ -6,6 +6,7 @@ import { app } from '../../../server/access';
 import { isBuyerNavigation } from '../../../server/return-guard';
 import { currentActor } from '../../../server/session';
 import { ErrorState } from '../../../ui/ErrorState';
+import { stepButton, stepDeadline, stepHeading } from '../../../lib/composite-copy';
 
 export const metadata: Metadata = { title: 'Returning from payment' };
 
@@ -24,8 +25,9 @@ export default async function CheckoutReturn({
   const ref = one(q['ref']);
   if (ref === undefined || ref === '') notFound();
   const sc = one(q['scenario']);
+  const po = one(q['po']);
   const h = await headers();
-  if (isBuyerNavigation((name) => h.get(name))) return finishReturn(ref, sc);
+  if (isBuyerNavigation((name) => h.get(name))) return finishReturn(ref, sc, po);
   // Not a page navigation (an image, a frame, a fetch, a prefetch, or a client without Sec-Fetch
   // headers): nothing starts. The button is a GET form, which the browser sends as a page
   // navigation, so a real buyer is one click from the same place. (Server actions are not used:
@@ -37,6 +39,7 @@ export default async function CheckoutReturn({
       <form action="/checkout/return" method="get">
         <input type="hidden" name="ref" value={ref} />
         {sc === undefined ? null : <input type="hidden" name="scenario" value={sc} />}
+        {po === undefined ? null : <input type="hidden" name="po" value={po} />}
         <button className="btn btn-primary" type="submit">
           Continue to your order
         </button>
@@ -45,15 +48,52 @@ export default async function CheckoutReturn({
   );
 }
 
-async function finishReturn(ref: string, sc: string | undefined) {
+async function finishReturn(ref: string, sc: string | undefined, po: string | undefined) {
   const actor = await currentActor();
   if (actor?.kind !== 'buyer') redirect('/signin');
   const a = await app();
   const scenario = a.environment === 'dryrun' && sc !== undefined && SCENARIO.test(sc) ? sc : null;
   // Dry run only: this page stands in for PayPal's own approval step, so reaching it with a chosen
   // scenario is the pretend approval. In sandbox mode PayPal does that, and a scenario is ignored.
-  if (scenario !== null) await a.engine.dryRunApprove({ order_ref: ref, actor, scenario });
-  const r = await a.engine.payments.onBuyerReturn({ order_ref: ref, actor, scenario });
+  // `po` names which PayPal order of a pack this pretend approval is for (1..9). A pack keeps each
+  // PayPal order's own scenario, so the return then carries none.
+  const position = po !== undefined && /^[1-9]$/.test(po) ? Number(po) : undefined;
+  if (scenario !== null)
+    await a.engine.dryRunApprove({
+      order_ref: ref,
+      actor,
+      scenario,
+      ...(position === undefined ? {} : { position }),
+    });
+  const r = await a.engine.payments.onBuyerReturn({
+    order_ref: ref,
+    actor,
+    scenario: position === undefined ? scenario : null,
+  });
+  if (r.ok && r.value.next !== null) {
+    // OQ-5: one PayPal order of the pack is still waiting for the buyer. No automatic redirect: the
+    // buyer presses the one button. The link is the stored one for that PayPal order; on the dry run
+    // the dry-run page stands in for PayPal's own page.
+    const next = r.value.next;
+    const target =
+      a.environment === 'dryrun'
+        ? `/checkout/dry-run/${encodeURIComponent(ref)}`
+        : next.approve_url;
+    return (
+      <>
+        <h1 data-testid="step-heading">{stepHeading(next.step, next.of, next.publisher)}</h1>
+        <p data-testid="step-deadline">{stepDeadline(a.engine.packWindowMinutes())}</p>
+        <p>
+          <a className="btn btn-primary" href={target}>
+            {stepButton(next.step, next.of)}
+          </a>
+        </p>
+        <p>
+          <Link href={`/orders/${encodeURIComponent(ref)}`}>See where your order stands</Link>
+        </p>
+      </>
+    );
+  }
   if (r.ok) redirect(`/orders/${encodeURIComponent(ref)}`);
   if (r.error.code === 'not_found') notFound();
   if (r.error.code === 'payments_paused')

@@ -6,6 +6,7 @@ import type { ApprovalView } from '../../../lib/view-types';
 import { Countdown } from '../../../ui/Countdown';
 import { ErrorState } from '../../../ui/ErrorState';
 import { StatusBanner } from '../../../ui/StatusBanner';
+import { packNotice } from '../../../lib/composite-copy';
 
 export function ApproveClient({ view, idemKey }: { view: ApprovalView; idemKey: string }) {
   const [agree, setAgree] = useState(false);
@@ -75,15 +76,39 @@ export function ApproveClient({ view, idemKey }: { view: ApprovalView; idemKey: 
     <>
       <section className="card" aria-labelledby="summary">
         <h2 id="summary">What you are buying</h2>
-        <ul>
-          {view.items.map((it) => (
-            <li key={it.article_id}>
-              <strong>{it.title}</strong>, {it.publisher}
-              <br />
-              {optionLabel(it.option)}: {formatMinor(it.amount_minor, view.currency)}
-            </li>
-          ))}
-        </ul>
+        {view.settlement !== null ? (
+          <>
+            <p data-testid="pack-notice">{packNotice(view.settlement.payments)}</p>
+            {view.blocks.map((b) => (
+              <div key={b.publisher} data-testid="approve-block">
+                <h3>{b.publisher}</h3>
+                <ul>
+                  {b.items.map((it) => (
+                    <li key={it.article_id}>
+                      <strong>{it.title}</strong>
+                      <br />
+                      {optionLabel(it.option)}: {formatMinor(it.amount_minor, view.currency)}
+                    </li>
+                  ))}
+                </ul>
+                <p>
+                  Subtotal for {b.publisher}:{' '}
+                  <strong>{formatMinor(b.subtotal_minor, view.currency)}</strong>
+                </p>
+              </div>
+            ))}
+          </>
+        ) : (
+          <ul>
+            {view.items.map((it) => (
+              <li key={it.article_id}>
+                <strong>{it.title}</strong>, {it.publisher}
+                <br />
+                {optionLabel(it.option)}: {formatMinor(it.amount_minor, view.currency)}
+              </li>
+            ))}
+          </ul>
+        )}
         <p>
           Total:{' '}
           <strong className="price" data-testid="approve-total">

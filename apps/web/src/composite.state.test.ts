@@ -10,7 +10,7 @@ import type { App } from '../composition.server';
 import { bootTestApp, call, signIn } from './support';
 import type { Session } from './support';
 import {
-  HARBOUR_DOCK,
+  HARBOUR_FEES,
   HARBOUR_FERRY,
   HARBOUR_KNOTS,
   HARBOUR_TIDE,
@@ -209,7 +209,7 @@ describe('partial and held packs', () => {
   });
 
   it('captured PayPal order frozen after its capture: "On hold while we check it", never "Payment confirmed"', async () => {
-    const run = await runPack(app, B, [QUAY_WALK, HARBOUR_DOCK], ['happy', 'happy']);
+    const run = await runPack(app, B, [QUAY_WALK, HARBOUR_TIDE], ['happy', 'happy']);
     expect((await app.engine.orderView({ order_ref: run.order_ref, actor: B }))?.status).toBe(
       'paid',
     );
@@ -228,7 +228,7 @@ describe('partial and held packs', () => {
   });
 
   it('the single-publisher order keeps its old words for a frozen PayPal order too', async () => {
-    const o = await startPack(app, A, [HARBOUR_DOCK]);
+    const o = await startPack(app, A, [HARBOUR_FEES]);
     expect(o.checkout.progress).toBeNull();
     await app.engine.dryRunApprove({ order_ref: o.order_ref, actor: A, scenario: 'happy' });
     await app.engine.payments.onBuyerReturn({

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withRoute } from '@umsbx/security';
 import type { RouteMeta } from '@umsbx/security';
 import { app, securityDeps } from '../../../server/access';
+import { MIXED_CURRENCY_TEXT, TOO_MANY_PUBLISHERS_TEXT } from '../../../lib/composite-copy';
 
 export const routeMeta: RouteMeta = {
   path: '/api/approvals',
@@ -33,12 +34,15 @@ const STATUS: Record<string, 400 | 403 | 404 | 409 | 410 | 422> = {
   consent_missing: 422,
   not_owner: 403,
   too_many_items: 422,
+  too_many_publishers: 422,
 };
 const TEXT: Record<string, string> = {
   quote_expired: 'That quote expired. Please start again to see the current price.',
   offer_changed: 'The offer changed. Please start again to see the current price.',
   consent_missing: 'Please accept the terms to continue.',
   unknown_selection: 'We could not find that selection.',
+  mixed_currency: MIXED_CURRENCY_TEXT,
+  too_many_publishers: TOO_MANY_PUBLISHERS_TEXT,
 };
 
 export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {

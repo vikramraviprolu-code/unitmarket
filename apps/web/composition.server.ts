@@ -64,14 +64,25 @@ import {
 } from '@umsbx/paypal';
 import type { AdapterDeps } from '@umsbx/paypal';
 import { createScriptedModel } from '@umsbx/model';
-import { SEED_DATA, getOffer, seedCatalogue } from '@umsbx/catalogue';
+import {
+  SEED_DATA,
+  SEED_SUPPLEMENT_COMPOSITE,
+  getOffer,
+  seedCatalogue,
+  seedSupplement,
+} from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
 import { discover as discoverOffers, parseNeed } from '@umsbx/discovery';
 import { requestApproval } from '@umsbx/approval';
 import type { Selection } from '@umsbx/approval';
 import { createPgContentStore, issueLink, planServe } from '@umsbx/delivery';
 import type { ServePlan } from '@umsbx/delivery';
-import { getReceiptForBuyer, receiptLabel, renderReceiptHtml } from '@umsbx/receipts';
+import {
+  getReceiptForBuyer,
+  paymentOutcome,
+  receiptLabel,
+  renderReceiptHtml,
+} from '@umsbx/receipts';
 import { sweepWindows } from '@umsbx/access-clock';
 import {
   applyAutomaticRules,
@@ -108,6 +119,8 @@ import { createLearnRecorder, receiveWebhook, webhookAllowed } from './src/serve
 import type { WebhookInput, WebhookResponse } from './src/server/webhook';
 import type { Outbound } from './src/server/outbound.server';
 import type { OpsGate } from './src/lib/gate-lines';
+import { LINE_TEXT, lineKind, packBanner, windowMinutes } from './src/lib/composite-copy';
+import type { LineKind } from './src/lib/composite-copy';
 import {
   buyerRefundNote,
   buyerStatusText,
@@ -142,6 +155,11 @@ export interface AppOptions {
    * NODE_ENV is test.
    */
   test_loop?: { leader?: 'off'; leader_retry_ms?: number };
+  /**
+   * DP-5 (tests): leave out the Quayside supplement (`supplement: false`) and/or the sandbox payee
+   * step (`payees: false`) to build the disk an earlier release left. Refused unless NODE_ENV=test.
+   */
+  test_seed?: { supplement?: boolean; payees?: boolean };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -177,12 +195,30 @@ export type ReturnError = {
   code:
     'not_found' | 'not_approved' | 'frozen' | 'not_charged_content_unavailable' | 'payments_paused';
 };
+/** Where the buyer goes next in a pack (OQ-5): which PayPal order, for which publisher, at which stored URL. */
+export interface PackStep {
+  step: number;
+  of: number;
+  publisher: string;
+  approve_url: string;
+}
 export interface OrderView {
   order_id: Id;
   order_ref: Id;
   status: string;
   buyer_message: string;
-  items: { article_id: Id; title: string; access: string }[];
+  /**
+   * `publisher`, `kind` and `line` are set for an order with several PayPal orders (a pack): one line per
+   * item from stored data. A one-publisher order carries only the first three fields.
+   */
+  items: {
+    article_id: Id;
+    title: string;
+    access: string;
+    publisher?: string;
+    kind?: LineKind;
+    line?: string;
+  }[];
   environment: EnvironmentLabel;
   /** The case opened for this order, if any (recovery rules or the buyer). */
   open_case: { case_id: Id; state: string; buyer_message: string } | null;
@@ -199,12 +235,14 @@ export interface PaymentsFacade {
     order_id: Id;
     actor: Actor;
     scenario?: string | null;
-  }): Promise<Result<{ approve_url: string }, CheckoutError>>;
+  }): Promise<
+    Result<{ approve_url: string; progress: { step: number; of: number } | null }, CheckoutError>
+  >;
   onBuyerReturn(i: {
     order_ref: Id;
     actor: Actor;
     scenario?: string | null;
-  }): Promise<Result<{ order_ref: Id; status: string }, ReturnError>>;
+  }): Promise<Result<{ order_ref: Id; status: string; next: PackStep | null }, ReturnError>>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -240,6 +278,21 @@ export interface ApprovalView {
     amount_minor: number;
     ai_scope: string;
   }[];
+  /** One block per publisher, with its items and subtotal (DP-5). */
+  blocks: {
+    publisher: string;
+    items: {
+      article_id: Id;
+      title: string;
+      publisher: string;
+      option: string;
+      amount_minor: number;
+      ai_scope: string;
+    }[];
+    subtotal_minor: number;
+  }[];
+  /** Set when the snapshot froze a per-publisher settlement: the buyer approves this many payments. */
+  settlement: { payments: number } | null;
 }
 export interface LibraryEntry {
   entitlement_id: Id;
@@ -288,6 +341,11 @@ export interface OpsSnapshot {
   /** The job loop: when it last finished a pass and how much recovery work is due. */
   jobs: { last_pass_at: string | null; due: number };
   /**
+   * D-041: publishers that share one payee account (the explicit payee_shared flag), from stored data.
+   * Null when none do. Only the last 4 characters of the merchant id are given.
+   */
+  shared_payee: { publishers: number; last4: string } | null;
+  /**
    * CO-8: the units an operator may refund. Null unless the session carries the second factor (P9):
    * the page shows the form only to such sessions, and the route refuses the others anyway.
    */
@@ -306,8 +364,13 @@ const SWITCHES: SwitchName[] = [
 const DAY_MS = 86_400_000;
 const iso = (v: unknown): string => new Date(v as string | number | Date).toISOString();
 
-export function orderMessage(status: string, unit_statuses: string[]): string {
-  if (unit_statuses.includes('mismatch') || status === 'frozen')
+export function orderMessage(
+  status: string,
+  unit_statuses: string[],
+  po_states: readonly string[] = [],
+): string {
+  // A hold always wins (H1): a frozen PayPal order holds the order whether or not a capture was sent.
+  if (unit_statuses.includes('mismatch') || status === 'frozen' || po_states.includes('frozen'))
     return 'Your order is on hold while we check it. You have not been charged twice. We opened a case and will write to you.';
   if (unit_statuses.includes('pending')) return 'Payment pending at PayPal';
   switch (status) {
@@ -409,7 +472,23 @@ export interface Engine {
    * The buyer pressing "Approve payment (dry run)": marks the order approved at the pretend
    * PayPal with the chosen scenario. False when it is not this buyer's order or not dry run.
    */
-  dryRunApprove(i: { order_ref: Id; actor: Actor; scenario: string | null }): Promise<boolean>;
+  dryRunApprove(i: {
+    order_ref: Id;
+    actor: Actor;
+    scenario: string | null;
+    /** Which PayPal order of a pack (1..N). Default: the first one still awaiting the buyer. */
+    position?: number;
+  }): Promise<boolean>;
+  /**
+   * The PayPal orders of a buyer's order, by position, for the dry-run page and the step page: the
+   * publisher's display name and our state for each. Null when it is not this buyer's order.
+   */
+  checkoutSteps(i: {
+    order_ref: Id;
+    actor: Actor;
+  }): Promise<{ position: number; publisher: string; state: string }[] | null>;
+  /** Whole minutes of the pack approval window (from the configured milliseconds, rounded down). */
+  packWindowMinutes(): number;
   library(i: { actor: Actor }): Promise<LibraryEntry[]>;
   libraryItem(i: { entitlement_id: Id; actor: Actor }): Promise<LibraryEntry | null>;
   issueLink(i: { entitlement_id: Id; actor: Actor; session_id?: Id }): ReturnType<typeof issueLink>;
@@ -477,6 +556,8 @@ export interface Engine {
 export const SANDBOX_REREAD_PAID_EVERY_MS = 21_600_000;
 export const SANDBOX_MIN_CALL_GAP_MS = 500;
 
+export const PACK_APPROVAL_WINDOW_MS = 3_600_000;
+
 export const DOMAIN_CONFIG = (c: Config): DomainConfig => ({
   reconcile_window_ms: DAY_MS,
   reconcile_backoff_ms: [30_000, 120_000, 600_000, 3_600_000],
@@ -490,6 +571,9 @@ export const DOMAIN_CONFIG = (c: Config): DomainConfig => ({
   link_secret: c.link_secret,
   rule_version: 'rules-1',
   pricing_rule_version: 'pricing-1',
+  // MVP-D (P17, ASM-75): how long after the first approval of a pack the rest must be approved.
+  // Set here on purpose, not left to the engine's default.
+  pack_approval_window_ms: PACK_APPROVAL_WINDOW_MS,
   ...(c.mode === 'sandbox'
     ? {
         reread_paid_every_ms: SANDBOX_REREAD_PAID_EVERY_MS,
@@ -497,6 +581,90 @@ export const DOMAIN_CONFIG = (c: Config): DomainConfig => ({
       }
     : {}),
 });
+
+// ---------------------------------------------------------------------------------------------
+// D-041 (OQ-1 option B), M-3: both fictional publishers are paid into the owner's own sandbox
+// account. One transaction, two statements, Harbour first, so the payee guard of migration 0010 never
+// sees a pair that is not flagged on both sides. A stored id is never overwritten: Harbour is only
+// flagged where it already holds the owner's id, and Quayside is only set where it has no id. If
+// Harbour stores another id, nothing is set and one refusal line is logged (no partial write).
+// ---------------------------------------------------------------------------------------------
+const FIRST_PAYEE_SLUG = MVPB_PUBLISHER_SLUG;
+const SECOND_PAYEE_SLUG = 'quayside-gazette';
+
+export async function seedSandboxPayees(
+  d: { db: Database; clock: Clock; audit: AuditSink; log: Logger },
+  own_merchant_id: string,
+): Promise<void> {
+  const last4 = own_merchant_id.slice(-4);
+  const refused = await d.db.transaction(async (tx) => {
+    const rows = (
+      await tx.query<{
+        id: string;
+        slug: string;
+        paypal_merchant_id: string | null;
+        payee_shared: boolean;
+      }>(
+        'SELECT id, slug, paypal_merchant_id, payee_shared FROM publishers WHERE slug = $1 OR slug = $2',
+        [FIRST_PAYEE_SLUG, SECOND_PAYEE_SLUG],
+      )
+    ).rows;
+    const first = rows.find((r) => r.slug === FIRST_PAYEE_SLUG);
+    const second = rows.find((r) => r.slug === SECOND_PAYEE_SLUG);
+    if (first === undefined || second === undefined) return false;
+    if (first.paypal_merchant_id !== null && first.paypal_merchant_id !== own_merchant_id)
+      return true;
+    const now = d.clock.now().toISOString();
+    if (first.paypal_merchant_id === own_merchant_id && !first.payee_shared) {
+      await tx.query(
+        `UPDATE publishers SET payee_shared = true, updated_at = $1
+          WHERE id = $2 AND paypal_merchant_id = $3 AND NOT payee_shared`,
+        [now, first.id, own_merchant_id],
+      );
+      await d.audit.record(tx, {
+        actor: { kind: 'system' },
+        action: 'seed.payee_shared',
+        target: first.id,
+        reason: 'D-041: both publishers are paid into the owner account',
+        detail: { slug: first.slug, merchant_last4: last4 },
+      });
+    }
+    if (second.paypal_merchant_id === null) {
+      await tx.query(
+        `UPDATE publishers SET paypal_merchant_id = $3, payee_verified_at = $1, payee_shared = true, updated_at = $1
+          WHERE id = $2 AND paypal_merchant_id IS NULL`,
+        [now, second.id, own_merchant_id],
+      );
+      await d.audit.record(tx, {
+        actor: { kind: 'system' },
+        action: 'seed.payee_set',
+        target: second.id,
+        reason: 'D-041: both publishers are paid into the owner account',
+        detail: { slug: second.slug, merchant_last4: last4 },
+      });
+    }
+    return false;
+  });
+  if (refused)
+    d.log.log({
+      msg: 'seed.payee_refused',
+      level: 'warn',
+      fields: { publisher: FIRST_PAYEE_SLUG, why: 'stored_id_differs_from_owner_id' },
+    });
+}
+
+/** Publishers that share one payee account through the explicit flag, from stored data (D-041). */
+async function sharedPayee(db: Database): Promise<OpsSnapshot['shared_payee']> {
+  const r = await db.query<{ paypal_merchant_id: string; n: string | number }>(
+    `SELECT paypal_merchant_id, count(*) AS n FROM publishers
+      WHERE payee_shared AND paypal_merchant_id IS NOT NULL
+      GROUP BY paypal_merchant_id HAVING count(*) > 1 ORDER BY count(*) DESC LIMIT 1`,
+  );
+  const row = r.rows[0];
+  return row === undefined
+    ? null
+    : { publishers: Number(row.n), last4: row.paypal_merchant_id.slice(-4) };
+}
 
 export function createApp(env: Env, opts: AppOptions = {}): App {
   const loaded = loadConfig(env);
@@ -516,6 +684,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       throw new Error('boot refused: webhook_certificates outside NODE_ENV=test');
     if (opts.test_loop !== undefined)
       throw new Error('boot refused: test_loop outside NODE_ENV=test');
+    if (opts.test_seed !== undefined)
+      throw new Error('boot refused: test_seed outside NODE_ENV=test');
   }
   const environment = envLabel(config);
   const clock: Clock = systemClock();
@@ -567,6 +737,11 @@ function buildApp(config: Config, opts: AppOptions): App {
   const seed = async (d: SqlDriver): Promise<void> => {
     const n = await d.query<{ c: string | number }>('SELECT count(*) AS c FROM publishers');
     if (Number(n.rows[0]?.c ?? 0) === 0) await seedCatalogue(d, clock, ids, SEED_DATA);
+    // DP-5: the second publisher of MVP-D. Every boot, after the base seed, so it reaches a disk that
+    // already holds the base catalogue. Every row is looked up first: a second run adds nothing, and it
+    // never sets a merchant id, a verification time or the payee_shared flag.
+    if (opts.test_seed?.supplement !== false)
+      await seedSupplement(d, clock, ids, SEED_SUPPLEMENT_COMPOSITE);
     const now = clock.now().toISOString();
     if (config.mode === 'offline') {
       // Dry run only: a synthetic payee label so approvals can be built. It is not a PayPal account.
@@ -596,6 +771,8 @@ function buildApp(config: Config, opts: AppOptions): App {
           WHERE slug = $3 AND paypal_merchant_id IS NULL`,
         [now, config.own_merchant_id, MVPB_PUBLISHER_SLUG],
       );
+      if (opts.test_seed?.payees !== false)
+        await seedSandboxPayees({ db: d, clock, audit, log }, config.own_merchant_id);
     }
     for (const [persona, id] of Object.entries(BUYER_IDS)) {
       await d.query(
@@ -740,9 +917,14 @@ function buildApp(config: Config, opts: AppOptions): App {
     log,
     audit,
     switches,
-    config: DOMAIN_CONFIG(config),
+    config: {
+      ...DOMAIN_CONFIG(config),
+      // The window is the one cadence a request path reads (the step page names it); tests may move it.
+      pack_approval_window_ms: opts.test_domain?.pack_approval_window_ms ?? PACK_APPROVAL_WINDOW_MS,
+    },
     environment,
   };
+  const packWindowMs = core.config.pack_approval_window_ms ?? PACK_APPROVAL_WINDOW_MS;
   // CO-1d (D-038): the learn window's recorder. Built only when a window was configured; the window
   // itself is checked per delivery against the clock. It describes the certificate through the one
   // certificate source above and writes one audit row (actor system) per distinct certificate.
@@ -1024,9 +1206,13 @@ function buildApp(config: Config, opts: AppOptions): App {
         }[];
         total_minor: number;
         currency: string;
+        publishers?: { publisher_id: string; amount_minor: number }[];
+        settlement?: { payments: number };
       };
       const items: ApprovalView['items'] = [];
+      const itemPublisher: string[] = [];
       for (const it of snap.items) {
+        itemPublisher.push(it.publisher_id);
         const a = await db.query<{ title: string; publisher: string }>(
           `SELECT a.title, p.display_name AS publisher FROM articles a
              JOIN publishers p ON p.id = a.publisher_id WHERE a.id = $1`,
@@ -1041,6 +1227,18 @@ function buildApp(config: Config, opts: AppOptions): App {
           ai_scope: it.rights.ai_scope,
         });
       }
+      // One block per publisher, in the snapshot's own order; the subtotal is the sum of its items.
+      const order: string[] = [];
+      for (const pid of snap.publishers?.map((p) => p.publisher_id) ?? itemPublisher)
+        if (!order.includes(pid)) order.push(pid);
+      const blocks: ApprovalView['blocks'] = order.map((pid) => {
+        const mine = items.filter((_, i) => itemPublisher[i] === pid);
+        return {
+          publisher: mine[0]?.publisher ?? 'Publisher',
+          items: mine,
+          subtotal_minor: mine.reduce((n, it) => n + it.amount_minor, 0),
+        };
+      });
       return {
         approval_id: row.id,
         expires_at: iso(row.expires_at),
@@ -1051,6 +1249,8 @@ function buildApp(config: Config, opts: AppOptions): App {
         environment: row.environment,
         content_hash: row.content_hash,
         items,
+        blocks,
+        settlement: snap.settlement === undefined ? null : { payments: snap.settlement.payments },
       };
     },
 
@@ -1061,23 +1261,79 @@ function buildApp(config: Config, opts: AppOptions): App {
         const e = r.error;
         return err(e.code === 'approval' ? { code: 'approval', http: e.error.http } : e);
       },
-      beginCheckout: (i) => beginPaymentsCheckout(paymentsDeps, i),
+      async beginCheckout(i) {
+        const r = await beginPaymentsCheckout(paymentsDeps, i);
+        if (!r.ok) return err(r.error);
+        return ok({ approve_url: r.value.approve_url, progress: r.value.progress ?? null });
+      },
       async onBuyerReturn(i) {
         const r = await onPaymentsReturn(paymentsDeps, i);
-        return r.ok ? ok({ order_ref: r.value.order_ref, status: r.value.status }) : err(r.error);
+        if (!r.ok) return err(r.error);
+        const v = r.value;
+        // OQ-5: while a PayPal order of a pack still awaits the buyer, say which one and give its stored
+        // approval link. The link and the publisher come from the stored PayPal order, never from the URL.
+        let next: PackStep | null = null;
+        if (v.status === 'awaiting_buyer' && v.progress !== null && v.approve_url !== null) {
+          const po = v.provider_orders.find((p) => p.position === v.progress?.step);
+          const name =
+            po?.publisher_id == null
+              ? null
+              : (
+                  await db.query<{ display_name: string }>(
+                    'SELECT display_name FROM publishers WHERE id = $1',
+                    [po.publisher_id],
+                  )
+                ).rows[0]?.display_name;
+          next = {
+            step: v.progress.step,
+            of: v.progress.of,
+            publisher: name ?? 'the publisher',
+            approve_url: v.approve_url,
+          };
+        }
+        return ok({ order_ref: v.order_ref, status: v.status, next });
       },
+    },
+
+    packWindowMinutes: () => windowMinutes(packWindowMs),
+
+    async checkoutSteps({ order_ref, actor }) {
+      const buyer = buyerOf(actor);
+      if (buyer === null) return null;
+      const rows = await db.query<{
+        position: number | string;
+        display_name: string;
+        state: string;
+      }>(
+        `SELECT p.position, pub.display_name, p.state
+           FROM provider_orders p JOIN orders o ON o.id = p.order_id
+           LEFT JOIN publishers pub ON pub.id = p.publisher_id
+          WHERE o.order_ref = $1 AND o.buyer_id = $2 ORDER BY p.position`,
+        [order_ref, buyer],
+      );
+      if (rows.rows.length === 0) return null;
+      return rows.rows.map((r) => ({
+        position: Number(r.position),
+        publisher: r.display_name ?? 'the publisher',
+        state: r.state,
+      }));
     },
 
     dryRunScenarios: () => (environment === 'dryrun' ? DRYRUN_SCENARIOS : []),
 
-    async dryRunApprove({ order_ref, actor, scenario }) {
+    async dryRunApprove({ order_ref, actor, scenario, position }) {
       const buyer = buyerOf(actor);
       if (buyer === null || environment !== 'dryrun') return false;
       if (scenario !== null && !isScenarioId(scenario)) return false;
+      if (position !== undefined && (!Number.isInteger(position) || position < 1)) return false;
+      // The PayPal order at `position`, else the first one still awaiting the buyer. Only an order that
+      // awaits the buyer can be approved.
       const row = await db.query<{ provider_order_id: string | null }>(
         `SELECT p.provider_order_id FROM provider_orders p JOIN orders o ON o.id = p.order_id
-          WHERE o.order_ref = $1 AND o.buyer_id = $2 AND o.status = 'awaiting_buyer'`,
-        [order_ref, buyer],
+          WHERE o.order_ref = $1 AND o.buyer_id = $2 AND o.status = 'awaiting_buyer'
+            AND p.state = 'awaiting_buyer' AND ($3::int IS NULL OR p.position = $3::int)
+          ORDER BY p.position LIMIT 1`,
+        [order_ref, buyer, position ?? null],
       );
       const id = row.rows[0]?.provider_order_id;
       return id === undefined || id === null ? false : dryModel.approve(id, scenario);
@@ -1106,12 +1362,61 @@ function buildApp(config: Config, opts: AppOptions): App {
       }>('SELECT status, amount_minor, refunded_minor FROM order_units WHERE order_id = $1', [
         o.id,
       ]);
-      const ents = await db.query<{ article_id: string; title: string; access_state: string }>(
-        `SELECT e.article_id, a.title, e.access_state FROM entitlements e
+      const ents = await db.query<{
+        article_id: string;
+        title: string;
+        access_state: string;
+        publisher: string | null;
+        unit_status: string;
+        po_state: string | null;
+        verified: boolean;
+        amount_minor: string | number;
+        refunded_minor: string | number;
+      }>(
+        `SELECT e.article_id, a.title, e.access_state, pub.display_name AS publisher,
+                u.status AS unit_status, p.state AS po_state,
+                (u.captured_verified_at IS NOT NULL) AS verified, u.amount_minor, u.refunded_minor
+           FROM entitlements e
            JOIN order_units u ON u.id = e.unit_id JOIN articles a ON a.id = e.article_id
-          WHERE u.order_id = $1 AND e.buyer_id = $2 ORDER BY e.id`,
+           LEFT JOIN provider_orders p ON p.id = u.provider_order_ref
+           LEFT JOIN publishers pub ON pub.id = u.publisher_id
+          WHERE u.order_id = $1 AND e.buyer_id = $2 ORDER BY p.position NULLS LAST, e.id`,
         [o.id, buyer],
       );
+      const poStates = (
+        await db.query<{ state: string }>('SELECT state FROM provider_orders WHERE order_id = $1', [
+          o.id,
+        ])
+      ).rows.map((r) => r.state);
+      // An order with several PayPal orders is a pack: one line per item, from stored facts (DP-5).
+      const pack = poStates.length > 1;
+      const items: OrderView['items'] = ents.rows.map((e) => {
+        const base = { article_id: e.article_id, title: e.title, access: e.access_state };
+        if (!pack) return base;
+        const kind = lineKind({
+          outcome: paymentOutcome({
+            unit_status: e.unit_status,
+            po_state: e.po_state,
+            verified: e.verified,
+            amount_minor: Number(e.amount_minor),
+            refunded_minor: Number(e.refunded_minor),
+          }),
+          access: e.access_state,
+          po_state: e.po_state,
+          unit_status: e.unit_status,
+        });
+        return { ...base, publisher: e.publisher ?? 'Publisher', kind, line: LINE_TEXT[kind] };
+      });
+      const unitStatuses = units.rows.map((u) => u.status);
+      let message = orderMessage(o.status, unitStatuses, poStates);
+      if (pack) {
+        const held = message.includes('on hold');
+        const banner = packBanner(
+          items.flatMap((i) => (i.kind === undefined ? [] : [{ title: i.title, kind: i.kind }])),
+        );
+        // A hold from the order status or a unit stays a hold even if no item line says so.
+        if (banner !== null && (!held || banner.includes('on hold'))) message = banner;
+      }
       // Newest first; the buyer sees the latest case for this order, whatever its state.
       const open = (await listCasesForBuyer(db, { buyer_id: buyer })).find(
         (c) => c.order_id === o.id,
@@ -1124,15 +1429,8 @@ function buildApp(config: Config, opts: AppOptions): App {
           open === undefined
             ? null
             : { case_id: open.case_id, state: open.state, buyer_message: open.buyer_message },
-        buyer_message: orderMessage(
-          o.status,
-          units.rows.map((u) => u.status),
-        ),
-        items: ents.rows.map((e) => ({
-          article_id: e.article_id,
-          title: e.title,
-          access: e.access_state,
-        })),
+        buyer_message: message,
+        items,
         environment: o.environment,
         refund_line: orderRefundLine({
           total_minor: units.rows.reduce((n, u) => n + Number(u.amount_minor), 0),
@@ -1275,6 +1573,7 @@ function buildApp(config: Config, opts: AppOptions): App {
                 },
         },
         jobs: { last_pass_at: jobs.last_pass_at, due: jobs.due },
+        shared_payee: await sharedPayee(db),
         // P9: only a session with the second factor is shown the refund form.
         refunds:
           actor.mfa === true ? await loadRefundOverview(db, sw['refunds_enabled'] === true) : null,
