@@ -154,7 +154,7 @@ test.describe('composite pack on the dry run (keyboard only)', () => {
     await expect(page.getByTestId('cancel-window')).toHaveText(
       'If the order window is still open, you can still approve the other payment from the order page.',
     );
-    await expect(page.getByRole('link', { name: 'My library' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('link', { name: 'My library' })).toBeVisible();
     await expectDryRun(page);
     await shot(page, 'dp5b-cancel');
   });
