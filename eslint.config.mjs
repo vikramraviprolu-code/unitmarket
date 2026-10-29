@@ -1478,6 +1478,12 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/no-package-escape'],
   },
   {
+    files: ['tests/mvp-d/**/*.ts'],
+    reason:
+      'DP-6 (MVP-D offline gate): the D twins import the web composition, the route handlers, the apps/web test helpers and the C canary probe (tests/mvp-c/c-net-probe.ts) by relative path, like the CO-G tests above (@umsbx/web exports none). The fake Wire is injected through the composition test seam; no file names a sealed identifier',
+    off: ['sbx/no-package-escape'],
+  },
+  {
     files: [
       'tests/mvp-c-pg/**/*.ts',
       'apps/web/src/postgres/boot.postgres.integration.test.ts',
