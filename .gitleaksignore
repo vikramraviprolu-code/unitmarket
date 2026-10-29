@@ -1,0 +1,16 @@
+# Reviewed false positives of `gitleaks git` (29 Oct 2026, decision D-058). Each line is one finding by its
+# fingerprint (commit:file:rule:line). All ten are test constants or a configuration line, not credentials:
+# the three UMS_*_SECRET values in tests are hand-typed 32-character constants shared across test files,
+# EXPECTED_SECRET in scripts/totp-enrol.test.ts is derived from two constants in the same test, the password in
+# packages/db/src/pg-url.test.ts is a visibly fake one used to test redaction, and the line in the GCP owner
+# steps is a configuration setting. Nothing here is a real secret; real secrets never enter the repository.
+a639c14d083f73cab2dc85f4f39a4a7fdc60f68a:scripts/safety-cli.postgres.integration.test.ts:generic-api-key:30
+b8b1f957c8f24e474293a45b49869ad960e827f2:packages/db/src/pg-url.test.ts:generic-api-key:8
+decafc5ec74ef2df4b8187ef87c3aea721b7017f:docs/owner/MVPC-OWNER-STEPS-GCP.md:generic-api-key:204
+dd0812e3e980721cf5df4a7bb97c63710b00dc52:apps/web/src/operator-mfa.integration.test.ts:generic-api-key:376
+dd0812e3e980721cf5df4a7bb97c63710b00dc52:apps/web/src/operator-mfa.integration.test.ts:generic-api-key:377
+dd0812e3e980721cf5df4a7bb97c63710b00dc52:apps/web/src/operator-mfa.integration.test.ts:generic-api-key:378
+dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-key:16
+dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-key:77
+dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-key:78
+dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-key:79
