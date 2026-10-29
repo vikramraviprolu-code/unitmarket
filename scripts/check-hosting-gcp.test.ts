@@ -19,8 +19,8 @@ const SCRIPTS = KIT.filter((f) => f.endsWith('.sh'));
 
 // Forbidden strings are assembled at run time so this file holds none of them.
 const PUB = 'NEXT_' + 'PUBLIC';
-const LIVE_HOST = 'api-m.' + 'paypal.com';
-const SANDBOX_HOST = 'api-m.sandbox.' + 'paypal.com';
+const LIVE_HOST = ['api-m', 'paypal', 'com'].join('.');
+const SANDBOX_HOST = ['api-m', 'sandbox', 'paypal', 'com'].join('.');
 const GOOGLE_KEY = 'AIza' + 'Sy' + 'A'.repeat(33);
 const PEM = '-----BEGIN ' + 'PRIVATE KEY-----';
 const HEX_TOKEN = '3f9a' + 'c27d41'.repeat(6);
