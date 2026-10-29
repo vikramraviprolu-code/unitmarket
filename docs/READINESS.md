@@ -12,10 +12,19 @@ State on 26 Oct 2026: DP-2a, DP-2b, DP-3 and DP-4 are merged. The three hazards 
 
 Still true, so a two-publisher run is NOT ready to be switched on:
 
-- DP-5 (web composite wording and boot seeding) and DP-6 (offline gate) are not built; they are parked until MVP-C closes (D-047).
+- DP-5 (web composite wording and boot seeding) is in build since 29 Oct (MVP-C closed, D-054); DP-6 (offline gate) is not built.
 - A real MVP-D run needs the new approval row of D-042, inserted by the owner.
 - Hosting follows D-049 (Google Cloud). `render.yaml` keeps `autoDeploy: false` and nothing deploys by itself.
 - Known follow-ups (LOW, from the DP-2b, DP-3 and DP-4 reviews): receipt not reissued when a PayPal order is declined or held in `due.ts`; INV7 and reversal rows; merchant id redaction at the buyer API; hold wording can name the wrong item on a pack; title cap can split a surrogate pair; the overview says `mismatch` is set whenever a PayPal order is frozen but four freeze paths do not set it.
+
+## Hosting follow-ups after the GCP-2 review (29 Oct 2026)
+
+GCP-2 (deploy kit hardening) is merged (Opus: merge yes, no high finding) and is not deployed. Known gaps for a later lane (GCP-3), none blocking:
+
+- The checker misses a `#` comment inside a line continuation (it joins lines, bash ends the command at the comment), re-spelled tracing (`set -e -x`, `/usr/bin/tee`, `declare -x -p`, bare `set` or `declare`), and an image tag edit that bypasses the `IMAGE` rule (`--image` in the deploy, an indented reassignment).
+- The owner document has no command to apply `--connector-enforcement=REQUIRED` and `--storage-auto-increase-limit=30` to the EXISTING instance `unitmarket-sbx-pg` (`setup.sh` keeps an existing instance). Flags validated from help only: `gcloud beta sql instances patch unitmarket-sbx-pg --connector-enforcement=REQUIRED --storage-auto-increase-limit=30 --diff`. Not run. Do it only in a quiet window, with Sakthi's approval, and check `/signin` and the logs afterwards; rollback `--connector-enforcement=NOT_REQUIRED`. Whether Cloud Run's built-in socket works under REQUIRED is unverified.
+- The owner steps order around the PayPal connection switch (Step I item 5, learn window, pin deploy) should be stated once in sequence.
+- The first deploy after this merge rebuilds the image once (about 10 minutes) and is the first real build of the digest-pinned Dockerfile.
 
 ## RLS spike (lane 12, informational, not a gate)
 
