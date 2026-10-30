@@ -84,6 +84,8 @@ export interface RouteContext<I> {
   session_id: string | null;
   req_id: string;
   ip_hash: string;
+  /** False when no client address is known (no trusted proxy and no socket address): ip_hash is then one bucket shared by every client. */
+  ip_known: boolean;
   log: Logger;
 }
 
@@ -493,6 +495,7 @@ export function withRoute<I, O>(
         session_id: record?.id ?? null,
         req_id,
         ip_hash,
+        ip_known: clientIp(req, deps, call) !== 'no-address',
         log,
       });
 

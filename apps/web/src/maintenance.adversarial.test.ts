@@ -47,6 +47,7 @@ const FILES = routeFiles(APP_DIR);
 // route files on disk differ, so a new route cannot escape the walk.
 const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/appearance/route.ts': () => import('./app/api/appearance/route'),
+  'api/applications/route.ts': () => import('./app/api/applications/route'),
   'api/approvals/route.ts': () => import('./app/api/approvals/route'),
   'api/briefs/route.ts': () => import('./app/api/briefs/route'),
   'api/cases/route.ts': () => import('./app/api/cases/route'),

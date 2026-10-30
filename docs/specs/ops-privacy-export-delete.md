@@ -47,3 +47,4 @@ or update any append-only row; print a personal value in the audit row or in a l
 Evidence for the PR: the test output, the two refusal lines, one sanitised export with ids shortened, cost line.
 Branch: `feat/scripts-privacy` Commit: `feat(scripts): privacy export and delete (OPS-PRIV)`
 Retention (PRIV-3) is separate: logs 30 days, briefs 30 days, orders and ledger to 15 Jan 2027; the script does not enforce it.
+Known gap (PUB-APPLY): applicant records (`publishers` rows and the `audit_log` notes of public applications) are not covered by privacy:export or privacy:delete.

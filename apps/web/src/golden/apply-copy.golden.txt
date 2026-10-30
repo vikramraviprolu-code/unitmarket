@@ -1,0 +1,30 @@
+title: Apply to publish
+lede: Tell us who you are and what you publish. The operator reviews applications.
+no account: Applying creates no account. The operator reviews it. Nothing is paid or published until then.
+fields: Publisher name | Country (two capital letters, for example GB) | How to reach you and what you publish (3 to 200 characters)
+hints: Your publication or business name, 2 to 80 characters. No angle brackets. | Give a website or a public profile that shows who you are, and say what you publish, on one line. Never include a password or payment details. What you write here is kept as a permanent record and cannot be deleted. Do not include a phone number or a personal address. Email addresses are not kept in readable form.
+honeypot: Leave this field empty
+buttons: Send application | Sending
+confirm title: Application received
+confirm body: Keep this reference. It is the only way to check your application.
+confirm reference label: Your reference
+confirm next: The operator will review it. You cannot sign in until the owners have set that up for you.
+confirm link: Check the status of this application
+status title: Application status
+status lede: Enter the reference you were given when you applied.
+status form: Reference | Check status
+status no reference: Enter your reference to see where your application stands.
+status back: Back to the application form
+state pending: Waiting for review | tone info
+state approved: Approved. Sign in is not automatic; the owners decide whether to set it up. | tone good
+state rejected: Not approved | tone bad
+state unavailable: Not available | tone neutral
+state unknown: We do not have that reference | tone neutral
+error invalid_input: Please check the name (2 to 80 characters, no angle brackets), the country (two capital letters) and the note (3 to 200 characters).
+error busy: We cannot take new applications right now. Please try again later.
+error rate_limited: Too many applications from this connection. Please try again later.
+error csrf: That request was refused. Reload the page and try again.
+error too_large: That is too long. Please shorten the note.
+error other: The application could not be sent. Please try again.
+links: Apply to publish | Want to publish your articles here? | Want to publish with us?
+operator: Note on file | Applied on the public form | Added by an operator

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { LINK_APPLY, SIGNIN_APPLY_LEAD } from '../../lib/apply-copy';
 import { SIGNIN_PRIVACY_END, SIGNIN_PRIVACY_LEAD, SIGNIN_PRIVACY_LINK } from '../../lib/legal-copy';
 import { safeNext } from '../../lib/next-path';
 import { SignInForm } from './SignInForm';
@@ -25,6 +26,9 @@ export default async function SignIn({
         {SIGNIN_PRIVACY_END}
       </p>
       <SignInForm next={safeNext(q['next'])} />
+      <p className="muted" data-testid="signin-apply">
+        {SIGNIN_APPLY_LEAD} <Link href="/apply">{LINK_APPLY}</Link>
+      </p>
     </>
   );
 }
