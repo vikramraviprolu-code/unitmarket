@@ -31,6 +31,7 @@ const offer = (slug: string, code: string, title: string, prices: number[]): Off
   renegotiation_allowed: false,
   floor_minor: null,
   rights: { scope: 'personal_use', ai_scope: 'not_allowed', redistribution: false },
+  on_sale: true,
 });
 
 describe('item 46: browse all when search finds nothing', () => {

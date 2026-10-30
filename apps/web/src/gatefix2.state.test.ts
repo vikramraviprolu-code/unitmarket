@@ -21,9 +21,10 @@ beforeAll(async () => {
   quotesRoute = await import('./app/api/quotes/route');
   A = (await signIn(sessionRoute.POST, 'buyer-a'))!;
   const who = async (p: string): Promise<Actor> => {
-    const row = await app.db.query<{ id: string }>('SELECT id FROM buyers WHERE auth_subject = $1', [
-      `persona:${p}`,
-    ]);
+    const row = await app.db.query<{ id: string }>(
+      'SELECT id FROM buyers WHERE auth_subject = $1',
+      [`persona:${p}`],
+    );
     return { kind: 'buyer', buyer_id: row.rows[0]!.id };
   };
   actorA = await who('buyer-a');
@@ -41,7 +42,10 @@ const quoteOf = (offer: string, actor: Actor) =>
     source: 'direct',
   });
 
-async function openOrder(actor: Actor, offer: string): Promise<{ order_ref: string; order_id: string }> {
+async function openOrder(
+  actor: Actor,
+  offer: string,
+): Promise<{ order_ref: string; order_id: string }> {
   const page = await app.engine.offerPage({ publisher: PUB, offer });
   const q = await app.engine.quote({
     offer: { publisher_slug: PUB, offer_code: offer },

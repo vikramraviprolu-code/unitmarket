@@ -26,6 +26,7 @@ order_ref), quotes route, start.ts, quote.ts, tests, golden files.
 Do not: touch other packages, add dependencies, edit globals.css, edit a test except one whose pinned copy was wrong (named in the PR).
 
 Acceptance tests (worktree, targeted)
+
 - `corepack pnpm exec vitest run --project unit apps/web/src/lib/help-view.test.ts apps/web/src/lib/offer-flow-view.test.ts` passes.
 - `... --project state domain/offer-entry/src/start.unpaid.state.test.ts apps/web/src/gatefix2.state.test.ts` passes (unpaid order says
   `unpaid_order`, paid says `already_owned`, cancelled quotes again, on_sale false when withdrawn or suspended).

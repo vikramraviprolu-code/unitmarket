@@ -25,9 +25,8 @@ const Input = z
   .strict();
 
 export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
-  const r = await (
-    await app()
-  ).engine.quote({
+  const a = await app();
+  const r = await a.engine.quote({
     offer: { publisher_slug: input.publisher, offer_code: input.offer },
     actor,
     source: 'direct',
@@ -35,7 +34,18 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
     ...(input.ceiling_minor !== undefined ? { ceiling_minor: input.ceiling_minor } : {}),
     ...(input.proposed_minor !== undefined ? { proposed_minor: input.proposed_minor } : {}),
   });
-  if (r.ok) return { status: 200, body: r.value };
+  if (r.ok) {
+    // GATEFIX2 item 3: an open unpaid order is named, with a way to its order page.
+    if (r.value.kind === 'no_match' && r.value.reason === 'unpaid_order') {
+      const order_ref = await a.engine.unpaidOrderRef({
+        publisher: input.publisher,
+        offer: input.offer,
+        actor,
+      });
+      return { status: 200, body: order_ref === null ? r.value : { ...r.value, order_ref } };
+    }
+    return { status: 200, body: r.value };
+  }
   return r.error.code === 'unknown_offer'
     ? { status: 404, code: 'not_found', message: 'That offer does not exist.' }
     : { status: 422, code: 'invalid_input', message: 'Check the amount and option and try again.' };

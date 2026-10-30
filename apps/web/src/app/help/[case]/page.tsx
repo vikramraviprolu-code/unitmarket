@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { OpenCase } from './OpenCase';
+import { helpView } from '../../../lib/help-view';
 
 export const metadata: Metadata = { title: 'Help' };
 
@@ -43,13 +45,28 @@ export default async function Help({
   const { item } = await searchParams;
   const topic = TOPICS[slug];
   if (topic === undefined) notFound();
+  // GATEFIX2: a case is opened from an item. With no item the page gives guidance and a way to one.
+  const view = helpView(slug, item);
   return (
     <>
       <h1>{topic.title}</h1>
       {topic.body.map((p) => (
         <p key={p}>{p}</p>
       ))}
-      <OpenCase note={`help:${slug}`} {...(item !== undefined ? { entitlementId: item } : {})} />
+      {view.canOpenCase ? (
+        <OpenCase note={`help:${slug}`} {...(item !== undefined ? { entitlementId: item } : {})} />
+      ) : (
+        <>
+          <p data-testid="help-no-item">{view.note}</p>
+          {view.link ? (
+            <p>
+              <Link className="btn" href={view.link.href}>
+                {view.link.text}
+              </Link>
+            </p>
+          ) : null}
+        </>
+      )}
     </>
   );
 }

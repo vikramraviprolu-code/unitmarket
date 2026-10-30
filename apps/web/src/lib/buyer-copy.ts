@@ -121,10 +121,14 @@ export function hasReceipt(item: {
 
 // FIX-FLOW D5: a search whose only matches are articles the buyer already holds, or has an open unpaid
 // order for, is not "nothing fits". The discovery answer carries the reasons; the form says this.
-export const OPEN_ORDER_HEADING = 'Already in your library or on an open order';
-export const OPEN_ORDER_BODY =
-  'Some articles that fit are already in your library, or you have an unpaid order open for them.';
+// GATEFIX2: the two are said apart. "In your library" is only for a paid article; an open unpaid order
+// is called that, and the buyer is sent to where the order can be continued or cancelled.
+export const OPEN_ORDER_HEADING = 'Already in your library';
+export const OPEN_ORDER_BODY = 'Some articles that fit are already in your library.';
 export const OPEN_ORDER_LINK = 'Open My library';
+export const UNPAID_ORDER_HEADING = 'You have an unpaid order';
+export const UNPAID_ORDER_BODY =
+  'You have an unpaid order for an article that fits. Open your library to find it, then continue to payment or cancel it.';
 
 export interface DiscoverNoMatchView {
   /** The open order notice, or null when no reason says an article is already held. */
@@ -135,10 +139,22 @@ export interface DiscoverNoMatchView {
 
 export function discoverNoMatchView(reasons: readonly string[]): DiscoverNoMatchView {
   const owned = reasons.includes('already_owned');
+  const unpaid = reasons.includes('unpaid_order');
+  const held = owned || unpaid;
+  const open_order =
+    owned && unpaid
+      ? {
+          heading: UNPAID_ORDER_HEADING,
+          body: `${OPEN_ORDER_BODY} ${UNPAID_ORDER_BODY}`,
+          href: '/library',
+        }
+      : owned
+        ? { heading: OPEN_ORDER_HEADING, body: OPEN_ORDER_BODY, href: '/library' }
+        : unpaid
+          ? { heading: UNPAID_ORDER_HEADING, body: UNPAID_ORDER_BODY, href: '/library' }
+          : null;
   return {
-    open_order: owned
-      ? { heading: OPEN_ORDER_HEADING, body: OPEN_ORDER_BODY, href: '/library' }
-      : null,
-    nothing_fits: !owned || reasons.some((r) => r !== 'already_owned'),
+    open_order,
+    nothing_fits: !held || reasons.some((r) => r !== 'already_owned' && r !== 'unpaid_order'),
   };
 }

@@ -103,11 +103,12 @@ export default async function PublisherOffer({ params }: { params: Promise<{ id:
       )}
       <h2>{HISTORY_HEADING}</h2>
       <ul data-testid="offer-history">
-        {o.history.map((h) => (
+        {o.history.map((h, i) => (
           <li key={h.version}>
             {historyLine({
               version: h.version,
               status: h.status,
+              superseded: i > 0,
               when: formatDateTime(h.created_at),
               prices: h.options.map(
                 (p) => `${optionLabel(p.option)} ${formatMinor(p.price_minor, o.currency)}`,

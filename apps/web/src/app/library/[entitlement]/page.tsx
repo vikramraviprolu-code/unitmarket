@@ -66,6 +66,15 @@ export default async function LibraryItem({
             {READER_LINK_TEXT}
           </Link>
         ) : null}
+        {item.status_text === NOT_PAID_YET && item.order_ref ? (
+          <Link
+            className="btn"
+            href={`/orders/${encodeURIComponent(item.order_ref)}`}
+            data-testid="library-order-link"
+          >
+            Open this order
+          </Link>
+        ) : null}
         {hasReceipt(item) && item.order_id ? (
           <Link className="btn" href={`/receipts/${encodeURIComponent(item.order_id)}`}>
             View receipt

@@ -189,6 +189,7 @@ import { toBuyerReceipt } from './src/lib/receipt-view';
 import type { ArticleFacts, BuyerReceipt } from './src/lib/receipt-view';
 import { LINE_TEXT, lineKind, packBanner, windowMinutes } from './src/lib/composite-copy';
 import { NOT_PAID_YET } from './src/lib/buyer-copy';
+import { offerOnSale } from './src/lib/offer-flow-view';
 import { publisherSlugOf } from './src/lib/publisher-copy';
 import type { PublisherStatus } from './src/lib/publisher-copy';
 import type { LineKind } from './src/lib/composite-copy';
@@ -359,6 +360,8 @@ export interface OfferPage {
   renegotiation_allowed: boolean;
   floor_minor: number | null;
   rights: Rights;
+  /** GATEFIX2 item 7: from stored data, the tests startFromOffer applies. False shows "Not on sale" and no prices. */
+  on_sale: boolean;
 }
 export interface ApprovalView {
   approval_id: Id;
@@ -414,6 +417,8 @@ export interface LibraryEntry {
   refunded: boolean;
   can_open: boolean;
   order_id: Id | null;
+  /** GATEFIX2 item 3: the order's reference, for a link to the order page; null when there is no order. */
+  order_ref: string | null;
   /** Receipt versions of the order, oldest first (lane 10). */
   receipt_versions: number[];
   /** The case still being worked on for this item, if any (lane 10). */
@@ -630,6 +635,11 @@ export interface Engine {
    */
   sessionIdOf(cookie: string | null, actor: Actor): Promise<Id | null>;
   offerPage(i: { publisher: string; offer: string }): Promise<OfferPage | null>;
+  /**
+   * GATEFIX2 item 3: the reference of the buyer's open unpaid order for the article this offer sells, or null.
+   * Only a buyer's own order is ever returned.
+   */
+  unpaidOrderRef(i: { publisher: string; offer: string; actor: Actor }): Promise<string | null>;
   listOffers(): Promise<OfferPage[]>;
   quote: typeof startFromOffer extends (d: never, i: infer I) => infer R ? (i: I) => R : never;
   aiEnabled(): Promise<boolean>;
@@ -1389,7 +1399,9 @@ function buildApp(config: Config, opts: AppOptions): App {
   };
 
   // --- engine --------------------------------------------------------------------------------
-  const offerPageOf = (v: NonNullable<Awaited<ReturnType<typeof getOffer>>>): OfferPage => ({
+  const offerPageOf = async (
+    v: NonNullable<Awaited<ReturnType<typeof getOffer>>>,
+  ): Promise<OfferPage> => ({
     offer_id: v.offer.id,
     title: v.article.title,
     abstract: v.article.abstract,
@@ -1403,6 +1415,19 @@ function buildApp(config: Config, opts: AppOptions): App {
     renegotiation_allowed: v.offer.affordability.renegotiation_allowed,
     floor_minor: v.offer.affordability.floor_minor,
     rights: v.offer.rights,
+    on_sale: offerOnSale({
+      status: v.offer.status,
+      superseded_by: v.offer.superseded_by,
+      publisher_status:
+        (
+          await db.query<{ status: string }>('SELECT status FROM publishers WHERE id = $1', [
+            v.offer.publisher_id,
+          ])
+        ).rows[0]?.status ?? 'unknown',
+      valid_from: v.offer.valid_from,
+      valid_until: v.offer.valid_until,
+      now_ms: clock.now().getTime(),
+    }),
   });
 
   const entitlementRows = async (buyer_id: Id, only: Id | null): Promise<LibraryEntry[]> => {
@@ -1415,11 +1440,12 @@ function buildApp(config: Config, opts: AppOptions): App {
           id: string;
           money_state: string;
           order_id: string | null;
+          order_ref: string | null;
           unit_status: string | null;
           order_status: string | null;
           po_state: string | null;
         }>(
-          `SELECT e.id, e.money_state, u.order_id, u.status AS unit_status,
+          `SELECT e.id, e.money_state, u.order_id, o.order_ref, u.status AS unit_status,
                   o.status AS order_status, p.state AS po_state
              FROM entitlements e
              LEFT JOIN order_units u ON u.id = e.unit_id
@@ -1477,6 +1503,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         refunded: isFullyRefunded(refundFacts),
         can_open: v.can_open,
         order_id: facts.get(v.entitlement_id)?.order_id ?? null,
+        order_ref: facts.get(v.entitlement_id)?.order_ref ?? null,
         receipt_versions: v.receipt_versions,
         open_case: v.open_case,
         environment: v.environment,
@@ -1615,7 +1642,7 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     async offerPage({ publisher, offer }) {
       const v = await getOffer(db, { publisher_slug: publisher, offer_code: offer });
-      return v === null ? null : offerPageOf(v);
+      return v === null ? null : await offerPageOf(v);
     },
 
     async listOffers() {
@@ -1627,9 +1654,35 @@ function buildApp(config: Config, opts: AppOptions): App {
       const out: OfferPage[] = [];
       for (const r of rows.rows) {
         const v = await getOffer(db, { offer_id: r.id });
-        if (v !== null && v.offer.currency === 'USD') out.push(offerPageOf(v));
+        if (v !== null && v.offer.currency === 'USD') out.push(await offerPageOf(v));
       }
       return out;
+    },
+
+    async unpaidOrderRef({ publisher, offer, actor }) {
+      const b = buyerOf(actor);
+      if (b === null) return null;
+      const found = await getOffer(db, { publisher_slug: publisher, offer_code: offer });
+      if (found === null) return null;
+      // The same test as startFromOffer step 6 and buyerStatusText: an order waiting for its buyer, no
+      // approved PayPal order, nothing paid. Scoped to this buyer by the query.
+      const r = await db.query<{ order_ref: string }>(
+        `SELECT o.order_ref
+           FROM entitlements e
+           JOIN order_units u ON u.id = e.unit_id
+           JOIN orders o ON o.id = u.order_id
+           LEFT JOIN provider_orders p ON p.id = u.provider_order_ref
+          WHERE e.buyer_id = $1 AND e.article_id = $2
+            AND e.money_state IN ('unknown', 'pending')
+            AND e.access_state IN ('locked', 'available')
+            AND o.status IN ('awaiting_buyer', 'created')
+            AND COALESCE(p.state, '') <> 'approved'
+            AND u.status <> 'pending'
+          ORDER BY e.created_at DESC
+          LIMIT 1`,
+        [b, found.article.id],
+      );
+      return r.rows[0]?.order_ref ?? null;
     },
 
     quote: ((i: Parameters<typeof startFromOffer>[1]) =>

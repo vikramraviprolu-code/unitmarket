@@ -11,7 +11,8 @@ export const LABEL_VERIFIED = 'Verified';
 export const LABEL_VERIFIED_BY = 'How it was checked';
 export const LABEL_SETTLEMENT = 'Settlement';
 export const VERIFIED_BY = 'An operator checked it. Not PayPal onboarding.';
-// GATE35 D5: the legal pages say payee details are marked as checked when the demo data is loaded.
+// GATE35 D5: the legal pages say payee details are marked as checked when the demo data is loaded or by an
+// operator check (GATEFIX2); an operator's decision on a request is shown as an operator check below.
 export const MARKED_CHECKED =
   'Marked as checked when the demo data was loaded. Not PayPal onboarding.';
 

@@ -27,10 +27,10 @@ describe('helpView', () => {
     expect(HELP_NO_ITEM_LINK).toBe('Open My library');
   });
   it('the page renders the case button only through the view', () => {
-    const src = readFileSync(new URL('../app/help/[case]/page.tsx', import.meta.url), 'utf8').replace(
-      /\/\/.*$/gm,
-      '',
-    );
+    const src = readFileSync(
+      new URL('../app/help/[case]/page.tsx', import.meta.url),
+      'utf8',
+    ).replace(/\/\/.*$/gm, '');
     expect(src).toContain('helpView(');
     expect(src).toMatch(/view\.canOpenCase/);
   });
