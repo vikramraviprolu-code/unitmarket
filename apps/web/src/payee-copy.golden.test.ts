@@ -54,7 +54,9 @@ function lines(): string[] {
   out.push(`ops heading: ${copy.OPS_HEADING}`);
   out.push(`ops lede: ${copy.OPS_LEDE}`);
   out.push(`ops empty: ${copy.OPS_EMPTY}`);
-  out.push(`ops columns: ${copy.OPS_COL_PUBLISHER} | ${copy.OPS_COL_REQUESTED} | ${copy.OPS_COL_AGE}`);
+  out.push(
+    `ops columns: ${copy.OPS_COL_PUBLISHER} | ${copy.OPS_COL_REQUESTED} | ${copy.OPS_COL_AGE}`,
+  );
   out.push(`ops fields: ${copy.OPS_FIELD_RETYPE} | ${copy.OPS_FIELD_REASON}`);
   out.push(`ops buttons: ${copy.OPS_VERIFY} | ${copy.OPS_REJECT}`);
   out.push(`ops done verified: ${copy.OPS_DONE_VERIFIED}`);

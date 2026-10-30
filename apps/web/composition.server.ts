@@ -71,10 +71,15 @@ import { createClaudeModel, createScriptedModel } from '@umsbx/model';
 import {
   SEED_DATA,
   SEED_SUPPLEMENT_COMPOSITE,
+  decidePayeeRequest,
   getOffer,
+  listOpenRequests,
+  payeeView,
+  requestPayeeChange,
   seedCatalogue,
   seedSupplement,
 } from '@umsbx/catalogue';
+import type { OpenRequest, PayeeError, PayeeView } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
 import { discover as discoverOffers, parseNeed } from '@umsbx/discovery';
 import { requestApproval } from '@umsbx/approval';
@@ -584,6 +589,35 @@ export interface Engine {
    * the second factor; `cancel` withdraws a request that is still `requested`.
    */
   refund: RefundFacade;
+  /**
+   * PUB-A2: where a publisher gets paid. `view` is the S6 page data (last 4 only, newest request first);
+   * `request` stores a change request and changes nothing else; `openRequests` and `decide` are the
+   * operator side and need the second factor. A verify is refused with `owner_command_required` when
+   * the app runs in sandbox mode (D-062). The whole merchant id is never returned by any method.
+   */
+  payee: {
+    view(actor: Actor): Promise<(PayeeView & { environment: EnvironmentLabel }) | null>;
+    request(i: {
+      actor: Actor;
+      merchant_id: string;
+      note: string;
+    }): Promise<Result<{ request_id: Id }, PayeeError>>;
+    openRequests(
+      actor: Actor,
+    ): Promise<
+      Result<
+        { requests: (OpenRequest & { age_ms: number })[]; environment: EnvironmentLabel },
+        PayeeError
+      >
+    >;
+    decide(i: {
+      actor: Actor;
+      request_id: string;
+      merchant_id_retyped: string;
+      decision: 'verified' | 'rejected';
+      reason: string;
+    }): Promise<Result<{ decision: 'verified' | 'rejected' }, PayeeError>>;
+  };
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
   /** One pass of the access-window sweep and the automatic recovery rules (the job loop's sweep). */
@@ -1803,6 +1837,37 @@ function buildApp(config: Config, opts: AppOptions): App {
       ),
 
     refund: refundFacade,
+
+    payee: {
+      async view(actor) {
+        const v = await payeeView(db, actor);
+        return v === null ? null : { ...v, environment };
+      },
+      request: (i) =>
+        requestPayeeChange(core, i.actor, { merchant_id: i.merchant_id, note: i.note }),
+      async openRequests(actor) {
+        const r = await listOpenRequests(db, actor);
+        if (!r.ok) return r;
+        const now = clock.now().getTime();
+        return {
+          ok: true,
+          value: {
+            requests: r.value.map((x) => ({
+              ...x,
+              age_ms: Math.max(0, now - Date.parse(x.created_at)),
+            })),
+            environment,
+          },
+        };
+      },
+      decide: (i) =>
+        decidePayeeRequest(core, i.actor, {
+          request_id: i.request_id,
+          merchant_id_retyped: i.merchant_id_retyped,
+          decision: i.decision,
+          reason: i.reason,
+        }),
+    },
 
     newKey: () => ids.nonce(),
 

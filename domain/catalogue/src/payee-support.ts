@@ -97,11 +97,8 @@ export async function payeeWorld(): Promise<PayeeWorld> {
   };
 }
 
-export const count = async (
-  db: Database,
-  sql: string,
-  params: unknown[] = [],
-): Promise<number> => Number((await db.query<{ c: string | number }>(sql, params)).rows[0]?.c ?? 0);
+export const count = async (db: Database, sql: string, params: unknown[] = []): Promise<number> =>
+  Number((await db.query<{ c: string | number }>(sql, params)).rows[0]?.c ?? 0);
 
 export async function publisherRow(
   db: Database,
