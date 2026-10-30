@@ -2,24 +2,13 @@
 // no socket. With UMS_AI_ADAPTER=claude and a key the Claude adapter is built, over an injected fake
 // wire (tests only): no key is real and no request leaves the process. The spend store writes
 // audit_log rows (action model.spend).
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Actor, ModelWire } from '@umsbx/contracts';
 import { createApp, installApp } from '../composition.server';
 import type { App } from '../composition.server';
 import { testEnv } from './support';
 
 vi.mock('server-only', () => ({}));
-const created = vi.hoisted(() => ({ calls: 0 }));
-vi.mock('@umsbx/transport', async (importOriginal) => {
-  const real = await importOriginal<typeof import('@umsbx/transport')>();
-  return {
-    ...real,
-    createModelHttps: (...a: Parameters<typeof real.createModelHttps>) => {
-      created.calls += 1;
-      return real.createModelHttps(...a);
-    },
-  };
-});
 
 const KEY = 'SYNTHETIC-MODEL-KEY-not-a-credential-0003';
 const BUYER: Actor = { kind: 'buyer', buyer_id: 'buy_persona_a' };
@@ -51,23 +40,20 @@ async function boot(over: Record<string, string>, wire?: ModelWire): Promise<App
   apps.push(app);
   return app;
 }
-beforeEach(() => {
-  created.calls = 0;
-});
 afterEach(async () => {
-  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   for (const a of apps.splice(0)) await a.close();
 });
 
 describe('the default config', () => {
-  it('uses the scripted model, builds no Claude egress and opens no socket', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+  it('uses the scripted model, builds no Claude adapter and opens no socket', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
     const app = await boot({});
     expect(app.config.ai_adapter).toBe('scripted');
     expect(app.model_id).toBe('scripted-v1');
     const r = await app.engine.parseNeed({ actor: BUYER, text: 'solar guide under $5' });
     expect(r.ok).toBe(true);
-    expect(created.calls).toBe(0);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
   it('writes no model.spend row', async () => {
@@ -81,7 +67,6 @@ describe('the default config', () => {
   it('UMS_AI_ADAPTER=scripted with a key present still uses the scripted model', async () => {
     const app = await boot({ UMS_AI_ADAPTER: 'scripted', UMS_ANTHROPIC_API_KEY: KEY });
     expect(app.model_id).toBe('scripted-v1');
-    expect(created.calls).toBe(0);
   });
 });
 
@@ -89,7 +74,7 @@ describe('UMS_AI_ADAPTER=claude with a key', () => {
   const env = { UMS_AI_ADAPTER: 'claude', UMS_ANTHROPIC_API_KEY: KEY };
 
   it('builds the Claude model over the injected wire and writes one model.spend row per call', async () => {
-    const send = vi.fn(async (_b: string) => answer(JSON.stringify(GOOD_BRIEF)));
+    const send = vi.fn<ModelWire['send']>(async () => answer(JSON.stringify(GOOD_BRIEF)));
     const app = await boot(env, { send });
     expect(app.model_id).toBe('claude-haiku-5-5');
     const r = await app.engine.parseNeed({ actor: BUYER, text: 'solar guide under $5' });

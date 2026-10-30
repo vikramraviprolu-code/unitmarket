@@ -39,7 +39,7 @@ function rig(startIso: string, rows: { at: string; micro: number }[] = []) {
       ledger.push({ at: now.toISOString(), micro });
     },
   };
-  const send = vi.fn(async (_b: string) => ({ status: 200, body: OK_BODY }));
+  const send = vi.fn<ModelWire['send']>(async () => ({ status: 200, body: OK_BODY }));
   const wire: ModelWire = { send };
   const scripted = createScriptedModel();
   const fallbackSpy = vi.fn((r: ModelRequest) => scripted.complete(r));
