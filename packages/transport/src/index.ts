@@ -39,7 +39,7 @@ export type { ScopedGate, Wire, WireErrorKind, WireRequest, WireResult } from '.
 export { MAX_RESPONSE_BYTES } from './wire-map';
 export { wireSelfCheck } from './wire-selfcheck';
 export type { WireSelfCheck } from './wire-selfcheck';
-// AI-A (D-067): the one egress to the model API. The factory only; the exchange helper stays internal.
+// AI-A (D-067): the one egress to the model API. The factory and limits only; the error class and exchange helper stay internal.
 export {
   MODEL_API,
   MODEL_API_VERSION,
@@ -47,7 +47,5 @@ export {
   MODEL_MAX_REQUEST_BYTES,
   MODEL_MAX_RESPONSE_BYTES,
   MODEL_PATH,
-  ModelWireError,
   createModelHttps,
 } from './model-https';
-export type { ModelWireErrorKind } from './model-https';
