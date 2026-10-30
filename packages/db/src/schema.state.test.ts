@@ -180,6 +180,7 @@ describe('migrations', () => {
     expect(first).toContain('0008_access_events_unique');
     expect(first).toContain('0009_active_entitlement_unique');
     expect(first).toContain('0011_provider_order_state');
+    expect(first).toContain('0012_publisher_side');
     expect(await migrate(d, clock)).toEqual([]);
     const rows = await d.query<{ version: string; applied_at: Date | string }>(
       'SELECT version, applied_at FROM schema_migrations ORDER BY version',
@@ -220,11 +221,14 @@ describe('migrations', () => {
       expect(sql, f).not.toMatch(
         /current_timestamp|clock_timestamp|statement_timestamp|transaction_timestamp/i,
       );
-      // The one allowed default (0010, D-041): publishers.payee_shared starts false for every row.
+      // The allowed defaults: 0010 (D-041) publishers.payee_shared starts false for every row, and
+      // 0012 (PUB-A1) publishers.status starts 'active' for every existing row.
       const withoutAllowed =
         f === '0010_publisher_payee_shared.sql'
           ? sql.replace(/payee_shared\s+boolean\s+NOT\s+NULL\s+DEFAULT\s+false/i, '')
-          : sql;
+          : f === '0012_publisher_side.sql'
+            ? sql.replace(/status\s+text\s+NOT\s+NULL\s+DEFAULT\s+'active'/i, '')
+            : sql;
       expect(withoutAllowed, f).not.toMatch(/\bDEFAULT\b/i);
       expect(sql, f).not.toMatch(/CREATE\s+EXTENSION/i);
     }
@@ -1513,11 +1517,12 @@ describe('0010 publishers.payee_shared (DP-1, D-041)', () => {
       await add('pub_n', 'northfield-quarterly', null);
       const before = (await d.query('SELECT * FROM publishers ORDER BY id')).rows;
 
-      // 0011 (DP-2a) exists now, so migrating the 0009 copy applies both, in order; the 0010 checks
-      // below are unchanged.
+      // 0011 (DP-2a) and 0012 (PUB-A1) exist now, so migrating the 0009 copy applies all three, in
+      // order; the 0010 checks below are unchanged.
       expect(await migrate(d, clock)).toEqual([
         '0010_publisher_payee_shared',
         '0011_provider_order_state',
+        '0012_publisher_side',
       ]);
       const after = await d.query<Record<string, unknown>>('SELECT * FROM publishers ORDER BY id');
       // every old column value is kept; the new column is false for every existing row
