@@ -14,7 +14,13 @@ export type ResumeError =
   | 'scope_not_confirmed';
 
 // Environment markers of an AI coding session (the same two the spike kit refuses on).
-const AI_MARKERS = ['CLAUDECODE', 'CLAUDE_CODE_REMOTE'] as const;
+const AI_MARKERS = [
+  'CLAUDECODE',
+  'CLAUDE_CODE_REMOTE',
+  'AI_AGENT',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_SESSION_ID',
+] as const;
 // CI markers beyond the plain CI flag that checkOperatorTerminal reads.
 const CI_MARKERS = ['GITHUB_ACTIONS'] as const;
 const set = (v: string | undefined): boolean => v !== undefined && v !== '';

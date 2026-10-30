@@ -345,12 +345,89 @@ function opts(db: Db, over: Record<string, unknown> = {}) {
   };
 }
 
+// Rows for the tables the export reads beyond the core set. Secret-like values are planted so the export test
+// can show they stay out. Only the export test calls this: the delete tests keep the smaller seed.
+const SECRET_BITS = ['idem-response-secret-a', 'approve-url-secret-a', 'idem-request-secret-a'];
+async function seedExtras(db: Db) {
+  const audit = (id: string, over: Record<string, unknown>) =>
+    ins(db, 'audit_log', {
+      id,
+      actor_kind: 'system',
+      actor_id: null,
+      action: 'seed.note',
+      target: null,
+      reason: null,
+      detail: j({ note: 'x' }),
+      ...over,
+    });
+  for (const k of ['a', 'b']) {
+    await ins(db, 'provider_orders', {
+      id: `pvo_${k}`,
+      order_id: `ord_${k}`,
+      provider_order_id: `PAYPALORDER${k.toUpperCase()}`,
+      route: 'single',
+      approve_url: `https://www.sandbox.paypal.com/checkoutnow?token=approve-url-secret-${k}`,
+      status: 'COMPLETED',
+      position: 1,
+      po_ref: `ref_${k}`,
+      publisher_id: null,
+      state: 'captured',
+      first_approved_at: T,
+    });
+    await ins(db, 'operations', {
+      id: `opn_${k}`,
+      order_id: `ord_${k}`,
+      unit_id: `unt_${k}`,
+      kind: 'capture',
+      state: 'confirmed',
+      attempt: 1,
+      request_id: `req_${k}`,
+      provider_order_ref: `pvo_${k}`,
+    });
+    await ins(db, 'refund_requests', {
+      id: `rfr_${k}`,
+      unit_id: `unt_${k}`,
+      capture_id: `CAP${k.toUpperCase()}`,
+      amount_minor: 100,
+      currency: 'USD',
+      reason: `reason ${k}`,
+      requested_by: `buy_${k}`,
+      state: 'requested',
+      refund_id: null,
+    });
+    await ins(db, 'api_idempotency', {
+      id: `idm_${k}`,
+      key: `key-${k}`,
+      actor_kind: 'buyer',
+      actor_id: `buy_${k}`,
+      route: '/api/x',
+      request_sha256: sha(`idem-request-secret-${k}`),
+      response: j({ body: `idem-response-secret-${k}` }),
+    });
+  }
+  await audit('aud_a1', { actor_kind: 'buyer', actor_id: 'buy_a', action: 'buyer.signin' });
+  await audit('aud_a2', {
+    actor_kind: 'operator',
+    actor_id: 'opr_1',
+    action: 'x.y',
+    target: 'buy_a',
+  });
+  await audit('aud_b1', { actor_kind: 'buyer', actor_id: 'buy_b', action: 'buyer.signin' });
+  await audit('aud_b2', {
+    actor_kind: 'operator',
+    actor_id: 'opr_1',
+    action: 'x.y',
+    target: 'buy_b',
+  });
+}
+
 const failingInvariants = async (db: Db) =>
   (await checkInvariants(db)).filter((r) => !r.ok).map((r) => `${r.id}: ${r.detail}`);
 
 describe('export', () => {
   it("holds the buyer's rows and nothing of another buyer or a publisher; writes nothing", async () => {
     const db = await seed();
+    await seedExtras(db);
     const before = await dump(db);
     const r = await runExport({ db, now: new Date(LATER), tty: TTY, buyer_id: 'buy_a' });
     expect(r.ok).toBe(true);
@@ -363,23 +440,37 @@ describe('export', () => {
       [
         'access_events',
         'access_windows',
+        'api_idempotency',
         'approvals',
+        'audit_log',
         'briefs',
         'buyers',
         'consents',
         'entitlements',
         'identity_links',
+        'links',
+        'operations',
         'order_units',
         'orders',
         'proposals',
+        'provider_orders',
         'quotes',
         'receipts',
         'recovery_actions',
         'recovery_cases',
+        'refund_requests',
+        'sessions',
       ].sort(),
     );
     // A's rows, one of each.
-    for (const [name, rows] of Object.entries(t)) expect(rows, name).toHaveLength(1);
+    // audit_log holds two of A's: one as actor, one as target.
+    for (const [name, rows] of Object.entries(t))
+      expect(rows, name).toHaveLength(name === 'audit_log' ? 2 : 1);
+    expect(t['audit_log']!.map((x) => x['id']).sort()).toEqual(['aud_a1', 'aud_a2']);
+    expect(t['sessions']![0]).toMatchObject({ id: 'ses_a', actor_id: 'buy_a' });
+    expect(t['refund_requests']![0]).toMatchObject({ id: 'rfr_a', state: 'requested' });
+    expect(t['operations']![0]).toMatchObject({ id: 'opn_a', state: 'confirmed' });
+    expect(t['provider_orders']![0]).toMatchObject({ id: 'pvo_a', status: 'COMPLETED' });
     expect(t['buyers']![0]).toMatchObject({
       id: 'buy_a',
       display_name: A_NAME,
@@ -414,6 +505,21 @@ describe('export', () => {
     expect(text).not.toContain('nonce-a-secret');
     expect(t['approvals']![0]).not.toHaveProperty('nonce');
     expect(t['order_units']![0]).not.toHaveProperty('payee_merchant_id');
+    // No CSRF hash, link token hash, stored response, request hash or approval link, by column and by value.
+    expect(t['sessions']![0]).not.toHaveProperty('csrf_token_hash');
+    expect(t['links']![0]).not.toHaveProperty('token_hash');
+    expect(t['api_idempotency']![0]).not.toHaveProperty('response');
+    expect(t['api_idempotency']![0]).not.toHaveProperty('request_sha256');
+    expect(t['provider_orders']![0]).not.toHaveProperty('approve_url');
+    for (const v of [
+      ...SECRET_BITS,
+      sha('csrf-a'),
+      sha('token-a'),
+      'PAYPALORDERB',
+      'aud_b1',
+      'aud_b2',
+    ])
+      expect(text, v).not.toContain(v);
     // It read only: no row of any table changed.
     expect(changedTables(before, await dump(db))).toEqual([]);
     await db.close();
@@ -632,6 +738,9 @@ describe('guards', () => {
       [{ isTTY: false, env: { CI: 'true' } }, 'CI'],
       [{ isTTY: true, env: { CLAUDECODE: '1' } }, 'AI session'],
       [{ isTTY: true, env: { CLAUDE_CODE_REMOTE: 'true' } }, 'AI session'],
+      [{ isTTY: true, env: { AI_AGENT: 'x' } }, 'AI session'],
+      [{ isTTY: true, env: { CLAUDE_CODE_ENTRYPOINT: 'cli' } }, 'AI session'],
+      [{ isTTY: true, env: { CLAUDE_CODE_SESSION_ID: 'abc' } }, 'AI session'],
     ];
     for (const [tty, error] of cases) {
       expect(

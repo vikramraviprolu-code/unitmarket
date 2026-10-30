@@ -9,7 +9,13 @@
 // the audit log are append-only (their triggers refuse a change) and are never touched.
 import { createHash } from 'node:crypto';
 
-const AI_MARKERS = ['CLAUDECODE', 'CLAUDE_CODE_REMOTE'];
+const AI_MARKERS = [
+  'CLAUDECODE',
+  'CLAUDE_CODE_REMOTE',
+  'AI_AGENT',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_SESSION_ID',
+];
 const CI_MARKERS = ['CI', 'GITHUB_ACTIONS'];
 const set = (v) => v !== undefined && v !== '';
 const err = (error) => ({ ok: false, error });
@@ -38,7 +44,22 @@ const OMIT = {
   order_units: ['payee_merchant_id'],
 };
 
+// Tables that hold a token hash, a CSRF hash, a stored response body or an approval link are exported by
+// an explicit column list, so a column added later is not exported until someone chooses it.
+const COLS = {
+  sessions: 'id, actor_kind, actor_id, last_seen_at, expires_at, revoked_at, created_at',
+  links: 'id, entitlement_id, buyer_id, expires_at, uses, created_at',
+  api_idempotency: 'id, key, actor_kind, actor_id, route, created_at',
+  refund_requests:
+    'id, unit_id, capture_id, amount_minor, currency, reason, requested_by, state, refund_id, created_at',
+  provider_orders:
+    'id, order_id, provider_order_id, route, status, state, position, po_ref, publisher_id, first_approved_at, created_at',
+  operations:
+    'id, order_id, unit_id, provider_order_ref, kind, state, attempt, failure_reason, created_at',
+};
+
 const OWNED_ORDERS = '(SELECT id FROM orders WHERE buyer_id = $1)';
+const OWNED_UNITS = `(SELECT id FROM order_units WHERE order_id IN ${OWNED_ORDERS})`;
 const OWNED_ENTITLEMENTS = '(SELECT id FROM entitlements WHERE buyer_id = $1)';
 const OWNED_CASES = '(SELECT id FROM recovery_cases WHERE buyer_id = $1)';
 
@@ -47,18 +68,25 @@ const EXPORT_TABLES = [
   ['buyers', 'id = $1'],
   ['consents', 'buyer_id = $1'],
   ['identity_links', 'buyer_id = $1'],
+  ['sessions', "actor_kind = 'buyer' AND actor_id = $1"],
   ['briefs', 'buyer_id = $1'],
   ['proposals', 'buyer_id = $1'],
   ['quotes', 'buyer_id = $1'],
   ['approvals', 'buyer_id = $1'],
   ['orders', 'buyer_id = $1'],
   ['order_units', `order_id IN ${OWNED_ORDERS}`],
+  ['provider_orders', `order_id IN ${OWNED_ORDERS}`],
+  ['operations', `order_id IN ${OWNED_ORDERS}`],
+  ['refund_requests', `unit_id IN ${OWNED_UNITS}`],
   ['entitlements', 'buyer_id = $1'],
+  ['links', 'buyer_id = $1'],
   ['access_windows', `entitlement_id IN ${OWNED_ENTITLEMENTS}`],
   ['access_events', `entitlement_id IN ${OWNED_ENTITLEMENTS}`],
   ['receipts', `order_id IN ${OWNED_ORDERS}`],
   ['recovery_cases', 'buyer_id = $1'],
   ['recovery_actions', `case_id IN ${OWNED_CASES}`],
+  ['api_idempotency', "actor_kind = 'buyer' AND actor_id = $1"],
+  ['audit_log', '(actor_id = $1 OR target = $1)'],
 ];
 
 const buyerExists = async (q, id) =>
@@ -75,9 +103,10 @@ export async function runExport(d) {
     return err('unknown buyer');
   const tables = {};
   for (const [name, where] of EXPORT_TABLES) {
-    const r = await d.db.query(`SELECT t.* FROM ${name} t WHERE ${where} ORDER BY t::text`, [
-      d.buyer_id,
-    ]);
+    const r = await d.db.query(
+      `SELECT ${COLS[name] ?? 't.*'} FROM ${name} t WHERE ${where} ORDER BY t::text`,
+      [d.buyer_id],
+    );
     const drop = OMIT[name] ?? [];
     tables[name] = r.rows.map((row) =>
       Object.fromEntries(Object.entries(row).filter(([k]) => !drop.includes(k))),

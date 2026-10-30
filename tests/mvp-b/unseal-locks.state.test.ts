@@ -353,6 +353,17 @@ describe('safety:resume refuses without TTY, in CI, without an active row, with 
       { isTTY: true, env: { CLAUDE_CODE_REMOTE: 'true' } },
       'ai_session',
     ],
+    ['an AI session (AI_AGENT)', { isTTY: true, env: { AI_AGENT: 'x' } }, 'ai_session'],
+    [
+      'an AI session (CLAUDE_CODE_ENTRYPOINT)',
+      { isTTY: true, env: { CLAUDE_CODE_ENTRYPOINT: 'cli' } },
+      'ai_session',
+    ],
+    [
+      'an AI session (CLAUDE_CODE_SESSION_ID)',
+      { isTTY: true, env: { CLAUDE_CODE_SESSION_ID: 'abc' } },
+      'ai_session',
+    ],
   ])('refuses: %s, asks nothing, changes nothing', async (_n, tty, code) => {
     const t = await resumeRig();
     const res = await runResume({ ...t.base, tty });

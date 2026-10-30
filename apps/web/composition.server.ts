@@ -1137,10 +1137,12 @@ function buildApp(config: Config, opts: AppOptions): App {
       if (opts.test_seed?.payees !== false)
         await seedSandboxPayees({ db: d, clock, audit, log }, config.own_merchant_id);
     }
+    // Any conflict is skipped: a demo buyer whose personal data was removed (scripts/privacy.mjs delete) keeps
+    // its id but has a new auth_subject, so only the id can collide on the next start. The persona stays as is.
     for (const [persona, id] of Object.entries(BUYER_IDS)) {
       await d.query(
         `INSERT INTO buyers (id, display_name, auth_subject, country, created_at, updated_at)
-         VALUES ($1, $2, $3, 'US', $4, $4) ON CONFLICT (auth_subject) DO NOTHING`,
+         VALUES ($1, $2, $3, 'US', $4, $4) ON CONFLICT DO NOTHING`,
         [
           id,
           persona === 'buyer-a' ? 'Buyer A (demo)' : 'Buyer B (demo)',

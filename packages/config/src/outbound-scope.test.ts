@@ -53,6 +53,30 @@ describe('UMS_OUTBOUND_SCOPE', () => {
 describe('terminalEnv', () => {
   it('reports the CI and AI-session markers and nothing else', () => {
     const keys = Object.keys(terminalEnv()).sort();
-    expect(keys).toEqual(['CI', 'CLAUDECODE', 'CLAUDE_CODE_REMOTE', 'GITHUB_ACTIONS']);
+    expect(keys).toEqual([
+      'AI_AGENT',
+      'CI',
+      'CLAUDECODE',
+      'CLAUDE_CODE_ENTRYPOINT',
+      'CLAUDE_CODE_REMOTE',
+      'CLAUDE_CODE_SESSION_ID',
+      'GITHUB_ACTIONS',
+    ]);
   });
+
+  it.each(['AI_AGENT', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ID'])(
+    '%s is read from the process environment, and an unset one is undefined',
+    (name) => {
+      const before = process.env[name];
+      try {
+        delete process.env[name];
+        expect(terminalEnv()[name]).toBeUndefined();
+        process.env[name] = 'x';
+        expect(terminalEnv()[name]).toBe('x');
+      } finally {
+        if (before === undefined) delete process.env[name];
+        else process.env[name] = before;
+      }
+    },
+  );
 });
