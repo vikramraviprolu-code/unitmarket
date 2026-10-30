@@ -14,4 +14,4 @@ export type {
   RefundOverview,
   RefundUnitView,
 } from '../../composition.server';
-export { orderMessage } from '../../composition.server';
+export { orderMessage, salesTotals } from '../../composition.server';

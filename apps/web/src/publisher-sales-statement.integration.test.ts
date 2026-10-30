@@ -257,7 +257,9 @@ describe('S4 totals row and S5 statement', () => {
       expect(totals).toHaveLength(s4.groups.length);
       for (const b of st.blocks) {
         const t = totals.find((x) => x.currency === b.currency && x.environment === b.environment)!;
-        const g = s4.groups.find((x) => x.currency === b.currency && x.environment === b.environment)!;
+        const g = s4.groups.find(
+          (x) => x.currency === b.currency && x.environment === b.environment,
+        )!;
         // S4 totals row equals the S5 block, figure by figure.
         expect(t).toMatchObject({
           gross_minor: b.sales_minor,

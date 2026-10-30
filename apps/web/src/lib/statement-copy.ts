@@ -25,6 +25,19 @@ export const SALES_COLUMNS = {
   fee: 'PayPal fee',
   status: 'Status',
 } as const;
+// PUB-F1: the totals row is the statement block, so the figures match S5. The fee sits beside the net.
+export const TOTALS_HEADING = 'Totals';
+export const TOTALS_COLUMNS = {
+  group: 'Currency',
+  units: 'Paid units',
+  gross: 'Gross',
+  refunds: 'Refunds',
+  reversals: 'Reversals',
+  net: 'Net',
+  fee: 'PayPal fee',
+} as const;
+export const TOTALS_NOTE =
+  'Totals are the statement figures, added up from the same ledger rows. The PayPal fee is shown beside the net and is not subtracted.';
 export const FEE_NOT_REPORTED = 'Not reported';
 
 /** GATE35 D5: a dry run reports no fee, so a stored value in a dry run is never shown as one. */

@@ -2,12 +2,13 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import '../../tables.css';
-import { app } from '../../../server/access';
+import { app, salesTotals } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EmptyState } from '../../../ui/EmptyState';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { formatDateTime, formatMinor, optionLabel } from '../../../lib/format';
 import {
+  blockHeading,
   feeText,
   NAV_HOME,
   NAV_STATEMENT,
@@ -18,6 +19,9 @@ import {
   SALES_LEDE,
   SALES_ORDER_NOTE,
   SALES_SOURCE_NOTE,
+  TOTALS_COLUMNS,
+  TOTALS_HEADING,
+  TOTALS_NOTE,
   mismatchSalesText,
   notCountedText,
   salesCountText,
@@ -35,6 +39,10 @@ export default async function PublisherSales() {
   const all = await a.engine.publisherSales(actor);
   if (all === null) redirect('/signin?next=/publisher/sales');
   // GATE35 D6: only paid units are counted and listed; the rest is one note.
+  // PUB-F1: the totals row is the statement read model, so S4 and S5 show the same numbers.
+  const statement = await a.engine.publisherStatement(actor);
+  if (statement === null) redirect('/signin?next=/publisher/sales');
+  const totals = salesTotals(statement.blocks);
   const { counted: rows, notCounted } = splitSales(all);
   const mismatchCount = rows.filter((r) => r.status === 'mismatch').length;
   // The label follows the stored environment of the rows; with no rows, the app's.
@@ -103,6 +111,46 @@ export default async function PublisherSales() {
           <p className="muted">{SALES_ORDER_NOTE}</p>
         </>
       )}
+      {totals.length > 0 ? (
+        <section data-testid="sales-totals">
+          <h2>{TOTALS_HEADING}</h2>
+          <div className="table-scroll">
+            <table>
+              <caption className="visually-hidden">{TOTALS_HEADING}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{TOTALS_COLUMNS.group}</th>
+                  <th scope="col">{TOTALS_COLUMNS.units}</th>
+                  <th scope="col">{TOTALS_COLUMNS.gross}</th>
+                  <th scope="col">{TOTALS_COLUMNS.refunds}</th>
+                  <th scope="col">{TOTALS_COLUMNS.reversals}</th>
+                  <th scope="col">{TOTALS_COLUMNS.net}</th>
+                  <th scope="col">{TOTALS_COLUMNS.fee}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {totals.map((t) => (
+                  <tr key={`${t.currency}-${t.environment}`}>
+                    <td>
+                      {blockHeading(t.currency, t.environment)}{' '}
+                      <EnvLabel environment={t.environment} />
+                    </td>
+                    <td>{String(t.units_paid)}</td>
+                    <td>{formatMinor(t.gross_minor, t.currency)}</td>
+                    <td>{formatMinor(t.refunds_minor, t.currency)}</td>
+                    <td>{formatMinor(t.reversals_minor, t.currency)}</td>
+                    <td data-testid="sales-totals-net">
+                      <strong>{formatMinor(t.net_minor, t.currency)}</strong>
+                    </td>
+                    <td>{feeText(t.paypal_fee_minor, t.currency, t.environment)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted">{TOTALS_NOTE}</p>
+        </section>
+      ) : null}
       {mismatchCount > 0 ? (
         <p className="muted" data-testid="sales-mismatch">
           {mismatchSalesText(mismatchCount)}
