@@ -55,51 +55,53 @@ export function AddApplicantForm() {
 
   return (
     <div>
-      <div className="field">
-        <label htmlFor="applicant-name">{FIELD_NAME}</label>
-        <input
-          id="applicant-name"
-          type="text"
-          maxLength={80}
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor="applicant-slug">{FIELD_SLUG}</label>
-        <input
-          id="applicant-slug"
-          type="text"
-          maxLength={40}
-          autoCapitalize="none"
-          value={slug}
-          onChange={(e) => setSlug(e.target.value)}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor="applicant-country">{FIELD_COUNTRY}</label>
-        <input
-          id="applicant-country"
-          type="text"
-          maxLength={2}
-          value={country}
-          onChange={(e) => setCountry(e.target.value)}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor="applicant-note">{FIELD_NOTE}</label>
-        <input
-          id="applicant-note"
-          type="text"
-          maxLength={200}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-        />
+      <div className="pk-form-grid">
+        <div className="field">
+          <label htmlFor="applicant-name">{FIELD_NAME}</label>
+          <input
+            id="applicant-name"
+            type="text"
+            maxLength={80}
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="applicant-slug">{FIELD_SLUG}</label>
+          <input
+            id="applicant-slug"
+            type="text"
+            maxLength={40}
+            autoCapitalize="none"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="applicant-country">{FIELD_COUNTRY}</label>
+          <input
+            id="applicant-country"
+            type="text"
+            maxLength={2}
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="applicant-note">{FIELD_NOTE}</label>
+          <input
+            id="applicant-note"
+            type="text"
+            maxLength={200}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
       </div>
       <div className="actions">
         <button
           type="button"
-          className="btn"
+          className="btn btn-primary"
           disabled={
             busy || reason.trim().length < 3 || slug.length < 3 || displayName.trim().length < 2
           }
@@ -157,7 +159,7 @@ export function DecideApplicantForm({ publisherId, name }: { publisherId: string
       <div className="actions">
         <button
           type="button"
-          className="btn"
+          className="btn btn-primary"
           disabled={busy || reason.trim().length < 3}
           onClick={() => void decide('approve')}
         >
