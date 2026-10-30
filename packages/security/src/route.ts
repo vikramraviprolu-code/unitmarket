@@ -46,6 +46,13 @@ export interface RouteMeta {
   csrf: boolean;
   rate: RateRule | null;
   /**
+   * AI-H. An extra `ip` rule charged next to `rate`, after authentication and BEFORE the actor rule, so a
+   * visitor refused here never spends the allowance of a shared actor (the demo buyer personas are shared).
+   * It is not charged when no client address is known (no trusted proxy and no remote address): one
+   * bucket for every client would let a single visitor starve all of them.
+   */
+  rate_ip?: RateRule;
+  /**
    * Name of an input field. With an `ip` rate, the bucket key becomes ip + hash(field value), so
    * failed attempts on one target (a passcode persona, an account) never lock other targets.
    */
@@ -157,6 +164,13 @@ function validateMeta(meta: RouteMeta): void {
   )
     bad('idempotent needs a POST with a session');
   if (meta.rate !== null && !(meta.rate.limit >= 1 && meta.rate.window_ms >= 1)) bad('rate');
+  if (
+    meta.rate_ip !== undefined &&
+    (meta.rate_ip.per !== 'ip' || !(meta.rate_ip.limit >= 1 && meta.rate_ip.window_ms >= 1))
+  )
+    bad('rate_ip must be an ip rule with a positive limit and window');
+  if (meta.rate_ip !== undefined && meta.auth === 'webhook')
+    bad('rate_ip is not for webhook routes');
   if (meta.rate_target !== undefined && (meta.rate === null || meta.rate.per !== 'ip'))
     bad('rate_target needs an ip rate');
   if (meta.fail_safe_without_mfa === true && (meta.auth !== 'operator' || meta.method !== 'POST'))
@@ -357,6 +371,11 @@ export function withRoute<I, O>(
             return fail(403, 'mfa_required', 'Operator changes need a second factor.');
         }
         if (record !== null) actor = record.actor;
+      }
+
+      if (meta.rate_ip !== undefined && clientIp(req, deps, call) !== 'no-address') {
+        const v = await takeToken(deps, meta.rate_ip, ip_hash);
+        if (!v.allowed) return tooMany(v.retry_after_ms);
       }
 
       if (meta.rate?.per === 'actor') {

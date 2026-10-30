@@ -9,6 +9,8 @@ export const routeMeta: RouteMeta = {
   auth: 'buyer',
   csrf: true,
   rate: { name: 'discovery', per: 'actor', limit: 20, window_ms: 3_600_000 },
+  // AI-H: one address cannot use up the allowance of the shared buyer personas (needs UMS_TRUSTED_PROXIES).
+  rate_ip: { name: 'discovery-ip', per: 'ip', limit: 40, window_ms: 3_600_000 },
   max_body_bytes: 4096,
   idempotent: false,
   risk: 'medium',

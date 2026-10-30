@@ -145,6 +145,57 @@ describe('UMS_AI_ADAPTER=claude with a key', () => {
     );
     expect(Number(spend.rows[0]?.n)).toBe(1);
   });
+  // AI-H: the ledger holds the purpose and a token estimate, never the reader's words.
+  it('model.spend rows hold no reader text, in any column', async () => {
+    const send = vi.fn<ModelWire['send']>(async () => answer(JSON.stringify(GOOD_BRIEF)));
+    const app = await boot(env, { send });
+    const marker = 'ZEBRA-READER-TEXT-4242 secretword quokka';
+    const r = await app.engine.parseNeed({
+      actor: BUYER,
+      text: `${marker} solar guide under $5, write to reader.person@private.example`,
+    });
+    expect(r.ok).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
+    // The reader text did reach the (fake) wire, so the test can tell a leak from an absent call.
+    expect(String(send.mock.calls[0]![0])).toContain('ZEBRA-READER-TEXT-4242');
+    const rows = await app.db.query(`SELECT * FROM audit_log WHERE action = 'model.spend'`);
+    expect(rows.rows).toHaveLength(1);
+    const dump = JSON.stringify(rows.rows);
+    for (const piece of [
+      'ZEBRA',
+      'READER-TEXT',
+      'secretword',
+      'quokka',
+      'reader.person',
+      'private.example',
+      'solar guide',
+    ])
+      expect(dump, piece).not.toContain(piece);
+    const row = rows.rows[0] as { reason: string; detail: unknown; target: unknown };
+    expect(row.reason).toMatch(/^brief_parse est_in \d+$/);
+    expect(Object.keys(row.detail as object)).toEqual(['micro_usd']);
+  });
+  // AI-H: briefs.version records the model that answered.
+  it('briefs.version is the served model: Claude when it answered, scripted-v1 when it fell back', async () => {
+    const good = vi.fn<ModelWire['send']>(async () => answer(JSON.stringify(GOOD_BRIEF)));
+    const app = await boot(env, { send: good });
+    const a = await app.engine.parseNeed({ actor: BUYER, text: 'solar guide under $5' });
+    expect(a.ok).toBe(true);
+    const bad = vi.fn<ModelWire['send']>(async () => answer('not json'));
+    const app2 = await boot(env, { send: bad });
+    const b = await app2.engine.parseNeed({ actor: BUYER, text: 'solar guide under $5' });
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    const va = await app.db.query<{ version: string }>('SELECT version FROM briefs WHERE id = $1', [
+      a.value.brief_id,
+    ]);
+    const vb = await app2.db.query<{ version: string }>(
+      'SELECT version FROM briefs WHERE id = $1',
+      [b.value.brief_id],
+    );
+    expect(va.rows[0]?.version).toBe('claude-haiku-5-5');
+    expect(vb.rows[0]?.version).toBe('scripted-v1');
+  });
   it('a test wire is refused outside NODE_ENV=test', async () => {
     const env2 = await testEnv({ ...env, NODE_ENV: 'development' });
     expect(() => createApp(env2, { test_model_wire: { send: vi.fn() } })).toThrow(

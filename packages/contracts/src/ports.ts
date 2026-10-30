@@ -129,6 +129,8 @@ export const ModelResponseSchema = z.discriminatedUnion('kind', [
       output: z.unknown(),
       input_tokens: z.number().int().nonnegative(),
       output_tokens: z.number().int().nonnegative(),
+      /** AI-H: the id of the model that really produced this answer (a fallback answer names the fallback). */
+      served_model: z.string().min(1).max(100).optional(),
     })
     .strict(),
   z.object({ kind: z.literal('error'), reason: z.string() }).strict(),

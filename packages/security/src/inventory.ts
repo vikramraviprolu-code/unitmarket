@@ -65,20 +65,30 @@ export function parseRouteMeta(source: string): Partial<RouteMeta> | null {
   }
   const mb = num(field(body, 'max_body_bytes'));
   if (mb !== undefined) meta.max_body_bytes = mb;
-  const rate = field(body, 'rate');
-  if (rate === 'null') meta.rate = null;
-  else if (rate !== null && rate.startsWith('{')) {
-    const name = str(field(rate, 'name'));
-    const per = str(field(rate, 'per'));
-    const limit = num(field(rate, 'limit'));
-    const window_ms = num(field(rate, 'window_ms'));
-    if (
-      name !== undefined &&
+  const rule = (text: string | null): RouteMeta['rate_ip'] | undefined => {
+    if (text === null || !text.startsWith('{')) return undefined;
+    const name = str(field(text, 'name'));
+    const per = str(field(text, 'per'));
+    const limit = num(field(text, 'limit'));
+    const window_ms = num(field(text, 'window_ms'));
+    return name !== undefined &&
       (per === 'ip' || per === 'actor') &&
       limit !== undefined &&
       window_ms !== undefined
-    )
-      meta.rate = { name, per, limit, window_ms };
+      ? { name, per, limit, window_ms }
+      : undefined;
+  };
+  const rate = field(body, 'rate');
+  if (rate === 'null') meta.rate = null;
+  else {
+    const r = rule(rate);
+    if (r !== undefined) meta.rate = r;
+  }
+  // AI-H: the optional extra per-ip rule.
+  const rateIp = field(body, 'rate_ip');
+  if (rateIp !== null) {
+    const r = rule(rateIp);
+    meta.rate_ip = r ?? { name: '?', per: 'actor', limit: 0, window_ms: 0 };
   }
   return meta as Partial<RouteMeta>;
 }
@@ -228,6 +238,8 @@ export function checkEntry(file: string, relativeToApp: string, source: string):
     problems.push('risk must be low, medium or high');
   if (meta.method === 'POST' && meta.auth !== 'webhook' && meta.csrf === false)
     problems.push('POST route needs csrf: true');
+  if (meta.rate_ip !== undefined && (meta.rate_ip.per !== 'ip' || meta.rate_ip.limit < 1))
+    problems.push('rate_ip must be an ip rule with a positive limit and window (AI-H)');
   if (meta.fail_safe_without_mfa === true) {
     if (meta.path === undefined || !FAIL_SAFE_WITHOUT_MFA_ROUTES.includes(meta.path))
       problems.push(
@@ -248,7 +260,10 @@ export function formatInventory(entries: InventoryEntry[]): string {
       const rate = m.rate
         ? `${m.rate.name} ${m.rate.limit}/${m.rate.window_ms}ms ${m.rate.per}`
         : 'none';
-      return `${m.method ?? '?'} ${m.path ?? '?'} auth=${m.auth ?? '?'} csrf=${m.csrf ?? '?'} rate=${rate} body<=${m.max_body_bytes ?? '?'} idem=${m.idempotent ?? '?'} risk=${m.risk ?? '?'}${m.fail_safe_without_mfa === true ? ' failsafe_no_mfa=true' : ''}`;
+      const rateIp = m.rate_ip
+        ? ` rate_ip=${m.rate_ip.name} ${m.rate_ip.limit}/${m.rate_ip.window_ms}ms ${m.rate_ip.per}`
+        : '';
+      return `${m.method ?? '?'} ${m.path ?? '?'} auth=${m.auth ?? '?'} csrf=${m.csrf ?? '?'} rate=${rate}${rateIp} body<=${m.max_body_bytes ?? '?'} idem=${m.idempotent ?? '?'} risk=${m.risk ?? '?'}${m.fail_safe_without_mfa === true ? ' failsafe_no_mfa=true' : ''}`;
     });
   return rows.sort().join('\n');
 }

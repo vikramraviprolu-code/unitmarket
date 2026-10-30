@@ -8,16 +8,18 @@ import { ComposeInputSchema, MAX_BRIEF_CHARS, MAX_CANDIDATES } from './schemas';
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 const fail = (reason: string): ModelResponse => ({ kind: 'error', reason });
+const SCRIPTED_ID = 'scripted-v1';
 const good = (output: unknown): ModelResponse => ({
   kind: 'ok',
   output,
   input_tokens: 0,
   output_tokens: 0,
+  served_model: SCRIPTED_ID,
 });
 
 export function createScriptedModel(): ModelPort {
   return {
-    model_id: 'scripted-v1',
+    model_id: SCRIPTED_ID,
     async complete(request: ModelRequest): Promise<ModelResponse> {
       const { input } = request;
       if (!isRecord(input)) return fail('invalid_input');

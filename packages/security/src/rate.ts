@@ -18,6 +18,10 @@ export const DEFAULT_RATES = {
   order: { name: 'order', per: 'actor', limit: 5, window_ms: 60_000 },
   content: { name: 'content', per: 'actor', limit: 60, window_ms: 60 * 60_000 },
   discovery: { name: 'discovery', per: 'actor', limit: 20, window_ms: 60 * 60_000 },
+  // AI-H: the buyer personas are shared, so the actor rule alone lets one visitor use up the allowance of
+  // every judge. This rule adds a per-address bucket (twice the per-persona figure: one household or
+  // office behind one address may share it).
+  discovery_ip: { name: 'discovery-ip', per: 'ip', limit: 40, window_ms: 60 * 60_000 },
   webhook_invalid: { name: 'webhook-invalid', per: 'ip', limit: 60, window_ms: 60_000 },
 } as const satisfies Record<string, RateRule>;
 
