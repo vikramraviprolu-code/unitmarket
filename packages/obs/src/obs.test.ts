@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { createAuditSink, createLogger, redact } from './index';
+import { redactString } from './redact';
 import type { SqlExecutor } from '@umsbx/contracts';
 
 const KEYS = [
@@ -90,6 +91,32 @@ describe('redact', () => {
     expect(redact(true)).toBe(true);
     expect(redact(new Date('2026-10-21T00:00:00Z'))).toBe('2026-10-21T00:00:00.000Z');
     expect(redact(new Uint8Array([1, 2]))).toBe('[binary]');
+  });
+});
+
+describe('model API keys (AI-A review)', () => {
+  const VALUE = 'sk-ant-api03-SYNTHETICvalueNotARealKey_0123456789';
+  it('redacts api key field names in any spelling', () => {
+    const out = JSON.stringify(
+      redact({
+        apikey: VALUE,
+        api_key: 'SYNTHETIC-A',
+        'x-api-key': 'SYNTHETIC-B',
+        ANTHROPIC_API_KEY: 'SYNTHETIC-C',
+        apiKey: 'SYNTHETIC-D',
+        keep: 'visible',
+      }),
+    );
+    expect(out).not.toMatch(/SYNTHETIC|sk-ant/);
+    expect(out).toContain('visible');
+  });
+  it('redacts an sk-ant value inside free text and JSON strings, and keeps ordinary words', () => {
+    expect(redactString(`call failed with ${VALUE} in the header`)).not.toContain('sk-ant');
+    const nested = JSON.stringify(
+      redact({ msg: `key=${VALUE}`, body: JSON.stringify({ a: VALUE }) }),
+    );
+    expect(nested).not.toContain('SYNTHETICvalue');
+    expect(redactString('ask anthropic about sk-learn')).toBe('ask anthropic about sk-learn');
   });
 });
 

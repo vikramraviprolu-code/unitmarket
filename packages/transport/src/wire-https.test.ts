@@ -484,9 +484,14 @@ describe('the production network call lives in exactly one file', () => {
   const pkgFiles = walk(join(REPO, 'packages')).filter((f) => /\.(ts|tsx|mts|js|mjs)$/.test(f));
   const prod = pkgFiles.filter((f) => !isTest(rel(f)));
 
-  it('only the production Wire file imports node:https in non-test package code', () => {
+  // AI-A (D-067): the Claude egress is the one other file that imports node:https, named here so a
+  // third file cannot join without a test change that a reviewer sees. It carries no PayPal call.
+  it('only the production Wire file and the Claude egress file import node:https in non-test package code', () => {
     const hits = prod.filter((f) => /from\s+['"](?:node:)?https['"]/.test(code(f)));
-    expect(hits.map(rel)).toEqual([`packages/transport/src/${MODULE}.ts`]);
+    expect(hits.map(rel).sort()).toEqual([
+      'packages/transport/src/model-https.ts',
+      `packages/transport/src/${MODULE}.ts`,
+    ]);
   });
   it('no non-test file of the transport package calls fetch', () => {
     const hits = prod

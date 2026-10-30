@@ -138,6 +138,23 @@ export interface ModelPort {
   readonly model_id: string;
   complete(r: ModelRequest): Promise<ModelResponse>;
 }
+/**
+ * AI-A: the one request/answer exchange with the model API, as the Claude adapter sees it. The body is
+ * the JSON text of a messages request; the answer is the HTTP status and the body text. The host, path
+ * and key belong to the wire, never to the caller. A refusal, timeout or network failure rejects.
+ */
+export interface ModelWire {
+  send(body: string): Promise<{ status: number; body: string }>;
+}
+/**
+ * AI-A: the ledger behind the model spend caps, in micro USD (1 USD = 1,000,000). `spentMicroUsd` sums
+ * what was charged at or after `since_iso` (null: all time); `charge` records one amount with a short
+ * note that holds no input text.
+ */
+export interface ModelSpendStore {
+  spentMicroUsd(since_iso: string | null): Promise<number>;
+  charge(micro_usd: number, note: string): Promise<void>;
+}
 
 // ---------- Switches ----------
 export const SwitchNameSchema = z.enum([
