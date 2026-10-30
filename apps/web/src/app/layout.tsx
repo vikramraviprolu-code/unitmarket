@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import './globals.css';
 import { app } from '../server/access';
 import { currentActor } from '../server/session';
+import { AppearanceControl } from '../ui/AppearanceControl';
 import { EnvLabel } from '../ui/EnvLabel';
 import { siteDescription, siteFooter } from '../ui/env-copy';
+import { SKIN_COOKIE, skinFromCookie } from '../lib/skin';
 import { LEGAL_NAV } from '../lib/legal-copy';
 import { PUBLISHER_NAV_LABEL } from '../lib/publisher-copy';
 
@@ -22,8 +25,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const a = await app();
   const actor = await currentActor();
+  const skin = skinFromCookie((await cookies()).get(SKIN_COOKIE)?.value);
   return (
-    <html lang="en">
+    <html lang="en" data-skin={skin}>
       <body>
         <a className="skip" href="#main">
           Skip to content
@@ -72,6 +76,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         </main>
         <footer className="site-footer">
           <p>{siteFooter(a.environment)}</p>
+          <AppearanceControl skin={skin} />
           <nav aria-label="Legal">
             <ul>
               <li>
