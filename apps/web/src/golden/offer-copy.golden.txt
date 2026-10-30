@@ -65,3 +65,7 @@ input 100: 1.00
 input 250: 2.50
 input 5: 0.05
 input 2000: 20.00
+s2 filter nav: Filter your offers
+s2 filters: All | On sale | Draft | Withdrawn
+s2 edit: Edit
+s2 filter empty: No offers in this view | Choose another tab to see your other offers. | Show all offers
