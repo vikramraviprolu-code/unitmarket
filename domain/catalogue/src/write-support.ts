@@ -135,3 +135,22 @@ export async function versionsOf(
 export const prices = (
   options: { option: string; price_minor: number }[],
 ): Record<string, number> => Object.fromEntries(options.map((o) => [o.option, o.price_minor]));
+
+/**
+ * PUB-E1 test helper: inserts an article for a publisher straight into the table (no offer), the way an
+ * article reaches the database before any offer exists. Returns its id.
+ */
+export async function addArticle(
+  db: Database,
+  publisher_id: Id,
+  key: string,
+  at = '2026-10-21T10:00:00.000Z',
+): Promise<Id> {
+  const id = `art_${key}`;
+  await db.query(
+    `INSERT INTO articles (id, publisher_id, title, abstract, language, topics, published_at, sha256, content_key, bytes, mime, created_at, updated_at)
+     VALUES ($1,$2,$3,'An abstract.','en',ARRAY['t'],$4,$5,$6,1,'text/plain',$4,$4)`,
+    [id, publisher_id, `Title ${key}`, at, 'c'.repeat(64), `test/${key}`],
+  );
+  return id;
+}

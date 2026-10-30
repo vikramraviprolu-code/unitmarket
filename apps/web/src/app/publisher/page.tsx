@@ -24,6 +24,14 @@ import {
   payeeText,
   publisherStatusText,
 } from '../../lib/publisher-copy';
+import {
+  SINCE_FIRST,
+  SINCE_HEADING,
+  SINCE_NONE,
+  sinceFromText,
+  sinceLines,
+} from '../../lib/publisher-e1-copy';
+import { formatDateTime } from '../../lib/format';
 
 export const metadata: Metadata = { title: 'Publisher' };
 
@@ -34,6 +42,9 @@ export default async function PublisherHome() {
   if (actor?.kind !== 'publisher') redirect('/signin?next=/publisher');
   const home = await (await app()).engine.publisherHome(actor);
   if (home === null) redirect('/signin?next=/publisher');
+  // PUB-E1: what changed since the last visit. Reading it records this visit in the publisher's own row.
+  const since = await (await app()).engine.publisherSince(actor);
+  const sinceList = since?.counts == null ? [] : sinceLines(since.counts);
   return (
     <>
       <h1>{PUBLISHER_HEADING}</h1>
@@ -62,6 +73,25 @@ export default async function PublisherHome() {
           <dd data-testid="publisher-settlement">{home.settlement.sentence}</dd>
         </dl>
       </div>
+      <section aria-labelledby="since-heading" data-testid="publisher-since">
+        <h2 id="since-heading">{SINCE_HEADING}</h2>
+        {since === null || since.first_visit ? (
+          <p>{SINCE_FIRST}</p>
+        ) : sinceList.length === 0 ? (
+          <p>{SINCE_NONE}</p>
+        ) : (
+          <>
+            <ul>
+              {sinceList.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </>
+        )}
+        {since?.since == null ? null : (
+          <p className="muted">{sinceFromText(formatDateTime(since.since))}</p>
+        )}
+      </section>
       <ul data-testid="publisher-links">
         <li>
           <Link href="/publisher/offers">{LINK_OFFERS}</Link>

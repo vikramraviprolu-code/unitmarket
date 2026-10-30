@@ -1,0 +1,34 @@
+export: Download sales as CSV | Download statement as CSV
+export hrefs: /api/publisher/export?kind=sales | /api/publisher/export?kind=statement
+export note: The file has one row per line, amounts in minor units and as decimals, and a currency column. Order references show the last 6 characters. No buyer is named.
+export messages: The file could not be made. Try again. | The file lists the first 5000 rows only. The totals in a statement still cover every row.
+refunds heading: Refunds
+refunds lede: Units that were refunded, partly refunded, held after a possible reversal, or reversed.
+refunds columns: Date | Order | Article | Original amount | Refunded | Reversed | Status
+refunds count 0: No refunds yet.
+refunds count 1: 1 unit is listed.
+refunds count 2: 2 units are listed.
+refunds count 11: 11 units are listed.
+refunds source: Source: the stored ledger. A held unit has no refund row yet, so its date is the last change to the unit.
+since heading: Since your last visit
+since first: This is your first visit. Changes are listed here from your next visit.
+since none: Nothing new since your last visit.
+since from: Counted from 2026-10-30 09:00 UTC.
+since lines {"new_sales":1,"refunds":1,"operator_offer_changes":1,"payee_decisions":1}: 1 new sale. 1 refund. 1 change to your offers or your account by an operator. 1 payee decision.
+since lines {"new_sales":2,"refunds":3,"operator_offer_changes":4,"payee_decisions":5}: 2 new sales. 3 refunds. 4 changes to your offers or your account by an operator. 5 payee decisions.
+since lines {"new_sales":0,"refunds":0,"operator_offer_changes":0,"payee_decisions":2}: 2 payee decisions.
+since lines {"new_sales":0,"refunds":0,"operator_offer_changes":0,"payee_decisions":0}: (none)
+create: Create an offer | Create an offer | Back to your offers
+create lede: Put one of your articles on sale. Choose the article, the options and the price of each option.
+create none: No article to offer | Every article of yours already has an offer on sale.
+create labels: Article | Put this article on sale
+create terms: Terms version terms-1. The access window is set by UnitMarket. Personal use only. No redistribution. AI assistants may read it for the buyer after the buyer reviews it.
+created: Created. This offer is on sale as version 1.
+error already_offered: This article already has an offer on sale.
+error no_corridor: No sales route is set up for your country, so nothing can be offered yet.
+error not_found: We could not find that offer.
+error invalid_price: Enter each price with at most two decimals, from the lowest to the highest price shown.
+error attestation_required: Tick the box to confirm before you save.
+error publisher_not_active: Your account is not active, so offers cannot be changed. Contact the operator.
+error forbidden: This account cannot do that.
+error other: Something went wrong. Try again.

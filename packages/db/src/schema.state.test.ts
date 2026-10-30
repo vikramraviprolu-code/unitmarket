@@ -182,6 +182,7 @@ describe('migrations', () => {
     expect(first).toContain('0011_provider_order_state');
     expect(first).toContain('0012_publisher_side');
     expect(first).toContain('0013_publisher_applicants');
+    expect(first).toContain('0014_publisher_visits');
     expect(await migrate(d, clock)).toEqual([]);
     const rows = await d.query<{ version: string; applied_at: Date | string }>(
       'SELECT version, applied_at FROM schema_migrations ORDER BY version',
@@ -1535,6 +1536,7 @@ describe('0010 publishers.payee_shared (DP-1, D-041)', () => {
         '0011_provider_order_state',
         '0012_publisher_side',
         '0013_publisher_applicants',
+        '0014_publisher_visits',
       ]);
       const after = await d.query<Record<string, unknown>>('SELECT * FROM publishers ORDER BY id');
       // every old column value is kept; the new column is false for every existing row

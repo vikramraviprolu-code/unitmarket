@@ -26,6 +26,12 @@ import {
   salesAnchor,
   visibleLines,
 } from '../../../lib/statement-copy';
+import { DownloadCsv } from '../DownloadCsv';
+import {
+  EXPORT_NOTE,
+  EXPORT_STATEMENT_HREF,
+  EXPORT_STATEMENT_LABEL,
+} from '../../../lib/publisher-e1-copy';
 
 export const metadata: Metadata = { title: 'Statement' };
 
@@ -46,6 +52,14 @@ export default async function PublisherStatement() {
         {' | '}
         <Link href="/publisher">{NAV_HOME}</Link>
       </p>
+      <p>
+        <DownloadCsv
+          href={EXPORT_STATEMENT_HREF}
+          label={EXPORT_STATEMENT_LABEL}
+          testId="export-statement"
+        />
+      </p>
+      <p className="muted">{EXPORT_NOTE}</p>
       {statement.blocks.length === 0 ? (
         <>
           <p>
