@@ -538,6 +538,9 @@ export function terminalEnv(): Record<string, string | undefined> {
     GITHUB_ACTIONS: process.env.GITHUB_ACTIONS,
     CLAUDECODE: process.env.CLAUDECODE,
     CLAUDE_CODE_REMOTE: process.env.CLAUDE_CODE_REMOTE,
+    AI_AGENT: process.env.AI_AGENT,
+    CLAUDE_CODE_ENTRYPOINT: process.env.CLAUDE_CODE_ENTRYPOINT,
+    CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID,
   };
 }
 

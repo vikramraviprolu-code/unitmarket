@@ -40,6 +40,8 @@
     "safety:status": "node --env-file-if-exists=.env.local scripts/safety-cli.mjs status",
     "safety:stop": "node --env-file-if-exists=.env.local scripts/safety-cli.mjs stop",
     "safety:approve": "node --env-file-if-exists=.env.local scripts/safety-cli.mjs approve",
+    "privacy:export": "node --env-file-if-exists=.env.local scripts/privacy.mjs export",
+    "privacy:delete": "node --env-file-if-exists=.env.local scripts/privacy.mjs delete",
     "safety:resume": "node --env-file-if-exists=.env.local scripts/safety-cli.mjs resume",
     "owner:secrets": "node scripts/owner-secrets.mjs",
     "totp:enrol": "node scripts/totp-enrol.mjs",

@@ -118,7 +118,7 @@ export const PRIVACY_DOC: LegalDoc = {
     {
       heading: 'Export or deletion',
       paragraphs: [
-        'You can ask for a copy of your data, or ask for it to be deleted, through the operator. An operator carries out the request by hand. There is no export or deletion tool yet.',
+        'You can ask for a copy of your data, or ask for it to be deleted, through the operator. An operator runs a script on request; it is not a button in the app. The copy is a file of your own rows, such as your name, your briefs, your orders and your receipts. Deletion replaces your name and sign-in subject with a pseudonym, removes the text of your briefs and ends your sessions. Orders, receipts, the ledger, help cases and the audit log are kept as records and are not changed. That includes the text you wrote in a help case request, because the history of a help case cannot be edited.',
       ],
     },
     {
