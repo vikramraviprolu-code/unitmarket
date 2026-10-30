@@ -1,0 +1,151 @@
+// LEGAL-A golden (docs/specs/legal-a-pages.md): all four draft pages, word for word, plus the
+// sign-in notice and the footer labels. The reviewed file is golden/legal-copy.golden.txt. A change
+// to it is a change to what people are told they agree to, so the owners read it (H).
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import {
+  LEGAL_BANNER,
+  LEGAL_DOCS,
+  LEGAL_NAV,
+  LEGAL_SANDBOX_LINE,
+  SIGNIN_PRIVACY_SENTENCE,
+} from './lib/legal-copy';
+
+const allText = (): string[] =>
+  LEGAL_DOCS.flatMap((d) => [
+    d.title,
+    d.updated,
+    ...d.sections.flatMap((s) => [s.heading, ...s.paragraphs]),
+  ]).concat([
+    LEGAL_BANNER,
+    LEGAL_SANDBOX_LINE,
+    SIGNIN_PRIVACY_SENTENCE,
+    ...Object.values(LEGAL_NAV),
+  ]);
+
+describe('legal copy (golden)', () => {
+  it('matches golden/legal-copy.golden.txt', () => {
+    const lines: string[] = [`banner: ${LEGAL_BANNER}`, `sandbox line: ${LEGAL_SANDBOX_LINE}`];
+    for (const d of LEGAL_DOCS) {
+      lines.push(`${d.href} | title: ${d.title}`, `${d.href} | updated: ${d.updated}`);
+      for (const s of d.sections) {
+        lines.push(`${d.href} | heading: ${s.heading}`);
+        for (const p of s.paragraphs) lines.push(`${d.href} | text: ${p}`);
+      }
+    }
+    for (const [k, v] of Object.entries(LEGAL_NAV)) lines.push(`footer link, ${k}: ${v}`);
+    lines.push(`sign-in notice: ${SIGNIN_PRIVACY_SENTENCE}`);
+    const expected = readFileSync(
+      new URL('./golden/legal-copy.golden.txt', import.meta.url),
+      'utf8',
+    )
+      .split('\n')
+      .filter((l) => l !== '' && !l.startsWith('#'));
+    expect(lines).toEqual(expected);
+  });
+});
+
+describe('legal copy rules', () => {
+  it('every page starts with the banner and then the sandbox line', () => {
+    for (const d of LEGAL_DOCS) {
+      expect(d.banner, d.href).toBe(LEGAL_BANNER);
+      expect(d.sandbox, d.href).toBe(LEGAL_SANDBOX_LINE);
+    }
+    expect(LEGAL_BANNER).toBe('Draft for owner approval. This is not legal advice.');
+  });
+
+  it('has no italics markup', () => {
+    for (const t of allText()) {
+      expect(t).not.toMatch(/<\/?(i|em|cite|var)\b/i);
+      expect(t).not.toMatch(/(^|\s)\*[^*\s][^*]*\*(\s|[.,;:]|$)/);
+      expect(t).not.toMatch(/(^|\s)_[^_\s][^_]*_(\s|[.,;:]|$)/);
+    }
+  });
+
+  it('has no dash characters: no en dash, em dash, minus sign, double hyphen or spaced hyphen', () => {
+    for (const t of allText()) {
+      expect(t).not.toMatch(/[‒–—―−]/);
+      expect(t).not.toMatch(/--/);
+      expect(t).not.toMatch(/(^|\s)-(\s|$)/);
+    }
+  });
+
+  it('never says paid out, and never uses the held-order phrase "not charged"', () => {
+    for (const t of allText()) {
+      expect(t).not.toMatch(/paid out/i);
+      expect(t).not.toMatch(/not charged/i);
+    }
+  });
+
+  it('claims no compliance with any law and names no real company, person or address', () => {
+    for (const t of allText()) {
+      expect(t).not.toMatch(
+        /GDPR|CCPA|HIPAA|PCI|SOC ?2|ISO ?27001|complian|comply|lawful|legally binding/i,
+      );
+      expect(t).not.toMatch(/\b(Ltd|Inc|LLC|GmbH|Corp|PLC)\b\.?/);
+      expect(t).not.toMatch(/@|https?:|www\./i);
+    }
+  });
+
+  it('says plainly: not legal advice, sandbox demo, test money, draft for owner approval', () => {
+    const joined = allText().join('\n');
+    expect(joined).toMatch(/not legal advice/i);
+    expect(joined).toMatch(/sandbox demo/i);
+    expect(joined).toMatch(/test money/i);
+    expect(joined).toMatch(/draft/i);
+  });
+
+  it('keeps the dates as fixed strings, not computed', () => {
+    for (const d of LEGAL_DOCS) expect(d.updated).toMatch(/^Drafted \d{1,2} [A-Z][a-z]+ \d{4}$/);
+  });
+
+  it('terms: unit, personal use, five days, 15 minutes, one PayPal payment per publisher', () => {
+    const t = flat('terms');
+    expect(t).toMatch(/personal use/i);
+    expect(t).toMatch(/redistribut/i);
+    expect(t).toMatch(/five days/i);
+    expect(t).toMatch(/verified payment/i);
+    expect(t).toMatch(/15 minutes/);
+    expect(t).toMatch(/one PayPal payment for each publisher/i);
+  });
+
+  it('privacy: what is processed, retention numbers, export or deletion, no tracking, contact placeholder', () => {
+    const t = flat('privacy');
+    expect(t).toMatch(/session cookie/i);
+    expect(t).toMatch(/hashed network address/i);
+    expect(t).toMatch(/card data/i);
+    expect(t).toMatch(/redacted/i);
+    expect(t).toMatch(/30 days/);
+    expect(t).toMatch(/90 days/);
+    expect(t).toMatch(/operator/i);
+    expect(t).toMatch(/no advertising/i);
+    expect(t).toMatch(/third-party fonts/i);
+    expect(t).toContain('Contact details will be added by the owners before submission.');
+  });
+
+  it('refunds: decided per unit by an operator; full refund ends access; partial does not', () => {
+    const t = flat('refunds');
+    expect(t).toMatch(/operator/i);
+    expect(t).toMatch(/each unit/i);
+    expect(t).toMatch(/full refund ends access/i);
+    expect(t).toMatch(/partial refund does not/i);
+    expect(t).toMatch(/test money/i);
+  });
+
+  it('publisher terms: fictional, operator payee checks, no commission, 20 percent not implemented', () => {
+    const t = flat('publisher-terms');
+    expect(t).toMatch(/fictional/i);
+    expect(t).toMatch(/operator/i);
+    expect(t).toMatch(/no commission in this demo/i);
+    expect(t).toMatch(/20 percent/);
+    expect(t).toMatch(/not implemented/i);
+    expect(t).toMatch(/no payout/i);
+    expect(t).toMatch(/statement/i);
+  });
+});
+
+function flat(slug: string): string {
+  const d = LEGAL_DOCS.find((x) => x.slug === slug);
+  if (d === undefined) throw new Error(`no doc ${slug}`);
+  return d.sections.flatMap((s) => [s.heading, ...s.paragraphs]).join('\n');
+}
