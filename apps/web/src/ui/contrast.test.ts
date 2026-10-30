@@ -1,8 +1,9 @@
 // SKIN-A: WCAG 2.2 AA contrast for the pairs of each skin, read from globals.css (docs/specs/skin-a-system.md).
+// SKIN-B: the harbour values are the Deep Harbour overrides of skin-harbour.css on top of globals.css; the pairs are unchanged.
 // Each skin is one fixed palette, so every pair is checked once per skin. A failing token is changed
 // minimally in the stylesheet and listed in the hand-back; this file is not loosened.
 import { describe, expect, it } from 'vitest';
-import { SKINS, contrast, readGlobalsCss, tokenMap } from '../skin-css-test-support';
+import { SKINS, contrast, readGlobalsCss, mergedTokenMap } from '../skin-css-test-support';
 
 const css = readGlobalsCss();
 
@@ -39,7 +40,7 @@ const PAIRS: Array<[string, string, number]> = [
 ];
 
 describe.each(SKINS)('contrast, %s skin', (skin) => {
-  const t = tokenMap(css, skin);
+  const t = mergedTokenMap(skin);
   it.each(PAIRS)('%s on %s is at least %s:1', (fg, bg, min) => {
     const a = t[`--${fg}`];
     const b = t[`--${bg}`];
@@ -51,8 +52,8 @@ describe.each(SKINS)('contrast, %s skin', (skin) => {
 
 describe('both skins declare the same tokens', () => {
   it('the token names match one for one', () => {
-    expect(Object.keys(tokenMap(css, 'harbour')).sort()).toEqual(
-      Object.keys(tokenMap(css, 'market')).sort(),
+    expect(Object.keys(mergedTokenMap('harbour')).sort()).toEqual(
+      Object.keys(mergedTokenMap('market')).sort(),
     );
   });
 });
