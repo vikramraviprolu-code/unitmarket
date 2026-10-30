@@ -1,0 +1,179 @@
+'use client';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { postJson } from '../../../lib/client-api';
+import {
+  ADD_BUTTON,
+  APPROVE_BUTTON,
+  DONE_ADDED,
+  DONE_APPROVED,
+  DONE_REJECTED,
+  FIELD_COUNTRY,
+  FIELD_DECISION_REASON,
+  FIELD_NAME,
+  FIELD_NOTE,
+  FIELD_SLUG,
+  REJECT_BUTTON,
+  applicantErrorText,
+} from '../../../lib/ops-applicants-copy';
+import { ErrorState } from '../../../ui/ErrorState';
+
+// PUB-E2: the add form and the answer form of the Applicants section. They only carry what the operator
+// typed; the routes check everything again (operator, second factor, CSRF, shape, status rules).
+export function AddApplicantForm() {
+  const router = useRouter();
+  const [slug, setSlug] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [country, setCountry] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function add() {
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    const r = await postJson<{ publisher_id: string }>('/api/ops/publishers/applicants', {
+      slug,
+      display_name: displayName,
+      country,
+      reason,
+    });
+    setBusy(false);
+    if (!r.ok) {
+      setError(r.status === 401 ? 'Please sign in again.' : applicantErrorText(r.code));
+      return;
+    }
+    setSlug('');
+    setDisplayName('');
+    setCountry('');
+    setReason('');
+    setDone(DONE_ADDED);
+    router.refresh();
+  }
+
+  return (
+    <div>
+      <div className="field">
+        <label htmlFor="applicant-name">{FIELD_NAME}</label>
+        <input
+          id="applicant-name"
+          type="text"
+          maxLength={80}
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="applicant-slug">{FIELD_SLUG}</label>
+        <input
+          id="applicant-slug"
+          type="text"
+          maxLength={40}
+          autoCapitalize="none"
+          value={slug}
+          onChange={(e) => setSlug(e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="applicant-country">{FIELD_COUNTRY}</label>
+        <input
+          id="applicant-country"
+          type="text"
+          maxLength={2}
+          value={country}
+          onChange={(e) => setCountry(e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="applicant-note">{FIELD_NOTE}</label>
+        <input
+          id="applicant-note"
+          type="text"
+          maxLength={200}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+      </div>
+      <div className="actions">
+        <button
+          type="button"
+          className="btn"
+          disabled={
+            busy || reason.trim().length < 3 || slug.length < 3 || displayName.trim().length < 2
+          }
+          onClick={() => void add()}
+        >
+          {ADD_BUTTON}
+        </button>
+      </div>
+      <div aria-live="polite">{done}</div>
+      {error ? <ErrorState title="Not saved">{error}</ErrorState> : null}
+    </div>
+  );
+}
+
+export function DecideApplicantForm({ publisherId, name }: { publisherId: string; name: string }) {
+  const router = useRouter();
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function decide(decision: 'approve' | 'reject') {
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    const r = await postJson<{ state: string }>('/api/ops/publishers/applicants/decision', {
+      publisher_id: publisherId,
+      decision,
+      reason,
+    });
+    setBusy(false);
+    if (!r.ok) {
+      setError(r.status === 401 ? 'Please sign in again.' : applicantErrorText(r.code));
+      return;
+    }
+    setReason('');
+    setDone(decision === 'approve' ? DONE_APPROVED : DONE_REJECTED);
+    router.refresh();
+  }
+
+  return (
+    <div>
+      <div className="field">
+        <label htmlFor={`decision-${publisherId}`}>
+          {FIELD_DECISION_REASON} ({name})
+        </label>
+        <input
+          id={`decision-${publisherId}`}
+          type="text"
+          maxLength={200}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+      </div>
+      <div className="actions">
+        <button
+          type="button"
+          className="btn"
+          disabled={busy || reason.trim().length < 3}
+          onClick={() => void decide('approve')}
+        >
+          {APPROVE_BUTTON}
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={busy || reason.trim().length < 3}
+          onClick={() => void decide('reject')}
+        >
+          {REJECT_BUTTON}
+        </button>
+      </div>
+      <div aria-live="polite">{done}</div>
+      {error ? <ErrorState title="Not saved">{error}</ErrorState> : null}
+    </div>
+  );
+}

@@ -104,7 +104,7 @@ describe('migration 0012 is forward-only and keeps existing rows', () => {
       });
       const before = (await d.query('SELECT * FROM publishers ORDER BY id')).rows;
 
-      // 0014 (PUB-E1) exists now, so migrating the 0011 copy applies it after 0012.
+      // Later migrations (0013 and on) also apply to this copy; 0012 must be the first one applied.
       const applied = await migrate(d, clock);
       expect(applied[0]).toBe('0012_publisher_side');
       expect(applied.at(-1)).toBe('0014_publisher_visits');
