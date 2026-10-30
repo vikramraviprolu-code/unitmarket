@@ -1,6 +1,7 @@
 'use client';
 import type { AccessOption, FitCard as FitCardData, FitDimension, Money } from '@umsbx/contracts';
-import { formatMinor } from '../lib/format';
+import { formatMinor, optionLabel } from '../lib/format';
+import { CoverTile } from './CoverTile';
 import { WHY_THIS_FIT, accessDaysLine, priceLine, splitFitRows } from '../lib/buyer-copy';
 
 const LEVEL_WORD = ['no match', 'weak', 'good', 'strong'] as const;
@@ -61,38 +62,41 @@ export function FitCard({
   const { assessed, notAssessed } = splitFitRows(card.dimensions);
   return (
     <article className="fit-card" data-testid="fit-card" aria-label={`${title}, ${publisher}`}>
-      <header>
-        <h3>{title}</h3>
-        <p className="muted">{publisher}</p>
-        {card.band ? (
-          <span className={`chip chip-${card.band}`}>{BAND_TEXT[card.band]}</span>
-        ) : null}
-        <p className="price-line">
-          <strong className="price">{priceText}</strong>
-          <span className="muted">{priceLine(priceText, option).slice(priceText.length)}</span>
-        </p>
-        <p className="muted access-days">{accessDaysLine(option)}</p>
-      </header>
-      {assessed.length > 0 ? (
-        <ul className="fit-rows">
-          {assessed.map((d) => (
-            <FitRow key={d.key} d={d} />
-          ))}
-        </ul>
-      ) : null}
-      {notAssessed.length > 0 ? (
-        <details className="fit-more">
-          <summary>{WHY_THIS_FIT}</summary>
+      <CoverTile publisher={publisher} title={title} tag={optionLabel(option)} />
+      <div className="fit-body">
+        <header>
+          <h3>{title}</h3>
+          <p className="muted">{publisher}</p>
+          {card.band ? (
+            <span className={`chip chip-${card.band}`}>{BAND_TEXT[card.band]}</span>
+          ) : null}
+          <p className="price-line">
+            <strong className="price">{priceText}</strong>
+            <span className="muted">{priceLine(priceText, option).slice(priceText.length)}</span>
+          </p>
+          <p className="muted access-days">{accessDaysLine(option)}</p>
+        </header>
+        {assessed.length > 0 ? (
           <ul className="fit-rows">
-            {notAssessed.map((d) => (
+            {assessed.map((d) => (
               <FitRow key={d.key} d={d} />
             ))}
           </ul>
-        </details>
-      ) : null}
-      <button type="button" className="btn btn-primary" onClick={onChoose}>
-        Choose this article
-      </button>
+        ) : null}
+        {notAssessed.length > 0 ? (
+          <details className="fit-more">
+            <summary>{WHY_THIS_FIT}</summary>
+            <ul className="fit-rows">
+              {notAssessed.map((d) => (
+                <FitRow key={d.key} d={d} />
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        <button type="button" className="btn btn-primary" onClick={onChoose}>
+          Choose this article
+        </button>
+      </div>
     </article>
   );
 }
