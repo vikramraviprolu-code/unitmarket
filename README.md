@@ -83,13 +83,13 @@ Setting them is not enough: a call also needs an active approval row that you in
 
 1. The default mode is offline: a dry run transport, fixtures, a scripted model and no credentials.
 2. Five locks must all be open before any PayPal call: mode is sandbox, the connect flag is on, an active approval row covers the scope, the kill switch is on, and credentials are present with a clean self check of the sending code.
-3. Two key approval: the connect flag alone is not enough. A human inserts an approval row at a terminal with a scope, a cap of 2000 minor units per order and a call budget. The command refuses in CI.
+3. Two key approval: the connect flag alone is not enough. A human inserts an approval row at a terminal with a scope, an amount cap per order (2000 minor units in the owner's sittings) and a call budget. The command refuses in CI.
 4. Fail closed: no live value exists, boot refuses any value naming live or production, the sandbox address is one constant, and `corepack pnpm check:no-live-host` fails the build if a live PayPal host appears.
 5. Secrets stay on the server (the only public variable is `NEXT_PUBLIC_UMS_ENV_LABEL`), and access to an article opens only after a verified payment and a delivery that is verified possible.
 
 ## Licence
 
-Apache-2.0. See `LICENSE`. Dependency licences are listed in `THIRD-PARTY-NOTICES.md`, produced by `node scripts/licenses-report.mjs`. The audit found one production dependency with a copyleft licence, `@img/sharp-libvips-linux-x64` (LGPL-3.0-or-later, a prebuilt library that the image tool inside Next.js loads); it is recorded with a written reason in the script.
+Apache-2.0. See `LICENSE`. Dependency licences are listed in `THIRD-PARTY-NOTICES.md`, produced by `node scripts/licenses-report.mjs`. The audit found one production dependency with a copyleft licence, `@img/sharp-libvips-*` (LGPL-3.0-or-later, a prebuilt library that the image tool inside Next.js loads); it is recorded with a written reason in the script.
 
 ## Docs
 
