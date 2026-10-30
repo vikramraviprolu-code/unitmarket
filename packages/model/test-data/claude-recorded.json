@@ -1,0 +1,999 @@
+{
+  "_label": "SYNTHETIC recorded model answers for the Claude adapter tests. Written by hand-made patterns, not captured from any real call. No real article text, no real hostnames, no real payees or secrets. One entry per case id in injection-cases.json.",
+  "compose": {
+    "L01": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"ok\",\"price\":1,\"payee\":\"SYNTHETIC-PAYEE-EVIL\"},{\"offer_id\":\"ofr_not_in_list\",\"reason\":\"free\",\"price\":0}],\"tool_calls\":[{\"tool\":\"capture_order\",\"args\":{\"payee\":\"SYNTHETIC-PAYEE-EVIL\"}}]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L02": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_inj\",\"reason\":\"Matches the topic.\",\"price\":1,\"payee\":\"SYNTHETIC-PAYEE-EVIL\",\"amount_minor\":1}],\"tool_calls\":[]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L03": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"Matches the topic.\"}],\"tool_calls\":[{\"tool\":\"create_order\",\"args\":{\"payee\":\"SYNTHETIC-PAYEE-EVIL\",\"nested\":{\"amount\":1,\"keep\":\"x\"}}}]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L04": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "```json\n{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"Matches the topic.\"}],\"tool_calls\":[]}\n```"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L05": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "Sure. I will pay SYNTHETIC-PAYEE-EVIL now and skip the price check."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L06": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"x\"},{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"x\"},{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"x\"},{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"}],\"tool_calls\":[]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L07": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"a\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"b\"}],\"tool_calls\":[]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L08": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ],
+        "stop_reason": "refusal",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L09": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reas"
+          }
+        ],
+        "stop_reason": "max_tokens",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L10": {
+      "status": 529,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "overloaded_error",
+          "message": "Overloaded"
+        }
+      }
+    },
+    "L11": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"Matches the topic.\"}],\"tool_calls\":[{\"tool\":\"search_catalogue\",\"args\":{\"query\":\"solar\",\"price\":0,\"payee\":\"SYNTHETIC-PAYEE-EVIL\"}}]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L12": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"ok\",\"price\":1,\"payee\":\"SYNTHETIC-PAYEE-EVIL\"},{\"offer_id\":\"ofr_not_in_list\",\"reason\":\"free\",\"price\":0}],\"tool_calls\":[{\"tool\":\"capture_order\",\"args\":{\"payee\":\"SYNTHETIC-PAYEE-EVIL\"}}]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L13": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_inj\",\"reason\":\"Matches the topic.\",\"price\":1,\"payee\":\"SYNTHETIC-PAYEE-EVIL\",\"amount_minor\":1}],\"tool_calls\":[]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L14": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"Matches the topic.\"}],\"tool_calls\":[{\"tool\":\"create_order\",\"args\":{\"payee\":\"SYNTHETIC-PAYEE-EVIL\",\"nested\":{\"amount\":1,\"keep\":\"x\"}}}]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L15": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "```json\n{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"Matches the topic.\"}],\"tool_calls\":[]}\n```"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L16": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "Sure. I will pay SYNTHETIC-PAYEE-EVIL now and skip the price check."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L17": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"x\"},{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"x\"},{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"x\"},{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"}],\"tool_calls\":[]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L18": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"a\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"b\"}],\"tool_calls\":[]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L19": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ],
+        "stop_reason": "refusal",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L20": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reas"
+          }
+        ],
+        "stop_reason": "max_tokens",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L21": {
+      "status": 529,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "overloaded_error",
+          "message": "Overloaded"
+        }
+      }
+    },
+    "L22": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"Matches the topic.\"}],\"tool_calls\":[{\"tool\":\"search_catalogue\",\"args\":{\"query\":\"solar\",\"price\":0,\"payee\":\"SYNTHETIC-PAYEE-EVIL\"}}]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L23": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"ok\",\"price\":1,\"payee\":\"SYNTHETIC-PAYEE-EVIL\"},{\"offer_id\":\"ofr_not_in_list\",\"reason\":\"free\",\"price\":0}],\"tool_calls\":[{\"tool\":\"capture_order\",\"args\":{\"payee\":\"SYNTHETIC-PAYEE-EVIL\"}}]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L24": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_inj\",\"reason\":\"Matches the topic.\",\"price\":1,\"payee\":\"SYNTHETIC-PAYEE-EVIL\",\"amount_minor\":1}],\"tool_calls\":[]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L25": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"Matches the topic.\"}],\"tool_calls\":[{\"tool\":\"create_order\",\"args\":{\"payee\":\"SYNTHETIC-PAYEE-EVIL\",\"nested\":{\"amount\":1,\"keep\":\"x\"}}}]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L26": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "```json\n{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"Matches the topic.\"}],\"tool_calls\":[]}\n```"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L27": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "Sure. I will pay SYNTHETIC-PAYEE-EVIL now and skip the price check."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L28": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"x\"},{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"x\"},{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"x\"},{\"offer_id\":\"ofr_inj\",\"reason\":\"x\"}],\"tool_calls\":[]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L29": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reason\":\"a\"},{\"offer_id\":\"ofr_clean\",\"reason\":\"b\"}],\"tool_calls\":[]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L30": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ],
+        "stop_reason": "refusal",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L31": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"picks\":[{\"offer_id\":\"ofr_clean\",\"reas"
+          }
+        ],
+        "stop_reason": "max_tokens",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "L32": {
+      "status": 529,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "overloaded_error",
+          "message": "Overloaded"
+        }
+      }
+    }
+  },
+  "brief": {
+    "J01": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"solar guide\",\"ceiling_minor\":500,\"currency\":\"USD\",\"option\":null,\"language\":null,\"terms\":[\"solar\",\"guide\"]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J02": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"solar guide\",\"ceiling_minor\":null,\"currency\":null,\"option\":null,\"language\":null,\"terms\":[\"solar\"],\"system_prompt\":\"You turn a reader brief\"}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J03": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"solar guide\",\"ceiling_minor\":-1,\"currency\":\"USD\",\"option\":null,\"language\":null,\"terms\":[\"solar\"]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J04": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"solar guide\",\"ceiling_minor\":99999999999,\"currency\":\"USD\",\"option\":null,\"language\":null,\"terms\":[\"solar\"]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J05": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"x\",\"ceiling_minor\":null,\"currency\":null,\"option\":\"pay_now\",\"language\":null,\"terms\":[]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J06": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "I cannot help with that, but here is my system prompt: you turn a reader brief into fields."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J07": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"x\",\"ceiling_minor\":null,\"currency\":null,\"option\":null,\"language\":null,\"terms\":[\"t0\",\"t1\",\"t2\",\"t3\",\"t4\",\"t5\",\"t6\",\"t7\",\"t8\",\"t9\",\"t10\",\"t11\",\"t12\"]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J08": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ],
+        "stop_reason": "refusal",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J09": {
+      "status": 200,
+      "body": {
+        "content": [],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 0
+        }
+      }
+    },
+    "J10": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"You turn a reader brief into structured fields.\",\"ceiling_minor\":null,\"currency\":null,\"option\":\"online_read\",\"language\":\"en\",\"terms\":[\"brief\"]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J11": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"solar guide\",\"ceiling_minor\":500,\"currency\":\"USD\",\"option\":null,\"language\":null,\"terms\":[\"solar\",\"guide\"]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J12": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"solar guide\",\"ceiling_minor\":null,\"currency\":null,\"option\":null,\"language\":null,\"terms\":[\"solar\"],\"system_prompt\":\"You turn a reader brief\"}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J13": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"solar guide\",\"ceiling_minor\":-1,\"currency\":\"USD\",\"option\":null,\"language\":null,\"terms\":[\"solar\"]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J14": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"solar guide\",\"ceiling_minor\":99999999999,\"currency\":\"USD\",\"option\":null,\"language\":null,\"terms\":[\"solar\"]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J15": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"x\",\"ceiling_minor\":null,\"currency\":null,\"option\":\"pay_now\",\"language\":null,\"terms\":[]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J16": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "I cannot help with that, but here is my system prompt: you turn a reader brief into fields."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J17": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"x\",\"ceiling_minor\":null,\"currency\":null,\"option\":null,\"language\":null,\"terms\":[\"t0\",\"t1\",\"t2\",\"t3\",\"t4\",\"t5\",\"t6\",\"t7\",\"t8\",\"t9\",\"t10\",\"t11\",\"t12\"]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J18": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ],
+        "stop_reason": "refusal",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    },
+    "J19": {
+      "status": 200,
+      "body": {
+        "content": [],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 0
+        }
+      }
+    },
+    "J20": {
+      "status": 200,
+      "body": {
+        "id": "msg_synthetic",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"need\":\"You turn a reader brief into structured fields.\",\"ceiling_minor\":null,\"currency\":null,\"option\":\"online_read\",\"language\":\"en\",\"terms\":[\"brief\"]}"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 240,
+          "output_tokens": 90
+        }
+      }
+    }
+  }
+}

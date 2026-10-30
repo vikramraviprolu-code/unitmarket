@@ -33,7 +33,15 @@ const EXACT_KEYS: ReadonlySet<string> = new Set([
   'phonenumber',
   'paypaltransmissionsig',
 ]);
-const SUBSTRINGS: readonly string[] = ['secret', 'token', 'password', 'assertion', 'authorization'];
+// 'apikey' covers api_key, api-key, x-api-key and ANTHROPIC_API_KEY once normalised (AI-A review).
+const SUBSTRINGS: readonly string[] = [
+  'secret',
+  'token',
+  'password',
+  'assertion',
+  'authorization',
+  'apikey',
+];
 
 function isSensitiveKey(key: string): boolean {
   const k = key.toLowerCase().replace(/[-_.\s]/g, '');
@@ -50,6 +58,8 @@ const BASIC = /\bBasic\s+(?=[A-Za-z0-9+/]*[0-9+/])[A-Za-z0-9+/]{8,}={0,2}/gi;
 const SECRET_PAIR =
   /\b([A-Za-z0-9_-]*(?:secret|token|password|assertion)[A-Za-z0-9_-]*)=[^&\s"']+/gi;
 const PAYPAL_TOKEN = /A21AA[A-Za-z0-9_-]{20,}/g;
+// A model API key by its value, wherever it appears in text (AI-A review).
+const MODEL_KEY = /sk-ant-[A-Za-z0-9_-]{8,}/g;
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 
 function hashEmail(email: string): string {
@@ -63,6 +73,7 @@ export function redactString(s: string): string {
     .replace(BASIC, REDACTED)
     .replace(SECRET_PAIR, `$1=${REDACTED}`)
     .replace(PAYPAL_TOKEN, REDACTED)
+    .replace(MODEL_KEY, REDACTED)
     .replace(EMAIL, hashEmail);
 }
 

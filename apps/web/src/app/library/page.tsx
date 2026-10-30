@@ -31,7 +31,7 @@ export default async function Library() {
           Articles you buy appear here with the days you have left.
         </EmptyState>
       ) : (
-        <ul className="grid-2" style={{ listStyle: 'none', padding: 0 }}>
+        <ul className="grid-2 plain-list">
           {items.map((i) => (
             <li key={i.entitlement_id} className="card" data-testid="library-item">
               <h2>
