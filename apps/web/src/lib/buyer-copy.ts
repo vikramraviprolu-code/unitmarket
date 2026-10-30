@@ -17,12 +17,16 @@ export const TERMS_POINTS = [
 // only one that varies by offer; the others are the platform's. Wording of the AI line needs the owner's eye.
 const AI_LINE: Record<Rights['ai_scope'], string> = {
   agent_allowed: 'The publisher allows you to use this article with AI tools, for your own use.',
-  review: 'Use with AI tools needs the publisher to review it first.',
+  review: 'This purchase does not include use with AI tools.',
   not_allowed: 'The publisher does not allow use of this article with AI tools.',
 };
 
-export function termsPoints(rights?: Rights): string[] {
-  return rights === undefined ? [...TERMS_POINTS] : [...TERMS_POINTS, AI_LINE[rights.ai_scope]];
+// One Rights (an offer page) or several (a list of offers): each distinct AI-use line is printed once.
+export function termsPoints(rights?: Rights | readonly Rights[]): string[] {
+  const list: readonly Rights[] =
+    rights === undefined ? [] : 'ai_scope' in rights ? [rights] : (rights as readonly Rights[]);
+  const lines = [...new Set(list.map((r) => AI_LINE[r.ai_scope]))];
+  return [...TERMS_POINTS, ...lines];
 }
 
 // Item 46: when a search finds nothing, the whole catalogue is listed instead of a dead end.

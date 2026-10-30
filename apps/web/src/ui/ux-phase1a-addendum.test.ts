@@ -186,7 +186,7 @@ describe('search page terms carry the AI-use lines of the offers listed (review 
 
 describe('receipt fingerprint wording (review F4)', () => {
   it('says the hash covers the receipt as stored, with details not shown', () => {
-    const src = read('../app/receipts/[order]/page.tsx');
+    const src = read('../app/receipts/[order]/page.tsx').replace(/\s+/g, ' ');
     expect(src).toContain(
       'SHA-256 of the receipt as we stored it, which includes payment details not shown here.',
     );

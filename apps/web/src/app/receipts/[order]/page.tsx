@@ -72,7 +72,8 @@ export default async function ReceiptPage({ params }: { params: Promise<{ order:
       ) : null}
       <h2>Fingerprint</h2>
       <p className="muted">
-        SHA-256 of this receipt. Keep it to prove the receipt was not changed.
+        SHA-256 of the receipt as we stored it, which includes payment details not shown here. Keep
+        it: we can show the stored receipt was not changed.
       </p>
       <p className="mono" data-testid="receipt-sha256">
         {r.sha256}

@@ -35,12 +35,14 @@ export default async function Discover() {
       </>
     );
   }
-  const browse = browseEntries(await a.engine.listOffers());
+  const offers = await a.engine.listOffers();
+  const browse = browseEntries(offers);
+  const rights = offers.map((o) => o.rights);
   return (
     <>
       <h1>Find articles for my need</h1>
       <p className="lede">Describe what you need and what you can pay. You pick the article.</p>
-      <DiscoverForm signedIn={actor?.kind === 'buyer'} browse={browse} />
+      <DiscoverForm signedIn={actor?.kind === 'buyer'} browse={browse} rights={rights} />
     </>
   );
 }
