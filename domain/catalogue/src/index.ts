@@ -48,13 +48,27 @@ export type {
   PriceInput,
   ReviseInput,
 } from './write';
-export { addApplicant, decideApplicant, listApplicants, SLUG_PATTERN } from './applicants';
+export {
+  APPLICATION_CAP,
+  DUPLICATE_NOTE_PREFIX,
+  ANONYMOUS_APPLICATION_ACTOR,
+  REF_NONCE_PATTERN,
+  SLUG_PATTERN,
+  addApplicant,
+  applicationReference,
+  applicationStatus,
+  decideApplicant,
+  listApplicants,
+  slugBase,
+  submitApplication,
+} from './applicants';
 export type {
   Applicant,
   ApplicantDeps,
   ApplicantError,
   ApplicantErrorCode,
   ApplicantState,
+  ApplicationState,
 } from './applicants';
 export { setPublisherStatus } from './status';
 export type { StatusDeps, StatusError, StatusErrorCode } from './status';

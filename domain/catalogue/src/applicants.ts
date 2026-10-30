@@ -4,8 +4,10 @@
 // publisher_applicant_decisions and the publisher stays applied. One decision per applicant. This is not
 // signup: nobody creates an account by themselves, and an approved applicant has no sign in until the owners
 // add a persona. Orders, units, access, approvals and the ledger are never touched. One audit row per change.
+// PUB-APPLY adds the one public way in: submitApplication, callable with no actor, which creates the same kind
+// of applicant row and nothing else (no account, no payee, no offer, no sign in).
 import { err, ok } from '@umsbx/contracts';
-import type { Actor, CoreDeps, Database, Id, Result } from '@umsbx/contracts';
+import type { Actor, CoreDeps, Database, Id, Result, SqlExecutor } from '@umsbx/contracts';
 
 export type ApplicantDeps = Pick<CoreDeps, 'db' | 'clock' | 'ids' | 'audit'>;
 
@@ -17,7 +19,8 @@ export type ApplicantErrorCode =
   | 'slug_taken'
   | 'not_found'
   | 'not_allowed'
-  | 'already_decided';
+  | 'already_decided'
+  | 'busy';
 export interface ApplicantError {
   code: ApplicantErrorCode;
 }
@@ -32,6 +35,10 @@ export interface Applicant {
   added_at: string;
   /** The operator's reason when the applicant was rejected, otherwise null. */
   decision_reason: string | null;
+  /** The note the applicant or the operator gave when the record was made, or null (seeded or older records). */
+  note: string | null;
+  /** Who made the record: the public form or an operator. */
+  source: 'public' | 'operator';
 }
 
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -80,6 +87,26 @@ const reasonOf = (v: unknown): string | null => {
   return r.length >= 3 && r.length <= 200 ? r : null;
 };
 
+/**
+ * The one INSERT of an applicant, shared by the operator's add and the public application: a publishers row with
+ * status applied, no payee and no offers. A taken slug is `slug_taken`. The caller records the audit row.
+ */
+async function insertApplicant(
+  tx: SqlExecutor,
+  r: { id: Id; slug: string; name: string; country: string; at: string },
+): Promise<void> {
+  try {
+    await tx.query(
+      `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'applied', $5, $5)`,
+      [r.id, r.slug, r.name, r.country, r.at],
+    );
+  } catch (e) {
+    if (isUniqueViolation(e)) throw new Refused('slug_taken');
+    throw e;
+  }
+}
+
 /** Add one applicant. Returns the new publisher id; the publisher is applied and cannot sign in or sell. */
 export async function addApplicant(
   deps: ApplicantDeps,
@@ -110,16 +137,7 @@ export async function addApplicant(
       if (taken.rows.length > 0) throw new Refused('slug_taken');
       const at = deps.clock.now().toISOString();
       const publisher_id = deps.ids.next('pub');
-      try {
-        await tx.query(
-          `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, 'applied', $5, $5)`,
-          [publisher_id, slug, name, input.country, at],
-        );
-      } catch (e) {
-        if (isUniqueViolation(e)) throw new Refused('slug_taken');
-        throw e;
-      }
+      await insertApplicant(tx, { id: publisher_id, slug, name, country: input.country, at });
       await deps.audit.record(tx, {
         actor: operator,
         action: 'publisher.applicant_added',
@@ -222,8 +240,16 @@ export async function listApplicants(db: Database, operator: Actor): Promise<App
     created_at: unknown;
     decision: string | null;
     reason: string | null;
+    note: string | null;
+    made_by: string | null;
   }>(
-    `SELECT p.id, p.slug, p.display_name, p.country, p.created_at, d.decision, d.reason
+    `SELECT p.id, p.slug, p.display_name, p.country, p.created_at, d.decision, d.reason,
+            (SELECT a.reason FROM audit_log a
+              WHERE a.target = p.id AND a.action IN ('publisher.applicant_added', 'publisher.application_submitted')
+              ORDER BY a.created_at, a.id LIMIT 1) AS note,
+            (SELECT a.action FROM audit_log a
+              WHERE a.target = p.id AND a.action IN ('publisher.applicant_added', 'publisher.application_submitted')
+              ORDER BY a.created_at, a.id LIMIT 1) AS made_by
        FROM publishers p
        LEFT JOIN publisher_applicant_decisions d ON d.publisher_id = p.id
       WHERE p.status = 'applied'
@@ -237,5 +263,137 @@ export async function listApplicants(db: Database, operator: Actor): Promise<App
     state: x.decision === 'rejected' ? 'rejected' : 'pending',
     added_at: iso(x.created_at),
     decision_reason: x.decision === 'rejected' ? x.reason : null,
+    note: x.note,
+    source: x.made_by === 'publisher.application_submitted' ? 'public' : 'operator',
   }));
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// PUB-APPLY: the public application. Nobody is signed in, so there is no actor. It records an applicant and
+// nothing else: no account, no sign in, no payee, no offer, no access. The operator sees it in the same list
+// and answers it with decideApplicant. No new table: the note is the audit reason of the one audit row.
+// ---------------------------------------------------------------------------------------------------------
+
+/** Pending applicants (applied, no answer yet) at which a new application is refused with `busy`. */
+export const APPLICATION_CAP = 200;
+/** Put in front of the stored note when the name equals an existing publisher name (any case). */
+export const DUPLICATE_NOTE_PREFIX = 'DUPLICATE NAME: ';
+/** The audit actor of a public application. audit_log has no anonymous kind (and there is no new migration),
+ * so the row carries the system actor and detail.actor = 'anonymous'. */
+export const ANONYMOUS_APPLICATION_ACTOR: Actor = { kind: 'system' };
+/** The caller's random part of the reference: 12 lowercase hex characters (48 bits, from Ids.nonce()). */
+export const REF_NONCE_PATTERN = /^[0-9a-f]{12}$/;
+const SLUG_BASE_MAX = 27;
+const APPLICATION_ACTION = 'publisher.application_submitted';
+
+export type ApplicationState = 'pending' | 'approved' | 'rejected' | 'unknown';
+
+/** ASCII lowercase of the name, runs of other characters as single hyphens, at most 27 chars, never empty. */
+export function slugBase(name: string): string {
+  const ascii = name
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  const base = ascii
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, SLUG_BASE_MAX)
+    .replace(/-+$/g, '');
+  return base === '' ? 'applicant' : base;
+}
+
+/** The reference shown to the applicant, which is the slug: base, a hyphen and the 12 hex chars. */
+export const applicationReference = (name: string, ref_nonce: string): string =>
+  `${slugBase(name)}-${ref_nonce}`;
+
+/**
+ * Leave one application. Returns the reference (the slug), never an internal id. A name equal to an existing
+ * publisher name is still accepted, with DUPLICATE_NOTE_PREFIX in front of the stored note.
+ */
+export async function submitApplication(
+  deps: ApplicantDeps,
+  input: { display_name: string; country: string; note: string; ref_nonce: string },
+): Promise<Result<{ reference: string }, ApplicantError>> {
+  const name = typeof input.display_name === 'string' ? input.display_name.trim() : '';
+  const note = typeof input.note === 'string' ? input.note.trim() : '';
+  if (
+    name.length < 2 ||
+    name.length > 80 ||
+    hasBadChar(name) ||
+    name.includes('<') ||
+    name.includes('>') ||
+    typeof input.country !== 'string' ||
+    !COUNTRY_PATTERN.test(input.country) ||
+    note.length < 3 ||
+    note.length > 200 ||
+    hasBadChar(note) ||
+    typeof input.ref_nonce !== 'string' ||
+    !REF_NONCE_PATTERN.test(input.ref_nonce)
+  ) {
+    return fail('invalid_input');
+  }
+  const slug = applicationReference(name, input.ref_nonce);
+  try {
+    return await deps.db.transaction(async (tx) => {
+      const pending = await tx.query<{ c: string | number }>(
+        `SELECT count(*) AS c FROM publishers p
+          WHERE p.status = 'applied'
+            AND NOT EXISTS (SELECT 1 FROM publisher_applicant_decisions d WHERE d.publisher_id = p.id)`,
+      );
+      if (Number(pending.rows[0]?.c ?? 0) >= APPLICATION_CAP) throw new Refused('busy');
+      // A reused nonce is refused as busy; the caller draws a new one. It says nothing about other slugs.
+      const taken = await tx.query('SELECT 1 FROM publishers WHERE slug = $1', [slug]);
+      if (taken.rows.length > 0) throw new Refused('busy');
+      const same = await tx.query(
+        'SELECT 1 FROM publishers WHERE lower(display_name) = lower($1) LIMIT 1',
+        [name],
+      );
+      const stored = same.rows.length > 0 ? `${DUPLICATE_NOTE_PREFIX}${note}` : note;
+      const at = deps.clock.now().toISOString();
+      const publisher_id = deps.ids.next('pub');
+      try {
+        await insertApplicant(tx, { id: publisher_id, slug, name, country: input.country, at });
+      } catch (e) {
+        if (e instanceof Refused && e.code === 'slug_taken') throw new Refused('busy');
+        throw e;
+      }
+      await deps.audit.record(tx, {
+        actor: ANONYMOUS_APPLICATION_ACTOR,
+        action: APPLICATION_ACTION,
+        target: publisher_id,
+        reason: stored,
+        detail: { actor: 'anonymous', source: 'public_application', slug, country: input.country },
+      });
+      return ok({ reference: slug });
+    });
+  } catch (e) {
+    if (e instanceof Refused) return fail(e.code);
+    throw e;
+  }
+}
+
+/**
+ * Where an application stands, from the reference alone. Only a record made by submitApplication answers:
+ * a seeded publisher, an operator added applicant or a guess all read `unknown`, so this is no way to look up
+ * who exists. Returns nothing but the state word.
+ */
+export async function applicationStatus(db: Database, ref: string): Promise<ApplicationState> {
+  if (typeof ref !== 'string' || ref.length < 3 || ref.length > 40 || !SLUG_PATTERN.test(ref)) {
+    return 'unknown';
+  }
+  const r = await db.query<{ status: string; decision: string | null }>(
+    `SELECT p.status, d.decision
+       FROM publishers p
+       LEFT JOIN publisher_applicant_decisions d ON d.publisher_id = p.id
+      WHERE p.slug = $1
+        AND EXISTS (SELECT 1 FROM audit_log a WHERE a.target = p.id AND a.action = $2)`,
+    [ref, APPLICATION_ACTION],
+  );
+  const row = r.rows[0];
+  if (row === undefined) return 'unknown';
+  if (row.decision === 'rejected') return 'rejected';
+  if (row.decision === 'approved' || row.status === 'active' || row.status === 'suspended') {
+    return 'approved';
+  }
+  return 'pending';
 }

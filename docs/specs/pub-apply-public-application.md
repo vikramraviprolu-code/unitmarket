@@ -11,7 +11,7 @@ and an approved applicant still has no sign in until the owners add a persona an
 
 Behaviour:
 
-- `domain/catalogue/src/applicants.ts`: `submitApplication(deps, {display_name, country, note, ref_nonce, honeypot?})`, no actor.
+- `domain/catalogue/src/applicants.ts`: `submitApplication(deps, {display_name, country, note, ref_nonce})`, no actor.
   Name 2 to 80 chars, no control or bidi characters, no `<` or `>`; country `^[A-Z]{2}$`; note 3 to 200 chars, no control
   characters. The server derives the slug: ASCII lowercase of the name, `[a-z0-9]` runs joined by single hyphens (fallback
   `applicant`), cut to 27 chars, then `-` and the 12 hex chars of `ref_nonce` (40 chars at most, unique, reveals no slug).
@@ -19,7 +19,7 @@ Behaviour:
   existing publisher name is accepted and its stored note starts `DUPLICATE NAME: `. One `audit_log` row
   `publisher.application_submitted`, actor `system` (the audit CHECK has no `anonymous` kind and there is no new migration),
   detail `{actor: 'anonymous'}`; the note is the audit reason. `applicationStatus(db, ref)` answers `pending | approved |
-  rejected | unknown`; `unknown` for anything that was not made by `submitApplication`. `listApplicants` adds `note` and `source`.
+rejected | unknown`; `unknown` for anything that was not made by `submitApplication`. `listApplicants` adds `note` and `source`.
 - Engine `applyToPublish({display_name, country, note, website, ip_hash})` and `applicationStatus({ref})`: 5 submissions
   an hour per hashed address (token bucket `apply`), a filled `website` honeypot answers the normal success and stores nothing.
 - Route `POST /api/applications`: public, CSRF origin check, `.strict()`, 2048 byte cap, 20 requests an hour per address,

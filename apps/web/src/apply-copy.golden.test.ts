@@ -32,7 +32,9 @@ function lines(): string[] {
   for (const c of ['invalid_input', 'busy', 'rate_limited', 'csrf', 'too_large', 'other'])
     out.push(`error ${c}: ${copy.applyErrorText(c)}`);
   out.push(`links: ${copy.LINK_APPLY} | ${copy.SIGNIN_APPLY_LEAD} | ${copy.TERMS_APPLY_LEAD}`);
-  out.push(`operator: ${copy.OPS_NOTE_LABEL} | ${copy.OPS_SOURCE_PUBLIC} | ${copy.OPS_SOURCE_OPERATOR}`);
+  out.push(
+    `operator: ${copy.OPS_NOTE_LABEL} | ${copy.OPS_SOURCE_PUBLIC} | ${copy.OPS_SOURCE_OPERATOR}`,
+  );
   return out;
 }
 

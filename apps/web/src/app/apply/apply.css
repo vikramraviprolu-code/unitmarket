@@ -1,0 +1,30 @@
+/* PUB-APPLY: the public application screens. Skin tokens only, so both looks work. */
+.apply-wrap {
+  max-width: 640px;
+}
+.apply-hp {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.apply-ref {
+  display: block;
+  margin: 8px 0;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.apply-stack {
+  display: grid;
+  gap: 14px;
+}
+.apply-stack > * {
+  margin: 0;
+}

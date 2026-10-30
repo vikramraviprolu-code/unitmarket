@@ -44,6 +44,7 @@ import {
   applicantStateText,
   rejectedReasonText,
 } from '../../../lib/ops-applicants-copy';
+import { OPS_NOTE_LABEL, OPS_SOURCE_OPERATOR, OPS_SOURCE_PUBLIC } from '../../../lib/apply-copy';
 import { PUBLISHER_TERMS_VERSION } from '../../../lib/legal-copy';
 import {
   LINK_PUBLISHER_TERMS,
@@ -128,6 +129,14 @@ export default async function OpsPublishers() {
             >
               <h3 id={`applicant-${a.publisher_id}`}>{a.display_name}</h3>
               <p className="muted">{applicantLine(a)}</p>
+              <p className="muted" data-testid="applicant-source">
+                {a.source === 'public' ? OPS_SOURCE_PUBLIC : OPS_SOURCE_OPERATOR}
+              </p>
+              {a.note !== null ? (
+                <p data-testid="applicant-note">
+                  {OPS_NOTE_LABEL}: {a.note}
+                </p>
+              ) : null}
               <p className="muted" data-testid="applicant-agreement">
                 {NOT_ACCEPTED_TEXT}
               </p>

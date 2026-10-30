@@ -103,8 +103,11 @@ import {
   touchVisit,
   withdrawOffer,
   addApplicant,
+  applicationReference,
+  applicationStatus,
   decideApplicant,
   listApplicants,
+  submitApplication,
   listAgreements,
   ownAgreement,
   seedAgreements,
@@ -113,6 +116,7 @@ import type {
   Agreement,
   Applicant,
   ApplicantError,
+  ApplicationState,
   OfferWriteError,
   OfferableArticle,
   OpenRequest,
@@ -932,6 +936,23 @@ export interface Engine {
     }): Promise<Result<{ state: 'active' | 'rejected' }, ApplicantError>>;
   };
   /**
+   * PUB-APPLY, public (no actor, no session). `applyToPublish` leaves one application: an applicant record
+   * (status applied, no payee, no offers, no account, no sign in) and the reference the applicant keeps. A
+   * filled honeypot answers the same success and stores nothing. 5 per hour per hashed address (never the
+   * raw address). `applicationStatus` answers only pending, approved, rejected or unknown.
+   */
+  applyToPublish(i: {
+    display_name: string;
+    country: string;
+    note: string;
+    /** The honeypot field, which a person leaves empty. */
+    website: string;
+    ip_hash: string;
+  }): Promise<
+    { ok: true; reference: string } | { ok: false; code: 'invalid_input' | 'busy' | 'rate_limited' }
+  >;
+  applicationStatus(i: { ref: string }): Promise<ApplicationState>;
+  /**
    * AGREE-1, operator only (second factor required): the latest publisher terms record of every publisher
    * that has one. Read only. Applicants have no record.
    */
@@ -956,6 +977,9 @@ export const SANDBOX_REREAD_PAID_EVERY_MS = 21_600_000;
 export const SANDBOX_MIN_CALL_GAP_MS = 500;
 
 export const PACK_APPROVAL_WINDOW_MS = 3_600_000;
+
+/** PUB-APPLY: stored or refused, each call to applyToPublish spends one token of the address's bucket. */
+export const APPLY_RATE = { name: 'apply', per: 'ip', limit: 5, window_ms: 3_600_000 } as const;
 
 export const DOMAIN_CONFIG = (c: Config): DomainConfig => ({
   reconcile_window_ms: DAY_MS,
@@ -2612,6 +2636,26 @@ function buildApp(config: Config, opts: AppOptions): App {
           reason: i.reason,
         }),
     },
+
+    async applyToPublish(i) {
+      // One token per call, taken first: a refused or honeypot call costs the same as a stored one.
+      const v = await takeToken({ db, clock }, APPLY_RATE, i.ip_hash);
+      if (!v.allowed) return { ok: false, code: 'rate_limited' };
+      const ref_nonce = ids.nonce().slice(0, 12);
+      if (i.website.trim() !== '') {
+        // The honeypot. Same shape as a success; nothing is stored and the reference is not known.
+        return { ok: true, reference: applicationReference(i.display_name, ref_nonce) };
+      }
+      const r = await submitApplication(offerDeps, {
+        display_name: i.display_name,
+        country: i.country,
+        note: i.note,
+        ref_nonce,
+      });
+      if (r.ok) return { ok: true, reference: r.value.reference };
+      return { ok: false, code: r.error.code === 'busy' ? 'busy' : 'invalid_input' };
+    },
+    applicationStatus: (i) => applicationStatus(db, i.ref),
 
     opsAgreements: {
       async list(actor) {

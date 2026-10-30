@@ -81,7 +81,13 @@ describe('submitApplication', () => {
     });
     expect(await n('offers')).toBe(before[MONEY.indexOf('offers')]);
     expect(await Promise.all(MONEY.map(n))).toEqual(before);
-    const audits = await q<{ actor_kind: string; actor_id: string | null; reason: string; target: string; detail: unknown }>(
+    const audits = await q<{
+      actor_kind: string;
+      actor_id: string | null;
+      reason: string;
+      target: string;
+      detail: unknown;
+    }>(
       "SELECT actor_kind, actor_id, reason, target, detail FROM audit_log WHERE action = 'publisher.application_submitted'",
     );
     expect(audits).toHaveLength(1);
@@ -94,7 +100,9 @@ describe('submitApplication', () => {
     expect(JSON.stringify(audits[0]!.detail)).toContain('anonymous');
     // The decision table and the operator's own add action are untouched.
     expect(await n('publisher_applicant_decisions')).toBe(0);
-    expect(await q("SELECT 1 FROM audit_log WHERE action = 'publisher.applicant_added'")).toHaveLength(0);
+    expect(
+      await q("SELECT 1 FROM audit_log WHERE action = 'publisher.applicant_added'"),
+    ).toHaveLength(0);
   });
 
   it('needs no actor and the result carries only the reference, never an internal id', async () => {
@@ -177,7 +185,7 @@ describe('submitApplication', () => {
 
   it('stores script text in the note inert: the exact text, no change of status or any other row', async () => {
     const text = '<script>alert(1)</script> reach me at https://x.example';
-    const slug = slugOf(await submit({ note: text }));
+    const slug = slugOf(await submit({ display_name: 'Inert Text Gazette', note: text }));
     const list = (await listApplicants(w.db, w.operator))!;
     const mine = list.find((a) => a.slug === slug)!;
     expect(mine.note).toBe(text);
@@ -185,7 +193,11 @@ describe('submitApplication', () => {
   });
 
   it('prefixes the stored note with DUPLICATE NAME when the name equals a publisher, in any case', async () => {
-    for (const name of ['Harbour Ledger Review (fictional)', 'HARBOUR LEDGER REVIEW (FICTIONAL)', ' harbour ledger review (fictional) ']) {
+    for (const name of [
+      'Harbour Ledger Review (fictional)',
+      'HARBOUR LEDGER REVIEW (FICTIONAL)',
+      ' harbour ledger review (fictional) ',
+    ]) {
       const slug = slugOf(await submit({ display_name: name }));
       const mine = (await listApplicants(w.db, w.operator))!.find((a) => a.slug === slug)!;
       expect(mine.note, name).toBe(`${DUPLICATE_NOTE_PREFIX}${GOOD.note}`);
@@ -197,9 +209,9 @@ describe('submitApplication', () => {
     expect(mine.note?.startsWith(DUPLICATE_NOTE_PREFIX)).toBe(true);
     // A new name has no prefix.
     const fresh = slugOf(await submit({ display_name: 'Brand New Quarterly' }));
-    expect(
-      (await listApplicants(w.db, w.operator))!.find((a) => a.slug === fresh)!.note,
-    ).toBe(GOOD.note);
+    expect((await listApplicants(w.db, w.operator))!.find((a) => a.slug === fresh)!.note).toBe(
+      GOOD.note,
+    );
   });
 
   it('a submitted applicant is not on sale and appears in the operator list as pending from the public form', async () => {
@@ -212,7 +224,8 @@ describe('submitApplication', () => {
 
   it('operator decisions work on a public application unchanged', async () => {
     const slug = slugOf(await submit({ display_name: 'Decide Me Weekly' }));
-    const id = (await q<{ id: string }>('SELECT id FROM publishers WHERE slug = $1', [slug]))[0]!.id;
+    const id = (await q<{ id: string }>('SELECT id FROM publishers WHERE slug = $1', [slug]))[0]!
+      .id;
     expect(
       await decideApplicant(w.deps(), w.operator, {
         publisher_id: id,
@@ -241,12 +254,19 @@ describe('applicationStatus', () => {
   it('answers unknown for a missing reference, a seeded publisher, an operator added applicant, and bad shapes', async () => {
     expect(await applicationStatus(w.db, 'no-such-applicant-000000000000')).toBe('unknown');
     expect(await applicationStatus(w.db, 'harbour-ledger')).toBe('unknown');
-    const pid = (
-      await operatorAdds('operator-made-applicant')
-    ).publisher_id;
+    const pid = (await operatorAdds('operator-made-applicant')).publisher_id;
     expect(pid.startsWith('pub_')).toBe(true);
     expect(await applicationStatus(w.db, 'operator-made-applicant')).toBe('unknown');
-    for (const bad of ['', ' ', "x' OR '1'='1", 'UPPER-CASE', 'a'.repeat(41), 'a/b', '%', 'pub_x']) {
+    for (const bad of [
+      '',
+      ' ',
+      "x' OR '1'='1",
+      'UPPER-CASE',
+      'a'.repeat(41),
+      'a/b',
+      '%',
+      'pub_x',
+    ]) {
       expect(await applicationStatus(w.db, bad), bad).toBe('unknown');
     }
   });
@@ -276,7 +296,12 @@ describe('the global cap', () => {
       await w.db.query(
         `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)
          VALUES ($1, $2, $3, 'GB', 'applied', $4, $4)`,
-        [`pub_fill${String(i).padStart(4, '0')}`, `fill-${String(i)}-abc`, `Filler ${String(i)}`, stamp],
+        [
+          `pub_fill${String(i).padStart(4, '0')}`,
+          `fill-${String(i)}-abc`,
+          `Filler ${String(i)}`,
+          stamp,
+        ],
       );
     }
     expect(await pending()).toBe(APPLICATION_CAP);
