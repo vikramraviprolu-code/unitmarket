@@ -107,10 +107,10 @@ deploy again.
 
    This check (also part of `ci`) fails if the file holds a secret name or value.
 
-4. **TO FINALISE:** if the tag contains migration `0012_publisher_side.sql` (lane PUB-A1), the app is expected to apply a forward only
-   migration to the live database when it first starts (not verified here), and the demo price revisions (lane PUB-B) write new offer versions on the first
-   boot (`OVERNIGHT-ASSUMPTIONS.md` item 4). On `main` at the time of writing the newest migration is `0011_provider_order_state.sql`,
-   so this item applies only after PUB-A1 has merged.
+4. The tag contains migration `0012_publisher_side.sql` (publisher side, merged). It is forward only and is expected to apply to the live
+   database when the app first starts (tested on the in memory database and the test Postgres, not yet on the hosted one). The demo price
+   revisions (lane PUB-B) also write new offer versions for four seed offers on that first boot (`OVERNIGHT-ASSUMPTIONS.md` item 4); a failure of
+   that step cannot stop the app from starting. Take the backup in step 2 BEFORE the first deploy of this tag.
 
 ### 2. Take a database backup first (Cloud Shell)
 
