@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { App } from '../composition.server';
 import { HARBOUR_TIDE, bootPackApp, buyer, startPack } from './composite-support';
 import { CANCEL_BODY, CANCEL_BODY_NO_REF, CANCEL_WINDOW_LINE } from './lib/composite-copy';
+import { orderActions } from './lib/order-actions';
 
 const read = (rel: string): string => readFileSync(new URL(rel, import.meta.url), 'utf8');
 
@@ -119,5 +120,24 @@ describe('a single-publisher order awaiting the buyer offers no approve action o
     expect(hrefs.length).toBeGreaterThan(0);
     for (const h of hrefs) expect(h, h).not.toMatch(/approve|checkout|dry-run|return/i);
     expect(page).not.toMatch(/<form|<button|approve_url|onClick/);
+  });
+
+  // ORDER-A (docs/specs/order-a-cancel-resume.md) amends the pin above NARROWLY. OrderStatus.tsx itself still
+  // has no form, button, approve link or onClick (asserted above, unchanged). The one thing it may now do is
+  // render <OrderActions> for an order that waits for its buyer. The order view is null for anyone but the
+  // owner, so the viewer is always the owner. The actions come from orderActions(view), which is true for
+  // awaiting_buyer alone: here for a real awaiting order; lib/order-actions.test.ts lists all ten statuses.
+  it("offers resume and cancel for the viewer's awaiting order only (every other status shows none: lib/order-actions.test.ts)", async () => {
+    const A = await buyer(app, 'a');
+    const started = await startPack(app, A, [HARBOUR_TIDE]);
+    const waiting = (await app.engine.orderView({ order_ref: started.order_ref, actor: A }))!;
+    expect(waiting.status).toBe('awaiting_buyer');
+    expect(orderActions(waiting)).toEqual({ resume: true, cancel: true });
+    // the other buyer cannot even see the order, so the page cannot render actions for it
+    const B = await buyer(app, 'b');
+    expect(await app.engine.orderView({ order_ref: started.order_ref, actor: B })).toBeNull();
+    const page = read('./app/orders/[ref]/OrderStatus.tsx').replace(/\/\/.*$/gm, '');
+    expect([...page.matchAll(/<OrderActions\b/g)].length).toBe(1);
+    expect(page).toMatch(/orderActions\(view\)/);
   });
 });
