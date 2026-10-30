@@ -1,0 +1,181 @@
+/* PUB-UI-OPSHOME: the operator home screen. Tokens only (no colour literals), so Bright Market and Deep Harbour
+   both apply. Builds on publisher.css and pk-ops.css, which the ops layout loads. Prefix oh- keeps these local. */
+.oh-lede {
+  margin: 0 0 16px;
+  color: var(--muted);
+  max-width: 62ch;
+}
+.oh-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.oh-grid > li {
+  display: grid;
+  min-width: 0;
+}
+.oh-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.oh-switch-name {
+  margin: 0;
+  font-weight: 700;
+}
+.oh-code {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.oh-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.oh-split {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: start;
+}
+.oh-state-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 12px;
+}
+.oh-state-row p {
+  margin: 0;
+  font-weight: 600;
+}
+.oh-panel-title {
+  margin: 0 0 10px;
+}
+.oh-note {
+  margin: 12px 0 0;
+  color: var(--text);
+}
+.oh-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.oh-list > li {
+  padding: 8px 0;
+  border-top: 1px solid var(--line-soft, var(--line));
+  overflow-wrap: anywhere;
+}
+.oh-list > li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.oh-list > li:last-child {
+  padding-bottom: 0;
+}
+.oh-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.oh-check .pk-chip {
+  flex: none;
+}
+.oh-check-id {
+  font-family: var(--mono);
+  font-weight: 700;
+}
+.oh-check-detail {
+  flex: 1 1 220px;
+  min-width: 0;
+  color: var(--muted);
+}
+.oh-tiles > li {
+  display: grid;
+  min-width: 0;
+}
+.oh-tone-good > .pk-tile {
+  border-left: 4px solid var(--good);
+}
+.oh-tone-warn > .pk-tile {
+  border-left: 4px solid var(--warn);
+}
+.oh-tone-bad > .pk-tile {
+  border-left: 4px solid var(--bad);
+}
+.oh-tone-info > .pk-tile {
+  border-left: 4px solid var(--accent);
+}
+.oh-tone-neutral > .pk-tile {
+  border-left: 4px solid var(--line);
+}
+.oh-sub {
+  margin: 20px 0 10px;
+  font-size: 1.05rem;
+}
+.oh-orders-table .oh-ref {
+  overflow-wrap: anywhere;
+}
+.oh-orders-table td:last-child,
+.oh-orders-table th:last-child {
+  text-align: right;
+}
+.oh-empty {
+  margin: 0;
+  color: var(--muted);
+}
+.oh-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 12px;
+}
+.oh-summary p {
+  margin: 0;
+}
+/* The stop button wraps the unchanged StopButton in a panel and is the one primary danger action. */
+.oh-stop {
+  border-color: var(--bad);
+}
+.oh-stop h2 {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+}
+.oh-stop .field {
+  margin-bottom: 12px;
+}
+.oh-stop .btn:not([disabled]):not([aria-disabled='true']) {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: var(--accent-ink);
+}
+.oh-stop .btn:not([disabled]):not([aria-disabled='true']):focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+.oh-refunds h2 {
+  margin: 0 0 12px;
+}
+.oh-refunds .pk-panel {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .oh-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .oh-orders-table td:last-child,
+  .oh-orders-table th:last-child {
+    text-align: left;
+  }
+}
