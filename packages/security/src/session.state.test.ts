@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createSession, resolveSession, revokeAllSessions } from './session';
+import {
+  createSession,
+  resolveSession,
+  resolveSessionRecord,
+  revokeAllSessions,
+  revokeSession,
+} from './session';
 import { cookiePair, makeRig } from './test-support';
 
 const buyer = { kind: 'buyer', buyer_id: 'buy_a' } as const;
@@ -46,6 +52,25 @@ describe('session lifetime', () => {
     });
     expect(await revokeAllSessions(deps, buyer)).toBe(0);
     expect(audit.some((e) => e.action === 'session.revoke_all')).toBe(true);
+  });
+
+  it('revokeSession ends only the session of the cookie, audits it, and a replay is a no-op (FIX-FLOW D1)', async () => {
+    const { deps, audit } = await makeRig();
+    const s1 = await createSession(deps, buyer);
+    const s2 = await createSession(deps, buyer);
+    const c1 = cookiePair(s1.cookie);
+    const rec = (await resolveSessionRecord(deps, c1))!;
+    expect(await revokeSession(deps, { id: rec.id, actor: rec.actor })).toBe(true);
+    expect(await resolveSession(deps, c1)).toBeNull();
+    expect(await resolveSession(deps, cookiePair(s2.cookie))).toEqual(buyer);
+    expect(audit.some((e) => e.action === 'session.revoke')).toBe(true);
+    // A replay, and an id that belongs to another actor, change nothing.
+    expect(await revokeSession(deps, { id: rec.id, actor: rec.actor })).toBe(false);
+    const rec2 = (await resolveSessionRecord(deps, cookiePair(s2.cookie)))!;
+    expect(
+      await revokeSession(deps, { id: rec2.id, actor: { kind: 'buyer', buyer_id: 'buy_b' } }),
+    ).toBe(false);
+    expect(await resolveSession(deps, cookiePair(s2.cookie))).toEqual(buyer);
   });
 
   it('a tampered signature or a foreign secret is refused', async () => {
