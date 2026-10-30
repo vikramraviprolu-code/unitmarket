@@ -5,6 +5,7 @@ import { app } from '../../../../server/access';
 import { currentActor } from '../../../../server/session';
 import { EmptyState } from '../../../../ui/EmptyState';
 import { EnvLabel } from '../../../../ui/EnvLabel';
+import { PageHeader } from '../../../../ui/publisher/kit';
 import { formatMinor, optionLabel } from '../../../../lib/format';
 import { ATTEST_LABEL, offeredLabel, priceHint, priceLabel } from '../../../../lib/offer-copy';
 import {
@@ -17,6 +18,7 @@ import {
   createErrorText,
 } from '../../../../lib/publisher-e1-copy';
 import { CreateForm } from './CreateForm';
+import '../../pk-forms.css';
 
 export const metadata: Metadata = { title: 'Create an offer' };
 
@@ -32,38 +34,36 @@ export default async function NewOffer() {
   if (view === null) redirect('/signin?next=/publisher/offers/new');
   return (
     <>
-      <p>
+      <p className="pk-back">
         <Link href="/publisher/offers">{CREATE_BACK}</Link>
       </p>
-      <h1>
-        {CREATE_HEADING} <EnvLabel environment={view.environment} />
-      </h1>
-      <p className="lede">{CREATE_LEDE}</p>
+      <PageHeader
+        title={CREATE_HEADING}
+        lede={CREATE_LEDE}
+        aside={<EnvLabel environment={view.environment} />}
+      />
       {view.currency === null ? (
         <EmptyState title={CREATE_NONE_TITLE}>{createErrorText('no_corridor')}</EmptyState>
       ) : view.articles.length === 0 ? (
         <EmptyState title={CREATE_NONE_TITLE}>{CREATE_NONE_BODY}</EmptyState>
       ) : (
-        <>
-          <p className="muted" data-testid="create-terms">
-            {CREATE_TERMS_NOTE(view.terms_version)}
-          </p>
-          <CreateForm
-            articles={view.articles.map((a) => ({ id: a.article_id, title: a.title }))}
-            capMinor={view.offer_max_minor}
-            hint={priceHint(
-              formatMinor(1, view.currency),
-              formatMinor(view.offer_max_minor, view.currency),
-            )}
-            attestLabel={ATTEST_LABEL}
-            rows={OPTIONS.map((option) => ({
-              option,
-              offeredLabel: offeredLabel(option),
-              priceLabel: priceLabel(option, view.currency ?? ''),
-              optionName: optionLabel(option),
-            }))}
-          />
-        </>
+        <CreateForm
+          articles={view.articles.map((a) => ({ id: a.article_id, title: a.title }))}
+          capMinor={view.offer_max_minor}
+          hint={priceHint(
+            formatMinor(1, view.currency),
+            formatMinor(view.offer_max_minor, view.currency),
+          )}
+          prefix={view.currency}
+          attestLabel={ATTEST_LABEL}
+          terms={CREATE_TERMS_NOTE(view.terms_version)}
+          rows={OPTIONS.map((option) => ({
+            option,
+            offeredLabel: offeredLabel(option),
+            priceLabel: priceLabel(option, view.currency ?? ''),
+            optionName: optionLabel(option),
+          }))}
+        />
       )}
     </>
   );
