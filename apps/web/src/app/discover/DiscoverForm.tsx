@@ -20,6 +20,9 @@ type Result =
   | { kind: 'proposal'; proposal_id: string; items: Item[] }
   | { kind: 'no_match'; reasons: string[] };
 
+// Gate 12 D12: the pack error sits next to the Buy button, so it is not far above it on a narrow screen.
+const NO_TICK = 'Please accept the terms of purchase before buying.';
+
 export function DiscoverForm({
   signedIn,
   browse,
@@ -35,6 +38,7 @@ export function DiscoverForm({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
+  const [packError, setPackError] = useState<string | null>(null);
 
   async function find(e: React.FormEvent) {
     e.preventDefault();
@@ -42,6 +46,7 @@ export function DiscoverForm({
     setError(null);
     setResult(null);
     setPicked([]);
+    setPackError(null);
     const r = await postJson<Result>('/api/discover', { need });
     setBusy(false);
     if (!r.ok) {
@@ -53,7 +58,7 @@ export function DiscoverForm({
 
   async function choose(item: Item, proposalId: string) {
     if (!terms) {
-      setError('Please accept the terms below before choosing an article.');
+      setError(NO_TICK);
       return;
     }
     setError(null);
@@ -79,9 +84,10 @@ export function DiscoverForm({
   // currency, two publishers at most); the page only shows its plain-words answer.
   async function buySelected(proposalId: string) {
     if (!terms) {
-      setError('Please accept the terms below before choosing an article.');
+      setPackError(NO_TICK);
       return;
     }
+    setPackError(null);
     setError(null);
     const consent = { terms: true, identity_share: false };
     const r = await postJson<{ approval_id: string; token: string }>('/api/approvals', {
@@ -174,7 +180,10 @@ export function DiscoverForm({
               id="discover-terms"
               label="I accept the terms of purchase for the article I choose."
               checked={terms}
-              onChange={setTerms}
+              onChange={(v) => {
+                setTerms(v);
+                if (v) setPackError(null);
+              }}
               rights={rights}
             />
             <div className="grid-2">
@@ -209,6 +218,11 @@ export function DiscoverForm({
               >
                 {BUY_SELECTED}
               </button>
+              {packError ? (
+                <p id="pack-error" role="alert" data-testid="pack-error">
+                  <strong>{packError}</strong>
+                </p>
+              ) : null}
               {picked.length < 2 ? (
                 <span id="pack-hint" className="muted">
                   Select two or more articles to buy them together.

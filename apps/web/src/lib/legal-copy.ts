@@ -203,7 +203,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     {
       heading: 'How a payee is checked',
       paragraphs: [
-        "In this demo the publishers' payee details are marked as checked when the demo data is loaded. It is not PayPal onboarding. Both fictional publishers are paid into one test account the owners control.",
+        "In this demo the publishers' payee details are marked as checked when the demo data is loaded. It is not PayPal onboarding. In the sandbox, payments for the publishers that have articles on sale are received in one test account the owners control, so their account endings match. A publisher with nothing on sale may have no payee account set. In a dry run nothing is paid, and the account endings are demo values.",
       ],
     },
     {

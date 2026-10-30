@@ -3,6 +3,7 @@
 import type { FitDimension, Rights } from '@umsbx/contracts';
 import { OPTION_LABEL, formatMinor } from './format';
 import type { OfferPage } from './view-types';
+import { LINE_TEXT } from './composite-copy';
 
 // U3: the terms, shown where the buyer accepts them. The first line is the offer page's sentence and the
 // second and third restate the approval page's, so the three screens say the same thing.
@@ -83,4 +84,22 @@ export function splitFitRows(dimensions: readonly FitDimension[]): {
     assessed: dimensions.filter((d) => d.level !== null),
     notAssessed: dimensions.filter((d) => d.level === null),
   };
+}
+
+/** The stored money state of one item in plain words (gate 12 D12). The words match the order page lines. */
+export function moneyStateText(money: string): string {
+  switch (money) {
+    case 'pending':
+      return LINE_TEXT.pending;
+    case 'captured':
+      return 'Paid';
+    case 'denied':
+      return LINE_TEXT.declined;
+    case 'refunded':
+      return 'Refunded';
+    case 'reversed':
+      return 'Payment reversed';
+    default:
+      return LINE_TEXT.confirming;
+  }
 }

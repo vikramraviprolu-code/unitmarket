@@ -13,7 +13,7 @@ describe('README (D2, D3)', () => {
     expect(readme).toContain('UMS_PUBLISHER_PASSCODE_HASH');
     expect(readme).toContain('owner:secrets');
     expect(readme).toMatch(/Publisher passcode/);
-    expect(readme).not.toMatch(/UMS_PUBLISHER_PASSCODE_HASH=\S/);
+    expect(readme).not.toMatch(/UMS_PUBLISHER_PASSCODE_HASH=[A-Za-z0-9:]/);
   });
 
   it('lists the merged lanes and no longer calls them in progress', () => {

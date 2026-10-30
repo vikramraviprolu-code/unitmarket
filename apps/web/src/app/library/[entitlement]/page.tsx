@@ -7,6 +7,7 @@ import { WindowMeter } from '../../../ui/WindowMeter';
 import { OpenButton } from '../OpenButton';
 import { Refresher } from '../../../ui/Refresher';
 import { optionLabel, formatDateTime } from '../../../lib/format';
+import { moneyStateText } from '../../../lib/buyer-copy';
 
 export const metadata: Metadata = { title: 'Library item' };
 
@@ -45,8 +46,8 @@ export default async function LibraryItem({
         <dd>{item.window.started_at ? formatDateTime(item.window.started_at) : 'Not started'}</dd>
         <dt>Window ends</dt>
         <dd>{item.window.ends_at ? formatDateTime(item.window.ends_at) : 'Not set'}</dd>
-        <dt>Payment state</dt>
-        <dd>{item.money}</dd>
+        <dt>Payment</dt>
+        <dd>{moneyStateText(item.money)}</dd>
       </dl>
       <div className="actions">
         {item.can_open ? (
