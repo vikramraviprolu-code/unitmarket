@@ -133,6 +133,20 @@ describe('legal copy rules', () => {
     expect(t).toContain('You can reach the team at unitmarket@raviprolu.com.');
   });
 
+  it('privacy: applications to publish say what is stored, that the note is permanent and that no account is made', () => {
+    const doc = LEGAL_DOCS.find((d) => d.slug === 'privacy')!;
+    const sec = doc.sections.find((s) => s.heading === 'Applications to publish');
+    expect(sec).toBeDefined();
+    const t = sec!.paragraphs.join(' ');
+    expect(t).toMatch(/name/i);
+    expect(t).toMatch(/country/i);
+    expect(t).toMatch(/note/i);
+    expect(t).toMatch(/hashed network address/i);
+    expect(t).toMatch(/permanent/i);
+    expect(t).toMatch(/cannot be (changed or )?deleted/i);
+    expect(t).toMatch(/no account is created/i);
+  });
+
   it('refunds: decided per unit by an operator; full refund ends access; partial does not', () => {
     const t = flat('refunds');
     expect(t).toMatch(/operator/i);

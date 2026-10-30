@@ -27,7 +27,7 @@ function lines(): string[] {
   out.push(`status form: ${copy.STATUS_FIELD} | ${copy.STATUS_BUTTON}`);
   out.push(`status no reference: ${copy.STATUS_NO_REF}`);
   out.push(`status back: ${copy.STATUS_BACK}`);
-  for (const s of ['pending', 'approved', 'rejected', 'unknown'] as const)
+  for (const s of ['pending', 'approved', 'rejected', 'unavailable', 'unknown'] as const)
     out.push(`state ${s}: ${copy.statusText(s)} | tone ${copy.statusTone(s)}`);
   for (const c of ['invalid_input', 'busy', 'rate_limited', 'csrf', 'too_large', 'other'])
     out.push(`error ${c}: ${copy.applyErrorText(c)}`);
@@ -49,6 +49,19 @@ describe('apply copy (golden)', () => {
     );
   });
 
+  it('makes no promise to contact the applicant and says the operator reviews applications', () => {
+    for (const line of lines())
+      expect(line, line).not.toMatch(/will contact|we will (call|email|write)/i);
+    expect(copy.APPLY_LEDE).toContain('The operator reviews applications.');
+  });
+
+  it('says the note is a permanent record and asks for no phone number or personal address', () => {
+    expect(copy.HINT_NOTE).toContain(
+      'What you write here is kept as a permanent record and cannot be deleted. Do not include a phone number or a personal address. Email addresses are not kept in readable form.',
+    );
+    expect(copy.HINT_NOTE).toMatch(/one line/i);
+  });
+
   it('warns never to include a password or payment details', () => {
     expect(copy.HINT_NOTE).toMatch(/never include a password or payment details/i);
   });
@@ -66,8 +79,10 @@ describe('apply copy (golden)', () => {
   it('shows a plain word for every state, and a neutral line for an unknown reference', () => {
     expect(copy.statusText('pending')).toBe('Waiting for review');
     expect(copy.statusText('approved')).toBe(
-      'Approved: the owners will contact you to set up sign in',
+      'Approved. Sign in is not automatic; the owners decide whether to set it up.',
     );
+    expect(copy.statusText('unavailable')).toBe('Not available');
+    expect(copy.statusTone('unavailable')).toBe('neutral');
     expect(copy.statusText('rejected')).toBe('Not approved');
     expect(copy.statusText('unknown')).toBe('We do not have that reference');
     expect(copy.statusTone('unknown')).toBe('neutral');

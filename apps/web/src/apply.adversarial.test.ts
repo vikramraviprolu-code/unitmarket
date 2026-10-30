@@ -50,7 +50,7 @@ const good = (o: Record<string, unknown> = {}) => {
     display_name: `Applicant Press ${String(seq)}`,
     country: 'GB',
     note: 'https://press.example, we publish local reports',
-    website: '',
+    extra_k7q: '',
     ...o,
   };
 };
@@ -182,7 +182,7 @@ describe('per address limits', () => {
   it('a honeypot request spends the same allowance, so a bot cannot probe for free', async () => {
     const ip = freshAddr();
     for (let i = 0; i < 5; i += 1)
-      expect((await post(good({ website: 'http://spam.example' }), { ip })).status).toBe(200);
+      expect((await post(good({ extra_k7q: 'http://spam.example' }), { ip })).status).toBe(200);
     expect((await post(good(), { ip })).status).toBe(429);
   });
 
@@ -192,6 +192,43 @@ describe('per address limits', () => {
     for (let i = 0; i < 22; i += 1) seen.push((await post({ display_name: 'x' }, { ip })).status);
     expect(seen.slice(0, 20).every((s) => s === 422)).toBe(true);
     expect(seen.slice(20)).toEqual([429, 429]);
+  });
+});
+
+describe('what spends the allowance', () => {
+  it('a refused submission (bad shape) spends nothing: 12 refused, then 5 stored from the same address', async () => {
+    const ip = freshAddr();
+    for (let i = 0; i < 6; i += 1) {
+      expect((await post(good({ display_name: 'x' }), { ip })).status).toBe(422);
+      expect((await post(good({ country: 'gb' }), { ip })).status).toBe(422);
+    }
+    expect(await q("SELECT 1 FROM rate_buckets WHERE bucket_key LIKE 'apply:ip:%'")).toHaveLength(
+      0,
+    );
+    for (let i = 0; i < 5; i += 1) expect((await post(good(), { ip })).status, String(i)).toBe(200);
+    expect((await post(good(), { ip })).status).toBe(429);
+  });
+});
+
+describe('the note and the name', () => {
+  it('a note with line breaks and tabs is stored as one line', async () => {
+    const res = await post(
+      good({ display_name: 'Newline Note Press', note: 'line one\n\nline\ttwo  end' }),
+    );
+    expect(res.status).toBe(200);
+    const ref = ((await res.json()) as { reference: string }).reference;
+    const row = await q<{ reason: string }>(
+      "SELECT a.reason FROM audit_log a JOIN publishers p ON p.id = a.target WHERE p.slug = $1 AND a.action = 'publisher.application_submitted'",
+      [ref],
+    );
+    expect(row[0]!.reason).toBe('line one line two end');
+  });
+
+  it('invisible and bidirectional characters in the name are refused', async () => {
+    const before = await pubs();
+    for (const name of ['A\u200bB', 'A\u3164B', 'A\ufe0fB', 'A\u202eB', 'A\u2028B'])
+      expect((await post(good({ display_name: name }))).status, name).toBe(422);
+    expect(await pubs()).toBe(before);
   });
 });
 
@@ -209,6 +246,8 @@ describe('refused requests store nothing', () => {
     const before = [await pubs(), await audits()];
     for (const extra of [
       { status: 'active' },
+      { website: 'http://x.example' },
+      { extra_k7q_2: 'x' },
       { slug: 'harbour-ledger' },
       { slug: 'my-own-slug' },
       { publisher_id: 'pub_x' },
@@ -238,7 +277,7 @@ describe('refused requests store nothing', () => {
       good({ note: 'n'.repeat(201) }),
       good({ display_name: ['a', 'b'] }),
       good({ display_name: { toString: 'x' } }),
-      good({ website: 7 }),
+      good({ extra_k7q: 7 }),
       [],
       null,
       'not json at all',
@@ -286,7 +325,7 @@ describe('refused requests store nothing', () => {
 describe('the honeypot', () => {
   it('answers the normal success with a reference and stores nothing at all', async () => {
     const before = [await pubs(), await audits(), await countOf(MONEY)];
-    const res = await post(good({ website: 'http://spam.example' }));
+    const res = await post(good({ extra_k7q: 'http://spam.example' }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { reference: string };
     expect(Object.keys(body)).toEqual(['reference']);
@@ -323,6 +362,12 @@ describe('script text', () => {
       expect(src, f).not.toMatch(/dangerouslySetInnerHTML|innerHTML|style=|eval\(/);
     }
     expect(strip(read('./app/ops/publishers/page.tsx'))).toContain('{a.note}');
+    const form = read('./app/apply/ApplyForm.tsx');
+    expect(form).toContain('name="extra_k7q"');
+    expect(form).not.toMatch(/name="website"|id="apply-website"/);
+    for (const attr of ['data-1p-ignore', 'data-lpignore="true"', 'data-bwignore'])
+      expect(form).toContain(attr);
+    expect(form).toContain("replace(/\\s+/g, ' ')");
   });
 });
 
@@ -382,6 +427,8 @@ describe('the status read', () => {
     });
     expect(done.ok).toBe(true);
     expect(await w.app.engine.applicationStatus({ ref })).toBe('approved');
+    await w.app.db.query("UPDATE publishers SET status = 'suspended' WHERE id = $1", [id]);
+    expect(await w.app.engine.applicationStatus({ ref })).toBe('unavailable');
     expect(await w.app.engine.applicationStatus({ ref: 'harbour-ledger' })).toBe('unknown');
     expect(await w.app.engine.applicationStatus({ ref: "' OR 1=1 --" })).toBe('unknown');
     expect(await w.app.engine.applicationStatus({ ref: 'x'.repeat(5000) })).toBe('unknown');

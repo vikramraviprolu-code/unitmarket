@@ -6,6 +6,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   APPLICATION_CAP,
+  addApplicant,
+  checkApplicationInput,
   DUPLICATE_NOTE_PREFIX,
   SLUG_PATTERN,
   applicationStatus,
@@ -161,6 +163,18 @@ describe('submitApplication', () => {
       { display_name: '<script>alert(1)</script>' },
       { display_name: 'Fine > name' },
       { display_name: 'Fine < name' },
+      { display_name: 'Zero\u200bWidth' },
+      { display_name: 'Joiner\u200dName' },
+      { display_name: 'Hangul\u3164Filler' },
+      { display_name: 'Hangul\u115fFill' },
+      { display_name: 'Hangul\u1160Fill' },
+      { display_name: 'Halfwidth\uffa0Fill' },
+      { display_name: 'Variation\ufe0fSel' },
+      { display_name: 'Line\u2028Sep' },
+      { display_name: 'Para\u2029Sep' },
+      { display_name: 'Rtl\u202eName' },
+      { note: 'hidden\u200bchar' },
+      { note: 'selector\ufe0fhere' },
       { country: 'gb' },
       { country: 'GBR' },
       { country: 'G1' },
@@ -168,7 +182,6 @@ describe('submitApplication', () => {
       { note: 'no' },
       { note: 'n'.repeat(201) },
       { note: '   ' },
-      { note: 'line\nbreak' },
       { note: 'nul\u0000byte' },
       { display_name: 42 },
       { note: null },
@@ -214,6 +227,80 @@ describe('submitApplication', () => {
     );
   });
 
+  it('normalises whitespace in the note to single spaces before checking and storing it', async () => {
+    const slug = slugOf(
+      await submit({ display_name: 'Spaced Note Press', note: '  one\nline\t\tonly \r\n here  ' }),
+    );
+    const mine = (await listApplicants(w.db, w.operator))!.find((a) => a.slug === slug)!;
+    expect(mine.note).toBe('one line only here');
+    expect(await submit({ note: ' \n\t ' })).toEqual({
+      ok: false,
+      error: { code: 'invalid_input' },
+    });
+    expect(checkApplicationInput({ ...GOOD, ref_nonce: nonce(), note: 'a\nb\nc' })?.note).toBe(
+      'a b c',
+    );
+  });
+
+  it('compares names for duplicates after NFKC, case and whitespace folding, both sides', async () => {
+    for (const name of [
+      '\uff28\uff21\uff32\uff22\uff2f\uff35\uff32 Ledger Review (fictional)',
+      'Harbour    Ledger\tReview (fictional)',
+      'harbour ledger review (FICTIONAL)',
+    ]) {
+      const slug = slugOf(await submit({ display_name: name }));
+      const mine = (await listApplicants(w.db, w.operator))!.find((a) => a.slug === slug)!;
+      expect(mine.note, name).toBe(`${DUPLICATE_NOTE_PREFIX}${GOOD.note}`);
+    }
+    // A stored name with odd spacing or width is also matched by a plain new name.
+    await w.db.query(
+      `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)
+       VALUES ('pub_oddname', 'odd-name-0001', '\uff2f\uff24\uff24   Name  Quarterly', 'GB', 'active', $1, $1)`,
+      ['2026-10-30T00:00:00.000Z'],
+    );
+    const slug = slugOf(await submit({ display_name: 'odd name quarterly' }));
+    const mine = (await listApplicants(w.db, w.operator))!.find((a) => a.slug === slug)!;
+    expect(mine.note?.startsWith(DUPLICATE_NOTE_PREFIX)).toBe(true);
+  });
+
+  it('shows source and note only when an audit row says who made the record', async () => {
+    await w.db.query(
+      `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)
+       VALUES ('pub_noaudit', 'no-audit-row-1', 'No Audit Row', 'GB', 'applied', $1, $1)`,
+      ['2026-10-30T00:00:00.000Z'],
+    );
+    const list = (await listApplicants(w.db, w.operator))!;
+    expect(list.find((a) => a.slug === 'no-audit-row-1')).toMatchObject({
+      source: null,
+      note: null,
+    });
+    const pub = list.find((a) => a.slug.startsWith('tidewater-review-'))!;
+    expect(pub.source).toBe('public');
+    // An audit row of the public action that does not say anonymous does not count as public.
+    await w.db.query(
+      `INSERT INTO audit_log (id, actor_kind, actor_id, action, target, reason, detail, created_at, updated_at)
+       VALUES ('aud_fake0001', 'system', NULL, 'publisher.application_submitted', 'pub_noaudit', 'forged', '{"actor":"operator"}'::jsonb, $1, $1)`,
+      ['2026-10-30T00:00:00.000Z'],
+    );
+    const again = (await listApplicants(w.db, w.operator))!;
+    expect(again.find((a) => a.slug === 'no-audit-row-1')).toMatchObject({
+      source: null,
+      note: null,
+    });
+    await addApplicant(w.deps(), w.operator, {
+      slug: 'operator-source-1',
+      display_name: 'Operator Source',
+      country: 'GB',
+      reason: 'Added after a call',
+    });
+    expect(
+      (await listApplicants(w.db, w.operator))!.find((a) => a.slug === 'operator-source-1'),
+    ).toMatchObject({
+      source: 'operator',
+      note: 'Added after a call',
+    });
+  });
+
   it('a submitted applicant is not on sale and appears in the operator list as pending from the public form', async () => {
     const slug = slugOf(await submit({ display_name: 'Listed Press' }));
     const listed = await listAuthorisedOffers(w.db, { corridor_id: 'us-usd', limit: 500 });
@@ -251,6 +338,20 @@ describe('applicationStatus', () => {
     expect(await applicationStatus(w.db, b)).toBe('rejected');
   });
 
+  it('reads a suspended publisher as unavailable, never as approved, and approved only after an approval', async () => {
+    const slug = slugOf(await submit({ display_name: 'Suspend Later Press' }));
+    const id = (await q<{ id: string }>('SELECT id FROM publishers WHERE slug = $1', [slug]))[0]!
+      .id;
+    await decideApplicant(w.deps(), w.operator, {
+      publisher_id: id,
+      decision: 'approve',
+      reason: 'Checked',
+    });
+    expect(await applicationStatus(w.db, slug)).toBe('approved');
+    await w.db.query("UPDATE publishers SET status = 'suspended' WHERE id = $1", [id]);
+    expect(await applicationStatus(w.db, slug)).toBe('unavailable');
+  });
+
   it('answers unknown for a missing reference, a seeded publisher, an operator added applicant, and bad shapes', async () => {
     expect(await applicationStatus(w.db, 'no-such-applicant-000000000000')).toBe('unknown');
     expect(await applicationStatus(w.db, 'harbour-ledger')).toBe('unknown');
@@ -286,25 +387,37 @@ async function operatorAdds(slug: string): Promise<{ publisher_id: string }> {
 }
 
 describe('the global cap', () => {
-  it('answers busy when the pending applicants reach the cap, and stores nothing', async () => {
+  const DAY = 86_400_000;
+  const stampOf = (ms: number): string => new Date(ms).toISOString();
+  // Counts what the cap counts: pending applications made by the public form in the last 24 hours.
+  const pendingPublic = async (): Promise<number> =>
+    (await listApplicants(w.db, w.operator))!.filter(
+      (a) =>
+        a.state === 'pending' &&
+        a.source === 'public' &&
+        Date.parse(a.added_at) > w.clock.now().getTime() - DAY,
+    ).length;
+  const filler = async (i: number, createdMs: number): Promise<void> => {
+    const id = `pub_fill${String(i).padStart(4, '0')}`;
+    const at = stampOf(createdMs);
+    await w.db.query(
+      `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'GB', 'applied', $4, $4)`,
+      [id, `fill-${String(i)}-abc`, `Filler ${String(i)}`, at],
+    );
+    await w.db.query(
+      `INSERT INTO audit_log (id, actor_kind, actor_id, action, target, reason, detail, created_at, updated_at)
+       VALUES ($1, 'system', NULL, 'publisher.application_submitted', $2, 'filler note', '{"actor":"anonymous"}'::jsonb, $3, $3)`,
+      [`aud_fill${String(i).padStart(4, '0')}`, id, at],
+    );
+  };
+
+  it('answers busy at 200 pending public applications of the last 24 hours, stores nothing, and heals itself', async () => {
     expect(APPLICATION_CAP).toBe(200);
-    const pending = async (): Promise<number> =>
-      (await listApplicants(w.db, w.operator))!.filter((a) => a.state === 'pending').length;
-    const have = await pending();
-    const stamp = '2026-10-30T00:00:00.000Z';
-    for (let i = 0; i < APPLICATION_CAP - have; i += 1) {
-      await w.db.query(
-        `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)
-         VALUES ($1, $2, $3, 'GB', 'applied', $4, $4)`,
-        [
-          `pub_fill${String(i).padStart(4, '0')}`,
-          `fill-${String(i)}-abc`,
-          `Filler ${String(i)}`,
-          stamp,
-        ],
-      );
-    }
-    expect(await pending()).toBe(APPLICATION_CAP);
+    const have = await pendingPublic();
+    const now = w.clock.now().getTime();
+    for (let i = 0; i < APPLICATION_CAP - have; i += 1) await filler(i, now - 1000);
+    expect(await pendingPublic()).toBe(APPLICATION_CAP);
     const pubs = await n('publishers');
     const audits = await n('audit_log');
     expect(await submit({ display_name: 'One Too Many' })).toEqual({
@@ -317,12 +430,33 @@ describe('the global cap', () => {
     await w.db.query(
       `INSERT INTO publisher_applicant_decisions (id, publisher_id, decision, operator_id, reason, created_at, updated_at)
        VALUES ('aud_fill', 'pub_fill0000', 'rejected', 'opr_vikram', 'Not a fit now', $1, $1)`,
-      [stamp],
+      [stampOf(now)],
     );
     expect((await submit({ display_name: 'Fits Now' })).ok).toBe(true);
     expect(await submit({ display_name: 'Full Again' })).toEqual({
       ok: false,
       error: { code: 'busy' },
     });
+    // Self healing: a day later the pending ones are older than 24 hours and no longer count.
+    w.clock.advance(DAY + 60_000);
+    expect(await pendingPublic()).toBe(0);
+    expect((await submit({ display_name: 'A Day Later' })).ok).toBe(true);
+  });
+
+  it('does not count operator added applicants or records without a public audit row', async () => {
+    const now = w.clock.now().getTime();
+    for (let i = 0; i < 205; i += 1) {
+      await w.db.query(
+        `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)
+         VALUES ($1, $2, $3, 'GB', 'applied', $4, $4)`,
+        [
+          `pub_op${String(i).padStart(4, '0')}`,
+          `opmade-${String(i)}-abc`,
+          `Opmade ${String(i)}`,
+          stampOf(now),
+        ],
+      );
+    }
+    expect((await submit({ display_name: 'Still Fits' })).ok).toBe(true);
   });
 });
