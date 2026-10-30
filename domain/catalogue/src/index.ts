@@ -1,5 +1,5 @@
 // @umsbx/catalogue: publishers, articles, offers, corridors (lane 14a). Reads and seed only; no
-// pricing rule, no universal floor, no substitution.
+// pricing rule, no universal floor, no substitution. PUB-B adds the publisher's offer writes (new versions only).
 export const PACKAGE_NAME = '@umsbx/catalogue' as const;
 export { getOffer, listAuthorisedOffers, offerIdFor } from './read';
 export type { OfferView } from './read';
@@ -22,3 +22,24 @@ export type {
   PayeeView,
   RequestState,
 } from './payee';
+export {
+  PUB_ATTEST_1,
+  checkPrice,
+  getOwnOffer,
+  listOwnOffers,
+  reviseOffer,
+  withdrawOffer,
+} from './write';
+export type {
+  OfferWriteDeps,
+  OfferWriteError,
+  OfferWriteErrorCode,
+  OwnOffer,
+  OwnOfferDetail,
+  OwnOfferVersion,
+  PriceCheck,
+  PriceInput,
+  ReviseInput,
+} from './write';
+export { DEMO_AUDIT_REASON, DEMO_MAX_MINOR, DEMO_MIN_MINOR, applyDemoPrices } from './demo-prices';
+export type { DemoRevision } from './demo-prices';
