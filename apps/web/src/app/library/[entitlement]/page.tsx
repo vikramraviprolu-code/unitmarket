@@ -36,6 +36,7 @@ export default async function LibraryItem({
           state={item.window.state}
           daysLeft={item.window.days_left}
           endsAt={item.window.ends_at}
+          option={item.option}
         />
       )}
       <h2>Evidence</h2>

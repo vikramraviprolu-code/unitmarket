@@ -111,25 +111,27 @@ export default async function Ops() {
       {snap.orders.length === 0 ? (
         <p className="muted">No orders yet.</p>
       ) : (
-        <table>
-          <caption className="visually-hidden">Latest orders</caption>
-          <thead>
-            <tr>
-              <th scope="col">Reference</th>
-              <th scope="col">Status</th>
-              <th scope="col">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {snap.orders.map((o) => (
-              <tr key={o.order_ref}>
-                <td className="mono">{o.order_ref}</td>
-                <td>{o.status}</td>
-                <td>{formatMinor(o.total_minor, o.currency)}</td>
+        <div className="table-scroll" role="region" aria-label="Latest orders" tabIndex={0}>
+          <table>
+            <caption className="visually-hidden">Latest orders</caption>
+            <thead>
+              <tr>
+                <th scope="col">Reference</th>
+                <th scope="col">Status</th>
+                <th scope="col">Total</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {snap.orders.map((o) => (
+                <tr key={o.order_ref}>
+                  <td className="mono order-ref">{o.order_ref}</td>
+                  <td>{o.status}</td>
+                  <td>{formatMinor(o.total_minor, o.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h2>Operations by state</h2>

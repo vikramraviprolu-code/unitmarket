@@ -6,6 +6,7 @@ import { OPTION_HELP, OPTION_LABEL, formatMinor } from '../../../../lib/format';
 import { postJson, remember } from '../../../../lib/client-api';
 import { StatusBanner } from '../../../../ui/StatusBanner';
 import { ErrorState } from '../../../../ui/ErrorState';
+import { TermsConsent } from '../../../../ui/TermsConsent';
 
 type Quote = {
   kind: 'quote';
@@ -184,13 +185,14 @@ export function OfferFlow({ offer, signedIn }: { offer: OfferPage; signedIn: boo
               </strong>{' '}
               for {OPTION_LABEL[result.option].toLowerCase()}, from {offer.publisher}.
             </p>
-            <p className="muted">
-              Personal use only. No redistribution. {OPTION_HELP[result.option]}
-            </p>
-            <label className="check">
-              <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} />
-              <span>I accept the terms of this purchase.</span>
-            </label>
+            <p className="muted">{OPTION_HELP[result.option]}</p>
+            <TermsConsent
+              id="offer-terms"
+              label="I accept the terms of this purchase."
+              checked={terms}
+              onChange={setTerms}
+              rights={offer.rights}
+            />
             <label className="check">
               <input
                 type="checkbox"
