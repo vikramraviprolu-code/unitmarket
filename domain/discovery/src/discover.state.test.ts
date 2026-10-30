@@ -60,6 +60,47 @@ describe('parseNeed', () => {
     ]);
   });
 
+  // AI-H: briefs.version is the model that answered (served_model), not a fixed label.
+  it('stores the served model id as the brief version, falling back to the port id', async () => {
+    const actor = await buyerActor();
+    const stored = async (m: ModelPort): Promise<string> => {
+      const r = await parseNeed(depsWith(db, m), { actor, text: CLIMATE_BRIEF });
+      if (!r.ok) throw new Error('parseNeed failed');
+      const row = await db.query<{ version: string }>('SELECT version FROM briefs WHERE id = $1', [
+        r.value.brief_id,
+      ]);
+      return row.rows[0]!.version;
+    };
+    const scripted = createScriptedModel();
+    // A port that names one model but whose answer says another (a Claude fallback to scripted).
+    const claudeFellBack: ModelPort = {
+      model_id: 'claude-haiku-5-5',
+      complete: (r) => scripted.complete(r),
+    };
+    expect(await stored(claudeFellBack)).toBe('scripted-v1');
+    // A port that answers as Claude.
+    const claudeAnswered: ModelPort = {
+      model_id: 'claude-haiku-5-5',
+      async complete(r) {
+        const a = await scripted.complete(r);
+        return a.kind === 'ok' ? { ...a, served_model: 'claude-haiku-5-5' } : a;
+      },
+    };
+    expect(await stored(claudeAnswered)).toBe('claude-haiku-5-5');
+    // An answer with no served_model keeps the port id.
+    const plain: ModelPort = {
+      model_id: 'plain-v9',
+      async complete(r) {
+        const a = await scripted.complete(r);
+        if (a.kind !== 'ok') return a;
+        const { served_model: _drop, ...rest } = a;
+        void _drop;
+        return rest;
+      },
+    };
+    expect(await stored(plain)).toBe('plain-v9');
+  });
+
   it('only a buyer may state a need', async () => {
     for (const actor of [
       { kind: 'system' },
