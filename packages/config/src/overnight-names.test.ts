@@ -3,9 +3,10 @@
 import { readFileSync } from 'node:fs';
 import { inspect } from 'node:util';
 import { describe, expect, it } from 'vitest';
-import { loadConfig, refusalLine } from './index';
-import type { Config } from './index';
+import { loadConfig } from './index';
+import { refusalLine } from './refusal';
 import { ENV_NAMES } from './schema';
+import type { Config } from './schema';
 
 const S1 = 'Qm7vK2pLx9RbT4zWc8NdYh3JfG6sAe1U';
 const S2 = 'Zr5tB8nKd2VwXq7LmC4yHj9PgF3sEa6U';
