@@ -32,7 +32,7 @@ async function publisher(persona: string): Promise<Actor> {
 async function insert(table: string, row: Record<string, unknown>): Promise<void> {
   tick += 1;
   const at = `2026-10-22T10:${String(tick % 60).padStart(2, '0')}:00.000Z`;
-  const r = { created_at: at, updated_at: at, ...row };
+  const r: Record<string, unknown> = { created_at: at, updated_at: at, ...row };
   const cols = Object.keys(r);
   await w.app.db.query(
     `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => `$${String(i + 1)}`).join(', ')})`,
