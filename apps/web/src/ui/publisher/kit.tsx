@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useId } from 'react';
 import type { ReactNode } from 'react';
 
 // Shared pieces for the publisher and operator-publisher screens (PUB-UI). Colours come only from the skin
@@ -56,10 +57,25 @@ export function ActionCard({
   children?: ReactNode;
   testId?: string;
 }) {
+  // The link is named by its title only and described by the line under it, so a screen reader and a test
+  // that looks a link up by its exact name both find 'Your offers', not 'Your offers See what is on sale'.
+  const id = useId();
   return (
-    <Link className="pk-card" href={href} data-testid={testId}>
-      <span className="pk-card-title">{title}</span>
-      {children ? <span className="pk-card-body">{children}</span> : null}
+    <Link
+      className="pk-card"
+      href={href}
+      data-testid={testId}
+      aria-labelledby={`${id}-t`}
+      aria-describedby={children ? `${id}-d` : undefined}
+    >
+      <span className="pk-card-title" id={`${id}-t`}>
+        {title}
+      </span>
+      {children ? (
+        <span className="pk-card-body" id={`${id}-d`}>
+          {children}
+        </span>
+      ) : null}
     </Link>
   );
 }
