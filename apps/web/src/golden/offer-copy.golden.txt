@@ -19,7 +19,7 @@ s3 price: Price for Download and keep (USD) | Price for Read online (GBP)
 s3 price hint: From $1.00 to $20.00.
 s3 window: Access window | Set by UnitMarket
 s3 licence: Licence | Personal use only. No redistribution. AI assistants may read it for the buyer.
-s3 licence review: Personal use only. No redistribution. AI assistants may read it for the buyer after the buyer reviews it.
+s3 licence review: Personal use only. No redistribution. Buyers may not use it with AI tools under this offer.
 s3 licence none: Personal use only. No redistribution. AI assistants may not read it.
 s3 terms: Terms version
 s3 attest: I confirm that I hold the rights to sell this article at this price on these terms.

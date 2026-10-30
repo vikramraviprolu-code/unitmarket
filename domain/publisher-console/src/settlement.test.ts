@@ -144,7 +144,7 @@ describe('payeeSettlement (SETTLE-A: the account as it is now, for S1, S6 and S7
 describe('commission line', () => {
   it('is the fixed sentence', () => {
     expect(COMMISSION_LINE).toBe(
-      'No commission in this demo; planned 20 percent, not implemented.',
+      'No commission in this demo.',
     );
   });
 });
