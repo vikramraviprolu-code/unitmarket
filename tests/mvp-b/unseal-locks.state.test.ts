@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAuditSink } from '@umsbx/obs';
 import { cryptoIds, systemClock } from '@umsbx/runtime';
 import { runResume } from '@umsbx/safety';
+import { runDelete } from '../../scripts/lib/privacy.mjs';
 import {
   DOMAIN_CONFIG,
   SANDBOX_MIN_CALL_GAP_MS,
@@ -675,5 +676,53 @@ describe('BU-7 own payee seed (D-028)', () => {
       const audit = await app.db.query<Record<string, unknown>>('SELECT * FROM audit_log');
       expect(JSON.stringify(audit.rows)).not.toContain(OWN_ID);
     });
+  });
+});
+
+// OPS-PRIV: `privacy.mjs delete` changes a demo buyer's auth_subject but not its id; the demo buyer seed that
+// runs at every start must skip on the id, or the app would not start again (buyers_pkey).
+describe('boot after a privacy delete of a demo buyer', () => {
+  it('starts again on the same database, and the buyer keeps its id and its pseudonym', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'sbx-privacy-boot-'));
+    try {
+      const env = await testEnv({ UMS_DB: 'pglite-disk', UMS_PGLITE_DIR: join(tmp, 'pglite') });
+      const first = createApp(env, { switch_cache_ms: 0 });
+      await first.ready();
+      const demo = await first.db.query<{ id: string }>(
+        `SELECT id FROM buyers WHERE auth_subject LIKE 'persona:%' ORDER BY id`,
+      );
+      expect(demo.rows).toHaveLength(2);
+      const target = demo.rows[0]!.id;
+      const clock = systemClock();
+      const r = await runDelete({
+        db: first.db,
+        clock,
+        audit: createAuditSink(cryptoIds(), clock),
+        tty: { isTTY: true, env: {} },
+        ask: async () => target,
+        write: () => undefined,
+        buyer_id: target,
+        operator_id: 'opr_1',
+        reason: 'boot test',
+      });
+      expect(r).toMatchObject({ ok: true, value: { changed: true } });
+      await first.close();
+
+      const second = createApp(env, { switch_cache_ms: 0 });
+      apps.push(second);
+      await second.ready();
+      const after = await second.db.query<{
+        id: string;
+        display_name: string;
+        auth_subject: string;
+      }>(`SELECT id, display_name, auth_subject FROM buyers ORDER BY id`);
+      expect(after.rows).toHaveLength(2);
+      const row = after.rows.find((x) => x.id === target)!;
+      expect(row.display_name).toMatch(/^deleted-[0-9a-f]{8}$/);
+      expect(row.auth_subject).toBe(`deleted:${row.display_name}`);
+    } finally {
+      await Promise.all(apps.splice(0).map((a) => a.close()));
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
