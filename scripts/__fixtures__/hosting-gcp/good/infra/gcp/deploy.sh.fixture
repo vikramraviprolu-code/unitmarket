@@ -12,8 +12,8 @@
 # The image is tagged TAG-COMMIT (the first 12 characters of the commit id), so a moved git tag builds a new
 # image and never reuses an old one.
 #
-# Optional secrets (INFRA-A): UMS_PUBLISHER_PASSCODE_HASH, UMS_OFFER_MAX_MINOR, UMS_AI_ADAPTER and
-# UMS_ANTHROPIC_API_KEY are mapped only when they have an enabled version. A secret with no value leaves
+# Optional secrets (INFRA-A, JUDGE-A): UMS_PUBLISHER_PASSCODE_HASH, UMS_JUDGE_PASSCODE_HASH,
+# UMS_OFFER_MAX_MINOR, UMS_AI_ADAPTER and UMS_ANTHROPIC_API_KEY are mapped only when they have an enabled version. A secret with no value leaves
 # its feature off and never stops the deploy. The adapter name is left out when the API key has no value,
 # because the app refuses to start on the Claude adapter without a key. This script reads no value.
 set -euo pipefail
@@ -44,7 +44,7 @@ SQL_INSTANCE="unitmarket-sbx-pg"
 RUNTIME_SA="ums-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
 CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
 SECRET_NAMES="DATABASE_URL PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID UMS_OUTBOUND_APPROVAL_REF UMS_SESSION_SECRET UMS_APPROVAL_SECRET UMS_LINK_SECRET UMS_DEMO_PASSCODE_HASH UMS_OWN_MERCHANT_ID UMS_OPERATOR_TOTP_KEYS"
-OPTIONAL_SECRET_NAMES="UMS_PUBLISHER_PASSCODE_HASH UMS_OFFER_MAX_MINOR UMS_AI_ADAPTER UMS_ANTHROPIC_API_KEY"
+OPTIONAL_SECRET_NAMES="UMS_PUBLISHER_PASSCODE_HASH UMS_JUDGE_PASSCODE_HASH UMS_OFFER_MAX_MINOR UMS_AI_ADAPTER UMS_ANTHROPIC_API_KEY"
 
 # 0 when the named secret has an enabled version. A missing secret or a failed lookup counts as no value.
 has_secret_value() {

@@ -39,6 +39,12 @@ export interface Config {
    * hash and never equal to it. Null when unset: no publisher can sign in.
    */
   publisher_passcode_hash: string | null;
+  /**
+   * UMS_JUDGE_PASSCODE_HASH (JUDGE-A, assumptions 22 and 24): the judge sign-in hash, same format as the demo
+   * hash and never equal to it or to the publisher hash. Sign-in checks it for the buyer personas only.
+   * Null when unset: no judge passcode exists.
+   */
+  judge_passcode_hash: string | null;
   /** UMS_OFFER_MAX_MINOR (CFG-0, D-065 item 35): the largest offer price in minor units, 1 to 2000. */
   offer_max_minor: number;
   /** UMS_AI_ADAPTER (CFG-0): scripted (default) or claude. Config only parses it; composition wires it. */
@@ -100,6 +106,7 @@ export const ENV_NAMES = [
   'UMS_TRUSTED_PROXIES',
   'UMS_MAINTENANCE_FLAG',
   'UMS_PUBLISHER_PASSCODE_HASH',
+  'UMS_JUDGE_PASSCODE_HASH',
   'UMS_OFFER_MAX_MINOR',
   'UMS_AI_ADAPTER',
   'UMS_ANTHROPIC_API_KEY',

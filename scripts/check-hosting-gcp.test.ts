@@ -1006,15 +1006,15 @@ const INFRA_A_CASES: Case[] = [
   [
     'the deploy optional list drops the judge hash',
     'deploy.sh',
-    ' UMS_JUDGE_PASSCODE_HASH',
-    '',
+    'UMS_PUBLISHER_PASSCODE_HASH UMS_JUDGE_PASSCODE_HASH UMS_OFFER_MAX_MINOR',
+    'UMS_PUBLISHER_PASSCODE_HASH UMS_OFFER_MAX_MINOR',
     'secret-names',
   ],
   [
     'the setup optional list drops the judge hash',
     'setup.sh',
-    ' UMS_JUDGE_PASSCODE_HASH',
-    '',
+    'UMS_PUBLISHER_PASSCODE_HASH UMS_JUDGE_PASSCODE_HASH UMS_OFFER_MAX_MINOR',
+    'UMS_PUBLISHER_PASSCODE_HASH UMS_OFFER_MAX_MINOR',
     'secret-names',
   ],
   [

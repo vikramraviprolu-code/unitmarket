@@ -64,6 +64,7 @@ const REQUIRED = [
 // secrets of the offline service (mapped by deploy-offline.sh to the env names without OFFLINE_).
 const OPTIONAL = [
   'UMS_PUBLISHER_PASSCODE_HASH',
+  'UMS_JUDGE_PASSCODE_HASH',
   'UMS_OFFER_MAX_MINOR',
   'UMS_AI_ADAPTER',
   'UMS_ANTHROPIC_API_KEY',
@@ -513,7 +514,7 @@ function main() {
     if (got.join(',') !== [...SETTABLE].sort().join(','))
       fail(
         'secret-names',
-        'set-secret.sh must allow exactly the ten required, four optional and four offline secret names',
+        'set-secret.sh must allow exactly the ten required, five optional and four offline secret names',
       );
   }
   // A name list assignment must hold exactly the given names (no more, no fewer).
@@ -533,7 +534,7 @@ function main() {
       'DATABASE_URL plus the ten required names',
     );
   for (const f of ['setup.sh', 'deploy.sh'])
-    listIs(f, 'OPTIONAL_SECRET_NAMES', OPTIONAL, 'secret-names', 'the four optional names');
+    listIs(f, 'OPTIONAL_SECRET_NAMES', OPTIONAL, 'secret-names', 'the five optional names');
   for (const f of ['setup.sh', 'deploy-offline.sh'])
     listIs(f, 'OFFLINE_SECRET_NAMES', OFFLINE, 'secret-names', 'the four offline names');
 

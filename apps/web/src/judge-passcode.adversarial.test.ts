@@ -24,6 +24,8 @@ let sessionRoute: typeof import('./app/api/session/route');
 
 beforeAll(async () => {
   sessionRoute = await import('./app/api/session/route');
+  // The route reads the installed app, which is the last one booted: boot the unset one first.
+  bare = await bootTestApp();
   app = await bootTestApp({
     UMS_JUDGE_PASSCODE_HASH: await hashPasscode(JUDGE_PASSCODE, '0f1e2d3c4b5a69788796a5b4c3d2e1f0'),
     UMS_PUBLISHER_PASSCODE_HASH: await hashPasscode(
@@ -31,7 +33,6 @@ beforeAll(async () => {
       'ffeeddccbbaa99887766554433221100',
     ),
   });
-  bare = await bootTestApp();
 });
 afterAll(async () => {
   await app.close();
@@ -81,7 +82,10 @@ describe('the judge passcode', () => {
 describe('the other passcodes', () => {
   it('the publisher passcode never signs a buyer or the operator in', async () => {
     for (const persona of [...BUYERS, 'operator']) {
-      expect(await app.engine.signIn({ persona, passcode: PUBLISHER_PASSCODE }), persona).toBeNull();
+      expect(
+        await app.engine.signIn({ persona, passcode: PUBLISHER_PASSCODE }),
+        persona,
+      ).toBeNull();
     }
   });
 
@@ -162,8 +166,10 @@ describe('no timing oracle', () => {
         method: 'POST',
         body: { persona, passcode },
       });
-      bodies.add(`${res.status} ${await res.text()}`);
+      const body = (await res.json()) as Record<string, unknown>;
+      // a per-request id may differ; the code and the message may not
+      bodies.add(`${res.status} ${String(body['code'])} ${String(body['message'])}`);
     }
-    expect(bodies.size).toBe(1);
+    expect([...bodies], 'bodies').toHaveLength(1);
   });
 });

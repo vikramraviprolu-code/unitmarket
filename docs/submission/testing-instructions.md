@@ -65,9 +65,10 @@ the public repository on a clean machine, time it, and fix any step that fails.
 
 URL: `<hosted demo URL: from the Cloud Run deploy output, filled in at submission>`
 
-Sign in at `/signin`. Choose who you are testing as, then enter the demo passcode.
+Sign in at `/signin`. Choose Buyer A or Buyer B, then enter the judge passcode.
 
-- Demo passcode: `<demo passcode: in the Devpost form only>`
+- Judge passcode (env name `UMS_JUDGE_PASSCODE_HASH` on the host; the value is in the Devpost form only):
+  `<judge passcode: in the Devpost form only>`. It signs in Buyer A and Buyer B only. Operator and publisher sign-ins refuse it.
 - Sandbox buyer login for the PayPal approval page: `<sandbox buyer login: in the Devpost form only>`
 
 When hosted payments are live. The hosted app makes real PayPal sandbox calls only in three windows of seven days each, starting
@@ -88,7 +89,7 @@ PayPal".
 
 ### What to try, by persona
 
-The sign in page offers these personas. All use the same demo passcode.
+The sign in page offers these personas. On Path A all use the demo passcode you made. On Path B judges get the judge passcode, which opens the buyer personas only; the operator and publisher personas are for the owners.
 
 Buyer A or Buyer B (the main journey, about three minutes):
 
@@ -110,8 +111,10 @@ Operator (safety gate, about two minutes, best on Path A):
    do not press it.
 3. Refunds need an authenticator code held by the owners, so they are not part of the judge instructions.
 
-**TO FINALISE:** the owners decide whether judges are told about the hosted `/ops` page at all. Today anyone who holds the shared
-demo passcode can sign in as Operator and press Stop without a code (accepted risk, D-040).
+**TO FINALISE:** with the judge passcode (`UMS_JUDGE_PASSCODE_HASH`, JUDGE-A) a judge cannot sign in as Operator on the hosted app,
+so `/ops` and Stop are out of reach. Anyone who holds the demo passcode still can, without a code when no authenticator keys are
+set (accepted risk, D-040), so keep the demo passcode out of the Devpost form. The owners decide whether judges are told about the
+hosted `/ops` page at all. The offline judge service is unchanged: its single passcode still opens Operator there.
 
 Publisher:
 
@@ -140,7 +143,7 @@ personal data. Please do not enter real payment details anywhere; PayPal sandbox
 
 ## Notes for the owners (not for the Devpost form)
 
-1. The placeholders `<demo passcode: in the Devpost form only>` and `<sandbox buyer login: in the Devpost form only>` must be
+1. The placeholders `<judge passcode: in the Devpost form only>` and `<sandbox buyer login: in the Devpost form only>` must be
    replaced inside the form, never in this file or the repository. Rotate both after judging (items 22 and 24).
 2. The rules ask for complete instructions and any test credentials; keep the form text and this file in step.
 3. Paths A and B were not run by the drafter. Nothing here was verified against a hosted URL or a running app.

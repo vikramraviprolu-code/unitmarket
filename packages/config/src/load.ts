@@ -402,6 +402,19 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
       return refuse('equal_secrets', 'UMS_PUBLISHER_PASSCODE_HASH');
   }
 
+  // 17b. the judge passcode hash (JUDGE-A): optional, same shape as the demo hash, never equal to the demo
+  // hash or the publisher hash (three separate hashes are the point). Equality ignores the separator form.
+  // The error names the variable, never the value.
+  const judge_passcode_hash = val(env, 'UMS_JUDGE_PASSCODE_HASH') ?? null;
+  if (judge_passcode_hash !== null) {
+    if (!PASSCODE_HASH_SHAPE.test(judge_passcode_hash))
+      return refuse('invalid_value', 'UMS_JUDGE_PASSCODE_HASH');
+    const same = (other: string | null): boolean =>
+      other !== null && other.replaceAll('$', ':') === judge_passcode_hash.replaceAll('$', ':');
+    if (same(passcode_hash) || same(publisher_passcode_hash))
+      return refuse('equal_secrets', 'UMS_JUDGE_PASSCODE_HASH');
+  }
+
   // 18. the largest offer price in minor units (CFG-0, D-065 item 35): a plain integer 1 to 2000.
   const rawOfferMax = val(env, 'UMS_OFFER_MAX_MINOR');
   let offer_max_minor = OFFER_MAX_MINOR_DEFAULT;
@@ -439,6 +452,7 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
     link_secret: makeSecret(secretValues[2] ?? ''),
     passcode_hash,
     publisher_passcode_hash,
+    judge_passcode_hash,
     offer_max_minor,
     ai_adapter,
     ai_api_key,

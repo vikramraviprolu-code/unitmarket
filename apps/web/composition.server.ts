@@ -1444,6 +1444,9 @@ function buildApp(config: Config, opts: AppOptions): App {
       // PUB-A1: a publisher persona verifies against the publisher hash only; every other persona against
       // the demo hash only. With the publisher hash unset, or an unknown persona, the answer costs one
       // verification against the demo hash and is null, so neither shows in the time.
+      // JUDGE-A: a buyer persona also verifies against the judge hash when it is set. Both checks always
+      // run (no early return), so the demo, the judge and a wrong passcode cost the same. The operator and
+      // the publisher personas never see the judge hash, so a judge passcode cannot open them.
       const publisherSlug = publisherSlugOf(persona);
       const hash =
         publisherSlug === undefined ? config.passcode_hash : config.publisher_passcode_hash;
@@ -1451,7 +1454,13 @@ function buildApp(config: Config, opts: AppOptions): App {
         await verifyPasscode(config.passcode_hash, passcode);
         return null;
       }
-      if (!(await verifyPasscode(hash, passcode))) return null;
+      if (persona === 'buyer-a' || persona === 'buyer-b') {
+        const demoOk = await verifyPasscode(hash, passcode);
+        const judgeOk =
+          config.judge_passcode_hash !== null &&
+          (await verifyPasscode(config.judge_passcode_hash, passcode));
+        if (!demoOk && !judgeOk) return null;
+      } else if (!(await verifyPasscode(hash, passcode))) return null;
       let actor: Actor;
       if (persona === 'buyer-a' || persona === 'buyer-b') {
         actor = { kind: 'buyer', buyer_id: BUYER_IDS[persona] };

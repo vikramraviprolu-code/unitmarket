@@ -26,11 +26,12 @@ printed by `setup.sh`), `TAG` (the reviewed tag). No project number, id, secret 
 `deploy.sh` maps two groups of secrets by name. The required eleven (`SECRET_NAMES` in the script) are `DATABASE_URL`,
 `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `UMS_OUTBOUND_APPROVAL_REF`, `UMS_SESSION_SECRET`,
 `UMS_APPROVAL_SECRET`, `UMS_LINK_SECRET`, `UMS_DEMO_PASSCODE_HASH`, `UMS_OWN_MERCHANT_ID` and `UMS_OPERATOR_TOTP_KEYS`. A missing
-value stops the deploy, as before. The optional four (`OPTIONAL_SECRET_NAMES`) are mapped only when each has an enabled version:
+value stops the deploy, as before. The optional five (`OPTIONAL_SECRET_NAMES`) are mapped only when each has an enabled version:
 
 | Optional secret               | What it switches on                                                      | Without a value                 |
 | ----------------------------- | ------------------------------------------------------------------------ | ------------------------------- |
 | `UMS_PUBLISHER_PASSCODE_HASH` | The publisher sign in, with its own passcode hash                        | The publisher console stays off |
+| `UMS_JUDGE_PASSCODE_HASH`     | A judge passcode that signs in Buyer A and Buyer B only (JUDGE-A)        | No judge passcode exists        |
 | `UMS_OFFER_MAX_MINOR`         | The largest offer price in minor units, an integer 1 to 2000             | The app default, 2000           |
 | `UMS_AI_ADAPTER`              | The value `claude` selects the Claude adapter; `scripted` is the default | The scripted model, no AI call  |
 | `UMS_ANTHROPIC_API_KEY`       | The key the Claude adapter needs                                         | The adapter stays scripted      |
@@ -43,7 +44,7 @@ later is unmapped by the next deploy. `service.yaml` is unchanged: `UMS_PAYPAL_C
 the connection off whatever the optional secrets are.
 
 The script cannot check a value, and the app stops at boot on a bad one: `UMS_OFFER_MAX_MINOR` outside 1 to 2000,
-`UMS_AI_ADAPTER` other than `scripted` or `claude`, a publisher hash that is malformed or equal to the demo hash. Cloud Run
+`UMS_AI_ADAPTER` other than `scripted` or `claude`, a publisher hash that is malformed or equal to the demo hash, a judge hash that is malformed or equal to the demo hash or the publisher hash. Cloud Run
 should keep the previous revision serving when a new revision fails its startup probe (expected, not verified here). Check the
 deploy output and `/signin` after every deploy.
 
@@ -64,13 +65,19 @@ tag contains the lanes that read the names (the publisher console and the Claude
 
    ```
    bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_PUBLISHER_PASSCODE_HASH
+   bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_JUDGE_PASSCODE_HASH
    bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OFFER_MAX_MINOR
    bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_ANTHROPIC_API_KEY
    bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_AI_ADAPTER
    ```
 
-   The adapter value is the word `claude`. The publisher hash is made like the demo hash and must differ from it. Store the key
-   before the adapter name.
+   The adapter value is the word `claude`. The publisher hash and the judge hash are made like the demo hash and must differ from
+   it and from each other (the app refuses to boot otherwise, naming the variable only). Store the key before the adapter name.
+
+   The judge passcode (JUDGE-A) is the one to give to judges on the sandbox service. It signs in Buyer A and Buyer B only. The
+   operator and the three publisher sign-ins refuse it, so a judge cannot open `/ops` or press Stop with it. The demo passcode is
+   unchanged (buyers and the operator), so it stays an owner passcode. The app still needs the demo hash at boot in production, so
+   it cannot be unset: keep the demo passcode out of the Devpost form and give judges the judge passcode only.
 
 3. Run step 6 below again with the same tag (or a new one). The output shows `on:` for each secret that now has a value.
 
@@ -148,7 +155,7 @@ gcloud secrets list --project="$PROJECT_ID" --format='value(name)'
 ```
 
 Expected: at least eleven names, the ten secrets above and `DATABASE_URL`. If you have run `setup.sh` after INFRA-A, the list also
-holds the four optional names and the four `UMS_OFFLINE_` names; those may have no value. This shows names only, never values. `deploy.sh` checks the
+holds the five optional names and the four `UMS_OFFLINE_` names; those may have no value. This shows names only, never values. `deploy.sh` checks the
 same for the eleven required names and stops with the missing names if any has no enabled version. It does not stop for an
 optional name.
 
@@ -218,8 +225,10 @@ connection that is not off.
    affects only the offline service's own in memory data: nothing real, no PayPal, no database, and the sandbox service is not
    touched. Recovery, by a human: start a new revision, for example by deploying a different tag with step 3 (a new revision
    starts with fresh memory and the stop is gone). Whether deploying the same tag again starts a new revision has not been
-   checked. A separate judge passcode that cannot sign in as operator is lane JUDGE-A (`OVERNIGHT-ASSUMPTIONS.md` item 22); it is
-   not built.
+   checked. The judge passcode of lane JUDGE-A (`UMS_JUDGE_PASSCODE_HASH`) fixes this on the sandbox service only. The offline
+   service is unchanged on purpose (decision in `docs/specs/judge-a-passcode.md`): it still maps its four own secrets, and
+   the hash stored as `UMS_OFFLINE_DEMO_PASSCODE_HASH` is the app's demo hash there, so its passcode holder can still open
+   `/ops`. A fifth, optional offline secret that maps to `UMS_JUDGE_PASSCODE_HASH` would close it; see open question 7.
 
 The offline service never changes `UMS_PAYPAL_CONNECT` and holds no approval row, so it is outside the judging window rules of
 the sandbox service. To remove it: `gcloud run services delete unitmarket-offline --region="$REGION" --project="$PROJECT_ID"` (a
@@ -322,3 +331,6 @@ None of that is in this file. After 15 Dec, cancel the project as in Step L of t
 5. Should the offline service also take the publisher passcode and the Claude adapter? INFRA-A leaves both out (scripted model,
    no publisher secret).
 6. Does an extra on demand backup matter before migration 0012? The kit has no command for it.
+7. JUDGE-A leaves the offline service unchanged, so its passcode holder can still open `/ops` there (in memory data only). Do you
+   want a follow up lane that adds an optional fifth offline secret mapped to `UMS_JUDGE_PASSCODE_HASH`, with the stored demo hash
+   kept private? It widens the guard rules `offline-secret` and `secret-names`.
