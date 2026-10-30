@@ -3,10 +3,13 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { REPO_ROOT } from './test-helpers';
 
 const S1 = 'Qm7vK2pLx9RbT4zWc8NdYh3JfG6sAe1U';
+// A folder of its own as the working directory: the config guard reads .env.local from there, never the repo's.
+const CWD = mkdtempSync(join(tmpdir(), 'sbx-cli-cwd-'));
+afterAll(() => rmSync(CWD, { recursive: true, force: true }));
 const runWith = (extraEnv: Record<string, string>, ...args: string[]) => {
   const r = spawnSync(
     process.execPath,
@@ -17,7 +20,7 @@ const runWith = (extraEnv: Record<string, string>, ...args: string[]) => {
       ...args,
     ],
     {
-      cwd: REPO_ROOT,
+      cwd: CWD,
       encoding: 'utf8',
       input: '',
       env: {
