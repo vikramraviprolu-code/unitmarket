@@ -7,7 +7,7 @@ import { WindowMeter } from '../../../ui/WindowMeter';
 import { OpenButton } from '../OpenButton';
 import { Refresher } from '../../../ui/Refresher';
 import { optionLabel, formatDateTime } from '../../../lib/format';
-import { moneyStateText } from '../../../lib/buyer-copy';
+import { NOT_PAID_YET, hasReceipt, moneyStateText } from '../../../lib/buyer-copy';
 import { READER_LINK_TEXT } from '../../../lib/reader-copy';
 
 export const metadata: Metadata = { title: 'Library item' };
@@ -48,7 +48,7 @@ export default async function LibraryItem({
         <dt>Window ends</dt>
         <dd>{item.window.ends_at ? formatDateTime(item.window.ends_at) : 'Not set'}</dd>
         <dt>Payment</dt>
-        <dd>{moneyStateText(item.money)}</dd>
+        <dd>{moneyStateText(item.money, item.status_text === NOT_PAID_YET)}</dd>
       </dl>
       <div className="actions">
         {item.can_open ? (
@@ -66,7 +66,7 @@ export default async function LibraryItem({
             {READER_LINK_TEXT}
           </Link>
         ) : null}
-        {item.order_id ? (
+        {hasReceipt(item) && item.order_id ? (
           <Link className="btn" href={`/receipts/${encodeURIComponent(item.order_id)}`}>
             View receipt
           </Link>

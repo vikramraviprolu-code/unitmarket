@@ -16,6 +16,7 @@ function lines(): string[] {
     `labels: ${copy.LABEL_ACCOUNT} | ${copy.LABEL_VERIFIED} | ${copy.LABEL_VERIFIED_BY} | ${copy.LABEL_SETTLEMENT}`,
   );
   out.push(`verified by: ${copy.VERIFIED_BY}`);
+  out.push(`marked checked: ${copy.MARKED_CHECKED}`);
   out.push(`account none: ${copy.accountText(null)}`);
   out.push(`account set: ${copy.accountText('AB12')}`);
   out.push(`verified none: ${copy.verifiedAtText(null)}`);
@@ -53,6 +54,7 @@ function lines(): string[] {
     out.push(`request error ${c}: ${copy.requestErrorText(c)}`);
   out.push(`ops heading: ${copy.OPS_HEADING}`);
   out.push(`ops lede: ${copy.OPS_LEDE}`);
+  out.push(`ops mfa: ${copy.OPS_MFA_HEADING} | ${copy.OPS_MFA_BODY} | ${copy.OPS_MFA_LINK}`);
   out.push(`ops empty: ${copy.OPS_EMPTY}`);
   out.push(
     `ops columns: ${copy.OPS_COL_PUBLISHER} | ${copy.OPS_COL_REQUESTED} | ${copy.OPS_COL_AGE}`,

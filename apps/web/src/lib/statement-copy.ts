@@ -4,6 +4,7 @@
 // Wording rules: D-051, no italics, no dashes. The environment word is never typed on a page: it is
 // taken from the stored environment by environmentWord.
 import type { EnvironmentLabel } from '@umsbx/contracts';
+import { formatMinor } from './format';
 
 export const NAV_SALES = 'Sales';
 export const NAV_STATEMENT = 'Statement';
@@ -25,6 +26,41 @@ export const SALES_COLUMNS = {
   status: 'Status',
 } as const;
 export const FEE_NOT_REPORTED = 'Not reported';
+
+/** GATE35 D5: a dry run reports no fee, so a stored value in a dry run is never shown as one. */
+export function feeText(
+  fee: number | null,
+  currency: string,
+  environment: EnvironmentLabel,
+): string {
+  return fee === null || environment === 'dryrun' ? FEE_NOT_REPORTED : formatMinor(fee, currency);
+}
+
+/** In a dry run nothing reported a fee, so fee ledger lines are left out of the lines table too. */
+export function visibleLines<T extends { kind: string }>(
+  lines: readonly T[],
+  environment: EnvironmentLabel,
+): T[] {
+  return lines.filter((l) => !(environment === 'dryrun' && l.kind === 'paypal_fee'));
+}
+
+// GATE35 D6: a unit counts as a sale only once it has been paid. Awaiting payment, pending at PayPal and
+// declined units are not sales; the statement (ledger sale rows) does not count them either.
+const NOT_A_SALE: readonly string[] = ['expected', 'pending', 'declined'];
+export const isCountedSale = (status: string): boolean => !NOT_A_SALE.includes(status);
+
+export function splitSales<T extends { status: string }>(
+  rows: readonly T[],
+): { counted: T[]; notCounted: T[] } {
+  return {
+    counted: rows.filter((r) => isCountedSale(r.status)),
+    notCounted: rows.filter((r) => !isCountedSale(r.status)),
+  };
+}
+
+export const notCountedText = (n: number): string =>
+  `Awaiting payment, not counted: ${String(n)} ${n === 1 ? 'unit' : 'units'}.`;
+
 export const SALES_SOURCE_NOTE =
   'Source: the stored order units. The PayPal fee is shown only when PayPal reported it.';
 export const SALES_ORDER_NOTE = 'Order shows the last 6 characters of the order reference.';

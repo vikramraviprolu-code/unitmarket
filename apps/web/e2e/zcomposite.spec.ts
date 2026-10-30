@@ -1,7 +1,7 @@
 // DP-5 (MVP-D) e2e, offline on the dry run, keyboard only: a buyer picks two items from two
 // publishers, approves once in UnitMarket, then once per publisher at the pretend PayPal with
 // "Step 2 of 2" between, and sees one line per item. The partial journey declines the Harbour
-// payment. Screenshots go to e2e/shots.
+// payment. Screenshots go to test-results/shots (ignored by git).
 //
 // File name and order: this spec is named so that it runs after refund.spec.ts and before
 // zz-ops-stop.spec.ts. Both journeys use buyer B and the Harbour articles harbour-fees and
@@ -12,7 +12,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { buyerPage, expectDryRun } from './support';
 
-const SHOTS = new URL('./shots/', import.meta.url).pathname;
+const SHOTS = new URL('../test-results/shots/', import.meta.url).pathname;
 mkdirSync(SHOTS, { recursive: true });
 const shot = async (page: Page, name: string): Promise<void> => {
   await page.screenshot({ path: `${SHOTS}${name}.png`, fullPage: true });

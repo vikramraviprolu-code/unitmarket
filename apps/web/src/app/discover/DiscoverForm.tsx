@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AccessOption, FitCard as FitCardData, Money, Rights } from '@umsbx/contracts';
 import { postJson, remember } from '../../lib/client-api';
+import { discoverSignInHref, shouldAutoSearch } from '../../lib/next-path';
 import { FitCard } from '../../ui/FitCard';
 import { Hero } from '../../ui/Hero';
 import { StatusBanner } from '../../ui/StatusBanner';
@@ -57,8 +58,16 @@ export function DiscoverForm({
     if (result !== null) headingRef.current?.focus();
   }, [result]);
 
-  async function find(e: React.FormEvent) {
-    e.preventDefault();
+  // GATE35 D8: a need that arrives in the URL (the home search, or the way back from sign in) is run once.
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoRan.current || !shouldAutoSearch(initialNeed, signedIn)) return;
+    autoRan.current = true;
+    void find();
+  }, []);
+
+  async function find(e?: React.FormEvent) {
+    e?.preventDefault();
     setBusy(true);
     setError(null);
     setResult(null);
@@ -159,7 +168,7 @@ export function DiscoverForm({
       </Hero>
       {!signedIn ? (
         <StatusBanner tone="info" title="Sign in first">
-          <a href="/signin?next=/discover">Sign in</a> to describe your need.
+          <a href={discoverSignInHref(need)}>Sign in</a> to describe your need.
         </StatusBanner>
       ) : null}
       <div aria-live="polite">

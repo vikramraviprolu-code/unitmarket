@@ -129,7 +129,8 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/operator/i);
     expect(t).toMatch(/each unit/i);
     expect(t).toMatch(/full refund of one publisher's part of your order ends access/i);
-    expect(t).toMatch(/open a help case/i);
+    expect(t).toMatch(/no refund request form yet/i);
+    expect(t).not.toMatch(/open a help case from your order/i);
     expect(t).toMatch(/partial refund does not/i);
     expect(t).toMatch(/test money/i);
   });

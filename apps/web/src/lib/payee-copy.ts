@@ -8,9 +8,16 @@ export const PAYEE_LEDE =
   'This page shows the account your sales are paid into. You cannot change it yourself. You can ask for a change, and an operator checks it before anything happens.';
 export const LABEL_ACCOUNT = 'Account';
 export const LABEL_VERIFIED = 'Verified';
-export const LABEL_VERIFIED_BY = 'Verified by';
+export const LABEL_VERIFIED_BY = 'How it was checked';
 export const LABEL_SETTLEMENT = 'Settlement';
-export const VERIFIED_BY = 'Operator check, not PayPal onboarding.';
+export const VERIFIED_BY = 'An operator checked it. Not PayPal onboarding.';
+// GATE35 D5: the legal pages say payee details are marked as checked when the demo data is loaded.
+export const MARKED_CHECKED =
+  'Marked as checked when the demo data was loaded. Not PayPal onboarding.';
+
+/** An operator's decision on a request is an operator check; otherwise the account was marked at load. */
+export const verifiedByText = (operatorDecided: boolean): string =>
+  operatorDecided ? VERIFIED_BY : MARKED_CHECKED;
 
 /** Only the last 4 characters of the account id are ever shown. */
 export const accountText = (last4: string | null): string =>
@@ -80,6 +87,10 @@ export function requestErrorText(code: string): string {
 export const OPS_HEADING = 'Payee requests';
 export const OPS_LEDE =
   'Verify a request only after you have confirmed the new merchant id with the publisher. Type the whole id again to confirm it.';
+export const OPS_MFA_HEADING = 'Operator actions need the authenticator code';
+export const OPS_MFA_BODY =
+  'Sign in again as an operator and enter the code from your authenticator app to see this queue. In the offline demo from the README there is no code, so this queue is not available.';
+export const OPS_MFA_LINK = 'Sign in with the code';
 export const OPS_EMPTY = 'No open requests.';
 export const OPS_COL_PUBLISHER = 'Publisher';
 export const OPS_COL_REQUESTED = 'Requested account';

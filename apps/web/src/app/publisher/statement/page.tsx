@@ -9,7 +9,6 @@ import { formatDateTime, formatMinor } from '../../../lib/format';
 import {
   COMMISSION_HEADING,
   ENTRY_TEXT,
-  FEE_NOT_REPORTED,
   LINES_COLUMNS,
   LINES_HEADING,
   LINE_LABEL,
@@ -22,7 +21,9 @@ import {
   STATEMENT_HEADING,
   STATEMENT_LEDE,
   blockHeading,
+  feeText,
   salesAnchor,
+  visibleLines,
 } from '../../../lib/statement-copy';
 
 export const metadata: Metadata = { title: 'Statement' };
@@ -86,9 +87,7 @@ export default async function PublisherStatement() {
               </dd>
               <dt>{LINE_LABEL.fee}</dt>
               <dd>
-                {b.paypal_fee_minor === null
-                  ? FEE_NOT_REPORTED
-                  : formatMinor(b.paypal_fee_minor, b.currency)}
+                {feeText(b.paypal_fee_minor, b.currency, b.environment)}
                 <span className="muted"> {LINE_SOURCE.fee}</span>
               </dd>
               <dt>{LINE_LABEL.net}</dt>
@@ -110,7 +109,7 @@ export default async function PublisherStatement() {
                   </tr>
                 </thead>
                 <tbody>
-                  {b.lines.map((l, i) => (
+                  {visibleLines(b.lines, b.environment).map((l, i) => (
                     <tr key={`${l.order_ref6}-${l.kind}-${String(i)}`}>
                       <td>{formatDateTime(l.at)}</td>
                       <td className="mono">

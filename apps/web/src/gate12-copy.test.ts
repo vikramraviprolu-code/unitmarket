@@ -43,7 +43,7 @@ describe('D12: plain words on the item page', () => {
 
   it('the item page shows the words, not the raw state, under the label Payment', () => {
     const page = read('./app/library/[entitlement]/page.tsx');
-    expect(page).toContain('moneyStateText(item.money)');
+    expect(page).toMatch(/moneyStateText\(item\.money(, [^)]*)?\)/);
     expect(page).not.toContain('{item.money}');
     expect(page).not.toContain('Payment state');
   });

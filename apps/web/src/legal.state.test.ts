@@ -113,7 +113,7 @@ describe('the sign-in privacy notice (LEGAL-A, PRIV-6)', () => {
 
   it('has the sentence above the form, the last three words linking to /legal/privacy', () => {
     expect(SIGNIN_PRIVACY_SENTENCE).toBe(
-      'We use a session cookie and a hashed network address to keep this demo safe. Read the privacy notice.',
+      'We use a session cookie, an appearance cookie that holds only your skin name, and a hashed network address. Read the privacy notice.',
     );
     expect(`${SIGNIN_PRIVACY_LEAD}${SIGNIN_PRIVACY_LINK}${SIGNIN_PRIVACY_END}`).toBe(
       SIGNIN_PRIVACY_SENTENCE,

@@ -87,7 +87,9 @@ export function splitFitRows(dimensions: readonly FitDimension[]): {
 }
 
 /** The stored money state of one item in plain words (gate 12 D12). The words match the order page lines. */
-export function moneyStateText(money: string): string {
+export function moneyStateText(money: string, unpaid = false): string {
+  // GATE35 D2: an order the buyer never approved is "Not paid yet", the library's words, not a payment pending at PayPal.
+  if (unpaid) return NOT_PAID_SHORT;
   switch (money) {
     case 'pending':
       return LINE_TEXT.pending;
@@ -106,7 +108,16 @@ export function moneyStateText(money: string): string {
 
 // FIX-FLOW D4: an order the buyer left at the pay page. It says what is true (no payment received) and
 // never "Confirming payment", which is for a payment that PayPal has approved or captured.
-export const NOT_PAID_YET = 'Not paid yet. We have not received a payment for this order.';
+export const NOT_PAID_SHORT = 'Not paid yet';
+export const NOT_PAID_YET = `${NOT_PAID_SHORT}. We have not received a payment for this order.`;
+
+/** GATE35 D2: a receipt link is offered only when a receipt version exists, so it never leads to a 404. */
+export function hasReceipt(item: {
+  order_id: string | null;
+  receipt_versions: readonly number[];
+}): boolean {
+  return item.order_id !== null && item.receipt_versions.length > 0;
+}
 
 // FIX-FLOW D5: a search whose only matches are articles the buyer already holds, or has an open unpaid
 // order for, is not "nothing fits". The discovery answer carries the reasons; the form says this.

@@ -6,6 +6,7 @@ import { DiscoverForm } from './DiscoverForm';
 import { StatusBanner } from '../../ui/StatusBanner';
 import { formatMinor } from '../../lib/format';
 import { browseEntries } from '../../lib/buyer-copy';
+import { discoverForNonBuyer } from '../../lib/nav';
 
 export const metadata: Metadata = { title: 'Find articles' };
 
@@ -19,6 +20,19 @@ export default async function Discover({
   const initialNeed = (Array.isArray(raw) ? raw[0] : raw)?.slice(0, 2000) ?? '';
   const a = await app();
   const actor = await currentActor();
+  // GATE35 D7: a publisher or operator is not asked to "Sign in first": they are told this is a buyer screen.
+  if (actor?.kind === 'publisher' || actor?.kind === 'operator') {
+    const other = discoverForNonBuyer(actor.kind);
+    return (
+      <>
+        <h1>Find articles</h1>
+        <StatusBanner tone="info" title="This page is for buyers">
+          <span data-testid="discover-non-buyer">{other.line}</span>{' '}
+          <Link href={other.href}>{other.label}</Link>
+        </StatusBanner>
+      </>
+    );
+  }
   const ai = await a.engine.aiEnabled();
   if (!ai) {
     // READINESS: ai_enabled off means catalogue-only. No agent, no model.

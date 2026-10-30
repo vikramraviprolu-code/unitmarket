@@ -1,0 +1,11 @@
+/* GATE35 D10: a hint that a wide table scrolls sideways. Shown only where a table can overflow; kept out
+   of globals.css, which the skin lanes own. */
+.table-hint {
+  display: none;
+  margin: 0 0 4px;
+}
+@media (max-width: 720px) {
+  .table-hint {
+    display: block;
+  }
+}

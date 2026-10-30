@@ -20,6 +20,7 @@ import {
   isCountedSale,
   notCountedText,
   splitSales,
+  visibleLines,
 } from './lib/statement-copy';
 import { discoverForNonBuyer } from './lib/nav';
 import { discoverSignInHref, safeNext, shouldAutoSearch } from './lib/next-path';
@@ -67,7 +68,7 @@ describe('D4b: an operator without the authenticator code', () => {
     expect(`${OPS_MFA_HEADING} ${OPS_MFA_BODY}`).not.toMatch(NO_DASH);
     const page = strip(read('./app/ops/payee-requests/page.tsx'));
     expect(page).toContain('OPS_MFA_HEADING');
-    expect(page).toMatch(/actor\.kind === 'operator' && !actor\.mfa/);
+    expect(page).toMatch(/actor\?\.kind === 'operator' && !actor\.mfa/);
   });
 });
 
@@ -87,6 +88,12 @@ describe('D5: payee wording, fee lines and the skin cookie', () => {
     expect(feeText(45, 'USD', 'sandbox')).toMatch(/0\.45/);
     for (const p of ['./app/publisher/sales/page.tsx', './app/publisher/statement/page.tsx'])
       expect(strip(read(p))).toContain('feeText(');
+  });
+  it('a dry run statement leaves fee ledger lines out of the lines table', () => {
+    const lines = [{ kind: 'sale' }, { kind: 'paypal_fee' }];
+    expect(visibleLines(lines, 'dryrun')).toEqual([{ kind: 'sale' }]);
+    expect(visibleLines(lines, 'sandbox')).toHaveLength(2);
+    expect(strip(read('./app/publisher/statement/page.tsx'))).toContain('visibleLines(');
   });
   it('the privacy notice and the sign-in note name the um_skin cookie and what it holds', () => {
     const priv = PRIVACY_DOC.sections.flatMap((s) => s.paragraphs).join(' ');
@@ -141,7 +148,9 @@ describe('D8: the typed need survives sign in and runs', () => {
     const href = discoverSignInHref("tide tables, under $1 (it's 5!)");
     const next = new URL(href, 'http://x').searchParams.get('next')!;
     expect(safeNext(next)).toBe(next);
-    expect(new URL(next, 'http://x').searchParams.get('need')).toBe("tide tables, under $1 (it's 5!)");
+    expect(new URL(next, 'http://x').searchParams.get('need')).toBe(
+      "tide tables, under $1 (it's 5!)",
+    );
   });
   it('a hostile next is still refused', () => {
     expect(safeNext('//evil.example')).toBe('/');
