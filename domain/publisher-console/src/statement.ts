@@ -31,6 +31,8 @@ export interface StatementBlock {
   sales_minor: number;
   refunds_minor: number;
   reversals_minor: number;
+  /** The number of units with a ledger sale row (the paid units of the sales page totals row). */
+  units_sold: number;
   /** Sales minus refunds minus reversals, as publisherBalances computes it. Fees are not subtracted. */
   net_minor: number;
   /** The sum of the stored PayPal fee rows; null when there are none. */
@@ -134,6 +136,8 @@ export function buildStatement(
       sales_minor: bal.sold_minor,
       refunds_minor: bal.refunded_minor,
       reversals_minor: bal.reversed_minor,
+      units_sold: new Set(g.rows.filter((r) => r.entry.kind === 'sale').map((r) => r.entry.unit_id))
+        .size,
       net_minor: bal.net_minor,
       paypal_fee_minor:
         fees.length === 0 ? null : fees.reduce((t, r) => t + r.entry.amount.minor, 0),

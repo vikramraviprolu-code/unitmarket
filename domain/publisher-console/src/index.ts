@@ -23,6 +23,8 @@ export {
   settlementMode,
 } from './settlement';
 export type { BlockFacts, Settlement, SettlementFacts, SettlementMode } from './settlement';
+export { salesTotals } from './totals';
+export type { SalesTotal } from './totals';
 export { publisherExposure } from './exposure';
 export type {
   ExposureBlock,

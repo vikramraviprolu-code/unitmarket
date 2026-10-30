@@ -35,6 +35,12 @@ function lines(): string[] {
   out.push(`sales fee none: ${copy.FEE_NOT_REPORTED}`);
   out.push(`sales source: ${copy.SALES_SOURCE_NOTE}`);
   out.push(`sales order note: ${copy.SALES_ORDER_NOTE}`);
+  const t = copy.TOTALS_COLUMNS;
+  out.push(`totals heading: ${copy.TOTALS_HEADING}`);
+  out.push(
+    `totals columns: ${[t.group, t.units, t.gross, t.refunds, t.reversals, t.net, t.fee].join(' | ')}`,
+  );
+  out.push(`totals note: ${copy.TOTALS_NOTE}`);
   for (const n of [0, 1, 2, 7]) out.push(`sales count ${String(n)}: ${copy.salesCountText(n)}`);
   out.push(`statement heading: ${copy.STATEMENT_HEADING}`);
   out.push(`statement lede: ${copy.STATEMENT_LEDE}`);

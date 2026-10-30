@@ -7,6 +7,9 @@ sales columns: Date | Order | Article | Access | Amount | PayPal fee | Status
 sales fee none: Not reported
 sales source: Source: the stored order units. The PayPal fee is shown only when PayPal reported it.
 sales order note: Order shows the last 6 characters of the order reference.
+totals heading: Totals
+totals columns: Currency | Paid units | Gross | Refunds | Reversals | Net | PayPal fee
+totals note: Totals are the statement figures, added up from the same ledger rows. The PayPal fee is shown beside the net and is not subtracted.
 sales count 0: No sales yet.
 sales count 1: 1 sale is listed.
 sales count 2: 2 sales are listed.

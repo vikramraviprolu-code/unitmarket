@@ -186,8 +186,10 @@ export {
   PAYEE_DIRECT_SENTENCE,
   SETTLEMENT_SENTENCE,
   UNIT_STATUS_TEXT,
+  salesTotals,
   settlementMode,
 } from '@umsbx/publisher-console';
+export type { SalesTotal } from '@umsbx/publisher-console';
 import {
   DEFAULT_RATES,
   SESSION_COOKIE,
