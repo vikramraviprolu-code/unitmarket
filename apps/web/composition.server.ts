@@ -123,6 +123,8 @@ import type { OpsGate } from './src/lib/gate-lines';
 import { toBuyerReceipt } from './src/lib/receipt-view';
 import type { ArticleFacts, BuyerReceipt } from './src/lib/receipt-view';
 import { LINE_TEXT, lineKind, packBanner, windowMinutes } from './src/lib/composite-copy';
+import { publisherSlugOf } from './src/lib/publisher-copy';
+import type { PublisherStatus } from './src/lib/publisher-copy';
 import type { LineKind } from './src/lib/composite-copy';
 import {
   buyerRefundNote,
@@ -171,7 +173,15 @@ export interface AppOptions {
 /** The one publisher of MVP-B (ASM-03): its payee is the owner's own sandbox account (BU-7). */
 const MVPB_PUBLISHER_SLUG = 'harbour-ledger';
 
-export const PERSONAS = ['buyer-a', 'buyer-b', 'publisher', 'operator'] as const;
+// PUB-A1: one sign-in persona per publisher; the slug each maps to is in lib/publisher-copy.ts.
+export const PERSONAS = [
+  'buyer-a',
+  'buyer-b',
+  'publisher-harbour-ledger',
+  'publisher-quayside-gazette',
+  'publisher-northfield-quarterly',
+  'operator',
+] as const;
 export type Persona = (typeof PERSONAS)[number];
 const BUYER_IDS: Record<'buyer-a' | 'buyer-b', Id> = {
   'buyer-a': 'buy_persona_a',
@@ -430,6 +440,14 @@ export interface App {
   close(): Promise<void>;
 }
 
+/** What a publisher sees on /publisher (PUB-A1). The payee is the last 4 characters and the verification time. */
+export interface PublisherHome {
+  display_name: string;
+  status: PublisherStatus;
+  offers_live: number;
+  payee: { last4: string | null; verified_at: string | null };
+}
+
 export interface Engine {
   personas(): readonly Persona[];
   /**
@@ -444,6 +462,12 @@ export interface Engine {
     code?: string | undefined;
   }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
   actorFromCookie(cookie: string | null): Promise<Actor | null>;
+  /**
+   * PUB-A1: the read only home of the publisher behind this session: name, status, live offers and the
+   * payee state (last 4 only). Every query filters by `actor.publisher_id`. Null for any other actor kind
+   * and for a publisher id that names no row.
+   */
+  publisherHome(actor: Actor): Promise<PublisherHome | null>;
   /**
    * The id of the live session behind a cookie header, for the actor that session belongs to.
    * Links are bound to it (delivery lane): a link issued in one session is not found in another.
@@ -1111,12 +1135,17 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     async signIn({ persona, passcode, operator, code }) {
       if (config.passcode_hash === null) return null;
-      if (!(PERSONAS as readonly string[]).includes(persona)) {
-        // Same cost for an unknown persona, so the answer does not reveal the persona list.
+      // PUB-A1: a publisher persona verifies against the publisher hash only; every other persona against
+      // the demo hash only. With the publisher hash unset, or an unknown persona, the answer costs one
+      // verification against the demo hash and is null, so neither shows in the time.
+      const publisherSlug = publisherSlugOf(persona);
+      const hash =
+        publisherSlug === undefined ? config.passcode_hash : config.publisher_passcode_hash;
+      if (!(PERSONAS as readonly string[]).includes(persona) || hash === null) {
         await verifyPasscode(config.passcode_hash, passcode);
         return null;
       }
-      if (!(await verifyPasscode(config.passcode_hash, passcode))) return null;
+      if (!(await verifyPasscode(hash, passcode))) return null;
       let actor: Actor;
       if (persona === 'buyer-a' || persona === 'buyer-b') {
         actor = { kind: 'buyer', buyer_id: BUYER_IDS[persona] };
@@ -1129,7 +1158,9 @@ function buildApp(config: Config, opts: AppOptions): App {
         if (!r.ok) return null;
         actor = { kind: 'operator', operator_id: r.operator_id, mfa: r.mfa };
       } else {
-        const p = await db.query<{ id: string }>('SELECT id FROM publishers ORDER BY slug LIMIT 1');
+        const p = await db.query<{ id: string }>('SELECT id FROM publishers WHERE slug = $1', [
+          publisherSlug ?? '',
+        ]);
         const id = p.rows[0]?.id;
         if (id === undefined) return null;
         actor = { kind: 'publisher', publisher_id: id };
@@ -1139,6 +1170,43 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
 
     actorFromCookie: (cookie) => resolveSession(security, cookie),
+
+    // PUB-A1: the publisher home. Every query below filters by the actor's publisher id.
+    async publisherHome(actor) {
+      if (actor.kind !== 'publisher') return null;
+      const p = await db.query<{
+        display_name: string;
+        status: PublisherStatus;
+        paypal_merchant_id: string | null;
+        payee_verified_at: Date | string | null;
+      }>(
+        'SELECT display_name, status, paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
+        [actor.publisher_id],
+      );
+      const row = p.rows[0];
+      if (row === undefined) return null;
+      // Live: authorised, the newest version of its offer, not superseded and inside its validity dates.
+      const now = clock.now().toISOString();
+      const live = await db.query<{ n: string | number }>(
+        `SELECT count(*) AS n FROM offers o
+          WHERE o.publisher_id = $1 AND o.status = 'authorised' AND o.superseded_by IS NULL
+            AND o.valid_from <= $2 AND (o.valid_until IS NULL OR o.valid_until > $2)
+            AND EXISTS (SELECT 1 FROM publisher_authorisations pa
+                         WHERE pa.offer_id = o.id AND pa.offer_version = o.version)
+            AND NOT EXISTS (SELECT 1 FROM offers n WHERE n.id = o.id AND n.publisher_id = $1
+                             AND (n.created_at, n.version) > (o.created_at, o.version))`,
+        [actor.publisher_id, now],
+      );
+      return {
+        display_name: row.display_name,
+        status: row.status,
+        offers_live: Number(live.rows[0]?.n ?? 0),
+        payee: {
+          last4: row.paypal_merchant_id === null ? null : row.paypal_merchant_id.slice(-4),
+          verified_at: row.payee_verified_at === null ? null : iso(row.payee_verified_at),
+        },
+      };
+    },
 
     async sessionIdOf(cookie, actor) {
       // resolveSession checks the signature, expiry and revocation; only then is the id read.

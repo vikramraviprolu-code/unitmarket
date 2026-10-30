@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import type { AccessOption, FitCard as FitCardData, Money } from '@umsbx/contracts';
+import type { AccessOption, FitCard as FitCardData, Money, Rights } from '@umsbx/contracts';
 import { postJson, remember } from '../../lib/client-api';
 import { FitCard } from '../../ui/FitCard';
 import { StatusBanner } from '../../ui/StatusBanner';
@@ -20,7 +20,15 @@ type Result =
   | { kind: 'proposal'; proposal_id: string; items: Item[] }
   | { kind: 'no_match'; reasons: string[] };
 
-export function DiscoverForm({ signedIn, browse }: { signedIn: boolean; browse: BrowseEntry[] }) {
+export function DiscoverForm({
+  signedIn,
+  browse,
+  rights,
+}: {
+  signedIn: boolean;
+  browse: BrowseEntry[];
+  rights: Rights[];
+}) {
   const [need, setNeed] = useState('');
   const [result, setResult] = useState<Result | null>(null);
   const [terms, setTerms] = useState(false);
@@ -167,6 +175,7 @@ export function DiscoverForm({ signedIn, browse }: { signedIn: boolean; browse: 
               label="I accept the terms of purchase for the article I choose."
               checked={terms}
               onChange={setTerms}
+              rights={rights}
             />
             <div className="grid-2">
               {result.items.map((it) => (

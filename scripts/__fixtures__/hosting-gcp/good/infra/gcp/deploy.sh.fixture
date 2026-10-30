@@ -11,6 +11,11 @@
 # service.yaml. UMS_PAYPAL_CONNECT is off in that file, so a deploy always leaves the connection off.
 # The image is tagged TAG-COMMIT (the first 12 characters of the commit id), so a moved git tag builds a new
 # image and never reuses an old one.
+#
+# Optional secrets (INFRA-A): UMS_PUBLISHER_PASSCODE_HASH, UMS_OFFER_MAX_MINOR, UMS_AI_ADAPTER and
+# UMS_ANTHROPIC_API_KEY are mapped only when they have an enabled version. A secret with no value leaves
+# its feature off and never stops the deploy. The adapter name is left out when the API key has no value,
+# because the app refuses to start on the Claude adapter without a key. This script reads no value.
 set -euo pipefail
 
 die() {
@@ -39,6 +44,14 @@ SQL_INSTANCE="unitmarket-sbx-pg"
 RUNTIME_SA="ums-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
 CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
 SECRET_NAMES="DATABASE_URL PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID UMS_OUTBOUND_APPROVAL_REF UMS_SESSION_SECRET UMS_APPROVAL_SECRET UMS_LINK_SECRET UMS_DEMO_PASSCODE_HASH UMS_OWN_MERCHANT_ID UMS_OPERATOR_TOTP_KEYS"
+OPTIONAL_SECRET_NAMES="UMS_PUBLISHER_PASSCODE_HASH UMS_OFFER_MAX_MINOR UMS_AI_ADAPTER UMS_ANTHROPIC_API_KEY"
+
+# 0 when the named secret has an enabled version. A missing secret or a failed lookup counts as no value.
+has_secret_value() {
+  local found
+  found="$(gcloud secrets versions list "$1" --filter='state=ENABLED' --limit=1 --format='value(name)' --project="$PROJECT_ID" 2>/dev/null || true)"
+  [ -n "$found" ]
+}
 
 echo "== the checkout must be exactly the reviewed tag $TAG"
 cd "$REPO_ROOT"
@@ -60,6 +73,21 @@ for NAME in $SECRET_NAMES; do
   [ -n "$HAS_VERSION" ] || MISSING="${MISSING} ${NAME}"
 done
 [ -z "$MISSING" ] || die "no value yet for:${MISSING}. Run setup.sh and set-secret.sh first"
+
+echo "== optional secrets (no value means the feature stays off)"
+OPTIONAL_ON=""
+for NAME in $OPTIONAL_SECRET_NAMES; do
+  if has_secret_value "$NAME"; then
+    OPTIONAL_ON="${OPTIONAL_ON} ${NAME}"
+    echo "on: ${NAME}"
+  else
+    echo "off: ${NAME} has no value"
+  fi
+done
+if [[ " ${OPTIONAL_ON} " == *" UMS_AI_ADAPTER "* && " ${OPTIONAL_ON} " != *" UMS_ANTHROPIC_API_KEY "* ]]; then
+  OPTIONAL_ON="${OPTIONAL_ON/ UMS_AI_ADAPTER/}"
+  echo "off: UMS_AI_ADAPTER is left out because UMS_ANTHROPIC_API_KEY has no value"
+fi
 
 echo "== the database instance must be running"
 SQL_STATE="$(gcloud sql instances describe "$SQL_INSTANCE" --format='value(state)' --project="$PROJECT_ID" 2>/dev/null || true)"
@@ -84,6 +112,9 @@ fi
 SECRET_FLAGS=""
 for NAME in $SECRET_NAMES; do
   SECRET_FLAGS="${SECRET_FLAGS:+${SECRET_FLAGS},}${NAME}=${NAME}:latest"
+done
+for NAME in $OPTIONAL_ON; do
+  SECRET_FLAGS="${SECRET_FLAGS},${NAME}=${NAME}:latest"
 done
 
 echo "== deploy $SERVICE (one instance, CPU always allocated, public ingress)"

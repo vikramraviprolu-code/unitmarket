@@ -171,17 +171,17 @@ main:focus {
 }
 .site-header .inner,
 main,
+.site-footer {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 var(--space);
+}
 .order-ref {
   white-space: nowrap;
   overflow-wrap: normal;
 }
 .table-scroll {
   overflow-x: auto;
-}
-.site-footer {
-  max-width: 880px;
-  margin: 0 auto;
-  padding: 0 var(--space);
 }
 .site-header .inner {
   display: flex;

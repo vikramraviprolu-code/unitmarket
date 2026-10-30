@@ -3,6 +3,8 @@
 // (unix socket), prints the switches and no URL, and sees an approval row written over another
 // connection (the row `safety:approve` writes through runApprove). Runs only when UMS_TEST_PG_BIN is set.
 import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openDatabase } from '../packages/db/src/index';
@@ -10,6 +12,8 @@ import { pgBinConfigured, startTestPostgres } from '../packages/db/src/pg-testin
 import type { TestDatabase, TestPostgres } from '../packages/db/src/pg-testing';
 import { REPO_ROOT } from './test-helpers';
 
+// A folder of its own as the working directory: the config guard reads .env.local from there, never the repo's.
+const CWD = mkdtempSync(join(tmpdir(), 'sbx-cli-pg-cwd-'));
 const REF = 'DL-2026-10-27-cli-pg2';
 const runCli = (env: Record<string, string>, ...args: string[]) =>
   new Promise<{ status: number | null; out: string }>((resolve) => {
@@ -22,7 +26,7 @@ const runCli = (env: Record<string, string>, ...args: string[]) =>
         ...args,
       ],
       {
-        cwd: REPO_ROOT,
+        cwd: CWD,
         env: {
           UMS_SESSION_SECRET: 'Qm7vK2pLx9RbT4zWc8NdYh3JfG6sAe1U',
           UMS_APPROVAL_SECRET: ['Zr5tB8nKd2Vw', 'Xq7LmC4yHj9PgF3sEa6U'].join(''),
@@ -46,6 +50,7 @@ describe.skipIf(!pgBinConfigured())('PG-2 safety CLI on UMS_DB=postgres', () => 
     database = await server.createDatabase('ums_cli');
   }, 120_000);
   afterAll(async () => {
+    rmSync(CWD, { recursive: true, force: true });
     await server?.stop();
   });
 

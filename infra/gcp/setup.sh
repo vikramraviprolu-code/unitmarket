@@ -12,6 +12,8 @@
 # accessor on the listed secrets and Cloud SQL client, nothing else), one Cloud SQL for PostgreSQL 16
 # instance (backups, point in time recovery, deletion protection, no authorized networks, connector
 # enforcement, a storage limit), one database, one database user, and the empty secret containers.
+# INFRA-A adds the empty containers of the four optional secrets (readable by the runtime account) and
+# the second service's runtime account, ums-offline, with four own empty containers it alone can read.
 set -euo pipefail
 
 die() {
@@ -39,6 +41,12 @@ RUNTIME_SA_NAME="ums-runtime"
 RUNTIME_SA="${RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 # DATABASE_URL is made below. The rest get their value from set-secret.sh.
 SECRET_NAMES="DATABASE_URL PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID UMS_OUTBOUND_APPROVAL_REF UMS_SESSION_SECRET UMS_APPROVAL_SECRET UMS_LINK_SECRET UMS_DEMO_PASSCODE_HASH UMS_OWN_MERCHANT_ID UMS_OPERATOR_TOTP_KEYS"
+# Optional: a name with no value leaves its feature off (deploy.sh).
+OPTIONAL_SECRET_NAMES="UMS_PUBLISHER_PASSCODE_HASH UMS_OFFER_MAX_MINOR UMS_AI_ADAPTER UMS_ANTHROPIC_API_KEY"
+# The second service (deploy-offline.sh) has its own account and its own four secrets, no payment secret.
+OFFLINE_SA_NAME="ums-offline"
+OFFLINE_SA="ums-offline@${PROJECT_ID}.iam.gserviceaccount.com"
+OFFLINE_SECRET_NAMES="UMS_OFFLINE_SESSION_SECRET UMS_OFFLINE_APPROVAL_SECRET UMS_OFFLINE_LINK_SECRET UMS_OFFLINE_DEMO_PASSCODE_HASH"
 
 echo "== billing"
 BILLING_ENABLED="$(gcloud billing projects describe "$PROJECT_ID" --format='value(billingEnabled)' 2>/dev/null || true)"
@@ -98,6 +106,48 @@ for NAME in $SECRET_NAMES; do
   fi
   gcloud secrets add-iam-policy-binding "$NAME" \
     --member="serviceAccount:${RUNTIME_SA}" \
+    --role="roles/secretmanager.secretAccessor" \
+    --project="$PROJECT_ID" >/dev/null
+done
+
+echo "== optional secret containers (no values yet)"
+for NAME in $OPTIONAL_SECRET_NAMES; do
+  if ! gcloud secrets describe "$NAME" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    gcloud secrets create "$NAME" --replication-policy=automatic --project="$PROJECT_ID" >/dev/null
+    echo "created $NAME"
+  else
+    echo "kept $NAME"
+  fi
+  gcloud secrets add-iam-policy-binding "$NAME" \
+    --member="serviceAccount:${RUNTIME_SA}" \
+    --role="roles/secretmanager.secretAccessor" \
+    --project="$PROJECT_ID" >/dev/null
+done
+
+echo "== runtime service account $OFFLINE_SA_NAME (second service)"
+if gcloud iam service-accounts describe "$OFFLINE_SA" --project="$PROJECT_ID" >/dev/null 2>&1; then
+  echo "kept $OFFLINE_SA_NAME"
+else
+  gcloud iam service-accounts create "$OFFLINE_SA_NAME" \
+    --display-name="UnitMarket offline service" \
+    --project="$PROJECT_ID" >/dev/null
+  echo "created $OFFLINE_SA_NAME"
+fi
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if gcloud iam service-accounts describe "$OFFLINE_SA" --project="$PROJECT_ID" >/dev/null 2>&1; then break; fi
+  sleep 3
+done
+
+echo "== offline secret containers (no values yet)"
+for NAME in $OFFLINE_SECRET_NAMES; do
+  if ! gcloud secrets describe "$NAME" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    gcloud secrets create "$NAME" --replication-policy=automatic --project="$PROJECT_ID" >/dev/null
+    echo "created $NAME"
+  else
+    echo "kept $NAME"
+  fi
+  gcloud secrets add-iam-policy-binding "$NAME" \
+    --member="serviceAccount:${OFFLINE_SA}" \
     --role="roles/secretmanager.secretAccessor" \
     --project="$PROJECT_ID" >/dev/null
 done
@@ -165,4 +215,5 @@ echo "  sql connection:    ${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
 echo "  runtime account:   $RUNTIME_SA_NAME"
 echo "  image repository:  ${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}"
 echo "  expected service URL (UNVERIFIED form): https://unitmarket-sandbox-${PROJECT_NUMBER}.${REGION}.run.app"
-echo "Next: run set-secret.sh once for every name except DATABASE_URL."
+echo "Next: run set-secret.sh once for every required name except DATABASE_URL. The optional names and the"
+echo "UMS_OFFLINE_* names are set only when you want that feature or the second service."

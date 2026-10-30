@@ -193,7 +193,17 @@ describe('check-hosting', () => {
     // Deliberately not allowed in the blueprint: the default corridor list is kept, a database
     // URL is a secret that PGlite-on-disk does not need, and the webhook certificate learn window
     // (CO-1d, D-038) is a dashboard-only, time-limited setting that must never be committed.
-    for (const n of ['UMS_CORRIDORS', 'DATABASE_URL', 'UMS_WEBHOOK_CERT_LEARN_UNTIL'])
+    // CFG-0: the four overnight names (publisher hash, offer cap, AI adapter and key) are not in the
+    // blueprint either; where they are hosted is a separate owner decision (overnight plan section 6).
+    for (const n of [
+      'UMS_CORRIDORS',
+      'DATABASE_URL',
+      'UMS_WEBHOOK_CERT_LEARN_UNTIL',
+      'UMS_PUBLISHER_PASSCODE_HASH',
+      'UMS_OFFER_MAX_MINOR',
+      'UMS_AI_ADAPTER',
+      'UMS_ANTHROPIC_API_KEY',
+    ])
       read.delete(n);
     const extras = [
       'UMS_OUTBOUND_SCOPE',

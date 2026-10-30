@@ -15,7 +15,7 @@ export function TermsConsent({
   label: string;
   checked: boolean;
   onChange: (next: boolean) => void;
-  rights?: Rights;
+  rights?: Rights | readonly Rights[];
 }) {
   const termsId = `${id}-text`;
   return (
