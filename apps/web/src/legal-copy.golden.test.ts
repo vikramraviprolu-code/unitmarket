@@ -155,6 +155,29 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/no payout/i);
     expect(t).toMatch(/statement/i);
   });
+
+  it('publisher terms (LEGAL-B): each topic the owner asked for is stated, with its demo limits', () => {
+    const t = flat('publisher-terms');
+    expect(t).toMatch(/not exclusive/i);
+    expect(t).toMatch(/owns the article or may license it/i);
+    expect(t).toMatch(/every revision/i);
+    expect(t).toMatch(/licence to sell access to single articles/i);
+    expect(t).toMatch(/personal use access/i);
+    expect(t).toMatch(/window shown on the offer/i);
+    expect(t).toMatch(/withdraw/i);
+    expect(t).toMatch(/refunds buyers in full/i);
+    expect(t).toMatch(/correction is published as a new article/i);
+    expect(t).toMatch(/PayPal keeps the fee/i);
+    expect(t).toMatch(/does not use the PayPal disputes service/i);
+    expect(t).toMatch(/stored delivery record/i);
+    expect(t).toMatch(/suspension/i);
+    expect(t).toMatch(/final statement/i);
+    expect(t).toMatch(/keep the access they paid for/i);
+    expect(t).toMatch(/already approved can still complete/i);
+    expect(t).toMatch(/No tax is calculated and no tax invoice is issued in this demo/);
+    expect(t).toContain('Contact details will be added by the owners before submission.');
+    expect(t).toMatch(/No governing law/i);
+  });
 });
 
 function flat(slug: string): string {
