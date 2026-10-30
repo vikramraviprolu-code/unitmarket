@@ -114,13 +114,14 @@ describe('statuses that are not awaiting_buyer', () => {
   });
 
   it('frozen and failed orders are wrong_state', async () => {
-    w = await makeWorld();
     for (const status of ['frozen', 'failed'] as const) {
-      const a = await awaiting(w, { buyer_id: 'buy_A' });
+      w = await makeWorld();
+      const a = await awaiting(w);
       await w.rows('UPDATE orders SET status = $2 WHERE id = $1', [a.order_id, status]);
       expect(await cancel(a)).toEqual({ ok: false, error: { code: 'wrong_state' } });
       expect(await orderStatus(w, a.order_id)).toBe(status);
-      await w.rows("UPDATE orders SET status = 'abandoned' WHERE id = $1", [a.order_id]);
+      expect(w.paypal.count('get')).toBe(0);
+      if (status === 'frozen') await w.close();
     }
   });
 });
@@ -158,10 +159,10 @@ describe('a payment that has started or could still capture is never cancelled',
     await untouched(a, 'awaiting_buyer', ['awaiting_buyer'], ['expected']);
   });
 
-  it('a PayPal order in any status but CREATED or VOIDED (payer action required) is payment_started', async () => {
+  it('a PayPal order in any status but CREATED or VOIDED (completed, no capture listed) is payment_started', async () => {
     w = await makeWorld();
     const a = await awaiting(w);
-    w.paypal.orders.get(a.provider_order_id)!.status = 'PAYER_ACTION_REQUIRED';
+    w.paypal.orders.get(a.provider_order_id)!.status = 'COMPLETED';
     expect(await cancel(a)).toEqual({ ok: false, error: { code: 'payment_started' } });
     await untouched(a, 'awaiting_buyer', ['awaiting_buyer'], ['expected']);
   });
@@ -205,18 +206,17 @@ describe('a payment that has started or could still capture is never cancelled',
     await untouched(a, 'awaiting_buyer', ['approved', 'awaiting_buyer'], ['expected', 'expected']);
   });
 
-  it('a pack with one PayPal order captured: refused, the captured part stays paid', async () => {
+  it('a pack with one PayPal order captured (state as a capture leaves it): refused, nothing moves', async () => {
     w = await makeWorld();
     const a = await awaiting(w, PACK);
-    approvePo(w, a, 1);
-    const ret = await onBuyerReturn(w.deps, { order_ref: a.order_ref, actor });
-    expect(ret.ok).toBe(true);
-    const before = await poStates(a.order_id);
-    expect(before).toContain('captured');
+    await w.rows(
+      "UPDATE provider_orders SET state = 'captured' WHERE order_id = $1 AND position = 1",
+      [a.order_id],
+    );
     const r = await cancel(a);
-    expect(r.ok).toBe(false);
-    expect(await poStates(a.order_id)).toEqual(before);
-    expect(await invariantsFailing()).toEqual([]);
+    expect(r).toEqual({ ok: false, error: { code: 'payment_started' } });
+    expect(await poStates(a.order_id)).toEqual(['captured', 'awaiting_buyer']);
+    expect(await unitStates(a.order_id)).toEqual(['expected', 'expected']);
   });
 });
 

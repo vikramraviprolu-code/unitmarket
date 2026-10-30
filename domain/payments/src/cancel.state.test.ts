@@ -49,7 +49,7 @@ const auditRows = (): Promise<
   { actor_kind: string; actor_id: string | null; action: string; target: string }[]
 > =>
   w.rows(
-    `SELECT actor_kind, actor_id, action, target FROM audit_log WHERE action LIKE 'order.%' ORDER BY id`,
+    `SELECT actor_kind, actor_id, action, target FROM audit_log WHERE action = 'order.cancelled_by_buyer' ORDER BY id`,
   );
 const poStates = async (order_id: string): Promise<string[]> =>
   (

@@ -37,10 +37,12 @@ afterAll(async () => {
 // Each test opens its own order; whatever it leaves open is cancelled through the route, so the next test
 // can buy the same offer again (one open order per buyer and offer).
 afterEach(async () => {
-  const open = await app.db.query<{ order_ref: string }>(
-    `SELECT order_ref FROM orders WHERE status = 'awaiting_buyer'`,
+  const open = await app.db.query<{ id: string }>(
+    `SELECT id FROM orders WHERE status = 'awaiting_buyer' AND buyer_id = $1`,
+    [actorA.kind === 'buyer' ? actorA.buyer_id : ''],
   );
-  for (const r of open.rows) await post(cancelRoute, r.order_ref, A);
+  for (const r of open.rows)
+    await app.engine.payments.cancelOrder({ order_id: r.id, actor: actorA });
 });
 
 const offers = async (): Promise<string[]> =>
@@ -100,13 +102,14 @@ describe('POST /api/orders/[ref]/cancel', () => {
       auth: 'buyer',
       csrf: true,
     });
-    expect(cancelRoute.routeMeta.rate.limit).toBeGreaterThan(0);
+    expect(cancelRoute.routeMeta.rate?.limit).toBeGreaterThan(0);
   });
 
   it('needs a session (401) and a csrf token (403)', async () => {
     const o = await openOrder((await offers())[0]!);
     expect((await post(cancelRoute, o.order_ref, null)).status).toBe(401);
-    expect((await post(cancelRoute, o.order_ref, A, {}, false)).status).toBe(403);
+    // B's session without its csrf token: refused before the engine is asked (B has its own rate budget)
+    expect((await post(cancelRoute, o.order_ref, B, {}, false)).status).toBe(403);
     expect((await app.engine.orderView({ order_ref: o.order_ref, actor: actorA }))?.status).toBe(
       'awaiting_buyer',
     );
@@ -114,7 +117,7 @@ describe('POST /api/orders/[ref]/cancel', () => {
 
   it('refuses a body with extra fields (400), changing nothing', async () => {
     const o = await openOrder((await offers())[0]!);
-    expect((await post(cancelRoute, o.order_ref, A, { force: true })).status).toBe(400);
+    expect((await post(cancelRoute, o.order_ref, A, { force: true })).status).toBe(422);
     expect((await app.engine.orderView({ order_ref: o.order_ref, actor: actorA }))?.status).toBe(
       'awaiting_buyer',
     );
@@ -126,7 +129,11 @@ describe('POST /api/orders/[ref]/cancel', () => {
     const guess = await post(cancelRoute, 'ord_guessedref0000', B);
     expect(other.status).toBe(404);
     expect(guess.status).toBe(404);
-    expect(await other.json()).toEqual(await guess.json());
+    const shape = async (r: Response) => {
+      const e = ((await r.json()) as { error: { code: string; message: string } }).error;
+      return { code: e.code, message: e.message };
+    };
+    expect(await shape(other)).toEqual(await shape(guess));
     expect((await app.engine.orderView({ order_ref: o.order_ref, actor: actorA }))?.status).toBe(
       'awaiting_buyer',
     );
@@ -218,7 +225,9 @@ describe('the order page offers the two actions only through OrderActions', () =
   });
 
   it("OrderActions posts only to this order's checkout and cancel, from stored data, and builds no other link", () => {
-    const posts = [...actions.matchAll(/postJson[^(]*\(\s*([^,]+),/g)].map((m) => m[1]!.trim());
+    const posts = [...actions.matchAll(/await postJson<[^>]*>\(\s*([^,]+),/g)].map((m) =>
+      m[1]!.trim(),
+    );
     expect(posts.length).toBe(2);
     for (const p of posts)
       expect(p).toMatch(

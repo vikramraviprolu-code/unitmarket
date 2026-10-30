@@ -129,6 +129,7 @@ import {
 import type { ResolveAction, ResolveDeps } from '@umsbx/recovery';
 import {
   beginCheckout as beginPaymentsCheckout,
+  cancelOrder as cancelPaymentsOrder,
   checkInvariants,
   onBuyerReturn as onPaymentsReturn,
   placeOrder as placePaymentsOrder,
@@ -262,6 +263,9 @@ export type PlaceError =
 export type CheckoutError = {
   code: 'not_found' | 'wrong_state' | 'create_failed' | 'payments_paused';
 };
+export type CancelError = {
+  code: 'not_found' | 'wrong_state' | 'payment_started' | 'unavailable';
+};
 export type ReturnError = {
   code:
     'not_found' | 'not_approved' | 'frozen' | 'not_charged_content_unavailable' | 'payments_paused';
@@ -314,6 +318,11 @@ export interface PaymentsFacade {
     actor: Actor;
     scenario?: string | null;
   }): Promise<Result<{ order_ref: Id; status: string; next: PackStep | null }, ReturnError>>;
+  /** ORDER-A: the buyer cancels an unpaid order (the abandon transition, with stricter guards). */
+  cancelOrder(i: {
+    order_id: Id;
+    actor: Actor;
+  }): Promise<Result<{ order_ref: Id; status: 'abandoned'; already: boolean }, CancelError>>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1669,6 +1678,10 @@ function buildApp(config: Config, opts: AppOptions): App {
         const r = await beginPaymentsCheckout(paymentsDeps, i);
         if (!r.ok) return err(r.error);
         return ok({ approve_url: r.value.approve_url, progress: r.value.progress ?? null });
+      },
+      async cancelOrder(i) {
+        const r = await cancelPaymentsOrder(paymentsDeps, i);
+        return r.ok ? ok(r.value) : err(r.error);
       },
       async onBuyerReturn(i) {
         const r = await onPaymentsReturn(paymentsDeps, i);

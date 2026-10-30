@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { getJson } from '../../../lib/client-api';
 import type { OrderView } from '../../../lib/view-types';
 import { keepPolling, orderTone } from '../../../lib/order-status';
+import { orderActions } from '../../../lib/order-actions';
 import { StatusBanner } from '../../../ui/StatusBanner';
+import { OrderActions } from './OrderActions';
 
 // Live status in an aria-live region (A11Y-4). Polls while the order is not terminal; one text change
 // per status change, never a flicker.
@@ -23,6 +25,8 @@ export function OrderStatus({ initial }: { initial: OrderView }) {
     return () => clearInterval(t);
   }, [polling, view.order_ref]);
   const tone = orderTone(view);
+  // ORDER-A: resume and cancel, for an order that waits for its buyer and no other status.
+  const acts = orderActions(view);
   return (
     <>
       <div aria-live="polite" aria-atomic="true" data-testid="order-live">
@@ -68,6 +72,7 @@ export function OrderStatus({ initial }: { initial: OrderView }) {
           </Link>
         ) : null}
       </div>
+      {acts.resume || acts.cancel ? <OrderActions order={view} /> : null}
     </>
   );
 }

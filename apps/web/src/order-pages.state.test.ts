@@ -128,14 +128,14 @@ describe('a single-publisher order awaiting the buyer offers no approve action o
   // owner, so the viewer is always the owner. The actions come from orderActions(view), which is true for
   // awaiting_buyer alone: here for a real awaiting order; lib/order-actions.test.ts lists all ten statuses.
   it("offers resume and cancel for the viewer's awaiting order only (every other status shows none: lib/order-actions.test.ts)", async () => {
-    const A = await buyer(app, 'a');
-    const started = await startPack(app, A, [HARBOUR_TIDE]);
-    const waiting = (await app.engine.orderView({ order_ref: started.order_ref, actor: A }))!;
+    const owner = await buyer(app, 'b');
+    const started = await startPack(app, owner, [HARBOUR_TIDE]);
+    const waiting = (await app.engine.orderView({ order_ref: started.order_ref, actor: owner }))!;
     expect(waiting.status).toBe('awaiting_buyer');
     expect(orderActions(waiting)).toEqual({ resume: true, cancel: true });
     // the other buyer cannot even see the order, so the page cannot render actions for it
-    const B = await buyer(app, 'b');
-    expect(await app.engine.orderView({ order_ref: started.order_ref, actor: B })).toBeNull();
+    const other = await buyer(app, 'a');
+    expect(await app.engine.orderView({ order_ref: started.order_ref, actor: other })).toBeNull();
     const page = read('./app/orders/[ref]/OrderStatus.tsx').replace(/\/\/.*$/gm, '');
     expect([...page.matchAll(/<OrderActions\b/g)].length).toBe(1);
     expect(page).toMatch(/orderActions\(view\)/);

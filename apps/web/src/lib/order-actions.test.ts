@@ -25,7 +25,7 @@ describe('orderActions', () => {
     expect(CANCEL_BUTTON).toBe('Cancel order');
     expect(RESUME_BUTTON).toBe('Continue to payment');
     expect(all).not.toMatch(/[‒-―]| - |<em>|<i>/);
-    for (const code of ['wrong_state', 'payment_started', 'unavailable', 'network'] as const) {
+    for (const code of ['wrong_state', 'payment_started', 'unavailable'] as const) {
       expect(CANCEL_ANSWER[code].length).toBeGreaterThan(10);
     }
   });

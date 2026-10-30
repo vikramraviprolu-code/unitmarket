@@ -10,6 +10,7 @@
 import { applyMoneyEvent } from '@umsbx/entitlements';
 import { issueReceiptIfChanged } from '@umsbx/receipts';
 import type {
+  Actor,
   DomainConfig,
   Id,
   IsoUtc,
@@ -802,17 +803,55 @@ async function abandonOne(
       if (now === null || now.status !== 'awaiting_buyer') return 'handled';
     }
   }
-  const done = await d.db.transaction(async (tx): Promise<'abandoned' | 'handled' | 'skipped'> => {
+  const done = await abandonLocked(d, order, gone);
+  if (done === 'abandoned' && gone) {
+    d.log.log({
+      msg: 'payments.due.abandoned_not_found',
+      level: 'info',
+      fields: { order_ref: order.order_ref },
+    });
+  }
+  return done;
+}
+
+/**
+ * The abandon transition itself, under the row locks. The 24 h sweep calls it as it always did (no `strict`).
+ * A buyer's own cancel (cancel.ts, ORDER-A) calls it with `strict`, which adds guards and one audit row and
+ * nothing else: the order must already wait for the buyer (not merely be created), every PayPal order must
+ * be `prepared` or `awaiting_buyer` (none approved), no operation of the order may be `sent` or `unknown`,
+ * and no unit may have a capture. Any guard that fails answers 'skipped' (nothing is changed). 'handled'
+ * means the order is no longer waiting. The result 'abandoned' is the only one that wrote anything.
+ */
+export async function abandonLocked(
+  d: PaymentsDeps,
+  order: OrderRow,
+  gone: boolean,
+  strict?: { actor: Actor },
+): Promise<'abandoned' | 'handled' | 'skipped'> {
+  return d.db.transaction(async (tx): Promise<'abandoned' | 'handled' | 'skipped'> => {
     const at = nowIso(d);
     const graph = await lockGraph(tx, order.id);
     // Only an order that still waits for the buyer.
     if (graph.order.status !== 'created' && graph.order.status !== 'awaiting_buyer') {
       return 'handled';
     }
+    if (strict !== undefined && graph.order.status !== 'awaiting_buyer') return 'handled';
     // Never after a send, whatever the status says.
     const facts = await poFacts(tx, order.id);
-    if (facts.some(isSent)) return gone ? 'skipped' : 'handled';
-    if (gone) {
+    if (facts.some(isSent)) return gone || strict !== undefined ? 'skipped' : 'handled';
+    if (strict !== undefined) {
+      // A buyer's cancel never takes a PayPal order that was approved here (it is finished, not cancelled),
+      // and never an order with anything in flight or any capture. Re-checked under the lock.
+      if (graph.pos.some((p) => p.state !== 'prepared' && p.state !== 'awaiting_buyer')) {
+        return 'skipped';
+      }
+      const flying = await tx.query(
+        "SELECT 1 FROM operations WHERE order_id = $1 AND state IN ('sent', 'unknown') LIMIT 1",
+        [order.id],
+      );
+      if (flying.rows.length > 0) return 'skipped';
+    }
+    if (gone || strict !== undefined) {
       // BU-9, re-checked under the lock: a capture operation that was sent or is unknown may have taken
       // money whose answer was lost, a unit with a capture id has been paid, and a PayPal order a capture
       // was aimed at is not decided here: the order stays as it is and the reconciler owns it.
@@ -837,16 +876,17 @@ async function abandonOne(
        WHERE order_id = $1 AND state = 'prepared'`,
       [order.id, at],
     );
+    if (strict !== undefined) {
+      await d.audit.record(tx, {
+        actor: strict.actor,
+        action: 'order.cancelled_by_buyer',
+        target: order.id,
+        reason: null,
+        detail: { order_ref: order.order_ref, provider_orders: graph.pos.length },
+      });
+    }
     return 'abandoned';
   });
-  if (done === 'abandoned' && gone) {
-    d.log.log({
-      msg: 'payments.due.abandoned_not_found',
-      level: 'info',
-      fields: { order_ref: order.order_ref },
-    });
-  }
-  return done;
 }
 
 const UNSENT_STATES: ReadonlySet<ProviderOrderRow['state']> = new Set([
