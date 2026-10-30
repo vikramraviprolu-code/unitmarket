@@ -7,6 +7,7 @@ import type { BootRefusal } from './refusal';
 import { BOOT_REFUSAL_EXIT_CODE, refusalLine } from './refusal';
 import { makeSecret } from './secret';
 import {
+  AI_ADAPTERS,
   KNOWN_CORRIDORS,
   LEARN_UNTIL_PATTERN,
   MAINTENANCE_FLAG_NAME,
@@ -14,12 +15,14 @@ import {
   MERCHANT_ID_PATTERN,
   MIN_SECRET_BYTES,
   MIN_TOTP_KEY_BYTES,
+  OFFER_MAX_MINOR_DEFAULT,
+  OFFER_MAX_MINOR_LIMIT,
   OPERATOR_NAME_PATTERN,
   OUTBOUND_SCOPES,
   RESERVED_OPERATOR_NAME,
   isPublicOrigin,
 } from './schema';
-import type { Config, Mode, OutboundScope } from './schema';
+import type { AiAdapter, Config, Mode, OutboundScope } from './schema';
 
 type Env = Record<string, string | undefined>;
 
@@ -383,6 +386,44 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
     maintenance_flag = rawFlag;
   }
 
+  // 17. the publisher passcode hash (CFG-0, D-065 item 34): optional, same shape as the demo hash, and
+  // never equal to it (a separate hash is the point). Equality ignores the separator form, so the `:` and
+  // `$` spellings of one hash count as equal. The error names the variable, never the value.
+  const publisher_passcode_hash = val(env, 'UMS_PUBLISHER_PASSCODE_HASH') ?? null;
+  if (publisher_passcode_hash !== null) {
+    if (!PASSCODE_HASH_SHAPE.test(publisher_passcode_hash))
+      return refuse('invalid_value', 'UMS_PUBLISHER_PASSCODE_HASH');
+    if (
+      passcode_hash !== null &&
+      passcode_hash.replaceAll('$', ':') === publisher_passcode_hash.replaceAll('$', ':')
+    )
+      return refuse('equal_secrets', 'UMS_PUBLISHER_PASSCODE_HASH');
+  }
+
+  // 18. the largest offer price in minor units (CFG-0, D-065 item 35): a plain integer 1 to 2000.
+  const rawOfferMax = val(env, 'UMS_OFFER_MAX_MINOR');
+  let offer_max_minor = OFFER_MAX_MINOR_DEFAULT;
+  if (rawOfferMax !== undefined) {
+    if (!/^[1-9][0-9]{0,3}$/.test(rawOfferMax))
+      return refuse('invalid_value', 'UMS_OFFER_MAX_MINOR');
+    offer_max_minor = Number(rawOfferMax);
+    if (offer_max_minor > OFFER_MAX_MINOR_LIMIT)
+      return refuse('invalid_value', 'UMS_OFFER_MAX_MINOR');
+  }
+
+  // 19. the model adapter and its key (CFG-0): an exact known value; the key is read only for claude and
+  // is then required. The name is UMS_ANTHROPIC_API_KEY on purpose; ANTHROPIC_API_KEY is never read.
+  const rawAdapter = val(env, 'UMS_AI_ADAPTER') ?? 'scripted';
+  if (!(AI_ADAPTERS as readonly string[]).includes(rawAdapter))
+    return refuse('invalid_value', 'UMS_AI_ADAPTER');
+  const ai_adapter = rawAdapter as AiAdapter;
+  let ai_api_key: Config['ai_api_key'] = null;
+  if (ai_adapter === 'claude') {
+    const key = val(env, 'UMS_ANTHROPIC_API_KEY');
+    if (key === undefined) return refuse('missing_value', 'UMS_ANTHROPIC_API_KEY');
+    ai_api_key = makeSecret(key);
+  }
+
   return ok<Config>({
     mode,
     connect,
@@ -395,6 +436,10 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
     approval_secret: makeSecret(secretValues[1] ?? ''),
     link_secret: makeSecret(secretValues[2] ?? ''),
     passcode_hash,
+    publisher_passcode_hash,
+    offer_max_minor,
+    ai_adapter,
+    ai_api_key,
     operator_totp_keys: totp.value,
     webhook_cert_learn_until,
     public_origin,
