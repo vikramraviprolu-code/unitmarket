@@ -31,6 +31,7 @@ const BASE_DIGEST = 'dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df61
 // INFRA-A: optional secrets of the sandbox service and the four own secrets of the offline service.
 const OPTIONAL_NAMES = [
   'UMS_PUBLISHER_PASSCODE_HASH',
+  'UMS_JUDGE_PASSCODE_HASH',
   'UMS_OFFER_MAX_MINOR',
   'UMS_AI_ADAPTER',
   'UMS_ANTHROPIC_API_KEY',
@@ -1001,6 +1002,49 @@ const INFRA_A_CASES: Case[] = [
     'secret-names',
   ],
   ['setup optional list drops a name', 'setup.sh', ' UMS_ANTHROPIC_API_KEY"', '"', 'secret-names'],
+  // JUDGE-A: the judge hash follows the optional-secret pattern of the publisher hash
+  [
+    'the deploy optional list drops the judge hash',
+    'deploy.sh',
+    ' UMS_JUDGE_PASSCODE_HASH',
+    '',
+    'secret-names',
+  ],
+  [
+    'the setup optional list drops the judge hash',
+    'setup.sh',
+    ' UMS_JUDGE_PASSCODE_HASH',
+    '',
+    'secret-names',
+  ],
+  [
+    'the judge hash moves into the required list',
+    'deploy.sh',
+    ' UMS_OPERATOR_TOTP_KEYS"',
+    ' UMS_OPERATOR_TOTP_KEYS UMS_JUDGE_PASSCODE_HASH"',
+    'secret-names',
+  ],
+  [
+    'set-secret drops the judge hash',
+    'set-secret.sh',
+    ' | UMS_JUDGE_PASSCODE_HASH',
+    '',
+    'secret-names',
+  ],
+  [
+    'the judge hash given a value in service.yaml',
+    'service.yaml',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nUMS_JUDGE_PASSCODE_HASH: 'x'",
+    'secret-in-env',
+  ],
+  [
+    'the offline script names the judge hash (the offline service is unchanged)',
+    'deploy-offline.sh',
+    'SECRET_FLAGS=""',
+    'UMS_JUDGE_PASSCODE_HASH=x\nSECRET_FLAGS=""',
+    'offline-secret',
+  ],
   [
     'deploy stops on a missing optional secret',
     'deploy.sh',

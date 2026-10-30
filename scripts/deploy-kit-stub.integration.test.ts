@@ -24,6 +24,7 @@ const REQUIRED = [
 ];
 const OPTIONAL = [
   'UMS_PUBLISHER_PASSCODE_HASH',
+  'UMS_JUDGE_PASSCODE_HASH',
   'UMS_OFFER_MAX_MINOR',
   'UMS_AI_ADAPTER',
   'UMS_ANTHROPIC_API_KEY',
@@ -124,7 +125,7 @@ describe('INFRA-A deploy.sh against a stub gcloud', () => {
     for (const n of OPTIONAL) expect(r.out).toContain(`off: ${n} has no value`);
   });
 
-  it('all four optional secrets have values: all four are mapped by name', () => {
+  it('all optional secrets have values: all are mapped by name', () => {
     const r = run('deploy.sh', [...REQUIRED, ...OPTIONAL]);
     expect(r.status, r.out).toBe(0);
     const got = secretsOf(r.deploy);
@@ -133,7 +134,11 @@ describe('INFRA-A deploy.sh against a stub gcloud', () => {
   });
 
   it('each optional secret alone is mapped alone', () => {
-    for (const n of ['UMS_PUBLISHER_PASSCODE_HASH', 'UMS_OFFER_MAX_MINOR']) {
+    for (const n of [
+      'UMS_PUBLISHER_PASSCODE_HASH',
+      'UMS_JUDGE_PASSCODE_HASH',
+      'UMS_OFFER_MAX_MINOR',
+    ]) {
       const r = run('deploy.sh', [...REQUIRED, n]);
       expect(r.status, r.out).toBe(0);
       const got = secretsOf(r.deploy);
