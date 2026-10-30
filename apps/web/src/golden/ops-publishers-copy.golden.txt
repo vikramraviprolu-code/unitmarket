@@ -2,6 +2,9 @@ links: Publishers | Payee requests
 heading: Publishers
 lede: What each publisher has on sale, what has been paid to them and what is still open. Suspending a publisher takes its offers off sale. Orders already paid, access already bought and refunds are not changed.
 empty: No publishers yet.
+mfa heading: This page needs your authenticator code
+mfa body: This page needs your authenticator code. Sign out and sign in as Operator again with your name and the current code from your authenticator app.
+mfa link: Sign in with the code
 back: Back to operations
 labels: Status | Payee account on file | Settlement | Offers on sale | Money by currency
 status applied: Applied. Waiting for approval.
