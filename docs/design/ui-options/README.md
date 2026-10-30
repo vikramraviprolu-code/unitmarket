@@ -7,6 +7,7 @@ Design previews, not product code. They use the real catalogue articles and pric
 | `results-prototype.html` | One working results page: search, sort, pack tray | https://claude.ai/artifact/K9vidcKb6KUcf6767mGcsS |
 | `styles-a-b-c.html` | A Marketplace, B Catalogue, C Checkout first, on the find page and the pack approval page | https://claude.ai/artifact/CGJKnwdZPkfGimFKmf1tCf |
 | `styles-d-e.html` | D Bright Market and E Deep Harbour, the whole journey: find, approve, done, library | https://claude.ai/artifact/HaWr7SUbc72cNf4jcqVKyU |
+| `styles-d-e-motion.html` | D and E with real motion, following the motion research rules | https://claude.ai/artifact/EU2AWK9H4QkT551jMCqGZG |
 
 The review that led to them is in `docs/design/ux-review-2026-10-29/` (scorecard, problems, proposals, plan, style spec).
 Rules every option keeps: "You pay nothing until you approve at the payment step", the Sandbox label from stored data,
