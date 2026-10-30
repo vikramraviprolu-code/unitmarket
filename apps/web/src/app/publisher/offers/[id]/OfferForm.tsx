@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { postJson } from '../../../../lib/client-api';
 import {
@@ -15,32 +15,63 @@ import {
   parsePriceMinor,
   savedText,
 } from '../../../../lib/offer-copy';
+import {
+  HELP_ATTEST_SAVE,
+  HELP_SAVE,
+  SECTION_PRICES,
+  SECTION_REVIEW,
+  WITHDRAW_HELP,
+  collectOptions,
+  offerErrorField,
+  optionHelp,
+  priceHelp,
+} from '../../../../lib/publisher-forms-copy';
 import { ErrorState } from '../../../../ui/ErrorState';
+import { Section } from '../../../../ui/publisher/kit';
+import { AttestBox, Field, OptionRows } from '../../form-parts';
 
 interface Row {
   option: 'keep_retrieve' | 'online_read';
   offeredLabel: string;
   priceLabel: string;
+  optionName: string;
   offered: boolean;
   price: string;
 }
+
+interface Problems {
+  price: string | null;
+  options: string | null;
+  attest: string | null;
+  form: string | null;
+  bad: string[];
+}
+
+const NONE: Problems = { price: null, options: null, attest: null, form: null, bad: [] };
 
 // PUB-B: price and options of one offer. The body is the offer id, the version this page was opened at,
 // the offered options with their prices in minor units and the tick. Nothing else leaves the browser:
 // the publisher, the article, the terms and the access window are not editable and not sent. The route
 // and the domain check everything again; this form only spares a round trip.
+// PUB-UI-FORMS: the prices and the review sit in their own sections; the page passes the licence section
+// between them as children. Each problem is shown beside its own field.
 export function OfferForm({
   offerId,
   version,
   capMinor,
   hint,
+  prefix,
   rows,
+  children,
 }: {
   offerId: string;
   version: string;
   capMinor: number;
   hint: string;
+  /** The three letter code shown in front of each price. */
+  prefix: string;
   rows: Row[];
+  children?: ReactNode;
 }) {
   const router = useRouter();
   const [offered, setOffered] = useState<Record<string, boolean>>(
@@ -52,36 +83,53 @@ export function OfferForm({
   const [attest, setAttest] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [problems, setProblems] = useState<Problems>(NONE);
+
+  function show(code: string, bad: string[]) {
+    const text = offerErrorText(code);
+    const field = offerErrorField(code);
+    setProblems({
+      ...NONE,
+      bad,
+      price: field === 'price' ? text : null,
+      options: field === 'options' ? text : null,
+      attest: field === 'attest' ? text : null,
+      form: field === 'form' || field === 'reason' ? text : null,
+    });
+  }
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    setError(null);
+    setProblems(NONE);
     setSaved(null);
-    const options: { option: string; price_minor: number }[] = [];
-    for (const r of rows) {
-      if (offered[r.option] !== true) continue;
-      const minor = parsePriceMinor(prices[r.option] ?? '');
-      if (minor === null || minor < 1 || minor > capMinor) {
-        setError(offerErrorText('invalid_price'));
-        return;
-      }
-      options.push({ option: r.option, price_minor: minor });
-    }
-    if (options.length === 0) {
-      setError(offerErrorText('invalid_options'));
+    const got = collectOptions(
+      rows.map((r) => ({
+        option: r.option,
+        offered: offered[r.option] === true,
+        price: prices[r.option] ?? '',
+      })),
+      capMinor,
+      parsePriceMinor,
+    );
+    if (got.code !== null) {
+      show(got.code, got.bad);
       return;
     }
     setBusy(true);
     const res = await postJson<{ version: string }>('/api/publisher/offers/revise', {
       offer_id: offerId,
       expected_version: version,
-      options,
+      options: got.options,
       attestation: attest,
     });
     setBusy(false);
     if (!res.ok) {
-      setError(res.status === 401 ? 'Please sign in again.' : offerErrorText(res.code));
+      if (res.status === 401) {
+        setProblems({ ...NONE, form: 'Please sign in again.' });
+        return;
+      }
+      const onSale = rows.filter((r) => offered[r.option] === true).map((r) => r.option);
+      show(res.code, offerErrorField(res.code) === 'price' ? onSale : []);
       return;
     }
     setAttest(false);
@@ -91,59 +139,64 @@ export function OfferForm({
 
   return (
     <form onSubmit={(e) => void save(e)} aria-label={SAVE_LABEL}>
-      {rows.map((r) => (
-        <fieldset key={r.option} className="field">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={offered[r.option] === true}
-              onChange={(e) => setOffered({ ...offered, [r.option]: e.target.checked })}
-            />
-            <span>{r.offeredLabel}</span>
-          </label>
-          <label htmlFor={`price-${r.option}`}>{r.priceLabel}</label>
-          <input
-            id={`price-${r.option}`}
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            aria-describedby="price-hint"
-            disabled={offered[r.option] !== true}
-            value={prices[r.option] ?? ''}
-            onChange={(e) => setPrices({ ...prices, [r.option]: e.target.value })}
+      <Section title={SECTION_PRICES} id="offer-prices">
+        <div className="pk-panel">
+          <OptionRows
+            rows={rows}
+            offered={offered}
+            prices={prices}
+            onOffered={(option, on) => setOffered({ ...offered, [option]: on })}
+            onPrice={(option, text) => setPrices({ ...prices, [option]: text })}
+            prefix={prefix}
+            rangeHelp={priceHelp(hint)}
+            help={optionHelp}
+            bad={problems.bad}
+            error={problems.price}
+            optionsError={problems.options}
           />
-        </fieldset>
-      ))}
-      <p id="price-hint" className="muted">
-        {hint}
-      </p>
-      <label className="check">
-        <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} />
-        <span>{ATTEST_LABEL}</span>
-      </label>
-      <button type="submit" className="btn btn-primary" disabled={busy || !attest}>
-        {SAVE_LABEL}
-      </button>
-      <div aria-live="polite" data-testid="offer-save-result">
-        {saved}
-      </div>
-      {error ? <ErrorState title="Could not save">{error}</ErrorState> : null}
+        </div>
+      </Section>
+      {children}
+      <Section title={SECTION_REVIEW} id="offer-review">
+        <div className="pk-panel">
+          <AttestBox
+            label={ATTEST_LABEL}
+            help={HELP_ATTEST_SAVE}
+            checked={attest}
+            onChange={setAttest}
+            error={problems.attest}
+          />
+          <p className="pk-help">{HELP_SAVE}</p>
+          <div className="pk-actions">
+            <button type="submit" className="btn btn-primary" disabled={busy || !attest}>
+              {SAVE_LABEL}
+            </button>
+          </div>
+          <div aria-live="polite" data-testid="offer-save-result">
+            {saved}
+          </div>
+          {problems.form ? <ErrorState title="Could not save">{problems.form}</ErrorState> : null}
+        </div>
+      </Section>
     </form>
   );
 }
 
 // PUB-B: withdraw. The body is the offer id, the version this page was opened at and the reason.
+// PUB-UI-FORMS: a separate area at the foot of the page, marked as the one that cannot be undone here.
 export function WithdrawForm({ offerId, version }: { offerId: string; version: string }) {
   const router = useRouter();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [reasonError, setReasonError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function withdraw(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setReasonError(null);
     const res = await postJson<{ version: string }>('/api/publisher/offers/withdraw', {
       offer_id: offerId,
       expected_version: version,
@@ -151,7 +204,9 @@ export function WithdrawForm({ offerId, version }: { offerId: string; version: s
     });
     setBusy(false);
     if (!res.ok) {
-      setError(res.status === 401 ? 'Please sign in again.' : offerErrorText(res.code));
+      if (res.status === 401) setError('Please sign in again.');
+      else if (offerErrorField(res.code) === 'reason') setReasonError(offerErrorText(res.code));
+      else setError(offerErrorText(res.code));
       return;
     }
     setDone(true);
@@ -159,28 +214,42 @@ export function WithdrawForm({ offerId, version }: { offerId: string; version: s
   }
 
   return (
-    <section aria-labelledby="withdraw-heading">
+    <section className="pk-section pk-danger-zone" aria-labelledby="withdraw-heading">
       <h2 id="withdraw-heading">{WITHDRAW_HEADING}</h2>
-      <p>{WITHDRAW_LEDE}</p>
-      <form onSubmit={(e) => void withdraw(e)}>
-        <div className="field">
-          <label htmlFor="withdraw-reason">{WITHDRAW_REASON_LABEL}</label>
-          <input
+      <div className="pk-panel pk-danger">
+        <p>{WITHDRAW_LEDE}</p>
+        <form onSubmit={(e) => void withdraw(e)}>
+          <Field
             id="withdraw-reason"
-            type="text"
-            maxLength={200}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
+            label={WITHDRAW_REASON_LABEL}
+            help={WITHDRAW_HELP}
+            error={reasonError}
+          >
+            {(a) => (
+              <input
+                {...a}
+                type="text"
+                maxLength={200}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            )}
+          </Field>
+          <div className="pk-actions">
+            <button
+              type="submit"
+              className="btn pk-btn-danger"
+              disabled={busy || reason.trim().length < 3}
+            >
+              {WITHDRAW_LABEL}
+            </button>
+          </div>
+        </form>
+        <div aria-live="polite" data-testid="offer-withdraw-result">
+          {done ? WITHDRAWN_DONE : null}
         </div>
-        <button type="submit" className="btn" disabled={busy || reason.trim().length < 3}>
-          {WITHDRAW_LABEL}
-        </button>
-      </form>
-      <div aria-live="polite" data-testid="offer-withdraw-result">
-        {done ? WITHDRAWN_DONE : null}
+        {error ? <ErrorState title="Could not withdraw">{error}</ErrorState> : null}
       </div>
-      {error ? <ErrorState title="Could not withdraw">{error}</ErrorState> : null}
     </section>
   );
 }

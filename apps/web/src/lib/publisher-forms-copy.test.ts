@@ -1,8 +1,10 @@
 // PUB-UI-FORMS: the view-model rules of the three publisher forms. Pure: status to chip, answer code to
 // field, payee to chip. The words are pinned here too, so a change to them is deliberate.
 import { describe, expect, it } from 'vitest';
+import { parsePriceMinor } from './offer-copy';
 import {
   BUYER_SEES_OFF,
+  collectOptions,
   SECTION_LICENCE,
   SECTION_PRICES,
   SECTION_REVIEW,
@@ -61,11 +63,15 @@ describe('payee chip', () => {
     });
   });
   it('a payee marked at demo load is Marked as checked, an operator check says so, both good', () => {
-    expect(payeeChip({ last4: 'AB12', verifiedAt: '2026-10-01T00:00:00Z', operatorChecked: false })).toEqual({
+    expect(
+      payeeChip({ last4: 'AB12', verifiedAt: '2026-10-01T00:00:00Z', operatorChecked: false }),
+    ).toEqual({
       tone: 'good',
       text: 'Marked as checked',
     });
-    expect(payeeChip({ last4: 'AB12', verifiedAt: '2026-10-01T00:00:00Z', operatorChecked: true })).toEqual({
+    expect(
+      payeeChip({ last4: 'AB12', verifiedAt: '2026-10-01T00:00:00Z', operatorChecked: true }),
+    ).toEqual({
       tone: 'good',
       text: 'Checked by an operator',
     });
@@ -92,7 +98,47 @@ describe('words', () => {
     expect(optionHelp('other')).toBe('');
   });
   it('no dash character in any new sentence', () => {
-    for (const s of [BUYER_SEES_OFF, priceHelp('a'), optionHelp('keep_retrieve'), optionHelp('online_read')])
+    for (const s of [
+      BUYER_SEES_OFF,
+      priceHelp('a'),
+      optionHelp('keep_retrieve'),
+      optionHelp('online_read'),
+    ])
       expect(s).not.toMatch(NO_DASH);
+  });
+});
+
+describe('collectOptions', () => {
+  const rows = (a: [boolean, string], b: [boolean, string]) => [
+    { option: 'keep_retrieve', offered: a[0], price: a[1] },
+    { option: 'online_read', offered: b[0], price: b[1] },
+  ];
+  it('sends each offered option in minor units', () => {
+    expect(collectOptions(rows([true, '2.50'], [true, '1']), 500, parsePriceMinor)).toEqual({
+      options: [
+        { option: 'keep_retrieve', price_minor: 250 },
+        { option: 'online_read', price_minor: 100 },
+      ],
+      bad: [],
+      code: null,
+    });
+  });
+  it('an option that is not offered is left out and its price is not read', () => {
+    const r = collectOptions(rows([false, 'abc'], [true, '1.00']), 500, parsePriceMinor);
+    expect(r.code).toBeNull();
+    expect(r.options).toEqual([{ option: 'online_read', price_minor: 100 }]);
+  });
+  it('names the options with a price out of range or not a price', () => {
+    const r = collectOptions(rows([true, '9.00'], [true, '0']), 500, parsePriceMinor);
+    expect(r.code).toBe('invalid_price');
+    expect(r.bad).toEqual(['keep_retrieve', 'online_read']);
+    expect(collectOptions(rows([true, '1,5'], [false, '']), 500, parsePriceMinor).bad).toEqual([
+      'keep_retrieve',
+    ]);
+  });
+  it('with nothing offered the answer is invalid_options', () => {
+    expect(collectOptions(rows([false, ''], [false, '']), 500, parsePriceMinor).code).toBe(
+      'invalid_options',
+    );
   });
 });

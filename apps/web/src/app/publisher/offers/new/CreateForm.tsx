@@ -10,7 +10,21 @@ import {
   createErrorText,
   createdText,
 } from '../../../../lib/publisher-e1-copy';
+import {
+  HELP_ARTICLE,
+  HELP_ATTEST_CREATE,
+  SECTION_LICENCE,
+  SECTION_PRICES,
+  SECTION_REVIEW,
+  SECTION_WHAT,
+  collectOptions,
+  offerErrorField,
+  optionHelp,
+  priceHelp,
+} from '../../../../lib/publisher-forms-copy';
 import { ErrorState } from '../../../../ui/ErrorState';
+import { Section } from '../../../../ui/publisher/kit';
+import { AttestBox, Field, OptionRows } from '../../form-parts';
 
 interface Row {
   option: 'keep_retrieve' | 'online_read';
@@ -19,21 +33,38 @@ interface Row {
   optionName: string;
 }
 
+interface Problems {
+  price: string | null;
+  options: string | null;
+  attest: string | null;
+  form: string | null;
+  bad: string[];
+}
+
+const NONE: Problems = { price: null, options: null, attest: null, form: null, bad: [] };
+
 // PUB-E1: the create form. The body is the article id, the offered options with their prices in minor units
-// and the tick. Nothing else leaves the browser: the publisher, the currency, the terms and the licence are
+// and the tick. Nothing else leaves the browser: the publisher, the money unit, the terms and the licence are
 // not editable and not sent. The route and the domain check everything again; this form spares a round trip.
+// PUB-UI-FORMS: the fields sit in four sections, and each problem is shown beside its own field.
 export function CreateForm({
   articles,
   capMinor,
   hint,
+  prefix,
   attestLabel,
   rows,
+  terms,
 }: {
   articles: { id: string; title: string }[];
   capMinor: number;
   hint: string;
+  /** The three letter code shown in front of each price. */
+  prefix: string;
   attestLabel: string;
   rows: Row[];
+  /** The sentence about the terms version, the access window and the licence. */
+  terms: string;
 }) {
   const router = useRouter();
   const [article, setArticle] = useState(articles[0]?.id ?? '');
@@ -46,34 +77,55 @@ export function CreateForm({
   const [attest, setAttest] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [problems, setProblems] = useState<Problems>(NONE);
+
+  function show(code: string, bad: string[]) {
+    const text = offerErrorText(code);
+    const field = offerErrorField(code);
+    setProblems({
+      ...NONE,
+      bad,
+      price: field === 'price' ? text : null,
+      options: field === 'options' ? text : null,
+      attest: field === 'attest' ? text : null,
+      form: field === 'form' || field === 'reason' ? createErrorText(code) : null,
+    });
+  }
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    setError(null);
+    setProblems(NONE);
     setDone(null);
-    const options: { option: string; price_minor: number }[] = [];
-    for (const r of rows) {
-      if (offered[r.option] !== true) continue;
-      const minor = parsePriceMinor(prices[r.option] ?? '');
-      if (minor === null || minor < 1 || minor > capMinor) {
-        setError(offerErrorText('invalid_price'));
-        return;
-      }
-      options.push({ option: r.option, price_minor: minor });
-    }
-    if (options.length === 0) {
-      setError(offerErrorText('invalid_options'));
+    const got = collectOptions(
+      rows.map((r) => ({
+        option: r.option,
+        offered: offered[r.option] === true,
+        price: prices[r.option] ?? '',
+      })),
+      capMinor,
+      parsePriceMinor,
+    );
+    if (got.code !== null) {
+      show(got.code, got.bad);
       return;
     }
     setBusy(true);
     const res = await postJson<{ offer_id: string; version: string }>(
       '/api/publisher/offers/create',
-      { article_id: article, options, attestation: attest },
+      { article_id: article, options: got.options, attestation: attest },
     );
     setBusy(false);
     if (!res.ok) {
-      setError(res.status === 401 ? 'Please sign in again.' : createErrorText(res.code));
+      if (res.status === 401) {
+        setProblems({ ...NONE, form: 'Please sign in again.' });
+        return;
+      }
+      const onSale = rows.filter((r) => offered[r.option] === true).map((r) => r.option);
+      if (offerErrorField(res.code) === 'form') {
+        setProblems({ ...NONE, form: createErrorText(res.code) });
+      } else {
+        show(res.code, offerErrorField(res.code) === 'price' ? onSale : []);
+      }
       return;
     }
     setAttest(false);
@@ -83,53 +135,65 @@ export function CreateForm({
 
   return (
     <form onSubmit={(e) => void save(e)} aria-label={CREATE_LABEL}>
-      <div className="field">
-        <label htmlFor="create-article">{CREATE_ARTICLE_LABEL}</label>
-        <select id="create-article" value={article} onChange={(e) => setArticle(e.target.value)}>
-          {articles.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.title}
-            </option>
-          ))}
-        </select>
-      </div>
-      {rows.map((r) => (
-        <fieldset key={r.option} className="field">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={offered[r.option] === true}
-              onChange={(e) => setOffered({ ...offered, [r.option]: e.target.checked })}
-            />
-            <span>{r.offeredLabel}</span>
-          </label>
-          <label htmlFor={`price-${r.option}`}>{r.priceLabel}</label>
-          <input
-            id={`price-${r.option}`}
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            aria-describedby="price-hint"
-            disabled={offered[r.option] !== true}
-            value={prices[r.option] ?? ''}
-            onChange={(e) => setPrices({ ...prices, [r.option]: e.target.value })}
+      <Section title={SECTION_WHAT} id="create-what">
+        <div className="pk-panel">
+          <Field id="create-article" label={CREATE_ARTICLE_LABEL} help={HELP_ARTICLE}>
+            {(a) => (
+              <select {...a} value={article} onChange={(e) => setArticle(e.target.value)}>
+                {articles.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.title}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        </div>
+      </Section>
+      <Section title={SECTION_PRICES} id="create-prices">
+        <div className="pk-panel">
+          <OptionRows
+            rows={rows}
+            offered={offered}
+            prices={prices}
+            onOffered={(option, on) => setOffered({ ...offered, [option]: on })}
+            onPrice={(option, text) => setPrices({ ...prices, [option]: text })}
+            prefix={prefix}
+            rangeHelp={priceHelp(hint)}
+            help={optionHelp}
+            bad={problems.bad}
+            error={problems.price}
+            optionsError={problems.options}
           />
-        </fieldset>
-      ))}
-      <p id="price-hint" className="muted">
-        {hint}
-      </p>
-      <label className="check">
-        <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} />
-        <span>{attestLabel}</span>
-      </label>
-      <button type="submit" className="btn btn-primary" disabled={busy || !attest}>
-        {CREATE_LABEL}
-      </button>
-      <div aria-live="polite" data-testid="offer-create-result">
-        {done}
-      </div>
-      {error ? <ErrorState title="Could not create the offer">{error}</ErrorState> : null}
+        </div>
+      </Section>
+      <Section title={SECTION_LICENCE} id="create-licence">
+        <div className="pk-panel">
+          <p data-testid="create-terms">{terms}</p>
+        </div>
+      </Section>
+      <Section title={SECTION_REVIEW} id="create-review">
+        <div className="pk-panel">
+          <AttestBox
+            label={attestLabel}
+            help={HELP_ATTEST_CREATE}
+            checked={attest}
+            onChange={setAttest}
+            error={problems.attest}
+          />
+          <div className="pk-actions">
+            <button type="submit" className="btn btn-primary" disabled={busy || !attest}>
+              {CREATE_LABEL}
+            </button>
+          </div>
+          <div aria-live="polite" data-testid="offer-create-result">
+            {done}
+          </div>
+          {problems.form ? (
+            <ErrorState title="Could not create the offer">{problems.form}</ErrorState>
+          ) : null}
+        </div>
+      </Section>
     </form>
   );
 }
