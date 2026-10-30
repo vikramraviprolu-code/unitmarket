@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en" data-option="G">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Departure Board preview</title>
+<style>
+/*
+  OPTION G  DEPARTURE BOARD  (high-contrast, technical, harbour-ferry board)
+  Tone: precise, operational, calm. Reads like the departures board on a ferry quay: every row is a fact.
+  Palette: graphite 70%, warm white 25%, signal yellow under 5% (primary action, the pack count, the settle rule).
+  Status colours are text first, colour second.
+  Type: system monospace for codes, statuses, prices and the board; system sans for sentences.
+  Memorable detail: THE FLAP BOARD. Status cells change like a split-flap departures board: each change of a
+  real payment status flips the cell once. Amounts never flip.
+  Data-ink: fit evidence and the library window are Tremor-style trackers (one cell per criterion or per day).
+  Motion: list hover 50 ms, state changes 150 to 240 ms (Carbon productive). Done: flap per status change,
+  then one yellow settle rule across the board when both are confirmed.
+*/
+/* shared preview chrome and helpers; every colour comes from the option's tokens */
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--body); font-size: 16px; line-height: 1.5; overflow-x: hidden; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+h1:focus { outline: none; }
+.sr { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.wrap { max-width: 1200px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+@media (min-width: 760px) { .wrap { padding-left: 28px; padding-right: 28px; } }
+.num { font-variant-numeric: tabular-nums; }
+
+.proto { background: var(--proto-bg); color: var(--proto-ink); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; border-bottom: 1px solid var(--proto-line); }
+.proto .wrap { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding-top: 6px; padding-bottom: 6px; }
+.proto .what { flex: 1 1 260px; }
+.proto button { background: transparent; border: 1px solid var(--proto-line); color: inherit; border-radius: 4px; padding: 4px 9px; font-size: 12px; }
+.proto button[aria-pressed="true"] { background: var(--proto-ink); color: var(--proto-bg); }
+
+.fly { position: fixed; z-index: 50; width: 40px; height: 40px; display: grid; place-items: center; pointer-events: none; font: 700 13px/1 var(--body); }
+#toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 60; max-width: calc(100vw - 32px); }
+
+/* screen change: view transition, productive timing (Carbon moderate-02 = 240 ms cap) */
+::view-transition-old(root) { animation: 140ms cubic-bezier(0.2, 0, 1, 0.9) both vt-out; }
+::view-transition-new(root) { animation: 220ms cubic-bezier(0, 0, 0.38, 0.9) both vt-in; }
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(6px); } }
+
+:root {
+  color-scheme: dark;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bg: #111315; --surface: #1a1d21; --surface-2: #23272c; --text: #eef0f2; --muted: #a9b0b9; --line: #626a74; --line-soft: #2e333a;
+  --accent: #ffd23f; --accent-ink: #17140a; --accent-text: #ffd23f; --accent-soft: #3a3214;
+  --good: #72dd9c; --good-soft: #14301f; --info: #8fcaff; --info-soft: #16293b; --warn: #ffbd73; --warn-soft: #3a2a14; --dim: #3a4048;
+  --focus: #8fcaff; --proto-bg: #0b0c0e; --proto-ink: #c9ced5; --proto-line: #3d434b;
+  --ease-out: cubic-bezier(0, 0, 0.38, 0.9); --ease-in: cubic-bezier(0.2, 0, 1, 0.9); --ease-std: cubic-bezier(0.2, 0, 0.38, 0.9);
+}
+:root[data-theme="light"] { color-scheme: light;
+  --bg: #f2f2ee; --surface: #ffffff; --surface-2: #e6e7e2; --text: #121416; --muted: #4a5159; --line: #7a818a; --line-soft: #d5d7d2;
+  --accent: #ffd23f; --accent-ink: #17140a; --accent-text: #6e5200; --accent-soft: #fff4c7;
+  --good: #16703e; --good-soft: #e1f2e7; --info: #195894; --info-soft: #e2edf8; --warn: #8a4b00; --warn-soft: #fbeedb; --dim: #d3d6d0;
+  --focus: #195894; --proto-bg: #e2e3de; --proto-ink: #2c3036; --proto-line: #a4a9a2; }
+
+.top { border-bottom: 1px solid var(--line-soft); background: var(--surface); }
+.top .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding-top: 10px; padding-bottom: 10px; }
+.brand { font-family: var(--mono); font-weight: 800; letter-spacing: 0.08em; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.brand i { width: 12px; height: 12px; background: var(--accent); display: inline-block; }
+nav.tabs { display: flex; gap: 2px; margin-left: auto; font-family: var(--mono); font-size: 14px; }
+nav.tabs button { background: none; border: 1px solid transparent; padding: 7px 12px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: var(--muted); }
+nav.tabs button:hover { color: var(--text); }
+nav.tabs button[aria-current="page"] { color: var(--text); border-color: var(--line); background: var(--surface-2); }
+.env { font-family: var(--mono); font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 8px; border: 1.5px solid currentColor; color: var(--info); }
+:root[data-env="dryrun"] .env { color: var(--warn); }
+
+/* the board header: a flap line that shows the newest titles; the loop pauses offscreen, hidden or on request */
+.hero { padding-top: 26px; padding-bottom: 8px; display: grid; gap: 14px; }
+.hero h1 { font-size: clamp(30px, 4.6vw, 48px); line-height: 1.05; margin: 0; letter-spacing: -0.02em; max-width: 20ch; text-wrap: balance; }
+.hero p { margin: 0; color: var(--muted); max-width: 60ch; }
+.flapline { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0; align-items: stretch; border: 1px solid var(--line); background: var(--surface); font-family: var(--mono); max-width: 860px; }
+.flapline .lab { padding: 10px 12px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-text); border-right: 1px solid var(--line); display: grid; place-items: center; }
+.cell { position: relative; perspective: 500px; overflow: hidden; }
+/* hinge notches at the flap's edges (a full midline would read as strikethrough) */
+.cell::before, .cell::after { content: ""; position: absolute; top: calc(50% - 1px); width: 5px; height: 2px; background: var(--line); pointer-events: none; }
+.cell::before { left: 0; } .cell::after { right: 0; }
+.flap { display: block; transform-origin: 50% 50%; backface-visibility: hidden; }
+.flapline .flap { padding: 10px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; }
+.flapline button { background: none; border: 0; border-left: 1px solid var(--line); padding: 0 12px; font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.cmd { display: flex; max-width: 860px; border: 1.5px solid var(--line); background: var(--surface); }
+.cmd span { font-family: var(--mono); color: var(--accent-text); padding: 12px 0 12px 14px; font-weight: 800; }
+.cmd input { flex: 1; min-width: 0; background: transparent; border: 0; padding: 12px; font-family: var(--mono); font-size: 16px; }
+.btn { background: var(--accent); color: var(--accent-ink); border: 0; padding: 11px 18px; min-height: 44px; font-weight: 800; font-family: var(--mono); letter-spacing: 0.04em; text-transform: uppercase; font-size: 14px; transition: filter 110ms var(--ease-std); }
+.btn:hover { filter: brightness(1.08); }
+.btn.ghost { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1.5px var(--line); }
+.btn[disabled] { background: var(--surface-2); color: var(--muted); cursor: not-allowed; filter: none; }
+
+/* results board */
+.grid { display: grid; gap: 24px; padding-top: 18px; padding-bottom: 130px; }
+@media (min-width: 1060px) { .grid { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; } }
+.bhead, .row { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 6px 14px; }
+@media (min-width: 820px) { .bhead, .row { grid-template-columns: 52px minmax(0, 1fr) 140px 170px; } }
+.bhead { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 0 12px 6px; border-bottom: 2px solid var(--line); }
+.bhead span:nth-child(n+3) { display: none; }
+@media (min-width: 820px) { .bhead span:nth-child(n+3) { display: block; } }
+.rows { list-style: none; margin: 0; padding: 0; }
+.row { padding: 14px 12px; border-bottom: 1px solid var(--line-soft); transition: background-color 50ms linear; animation: rowin 200ms var(--ease-out) both; animation-delay: var(--d, 0ms); }
+.row:hover { background: var(--surface); }
+.row.in { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+@keyframes rowin { from { opacity: 0; transform: translateX(-6px); } }
+.code { font-family: var(--mono); font-weight: 800; font-size: 14px; width: 44px; height: 32px; display: grid; place-items: center; border: 1.5px solid var(--text); }
+.code.square { border-radius: 0; } .code.circle { border-radius: 16px; }
+.row h2 { font-size: 18px; line-height: 1.25; margin: 0 0 2px; }
+.meta { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 6px; letter-spacing: 0.02em; }
+.abs { margin: 0; color: var(--muted); font-size: 15px; max-width: 60ch; }
+.fitc { grid-column: 2; }
+@media (min-width: 820px) { .fitc { grid-column: auto; } }
+.trk { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; height: 14px; max-width: 120px; margin: 4px 0 6px; }
+.trk i { background: var(--dim); }
+.trk i.v1 { background: var(--warn); } .trk i.v2 { background: var(--good); }
+.band { font-family: var(--mono); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+.band.good { color: var(--good); } .band.info { color: var(--info); } .band.warn { color: var(--warn); }
+.fitc details { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.fitc summary { cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.fitc ul { margin: 4px 0 0; padding-left: 16px; }
+.buy { grid-column: 2; display: grid; gap: 8px; align-content: start; }
+@media (min-width: 820px) { .buy { grid-column: auto; } }
+.price { font-family: var(--mono); font-weight: 800; font-size: 26px; line-height: 1; }
+.price small { display: block; font-family: var(--body); font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 4px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); font-family: var(--mono); max-width: 240px; }
+.seg button { background: none; border: 0; padding: 6px 4px; font-size: 12px; font-weight: 700; color: var(--muted); min-height: 34px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.add { display: flex; align-items: center; gap: 8px; border: 1.5px dashed var(--line); padding: 7px 10px; font-family: var(--mono); font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; min-height: 40px; max-width: 240px; transition: border-color 150ms var(--ease-std); }
+.add input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+.row.in .add { border-style: solid; border-color: var(--accent); color: var(--accent-text); }
+
+/* manifest (tray) */
+.man { border: 1px solid var(--line); background: var(--surface); position: sticky; top: 12px; }
+.man-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.man-h h2 { font-family: var(--mono); font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; margin: 0; flex: 1; }
+.cnt { font-family: var(--mono); font-weight: 800; background: var(--accent); color: var(--accent-ink); min-width: 30px; height: 30px; display: inline-grid; place-items: center; padding: 0 8px; }
+.cnt.got { animation: cflap 220ms var(--ease-out); }
+@keyframes cflap { 0% { transform: rotateX(-90deg); } 100% { transform: rotateX(0); } }
+.man ul { list-style: none; margin: 0; padding: 0 14px; }
+.man li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 2px 10px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; align-items: start; }
+.man li .code { width: 32px; height: 24px; font-size: 11px; }
+.man li .sm { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+.man .num, .man li > span:last-of-type { font-family: var(--mono); }
+.rm { background: none; border: 0; padding: 4px 0; min-height: 32px; color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; font-size: 13px; justify-self: start; }
+.man .tot { display: flex; justify-content: space-between; padding: 12px 14px 4px; font-family: var(--mono); font-weight: 800; font-size: 20px; }
+.man .pl { padding: 0 14px; font-size: 13px; color: var(--muted); margin: 4px 0 12px; }
+.man .btn { margin: 0 14px; width: calc(100% - 28px); }
+.lock { display: flex; gap: 8px; font-size: 13px; color: var(--muted); padding: 10px 14px 14px; margin: 0; }
+.lock svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
+.man .empty { padding: 12px 14px 0; margin: 0; color: var(--muted); font-size: 14px; }
+@media (max-width: 1059px) {
+  .man { position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 20; border-width: 2px 0 0; border-top-color: var(--accent); display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head btn" "tot btn" "lock lock"; align-items: center; padding: 8px 14px 4px; }
+  .man-h { grid-area: head; border: 0; padding: 0; } .man .tot { grid-area: tot; padding: 0; font-size: 17px; justify-content: flex-start; gap: 10px; } .man .btn { grid-area: btn; margin: 0; width: auto; } .lock { grid-area: lock; padding: 6px 0 8px; }
+  .man ul, .man .pl, .man .empty { display: none; }
+}
+
+/* approve: the manifest, still */
+.ap { display: grid; gap: 24px; padding-top: 24px; padding-bottom: 80px; }
+@media (min-width: 1000px) { .ap { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; } }
+.step { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+h1.big { font-size: clamp(28px, 4vw, 40px); line-height: 1.1; margin: 0 0 8px; letter-spacing: -0.02em; text-wrap: balance; }
+.lede { color: var(--muted); font-size: 17px; margin: 0 0 18px; max-width: 60ch; }
+.blk { border: 1px solid var(--line); margin-bottom: 16px; background: var(--surface); }
+.blk-h { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.blk-h h2 { font-size: 18px; margin: 0; }
+.blk-h p { margin: 0; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.ln { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); }
+.ln .sm { color: var(--muted); font-size: 14px; }
+.amt { font-family: var(--mono); font-weight: 800; font-size: 17px; text-align: right; }
+.sub { display: flex; justify-content: space-between; padding: 10px 14px; font-family: var(--mono); font-weight: 700; }
+.terms { border: 1px dashed var(--line); padding: 12px 14px; color: var(--muted); font-size: 15px; }
+.terms b { color: var(--text); }
+.sum { border: 1px solid var(--line); background: var(--surface); padding: 16px; }
+.sum .r { display: flex; justify-content: space-between; font-family: var(--mono); padding: 5px 0; font-size: 15px; }
+.sum .t { border-top: 2px solid var(--line); margin-top: 6px; padding-top: 10px; font-weight: 800; font-size: 20px; }
+.hold { font-size: 14px; color: var(--muted); margin: 12px 0; }
+.consent { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; margin: 12px 0; cursor: pointer; }
+.consent input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+.need { display: none; color: var(--warn); font-weight: 700; font-size: 14px; margin: 0 0 10px; }
+:root[data-need-consent="yes"] .need { display: block; }
+.sum .btn { width: 100%; min-height: 52px; }
+.sum .lock { padding: 10px 0 0; }
+
+/* done: the board */
+.done { padding-top: 24px; padding-bottom: 80px; max-width: 940px; }
+.board { border: 1px solid var(--line); background: var(--surface); font-family: var(--mono); position: relative; margin: 18px 0; }
+.board-h { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 2px solid var(--line); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.lamp { width: 10px; height: 10px; border-radius: 50%; background: var(--info); flex: none; }
+:root[data-paid="pending"] .lamp { animation: lamp 900ms steps(2, jump-none) infinite; }
+:root[data-paid="all"] .lamp { background: var(--good); }
+@keyframes lamp { 50% { opacity: .25; } }
+.board-h .cell { min-width: 0; }
+.board-h .flap { color: var(--text); font-weight: 800; padding: 0 10px; }
+.brow { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "c who amt" "c st st"; gap: 6px 14px; padding: 14px; border-bottom: 1px solid var(--line-soft); align-items: center; }
+@media (min-width: 700px) { .brow { grid-template-columns: 44px minmax(0, 1fr) 90px 250px; grid-template-areas: "c who amt st"; } }
+.brow .code { grid-area: c; }
+.brow .who { grid-area: who; font-family: var(--body); } .brow .who b { display: block; font-size: 17px; } .brow .who span { color: var(--muted); font-size: 14px; }
+.brow .amt { grid-area: amt; }
+.brow .st { grid-area: st; display: flex; align-items: center; gap: 8px; }
+.brow .st .cell { background: var(--bg); border: 1px solid var(--line); flex: 1; }
+.brow .st .flap { padding: 7px 10px; font-weight: 800; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.brow[data-state="confirming"] .st .flap { color: var(--info); }
+.brow[data-state="confirmed"] .st .flap { color: var(--good); }
+.tick { width: 22px; height: 22px; flex: none; }
+.tick path { fill: none; stroke: var(--good); stroke-width: 3; stroke-linecap: square; stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 240ms var(--ease-out) 120ms; }
+.brow[data-state="confirmed"] .tick path { stroke-dashoffset: 0; }
+.settle { height: 3px; background: var(--accent); transform: scaleX(0); transform-origin: left; }
+:root[data-paid="all"] .settle { transform: scaleX(1); transition: transform 520ms cubic-bezier(0.4, 0.14, 0.3, 1); }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; font-family: var(--mono); font-size: 14px; }
+.facts li { border: 1px solid var(--line); padding: 4px 10px; }
+.acts { display: flex; flex-wrap: wrap; gap: 10px; }
+.fine { font-size: 13px; color: var(--muted); margin-top: 16px; }
+
+/* library */
+.lib { padding-top: 24px; padding-bottom: 80px; }
+.shelf { list-style: none; margin: 16px 0 0; padding: 0; border-top: 2px solid var(--line); }
+.item { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px 14px; padding: 16px 12px; border-bottom: 1px solid var(--line-soft); animation: rowin 200ms var(--ease-out) both; animation-delay: var(--d, 0ms); }
+@media (min-width: 900px) { .item { grid-template-columns: 52px minmax(0, 1fr) 280px 180px; align-items: center; } }
+.item h2 { font-size: 18px; margin: 0 0 2px; }
+.ok { font-family: var(--mono); font-size: 12px; font-weight: 800; color: var(--good); letter-spacing: 0.06em; text-transform: uppercase; }
+.win, .iact { grid-column: 2; }
+@media (min-width: 900px) { .win, .iact { grid-column: auto; } }
+.days { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; height: 22px; }
+.days i { background: var(--dim); transform-origin: bottom; }
+.days i.on { background: var(--good); animation: dayon 200ms var(--ease-out) both; animation-delay: var(--d, 0ms); }
+.days i.part { background: linear-gradient(90deg, var(--good) var(--p, 50%), var(--dim) var(--p, 50%)); }
+@keyframes dayon { from { transform: scaleY(.2); opacity: .4; } }
+.dl { display: grid; grid-template-columns: repeat(5, 1fr); font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+.left { font-family: var(--mono); font-size: 13px; margin: 6px 0 0; }
+.iact { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+@media (min-width: 900px) { .iact { display: grid; justify-items: start; gap: 4px; } }
+.iact a { font-size: 14px; color: var(--accent-text); text-underline-offset: 3px; padding: 4px 0; }
+.foot { border-top: 1px solid var(--line-soft); font-size: 13px; color: var(--muted); padding-top: 12px; padding-bottom: 110px; font-family: var(--mono); }
+.fly { background: var(--accent); color: var(--accent-ink); font-family: var(--mono); }
+#toast { background: var(--text); color: var(--bg); padding: 10px 14px; font-size: 14px; font-family: var(--mono); }
+
+/* reduced motion, designed: flips become short fades, the lamp holds steady, the rule appears without travel */
+:root[data-motion="reduce"] .row, :root[data-motion="reduce"] .item, :root[data-motion="reduce"] .days i.on { animation: fade 120ms linear both; }
+@keyframes fade { from { opacity: 0; } }
+:root[data-motion="reduce"] .lamp { animation: none; }
+:root[data-motion="reduce"] .settle { transition: none; }
+:root[data-motion="reduce"] .tick path { transition: none; }
+:root[data-motion="reduce"] .cnt.got { animation: none; outline: 2px solid var(--text); }
+:root[data-motion="reduce"] #flap-btn { display: none; }
+</style>
+</head>
+<body>
+<div class="proto" role="region" aria-label="Preview controls"><div class="wrap">
+  <span class="what"><b>Option G, Departure Board.</b> Design preview with simulated data. It charges nothing.</span>
+  <button type="button" data-act="theme">Theme</button><button type="button" data-act="motion">Motion</button>
+  <button type="button" data-act="env" aria-pressed="false">Show Dry-run label</button><button type="button" data-act="replay">Replay Done</button>
+</div></div>
+<header class="top"><div class="wrap">
+  <span class="brand"><i aria-hidden="true"></i>UNITMARKET</span>
+  <nav class="tabs" aria-label="Main"><button type="button" data-go="find">Find</button><button type="button" data-go="approve">Pack</button><button type="button" data-go="library">Library</button></nav>
+  <span class="env" data-testid="env-label" data-env-label></span>
+</div></header>
+
+<main>
+<section data-screen="find">
+  <div class="wrap hero">
+    <h1>One article. One price. Five days to read it.</h1>
+    <p>Type what you need. Each result shows how it fits your words and what it costs before you choose.</p>
+    <div class="flapline" id="flapline"><span class="lab">Latest</span><span class="cell"><span class="flap" id="latest" aria-live="off"></span></span><button type="button" id="flap-btn" aria-pressed="false">Pause</button></div>
+    <form class="cmd" role="search" action="#find"><span aria-hidden="true">&gt;</span><label class="sr" for="q">Search articles</label><input id="q" value="tide table quay walk" autocomplete="off"><button class="btn" type="button" data-act="toast" data-msg="In the app this runs the search again.">Search</button></form>
+  </div>
+  <div class="wrap grid">
+    <div>
+      <div class="bhead" aria-hidden="true"><span>Pub</span><span>Article</span><span>Fit</span><span>Price</span></div>
+      <ol class="rows" id="rows" aria-label="Results, 5 articles"></ol>
+    </div>
+    <aside class="man" id="man" aria-labelledby="man-h"></aside>
+  </div>
+</section>
+
+<section data-screen="approve" hidden>
+  <div class="wrap ap">
+    <div>
+      <p class="step">Step 2 of 3 / Approve</p>
+      <h1 class="big">Your manifest: two payments</h1>
+      <p class="lede">One payment per publisher. PayPal asks you to approve each one. Nothing is taken on this page.</p>
+      <div id="blks"></div>
+      <p class="terms"><b>Terms.</b> Personal use only. No redistribution. Five days of access, starting when each payment is confirmed.</p>
+    </div>
+    <aside class="sum" aria-labelledby="sum-h">
+      <h2 class="sr" id="sum-h">Summary</h2>
+      <div id="sumr"></div>
+      <p class="hold">Price and terms are held for 15 minutes, until 12:15.</p>
+      <label class="consent"><input type="checkbox" id="consent"><span>I confirm the prices and terms above.</span></label>
+      <p class="need">Tick the box to confirm the prices and terms first.</p>
+      <button class="btn" type="button" data-act="approve" id="approve-btn">Approve 2 payments at PayPal</button>
+      <p class="lock"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="3" y="7" width="10" height="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span>You pay nothing until you approve at the payment step.</span></p>
+    </aside>
+  </div>
+</section>
+
+<section data-screen="done" hidden>
+  <div class="wrap done">
+    <p class="step">Step 3 of 3 / Confirmation</p>
+    <h1 class="big" id="done-h">Confirming your two payments</h1>
+    <p class="lede" id="done-p">You approved both at PayPal. Each publisher confirms its own payment.</p>
+    <div class="board">
+      <div class="board-h"><span class="lamp" aria-hidden="true"></span><span class="cell"><span class="flap" id="board-state">Payments in progress</span></span></div>
+      <ol class="rows" id="brows" aria-label="Payment status" aria-live="polite"></ol>
+      <div class="settle" aria-hidden="true"></div>
+    </div>
+    <ul class="facts" id="facts"></ul>
+    <div class="acts"><button class="btn" type="button" data-go="library">Open my library</button><button class="btn ghost" type="button" data-act="toast" data-msg="In the app this opens the receipt.">View receipt</button></div>
+    <p class="fine">Preview: the confirmations follow a fixed schedule here. In the app each one follows the stored payment status.</p>
+  </div>
+</section>
+
+<section data-screen="library" hidden>
+  <div class="wrap lib">
+    <p class="step">Library</p>
+    <h1 class="big">Your shelf</h1>
+    <p class="lede">Three articles. Each lit cell is a day you still have.</p>
+    <ol class="shelf" id="shelf"></ol>
+  </div>
+</section>
+</main>
+<footer class="wrap foot"><span data-env-note></span> Fictional publishers.</footer>
+<div id="toast" role="status" hidden></div>
+<div id="live" class="sr" aria-live="polite"></div>
+<script>
+/* UnitMarket round-2 preview core. Hand-written for this preview; no library code copied.
+   Techniques studied (re-implemented, not copied): View Transition API feature check (Chrome docs),
+   capped stagger (Magic UI Animated List idea, MIT), FLIP/arc fly (public technique), Carbon motion
+   durations (Apache-2.0, values only). No wall clock, no random source and no high-resolution timer: timings are a fixed
+   schedule and the animation-frame timestamp is the only clock used for drawing. */
+var UM = (function () {
+  'use strict';
+  var root = document.documentElement;
+  function $(sel, ctx) { return (ctx || document).querySelector(sel); }
+  function $$(sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  /* stored data, as the app would load it */
+  var STORED = { environment: 'sandbox', today: 'Thursday 29 October 2026' };
+  var ENV_TEXT = {
+    sandbox: { label: 'Sandbox', note: 'Sandbox: test payments only. No real money moves.' },
+    dryrun: { label: 'Dry-run', note: 'Dry-run: nothing is sent to PayPal. No money moves.' }
+  };
+  var PUB = {
+    'harbour-ledger': { id: 'harbour-ledger', name: 'Harbour Ledger', ini: 'HL', glyph: 'circle', desk: 'Coast and shipping' },
+    'quayside-gazette': { id: 'quayside-gazette', name: 'Quayside Gazette', ini: 'QG', glyph: 'square', desk: 'Town and harbour life' }
+  };
+  var A = [
+    { id: 'tide-tables', pub: 'harbour-ledger', title: 'Reading a tide table in ten minutes', abs: 'A short guide to the columns of a coastal tide table and what they mean for a day on the water.', date: '3 Nov 2025', months: 11, mins: 10, price: { read: 40, keep: 40 } },
+    { id: 'quay-walk', pub: 'quayside-gazette', title: 'A morning walk along the old quay', abs: 'A walking route past four landmarks on the old quay, with what each was built to do.', date: '22 Dec 2025', months: 10, mins: 7, price: { read: 90, keep: 90 } },
+    { id: 'ferry-winter', pub: 'harbour-ledger', title: 'Why ferry timetables slip in winter', abs: 'Four small causes of winter delays on short coastal ferry routes, from tides to crew rotas.', date: '10 Nov 2025', months: 11, mins: 9, price: { read: 125, keep: 125 } },
+    { id: 'market-hall', pub: 'quayside-gazette', title: 'Why the quayside market moved indoors', abs: 'How a market left the open quay for a covered hall, and what its traders say changed.', date: '15 Dec 2025', months: 10, mins: 12, price: { read: 120, keep: 150 } },
+    { id: 'harbour-fees', pub: 'harbour-ledger', title: 'What a small harbour charges and why', abs: 'A plain walk through mooring, berthing and water fees at a small working harbour.', date: '17 Nov 2025', months: 11, mins: 14, price: { read: 250, keep: 300 } }
+  ];
+  var BY = {}; A.forEach(function (a) { BY[a.id] = a; });
+  var OPT = { read: 'Read online', keep: 'Download and keep' };
+  var OPT_DAYS = { read: '5 days to read', keep: '5 days to download' };
+  var S = { q: 'tide table quay walk', pack: { 'tide-tables': true, 'quay-walk': true }, opt: {}, consent: false, screen: 'find', pay: {}, timers: [] };
+
+  function money(c) { return '$' + (c / 100).toFixed(2); }
+  function words(q) { return q.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 3; }); }
+  function optOf(a) { return S.opt[a.id] || 'read'; }
+  function priceOf(a) { return a.price[optOf(a)]; }
+  /* five evidence cells, each from data only */
+  function fit(a) {
+    var t = words(S.q), hay = (a.title + ' ' + a.abs).toLowerCase();
+    var k = t.filter(function (w) { return hay.indexOf(w) >= 0; }).length;
+    var cells = [
+      { key: 'Your words', v: k >= 2 ? 2 : k, text: 'Matches ' + k + ' of ' + t.length + ' of your words' },
+      { key: 'Recent', v: a.months <= 12 ? 2 : 1, text: 'Published ' + a.date },
+      { key: 'Price limit', v: priceOf(a) <= 300 ? 2 : 0, text: 'Under your $3.00 limit' },
+      { key: 'Format', v: 2, text: 'Read online or download' },
+      { key: 'Length', v: a.mins <= 10 ? 2 : 1, text: a.mins + ' minute read' }
+    ];
+    var score = cells.reduce(function (s, c) { return s + c.v; }, 0);
+    var band = score >= 9 ? 'Strong fit' : score >= 7 ? 'Good fit' : 'Partial fit';
+    return { k: k, n: t.length, cells: cells, band: band, tone: band === 'Strong fit' ? 'good' : band === 'Good fit' ? 'info' : 'warn' };
+  }
+  function packItems() { return A.filter(function (a) { return S.pack[a.id]; }); }
+  function groups() {
+    var g = [], idx = {};
+    packItems().forEach(function (a) {
+      if (!(a.pub in idx)) { idx[a.pub] = g.length; g.push({ pub: PUB[a.pub], items: [], total: 0 }); }
+      var b = g[idx[a.pub]]; b.items.push(a); b.total += priceOf(a);
+    });
+    return g;
+  }
+  function total() { return packItems().reduce(function (s, a) { return s + priceOf(a); }, 0); }
+
+  /* motion preference: system setting unless the preview toggle overrides it */
+  var mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  var motionChoice = 'system';
+  function applyMotion() { var r = motionChoice === 'reduce' || (motionChoice === 'system' && mq && mq.matches); root.setAttribute('data-motion', r ? 'reduce' : 'full'); }
+  function reduced() { return root.getAttribute('data-motion') === 'reduce'; }
+  if (mq && mq.addEventListener) mq.addEventListener('change', applyMotion);
+
+  var hooks = { render: {}, tray: null, onPay: null, onAll: null, onEnter: {} };
+  var live;
+  function announce(msg) { if (!live) return; live.textContent = ''; window.requestAnimationFrame(function () { live.textContent = msg; }); }
+
+  function applyEnv() {
+    var e = ENV_TEXT[STORED.environment];
+    root.setAttribute('data-env', STORED.environment);
+    $$('[data-env-label]').forEach(function (el) { el.textContent = e.label; });
+    $$('[data-env-note]').forEach(function (el) { el.textContent = e.note; });
+    $$('[data-today]').forEach(function (el) { el.textContent = STORED.today; });
+  }
+
+  function render(name) { if (hooks.render[name]) hooks.render[name](); applyEnv(); }
+  function renderTray() { if (hooks.tray) hooks.tray(); applyEnv(); }
+
+  function clearTimers() { S.timers.forEach(function (t) { window.clearTimeout(t); }); S.timers = []; }
+  function swap(name) {
+    S.screen = name;
+    $$('[data-screen]').forEach(function (s) { s.hidden = s.getAttribute('data-screen') !== name; });
+    $$('[data-go]').forEach(function (b) { if (b.closest('nav')) b.setAttribute('aria-current', b.getAttribute('data-go') === name ? 'page' : 'false'); });
+    render(name);
+    window.scrollTo(0, 0);
+    var h = $('[data-screen="' + name + '"] h1'); if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
+  }
+  function go(name, opts) {
+    clearTimers();
+    var run = function () { swap(name); if (hooks.onEnter[name]) hooks.onEnter[name](opts || {}); };
+    if (document.startViewTransition && !reduced()) {
+      try { document.startViewTransition(run); return; } catch (e) { /* fall through */ }
+    }
+    run();
+  }
+
+  /* Done: staged payment states. In the app each change follows the stored payment status;
+     here a fixed schedule stands in for it. The schedule never delays the real outcome. */
+  var SCHEDULE = [
+    [220, 'harbour-ledger', 'confirming'], [420, 'quayside-gazette', 'confirming'],
+    [1500, 'harbour-ledger', 'confirmed'], [2400, 'quayside-gazette', 'confirmed']
+  ];
+  var PAY_TEXT = { waiting: 'Approved, waiting', confirming: 'Confirming with PayPal', confirmed: 'Confirmed' };
+  function runPayments() {
+    clearTimers();
+    groups().forEach(function (g) { S.pay[g.pub.id] = 'waiting'; if (hooks.onPay) hooks.onPay(g.pub.id, 'waiting', true); });
+    SCHEDULE.forEach(function (st) {
+      if (!(st[1] in S.pay)) return;
+      S.timers.push(window.setTimeout(function () {
+        S.pay[st[1]] = st[2];
+        if (hooks.onPay) hooks.onPay(st[1], st[2], false);
+        if (st[2] === 'confirmed') announce(PUB[st[1]].name + ' payment confirmed.');
+        var all = Object.keys(S.pay).every(function (k) { return S.pay[k] === 'confirmed'; });
+        if (all) { root.setAttribute('data-paid', 'all'); announce('Both payments confirmed. Your articles are in your library.'); if (hooks.onAll) hooks.onAll(); }
+      }, st[0]));
+    });
+    root.setAttribute('data-paid', 'pending');
+  }
+
+  /* fly a small token from a card to the tray along an arc (state and live text update first) */
+  function fly(src, dst, label, cls) {
+    if (!src || !dst) return;
+    if (reduced() || !src.animate) { dst.classList.remove('got'); void dst.offsetWidth; dst.classList.add('got'); return; }
+    var a = src.getBoundingClientRect(), b = dst.getBoundingClientRect();
+    var t = document.createElement('div'); t.className = 'fly ' + (cls || ''); t.setAttribute('aria-hidden', 'true'); t.textContent = label;
+    document.body.appendChild(t);
+    t.style.setProperty('left', a.left + 'px'); t.style.setProperty('top', a.top + 'px');
+    var dx = b.left + b.width / 2 - a.left - 20, dy = b.top + b.height / 2 - a.top - 20;
+    var lift = Math.min(-60, dy * 0.25 - 80);
+    var anim = t.animate([
+      { transform: 'translate(0,0) scale(1)', opacity: 1 },
+      { transform: 'translate(' + dx * 0.5 + 'px,' + (dy * 0.5 + lift) + 'px) scale(.9)', opacity: 1, offset: 0.5 },
+      { transform: 'translate(' + dx + 'px,' + dy + 'px) scale(.5)', opacity: 0.2 }
+    ], { duration: 520, easing: 'cubic-bezier(0.16,1,0.3,1)' });
+    anim.onfinish = function () { t.remove(); dst.classList.remove('got'); void dst.offsetWidth; dst.classList.add('got'); };
+  }
+
+  /* loops pause when offscreen, when the tab is hidden, or when the viewer presses pause */
+  function loop(el, btn) {
+    if (!el) return;
+    var state = { vis: true, tab: !document.hidden, user: true };
+    function sync() { var on = state.vis && state.tab && state.user; el.classList.toggle('is-paused', !on); el.setAttribute('data-loop', on ? 'running' : 'paused'); }
+    if ('IntersectionObserver' in window) new IntersectionObserver(function (es) { state.vis = es[0].isIntersecting; sync(); }).observe(el);
+    document.addEventListener('visibilitychange', function () { state.tab = !document.hidden; sync(); });
+    if (btn) btn.addEventListener('click', function () { state.user = !state.user; btn.setAttribute('aria-pressed', String(!state.user)); btn.textContent = state.user ? 'Pause' : 'Play'; sync(); });
+    sync();
+  }
+
+  /* capped stagger: index-based delay set through the style API (CSP-safe), total capped */
+  function stagger(els, step, cap) {
+    els.forEach(function (el, i) { el.style.setProperty('--d', Math.min(i * step, cap) + 'ms'); });
+  }
+
+  function setMeter(el, f) { el.style.setProperty('--f', String(Math.max(0, Math.min(1, f)))); }
+
+  function togglePack(id, src) {
+    var on = !S.pack[id];
+    if (on) S.pack[id] = true; else delete S.pack[id];
+    var a = BY[id];
+    announce((on ? 'Added ' : 'Removed ') + a.title + '. ' + packItems().length + ' in your pack, ' + money(total()) + '.');
+    renderTray();
+    if (hooks.render.findCard) hooks.render.findCard(id);
+    if (on) fly(src, $('[data-tray-target]'), PUB[a.pub].ini, 'fly-' + a.pub);
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-go],[data-unpack],[data-opt],[data-act]');
+    if (!t) return;
+    if (t.hasAttribute('data-unpack')) { togglePack(t.getAttribute('data-unpack'), null); return; }
+    if (t.hasAttribute('data-go')) { go(t.getAttribute('data-go')); return; }
+    if (t.hasAttribute('data-opt')) { S.opt[t.getAttribute('data-id')] = t.getAttribute('data-opt'); if (hooks.render.findCard) hooks.render.findCard(t.getAttribute('data-id')); renderTray(); return; }
+    var act = t.getAttribute('data-act');
+    if (act === 'approve') {
+      if (!S.consent) { root.setAttribute('data-need-consent', 'yes'); var c = $('#consent'); if (c) c.focus(); announce('Tick the box to confirm the price and terms first.'); return; }
+      root.removeAttribute('data-need-consent'); go('done', { run: true }); return;
+    }
+    if (act === 'replay') { go('done', { run: true }); return; }
+    if (act === 'env') { STORED.environment = STORED.environment === 'sandbox' ? 'dryrun' : 'sandbox'; t.setAttribute('aria-pressed', String(STORED.environment === 'dryrun')); applyEnv(); return; }
+    if (act === 'theme') { var nx = effTheme() === 'dark' ? 'light' : 'dark'; root.setAttribute('data-theme', nx); syncChrome(); return; }
+    if (act === 'motion') { motionChoice = reduced() ? 'full' : 'reduce'; applyMotion(); syncChrome(); return; }
+    if (act === 'toast') { announce(t.getAttribute('data-msg')); var ts = $('#toast'); if (ts) { ts.textContent = t.getAttribute('data-msg'); ts.hidden = false; S.timers.push(window.setTimeout(function () { ts.hidden = true; }, 2600)); } return; }
+  });
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.hasAttribute('data-pack')) { togglePack(t.getAttribute('data-pack'), t.closest('[data-card]') || t); return; }
+    if (t.id === 'consent') { S.consent = t.checked; if (t.checked) root.removeAttribute('data-need-consent'); }
+  });
+
+  var themeBase = 'system';
+  function effTheme() {
+    var t = root.getAttribute('data-theme'); if (t) return t;
+    if (themeBase === 'dark') return 'dark';
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function syncChrome() {
+    $$('[data-act="theme"]').forEach(function (b) { b.textContent = 'Theme: ' + effTheme(); });
+    $$('[data-act="motion"]').forEach(function (b) { b.textContent = 'Motion: ' + (reduced() ? 'reduced' : 'full'); });
+  }
+  function init(opts) {
+    themeBase = opts.themeBase || 'system';
+    hooks.render = opts.render || {}; hooks.tray = opts.tray || null; hooks.onPay = opts.onPay || null; hooks.onAll = opts.onAll || null; hooks.onEnter = opts.onEnter || {};
+    live = $('#live');
+    applyMotion(); syncChrome();
+    var start = (location.hash || '').replace('#', '');
+    if (!/^(find|approve|done|library)$/.test(start)) start = 'find';
+    swap(start);
+    renderTray();
+    if (hooks.onEnter[start]) hooks.onEnter[start]({ run: true });
+    root.setAttribute('data-ready', 'yes');
+  }
+
+  return { $: $, $$: $$, esc: esc, PUB: PUB, A: A, BY: BY, OPT: OPT, OPT_DAYS: OPT_DAYS, S: S, STORED: STORED, PAY_TEXT: PAY_TEXT,
+    money: money, fit: fit, optOf: optOf, priceOf: priceOf, packItems: packItems, groups: groups, total: total,
+    go: go, runPayments: runPayments, fly: fly, loop: loop, stagger: stagger, setMeter: setMeter, reduced: reduced, announce: announce, init: init };
+})();
+
+(function () {
+  var U = UM, $ = U.$, esc = U.esc, money = U.money;
+  var LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="3" y="7" width="10" height="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+  function code(p, extra) { return '<span class="code ' + p.glyph + (extra ? ' ' + extra : '') + '" aria-hidden="true">' + p.ini + '</span>'; }
+
+  /* split-flap: fold the old text away, swap, unfold. Reduced motion: a 120 ms fade. Text never changes on amounts. */
+  function flap(el, text) {
+    if (!el || el.textContent === text) return;
+    if (U.reduced() || !el.animate) { el.textContent = text; if (el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120 }); return; }
+    var a = el.animate([{ transform: 'rotateX(0deg)' }, { transform: 'rotateX(-90deg)' }], { duration: 110, easing: 'cubic-bezier(0.2,0,1,0.9)' });
+    a.onfinish = function () { el.textContent = text; el.animate([{ transform: 'rotateX(90deg)' }, { transform: 'rotateX(0deg)' }], { duration: 170, easing: 'cubic-bezier(0,0,0.38,0.9)' }); };
+  }
+
+  /* latest-titles line: steps through the catalogue every 3.6 s while the loop is running */
+  var li = 0, latest = $('#latest');
+  function latestText(i) { var a = U.A[i % U.A.length]; return U.PUB[a.pub].ini + '  ' + a.title; }
+  latest.textContent = latestText(0);
+  U.loop($('#flapline'), $('#flap-btn'));
+  window.setInterval(function () {
+    if (U.reduced() || $('#flapline').getAttribute('data-loop') !== 'running' || U.S.screen !== 'find') return;
+    li += 1; flap(latest, latestText(li));
+  }, 3600);
+
+  function row(a) {
+    var f = U.fit(a), o = U.optOf(a), p = U.PUB[a.pub], inp = !!U.S.pack[a.id];
+    return '<li class="row' + (inp ? ' in' : '') + '" data-card="' + a.id + '" data-testid="fit-card">' + code(p) +
+      '<div><h2>' + esc(a.title) + '</h2><p class="meta">' + esc(p.name).toUpperCase() + ' / ' + a.date + ' / ' + a.mins + ' MIN</p><p class="abs">' + esc(a.abs) + '</p></div>' +
+      '<div class="fitc"><span class="band ' + f.tone + '">' + f.band + '</span><div class="trk" aria-hidden="true">' + f.cells.map(function (c) { return '<i class="v' + c.v + '"></i>'; }).join('') + '</div>' +
+      '<span class="meta">' + f.k + ' of ' + f.n + ' words</span><details><summary>Why this fit</summary><ul>' + f.cells.map(function (c) { return '<li>' + c.key + ': ' + esc(c.text) + '</li>'; }).join('') + '</ul></details></div>' +
+      '<div class="buy"><div class="price" data-testid="quote-price">' + money(a.price[o]) + '<small>' + U.OPT[o] + ', ' + U.OPT_DAYS[o] + '</small></div>' +
+      '<div class="seg" role="group" aria-label="Access for ' + esc(a.title) + '">' + ['read', 'keep'].map(function (k) { return '<button type="button" data-opt="' + k + '" data-id="' + a.id + '" aria-pressed="' + (o === k) + '">' + (k === 'read' ? 'READ' : 'KEEP') + ' ' + money(a.price[k]) + '</button>'; }).join('') + '</div>' +
+      '<label class="add"><input type="checkbox" data-pack="' + a.id + '"' + (inp ? ' checked' : '') + '><span>' + (inp ? 'In pack' : 'Add to pack') + '<span class="sr">: ' + esc(a.title) + '</span></span></label></div></li>';
+  }
+  function order() { return U.A.slice().sort(function (x, y) { return (U.fit(y).k - U.fit(x).k) || (U.priceOf(x) - U.priceOf(y)); }); }
+  function renderFind() { $('#rows').innerHTML = order().map(row).join(''); U.stagger(U.$$('#rows .row'), 30, 120); }
+  function renderCard(id) { var el = $('[data-card="' + id + '"]'); if (!el) return; var t = document.createElement('ol'); t.innerHTML = row(U.BY[id]); var n = t.firstChild; n.style.setProperty('animation', 'none'); el.replaceWith(n); }
+  function renderTray() {
+    var it = U.packItems(), g = U.groups();
+    var h = '<div class="man-h"><h2 id="man-h">Manifest</h2><span class="cnt" data-tray-target aria-label="' + it.length + ' in pack">' + it.length + '</span></div>';
+    if (!it.length) h += '<p class="empty">Add one or more articles to buy them together.</p><div class="tot"><span>Total</span><span>$0.00</span></div><button class="btn" type="button" disabled>Review</button>';
+    else h += '<ul>' + it.map(function (a) { var p = U.PUB[a.pub]; return '<li>' + code(p) + '<span><b>' + esc(a.title) + '</b><br><span class="sm">' + U.OPT[U.optOf(a)] + '</span><br><button type="button" class="rm" data-unpack="' + a.id + '">Remove<span class="sr"> ' + esc(a.title) + '</span></button></span><span>' + money(U.priceOf(a)) + '</span></li>'; }).join('') + '</ul>' +
+      '<div class="tot"><span>Total</span><span>' + money(U.total()) + '</span></div><p class="pl">' + g.length + (g.length === 1 ? ' payment' : ' payments, one per publisher') + ': ' + g.map(function (b) { return money(b.total) + ' to ' + esc(b.pub.name); }).join(', ') + '.</p>' +
+      '<button class="btn" type="button" data-go="approve">Review manifest</button>';
+    h += '<p class="lock">' + LOCK + '<span>You pay nothing until you approve at the payment step.</span></p>';
+    $('#man').innerHTML = h;
+  }
+  function renderApprove() {
+    var g = U.groups();
+    $('#blks').innerHTML = g.map(function (b, i) {
+      return '<section class="blk" data-testid="approve-block"><div class="blk-h">' + code(b.pub) + '<div><h2>' + esc(b.pub.name) + '</h2><p>PAYMENT ' + (i + 1) + ' OF ' + g.length + '</p></div></div>' +
+        b.items.map(function (a) { return '<div class="ln"><span>' + esc(a.title) + '<br><span class="sm">' + U.OPT[U.optOf(a)] + '. ' + U.OPT_DAYS[U.optOf(a)] + '.</span></span><span class="amt">' + money(U.priceOf(a)) + '</span></div>'; }).join('') +
+        '<div class="sub"><span>To ' + esc(b.pub.name) + '</span><span>' + money(b.total) + '</span></div></section>';
+    }).join('');
+    $('#sumr').innerHTML = g.map(function (b) { return '<div class="r"><span>' + esc(b.pub.name) + '</span><span>' + money(b.total) + '</span></div>'; }).join('') + '<div class="r t" data-testid="approve-total"><span>Total</span><span>' + money(U.total()) + '</span></div>';
+    $('#approve-btn').textContent = 'Approve ' + g.length + (g.length === 1 ? ' payment' : ' payments') + ' at PayPal';
+    $('#consent').checked = U.S.consent;
+  }
+  function renderDone() {
+    var g = U.groups();
+    $('#brows').innerHTML = g.map(function (b) {
+      return '<li class="brow" data-pay="' + b.pub.id + '" data-state="waiting">' + code(b.pub) + '<span class="who"><b>' + esc(b.pub.name) + '</b><span>' + b.items.map(function (a) { return esc(a.title); }).join(', ') + '</span></span>' +
+        '<span class="amt">' + money(b.total) + '</span><span class="st"><span class="cell"><span class="flap">' + U.PAY_TEXT.waiting + '</span></span><svg class="tick" viewBox="0 0 22 22" aria-hidden="true" focusable="false"><path d="M4 11.5l4.5 4.5L18 6.5" pathLength="1"/></svg></span></li>';
+    }).join('');
+    $('#facts').innerHTML = '<li>' + money(U.total()) + ' TOTAL</li><li>' + g.length + ' PAYMENTS</li><li>5 DAYS ACCESS</li>';
+    $('#board-state').textContent = 'Payments in progress';
+    $('#done-h').textContent = 'Confirming your two payments';
+    $('#done-p').textContent = 'You approved both at PayPal. Each publisher confirms its own payment.';
+  }
+  function onPay(pub, state, initial) {
+    var el = $('.brow[data-pay="' + pub + '"]'); if (!el) return;
+    el.setAttribute('data-state', state);
+    var f = el.querySelector('.flap'); if (initial) f.textContent = U.PAY_TEXT[state]; else flap(f, U.PAY_TEXT[state]);
+  }
+  function onAll() {
+    flap($('#board-state'), 'All confirmed');
+    $('#done-h').textContent = 'Both payments confirmed';
+    $('#done-p').textContent = 'Your two articles are on your shelf, open for five days.';
+  }
+  var LIB = [
+    { id: 'tide-tables', left: 119, text: '4D 23H LEFT', until: 'until Tue 3 Nov 12:00', label: '4 days 23 hours left' },
+    { id: 'quay-walk', left: 119, text: '4D 23H LEFT', until: 'until Tue 3 Nov 12:00', label: '4 days 23 hours left' },
+    { id: 'market-hall', left: 28, text: '1D 4H LEFT', until: 'until Fri 30 Oct 16:00', label: '1 day 4 hours left' }
+  ];
+  function renderLibrary() {
+    $('#shelf').innerHTML = LIB.map(function (l) {
+      var a = U.BY[l.id], p = U.PUB[a.pub], cells = '';
+      for (var d = 0; d < 5; d++) { var have = l.left / 24 - d; cells += '<i class="' + (have >= 1 ? 'on' : have > 0 ? 'part' : '') + '"' + (have > 0 && have < 1 ? ' data-p="' + Math.round(have * 100) + '"' : '') + '></i>'; }
+      return '<li class="item" data-testid="library-item">' + code(p) + '<div><h2>' + esc(a.title) + '</h2><p class="meta">' + esc(p.name).toUpperCase() + ' / ' + U.OPT[U.optOf(a)].toUpperCase() + '</p><span class="ok" data-testid="library-status">Ready</span></div>' +
+        '<div class="win"><div class="days" role="meter" data-testid="window-meter" aria-label="Time left" aria-valuemin="0" aria-valuemax="120" aria-valuenow="' + l.left + '" aria-valuetext="' + l.label + '">' + cells + '</div><div class="dl" aria-hidden="true"><span>D1</span><span>D2</span><span>D3</span><span>D4</span><span>D5</span></div><p class="left"><b>' + l.text + '</b> ' + l.until + '</p></div>' +
+        '<div class="iact"><button class="btn" type="button" data-act="toast" data-msg="In the app this opens the article.">Open</button><a href="#library" data-act="toast" data-msg="In the app this opens the receipt.">View receipt</a><a href="#library" data-act="toast" data-msg="In the app this opens help for this item.">Problem with this item?</a></div></li>';
+    }).join('');
+    U.stagger(U.$$('#shelf .item'), 50, 150);
+    U.$$('#shelf .days').forEach(function (m) { U.stagger(U.$$('i.on', m), 40, 160); });
+    U.$$('#shelf i[data-p]').forEach(function (c) { c.style.setProperty('--p', c.getAttribute('data-p') + '%'); });
+  }
+  U.init({
+    themeBase: 'dark',
+    render: { find: renderFind, findCard: renderCard, approve: renderApprove, done: renderDone, library: renderLibrary },
+    tray: renderTray, onPay: onPay, onAll: onAll,
+    onEnter: { done: function () { U.runPayments(); } }
+  });
+})();
+</script>
+</body>
+</html>
