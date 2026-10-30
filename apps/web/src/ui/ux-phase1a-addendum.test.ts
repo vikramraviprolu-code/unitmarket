@@ -23,6 +23,8 @@ const offer = (slug: string, code: string, title: string, prices: number[]): Off
   publisher: 'Harbour Ledger',
   publisher_slug: slug,
   offer_code: code,
+  language: 'en',
+  bytes: 1024,
   currency: 'USD',
   options: prices.map((p, i) => ({
     option: i === 0 ? 'online_read' : 'keep_retrieve',

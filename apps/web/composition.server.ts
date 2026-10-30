@@ -386,6 +386,9 @@ export interface OfferPage {
   publisher: string;
   publisher_slug: string;
   offer_code: string;
+  /** PUB-E5: read only article facts for the buyer: the stored language code and size in bytes. No hash. */
+  language: string;
+  bytes: number;
   currency: string;
   options: { option: 'keep_retrieve' | 'online_read'; price_minor: number }[];
   renegotiation_allowed: boolean;
@@ -1527,6 +1530,15 @@ function buildApp(config: Config, opts: AppOptions): App {
     offer_code: v.offer.id.startsWith(`ofr_${v.publisher.slug}_`)
       ? v.offer.id.slice(`ofr_${v.publisher.slug}_`.length)
       : v.offer.id,
+    language: v.article.language,
+    // PUB-E5: the size of the offer's own article, read by the article id the offer carries.
+    bytes: Number(
+      (
+        await db.query<{ bytes: number }>('SELECT bytes FROM articles WHERE id = $1', [
+          v.article.id,
+        ])
+      ).rows[0]?.bytes ?? 0,
+    ),
     currency: v.offer.currency,
     options: v.offer.options.map((o) => ({ option: o.option, price_minor: o.price_minor })),
     renegotiation_allowed: v.offer.affordability.renegotiation_allowed,

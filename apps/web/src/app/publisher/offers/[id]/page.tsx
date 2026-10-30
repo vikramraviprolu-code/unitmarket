@@ -6,13 +6,19 @@ import { currentActor } from '../../../../server/session';
 import { EnvLabel } from '../../../../ui/EnvLabel';
 import { formatDateTime, formatMinor, optionLabel } from '../../../../lib/format';
 import {
+  ARTICLE_FACTS_HEADING,
+  ARTICLE_FACTS_NOTE,
   BACK_TO_OFFERS,
   DRAFT_NOTICE,
   FREEZE_NOTE,
   HISTORY_HEADING,
+  LABEL_ABSTRACT,
   LABEL_ARTICLE,
   LABEL_CURRENCY,
+  LABEL_FINGERPRINT,
+  LABEL_LANGUAGE,
   LABEL_LICENCE,
+  LABEL_SIZE,
   LABEL_STATUS,
   LABEL_TERMS,
   LABEL_VERSION,
@@ -20,13 +26,17 @@ import {
   OFFER_LEDE,
   WINDOW_VALUE,
   WITHDRAWN_NOTICE,
+  abstractText,
+  fingerprintText,
   historyLine,
+  languageText,
   licenceText,
   offerStatusText,
   offeredLabel,
   priceHint,
   priceInputValue,
   priceLabel,
+  sizeText,
 } from '../../../../lib/offer-copy';
 import { OfferForm, WithdrawForm } from './OfferForm';
 
@@ -82,6 +92,22 @@ export default async function PublisherOffer({ params }: { params: Promise<{ id:
           <dd data-testid="offer-terms">{o.terms_version}</dd>
         </dl>
       </div>
+      <h2>{ARTICLE_FACTS_HEADING}</h2>
+      <div className="card">
+        <dl>
+          <dt>{LABEL_ABSTRACT}</dt>
+          <dd data-testid="offer-abstract">{abstractText(o.article_abstract)}</dd>
+          <dt>{LABEL_LANGUAGE}</dt>
+          <dd data-testid="offer-language">{languageText(o.article_language)}</dd>
+          <dt>{LABEL_SIZE}</dt>
+          <dd data-testid="offer-size">{sizeText(o.article_bytes)}</dd>
+          <dt>{LABEL_FINGERPRINT}</dt>
+          <dd data-testid="offer-fingerprint">{fingerprintText(o.article_sha256)}</dd>
+        </dl>
+      </div>
+      <p className="muted" data-testid="offer-facts-note">
+        {ARTICLE_FACTS_NOTE}
+      </p>
       <p className="muted" data-testid="offer-freeze-note">
         {FREEZE_NOTE}
       </p>

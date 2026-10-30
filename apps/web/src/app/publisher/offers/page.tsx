@@ -15,7 +15,9 @@ import {
   OFFERS_EMPTY_TITLE,
   OFFERS_HEADING,
   OFFERS_LEDE,
+  abstractText,
   editLinkText,
+  listFactsLine,
   offerStatusText,
   optionPriceText,
 } from '../../../lib/offer-copy';
@@ -58,7 +60,19 @@ export default async function PublisherOffers() {
             <tbody>
               {view.offers.map((o) => (
                 <tr key={o.offer_id} data-testid="offer-row">
-                  <td>{o.article_title}</td>
+                  <td>
+                    {o.article_title}
+                    <p className="muted" data-testid="offer-row-abstract">
+                      {abstractText(o.article_abstract)}
+                    </p>
+                    <p className="muted" data-testid="offer-row-facts">
+                      {listFactsLine({
+                        language: o.article_language,
+                        bytes: o.article_bytes,
+                        sha256: o.article_sha256,
+                      })}
+                    </p>
+                  </td>
                   <td>
                     {o.options.length === 0 ? (
                       NOT_OFFERED

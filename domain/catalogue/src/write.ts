@@ -80,6 +80,11 @@ export interface OwnOffer {
   currency: string;
   article_id: Id;
   article_title: string;
+  /** Read only article facts (PUB-E5), taken from the articles row of this offer. */
+  article_abstract: string;
+  article_language: string;
+  article_bytes: number;
+  article_sha256: string;
   options: { option: AccessOption; price_minor: number }[];
   valid_until: string | null;
   created_at: string;
@@ -123,6 +128,10 @@ function toOwn(r: Row): OwnOffer {
     currency: r.currency as string,
     article_id: r.article_id as Id,
     article_title: r.title as string,
+    article_abstract: r.abstract as string,
+    article_language: r.language as string,
+    article_bytes: Number(r.bytes),
+    article_sha256: r.sha256 as string,
     options: parseOptions(r.options),
     valid_until: isoOrNull(r.valid_until),
     created_at: iso(r.created_at),
@@ -139,7 +148,7 @@ export async function listOwnOffers(db: Database, actor: Actor): Promise<OwnOffe
   const { rows } = await db.query<Row>(
     `SELECT * FROM (
        SELECT DISTINCT ON (o.id) o.id, o.version, o.status, o.currency, o.article_id, a.title,
-              o.options, o.valid_until, o.created_at
+              a.abstract, a.language, a.bytes, a.sha256, o.options, o.valid_until, o.created_at
          FROM offers o JOIN articles a ON a.id = o.article_id
         WHERE o.publisher_id = $1
         ORDER BY o.id, ${NEWEST_ORDER('o')}
@@ -162,8 +171,8 @@ export async function getOwnOffer(
 ): Promise<OwnOfferDetail | null> {
   if (actor.kind !== 'publisher' || !IdSchema.safeParse(offer_id).success) return null;
   const { rows } = await db.query<Row>(
-    `SELECT o.id, o.version, o.status, o.currency, o.article_id, a.title, o.options, o.valid_from,
-            o.valid_until, o.created_at, o.terms_version, o.rights
+    `SELECT o.id, o.version, o.status, o.currency, o.article_id, a.title, a.abstract, a.language, a.bytes,
+            a.sha256, o.options, o.valid_from, o.valid_until, o.created_at, o.terms_version, o.rights
        FROM offers o JOIN articles a ON a.id = o.article_id
       WHERE o.id = $1 AND o.publisher_id = $2
       ORDER BY ${NEWEST_ORDER('o')}`,

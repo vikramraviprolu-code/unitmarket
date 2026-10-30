@@ -144,3 +144,61 @@ export function parsePriceMinor(text: string): number | null {
 /** Minor units as the text an input shows: 250 gives 2.50. */
 export const priceInputValue = (minor: number): string =>
   `${String(Math.trunc(minor / 100))}.${String(minor % 100).padStart(2, '0')}`;
+
+// PUB-E5: read only article facts on the offers list (S2), the offer page (S3) and the buyer offer page.
+// A missing, blank or malformed fact reads FACT_MISSING; nothing here is typed in by a user.
+export const ARTICLE_FACTS_HEADING = 'About this article';
+export const ARTICLE_FACTS_NOTE =
+  'These details come from the article itself. You cannot change them here.';
+export const LABEL_ABSTRACT = 'Abstract';
+export const LABEL_LANGUAGE = 'Language';
+export const LABEL_SIZE = 'Size';
+export const LABEL_FINGERPRINT = 'Content fingerprint';
+export const FACT_MISSING = 'Not recorded';
+
+const LANGUAGE_WORD: Record<string, string> = {
+  en: 'English',
+  fr: 'French',
+  de: 'German',
+  es: 'Spanish',
+};
+
+/** The word for a known language code, the stored code for another well formed one, else FACT_MISSING. */
+export function languageText(code: string | null | undefined): string {
+  const c = (code ?? '').trim();
+  if (!/^[A-Za-z]{2,3}$/.test(c)) return FACT_MISSING;
+  return LANGUAGE_WORD[c.toLowerCase()] ?? c;
+}
+
+/** Bytes as KB with one decimal (1024 bytes per KB); a non empty article never reads 0.0 KB. */
+export function sizeText(bytes: number | null | undefined): string {
+  if (typeof bytes !== 'number' || !Number.isInteger(bytes) || bytes < 0) return FACT_MISSING;
+  const tenths = bytes === 0 ? 0 : Math.max(1, Math.round((bytes * 10) / 1024));
+  return `${String(Math.trunc(tenths / 10))}.${String(tenths % 10)} KB`;
+}
+
+/** The first 12 characters of a 64 character lowercase hex sha256. */
+export function fingerprintText(sha256: string | null | undefined): string {
+  return typeof sha256 === 'string' && /^[a-f0-9]{64}$/.test(sha256)
+    ? sha256.slice(0, 12)
+    : FACT_MISSING;
+}
+
+export function abstractText(abstract: string | null | undefined): string {
+  const a = (abstract ?? '').trim();
+  return a === '' ? FACT_MISSING : a;
+}
+
+export interface ArticleFactsInput {
+  language?: string | null;
+  bytes?: number | null;
+  sha256?: string | null;
+}
+
+/** S2: one line under the abstract. A null input (no article row) reads as all facts missing. */
+export const listFactsLine = (f: ArticleFactsInput | null): string =>
+  `${LABEL_LANGUAGE} ${languageText(f?.language)}. ${LABEL_SIZE} ${sizeText(f?.bytes)}. ${LABEL_FINGERPRINT} ${fingerprintText(f?.sha256)}.`;
+
+/** Buyer page: language and size only, no hash. */
+export const buyerFactsLine = (f: Pick<ArticleFactsInput, 'language' | 'bytes'> | null): string =>
+  `${LABEL_LANGUAGE} ${languageText(f?.language)}. ${LABEL_SIZE} ${sizeText(f?.bytes)}.`;

@@ -1,0 +1,45 @@
+heading: About this article
+note: These details come from the article itself. You cannot change them here.
+labels: Abstract | Language | Size | Content fingerprint
+missing: Not recorded
+language "en": English
+language "fr": French
+language "de": German
+language "es": Spanish
+language "EN": English
+language "pt": pt
+language "nl": nl
+language "": Not recorded
+language "  ": Not recorded
+language "english words": Not recorded
+language "<b>": Not recorded
+language null: Not recorded
+language undefined: Not recorded
+size 0: 0.0 KB
+size 1: 0.1 KB
+size 512: 0.5 KB
+size 1024: 1.0 KB
+size 1536: 1.5 KB
+size 12698: 12.4 KB
+size 204800: 200.0 KB
+size 1048576: 1024.0 KB
+size -1: Not recorded
+size 1.5: Not recorded
+size NaN: Not recorded
+size null: Not recorded
+size undefined: Not recorded
+fingerprint full: a1b2c3d4e5f6
+fingerprint upper: Not recorded
+fingerprint short: Not recorded
+fingerprint non hex: Not recorded
+fingerprint empty: Not recorded
+fingerprint null: Not recorded
+abstract: A short guide.
+abstract blank: Not recorded
+abstract null: Not recorded
+s2 line: Language English. Size 12.4 KB. Content fingerprint a1b2c3d4e5f6.
+s2 line missing row: Language Not recorded. Size Not recorded. Content fingerprint Not recorded.
+s2 line partial: Language Not recorded. Size 2.0 KB. Content fingerprint Not recorded.
+buyer line: Language English. Size 12.4 KB.
+buyer line missing row: Language Not recorded. Size Not recorded.
+buyer line partial: Language French. Size Not recorded.
