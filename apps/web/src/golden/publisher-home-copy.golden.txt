@@ -1,0 +1,21 @@
+tiles: Your figures | Units sold | Paid units | Refunds | Net
+net note: Sales minus refunds and reversals. PayPal fees are not taken off.
+no sales: No sales yet
+other currencies: Other currencies are on your statement.
+reversals: Reversals $1.50
+panel: Your account | Payee account | Settlement | Publisher terms
+cards heading: Where to next
+card offers: Prices, status and changes for each offer.
+card sales: Every paid unit, with refunds and totals.
+card statement: What you earned, per currency, from the ledger.
+card payout: The account your money goes to.
+status active: good/Active
+status suspended: bad/Suspended
+status applied: info/Applied
+payee none: warn/None | No payee account is set yet.
+payee waiting: info/Waiting for a check | Account on file ending AB12.
+payee checked: good/Marked as checked | Account on file ending AB12.
+terms accepted: good/Accepted v1 | On 30 October 2026, demo record.
+terms none: warn/Not accepted
+since {"new_sales":1,"refunds":0,"operator_offer_changes":0,"payee_decisions":0}: good/New sale 1 new sale.
+since {"new_sales":2,"refunds":1,"operator_offer_changes":3,"payee_decisions":1}: good/New sale 2 new sales. ; warn/Refund 1 refund. ; info/Offer change 3 changes to your offers or your account by an operator. ; info/Payee 1 payee decision.

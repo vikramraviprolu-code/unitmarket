@@ -39,7 +39,7 @@ test.describe('publisher passcode', () => {
       PUBLISHER_PASSCODE,
       '/publisher',
     );
-    await expect(page.getByRole('heading', { level: 1, name: 'Publisher home' })).toBeVisible();
+    await expect(page.getByTestId('publisher-name')).toBeVisible();
     await expect(page.getByTestId('publisher-name')).toHaveText(
       'Harbour Ledger Review (fictional)',
     );

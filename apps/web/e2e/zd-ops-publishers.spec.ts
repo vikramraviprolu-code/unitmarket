@@ -67,7 +67,7 @@ async function publisherPage(
   await page.getByLabel('Who are you testing as?').selectOption(persona);
   await page.getByLabel('Publisher passcode').fill(PUBLISHER_PASSCODE);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Publisher home' })).toBeVisible();
+  await expect(page.getByTestId('publisher-name')).toBeVisible();
   return { ctx, page };
 }
 
