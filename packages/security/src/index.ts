@@ -20,6 +20,7 @@ export {
   createSession,
   resolveSession,
   revokeAllSessions,
+  revokeSession,
 } from './session';
 export { hashPasscode, verifyPasscode } from './passcode';
 export {

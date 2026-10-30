@@ -166,6 +166,34 @@ export async function resolveSession(
   return (await resolveSessionRecord(deps, cookieHeader))?.actor ?? null;
 }
 
+/**
+ * FIX-FLOW D1: sign out. Ends the one session `id` of this actor and no other: demo personas are shared,
+ * so another session of the same persona stays live. False when the session was already ended or
+ * belongs to a different actor (a replay is harmless).
+ */
+export async function revokeSession(
+  deps: SecurityDeps,
+  s: { id: string; actor: Actor },
+): Promise<boolean> {
+  const { kind, id: actor_id } = actorParts(s.actor);
+  return deps.db.transaction(async (tx) => {
+    const res = await tx.query<{ id: string }>(
+      `UPDATE sessions SET revoked_at = $4, updated_at = $4
+       WHERE id = $1 AND actor_kind = $2 AND actor_id = $3 AND revoked_at IS NULL RETURNING id`,
+      [s.id, kind, actor_id, deps.clock.now().toISOString()],
+    );
+    if (res.rows.length === 0) return false;
+    await deps.audit.record(tx, {
+      actor: s.actor,
+      action: 'session.revoke',
+      target: s.id,
+      reason: null,
+      detail: {},
+    });
+    return true;
+  });
+}
+
 export async function revokeAllSessions(deps: SecurityDeps, actor: Actor): Promise<number> {
   const { kind, id } = actorParts(actor);
   return deps.db.transaction(async (tx) => {

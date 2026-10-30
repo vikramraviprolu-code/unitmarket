@@ -61,7 +61,10 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/receipts/[order]/route.ts': () => import('./app/api/receipts/[order]/route'),
   'api/refunds/[id]/cancel/route.ts': () => import('./app/api/refunds/[id]/cancel/route'),
   'api/refunds/route.ts': () => import('./app/api/refunds/route'),
+  'api/ops/payee-decisions/route.ts': () => import('./app/api/ops/payee-decisions/route'),
+  'api/publisher/payee-requests/route.ts': () => import('./app/api/publisher/payee-requests/route'),
   'api/session/route.ts': () => import('./app/api/session/route'),
+  'api/session/signout/route.ts': () => import('./app/api/session/signout/route'),
   'api/webhooks/paypal/route.ts': () => import('./app/api/webhooks/paypal/route'),
   'c/[token]/route.ts': () => import('./app/c/[token]/route'),
   'healthz/route.ts': () => import('./app/healthz/route'),
@@ -253,7 +256,10 @@ describe('normal mode: no route creates or deletes the flag', () => {
 
   it('the stop button, the one route that changes a switch, can only turn outbound off', async () => {
     const { POST } = (await import('./app/api/ops/stop/route')) as unknown as { POST: Handler };
-    const op = sessions[2] as Session;
+    // FIX-FLOW D1: the walk above now includes the sign out route, which ends the sessions it is called
+    // with, so this test signs in its own operator session.
+    const signInRoute = (await import('./app/api/session/route')) as unknown as { POST: Handler };
+    const op = (await signIn(signInRoute.POST, 'operator')) as Session;
     const before = snapshot(flag);
     const res = await POST(
       new Request(`${ORIGIN}/api/ops/stop`, {
