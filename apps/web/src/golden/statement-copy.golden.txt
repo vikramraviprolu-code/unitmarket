@@ -1,0 +1,52 @@
+nav: Sales | Statement | Publisher home
+sales heading: Sales
+sales lede: One line for each unit you sold. Every figure is read from a stored record.
+sales empty title: No sales yet.
+sales empty body: When a buyer pays for one of your offers, the sale is listed here.
+sales columns: Date | Order | Article | Access | Amount | PayPal fee | Status
+sales fee none: Not reported
+sales source: Source: the stored order units. The PayPal fee is shown only when PayPal reported it.
+sales order note: Order shows the last 6 characters of the order reference.
+sales count 0: No sales yet.
+sales count 1: 1 sale is listed.
+sales count 2: 2 sales are listed.
+sales count 7: 7 sales are listed.
+statement heading: Statement
+statement lede: Your sales, refunds and reversals by currency, added up from the stored ledger.
+statement empty title: No sales yet.
+statement empty body: When a buyer pays for one of your offers, its ledger lines are added up here.
+block heading sandbox: USD, Sandbox
+block heading dryrun: EUR, Dry run
+settlement heading: Where the money is
+commission heading: Commission
+line label sales: Sales
+line label refunds: Refunds
+line label reversals: Reversals
+line label fee: PayPal fees observed
+line label net: Net
+line source sales: Source: ledger sale rows.
+line source refunds: Source: ledger refund rows.
+line source reversals: Source: ledger reversal rows.
+line source fee: Source: ledger PayPal fee rows. Shown for information and not subtracted from the net.
+line source net: Source: sales minus refunds minus reversals, from the same ledger rows.
+lines heading: Ledger lines
+lines columns: Date | Order | Entry | Amount
+entry sale: Sale
+entry refund: Refund
+entry reversal: Reversal
+entry paypal_fee: PayPal fee
+anchor: /publisher/sales#order-abc001
+status captured_verified: Paid
+status pending: Payment pending at PayPal
+status partially_refunded: Partly refunded
+status refunded: Refunded
+status reversal_suspected: On hold: payment being checked
+status reversed: Reversed
+status declined: Not charged
+status mismatch: On hold: under review
+status expected: Awaiting payment
+settlement dryrun: Dry run: no money moved.
+settlement owner_account: Collected into the UnitMarket team's sandbox test account. Not paid out: sandbox demo; UnitMarket has no payout mechanism.
+settlement direct: Paid by PayPal directly into your own sandbox account.
+settlement not_set: No PayPal account is linked yet.
+commission: No commission in this demo; planned 20 percent, not implemented.

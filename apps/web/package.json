@@ -33,6 +33,7 @@
     "@umsbx/offer-entry": "workspace:*",
     "@umsbx/payments": "workspace:*",
     "@umsbx/paypal": "workspace:*",
+    "@umsbx/publisher-console": "workspace:*",
     "@umsbx/receipts": "workspace:*",
     "@umsbx/recovery": "workspace:*",
     "@umsbx/runtime": "workspace:*",
