@@ -41,6 +41,7 @@ const FS_ALLOWED = new Set([
   'tools/spike-kit/src/git-head.ts', // owner-run spike kit
   'tools/spike-kit/src/spike.ts', // owner-run spike kit
   'packages/config/src/maintenance.ts', // the flag reader (CO-7b): lstat only
+  'packages/config/src/env-file.ts', // .env.local reader (F8): readFileSync only
 ]);
 
 const WRITE_API =
