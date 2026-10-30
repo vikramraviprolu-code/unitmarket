@@ -81,7 +81,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/publisher-terms | heading: How a payee is checked
 /legal/publisher-terms | text: In this demo the publishers' payee details are marked as checked when the demo data is loaded or by an operator check. It is not PayPal onboarding. In the sandbox, payments for the publishers that have articles on sale are received in one test account the owners control, so their account endings match. A publisher with nothing on sale may have no payee account set. In a dry run nothing is paid, and the account endings are demo values.
 /legal/publisher-terms | heading: Commission
-/legal/publisher-terms | text: There is no commission in this demo. A commission of 20 percent is planned. It is not implemented.
+/legal/publisher-terms | text: No commission in this demo.
 /legal/publisher-terms | heading: Tax
 /legal/publisher-terms | text: No tax is calculated and no tax invoice is issued in this demo. Prices are the amounts the publisher sets. A receipt is a record of the sale, not a tax invoice.
 /legal/publisher-terms | heading: Where the money goes

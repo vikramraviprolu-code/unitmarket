@@ -65,7 +65,7 @@ describe('cancel page with a missing or bad ref', () => {
   });
   it('the fallback says only what the page can know', () => {
     expect(CANCEL_BODY_NO_REF).toBe(
-      'You did not approve this payment at PayPal. Nothing was charged for this payment.',
+      'You did not approve this payment at the payment step. Nothing was charged for this payment.',
     );
   });
 });

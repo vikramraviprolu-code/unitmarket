@@ -30,7 +30,7 @@ export const CANCEL_HEADING = 'You did not approve this payment';
 // the payment still waiting (Step N of M) or the order page. The sentence promises no approve action:
 // a single-publisher order's order page has none (pinned in order-pages.state.test.ts).
 export const CANCEL_BODY_NO_REF =
-  'You did not approve this payment at PayPal. Nothing was charged for this payment.';
+  'You did not approve this payment at the payment step. Nothing was charged for this payment.';
 export const CANCEL_BODY = `${CANCEL_BODY_NO_REF} If you approved another payment of this order, it will not be taken unless you approve the rest.`;
 export const CANCEL_WINDOW_LINE = 'You can go back to your order to see where it stands.';
 export const CANCEL_BACK_LINK = 'Go back to your order';

@@ -18,7 +18,7 @@ const TOPICS: Record<string, { title: string; body: string[] }> = {
     title: 'Your order is on hold',
     body: [
       'We found a difference between what you approved and what the payment shows. We stopped to protect you.',
-      'You will not be charged twice. We opened a case and will write to you with the outcome.',
+      'You will not be charged twice. If this happens, we open a case and will write to you with the outcome.',
     ],
   },
   delivery: {

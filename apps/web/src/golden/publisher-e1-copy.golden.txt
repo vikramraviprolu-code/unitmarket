@@ -22,7 +22,7 @@ create: Create an offer | Create an offer | Back to your offers
 create lede: Put one of your articles on sale. Choose the article, the options and the price of each option.
 create none: No article to offer | Every article of yours already has an offer on sale.
 create labels: Article | Put this article on sale
-create terms: Terms version terms-1. The access window is set by UnitMarket. Personal use only. No redistribution. AI assistants may read it for the buyer after the buyer reviews it.
+create terms: Terms version terms-1. The access window is set by UnitMarket. Personal use only. No redistribution. Buyers may not use it with AI tools under this offer.
 created: Created. This offer is on sale as version 1.
 error already_offered: This article already has an offer on sale.
 error no_corridor: No sales route is set up for your country, so nothing can be offered yet.

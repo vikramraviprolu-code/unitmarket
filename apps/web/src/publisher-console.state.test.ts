@@ -86,7 +86,7 @@ describe('engine.publisherStatement', () => {
       net_minor: bought.amount_minor,
     });
     expect(st!.blocks[0]!.settlement.mode).toBe('dryrun');
-    expect(st!.commission).toBe('No commission in this demo; planned 20 percent, not implemented.');
+    expect(st!.commission).toBe('No commission in this demo.');
     expect(st!.blocks[0]!.lines.map((l) => l.kind)).toContain('sale');
   });
 
@@ -95,7 +95,7 @@ describe('engine.publisherStatement', () => {
     expect(st!.blocks).toEqual([]);
     expect(st!.environment).toBe(w.app.environment);
     expect(st!.settlement.mode).toBe('dryrun');
-    expect(st!.commission).toContain('planned 20 percent');
+    expect(st!.commission).toBe('No commission in this demo.');
   });
 });
 

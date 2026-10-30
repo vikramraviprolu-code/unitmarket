@@ -143,15 +143,14 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/test money/i);
   });
 
-  it('publisher terms: fictional, payee marked checked at load, no commission, 20 percent not implemented', () => {
+  it('publisher terms: fictional, payee marked checked at load, no commission', () => {
     const t = flat('publisher-terms');
     expect(t).toMatch(/fictional/i);
     expect(t).toMatch(/marked as checked/i);
     expect(t).toMatch(/demo data is loaded or by an operator check/i);
     expect(t).toMatch(/statement page/i);
     expect(t).toMatch(/no commission in this demo/i);
-    expect(t).toMatch(/20 percent/);
-    expect(t).toMatch(/not implemented/i);
+    expect(t).not.toMatch(/20 percent|not implemented/i);
     expect(t).toMatch(/no payout/i);
     expect(t).toMatch(/statement/i);
   });

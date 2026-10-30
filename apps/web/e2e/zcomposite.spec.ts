@@ -160,7 +160,7 @@ test.describe('composite pack on the dry run (keyboard only)', () => {
     for (const bad of ['', '?ref=', '?ref=abc', '?ref=../ops', '?ref=javascript:alert(1)']) {
       await page.goto(`/checkout/cancel${bad}`);
       await expect(page.getByTestId('cancel-body')).toHaveText(
-        'You did not approve this payment at PayPal. Nothing was charged for this payment.',
+        'You did not approve this payment at the payment step. Nothing was charged for this payment.',
       );
       await expect(page.getByTestId('cancel-window')).toHaveCount(0);
       await expect(page.getByTestId('cancel-back')).toHaveCount(0);
@@ -174,7 +174,7 @@ test.describe('composite pack on the dry run (keyboard only)', () => {
       page.getByRole('heading', { name: 'You did not approve this payment' }),
     ).toBeVisible();
     await expect(page.getByTestId('cancel-body')).toHaveText(
-      'You did not approve this payment at PayPal. Nothing was charged for this payment. If you approved another payment of this order, it will not be taken unless you approve the rest.',
+      'You did not approve this payment at the payment step. Nothing was charged for this payment. If you approved another payment of this order, it will not be taken unless you approve the rest.',
     );
     await expect(page.getByTestId('cancel-window')).toHaveText(
       'You can go back to your order to see where it stands.',

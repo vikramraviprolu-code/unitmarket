@@ -41,7 +41,7 @@ export const PAYEE_DIRECT_SENTENCE =
 export const NOTHING_SOLD_SENTENCE = 'Nothing sold yet.';
 
 /** Fixed: the demo takes no commission (no platform fee row exists); 20 percent is planned only. */
-export const COMMISSION_LINE = 'No commission in this demo; planned 20 percent, not implemented.';
+export const COMMISSION_LINE = 'No commission in this demo.';
 
 /**
  * The mode follows this order: a dry run moved nothing; with no merchant id there is no account; the

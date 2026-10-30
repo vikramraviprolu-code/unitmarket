@@ -60,4 +60,4 @@ mismatch sales 1: Amount disagreed with the quote: under review. 1 unit is liste
 mismatch sales 2: Amount disagreed with the quote: under review. 2 units are listed above but not added up on the statement.
 mismatch statement 1: Amount disagreed with the quote: under review. 1 unit is listed on the sales page but not added up here.
 mismatch statement 2: Amount disagreed with the quote: under review. 2 units are listed on the sales page but not added up here.
-commission: No commission in this demo; planned 20 percent, not implemented.
+commission: No commission in this demo.
