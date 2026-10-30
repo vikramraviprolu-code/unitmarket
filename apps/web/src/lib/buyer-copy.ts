@@ -3,6 +3,7 @@
 import type { FitDimension, Rights } from '@umsbx/contracts';
 import { OPTION_LABEL, formatMinor } from './format';
 import type { OfferPage } from './view-types';
+import { LINE_TEXT } from './composite-copy';
 
 // U3: the terms, shown where the buyer accepts them. The first line is the offer page's sentence and the
 // second and third restate the approval page's, so the three screens say the same thing.
@@ -82,5 +83,51 @@ export function splitFitRows(dimensions: readonly FitDimension[]): {
   return {
     assessed: dimensions.filter((d) => d.level !== null),
     notAssessed: dimensions.filter((d) => d.level === null),
+  };
+}
+
+/** The stored money state of one item in plain words (gate 12 D12). The words match the order page lines. */
+export function moneyStateText(money: string): string {
+  switch (money) {
+    case 'pending':
+      return LINE_TEXT.pending;
+    case 'captured':
+      return 'Paid';
+    case 'denied':
+      return LINE_TEXT.declined;
+    case 'refunded':
+      return 'Refunded';
+    case 'reversed':
+      return 'Payment reversed';
+    default:
+      return LINE_TEXT.confirming;
+  }
+}
+
+// FIX-FLOW D4: an order the buyer left at the pay page. It says what is true (no payment received) and
+// never "Confirming payment", which is for a payment that PayPal has approved or captured.
+export const NOT_PAID_YET = 'Not paid yet. We have not received a payment for this order.';
+
+// FIX-FLOW D5: a search whose only matches are articles the buyer already holds, or has an open unpaid
+// order for, is not "nothing fits". The discovery answer carries the reasons; the form says this.
+export const OPEN_ORDER_HEADING = 'Already in your library or on an open order';
+export const OPEN_ORDER_BODY =
+  'Some articles that fit are already in your library, or you have an unpaid order open for them.';
+export const OPEN_ORDER_LINK = 'Open My library';
+
+export interface DiscoverNoMatchView {
+  /** The open order notice, or null when no reason says an article is already held. */
+  open_order: { heading: string; body: string; href: string } | null;
+  /** Whether to also say "nothing in the catalogue fits" (false when the notice is the whole story). */
+  nothing_fits: boolean;
+}
+
+export function discoverNoMatchView(reasons: readonly string[]): DiscoverNoMatchView {
+  const owned = reasons.includes('already_owned');
+  return {
+    open_order: owned
+      ? { heading: OPEN_ORDER_HEADING, body: OPEN_ORDER_BODY, href: '/library' }
+      : null,
+    nothing_fits: !owned || reasons.some((r) => r !== 'already_owned'),
   };
 }

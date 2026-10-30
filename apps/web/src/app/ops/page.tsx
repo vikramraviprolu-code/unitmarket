@@ -1,10 +1,12 @@
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { app } from '../../server/access';
 import { currentActor } from '../../server/session';
 import { EnvLabel, envText } from '../../ui/EnvLabel';
 import { formatMinor, formatDateTime } from '../../lib/format';
 import { gateLines } from '../../lib/gate-lines';
+import { EVALS_OPS_LINK } from '../../lib/evals-copy';
 import { StopButton } from './StopButton';
 import { RefundPanel } from './RefundPanel';
 
@@ -30,6 +32,9 @@ export default async function Ops() {
       <p className="muted">
         Read only, except the stop button and, with the authenticator code, refunds. Everything else
         is changed with the operator command line.
+      </p>
+      <p>
+        <Link href="/ops/evals">{EVALS_OPS_LINK}</Link>
       </p>
 
       <h2>Switches</h2>

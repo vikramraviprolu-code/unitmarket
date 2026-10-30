@@ -35,7 +35,7 @@ ops empty: No open requests.
 ops columns: Publisher | Requested account | Age
 ops fields: Type the full merchant id again | Reason
 ops buttons: Verify | Reject
-ops done verified: Verified. The publisher is now paid into the new account.
+ops done verified: Verified. Future orders pay the new account.
 ops done rejected: Rejected. Nothing changed.
 age 0: less than a minute
 age 59000: less than a minute

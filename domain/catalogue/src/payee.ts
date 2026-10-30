@@ -242,7 +242,7 @@ export async function decidePayeeRequest(
   if (req === undefined) return fail('not_found');
 
   if (input.decision === 'verified') {
-    if (deps.environment === 'sandbox') {
+    if (deps.environment !== 'dryrun') {
       await auditRefusal(deps, operator, req.id, 'owner_command_required');
       return fail('owner_command_required');
     }

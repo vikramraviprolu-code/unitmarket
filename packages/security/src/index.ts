@@ -20,6 +20,7 @@ export {
   createSession,
   resolveSession,
   revokeAllSessions,
+  revokeSession,
 } from './session';
 export { hashPasscode, verifyPasscode } from './passcode';
 export {
@@ -41,5 +42,5 @@ export {
 } from './totp';
 export type { OperatorSignIn, TotpVerdict } from './totp';
 export { securityHeaders } from './headers';
-export { DEFAULT_RATES } from './rate';
+export { DEFAULT_RATES, takeToken } from './rate';
 export { AUTH_RULES, checkEntry, formatInventory, parseRouteMeta, pathFromFile } from './inventory';

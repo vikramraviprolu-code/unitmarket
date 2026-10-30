@@ -88,7 +88,7 @@ export const OPS_FIELD_RETYPE = 'Type the full merchant id again';
 export const OPS_FIELD_REASON = 'Reason';
 export const OPS_VERIFY = 'Verify';
 export const OPS_REJECT = 'Reject';
-export const OPS_DONE_VERIFIED = 'Verified. The publisher is now paid into the new account.';
+export const OPS_DONE_VERIFIED = 'Verified. Future orders pay the new account.';
 export const OPS_DONE_REJECTED = 'Rejected. Nothing changed.';
 
 /** How long a request has waited, in words: less than a minute, minutes, hours or days (rounded down). */

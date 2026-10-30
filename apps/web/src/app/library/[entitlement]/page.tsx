@@ -7,6 +7,8 @@ import { WindowMeter } from '../../../ui/WindowMeter';
 import { OpenButton } from '../OpenButton';
 import { Refresher } from '../../../ui/Refresher';
 import { optionLabel, formatDateTime } from '../../../lib/format';
+import { moneyStateText } from '../../../lib/buyer-copy';
+import { READER_LINK_TEXT } from '../../../lib/reader-copy';
 
 export const metadata: Metadata = { title: 'Library item' };
 
@@ -45,8 +47,8 @@ export default async function LibraryItem({
         <dd>{item.window.started_at ? formatDateTime(item.window.started_at) : 'Not started'}</dd>
         <dt>Window ends</dt>
         <dd>{item.window.ends_at ? formatDateTime(item.window.ends_at) : 'Not set'}</dd>
-        <dt>Payment state</dt>
-        <dd>{item.money}</dd>
+        <dt>Payment</dt>
+        <dd>{moneyStateText(item.money)}</dd>
       </dl>
       <div className="actions">
         {item.can_open ? (
@@ -54,6 +56,15 @@ export default async function LibraryItem({
             entitlementId={item.entitlement_id}
             mode={item.option === 'keep_retrieve' ? 'download' : 'read'}
           />
+        ) : null}
+        {item.can_open && item.option === 'online_read' ? (
+          <Link
+            className="btn"
+            prefetch={false}
+            href={`/library/${encodeURIComponent(item.entitlement_id)}/read`}
+          >
+            {READER_LINK_TEXT}
+          </Link>
         ) : null}
         {item.order_id ? (
           <Link className="btn" href={`/receipts/${encodeURIComponent(item.order_id)}`}>

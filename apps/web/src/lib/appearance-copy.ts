@@ -8,3 +8,6 @@ export const SKIN_LABELS: Record<Skin, string> = {
 };
 export const APPEARANCE_SAVING = 'Saving your choice';
 export const APPEARANCE_SAVE_FAILED = 'We could not save your choice. Please try again.';
+
+// FIX-FLOW D8: said in the status region after a choice, so a screen reader hears the change.
+export const appearanceApplied = (label: string): string => `Appearance changed to ${label}.`;

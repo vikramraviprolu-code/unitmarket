@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { hashPasscode } from '@umsbx/security';
 import type { Actor } from '@umsbx/contracts';
 import type { App } from '../composition.server';
+import { navItems } from './lib/nav';
 import { PUBLISHER_PERSONAS } from './lib/publisher-copy';
 import { PASSCODE, bootTestApp, signIn } from './support';
 
@@ -136,6 +137,17 @@ describe('publisherHome', () => {
     expect(JSON.stringify(home)).not.toContain(merchant);
   });
 
+  it('counts only offers a buyer can buy: Northfield sits behind a disabled corridor (gate 12 D9)', async () => {
+    const id = await idOf('northfield-quarterly');
+    const stored = await app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM offers WHERE publisher_id = $1 AND status = 'authorised'`,
+      [id],
+    );
+    expect(stored.rows[0]!.n).toBeGreaterThan(0);
+    const home = (await app.engine.publisherHome({ kind: 'publisher', publisher_id: id }))!;
+    expect(home.offers_live).toBe(0);
+  });
+
   it('shows applied and suspended as stored, and an empty publisher with no payee', async () => {
     await app.db.query(
       `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)
@@ -174,10 +186,16 @@ describe('the pages (source as text)', () => {
     expect(page).not.toMatch(/style=/);
   });
   it('the layout shows the Publisher link to a publisher session only', () => {
-    const layout = read('./app/layout.tsx');
-    expect(layout).toMatch(/actor\?\.kind === 'publisher'/);
-    expect(layout).toContain('href="/publisher"');
-    expect(layout).toContain('{PUBLISHER_NAV_LABEL}');
+    // FIX-FLOW D11: the header items now come from lib/nav.ts (the layout only renders them), so the
+    // rule is pinned there, not in the layout source.
+    const nav = read('./lib/nav.ts');
+    expect(nav).toContain("href: '/publisher'");
+    expect(nav).toContain('PUBLISHER_NAV_LABEL');
+    expect(read('./app/layout.tsx')).toContain('navItems(');
+    const hrefs = (k: Parameters<typeof navItems>[0]) => navItems(k).items.map((i) => i.href);
+    expect(hrefs('publisher')).toContain('/publisher');
+    for (const k of [null, 'buyer', 'operator'] as const)
+      expect(hrefs(k)).not.toContain('/publisher');
   });
   it('the sign-in form lists the personas from the copy module and has no bare publisher entry', () => {
     const form = read('./app/signin/SignInForm.tsx');

@@ -59,14 +59,16 @@ describe('the skin is chosen on the server', () => {
 });
 
 describe('Appearance control and copy', () => {
-  it('is a labelled radio group that posts to /api/appearance, reloads, and does not use localStorage', () => {
+  it('is a labelled radio group that posts to /api/appearance, applies the skin in place, and does not use localStorage', () => {
     const src = noComments(read('ui/AppearanceControl.tsx'));
     expect(src.startsWith("'use client'")).toBe(true);
     expect(src).toContain('<fieldset');
     expect(src).toContain('<legend');
     expect(src).toContain('type="radio"');
     expect(src).toContain("postJson('/api/appearance'");
-    expect(src).toContain('window.location.reload()');
+    // FIX-FLOW D8: a reload dropped keyboard focus, so the skin is set on <html> in place instead.
+    expect(src).toContain("documentElement.setAttribute('data-skin'");
+    expect(src).not.toContain('location.reload');
     expect(src).not.toMatch(/localStorage|sessionStorage/);
     expect(src).toContain('APPEARANCE_LEGEND');
   });

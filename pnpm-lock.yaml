@@ -98,6 +98,9 @@ importers:
       '@umsbx/paypal':
         specifier: workspace:*
         version: link:../../packages/paypal
+      '@umsbx/publisher-console':
+        specifier: workspace:*
+        version: link:../../domain/publisher-console
       '@umsbx/receipts':
         specifier: workspace:*
         version: link:../../domain/receipts
@@ -334,6 +337,22 @@ importers:
       '@umsbx/transport':
         specifier: workspace:*
         version: link:../../packages/transport
+
+  domain/publisher-console:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/receipts:
     dependencies:
