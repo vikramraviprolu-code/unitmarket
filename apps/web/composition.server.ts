@@ -436,7 +436,10 @@ export function orderMessage(
   switch (status) {
     case 'paid':
     case 'paid_partial':
-      return 'Paid. Your item is in your library.';
+      // D-051: the noun agrees with the number of items (a pack from one publisher is one PayPal order).
+      return unit_statuses.length > 1
+        ? 'Paid. Your items are in your library.'
+        : 'Paid. Your item is in your library.';
     case 'capture_requested':
     case 'capture_claimed':
     case 'unresolved':
@@ -1331,15 +1334,17 @@ function buildApp(config: Config, opts: AppOptions): App {
       const p = await db.query<{
         display_name: string;
         status: PublisherStatus;
+        country: string;
         paypal_merchant_id: string | null;
         payee_verified_at: Date | string | null;
       }>(
-        'SELECT display_name, status, paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
+        'SELECT display_name, status, country, paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
         [actor.publisher_id],
       );
       const row = p.rows[0];
       if (row === undefined) return null;
-      // Live: authorised, the newest version of its offer, not superseded and inside its validity dates.
+      // Live: authorised, the newest version of its offer, not superseded, inside its validity dates and
+      // covered by an enabled corridor (what a buyer can buy; same rule as discovery, gate 12 D9).
       const now = clock.now().toISOString();
       const live = await db.query<{ n: string | number }>(
         `SELECT count(*) AS n FROM offers o
@@ -1348,8 +1353,10 @@ function buildApp(config: Config, opts: AppOptions): App {
             AND EXISTS (SELECT 1 FROM publisher_authorisations pa
                          WHERE pa.offer_id = o.id AND pa.offer_version = o.version)
             AND NOT EXISTS (SELECT 1 FROM offers n WHERE n.id = o.id AND n.publisher_id = $1
-                             AND (n.created_at, n.version) > (o.created_at, o.version))`,
-        [actor.publisher_id, now],
+                             AND (n.created_at, n.version) > (o.created_at, o.version))
+            AND EXISTS (SELECT 1 FROM corridors c
+                         WHERE c.enabled AND c.currency = o.currency AND $3 = ANY (c.payee_countries))`,
+        [actor.publisher_id, now, row.country],
       );
       return {
         display_name: row.display_name,

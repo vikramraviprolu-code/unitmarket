@@ -136,6 +136,17 @@ describe('publisherHome', () => {
     expect(JSON.stringify(home)).not.toContain(merchant);
   });
 
+  it('counts only offers a buyer can buy: Northfield sits behind a disabled corridor (gate 12 D9)', async () => {
+    const id = await idOf('northfield-quarterly');
+    const stored = await app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM offers WHERE publisher_id = $1 AND status = 'authorised'`,
+      [id],
+    );
+    expect(stored.rows[0]!.n).toBeGreaterThan(0);
+    const home = (await app.engine.publisherHome({ kind: 'publisher', publisher_id: id }))!;
+    expect(home.offers_live).toBe(0);
+  });
+
   it('shows applied and suspended as stored, and an empty publisher with no payee', async () => {
     await app.db.query(
       `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)

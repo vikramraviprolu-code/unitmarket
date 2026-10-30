@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Actor } from '@umsbx/contracts';
 import type { App } from '../composition.server';
+import { orderMessage } from '../composition.server';
 import { bootTestApp, call, signIn } from './support';
 import type { Session } from './support';
 
@@ -229,5 +230,16 @@ describe('ops snapshot, jobs and health', () => {
       mfa: false,
     });
     expect(snap?.jobs.last_pass_at).not.toBeNull();
+  });
+});
+
+describe('orderMessage agrees with the number of items (D-051, gate 12 D12)', () => {
+  it('says item for one paid unit and items for two paid units of one publisher', () => {
+    expect(orderMessage('paid', ['captured_verified'], ['captured'])).toBe(
+      'Paid. Your item is in your library.',
+    );
+    expect(orderMessage('paid', ['captured_verified', 'captured_verified'], ['captured'])).toBe(
+      'Paid. Your items are in your library.',
+    );
   });
 });

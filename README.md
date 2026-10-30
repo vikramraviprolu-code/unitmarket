@@ -10,16 +10,17 @@ Licence: Apache-2.0 (see `LICENSE`). Third party licences: `THIRD-PARTY-NOTICES.
 
 ## Status
 
-| Area                                              | State                                                                                                                                                                                       |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PayPal sandbox payments                           | Real, observed in the owner's sittings (evidence in `docs/evidence/`): order, approval, capture and read back, and on 29 Oct 2026 a pack of two items paid as two separate sandbox payments |
-| Dry run (default)                                 | Real code on a pretend PayPal. The same buyer journey, labelled "Dry run" from the stored environment, covered by the offline test suites and 27 browser journeys                           |
-| Settlement                                        | In the 29 Oct sitting both publishers were paid into the same sandbox merchant account. A second merchant account for a separate publisher is planned, not done                             |
-| Discovery and pack composition                    | Built on a scripted model (deterministic, no AI call)                                                                                                                                       |
-| Real AI model adapter                             | In progress. Not built yet. Today no AI model is called                                                                                                                                     |
-| Publisher console                                 | In progress. The first version is planned as read only                                                                                                                                      |
-| Two skin screens (Bright Market and Deep Harbour) | In progress. The current screens are a neutral first version                                                                                                                                |
-| Hosted demo URL                                   | Not published in this README. Run it offline as described below                                                                                                                             |
+| Area                                 | State                                                                                                                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PayPal sandbox payments              | Real, observed in the owner's sittings (evidence in `docs/evidence/`): order, approval, capture and read back, and on 29 Oct 2026 a pack of two items paid as two separate sandbox payments |
+| Dry run (default)                    | Real code on a pretend PayPal. The same buyer journey, labelled "Dry run" from the stored environment, covered by the offline test suites and 27 browser journeys                           |
+| Settlement                           | In the 29 Oct sitting both publishers were paid into the same sandbox merchant account. A second merchant account for a separate publisher is planned, not done                             |
+| Discovery and pack composition       | Built. The default model is scripted (deterministic, no AI call)                                                                                                                            |
+| AI model adapter (Claude)            | Merged, off by default, with spend caps and a stop switch. Without `UMS_AI_ADAPTER=claude` and a key the scripted model answers and no network call is made                                 |
+| Publisher pages                      | Merged. Three publisher sign-ins, a read only publisher home, and payee change requests that an operator checks before anything changes                                                     |
+| Two skins and the Appearance control | Merged. Bright Market and Deep Harbour, chosen in the footer                                                                                                                                |
+| Legal pages                          | Merged as drafts for the owners to approve: terms of purchase, privacy notice, refund policy and publisher terms. Not legal advice                                                          |
+| Hosted demo URL                      | Not published in this README. Run it offline as described below                                                                                                                             |
 
 Simulation and fixture results prove the modelled cases only, not PayPal compatibility in general.
 
@@ -59,6 +60,16 @@ corepack pnpm --filter @umsbx/web start
 ```
 
 Open `http://localhost:3000` and `http://localhost:3000/healthz`; the second answers `{"ok":true,"environment":"dryrun"}`. Rebuild after every `git pull`.
+
+### Publisher sign-in (optional)
+
+The three publisher sign-ins (Harbour Ledger, Quayside Gazette, Northfield Quarterly) use their own passcode, not the demo passcode. Without it they refuse, and buyers and the operator still work. The variable name is `UMS_PUBLISHER_PASSCODE_HASH`; it holds a hash, never the passcode.
+
+To make one, run `corepack pnpm owner:secrets` again at a terminal and type a different passcode (at least 12 characters, twice). From its four output lines keep only the `UMS_DEMO_PASSCODE_HASH=` line, paste it into `apps/web/.env.local` and rename it to `UMS_PUBLISHER_PASSCODE_HASH=`. Leave the other three lines out so your first secrets stay. Restart the app. On `/signin` choose a publisher and type that passcode in the field labelled "Publisher passcode".
+
+### AI adapter (optional)
+
+By default a scripted model answers and no AI call is made. To try the Claude adapter, set `UMS_AI_ADAPTER=claude` and `UMS_ANTHROPIC_API_KEY` in your own `.env.local`. Names are listed in `.env.example`; never paste a key anywhere else.
 
 Checks you can run without any credential:
 
