@@ -62,8 +62,9 @@ describe('per-IP limit (AI-H)', () => {
   it('an IP that hammers cannot starve another IP: refused calls never spend the shared persona allowance', async () => {
     const { call } = await rigWith(1);
     for (let i = 0; i < 50; i++) await call('203.0.113.1');
-    // The persona allowance is 6; the attacker's IP legitimately spent 2, so 4 remain for others.
-    for (let i = 0; i < 4; i++) expect((await call('203.0.113.2')).status).toBe(200);
+    // The persona allowance is 6; the attacker's IP legitimately spent 2, so 4 remain for other visitors
+    // (each from its own address, since every address has its own allowance of 2).
+    for (let i = 0; i < 4; i++) expect((await call(`203.0.113.${10 + i}`)).status).toBe(200);
     // Now the persona rule itself (not the ip rule) ends it for everyone.
     expect((await call('203.0.113.3')).status).toBe(429);
   });
@@ -81,8 +82,24 @@ describe('per-IP limit (AI-H)', () => {
     await call('203.0.113.1');
     await call('203.0.113.1');
     expect((await call('203.0.113.1')).status).toBe(429);
+    // One token returns every window / limit = 30 minutes; the session idles out at 30, so sign in again.
     rig.clock.advance(3_600_000 / 2);
-    expect((await call('203.0.113.1')).status).toBe(200);
+    const s2 = await createSession(rig.deps, { kind: 'buyer', buyer_id: 'buy_shared_persona' });
+    const again = () =>
+      route(rig.deps)(
+        new Request(`${ORIGIN}/api/discover`, {
+          method: 'POST',
+          headers: {
+            cookie: cookiePair(s2.cookie),
+            origin: ORIGIN,
+            'x-csrf-token': s2.csrf_token,
+            'x-forwarded-for': '203.0.113.1',
+          },
+          body: '{}',
+        }),
+      );
+    expect((await again()).status).toBe(200);
+    expect((await again()).status).toBe(429);
   });
 
   it('with no known client address the per-IP rule is not charged (it never becomes one bucket for all)', async () => {
@@ -107,7 +124,7 @@ describe('per-IP limit (AI-H)', () => {
   });
 
   it('rate_ip is checked when the route is built: only an ip rule, only with positive numbers', () => {
-    const bad = (rate_ip: RouteMeta['rate_ip']) =>
+    const bad = (rate_ip: NonNullable<RouteMeta['rate_ip']>) =>
       withRoute({ ...meta, rate_ip }, z.object({}).strict(), async () => ({
         status: 200 as const,
         body: {},

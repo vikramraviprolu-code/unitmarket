@@ -80,9 +80,11 @@ function check(request: ModelRequest): Checked | null {
 }
 
 /** The answer text and usage of a good envelope, or null. */
+// AI-H: the `model` field of the answer, when it is a plain id; anything else is not copied.
+const PLAIN_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 function readEnvelope(
   body: string,
-): { text: string; input_tokens: number; output_tokens: number } | null {
+): { text: string; input_tokens: number; output_tokens: number; served_model: string } | null {
   let env: unknown;
   try {
     env = JSON.parse(body);
@@ -102,6 +104,10 @@ function readEnvelope(
     text: block['text'],
     input_tokens: usage['input_tokens'],
     output_tokens: usage['output_tokens'],
+    served_model:
+      typeof env['model'] === 'string' && PLAIN_MODEL_ID.test(env['model'])
+        ? env['model']
+        : CLAUDE_MODEL_ID,
   };
 }
 
@@ -171,7 +177,8 @@ export function createClaudeModel(deps: ClaudeModelDeps): ModelPort {
   };
 }
 
-const usageOf = (e: { input_tokens: number; output_tokens: number }) => ({
+const usageOf = (e: { input_tokens: number; output_tokens: number; served_model: string }) => ({
   input_tokens: e.input_tokens,
   output_tokens: e.output_tokens,
+  served_model: e.served_model,
 });

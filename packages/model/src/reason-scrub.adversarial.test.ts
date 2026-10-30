@@ -35,8 +35,7 @@ describe('reason scrub, hostile inputs (AI-H)', () => {
     expect(out).not.toMatch(/\S@\S/);
     expect(out).not.toMatch(/[$€£¥]\s*\d|\d\s*[$€£¥]/);
     expect(out).not.toMatch(/\b(USD|EUR|GBP)\s*\d|\d\s*(USD|EUR|GBP)\b/i);
-    // eslint-disable-next-line no-control-regex
-    expect(out).not.toMatch(/[\u0000-\u001f\u007f\u2028\u2029]/);
+    expect(out).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u);
   });
   it('a hostile reason never changes the picks, ids or tool calls', () => {
     const r = sanitiseModelOutput(

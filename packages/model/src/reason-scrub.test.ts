@@ -36,8 +36,7 @@ describe('reason scrub (AI-H)', () => {
   });
   it('removes control characters and lone surrogates', () => {
     const out = reasonOf('a\u0000b\u0007c\u001b[31md\u202ee\ufeff\ud800f\u007fg');
-    // eslint-disable-next-line no-control-regex
-    expect(out).not.toMatch(/[\u0000-\u001f\u007f\u202e\ufeff\ud800]/);
+    expect(out).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u);
     expect(out).toContain('a');
     expect(out).toContain('g');
   });
@@ -64,9 +63,9 @@ describe('reason scrub (AI-H)', () => {
   });
   it('collapses whitespace and caps at 160 characters', () => {
     expect(reasonOf('  a   b \n\n c  ')).toBe('a b c');
-    const long = reasonOf('word '.repeat(200));
+    const long = reasonOf('word '.repeat(58));
     expect([...long].length).toBeLessThanOrEqual(160);
-    const emoji = reasonOf('\u{1F600}'.repeat(300));
+    const emoji = reasonOf('a'.repeat(100) + '\u{1F600}'.repeat(100));
     expect([...emoji].length).toBeLessThanOrEqual(160);
     expect(emoji).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])/);
   });

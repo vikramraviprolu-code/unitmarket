@@ -18,7 +18,7 @@ ledger never holds reader text.
    scripted model's, so it says `scripted-v1`. `parseNeed` stores `response.served_model ?? model.model_id` in
    `briefs.version`. The evals page keeps showing the setting in force (no change: it never claimed a served id).
 3. Per-IP limit. `RouteMeta` gains optional `rate_ip: RateRule` (an `ip` rule charged in addition to `rate`, after
-   authentication). It is skipped when no client address is known (no `UMS_TRUSTED_PROXIES`), so it can never become one
+   authentication and before the actor rule, so a refused visitor never spends the shared persona allowance). It is skipped when no client address is known (no `UMS_TRUSTED_PROXIES`), so it can never become one
    bucket for all judges. `/api/discover` and `/api/briefs` get `{ name: 'discovery-ip', per: 'ip', limit: 40,
 window_ms: 3_600_000 }` next to the actor rule (20 an hour). `DEFAULT_RATES.discovery_ip` holds the same rule.
 4. Ledger. A test proves `model.spend` rows hold no reader text (action, reason, detail, target).
