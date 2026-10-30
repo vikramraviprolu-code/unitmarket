@@ -24,6 +24,10 @@ export interface LegalDoc {
 
 const UPDATED = 'Drafted 30 October 2026';
 
+// AGREE-1: the version of the publisher terms the seeded acceptance record names. One source: bump it when
+// the publisher terms change and every record that names an older version shows as changed, not re-accepted.
+export const PUBLISHER_TERMS_VERSION = 'v1';
+
 export const TERMS_DOC: LegalDoc = {
   slug: 'terms',
   href: '/legal/terms',

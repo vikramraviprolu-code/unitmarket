@@ -105,8 +105,12 @@ import {
   addApplicant,
   decideApplicant,
   listApplicants,
+  listAgreements,
+  ownAgreement,
+  seedAgreements,
 } from '@umsbx/catalogue';
 import type {
+  Agreement,
   Applicant,
   ApplicantError,
   OfferWriteError,
@@ -202,6 +206,9 @@ import { createLearnRecorder, receiveWebhook, webhookAllowed } from './src/serve
 import type { WebhookInput, WebhookResponse } from './src/server/webhook';
 import type { Outbound } from './src/server/outbound.server';
 import type { OpsGate } from './src/lib/gate-lines';
+import { AGREEMENT_SEED_LABEL } from './src/lib/agreement-copy';
+import { PUBLISHER_TERMS_VERSION } from './src/lib/legal-copy';
+import { PUBLISHER_PERSONAS } from './src/lib/publisher-copy';
 import { toBuyerReceipt } from './src/lib/receipt-view';
 import type { ArticleFacts, BuyerReceipt } from './src/lib/receipt-view';
 import { LINE_TEXT, lineKind, packBanner, windowMinutes } from './src/lib/composite-copy';
@@ -250,7 +257,12 @@ export interface AppOptions {
    * PUB-B: `demo_prices: true` runs the demo price step (decision 37) at boot. Outside NODE_ENV=test the
    * step always runs; in tests it is off unless asked for, so the seed prices (40, 90, 300, 450) hold.
    */
-  test_seed?: { supplement?: boolean; payees?: boolean; demo_prices?: boolean };
+  test_seed?: {
+    supplement?: boolean;
+    payees?: boolean;
+    demo_prices?: boolean;
+    agreements?: boolean;
+  };
   /**
    * AI-A (tests): a ModelWire standing in for the Claude egress. Used only when UMS_AI_ADAPTER=claude and a
    * key is set; no socket is opened and no real key is needed. Refused unless NODE_ENV=test.
@@ -636,6 +648,12 @@ export interface Engine {
    */
   publisherHome(actor: Actor): Promise<PublisherHome | null>;
   /**
+   * AGREE-1: the seeded, read only record that the publisher behind this session accepted the publisher
+   * terms (method seeded_demo). Own record only; null for any other actor kind and for no record. Nothing
+   * in the engine writes it: only the boot seed does.
+   */
+  publisherAgreement(actor: Actor): Promise<Agreement | null>;
+  /**
    * PUB-C (S4): the units the publisher behind this session sold, newest first, from stored rows. No buyer
    * identity. Every query filters by `actor.publisher_id`; no id comes from the caller. Null for any other
    * actor kind.
@@ -908,6 +926,13 @@ export interface Engine {
       reason: string;
     }): Promise<Result<{ state: 'active' | 'rejected' }, ApplicantError>>;
   };
+  /**
+   * AGREE-1, operator only (second factor required): the latest publisher terms record of every publisher
+   * that has one. Read only. Applicants have no record.
+   */
+  opsAgreements: {
+    list(actor: Actor): Promise<Result<{ agreements: Agreement[] }, ApplicantError>>;
+  };
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
   /** One pass of the access-window sweep and the automatic recovery rules (the job loop's sweep). */
@@ -1171,6 +1196,15 @@ function buildApp(config: Config, opts: AppOptions): App {
     // never sets a merchant id, a verification time or the payee_shared flag.
     if (opts.test_seed?.supplement !== false)
       await seedSupplement(d, clock, ids, SEED_SUPPLEMENT_COMPOSITE);
+    // AGREE-1: the seeded, read only publisher terms record for the demo publishers (method seeded_demo).
+    // Every boot; a publisher that already has a record is left alone, so a second run adds nothing and a
+    // later terms version shows as changed, not re-accepted.
+    if (opts.test_seed?.agreements !== false)
+      await seedAgreements(d, clock, ids, {
+        terms_version: PUBLISHER_TERMS_VERSION,
+        accepted_by_label: AGREEMENT_SEED_LABEL,
+        publisher_slugs: PUBLISHER_PERSONAS.map((x) => x.slug),
+      });
     // PUB-B (decision 37): demo prices 1.00 to 2.50 USD as audited offer revisions, not a seed edit. Every
     // boot, after the seed; an offer that was already revised (by this step or by its publisher) is not
     // touched again, so a second run, and a later boot on the hosted disk, revise nothing. Tests keep the
@@ -1649,6 +1683,9 @@ function buildApp(config: Config, opts: AppOptions): App {
       if (session_id !== null) await revokeSession(security, { id: session_id, actor });
       return { cookie: clearSessionCookie() };
     },
+
+    // AGREE-1: the publisher's own seeded record, read only.
+    publisherAgreement: (actor) => ownAgreement(db, actor),
 
     // PUB-A1: the publisher home. Every query below filters by the actor's publisher id.
     async publisherHome(actor) {
@@ -2560,6 +2597,16 @@ function buildApp(config: Config, opts: AppOptions): App {
           decision: i.decision,
           reason: i.reason,
         }),
+    },
+
+    opsAgreements: {
+      async list(actor) {
+        if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
+        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
+        const agreements = await listAgreements(db, actor);
+        if (agreements === null) return { ok: false, error: { code: 'not_operator' } };
+        return { ok: true, value: { agreements } };
+      },
     },
 
     newKey: () => ids.nonce(),

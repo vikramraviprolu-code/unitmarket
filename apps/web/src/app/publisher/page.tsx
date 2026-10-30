@@ -32,6 +32,7 @@ import {
   sinceLines,
 } from '../../lib/publisher-e1-copy';
 import { formatDateTime } from '../../lib/format';
+import { LINK_PUBLISHER_TERMS, NOT_ACCEPTED_TEXT, agreementText } from '../../lib/agreement-copy';
 
 export const metadata: Metadata = { title: 'Publisher' };
 
@@ -45,6 +46,7 @@ export default async function PublisherHome() {
   // PUB-E1: what changed since the last visit. Reading it records this visit in the publisher's own row.
   const since = await (await app()).engine.publisherSince(actor);
   const sinceList = since?.counts == null ? [] : sinceLines(since.counts);
+  const agreement = await (await app()).engine.publisherAgreement(actor);
   return (
     <>
       <h1>{PUBLISHER_HEADING}</h1>
@@ -92,6 +94,10 @@ export default async function PublisherHome() {
           <p className="muted">{sinceFromText(formatDateTime(since.since))}</p>
         )}
       </section>
+      <p className="muted" data-testid="publisher-agreement">
+        {agreement === null ? NOT_ACCEPTED_TEXT : agreementText(agreement)}{' '}
+        <Link href="/legal/publisher-terms">{LINK_PUBLISHER_TERMS}</Link>
+      </p>
       <ul data-testid="publisher-links">
         <li>
           <Link href="/publisher/offers">{LINK_OFFERS}</Link>

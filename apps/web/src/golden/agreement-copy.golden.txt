@@ -1,0 +1,6 @@
+link: Read the publisher terms
+accepted: Publisher terms: accepted on 30 October 2026 (version v1), demo record.
+accepted other date: Publisher terms: accepted on 5 January 2027 (version v12), demo record.
+not accepted: Publisher terms: not accepted.
+changed: Terms version changed, not re-accepted. The current version is v2.
+by: Recorded for Demo publisher contact.
