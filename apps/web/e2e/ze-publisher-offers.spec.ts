@@ -71,7 +71,7 @@ test('revise: the new price is saved as a new version and the buyer sees it', as
   await buyer.context().close();
 });
 
-test('withdraw: the offer goes off sale, the publisher cannot change it, and the buyer gets no match', async ({
+test('withdraw: the offer goes off sale, the publisher cannot change it, and the buyer sees it is not on sale', async ({
   browser,
 }) => {
   await page.goto(offerHref);
@@ -92,10 +92,13 @@ test('withdraw: the offer goes off sale, the publisher cannot change it, and the
   const buyer = await buyerPage(browser, 'a');
   await buyer.goto(OFFER_PAGE);
   await buyer.waitForLoadState('networkidle');
-  await buyer.getByRole('button', { name: 'Show my price' }).click();
-  const result = buyer.getByTestId('quote-result');
-  await expect(result).toContainText('No match');
-  await expect(result).toContainText('The publisher has withdrawn this offer.');
+  // GATEFIX2 item 7 (fix-gatefinal): a withdrawn offer shows "Not on sale", no price and no form. The refusal
+  // reason 'withdrawn' on a quote is covered in domain/offer-entry (start.state.test.ts).
+  const banner = buyer.getByTestId('status-banner');
+  await expect(banner).toContainText('Not on sale');
+  await expect(buyer.getByRole('button', { name: 'Show my price' })).toHaveCount(0);
+  await expect(buyer.getByRole('radio', { name: /Read online/ })).toHaveCount(0);
+  await expect(buyer.locator('main')).not.toContainText('$1.75');
   await expect(buyer.getByRole('button', { name: 'Review and approve' })).toHaveCount(0);
   await buyer.context().close();
 });
