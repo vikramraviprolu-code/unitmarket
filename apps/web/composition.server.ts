@@ -105,6 +105,7 @@ import {
   addApplicant,
   applicationReference,
   applicationStatus,
+  checkApplicationInput,
   decideApplicant,
   listApplicants,
   submitApplication,
@@ -946,8 +947,10 @@ export interface Engine {
     country: string;
     note: string;
     /** The honeypot field, which a person leaves empty. */
-    website: string;
+    trap: string;
     ip_hash: string;
+    /** False when no client address is known: the application is then refused as busy, no token spent. */
+    ip_known: boolean;
   }): Promise<
     { ok: true; reference: string } | { ok: false; code: 'invalid_input' | 'busy' | 'rate_limited' }
   >;
@@ -978,7 +981,7 @@ export const SANDBOX_MIN_CALL_GAP_MS = 500;
 
 export const PACK_APPROVAL_WINDOW_MS = 3_600_000;
 
-/** PUB-APPLY: stored or refused, each call to applyToPublish spends one token of the address's bucket. */
+/** PUB-APPLY: each well formed call to applyToPublish spends one token of the address's bucket. */
 export const APPLY_RATE = { name: 'apply', per: 'ip', limit: 5, window_ms: 3_600_000 } as const;
 
 export const DOMAIN_CONFIG = (c: Config): DomainConfig => ({
@@ -2638,13 +2641,24 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
 
     async applyToPublish(i) {
-      // One token per call, taken first: a refused or honeypot call costs the same as a stored one.
+      // No known address means every visitor would share one bucket and one could fill it for all: refuse
+      // before anything is read, checked or spent.
+      if (!i.ip_known) return { ok: false, code: 'busy' };
+      const ref_nonce = ids.nonce().slice(0, 12);
+      // Check first: a refused submission spends nothing and stores nothing.
+      const checked = checkApplicationInput({
+        display_name: i.display_name,
+        country: i.country,
+        note: i.note,
+        ref_nonce,
+      });
+      if (checked === null) return { ok: false, code: 'invalid_input' };
+      // One token for a well formed submission, honeypot included, so a bot cannot probe for free.
       const v = await takeToken({ db, clock }, APPLY_RATE, i.ip_hash);
       if (!v.allowed) return { ok: false, code: 'rate_limited' };
-      const ref_nonce = ids.nonce().slice(0, 12);
-      if (i.website.trim() !== '') {
+      if (i.trap.trim() !== '') {
         // The honeypot. Same shape as a success; nothing is stored and the reference is not known.
-        return { ok: true, reference: applicationReference(i.display_name, ref_nonce) };
+        return { ok: true, reference: applicationReference(checked.name, ref_nonce) };
       }
       const r = await submitApplication(offerDeps, {
         display_name: i.display_name,

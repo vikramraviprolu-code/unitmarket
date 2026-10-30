@@ -126,6 +126,14 @@ export const PRIVACY_DOC: LegalDoc = {
       ],
     },
     {
+      heading: 'Applications to publish',
+      paragraphs: [
+        'Anyone can apply to publish on the Apply to publish page without signing in. We store the publisher name, the country, the note you write and a hashed network address that limits how many applications arrive. We do not keep your network address itself.',
+        'The note is kept as a permanent audit record, so it cannot be changed or deleted, and the privacy export and deletion script does not cover it. Please do not put a phone number, a personal address, a password or payment details in it. An email address in the note is stored only in hashed form.',
+        'No account is created by an application. The operator reviews it, and signing in for a publisher is set up separately by the owners.',
+      ],
+    },
+    {
       heading: 'What we do not do',
       paragraphs: [
         'There is no advertising, no tracking scripts and no third-party fonts on this site. This site does not load scripts, fonts or images from other sites.',

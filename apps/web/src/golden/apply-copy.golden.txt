@@ -1,8 +1,8 @@
 title: Apply to publish
-lede: Tell us who you are and what you publish. The owners read every application.
+lede: Tell us who you are and what you publish. The operator reviews applications.
 no account: Applying creates no account. The operator reviews it. Nothing is paid or published until then.
 fields: Publisher name | Country (two capital letters, for example GB) | How to reach you and what you publish (3 to 200 characters)
-hints: Your publication or business name, 2 to 80 characters. No angle brackets. | Give a website or a public profile where the owners can reach you, and say what you publish. Never include a password or payment details. Email addresses are not kept in a readable form, so a website or profile works best.
+hints: Your publication or business name, 2 to 80 characters. No angle brackets. | Give a website or a public profile that shows who you are, and say what you publish, on one line. Never include a password or payment details. What you write here is kept as a permanent record and cannot be deleted. Do not include a phone number or a personal address. Email addresses are not kept in readable form.
 honeypot: Leave this field empty
 buttons: Send application | Sending
 confirm title: Application received
@@ -16,10 +16,11 @@ status form: Reference | Check status
 status no reference: Enter your reference to see where your application stands.
 status back: Back to the application form
 state pending: Waiting for review | tone info
-state approved: Approved: the owners will contact you to set up sign in | tone good
+state approved: Approved. Sign in is not automatic; the owners decide whether to set it up. | tone good
 state rejected: Not approved | tone bad
+state unavailable: Not available | tone neutral
 state unknown: We do not have that reference | tone neutral
-error invalid_input: Please check the name (2 to 80 characters, no angle brackets), the country (two capital letters) and the note (3 to 200 characters, on one line).
+error invalid_input: Please check the name (2 to 80 characters, no angle brackets), the country (two capital letters) and the note (3 to 200 characters).
 error busy: We cannot take new applications right now. Please try again later.
 error rate_limited: Too many applications from this connection. Please try again later.
 error csrf: That request was refused. Reload the page and try again.

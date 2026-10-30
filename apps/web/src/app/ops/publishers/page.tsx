@@ -45,11 +45,7 @@ import {
   REJECT_HINT,
   applicantLine,
 } from '../../../lib/ops-applicants-copy';
-import {
-  OPS_NOTE_LABEL,
-  OPS_SOURCE_OPERATOR,
-  OPS_SOURCE_PUBLIC,
-} from '../../../lib/apply-copy';
+import { OPS_NOTE_LABEL, OPS_SOURCE_OPERATOR, OPS_SOURCE_PUBLIC } from '../../../lib/apply-copy';
 import { PUBLISHER_TERMS_VERSION } from '../../../lib/legal-copy';
 import {
   LINK_PUBLISHER_TERMS,

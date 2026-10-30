@@ -37,8 +37,8 @@ export interface Applicant {
   decision_reason: string | null;
   /** The note the applicant or the operator gave when the record was made, or null (seeded or older records). */
   note: string | null;
-  /** Who made the record: the public form or an operator. */
-  source: 'public' | 'operator';
+  /** Who made the record, read from its audit row: the public form, an operator, or null when no audit row says. */
+  source: 'public' | 'operator' | null;
 }
 
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -245,10 +245,14 @@ export async function listApplicants(db: Database, operator: Actor): Promise<App
   }>(
     `SELECT p.id, p.slug, p.display_name, p.country, p.created_at, d.decision, d.reason,
             (SELECT a.reason FROM audit_log a
-              WHERE a.target = p.id AND a.action IN ('publisher.applicant_added', 'publisher.application_submitted')
+              WHERE a.target = p.id
+                AND (a.action = 'publisher.applicant_added'
+                     OR (a.action = 'publisher.application_submitted' AND a.detail->>'actor' = 'anonymous'))
               ORDER BY a.created_at, a.id LIMIT 1) AS note,
             (SELECT a.action FROM audit_log a
-              WHERE a.target = p.id AND a.action IN ('publisher.applicant_added', 'publisher.application_submitted')
+              WHERE a.target = p.id
+                AND (a.action = 'publisher.applicant_added'
+                     OR (a.action = 'publisher.application_submitted' AND a.detail->>'actor' = 'anonymous'))
               ORDER BY a.created_at, a.id LIMIT 1) AS made_by
        FROM publishers p
        LEFT JOIN publisher_applicant_decisions d ON d.publisher_id = p.id
@@ -263,8 +267,14 @@ export async function listApplicants(db: Database, operator: Actor): Promise<App
     state: x.decision === 'rejected' ? 'rejected' : 'pending',
     added_at: iso(x.created_at),
     decision_reason: x.decision === 'rejected' ? x.reason : null,
-    note: x.note,
-    source: x.made_by === 'publisher.application_submitted' ? 'public' : 'operator',
+    // A record no audit row speaks for shows neither a source nor a note.
+    note: x.made_by === null ? null : x.note,
+    source:
+      x.made_by === 'publisher.application_submitted'
+        ? 'public'
+        : x.made_by === 'publisher.applicant_added'
+          ? 'operator'
+          : null,
   }));
 }
 
@@ -274,9 +284,13 @@ export async function listApplicants(db: Database, operator: Actor): Promise<App
 // and answers it with decideApplicant. No new table: the note is the audit reason of the one audit row.
 // ---------------------------------------------------------------------------------------------------------
 
-/** Pending applicants (applied, no answer yet) at which a new application is refused with `busy`. */
+/**
+ * Pending public applications of the last 24 hours at which a new application is refused with `busy`. Only
+ * the public form's own records in that window count, so the cap heals itself and operator work never
+ * closes the form.
+ */
 export const APPLICATION_CAP = 200;
-/** Put in front of the stored note when the name equals an existing publisher name (any case). */
+/** Put in front of the stored note when the name equals an existing publisher name (NFKC, case and spacing folded). */
 export const DUPLICATE_NOTE_PREFIX = 'DUPLICATE NAME: ';
 /** The audit actor of a public application. audit_log has no anonymous kind (and there is no new migration),
  * so the row carries the system actor and detail.actor = 'anonymous'. */
@@ -286,7 +300,48 @@ export const REF_NONCE_PATTERN = /^[0-9a-f]{12}$/;
 const SLUG_BASE_MAX = 27;
 const APPLICATION_ACTION = 'publisher.application_submitted';
 
-export type ApplicationState = 'pending' | 'approved' | 'rejected' | 'unknown';
+const DAY_MS = 86_400_000;
+// Invisible, bidirectional and layout characters are never part of a name or a note: control (Cc), format (Cf,
+// which holds zero width, joiner and bidi marks), line and paragraph separators, the Hangul and halfwidth
+// fillers, and the variation selectors.
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u3164\u115F\u1160\uFFA0]|\p{Variation_Selector}/u;
+const foldName = (v: string): string =>
+  v.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+
+export type ApplicationState = 'pending' | 'approved' | 'rejected' | 'unavailable' | 'unknown';
+
+/**
+ * The checked form of an application, or null. The name is trimmed; the note has every run of whitespace
+ * (line breaks and tabs too) turned into one space before the length check, so it is always one line.
+ */
+export function checkApplicationInput(input: {
+  display_name: unknown;
+  country: unknown;
+  note: unknown;
+  ref_nonce: unknown;
+}): { name: string; country: string; note: string; ref_nonce: string } | null {
+  const name = typeof input.display_name === 'string' ? input.display_name.trim() : '';
+  const note = typeof input.note === 'string' ? input.note.replace(/\s+/g, ' ').trim() : '';
+  if (
+    name.length < 2 ||
+    name.length > 80 ||
+    hasBadChar(name) ||
+    INVISIBLE.test(name) ||
+    name.includes('<') ||
+    name.includes('>') ||
+    typeof input.country !== 'string' ||
+    !COUNTRY_PATTERN.test(input.country) ||
+    note.length < 3 ||
+    note.length > 200 ||
+    hasBadChar(note) ||
+    INVISIBLE.test(note) ||
+    typeof input.ref_nonce !== 'string' ||
+    !REF_NONCE_PATTERN.test(input.ref_nonce)
+  ) {
+    return null;
+  }
+  return { name, country: input.country, note, ref_nonce: input.ref_nonce };
+}
 
 /** ASCII lowercase of the name, runs of other characters as single hyphens, at most 27 chars, never empty. */
 export function slugBase(name: string): string {
@@ -314,45 +369,34 @@ export async function submitApplication(
   deps: ApplicantDeps,
   input: { display_name: string; country: string; note: string; ref_nonce: string },
 ): Promise<Result<{ reference: string }, ApplicantError>> {
-  const name = typeof input.display_name === 'string' ? input.display_name.trim() : '';
-  const note = typeof input.note === 'string' ? input.note.trim() : '';
-  if (
-    name.length < 2 ||
-    name.length > 80 ||
-    hasBadChar(name) ||
-    name.includes('<') ||
-    name.includes('>') ||
-    typeof input.country !== 'string' ||
-    !COUNTRY_PATTERN.test(input.country) ||
-    note.length < 3 ||
-    note.length > 200 ||
-    hasBadChar(note) ||
-    typeof input.ref_nonce !== 'string' ||
-    !REF_NONCE_PATTERN.test(input.ref_nonce)
-  ) {
-    return fail('invalid_input');
-  }
-  const slug = applicationReference(name, input.ref_nonce);
+  const checked = checkApplicationInput(input);
+  if (checked === null) return fail('invalid_input');
+  const { name, note, country } = checked;
+  const slug = applicationReference(name, checked.ref_nonce);
   try {
     return await deps.db.transaction(async (tx) => {
+      const since = new Date(deps.clock.now().getTime() - DAY_MS).toISOString();
       const pending = await tx.query<{ c: string | number }>(
         `SELECT count(*) AS c FROM publishers p
           WHERE p.status = 'applied'
-            AND NOT EXISTS (SELECT 1 FROM publisher_applicant_decisions d WHERE d.publisher_id = p.id)`,
+            AND p.created_at > $1
+            AND NOT EXISTS (SELECT 1 FROM publisher_applicant_decisions d WHERE d.publisher_id = p.id)
+            AND EXISTS (SELECT 1 FROM audit_log a
+                         WHERE a.target = p.id AND a.action = $2 AND a.detail->>'actor' = 'anonymous')`,
+        [since, APPLICATION_ACTION],
       );
       if (Number(pending.rows[0]?.c ?? 0) >= APPLICATION_CAP) throw new Refused('busy');
       // A reused nonce is refused as busy; the caller draws a new one. It says nothing about other slugs.
       const taken = await tx.query('SELECT 1 FROM publishers WHERE slug = $1', [slug]);
       if (taken.rows.length > 0) throw new Refused('busy');
-      const same = await tx.query(
-        'SELECT 1 FROM publishers WHERE lower(display_name) = lower($1) LIMIT 1',
-        [name],
-      );
-      const stored = same.rows.length > 0 ? `${DUPLICATE_NOTE_PREFIX}${note}` : note;
+      const mine = foldName(name);
+      const names = await tx.query<{ display_name: string }>('SELECT display_name FROM publishers');
+      const same = names.rows.some((r) => foldName(r.display_name) === mine);
+      const stored = same ? `${DUPLICATE_NOTE_PREFIX}${note}` : note;
       const at = deps.clock.now().toISOString();
       const publisher_id = deps.ids.next('pub');
       try {
-        await insertApplicant(tx, { id: publisher_id, slug, name, country: input.country, at });
+        await insertApplicant(tx, { id: publisher_id, slug, name, country, at });
       } catch (e) {
         if (e instanceof Refused && e.code === 'slug_taken') throw new Refused('busy');
         throw e;
@@ -362,7 +406,7 @@ export async function submitApplication(
         action: APPLICATION_ACTION,
         target: publisher_id,
         reason: stored,
-        detail: { actor: 'anonymous', source: 'public_application', slug, country: input.country },
+        detail: { actor: 'anonymous', source: 'public_application', slug, country },
       });
       return ok({ reference: slug });
     });
@@ -391,9 +435,9 @@ export async function applicationStatus(db: Database, ref: string): Promise<Appl
   );
   const row = r.rows[0];
   if (row === undefined) return 'unknown';
+  // A suspended publisher is not shown as approved: the applicant is told only that it is not available.
+  if (row.status === 'suspended') return 'unavailable';
   if (row.decision === 'rejected') return 'rejected';
-  if (row.decision === 'approved' || row.status === 'active' || row.status === 'suspended') {
-    return 'approved';
-  }
+  if (row.decision === 'approved' || row.status === 'active') return 'approved';
   return 'pending';
 }

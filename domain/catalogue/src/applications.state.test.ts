@@ -245,7 +245,7 @@ describe('submitApplication', () => {
   it('compares names for duplicates after NFKC, case and whitespace folding, both sides', async () => {
     for (const name of [
       '\uff28\uff21\uff32\uff22\uff2f\uff35\uff32 Ledger Review (fictional)',
-      'Harbour    Ledger\tReview (fictional)',
+      'Harbour    Ledger  Review (fictional)',
       'harbour ledger review (FICTIONAL)',
     ]) {
       const slug = slugOf(await submit({ display_name: name }));

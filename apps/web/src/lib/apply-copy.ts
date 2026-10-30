@@ -4,7 +4,7 @@
 
 export const APPLY_TITLE = 'Apply to publish';
 export const APPLY_LEDE =
-  'Tell us who you are and what you publish. The owners read every application.';
+  'Tell us who you are and what you publish. The operator reviews applications.';
 export const APPLY_NO_ACCOUNT =
   'Applying creates no account. The operator reviews it. Nothing is paid or published until then.';
 
@@ -14,7 +14,7 @@ export const FIELD_NOTE = 'How to reach you and what you publish (3 to 200 chara
 export const HINT_NAME =
   'Your publication or business name, 2 to 80 characters. No angle brackets.';
 export const HINT_NOTE =
-  'Give a website or a public profile where the owners can reach you, and say what you publish. Never include a password or payment details. Email addresses are not kept in a readable form, so a website or profile works best.';
+  'Give a website or a public profile that shows who you are, and say what you publish, on one line. Never include a password or payment details. What you write here is kept as a permanent record and cannot be deleted. Do not include a phone number or a personal address. Email addresses are not kept in readable form.';
 export const HONEYPOT_LABEL = 'Leave this field empty';
 
 export const SUBMIT_BUTTON = 'Send application';
@@ -34,7 +34,7 @@ export const STATUS_BUTTON = 'Check status';
 export const STATUS_NO_REF = 'Enter your reference to see where your application stands.';
 export const STATUS_BACK = 'Back to the application form';
 
-export type ApplyState = 'pending' | 'approved' | 'rejected' | 'unknown';
+export type ApplyState = 'pending' | 'approved' | 'rejected' | 'unavailable' | 'unknown';
 export type ApplyTone = 'good' | 'warn' | 'bad' | 'info' | 'neutral';
 
 export function statusText(state: ApplyState): string {
@@ -42,9 +42,11 @@ export function statusText(state: ApplyState): string {
     case 'pending':
       return 'Waiting for review';
     case 'approved':
-      return 'Approved: the owners will contact you to set up sign in';
+      return 'Approved. Sign in is not automatic; the owners decide whether to set it up.';
     case 'rejected':
       return 'Not approved';
+    case 'unavailable':
+      return 'Not available';
     case 'unknown':
       return 'We do not have that reference';
   }
@@ -59,6 +61,7 @@ export function statusTone(state: ApplyState): ApplyTone {
       return 'good';
     case 'rejected':
       return 'bad';
+    case 'unavailable':
     case 'unknown':
       return 'neutral';
   }
@@ -67,7 +70,7 @@ export function statusTone(state: ApplyState): ApplyTone {
 export function applyErrorText(code: string): string {
   switch (code) {
     case 'invalid_input':
-      return 'Please check the name (2 to 80 characters, no angle brackets), the country (two capital letters) and the note (3 to 200 characters, on one line).';
+      return 'Please check the name (2 to 80 characters, no angle brackets), the country (two capital letters) and the note (3 to 200 characters).';
     case 'busy':
       return 'We cannot take new applications right now. Please try again later.';
     case 'rate_limited':

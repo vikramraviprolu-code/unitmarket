@@ -12,20 +12,19 @@ and an approved applicant still has no sign in until the owners add a persona an
 Behaviour:
 
 - `domain/catalogue/src/applicants.ts`: `submitApplication(deps, {display_name, country, note, ref_nonce})`, no actor.
-  Name 2 to 80 chars, no control or bidi characters, no `<` or `>`; country `^[A-Z]{2}$`; note 3 to 200 chars, no control
-  characters. The server derives the slug: ASCII lowercase of the name, `[a-z0-9]` runs joined by single hyphens (fallback
+  Name 2 to 80 chars, none of control, format (zero width, joiner, bidi marks), line or paragraph separator, the Hangul and halfwidth fillers or variation selectors, and no `<` or `>`; country `^[A-Z]{2}$`; note 3 to 200 chars after every whitespace run becomes one space, same character rule. The server derives the slug: ASCII lowercase of the name, `[a-z0-9]` runs joined by single hyphens (fallback
   `applicant`), cut to 27 chars, then `-` and the 12 hex chars of `ref_nonce` (40 chars at most, unique, reveals no slug).
-  Same private INSERT as `addApplicant`. Refuses `busy` when 200 applicants are pending. A name equal (any case) to an
+  Same private INSERT as `addApplicant`. Refuses `busy` when 200 public applications of the last 24 hours are pending (self healing). A name equal after NFKC, case and spacing folding to an
   existing publisher name is accepted and its stored note starts `DUPLICATE NAME: `. One `audit_log` row
   `publisher.application_submitted`, actor `system` (the audit CHECK has no `anonymous` kind and there is no new migration),
   detail `{actor: 'anonymous'}`; the note is the audit reason. `applicationStatus(db, ref)` answers `pending | approved |
-rejected | unknown`; `unknown` for anything that was not made by `submitApplication`. `listApplicants` adds `note` and `source`.
-- Engine `applyToPublish({display_name, country, note, website, ip_hash})` and `applicationStatus({ref})`: 5 submissions
-  an hour per hashed address (token bucket `apply`), a filled `website` honeypot answers the normal success and stores nothing.
+rejected | unavailable | unknown` (a suspended publisher reads `unavailable`, never approved); `unknown` for anything that was not made by `submitApplication`. `listApplicants` adds `note` and `source` (null when no audit row says who made the record).
+- Engine `applyToPublish({display_name, country, note, trap, ip_hash, ip_known})` and `applicationStatus({ref})`: with no known client address it answers `busy` and spends nothing; a refused submission spends nothing; 5 well formed submissions
+  an hour per hashed address (token bucket `apply`); a filled honeypot (`extra_k7q`, an opaque name) answers the normal success and stores nothing.
 - Route `POST /api/applications`: public, CSRF origin check, `.strict()`, 2048 byte cap, 20 requests an hour per address,
   no cookie read by the handler, none set, generic errors, no internal id in any answer (the reference is the slug).
-- Pages `/apply` (form, confirmation with the reference) and `/apply/status` (Chip: Waiting for review, Approved, Not
-  approved, or a neutral not found), words in `lib/apply-copy.ts`; links from the publisher terms page and the sign in page.
+- Pages `/apply` (form, confirmation with the reference) and `/apply/status` (Chip: Waiting for review, Approved without a promise of sign in, Not
+  approved, Not available, or a neutral not found), words in `lib/apply-copy.ts`; links from the publisher terms page and the sign in page.
 - No migration, no new table, no new dependency. The note keeps no readable email address: the audit sink hashes them, so the
   copy asks for a website or public profile.
 

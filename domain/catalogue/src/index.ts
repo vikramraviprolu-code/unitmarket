@@ -57,6 +57,7 @@ export {
   addApplicant,
   applicationReference,
   applicationStatus,
+  checkApplicationInput,
   decideApplicant,
   listApplicants,
   slugBase,

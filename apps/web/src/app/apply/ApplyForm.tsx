@@ -27,7 +27,7 @@ export function ApplyForm() {
   const [name, setName] = useState('');
   const [country, setCountry] = useState('');
   const [note, setNote] = useState('');
-  const [website, setWebsite] = useState('');
+  const [trap, setTrap] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reference, setReference] = useState<string | null>(null);
@@ -39,8 +39,8 @@ export function ApplyForm() {
     const r = await postJson<{ reference: string }>('/api/applications', {
       display_name: name.trim(),
       country: country.trim().toUpperCase(),
-      note: note.trim(),
-      website,
+      note: note.replace(/\s+/g, ' ').trim(),
+      extra_k7q: trap,
     });
     setBusy(false);
     if (!r.ok) {
@@ -123,15 +123,18 @@ export function ApplyForm() {
         />
       </div>
       <div className="apply-hp" aria-hidden="true">
-        <label htmlFor="apply-website">{HONEYPOT_LABEL}</label>
+        <label htmlFor="apply-extra">{HONEYPOT_LABEL}</label>
         <input
-          id="apply-website"
-          name="website"
+          id="apply-extra"
+          name="extra_k7q"
           type="text"
           tabIndex={-1}
           autoComplete="off"
-          value={website}
-          onChange={(e) => setWebsite(e.target.value)}
+          data-1p-ignore
+          data-lpignore="true"
+          data-bwignore
+          value={trap}
+          onChange={(e) => setTrap(e.target.value)}
         />
       </div>
       <button

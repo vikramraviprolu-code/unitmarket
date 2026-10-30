@@ -25,20 +25,22 @@ const Input = z
     display_name: z.string().min(1).max(200),
     country: z.string().min(1).max(10),
     note: z.string().min(1).max(400),
-    // The honeypot: a person leaves it empty. A filled one gets the normal answer and nothing is stored.
-    website: z.string().max(200).optional(),
+    // The honeypot, under an opaque name so a browser does not autofill it. A person leaves it empty; a filled
+    // one gets the normal answer and nothing is stored.
+    extra_k7q: z.string().max(200).optional(),
   })
   .strict();
 
-export const POST = withRoute(routeMeta, Input, async ({ input, ip_hash }) => {
+export const POST = withRoute(routeMeta, Input, async ({ input, ip_hash, ip_known }) => {
   const r = await (
     await app()
   ).engine.applyToPublish({
     display_name: input.display_name,
     country: input.country,
     note: input.note,
-    website: input.website ?? '',
+    trap: input.extra_k7q ?? '',
     ip_hash,
+    ip_known,
   });
   if (r.ok) return { status: 200, body: { reference: r.reference } };
   const message = applyErrorText(r.code);
