@@ -20,6 +20,18 @@ export const OFFERS_EMPTY_TITLE = 'No offers yet';
 export const OFFERS_EMPTY_BODY = 'When an offer is created for your articles it appears here.';
 export const NOT_OFFERED = 'Not offered';
 
+// PUB-UI-OFFERS: the filter tabs, the card button and the view with no match. A tab label is written with
+// its count by tabText in offers-view.ts.
+export const FILTER_NAV_LABEL = 'Filter your offers';
+export const FILTER_ALL = 'All';
+export const FILTER_ON_SALE = 'On sale';
+export const FILTER_DRAFT = 'Draft';
+export const FILTER_WITHDRAWN = 'Withdrawn';
+export const EDIT_LABEL = 'Edit';
+export const FILTER_EMPTY_TITLE = 'No offers in this view';
+export const FILTER_EMPTY_BODY = 'Choose another tab to see your other offers.';
+export const FILTER_EMPTY_ACTION = 'Show all offers';
+
 export function offerStatusText(s: OfferStatus): string {
   switch (s) {
     case 'authorised':
