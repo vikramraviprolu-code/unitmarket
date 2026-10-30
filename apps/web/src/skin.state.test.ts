@@ -93,6 +93,22 @@ describe('no inline style attribute in any .tsx under src/app and src/ui', () =>
     const bad = files.filter((f) => /\sstyle=/.test(noComments(readFileSync(f, 'utf8'))));
     expect(bad).toEqual([]);
   });
+  it('every .meter-fill rule is more specific than .meter-bar span, so the bar is not stuck empty', () => {
+    const specificity = (sel: string): number => {
+      const classes = (sel.match(/\.[\w-]+|\[[^\]]+\]|:[\w-]+/g) ?? []).length;
+      const elements = (
+        sel.replace(/\.[\w-]+|\[[^\]]+\]|:[\w-]+/g, ' ').match(/[a-z][\w-]*/gi) ?? []
+      ).length;
+      return classes * 100 + elements;
+    };
+    const css = stripComments(readGlobalsCss());
+    const base = specificity('.meter-bar span');
+    const fills = [...css.matchAll(/([^{}]+)\{[^{}]*\}/g)]
+      .map((m) => (m[1] ?? '').trim())
+      .filter((sel) => sel.includes('.meter-fill-'));
+    expect(fills.length).toBe(5);
+    for (const sel of fills) expect(specificity(sel), sel).toBeGreaterThan(base);
+  });
   it('the access meter fills by class, in whole days', () => {
     const src = noComments(read('ui/WindowMeter.tsx'));
     expect(src).toContain('meter-fill-');

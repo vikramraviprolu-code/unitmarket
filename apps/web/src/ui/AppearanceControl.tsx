@@ -13,11 +13,14 @@ import {
 // Footer control (SKIN-A). It works signed out: the route sets the um_skin cookie, then the page reloads
 // so the server renders the chosen skin on first paint. Nothing is kept in the browser's storage.
 export function AppearanceControl({ skin }: { skin: Skin }) {
+  const [selected, setSelected] = useState(skin);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
   async function choose(next: Skin) {
-    if (next === skin || busy) return;
+    if (next === selected || busy) return;
+    const before = selected;
+    setSelected(next);
     setBusy(true);
     setFailed(false);
     try {
@@ -25,6 +28,7 @@ export function AppearanceControl({ skin }: { skin: Skin }) {
       if (!res.ok) throw new Error('refused');
       window.location.reload();
     } catch {
+      setSelected(before);
       setBusy(false);
       setFailed(true);
     }
@@ -39,7 +43,7 @@ export function AppearanceControl({ skin }: { skin: Skin }) {
             type="radio"
             name="skin"
             value={s}
-            checked={s === skin}
+            checked={s === selected}
             disabled={busy}
             onChange={() => void choose(s)}
           />

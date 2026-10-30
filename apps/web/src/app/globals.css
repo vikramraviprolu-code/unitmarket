@@ -187,8 +187,29 @@ main,
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px 20px;
+  gap: 4px 20px;
   min-height: 64px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+/* Narrow screens: the brand and the environment label share the first row, the links take the second. */
+@media (max-width: 600px) {
+  .site-header .inner {
+    gap: 4px 12px;
+  }
+  .site-header .spacer {
+    display: none;
+  }
+  .site-header .brand {
+    margin-right: auto;
+  }
+  .site-header .env {
+    order: 1;
+  }
+  .site-header nav {
+    order: 2;
+    flex: 1 1 100%;
+  }
 }
 .brand,
 .site-header .brand {
@@ -229,6 +250,7 @@ nav a:hover {
   font-size: 0.85rem;
   padding: 2px 10px;
   border-radius: 999px;
+  white-space: nowrap;
 }
 .env-sandbox {
   border-color: var(--accent);
@@ -516,19 +538,19 @@ legend {
   height: 100%;
   background: var(--accent);
 }
-.meter-fill-1 {
+.meter-bar .meter-fill-1 {
   width: 20%;
 }
-.meter-fill-2 {
+.meter-bar .meter-fill-2 {
   width: 40%;
 }
-.meter-fill-3 {
+.meter-bar .meter-fill-3 {
   width: 60%;
 }
-.meter-fill-4 {
+.meter-bar .meter-fill-4 {
   width: 80%;
 }
-.meter-fill-5 {
+.meter-bar .meter-fill-5 {
   width: 100%;
 }
 .plain-list {
@@ -541,6 +563,7 @@ legend {
 table {
   width: 100%;
   border-collapse: collapse;
+  background: var(--surface);
 }
 th,
 td {
