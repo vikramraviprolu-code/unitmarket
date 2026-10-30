@@ -72,7 +72,7 @@ export function HarbourScene() {
         <g className="hs-wave hs-wave-back">
           <path d={wave(120, 14)} />
         </g>
-        <g transform="translate(220 0)">
+        <g transform="translate(250 0)">
           <g className="hs-boat">
             <path d="M458 108 L458 70 L430 108Z" className="hs-sail" />
             <path d="M464 100 L464 76 L490 108Z" className="hs-sail hs-sail-2" />

@@ -140,6 +140,37 @@
 :root[data-skin='harbour'] .hero::before {
   display: none;
 }
+/* A dark wash keeps the headline and the search label readable over the scene: left to right on a wide panel,
+   top to bottom on a phone, where the text takes the whole width and only the lighthouse and beam are kept. */
+.hero > .harbour-scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(6, 24, 42, 0.92) 0%,
+    rgba(6, 24, 42, 0.8) 42%,
+    rgba(6, 24, 42, 0) 78%
+  );
+}
+:root[data-skin='harbour'] .hero .lede {
+  max-width: 36ch;
+}
+@media (max-width: 600px) {
+  .hero > .harbour-scene::after {
+    background: linear-gradient(
+      180deg,
+      rgba(6, 24, 42, 0.92) 0%,
+      rgba(6, 24, 42, 0.86) 58%,
+      rgba(6, 24, 42, 0.15) 100%
+    );
+  }
+  .harbour-scene .hs-moon,
+  .harbour-scene .hs-moon-halo,
+  .harbour-scene .hs-boat {
+    display: none;
+  }
+}
 /* Radios and checkboxes take the amber instead of the browser blue. */
 :root[data-skin='harbour'] input[type='radio'],
 :root[data-skin='harbour'] input[type='checkbox'] {
