@@ -1,0 +1,76 @@
+# LEGAL-A golden: the words of the four draft legal pages, the footer labels and the sign-in notice. Hand reviewed.
+# Drafted for the owners to approve; not legal advice. Fixed dates, no dash characters, no italics.
+banner: Draft for owner approval. This is not legal advice.
+sandbox line: This is a test build. No real money moves. Payments use PayPal's sandbox with test money, or, in a dry run, nothing contacts PayPal at all.
+/legal/terms | title: Terms of purchase
+/legal/terms | updated: Drafted 30 October 2026
+/legal/terms | heading: About these terms
+/legal/terms | text: These terms say what you agree to when you buy a unit on UnitMarket. They are a draft written for the owners of this demo to read and approve. They are not legal advice, and they may change before the demo is submitted.
+/legal/terms | heading: What a unit is
+/legal/terms | text: A unit is one article, or one part of a publisher's content, that you buy on its own instead of paying for a whole subscription. Before you pay, the offer shows what the unit is, what it costs and what access it gives.
+/legal/terms | heading: Personal use only
+/legal/terms | text: A unit is for your personal use only. You may not copy it for others, resell it, post it in public or share your access with another person. Redistribution of any kind is not allowed. Publishers keep their rights in their content.
+/legal/terms | heading: How long you have access
+/legal/terms | text: Access lasts five days from verified payment and ready delivery. The five days start once your payment is verified and the content is ready to deliver, whichever happens later. If we detect a delivery failure on our side, the lost time is credited back once delivery works again.
+/legal/terms | text: Access to a unit ends early if a full refund is made for that unit. The refund policy explains how refunds work.
+/legal/terms | heading: Price and terms are held for 15 minutes
+/legal/terms | text: Once you start to buy, the price and the terms you were shown are held for 15 minutes. If you do not approve within that time, nothing is charged for that attempt. You can start again, and the price or terms may be different the next time.
+/legal/terms | heading: How you pay
+/legal/terms | text: You pay through PayPal. There is one PayPal payment for each publisher. If your order has content from two publishers, it is paid in two separate PayPal payments, one for each publisher.
+/legal/terms | heading: Test money only
+/legal/terms | text: This is a test build. No real money moves. Payments use PayPal's sandbox with test money, or, in a dry run, nothing contacts PayPal at all. Nothing you buy here has real value.
+/legal/privacy | title: Privacy notice
+/legal/privacy | updated: Drafted 30 October 2026
+/legal/privacy | heading: About this notice
+/legal/privacy | text: This notice says what data this demo processes and why. It is a draft written for the owners to read and approve. It is not legal advice, and it may change before the demo is submitted.
+/legal/privacy | heading: What we process
+/legal/privacy | text: A session cookie, which keeps you signed in as the test persona you chose.
+/legal/privacy | text: A hashed network address. We do not keep your network address itself. We keep a hash of it, so we can limit how fast requests arrive and keep the demo safe.
+/legal/privacy | text: The persona you chose, your orders, and your access events, such as when access to a unit started and when it ended.
+/legal/privacy | text: What you type to describe what you need, and the quotes and approvals made from it. If the AI helper is switched on, that text is sent to an AI model provider. It never receives payment data.
+/legal/privacy | text: PayPal processes your payment details on its own pages. We never see card data. Payer email addresses and names are redacted from our logs.
+/legal/privacy | heading: Why we process it
+/legal/privacy | text: We use this data only to run the demo. That means signing you in, keeping a record of what you bought and for how long, showing your library, limiting abuse, and looking into a problem with an order.
+/legal/privacy | heading: How long we keep it
+/legal/privacy | text: The design keeps logs for 30 days at the host and records of calls to the payment provider for 90 days. Deletion after these periods is not automated yet. Orders, the ledger and database backups are kept for the judging period. Some records, such as receipts, may need to be kept as financial records.
+/legal/privacy | heading: Export or deletion
+/legal/privacy | text: You can ask for a copy of your data, or ask for it to be deleted, through the operator. An operator carries out the request by hand. There is no export or deletion tool yet.
+/legal/privacy | heading: What we do not do
+/legal/privacy | text: There is no advertising, no tracking scripts and no third-party fonts on this site. This site does not load scripts, fonts or images from other sites.
+/legal/privacy | heading: Contact
+/legal/privacy | text: Contact details will be added by the owners before submission.
+/legal/refunds | title: Refund policy
+/legal/refunds | updated: Drafted 30 October 2026
+/legal/refunds | heading: About this policy
+/legal/refunds | text: This policy says how refunds work in this demo. It is a draft written for the owners to read and approve. It is not legal advice, and it may change before the demo is submitted.
+/legal/refunds | heading: Who decides
+/legal/refunds | text: Refunds are decided by an operator, for each unit. Nothing is refunded automatically, and there is no button for buyers to refund themselves. To ask for a refund, open a help case from your order or your library.
+/legal/refunds | heading: A full refund
+/legal/refunds | text: A full refund of one publisher's part of your order ends access to what you bought from that publisher. Links to it stop working. A copy you already downloaded cannot be recalled.
+/legal/refunds | heading: A partial refund
+/legal/refunds | text: A partial refund does not end access to that publisher's part of your order, unless partial refunds together reach the full amount paid for it. It is treated as a price adjustment for the order.
+/legal/refunds | heading: When a refund takes effect
+/legal/refunds | text: After an operator decides a refund, it is requested from PayPal. It is booked when PayPal confirms it. Until then your access does not change.
+/legal/refunds | heading: Test money only
+/legal/refunds | text: This is a test build. A refund returns test money to a test account, or, in a dry run, nothing is sent to PayPal. No real money moves.
+/legal/publisher-terms | title: Publisher terms and sandbox disclaimer
+/legal/publisher-terms | updated: Drafted 30 October 2026
+/legal/publisher-terms | heading: About these terms
+/legal/publisher-terms | text: These terms say what publishers can expect in this demo. They are a draft written for the owners to read and approve. They are not legal advice, and they may change before the demo is submitted.
+/legal/publisher-terms | heading: Publishers here are fictional
+/legal/publisher-terms | text: Every publisher in this demo is fictional. Their names, articles and prices are made up for the demo and have no connection to any real publisher.
+/legal/publisher-terms | heading: How a payee is checked
+/legal/publisher-terms | text: In this demo the publishers' payee details are marked as checked when the demo data is loaded. It is not PayPal onboarding. Both fictional publishers are paid into one test account the owners control.
+/legal/publisher-terms | heading: Commission
+/legal/publisher-terms | text: There is no commission in this demo. A commission of 20 percent is planned. It is not implemented.
+/legal/publisher-terms | heading: Where the money goes
+/legal/publisher-terms | text: UnitMarket uses no payout mechanism. It does not call any PayPal payout service.
+/legal/publisher-terms | text: A statement page for publishers is planned but not built yet. It will be read from the stored records of each payment.
+/legal/publisher-terms | heading: Sandbox disclaimer
+/legal/publisher-terms | text: This is a test build. No real money moves. Payments use PayPal's sandbox with test money, or, in a dry run, nothing contacts PayPal at all. Nothing here is a live payment, a real sale or an offer to sell anything of real value.
+/legal/publisher-terms | text: Publishers keep their rights in their content. Buyers get personal use only, as the terms of purchase say.
+footer link, terms: Terms of purchase
+footer link, privacy: Privacy notice
+footer link, refunds: Refund policy
+footer link, publisher-terms: Publisher terms
+sign-in notice: We use a session cookie and a hashed network address to keep this demo safe. Read the privacy notice.
