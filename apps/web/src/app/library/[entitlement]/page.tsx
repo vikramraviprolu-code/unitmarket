@@ -57,7 +57,11 @@ export default async function LibraryItem({
           />
         ) : null}
         {item.can_open && item.option === 'online_read' ? (
-          <Link className="btn" href={`/library/${encodeURIComponent(item.entitlement_id)}/read`}>
+          <Link
+            className="btn"
+            prefetch={false}
+            href={`/library/${encodeURIComponent(item.entitlement_id)}/read`}
+          >
             {READER_LINK_TEXT}
           </Link>
         ) : null}

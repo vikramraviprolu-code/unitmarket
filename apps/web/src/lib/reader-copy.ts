@@ -6,3 +6,5 @@ export const READER_DOWNLOAD_ANSWER = 'This item opens as a download.';
 export const READER_ENDED = 'The access window for this item has ended.';
 export const READER_NOT_READY = 'This item is not ready yet.';
 export const READER_STORE_DOWN = 'The content is temporarily unavailable. You have not lost time.';
+export const READER_REFUNDED = 'This item was refunded, so access has ended.';
+export const READER_RATE_LIMITED = 'Too many requests. Try again later.';

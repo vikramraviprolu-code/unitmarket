@@ -116,10 +116,12 @@ import { health as jobsHealth, LEADER_LOCK_KEY, startLoop } from '@umsbx/jobs';
 import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
 import {
+  DEFAULT_RATES,
   SESSION_COOKIE,
   createSession,
   operatorSignIn,
   resolveSession,
+  takeToken,
   verifyPasscode,
 } from '@umsbx/security';
 import type { SecurityDeps } from '@umsbx/security';
@@ -360,7 +362,14 @@ export type ReaderViewResult =
   | ({ ok: true; kind: 'download' } & ReaderMeta)
   | {
       ok: false;
-      code: 'not_found' | 'window_ended' | 'not_available' | 'expired' | 'store_unavailable';
+      code:
+        | 'not_found'
+        | 'window_ended'
+        | 'not_available'
+        | 'expired'
+        | 'store_unavailable'
+        | 'refunded'
+        | 'rate_limited';
     };
 export interface OpsSnapshot {
   environment: EnvironmentLabel;
@@ -1705,9 +1714,11 @@ function buildApp(config: Config, opts: AppOptions): App {
       if (b === null) return { ok: false, code: 'not_found' };
       const item = (await entitlementRows(b, entitlement_id))[0];
       if (item === undefined) return { ok: false, code: 'not_found' };
+      // The content route's bucket: one token per read, so a reload loop cannot fill the evidence log.
+      if (!(await takeToken(core, DEFAULT_RATES.content, b)).allowed) {
+        return { ok: false, code: 'rate_limited' };
+      }
       const who = session_id !== undefined ? { session_id } : {};
-      const issued = await issueLink({ ...core, content }, { entitlement_id, actor, ...who });
-      if (!issued.ok) return { ok: false, code: issued.error.code };
       const meta: ReaderMeta = {
         title: item.title,
         publisher: item.publisher,
@@ -1730,9 +1741,27 @@ function buildApp(config: Config, opts: AppOptions): App {
       } catch {
         head = null;
       }
-      if (head === null) return { ok: false, code: 'store_unavailable' };
-      if (!isReadableMime(head.mime) || head.bytes > MAX_READER_BYTES) {
+      if (head !== null && (!isReadableMime(head.mime) || head.bytes > MAX_READER_BYTES)) {
+        // A download answer serves nothing and issues no link; the library's own reading of the same
+        // stored state decides whether the item can be opened at all.
+        if (!item.can_open) {
+          return {
+            ok: false,
+            code: item.refunded
+              ? 'refunded'
+              : item.window.state === 'ended' || item.access === 'ended'
+                ? 'window_ended'
+                : 'not_available',
+          };
+        }
         return { ok: true, kind: 'download', ...meta };
+      }
+      const issued = await issueLink({ ...core, content }, { entitlement_id, actor, ...who });
+      if (!issued.ok) {
+        if (issued.error.code === 'not_available' && item.refunded) {
+          return { ok: false, code: 'refunded' };
+        }
+        return { ok: false, code: issued.error.code };
       }
       const planned = await planServe(
         { ...core, content },

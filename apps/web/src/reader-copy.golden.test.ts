@@ -8,6 +8,8 @@ import {
   READER_HEADING_BACK,
   READER_LINK_TEXT,
   READER_NOT_READY,
+  READER_RATE_LIMITED,
+  READER_REFUNDED,
   READER_STORE_DOWN,
 } from './lib/reader-copy';
 
@@ -20,6 +22,8 @@ describe('reader copy (golden)', () => {
       `reader, window ended: ${READER_ENDED}`,
       `reader, not ready: ${READER_NOT_READY}`,
       `reader, content unavailable: ${READER_STORE_DOWN}`,
+      `reader, refunded: ${READER_REFUNDED}`,
+      `reader, too many requests: ${READER_RATE_LIMITED}`,
     ];
     const expected = readFileSync(
       new URL('./golden/reader-copy.golden.txt', import.meta.url),
@@ -38,6 +42,8 @@ describe('reader copy (golden)', () => {
       READER_ENDED,
       READER_NOT_READY,
       READER_STORE_DOWN,
+      READER_REFUNDED,
+      READER_RATE_LIMITED,
     ].join(' ');
     expect(all).not.toMatch(/[‐-―-]|\*|_/);
   });

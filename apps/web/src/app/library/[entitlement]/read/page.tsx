@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
+import '../../../reader.css';
 import { app } from '../../../../server/access';
 import { currentActor, currentSessionId } from '../../../../server/session';
 import { WindowMeter } from '../../../../ui/WindowMeter';
@@ -12,6 +13,8 @@ import {
   READER_ENDED,
   READER_HEADING_BACK,
   READER_NOT_READY,
+  READER_RATE_LIMITED,
+  READER_REFUNDED,
   READER_STORE_DOWN,
 } from '../../../../lib/reader-copy';
 
@@ -24,6 +27,8 @@ const REFUSAL_TEXT = {
   expired: READER_ENDED,
   not_available: READER_NOT_READY,
   store_unavailable: READER_STORE_DOWN,
+  refunded: READER_REFUNDED,
+  rate_limited: READER_RATE_LIMITED,
 } as const;
 
 export default async function Reader({ params }: { params: Promise<{ entitlement: string }> }) {
@@ -72,7 +77,7 @@ export default async function Reader({ params }: { params: Promise<{ entitlement
         option={view.option}
       />
       {view.kind === 'text' ? (
-        <article data-testid="reader-text">
+        <article className="reader" data-testid="reader-text">
           {view.paragraphs.map((text, i) => (
             <p key={i}>{text}</p>
           ))}

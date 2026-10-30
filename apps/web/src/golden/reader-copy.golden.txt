@@ -5,3 +5,5 @@ reader, opens as a download: This item opens as a download.
 reader, window ended: The access window for this item has ended.
 reader, not ready: This item is not ready yet.
 reader, content unavailable: The content is temporarily unavailable. You have not lost time.
+reader, refunded: This item was refunded, so access has ended.
+reader, too many requests: Too many requests. Try again later.
