@@ -6,6 +6,7 @@ import { FitCard } from '../../ui/FitCard';
 import { StatusBanner } from '../../ui/StatusBanner';
 import { ErrorState } from '../../ui/ErrorState';
 import { BUY_SELECTED } from '../../lib/composite-copy';
+import { TERMS_POINTS, TERMS_SUMMARY } from '../../lib/buyer-copy';
 
 type Item = {
   quote: { quote_id: string; offer_id: string; option: AccessOption; price: Money };
@@ -139,6 +140,14 @@ export function DiscoverForm({ signedIn }: { signedIn: boolean }) {
               <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} />
               <span>I accept the terms of purchase for the article I choose.</span>
             </label>
+            <details className="terms-more">
+              <summary>{TERMS_SUMMARY}</summary>
+              <ul>
+                {TERMS_POINTS.map((t) => (
+                  <li key={t}>{t}</li>
+                ))}
+              </ul>
+            </details>
             <div className="grid-2">
               {result.items.map((it) => (
                 <div key={it.quote.offer_id} className="pick">

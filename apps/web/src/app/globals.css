@@ -63,6 +63,9 @@ a {
   outline-offset: 3px;
   border-radius: 4px;
 }
+main:focus {
+  outline: none;
+}
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -206,6 +209,25 @@ h3 {
 }
 .fit-text {
   font-size: 0.95rem;
+}
+.access-days {
+  margin: 0;
+}
+.fit-more summary,
+.terms-more summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+}
+.fit-more .fit-rows {
+  margin-top: 8px;
+}
+.terms-more {
+  margin: 4px 0 12px;
+}
+.terms-more ul {
+  margin: 6px 0 0;
+  padding-left: 1.2em;
 }
 .dots {
   display: inline-flex;
@@ -434,7 +456,7 @@ td {
     animation: none;
   }
 }
-@media (max-width: 520px) {
+@media (max-width: 760px) {
   .fit-row {
     grid-template-columns: 22px 1fr 54px;
   }

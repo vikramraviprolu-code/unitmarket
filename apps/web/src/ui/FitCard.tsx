@@ -1,6 +1,7 @@
 'use client';
 import type { AccessOption, FitCard as FitCardData, FitDimension, Money } from '@umsbx/contracts';
-import { OPTION_LABEL, formatMinor } from '../lib/format';
+import { formatMinor } from '../lib/format';
+import { WHY_THIS_FIT, accessDaysLine, priceLine, splitFitRows } from '../lib/buyer-copy';
 
 const LEVEL_WORD = ['no match', 'weak', 'good', 'strong'] as const;
 const BAND_TEXT = { strong: 'Strong fit', good: 'Good fit', partial: 'Partial fit' } as const;
@@ -23,6 +24,22 @@ function Dots({ level }: { level: FitDimension['level'] }) {
   );
 }
 
+function FitRow({ d }: { d: FitDimension }) {
+  return (
+    <li className="fit-row">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+        <path d={ICON[d.key]} fill="none" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+      <span className="fit-label">{d.label}</span>
+      <Dots level={d.level} />
+      <span className="fit-text">
+        {d.level === null ? 'not assessed' : LEVEL_WORD[d.level]}
+        {d.evidence ? <span className="muted">: {d.evidence}</span> : null}
+      </span>
+    </li>
+  );
+}
+
 // A card is advice, not a score: levels are words and dots with the evidence beside them, and a
 // dimension that could not be assessed is an empty outline that says so (never a number).
 export function FitCard({
@@ -40,6 +57,8 @@ export function FitCard({
   option: AccessOption;
   onChoose: () => void;
 }) {
+  const priceText = formatMinor(price.minor, price.currency);
+  const { assessed, notAssessed } = splitFitRows(card.dimensions);
   return (
     <article className="fit-card" data-testid="fit-card" aria-label={`${title}, ${publisher}`}>
       <header>
@@ -49,25 +68,26 @@ export function FitCard({
           <span className={`chip chip-${card.band}`}>{BAND_TEXT[card.band]}</span>
         ) : null}
         <p className="price-line">
-          <strong className="price">{formatMinor(price.minor, price.currency)}</strong>
-          <span className="muted"> for {OPTION_LABEL[option].toLowerCase()}</span>
+          <strong className="price">{priceText}</strong>
+          <span className="muted">{priceLine(priceText, option).slice(priceText.length)}</span>
         </p>
+        <p className="muted access-days">{accessDaysLine(option)}</p>
       </header>
       <ul className="fit-rows">
-        {card.dimensions.map((d) => (
-          <li key={d.key} className="fit-row">
-            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
-              <path d={ICON[d.key]} fill="none" stroke="currentColor" strokeWidth="1.8" />
-            </svg>
-            <span className="fit-label">{d.label}</span>
-            <Dots level={d.level} />
-            <span className="fit-text">
-              {d.level === null ? 'not assessed' : LEVEL_WORD[d.level]}
-              {d.evidence ? <span className="muted">: {d.evidence}</span> : null}
-            </span>
-          </li>
+        {assessed.map((d) => (
+          <FitRow key={d.key} d={d} />
         ))}
       </ul>
+      {notAssessed.length > 0 ? (
+        <details className="fit-more">
+          <summary>{WHY_THIS_FIT}</summary>
+          <ul className="fit-rows">
+            {notAssessed.map((d) => (
+              <FitRow key={d.key} d={d} />
+            ))}
+          </ul>
+        </details>
+      ) : null}
       <button type="button" className="btn btn-primary" onClick={onChoose}>
         Choose this article
       </button>
