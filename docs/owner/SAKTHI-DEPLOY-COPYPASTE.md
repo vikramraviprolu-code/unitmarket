@@ -6,10 +6,10 @@ Values used below (from decision D-049). Confirm them with Vikram if unsure:
 
 - Project: `unitmarket-sbx-vr1`
 - Region: `europe-west3`
-- Commit to deploy: the one the coordinator names in the "GO" message (written here as `COMMIT`)
+- Commit to deploy: `e7560e7` (the final commit on main)
 - Tag to create: `gcp-pub-1` (written here as `TAG`). Use a new name if `gcp-pub-1` already exists.
 
-Do not start until the coordinator has sent the "GO" message. Do not deploy while anyone is testing the hosted app.
+The coordinator has sent the "GO" message for this commit. Do not deploy while anyone is testing the hosted app.
 
 ## Part 1. Tag the reviewed commit (your laptop, in a clone of the repository)
 
@@ -17,7 +17,7 @@ What it does: checks you hold exactly the reviewed commit, then labels it so the
 
 ```
 git fetch origin
-git checkout COMMIT
+git checkout e7560e7
 git status
 git tag gcp-pub-1
 git push origin gcp-pub-1
