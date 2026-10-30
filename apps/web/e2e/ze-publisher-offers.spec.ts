@@ -80,9 +80,7 @@ test('withdraw: the offer goes off sale, the publisher cannot change it, and the
   await expect(withdraw).toBeDisabled();
   await page.getByLabel('Why are you withdrawing it?').fill('e2e withdraw drill');
   await withdraw.click();
-  await expect(page.getByTestId('offer-withdraw-result')).toHaveText(
-    'Withdrawn. New buyers will not find this offer.',
-  );
+  // The page refreshes after the withdrawal and the form goes with it, so the stored status is the proof.
   await expect(page.getByTestId('offer-status')).toHaveText('Withdrawn');
   await expect(page.getByTestId('offer-withdrawn-notice')).toHaveText(
     'This offer is withdrawn. It cannot be changed here.',

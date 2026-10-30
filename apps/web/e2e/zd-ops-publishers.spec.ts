@@ -117,7 +117,7 @@ test.describe('payee change requests (PUB-A2)', () => {
     await row.getByLabel(/Type the full merchant id again/).fill(ID_ONE);
     await row.getByLabel('Reason').fill('e2e confirmed with the publisher');
     await row.getByRole('button', { name: 'Verify' }).click();
-    await expect(row).toContainText('Verified. Future orders pay the new account.');
+    // The page refreshes after the decision, so the decided row leaves the queue (its message goes with it).
     await expect(o.getByTestId('payee-queue-row').filter({ hasText: NORTHFIELD })).toHaveCount(0);
 
     await p.goto('/publisher/payout-account');
@@ -146,7 +146,7 @@ test.describe('payee change requests (PUB-A2)', () => {
       'The id you typed is not the id that was requested. Nothing changed.',
     );
     await row.getByRole('button', { name: 'Reject' }).click();
-    await expect(row).toContainText('Rejected. Nothing changed.');
+    await expect(o.getByTestId('payee-queue-row').filter({ hasText: NORTHFIELD })).toHaveCount(0);
 
     await p.goto('/publisher/payout-account');
     await expect(p.getByTestId('payee-account')).toHaveText('Account ending NT01.');
