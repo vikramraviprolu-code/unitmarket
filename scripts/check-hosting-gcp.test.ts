@@ -1388,7 +1388,7 @@ describe('check-hosting-gcp', () => {
     expect(y).toContain("UMS_MODE: 'offline'");
     expect(y).toContain("UMS_DB: 'pglite-memory'");
     expect(y).toContain("UMS_PAYPAL_CONNECT: 'off'");
-    expect(y).not.toContain('NEXT_PUBLIC_UMS_ENV_LABEL:');
+    expect(y).not.toContain(`${PUB}_UMS_ENV_LABEL:`);
     const keys = [...y.matchAll(/^([A-Z][A-Z0-9_]*):/gm)].map((m) => m[1] as string);
     for (const k of keys)
       expect(k, k).not.toMatch(/PAYPAL_(?!CONNECT$)|DATABASE_URL|OUTBOUND|MERCHANT|TOTP/);
