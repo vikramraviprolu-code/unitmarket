@@ -149,7 +149,9 @@ describe('one settlement sentence on S1, S6 and S7', () => {
     const view = await w.app.engine.payee.view(harbour);
     const list = await w.app.engine.opsPublishers.list(op);
     expect(list.ok).toBe(true);
-    const row = list.ok ? list.value.publishers.find((p) => p.slug === 'harbour-ledger') : undefined;
+    const row = list.ok
+      ? list.value.publishers.find((p) => p.slug === 'harbour-ledger')
+      : undefined;
     expect(home!.settlement.sentence.length).toBeGreaterThan(0);
     expect(view!.settlement.sentence).toBe(home!.settlement.sentence);
     expect(row!.settlement.sentence).toBe(home!.settlement.sentence);
@@ -159,7 +161,11 @@ describe('one settlement sentence on S1, S6 and S7', () => {
     expect(read('./app/publisher/page.tsx')).toContain('home.settlement.sentence');
     expect(read('./app/publisher/payout-account/page.tsx')).toContain('view.settlement.sentence');
     expect(read('./app/ops/publishers/page.tsx')).toContain('p.settlement.sentence');
-    for (const f of ['./lib/payee-copy.ts', './lib/publisher-copy.ts', './lib/ops-publishers-copy.ts']) {
+    for (const f of [
+      './lib/payee-copy.ts',
+      './lib/publisher-copy.ts',
+      './lib/ops-publishers-copy.ts',
+    ]) {
       const src = read(f);
       expect(src, f).not.toMatch(/recorded against the account/);
       expect(src.replace(/\/\/.*$/gm, ''), f).not.toMatch(/`Account ending \$\{(p\.)?last4\}/);

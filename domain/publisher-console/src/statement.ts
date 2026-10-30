@@ -87,7 +87,9 @@ function byTimeThenOrder(a: StatementRow, b: StatementRow): number {
 // The statement-level sentence: the account as it is now. With no sales, direct mode says nothing sold yet.
 function emptyOrCurrent(blockCount: number, facts: StatementFacts): Settlement {
   const s = payeeSettlement(facts);
-  return blockCount === 0 && s.mode === 'direct' ? { mode: s.mode, sentence: NOTHING_SOLD_SENTENCE } : s;
+  return blockCount === 0 && s.mode === 'direct'
+    ? { mode: s.mode, sentence: NOTHING_SOLD_SENTENCE }
+    : s;
 }
 
 /**

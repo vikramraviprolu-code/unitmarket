@@ -26,14 +26,16 @@ export const SETTLEMENT_SENTENCE: Record<SettlementMode, string> = {
     "In this sandbox demo every payment is received in the UnitMarket team's one test account. Nothing is paid out to the publisher.",
   direct: 'Paid by PayPal directly into your own sandbox account.',
   not_set: 'No PayPal account is linked yet.',
-  mixed: 'These sales were received in more than one account, so no single sentence describes them.',
+  mixed:
+    'These sales were received in more than one account, so no single sentence describes them.',
 };
 
 /**
  * The same words for a page that is about the publisher's account now (home, payout page, operator
  * page), not about sales already made: the direct mode is stated as what happens to new sales.
  */
-export const PAYEE_DIRECT_SENTENCE = 'New sales are paid by PayPal directly into your own sandbox account.';
+export const PAYEE_DIRECT_SENTENCE =
+  'New sales are paid by PayPal directly into your own sandbox account.';
 
 /** A statement with no sales says so; it never says "Paid by PayPal" about nothing. */
 export const NOTHING_SOLD_SENTENCE = 'Nothing sold yet.';

@@ -197,7 +197,9 @@ describe('statementFor settlement per block (SETTLE-A)', () => {
     ]);
     const before = await statementFor(sw.db, P1, SBX);
     expect(before.blocks[0]!.settlement.mode).toBe('owner_account');
-    await sw.db.query(`UPDATE publishers SET paypal_merchant_id = 'NEWPAYEE0001A' WHERE id = 'pub_1'`);
+    await sw.db.query(
+      `UPDATE publishers SET paypal_merchant_id = 'NEWPAYEE0001A' WHERE id = 'pub_1'`,
+    );
     const after = await statementFor(sw.db, P1, SBX);
     expect(after.blocks[0]!.settlement).toEqual(before.blocks[0]!.settlement);
     expect(after.blocks[0]!.settlement.sentence).toMatch(/one test account/);
@@ -219,7 +221,13 @@ describe('statementFor settlement per block (SETTLE-A)', () => {
   });
 
   it('a block whose units all went to the publisher own account is direct', async () => {
-    const u = await sw.unit({ n: 4, publisher: 'pub_2', environment: 'sandbox', currency: 'EUR', buyer: 'buy_2' });
+    const u = await sw.unit({
+      n: 4,
+      publisher: 'pub_2',
+      environment: 'sandbox',
+      currency: 'EUR',
+      buyer: 'buy_2',
+    });
     await sw.ledger(u.unit_id, u.capture_id!, 'sale', 500);
     const st = await statementFor(sw.db, P2, SBX);
     expect(st.blocks.find((b) => b.currency === 'EUR')!.settlement.mode).toBe('direct');
@@ -246,10 +254,20 @@ describe('statementFor settlement per block (SETTLE-A)', () => {
   // Traceability gap 3 (MT-2) / assumption 30: how a `mismatch` unit appears on the sales page versus the
   // statement. This pins the difference; it does not decide it. The counting is unchanged.
   it('pins a mismatch unit: listed and counted on the sales page, no sale row on the statement, flagged on both', async () => {
-    const m = await sw.unit({ n: 6, publisher: 'pub_1', environment: 'sandbox', status: 'mismatch', amount_minor: 777 });
+    const m = await sw.unit({
+      n: 6,
+      publisher: 'pub_1',
+      environment: 'sandbox',
+      status: 'mismatch',
+      amount_minor: 777,
+    });
     const sales = await salesFor(sw.db, P1);
     const row = sales.find((r) => r.order_ref6 === 'abc006')!;
-    expect(row).toMatchObject({ status: 'mismatch', amount_minor: 777, status_text: 'On hold: under review' });
+    expect(row).toMatchObject({
+      status: 'mismatch',
+      amount_minor: 777,
+      status_text: 'On hold: under review',
+    });
     // the statement has no ledger row for it: no sale line and no sum includes 777
     const st = await statementFor(sw.db, P1, SBX);
     expect(st.blocks.flatMap((b) => b.lines).some((l) => l.order_ref6 === 'abc006')).toBe(false);

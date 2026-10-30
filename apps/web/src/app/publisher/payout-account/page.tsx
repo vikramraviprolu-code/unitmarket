@@ -51,9 +51,7 @@ export default async function PayoutAccount() {
             {verifiedByText(view.history.some((h) => h.state === 'verified'))}
           </dd>
           <dt>{LABEL_SETTLEMENT}</dt>
-          <dd data-testid="payee-settlement">
-            {view.settlement.sentence}
-          </dd>
+          <dd data-testid="payee-settlement">{view.settlement.sentence}</dd>
         </dl>
       </div>
       {view.environment === 'sandbox' ? (
