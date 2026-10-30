@@ -30,6 +30,11 @@ export interface ClaudeModelDeps {
   clock: Clock;
   /** The scripted model: answers whenever the Claude path declines or fails. */
   fallback: ModelPort;
+  /**
+   * Kill switch: false (or a rejection) means no charge and no call, and the scripted model answers.
+   * Composition wires it to the paypal_outbound switch, so one stop ends AI calls too.
+   */
+  live: () => Promise<boolean>;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -118,6 +123,8 @@ export function createClaudeModel(deps: ClaudeModelDeps): ModelPort {
       system: request.system,
       messages: [{ role: 'user', content: checked.userText }],
     });
+    // Stopped by the operator: nothing is charged and nothing is sent.
+    if (!(await deps.live())) return null;
     // The worst case is charged first; a refused charge sends nothing.
     if (!(await guard.reserve(worstCaseMicroUsd(tokens), `${request.purpose} est_in ${tokens}`)))
       return null;
@@ -131,9 +138,14 @@ export function createClaudeModel(deps: ClaudeModelDeps): ModelPort {
     if (checked.ids === null) {
       const parsed = BriefParseOutputSchema.safeParse(raw);
       if (!parsed.success) return null;
-      // A budget the model returns must be the one the reader's own words state: the model adds no number.
-      const stated = parseBrief(checked.raw ?? '').ceiling_minor;
-      if (parsed.data.ceiling_minor !== null && parsed.data.ceiling_minor !== stated) return null;
+      // The budget and its currency must be exactly what the reader's own words state, so the model can
+      // neither add, drop nor change a number (the deterministic parser is the reference).
+      const stated = parseBrief(checked.raw ?? '');
+      if (
+        parsed.data.ceiling_minor !== stated.ceiling_minor ||
+        parsed.data.currency !== stated.currency
+      )
+        return null;
       return { kind: 'ok', output: parsed.data, ...usageOf(env) };
     }
     const clean = sanitiseModelOutput(raw, checked.ids);

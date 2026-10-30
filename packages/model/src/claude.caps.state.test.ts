@@ -44,7 +44,13 @@ function rig(startIso: string, rows: { at: string; micro: number }[] = []) {
   const scripted = createScriptedModel();
   const fallbackSpy = vi.fn((r: ModelRequest) => scripted.complete(r));
   const fallback: ModelPort = { model_id: scripted.model_id, complete: fallbackSpy };
-  const model = createClaudeModel({ wire, spend, clock: { now: () => now }, fallback });
+  const model = createClaudeModel({
+    wire,
+    spend,
+    clock: { now: () => now },
+    fallback,
+    live: async () => true,
+  });
   return {
     model,
     send,
@@ -152,6 +158,7 @@ describe('the store failing closed', () => {
       },
       clock: { now: () => new Date('2026-10-30T10:00:00Z') },
       fallback: scripted,
+      live: async () => true,
     });
     expect((await model.complete(REQ)).kind).toBe('ok');
     expect(send).not.toHaveBeenCalled();
@@ -168,6 +175,7 @@ describe('the store failing closed', () => {
       },
       clock: { now: () => new Date('2026-10-30T10:00:00Z') },
       fallback: createScriptedModel(),
+      live: async () => true,
     });
     expect((await model.complete(REQ)).kind).toBe('ok');
     expect(send).not.toHaveBeenCalled();
@@ -180,6 +188,7 @@ describe('the store failing closed', () => {
         spend: { spentMicroUsd: async () => bad, charge: async () => undefined },
         clock: { now: () => new Date('2026-10-30T10:00:00Z') },
         fallback: createScriptedModel(),
+        live: async () => true,
       });
       await model.complete(REQ);
       expect(send).not.toHaveBeenCalled();

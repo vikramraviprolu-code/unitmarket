@@ -38,6 +38,7 @@ const build = (answer: Rec) => {
     spend: { spentMicroUsd: async () => 0, charge: async () => undefined },
     clock: { now: () => new Date('2026-10-30T10:00:00Z') },
     fallback: createScriptedModel(),
+    live: async () => true,
   });
   return { model, send };
 };

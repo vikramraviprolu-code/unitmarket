@@ -70,7 +70,10 @@ const envelope = (
   }),
 });
 
-function rig(answer: (body: string) => { status: number; body: string } | Promise<never>) {
+function rig(
+  answer: (body: string) => { status: number; body: string } | Promise<never>,
+  live: () => Promise<boolean> = async () => true,
+) {
   const events: string[] = [];
   const sent: string[] = [];
   const wire: ModelWire = {
@@ -93,7 +96,7 @@ function rig(answer: (body: string) => { status: number; body: string } | Promis
   const scripted = createScriptedModel();
   const fallbackSpy = vi.fn((r: ModelRequest) => scripted.complete(r));
   const fallback: ModelPort = { model_id: scripted.model_id, complete: fallbackSpy };
-  const model = createClaudeModel({ wire, spend, clock, fallback });
+  const model = createClaudeModel({ wire, spend, clock, fallback, live });
   return { model, events, sent, charges, fallbackSpy, scripted };
 }
 
@@ -173,12 +176,55 @@ describe('a good answer', () => {
     });
     expect(r.fallbackSpy).not.toHaveBeenCalled();
   });
-  it('a budget of null is fine even when the text states one; a stated budget must match the text', async () => {
-    const r = rig(() =>
+  // Review fix 1: this replaces an earlier test that accepted a null budget when the text states one.
+  // That contradicted the spec goal (the model must not silently drop or change the reader's budget).
+  it('the budget and its currency must equal what the text states: null, other number, other currency all fall back', async () => {
+    for (const over of [
+      { ceiling_minor: null },
+      { ceiling_minor: null, currency: null },
+      { ceiling_minor: 400 },
+      { currency: 'EUR' },
+      { currency: null },
+    ]) {
+      const r = rig(() => envelope(JSON.stringify({ ...BRIEF_OUT, ...over })));
+      await r.model.complete(briefReq());
+      expect(r.fallbackSpy, JSON.stringify(over)).toHaveBeenCalledTimes(1);
+    }
+    const ok = rig(() => envelope(JSON.stringify(BRIEF_OUT)));
+    await ok.model.complete(briefReq());
+    expect(ok.fallbackSpy).not.toHaveBeenCalled();
+  });
+  it('a text with no budget needs a null budget and null currency', async () => {
+    const noBudget = { raw_text: 'a guide to solar panels' };
+    const good = rig(() =>
       envelope(JSON.stringify({ ...BRIEF_OUT, ceiling_minor: null, currency: null })),
     );
-    expect((await r.model.complete(briefReq())).kind).toBe('ok');
-    expect(r.fallbackSpy).not.toHaveBeenCalled();
+    await good.model.complete(briefReq(noBudget));
+    expect(good.fallbackSpy).not.toHaveBeenCalled();
+    const invented = rig(() => envelope(JSON.stringify(BRIEF_OUT)));
+    await invented.model.complete(briefReq(noBudget));
+    expect(invented.fallbackSpy).toHaveBeenCalledTimes(1);
+  });
+  it('kill switch: live false or a rejecting live means no charge, no send, the scripted answer', async () => {
+    for (const live of [async () => false, async () => Promise.reject(new Error('db down'))]) {
+      const r = rig(() => envelope(JSON.stringify(BRIEF_OUT)), live);
+      const req = briefReq();
+      expect(await r.model.complete(req)).toEqual(await r.scripted.complete(req));
+      expect(r.events).toEqual([]);
+      expect(r.fallbackSpy).toHaveBeenCalledTimes(1);
+    }
+  });
+  it('kill switch is read on every call: off after a good call stops the next one', async () => {
+    let on = true;
+    const r = rig(
+      () => envelope(JSON.stringify(BRIEF_OUT)),
+      async () => on,
+    );
+    await r.model.complete(briefReq());
+    on = false;
+    await r.model.complete(briefReq());
+    expect(r.sent).toHaveLength(1);
+    expect(r.fallbackSpy).toHaveBeenCalledTimes(1);
   });
   it('accepts one code fence around the JSON, nothing else around it', async () => {
     const fenced = rig(() => envelope('```json\n' + JSON.stringify(BRIEF_OUT) + '\n```'));

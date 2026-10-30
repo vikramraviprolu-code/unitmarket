@@ -128,6 +128,23 @@ describe('UMS_AI_ADAPTER=claude with a key', () => {
     expect(r.ok).toBe(true);
     expect(send).not.toHaveBeenCalled();
   });
+  it('the stop switch ends AI calls: paypal_outbound off means zero sends and the scripted answer', async () => {
+    const send = vi.fn<ModelWire['send']>(async () => answer(JSON.stringify(GOOD_BRIEF)));
+    const app = await boot(env, { send });
+    const first = await app.engine.parseNeed({ actor: BUYER, text: 'solar guide under $5' });
+    expect(first.ok).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
+    await app.db.query(
+      `UPDATE safety_switches SET "on" = false, changed_by = 'test:stop', updated_at = now() WHERE name = 'paypal_outbound'`,
+    );
+    const after = await app.engine.parseNeed({ actor: BUYER, text: 'solar guide under $5' });
+    expect(after.ok).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
+    const spend = await app.db.query<{ n: string | number }>(
+      `SELECT count(*) AS n FROM audit_log WHERE action = 'model.spend'`,
+    );
+    expect(Number(spend.rows[0]?.n)).toBe(1);
+  });
   it('a test wire is refused outside NODE_ENV=test', async () => {
     const env2 = await testEnv({ ...env, NODE_ENV: 'development' });
     expect(() => createApp(env2, { test_model_wire: { send: vi.fn() } })).toThrow(

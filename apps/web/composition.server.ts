@@ -751,6 +751,8 @@ export function chooseModel(
     audit: AuditSink;
     clock: Clock;
     maintenance: boolean;
+    /** The kill switch: the paypal_outbound switch, so one stop (safety:stop, /api/ops/stop) ends AI calls too. */
+    switches: SwitchReader;
     wire?: ModelWire;
   },
 ): ModelPort {
@@ -761,6 +763,7 @@ export function chooseModel(
     spend: createModelSpendStore(d.db, d.audit),
     clock: d.clock,
     fallback: scripted,
+    live: () => d.switches.isOn('paypal_outbound'),
   });
 }
 
@@ -1059,6 +1062,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     audit,
     clock,
     maintenance,
+    switches,
     ...(opts.test_model_wire === undefined ? {} : { wire: opts.test_model_wire }),
   });
   const agent: AgentDeps = { ...core, model };
