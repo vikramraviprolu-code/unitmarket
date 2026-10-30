@@ -60,7 +60,17 @@ State of the suites as the coordinator last ran them is not asserted here, becau
 `check:no-live-host` and `check:secrets-names` were run for this lane. The `state` suite has one known expected
 failure (`docs/specs/overnight-plan.md` section 3). The browser suite lists 27 tests in 6 files (`playwright test --list`).
 
-FINAL TEST BATCH: to be filled by the coordinator
+FINAL TEST BATCH (30 Oct 2026, commit `27d2680`, then `e7560e7` with a contact address change): lint, typecheck and format clean. Unit 3,738,
+state 1,971 (1 expected fail), contract 290, integration 514, adversarial 1,095, golden 114: all pass. End to end in a real browser: 57 of 57.
+The final real-browser walk in both skins found no blocker; its defects were fixed (GATE-FINAL-FIX2). The change after that batch (contact
+address on the privacy page and publisher terms, its test and one doc) was checked with the legal tests, lint, typecheck and format only.
+
+DEPLOY RECORD (30 Oct 2026, done by Sakthi, human only): tag `gcp-pub-1` on commit `e7560e77e70a`. Backup before the deploy: automatic backup of
+30 Oct 03:00 UTC, `SUCCESSFUL`. Cloud Run revision `unitmarket-sandbox-00013-6wx` serving 100 percent. The five optional secrets have no value, so the
+publisher console, judge passcode, offer cap and Claude adapter are off. Checked in a browser: sign in as Buyer A, discover with fit cards, demo
+price changes applied, `/legal/privacy` live, `/ops` shows `paypal_outbound` Off. The app is configured for the address
+`https://unitmarket-sandbox-626887286871.europe-west3.run.app`; the other Cloud Run address gives a NOTE from `deploy.sh` and is not used for sign in.
+Not done: offline judge service, optional secrets, real PayPal purchase on this build (needs a new approval row from the owner).
 
 ## Human only steps, in order
 
