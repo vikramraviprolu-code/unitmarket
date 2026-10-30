@@ -6,11 +6,17 @@ import { DiscoverForm } from './DiscoverForm';
 import { StatusBanner } from '../../ui/StatusBanner';
 import { formatMinor } from '../../lib/format';
 import { browseEntries } from '../../lib/buyer-copy';
-import { HarbourScene } from '../../ui/HarbourScene';
 
 export const metadata: Metadata = { title: 'Find articles' };
 
-export default async function Discover() {
+export default async function Discover({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const q = await searchParams;
+  const raw = q['need'];
+  const initialNeed = (Array.isArray(raw) ? raw[0] : raw)?.slice(0, 2000) ?? '';
   const a = await app();
   const actor = await currentActor();
   const ai = await a.engine.aiEnabled();
@@ -41,10 +47,15 @@ export default async function Discover() {
   const rights = offers.map((o) => o.rights);
   return (
     <>
-      <HarbourScene />
-      <h1>Find articles for my need</h1>
-      <p className="lede">Describe what you need and what you can pay. You pick the article.</p>
-      <DiscoverForm signedIn={actor?.kind === 'buyer'} browse={browse} rights={rights} />
+      <DiscoverForm
+        signedIn={actor?.kind === 'buyer'}
+        browse={browse}
+        rights={rights}
+        initialNeed={initialNeed}
+      >
+        <h1>Find articles for my need</h1>
+        <p className="lede">Describe what you need and what you can pay. You pick the article.</p>
+      </DiscoverForm>
     </>
   );
 }

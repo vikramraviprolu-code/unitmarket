@@ -1,8 +1,10 @@
 'use client';
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import type { AccessOption, FitCard as FitCardData, Money, Rights } from '@umsbx/contracts';
 import { postJson, remember } from '../../lib/client-api';
 import { FitCard } from '../../ui/FitCard';
+import { Hero } from '../../ui/Hero';
 import { StatusBanner } from '../../ui/StatusBanner';
 import { ErrorState } from '../../ui/ErrorState';
 import { BUY_SELECTED } from '../../lib/composite-copy';
@@ -24,12 +26,16 @@ export function DiscoverForm({
   signedIn,
   browse,
   rights,
+  initialNeed,
+  children,
 }: {
   signedIn: boolean;
   browse: BrowseEntry[];
   rights: Rights[];
+  initialNeed: string;
+  children: ReactNode;
 }) {
-  const [need, setNeed] = useState('');
+  const [need, setNeed] = useState(initialNeed);
   const [result, setResult] = useState<Result | null>(null);
   const [terms, setTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,33 +113,37 @@ export function DiscoverForm({
 
   return (
     <>
+      <Hero>
+        {children}
+        <form onSubmit={find} noValidate>
+          <label htmlFor="need">What do you need?</label>
+          <p className="hint" id="need-hint">
+            For example: tide tables, under $1, read online. Include your ceiling in the words.
+          </p>
+          <div className="search-pill">
+            <input
+              id="need"
+              type="text"
+              aria-describedby="need-hint"
+              value={need}
+              maxLength={2000}
+              onChange={(e) => setNeed(e.target.value)}
+            />
+            <button
+              className="btn btn-primary"
+              type="submit"
+              disabled={busy || !signedIn || need.trim() === ''}
+            >
+              {busy ? 'Searching' : 'Find articles'}
+            </button>
+          </div>
+        </form>
+      </Hero>
       {!signedIn ? (
         <StatusBanner tone="info" title="Sign in first">
           <a href="/signin?next=/discover">Sign in</a> to describe your need.
         </StatusBanner>
       ) : null}
-      <form onSubmit={find} noValidate>
-        <div className="field">
-          <label htmlFor="need">What do you need?</label>
-          <p className="hint" id="need-hint">
-            For example: tide tables, under $1, read online. Include your ceiling in the words.
-          </p>
-          <textarea
-            id="need"
-            aria-describedby="need-hint"
-            value={need}
-            maxLength={2000}
-            onChange={(e) => setNeed(e.target.value)}
-          />
-        </div>
-        <button
-          className="btn btn-primary"
-          type="submit"
-          disabled={busy || !signedIn || need.trim() === ''}
-        >
-          {busy ? 'Searching' : 'Find articles'}
-        </button>
-      </form>
       <div aria-live="polite">
         {error ? <ErrorState title="Could not continue">{error}</ErrorState> : null}
         {result?.kind === 'no_match' ? (

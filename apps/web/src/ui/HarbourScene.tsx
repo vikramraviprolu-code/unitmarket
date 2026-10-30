@@ -4,7 +4,8 @@ import { useEffect, useRef } from 'react';
 // T4 harbour scene (SKIN-B, docs/specs/skin-b-harbour-motion.md). Decorative, Deep Harbour only (the CSS
 // hides it in Bright Market). It carries no text and no data: URI. The waves, boat, beam, lamp and stars are
 // moved by CSS transforms in skin-harbour.css, inside a no-preference block, so reduced motion shows the
-// still drawing. The loops pause while the scene is offscreen and while the tab is hidden.
+// still drawing. It sits inside the Hero panel (ui/Hero.tsx) as the backdrop of the headline, anchored to the
+// right so the moon, lighthouse and beam stay in view on a narrow screen. The loops pause while the scene is offscreen and while the tab is hidden.
 
 // A seamless wave strip: eight periods of 220 units, so the strip is 1760 wide and slides by 880.
 const wave = (y: number, lift: number): string =>
@@ -47,7 +48,7 @@ export function HarbourScene() {
   }, []);
   return (
     <div ref={ref} className="harbour-scene" aria-hidden="true">
-      <svg viewBox="0 0 880 180" preserveAspectRatio="xMidYMid slice" focusable="false">
+      <svg viewBox="0 0 880 180" preserveAspectRatio="xMaxYMax slice" focusable="false">
         <defs>
           <linearGradient id="hs-beam" x1="1" y1="0" x2="0" y2="0">
             <stop offset="0" className="hs-beam-stop" />
@@ -58,8 +59,8 @@ export function HarbourScene() {
           {STARS.map(([x, y, r, c]) => (
             <circle key={`${x}-${y}`} cx={x} cy={y} r={r} className={c} />
           ))}
-          <circle cx="130" cy="44" r="30" className="hs-moon-halo" />
-          <circle cx="130" cy="44" r="15" className="hs-moon" />
+          <circle cx="690" cy="40" r="30" className="hs-moon-halo" />
+          <circle cx="690" cy="40" r="15" className="hs-moon" />
         </g>
         <polygon className="hs-beam" points="770,52 160,6 160,98" fill="url(#hs-beam)" />
         <g className="hs-light">
@@ -71,10 +72,12 @@ export function HarbourScene() {
         <g className="hs-wave hs-wave-back">
           <path d={wave(120, 14)} />
         </g>
-        <g className="hs-boat">
-          <path d="M458 108 L458 70 L430 108Z" className="hs-sail" />
-          <path d="M464 100 L464 76 L490 108Z" className="hs-sail hs-sail-2" />
-          <path d="M424 112 H496 L486 126 H434Z" className="hs-hull" />
+        <g transform="translate(220 0)">
+          <g className="hs-boat">
+            <path d="M458 108 L458 70 L430 108Z" className="hs-sail" />
+            <path d="M464 100 L464 76 L490 108Z" className="hs-sail hs-sail-2" />
+            <path d="M424 112 H496 L486 126 H434Z" className="hs-hull" />
+          </g>
         </g>
         <g className="hs-wave hs-wave-front">
           <path d={wave(138, 10)} />

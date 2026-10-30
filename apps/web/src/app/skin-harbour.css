@@ -128,10 +128,22 @@
 .harbour-scene .hs-hull {
   fill: #04121c;
 }
-@media (max-width: 600px) {
-  .harbour-scene {
-    height: 132px;
-  }
+/* Inside the Hero (home and find) the scene is the backdrop of the headline, not a band of its own. */
+.hero > .harbour-scene {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+:root[data-skin='harbour'] .hero::before {
+  display: none;
+}
+/* Radios and checkboxes take the amber instead of the browser blue. */
+:root[data-skin='harbour'] input[type='radio'],
+:root[data-skin='harbour'] input[type='checkbox'] {
+  accent-color: var(--accent);
 }
 
 /* The scene moves only for a visitor who has not asked for less motion. With reduced motion the drawing
@@ -166,10 +178,12 @@
     animation-duration: 2.8s;
     animation-delay: -2.2s;
   }
-  /* Offscreen or hidden tab: every part holds still. */
+  /* Offscreen or hidden tab: every part holds still. !important so that no part, however specific its own
+     rule (the lamp is three classes deep), keeps running; the lamp is also named for the reviewer. */
   .harbour-scene.is-paused,
-  .harbour-scene.is-paused * {
-    animation-play-state: paused;
+  .harbour-scene.is-paused *,
+  .harbour-scene.is-paused .hs-light .hs-lamp {
+    animation-play-state: paused !important;
   }
   @keyframes hs-wave {
     from {

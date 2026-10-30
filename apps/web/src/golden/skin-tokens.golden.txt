@@ -19,6 +19,8 @@
 --bad: #9b1c1c
 --bad-soft: #fbe6e6
 --focus: #b35c00
+--hot: #ffc933
+--hot-ink: #2a2000
 --header-bg: #1846e5
 --header-ink: #ffffff
 --header-link: #ffffff
@@ -61,6 +63,8 @@
 --bad: #ff9c9c
 --bad-soft: #3b1a1a
 --focus: #ffb347
+--hot: #46d9c8
+--hot-ink: #062a2a
 --header-bg: #0b2233
 --header-ink: #f2f6f8
 --header-link: #f2f6f8

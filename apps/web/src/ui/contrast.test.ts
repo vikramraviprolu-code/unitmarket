@@ -18,6 +18,8 @@ const PAIRS: Array<[string, string, number]> = [
   ['accent', 'surface', 4.5],
   ['accent', 'bg', 4.5],
   ['accent', 'accent-soft', 4.5],
+  // SKIN-B1: the tag text on the hot accent (tags only, never a button).
+  ['hot-ink', 'hot', 4.5],
   ['good', 'good-soft', 4.5],
   ['good', 'surface', 4.5],
   ['warn', 'warn-soft', 4.5],

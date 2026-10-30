@@ -369,14 +369,42 @@ describe('T4 harbour scene', () => {
     // The scene draws without any animation property outside the block, so reduced motion is the still frame.
     expect(outsideNoPreference(css)).not.toMatch(/animation:\s*[a-z]/);
   });
-  it('is on the home page and the find page only', () => {
-    for (const rel of ['app/page.tsx', 'app/discover/page.tsx']) {
-      const page = noComments(read(rel));
-      expect(page, rel).toMatch(/import \{ HarbourScene \} from '[./]+\/ui\/HarbourScene';/);
-      expect(page, rel).toContain('<HarbourScene />');
-    }
-    for (const rel of ['app/library/page.tsx', 'app/signin/page.tsx', 'app/help/[case]/page.tsx'])
+  it('every animated scene part has a pause that wins over its own rule', () => {
+    const inside = blocksOf(stripComments(readHarbourCss()), NO_PREF).join('\n');
+    const pause = rulesOf(inside).find((r) => /animation-play-state/.test(r.body));
+    expect(pause?.body).toMatch(/animation-play-state:\s*paused\s*!important/);
+    expect(pause?.sel).toContain('.harbour-scene.is-paused .hs-light .hs-lamp');
+    expect(pause?.sel).toMatch(/\.harbour-scene\.is-paused \*/);
+    const animated = rulesOf(inside).filter(
+      (r) =>
+        /(^|[;\s])animation:/.test(r.body) &&
+        r.sel.includes('.harbour-scene') &&
+        !r.sel.includes('is-paused'),
+    );
+    expect(animated.length).toBeGreaterThanOrEqual(6);
+  });
+  it('is in the Hero of the home and find pages, behind the headline, and nowhere else', () => {
+    const hero = noComments(read('ui/Hero.tsx'));
+    expect(hero).toMatch(/import \{ HarbourScene \} from '\.\/HarbourScene';/);
+    expect(hero).toContain('<HarbourScene />');
+    for (const rel of ['app/page.tsx', 'app/discover/DiscoverForm.tsx'])
+      expect(noComments(read(rel)), rel).toContain('<Hero>');
+    for (const rel of [
+      'app/page.tsx',
+      'app/discover/page.tsx',
+      'app/library/page.tsx',
+      'app/signin/page.tsx',
+      'app/help/[case]/page.tsx',
+    ])
       expect(noComments(read(rel)), rel).not.toContain('HarbourScene');
+  });
+  it('the scene fills the hero panel and Bright Market hides it; radios take the amber', () => {
+    const css = stripComments(readHarbourCss());
+    const fill = rulesOf(css).find((r) => r.sel === '.hero > .harbour-scene');
+    expect(fill?.body).toMatch(/position:\s*absolute/);
+    expect(fill?.body).toMatch(/inset:\s*0/);
+    expect(css).toMatch(/accent-color:\s*var\(--accent\)/);
+    expect(read('ui/HarbourScene.tsx')).toContain('xMaxYMax slice');
   });
 });
 

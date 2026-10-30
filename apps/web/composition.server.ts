@@ -13,6 +13,7 @@
 import { getSingleton, setSingleton } from './src/server/singleton';
 import 'server-only';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import type {
   Actor,
   AgentDeps,
@@ -28,6 +29,9 @@ import type {
   Id,
   Ids,
   Logger,
+  ModelPort,
+  ModelSpendStore,
+  ModelWire,
   OutboundRequest,
   PayPalPort,
   PaymentsDeps,
@@ -54,7 +58,7 @@ import type { SqlDriver } from '@umsbx/db';
 import { cryptoIds, systemClock } from '@umsbx/runtime';
 import { createAuditSink, createLogger, redact } from '@umsbx/obs';
 import { createOutboundGate, createSwitchReader, readSafetyStatus, runStop } from '@umsbx/safety';
-import { guard } from '@umsbx/transport';
+import { createModelHttps, guard } from '@umsbx/transport';
 import type { Wire } from '@umsbx/transport';
 import {
   EXPECTED_CERT_PINS,
@@ -64,14 +68,29 @@ import {
   pinComplete,
 } from '@umsbx/paypal';
 import type { AdapterDeps } from '@umsbx/paypal';
-import { createScriptedModel } from '@umsbx/model';
+import {
+  CLAUDE_MODEL_ID,
+  createClaudeModel,
+  createScriptedModel,
+  parseClaudeEvalResult,
+  runEvalCases,
+  tally,
+  BRIEF_CASES,
+  LISTING_CASES,
+} from '@umsbx/model';
+import type { CaseResult } from '@umsbx/model';
 import {
   SEED_DATA,
   SEED_SUPPLEMENT_COMPOSITE,
+  decidePayeeRequest,
   getOffer,
+  listOpenRequests,
+  payeeView,
+  requestPayeeChange,
   seedCatalogue,
   seedSupplement,
 } from '@umsbx/catalogue';
+import type { OpenRequest, PayeeError, PayeeView } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
 import { discover as discoverOffers, parseNeed } from '@umsbx/discovery';
 import { requestApproval } from '@umsbx/approval';
@@ -165,6 +184,16 @@ export interface AppOptions {
    * step (`payees: false`) to build the disk an earlier release left. Refused unless NODE_ENV=test.
    */
   test_seed?: { supplement?: boolean; payees?: boolean };
+  /**
+   * AI-A (tests): a ModelWire standing in for the Claude egress. Used only when UMS_AI_ADAPTER=claude and a
+   * key is set; no socket is opened and no real key is needed. Refused unless NODE_ENV=test.
+   */
+  test_model_wire?: ModelWire;
+  /**
+   * AI-B (tests): the path of the stored Claude evaluation result, instead of the committed
+   * packages/model/test-data/claude-eval-result.json. Refused unless NODE_ENV is test.
+   */
+  test_claude_eval_file?: string;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -334,6 +363,24 @@ export interface LibraryEntry {
   open_case: CaseView | null;
   environment: EnvironmentLabel;
 }
+/**
+ * AI-B: what /ops/evals shows. Counts come from the committed injection cases, the baseline from running
+ * the scripted model over them, `claude` from a stored result file or `not_run`. Rows hold an id, a kind
+ * and a verdict of fixed codes; no model free text is ever copied in.
+ */
+export interface EvalsSummary {
+  environment: EnvironmentLabel;
+  listing_cases: number;
+  brief_cases: number;
+  baseline: { passed: number; total: number };
+  cases: CaseResult[];
+  claude:
+    | { state: 'not_run' }
+    | { state: 'recorded'; recorded_on: string; passed: number; total: number };
+  /** The model discovery uses: `claude` only when the adapter is built (UMS_AI_ADAPTER=claude and a key). */
+  model_in_use: 'scripted' | 'claude';
+}
+
 export interface OpsSnapshot {
   environment: EnvironmentLabel;
   switches: Record<SwitchName, boolean>;
@@ -437,6 +484,11 @@ export interface App {
   readonly security: SecurityDeps;
   /** The sandbox outbound (the five locks); null in offline mode. */
   readonly outbound: Outbound | null;
+  /**
+   * AI-A: the id of the model discovery uses: `scripted-v1` by default, `claude-haiku-5-5` only when
+   * UMS_AI_ADAPTER=claude, a key is set and the app is not in maintenance.
+   */
+  readonly model_id: string;
   close(): Promise<void>;
 }
 
@@ -542,6 +594,8 @@ export interface Engine {
     note?: string;
   }): Promise<Result<{ case_id: Id }, { code: 'not_found' | 'duplicate_open' }>>;
   opsSnapshot(actor: Actor): Promise<OpsSnapshot | null>;
+  /** AI-B: the operator evals page. Null for anyone but an operator. Runs the scripted model only. */
+  evalsSummary(actor: Actor): Promise<EvalsSummary | null>;
   /**
    * The ops stop button (BU-2): paypal_outbound off, with a reason, by an operator session. It can
    * only turn the switch off; turning it on is `pnpm safety:resume` at the owner's terminal.
@@ -571,6 +625,35 @@ export interface Engine {
    * the second factor; `cancel` withdraws a request that is still `requested`.
    */
   refund: RefundFacade;
+  /**
+   * PUB-A2: where a publisher gets paid. `view` is the S6 page data (last 4 only, newest request first);
+   * `request` stores a change request and changes nothing else; `openRequests` and `decide` are the
+   * operator side and need the second factor. A verify is refused with `owner_command_required` when
+   * the app runs in sandbox mode (D-062). The whole merchant id is never returned by any method.
+   */
+  payee: {
+    view(actor: Actor): Promise<(PayeeView & { environment: EnvironmentLabel }) | null>;
+    request(i: {
+      actor: Actor;
+      merchant_id: string;
+      note: string;
+    }): Promise<Result<{ request_id: Id }, PayeeError>>;
+    openRequests(
+      actor: Actor,
+    ): Promise<
+      Result<
+        { requests: (OpenRequest & { age_ms: number })[]; environment: EnvironmentLabel },
+        PayeeError
+      >
+    >;
+    decide(i: {
+      actor: Actor;
+      request_id: string;
+      merchant_id_retyped: string;
+      decision: 'verified' | 'rejected';
+      reason: string;
+    }): Promise<Result<{ decision: 'verified' | 'rejected' }, PayeeError>>;
+  };
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
   /** One pass of the access-window sweep and the automatic recovery rules (the job loop's sweep). */
@@ -698,6 +781,62 @@ async function sharedPayee(db: Database): Promise<OpsSnapshot['shared_payee']> {
     : { publishers: Number(row.n), last4: row.paypal_merchant_id.slice(-4) };
 }
 
+/**
+ * AI-A: the spend ledger of the Claude adapter, kept in audit_log (action `model.spend`, detail
+ * `micro_usd`, actor system). No migration: the sum is read back from the same rows, and the table is
+ * append-only, so a spend record cannot be edited away. A read or write error propagates; the spend
+ * guard treats it as a refusal.
+ */
+export function createModelSpendStore(db: Database, audit: AuditSink): ModelSpendStore {
+  return {
+    async spentMicroUsd(since_iso) {
+      const sum = `SELECT COALESCE(SUM((detail->>'micro_usd')::bigint), 0) AS s FROM audit_log WHERE action = 'model.spend'`;
+      const r =
+        since_iso === null
+          ? await db.query<{ s: string | number }>(sum)
+          : await db.query<{ s: string | number }>(`${sum} AND created_at >= $1::timestamptz`, [
+              since_iso,
+            ]);
+      return Number(r.rows[0]?.s ?? 0);
+    },
+    async charge(micro_usd, note) {
+      await db.transaction((tx) =>
+        audit.record(tx, {
+          actor: { kind: 'system' },
+          action: 'model.spend',
+          target: null,
+          reason: note,
+          detail: { micro_usd },
+        }),
+      );
+    },
+  };
+}
+
+/** AI-A: which ModelPort discovery gets. Scripted unless the config says claude and holds a key. */
+export function chooseModel(
+  c: Pick<Config, 'ai_adapter' | 'ai_api_key'>,
+  d: {
+    db: Database;
+    audit: AuditSink;
+    clock: Clock;
+    maintenance: boolean;
+    /** The kill switch: the paypal_outbound switch, so one stop (safety:stop, /api/ops/stop) ends AI calls too. */
+    switches: SwitchReader;
+    wire?: ModelWire;
+  },
+): ModelPort {
+  const scripted = createScriptedModel();
+  if (c.ai_adapter !== 'claude' || c.ai_api_key === null || d.maintenance) return scripted;
+  return createClaudeModel({
+    wire: d.wire ?? createModelHttps({ apiKey: c.ai_api_key }),
+    spend: createModelSpendStore(d.db, d.audit),
+    clock: d.clock,
+    fallback: scripted,
+    live: () => d.switches.isOn('paypal_outbound'),
+  });
+}
+
 export function createApp(env: Env, opts: AppOptions = {}): App {
   const loaded = loadConfig(env);
   if (!loaded.ok) throw new Error(`boot refused: ${loaded.error.code} ${loaded.error.name}`);
@@ -718,6 +857,10 @@ function buildApp(config: Config, opts: AppOptions): App {
       throw new Error('boot refused: test_loop outside NODE_ENV=test');
     if (opts.test_seed !== undefined)
       throw new Error('boot refused: test_seed outside NODE_ENV=test');
+    if (opts.test_model_wire !== undefined)
+      throw new Error('boot refused: test_model_wire outside NODE_ENV=test');
+    if (opts.test_claude_eval_file !== undefined)
+      throw new Error('boot refused: test_claude_eval_file outside NODE_ENV=test');
   }
   const environment = envLabel(config);
   const clock: Clock = systemClock();
@@ -983,7 +1126,18 @@ function buildApp(config: Config, opts: AppOptions): App {
               }),
             ),
         });
-  const agent: AgentDeps = { ...core, model: createScriptedModel() };
+  // AI-A (D-067): the scripted model unless UMS_AI_ADAPTER=claude AND a key is set (config refuses a
+  // claude adapter without a key). The Claude adapter reaches the model API only through the one
+  // egress in packages/transport, with hard spend caps; any failure falls back to the scripted model.
+  const model: ModelPort = chooseModel(config, {
+    db,
+    audit,
+    clock,
+    maintenance,
+    switches,
+    ...(opts.test_model_wire === undefined ? {} : { wire: opts.test_model_wire }),
+  });
+  const agent: AgentDeps = { ...core, model };
   const paymentsDeps: PaymentsDeps = { ...core, paypal, content };
   // The loop's deps carry the cadence (the domain config); test_domain changes it in tests only.
   const loopDeps: PaymentsDeps = {
@@ -1604,6 +1758,32 @@ function buildApp(config: Config, opts: AppOptions): App {
       });
     },
 
+    async evalsSummary(actor) {
+      if (actor.kind !== 'operator') return null;
+      // The scripted model over the committed cases: no network, no key, no spend.
+      const cases = await runEvalCases(createScriptedModel());
+      let stored: string | null = null;
+      try {
+        stored = readFileSync(
+          opts.test_claude_eval_file ??
+            new URL('../../packages/model/test-data/claude-eval-result.json', import.meta.url),
+          'utf8',
+        );
+      } catch {
+        stored = null; // no file: the cases have not been run against Claude
+      }
+      const result = stored === null ? null : parseClaudeEvalResult(stored);
+      return {
+        environment,
+        listing_cases: LISTING_CASES.length,
+        brief_cases: BRIEF_CASES.length,
+        baseline: tally(cases),
+        cases,
+        claude: result === null ? { state: 'not_run' } : { state: 'recorded', ...result },
+        model_in_use: model.model_id === CLAUDE_MODEL_ID ? 'claude' : 'scripted',
+      };
+    },
+
     async opsSnapshot(actor) {
       if (actor.kind !== 'operator') return null;
       const sw = {} as Record<SwitchName, boolean>;
@@ -1722,6 +1902,37 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     refund: refundFacade,
 
+    payee: {
+      async view(actor) {
+        const v = await payeeView(db, actor);
+        return v === null ? null : { ...v, environment };
+      },
+      request: (i) =>
+        requestPayeeChange(core, i.actor, { merchant_id: i.merchant_id, note: i.note }),
+      async openRequests(actor) {
+        const r = await listOpenRequests(db, actor);
+        if (!r.ok) return r;
+        const now = clock.now().getTime();
+        return {
+          ok: true,
+          value: {
+            requests: r.value.map((x) => ({
+              ...x,
+              age_ms: Math.max(0, now - Date.parse(x.created_at)),
+            })),
+            environment,
+          },
+        };
+      },
+      decide: (i) =>
+        decidePayeeRequest(core, i.actor, {
+          request_id: i.request_id,
+          merchant_id_retyped: i.merchant_id_retyped,
+          decision: i.decision,
+          reason: i.reason,
+        }),
+    },
+
     newKey: () => ids.nonce(),
 
     // Lane 10: turn new alerts and delivery failures into cases; close restored ones.
@@ -1763,6 +1974,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     engine,
     security,
     outbound,
+    model_id: model.model_id,
     startJobs: async () => {
       // CO-7b: no recovery pass, no loop, no database. Nothing to stop.
       if (maintenance) return { stop: async () => undefined };
