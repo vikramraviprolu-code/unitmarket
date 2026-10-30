@@ -110,6 +110,14 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/one PayPal payment for each publisher/i);
   });
 
+  it('terms: GATEFIX2 an unpaid order stays open until cancelled or it expires, never "nothing is charged for that attempt"', () => {
+    const t = flat('terms');
+    expect(t).not.toMatch(/nothing is charged for that attempt/i);
+    expect(t).not.toMatch(/You can start again/);
+    expect(t).toMatch(/unpaid order stays open until you cancel it or it expires/i);
+    expect(t).toMatch(/nothing is charged until you approve/i);
+  });
+
   it('privacy: what is processed, retention numbers, export or deletion, no tracking, contact placeholder', () => {
     const t = flat('privacy');
     expect(t).toMatch(/session cookie/i);
@@ -139,6 +147,7 @@ describe('legal copy rules', () => {
     const t = flat('publisher-terms');
     expect(t).toMatch(/fictional/i);
     expect(t).toMatch(/marked as checked/i);
+    expect(t).toMatch(/demo data is loaded or by an operator check/i);
     expect(t).toMatch(/statement page/i);
     expect(t).toMatch(/no commission in this demo/i);
     expect(t).toMatch(/20 percent/);

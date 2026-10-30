@@ -36,6 +36,7 @@ s3 withdrawn: Withdrawn. New buyers will not find this offer.
 s3 history heading: Version history
 s3 history: Version 2. On sale. $1.00, $2.50. WHEN
 s3 history withdrawn: Version 3. Withdrawn. WHEN
+s3 history replaced: Version 1. Replaced by a newer version. $1.00. WHEN
 error conflict: This offer changed since you opened it. Reload the page and try again.
 error invalid_price: Enter each price with at most two decimals, from the lowest to the highest price shown.
 error invalid_options: Offer at least one option, and each option once.

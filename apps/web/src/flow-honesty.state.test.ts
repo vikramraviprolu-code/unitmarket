@@ -18,6 +18,8 @@ import {
   NOT_PAID_YET,
   OPEN_ORDER_BODY,
   OPEN_ORDER_HEADING,
+  UNPAID_ORDER_BODY,
+  UNPAID_ORDER_HEADING,
   discoverNoMatchView,
 } from './lib/buyer-copy';
 
@@ -67,13 +69,14 @@ describe('an order left at the pay page', () => {
     expect(paid.status_text).toMatch(/^Ready/);
   });
 
-  it('the cause of the false no match: the open order makes the article owned for a new quote', async () => {
+  // GATEFIX2: the open order used to answer already_owned, which said "in your library" for an unpaid order.
+  it('the cause of the false no match: the open order blocks a new quote, and says it is an unpaid order', async () => {
     const q = await app.engine.quote({
       offer: { publisher_slug: HARBOUR_TIDE[0], offer_code: HARBOUR_TIDE[1] },
       actor: A,
       source: 'discovery',
     });
-    expect(q.ok && q.value.kind === 'no_match' && q.value.reason).toBe('already_owned');
+    expect(q.ok && q.value.kind === 'no_match' && q.value.reason).toBe('unpaid_order');
   });
 });
 
@@ -85,6 +88,16 @@ describe('the no match view of /discover', () => {
       body: OPEN_ORDER_BODY,
       href: '/library',
     });
+    expect(v.nothing_fits).toBe(false);
+  });
+  it('unpaid_order alone: the unpaid order notice, no library claim, a link to the library', () => {
+    const v = discoverNoMatchView(['unpaid_order']);
+    expect(v.open_order).toEqual({
+      heading: UNPAID_ORDER_HEADING,
+      body: UNPAID_ORDER_BODY,
+      href: '/library',
+    });
+    expect(v.open_order?.body).not.toMatch(/in your library/);
     expect(v.nothing_fits).toBe(false);
   });
   it('already_owned with another reason: both are said', () => {
@@ -100,7 +113,13 @@ describe('the no match view of /discover', () => {
     }
   });
   it('the words carry no dash', () => {
-    for (const s of [NOT_PAID_YET, OPEN_ORDER_HEADING, OPEN_ORDER_BODY])
+    for (const s of [
+      NOT_PAID_YET,
+      OPEN_ORDER_HEADING,
+      OPEN_ORDER_BODY,
+      UNPAID_ORDER_HEADING,
+      UNPAID_ORDER_BODY,
+    ])
       expect(s).not.toMatch(/[‒-―−]| - |--/);
   });
 });
