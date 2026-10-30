@@ -80,7 +80,14 @@ const MAX_DEPTH = 40;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 const SANDBOX_HOST = new URL(SANDBOX_API).hostname;
 const SANDBOX_SUFFIX = ['', 'sandbox', 'paypal', 'com'].join('.');
-const DOCS_HOST = ['developer', 'paypal', 'com'].join('.');
+// B-13: the PayPal documentation host is a foreign host like any other. It is built from parts
+// (rule A-26) and only used to find it: a bare host, with or without a scheme or a path.
+const DOCS_HOST_RE = ['developer', 'paypal', 'com'].join('\\.');
+const DOCS_ANY = new RegExp(`(?<![a-z0-9-])${DOCS_HOST_RE}(?![a-z0-9-])`, 'i');
+const DOCS_BARE = new RegExp(
+  `(?<![a-z0-9-])${DOCS_HOST_RE}\\.?(?![a-z0-9-])(?:(?:[/?#]|%2f|%3f|%23)[^\\s"'<>\\\\)]*)?`,
+  'gi',
+);
 const isSandboxHost = (h: string) => h === SANDBOX_HOST || h.endsWith(SANDBOX_SUFFIX);
 
 // A live PayPal API host or the bare apex anywhere in a string refuses the input.
@@ -228,7 +235,7 @@ function scrubUrl(raw: string, st: Tally): string {
       return `[redacted-url]${trail}`;
     }
     const h = url.hostname.toLowerCase();
-    if (!isSandboxHost(h) && h !== DOCS_HOST) {
+    if (!isSandboxHost(h)) {
       st.add('foreign url', 1);
       return `[redacted-url]${trail}`;
     }
@@ -284,6 +291,15 @@ function scrubText(input: string, st: Tally): string {
     return `\uE000${stash.length - 1}\uE001`;
   };
   s = s.replace(URL_RE, (u) => hold(scrubUrl(u, st)));
+  // A documentation host left in the text (no scheme, or percent-encoded) is dropped too.
+  s = s.replace(DOCS_BARE, () => {
+    st.add('foreign url', 1);
+    return hold('[redacted-url]');
+  });
+  if (DOCS_ANY.test(unmask(s))) {
+    st.add('foreign url', 1);
+    return '[redacted-url]';
+  }
   s = s.replace(PHONE_TEXT, () => {
     st.add('phone number pattern', 1);
     return 'phone-redacted';
@@ -689,9 +705,10 @@ export function residueRule(text: string, canaries: readonly string[]): string |
   if (/[A-Za-z0-9+_=-]{40,}/.test(noPaths) || /[A-Za-z0-9+/=]{40,}/.test(noPaths))
     return 'long token';
   if (LIVE_HOST.test(text)) return 'live host';
+  if (DOCS_ANY.test(text) || DOCS_ANY.test(unmask(text))) return 'documentation host';
   for (const m of text.matchAll(/https?:\/\/([^/"\s?#:\\]+)/gi)) {
     const h = (m[1] ?? '').toLowerCase();
-    if (!isSandboxHost(h) && h !== DOCS_HOST) return 'non-sandbox host';
+    if (!isSandboxHost(h)) return 'non-sandbox host';
   }
   if (/\/certs\/[^"\s]*\?/.test(text)) return 'cert url query';
   let doc: unknown;

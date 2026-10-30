@@ -63,6 +63,26 @@ export async function recorderSelfTest(): Promise<SelfTestResult> {
     });
     expect(residueRule(text, []) !== null, `residue check catches ${label}`);
   }
+  // 5. B-13: a documentation link is dropped, never kept
+  const docsUrl = `https://${['developer', 'paypal', 'com'].join('.')}/docs/api/orders/v2/#x`;
+  const dl = await buildRecordings(
+    [
+      exchange({
+        response: { status: 422, headers: {}, body: { information_link: docsUrl } },
+      }),
+    ],
+    base,
+  );
+  expect(
+    dl.ok &&
+      dl.summary.redactions['foreign url'] === 1 &&
+      !dl.files.some((f) => f.text.includes('docs/api')),
+    'documentation link is dropped and counted',
+  );
+  expect(
+    residueRule(JSON.stringify({ x: docsUrl }), []) !== null,
+    'residue check catches a docs link',
+  );
   expect(host.live.length > 0, 'corpus loaded');
   return { ok: failures.length === 0, failures, checked };
 }

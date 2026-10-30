@@ -491,3 +491,100 @@ describe('writeRecordings', () => {
     expect(await readdir(join(root, 'fixtures', 'paypal'))).toEqual(['synthetic']);
   });
 });
+
+// B-13: the recorder treats the documentation host like any other foreign host (rule A-26: the
+// host is built from parts here; no literal host text in a tracked file).
+describe('documentation links are dropped (B-13)', () => {
+  const DOCS = ['developer', 'paypal', 'com'].join('.');
+  const DOC_URL = `https://${DOCS}/docs/api/orders/v2/#error-ORDER_NOT_APPROVED`;
+  const errorBody = (extra: Record<string, unknown>) => ({
+    name: 'UNPROCESSABLE_ENTITY',
+    message: 'The requested action could not be performed.',
+    debug_id: 'a1b2c3d4e5f67',
+    details: [{ issue: 'ORDER_NOT_APPROVED', description: 'Payer has not approved.' }],
+    ...extra,
+  });
+  const build = async (body: Record<string, unknown>) =>
+    ok(
+      await buildRecordings(
+        [
+          exchange({
+            scenario: 'capture_before_approval',
+            operation: 'capture_order',
+            request: {
+              method: 'POST',
+              path: '/v2/checkout/orders/5O190127TN364715T/capture',
+              headers: {},
+              body: null,
+            },
+            response: { status: 422, headers: {}, body },
+          }),
+        ],
+        OPTS,
+      ),
+    );
+  const noDocsHost = (text: string) => {
+    expect(text).not.toMatch(new RegExp(DOCS.replace(/\./g, '\\.'), 'i'));
+    expect(decodeURIComponent(text)).not.toMatch(new RegExp(DOCS.replace(/\./g, '\\.'), 'i'));
+  };
+
+  const cases: Record<string, Record<string, unknown>> = {
+    'top-level information_link': errorBody({ information_link: DOC_URL }),
+    'information_link inside details': errorBody({
+      details: [{ issue: 'ORDER_NOT_APPROVED', information_link: DOC_URL }],
+    }),
+    'links[] entry with a rel': errorBody({ links: [{ href: DOC_URL, rel: 'information_link' }] }),
+    'host inside free text': errorBody({ message: `See ${DOC_URL} for the fix, then retry.` }),
+    'upper case': errorBody({
+      information_link: DOC_URL.replace(DOCS, DOCS.toUpperCase()).replace('https', 'HTTPS'),
+    }),
+    'trailing dot on the host': errorBody({ information_link: DOC_URL.replace(DOCS, `${DOCS}.`) }),
+    'percent-encoded form': errorBody({ information_link: encodeURIComponent(DOC_URL) }),
+    'bare host without a scheme': errorBody({ message: `docs at ${DOCS}/docs/api/orders/v2/` }),
+  };
+
+  it.each(Object.keys(cases))('replaces the link and counts a foreign url: %s', async (name) => {
+    const r = await build(cases[name]!);
+    const text = r.files.map((f) => f.text).join('\n');
+    noDocsHost(text);
+    expect(text).toContain('[redacted-url]');
+    expect(r.summary.redactions['foreign url'] ?? 0).toBeGreaterThanOrEqual(1);
+    expect(text).toContain('ORDER_NOT_APPROVED');
+    expect(FixtureFileSchema.safeParse(JSON.parse(r.files[0]!.text)).success).toBe(true);
+  });
+
+  it('keeps sandbox hosts and relative /v2 links exactly as before', async () => {
+    const r = await build(
+      errorBody({
+        links: [
+          {
+            href: `https://${host.sandboxWww}/checkoutnow?token=5O190127TN364715T`,
+            rel: 'approve',
+          },
+          { href: '/v2/checkout/orders/5O190127TN364715T', rel: 'self' },
+          { href: DOC_URL, rel: 'information_link' },
+        ],
+      }),
+    );
+    const text = r.files.map((f) => f.text).join('\n');
+    expect(text).toContain(`https://${host.sandboxWww}/checkoutnow?token=5O190127TN364715T`);
+    expect(text).toContain('/v2/checkout/orders/5O190127TN364715T');
+    noDocsHost(text);
+    expect(r.summary.redactions['foreign url']).toBe(1);
+  });
+
+  it('the output check refuses a result that still holds the documentation host', () => {
+    const wrap = (value: string) =>
+      JSON.stringify({ meta: { source: 'sandbox-recording' }, response: { body: { x: value } } });
+    for (const v of [
+      DOC_URL,
+      DOC_URL.replace(DOCS, DOCS.toUpperCase()),
+      DOC_URL.replace(DOCS, `${DOCS}.`),
+      encodeURIComponent(DOC_URL),
+      `${DOCS}/docs`,
+    ]) {
+      expect(residueRule(wrap(v), []), v).not.toBeNull();
+    }
+    expect(residueRule(wrap(`https://${host.sandboxWww}/checkoutnow`), [])).toBeNull();
+  });
+});

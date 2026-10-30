@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup: Find articles results</title><style>/* UnitMarket mockup theme (proposal). Tokens first. System fonts only, no images, no network. */
+:root {
+  --bg: #f6f5f1;
+  --surface: #ffffff;
+  --surface-2: #f2f0ea;
+  --text: #17202b;
+  --muted: #4b5766;
+  --line: #7a8491;
+  --line-soft: #d9dde3;
+  --accent: #14587f;
+  --accent-hover: #0f4a6b;
+  --accent-ink: #ffffff;
+  --accent-soft: #e3eff6;
+  --header-bg: #17202b;
+  --header-ink: #ffffff;
+  --header-muted: #c9d2dc;
+  --good: #1b6b3a;
+  --good-soft: #e4f3ea;
+  --warn: #7a4b00;
+  --warn-soft: #fcf0d9;
+  --bad: #9b1c1c;
+  --bad-soft: #fbe6e6;
+  --focus: #b35c00;
+  --shadow-1: 0 1px 2px rgba(23, 32, 43, 0.08), 0 1px 1px rgba(23, 32, 43, 0.04);
+  --shadow-tray: 0 -6px 18px rgba(23, 32, 43, 0.14);
+  --r-sm: 6px;
+  --r: 10px;
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+  --fs-xs: 0.8125rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1.125rem;
+  --fs-lg: 1.375rem;
+  --fs-xl: 1.75rem;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11161d;
+    --surface: #1a212b;
+    --surface-2: #222b37;
+    --text: #eef2f6;
+    --muted: #b3bdc9;
+    --line: #8795a6;
+    --line-soft: #2e3846;
+    --accent: #8ec6ea;
+    --accent-hover: #b5daf2;
+    --accent-ink: #0b1a24;
+    --accent-soft: #1d3140;
+    --header-bg: #0b0f14;
+    --header-ink: #eef2f6;
+    --header-muted: #c9d2dc;
+    --good: #7fd6a0;
+    --good-soft: #17301f;
+    --warn: #f1c46b;
+    --warn-soft: #3a2c10;
+    --bad: #ff9c9c;
+    --bad-soft: #3b1a1a;
+    --focus: #ffb14d;
+    --shadow-1: none;
+    --shadow-tray: 0 -1px 0 #2e3846;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.5; }
+a { color: var(--accent); text-underline-offset: 3px; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 4px; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.muted { color: var(--muted); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 var(--s4); }
+
+/* Top bar */
+.topbar { background: var(--header-bg); color: var(--header-ink); }
+.topbar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s4); min-height: 64px; padding-top: var(--s2); padding-bottom: var(--s2); }
+.brand { color: var(--header-ink); font-weight: 800; font-size: 1.2rem; text-decoration: none; letter-spacing: -0.01em; }
+.search { flex: 1 1 320px; display: flex; min-width: 0; }
+.search input { flex: 1; min-width: 0; min-height: 44px; border: 2px solid var(--header-muted); border-right: 0; border-radius: var(--r) 0 0 var(--r); padding: 0 var(--s3); font: inherit; background: #fff; color: #17202b; }
+.search button { min-height: 44px; border: 2px solid var(--header-muted); border-radius: 0 var(--r) var(--r) 0; background: var(--accent-soft); color: var(--text); font: inherit; font-weight: 700; padding: 0 var(--s4); display: inline-flex; gap: 6px; align-items: center; }
+@media (prefers-color-scheme: dark) { .search input { background: #1a212b; color: #eef2f6; } }
+.topnav { display: flex; gap: var(--s2); align-items: center; }
+.topnav a { color: var(--header-ink); text-decoration: none; display: inline-flex; gap: 6px; align-items: center; min-height: 44px; padding: 0 var(--s2); border-radius: var(--r-sm); font-weight: 600; }
+.topnav a:hover { text-decoration: underline; }
+.env { border: 2px solid currentColor; border-radius: 999px; padding: 1px 10px; font-weight: 700; font-size: var(--fs-sm); color: #f1c46b; }
+.env-sandbox { color: var(--header-muted); }
+
+/* Layout */
+main { padding: var(--s5) 0 96px; }
+.results-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--s5); align-items: start; }
+h1 { font-size: var(--fs-xl); line-height: 1.2; margin: 0 0 var(--s1); }
+h2 { font-size: var(--fs-lg); margin: 0 0 var(--s2); }
+.results-head p { margin: 0 0 var(--s3); }
+
+/* Toolbar */
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; padding: var(--s3) 0; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); margin-bottom: var(--s3); }
+.toolbar label { font-weight: 600; font-size: var(--fs-sm); }
+.toolbar select { min-height: 40px; border: 2px solid var(--line); border-radius: var(--r-sm); background: var(--surface); color: var(--text); font: inherit; padding: 0 var(--s2); }
+.fchip { min-height: 40px; border: 2px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 0 var(--s3); font: inherit; font-size: var(--fs-sm); font-weight: 600; }
+.fchip[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.fchip[aria-pressed='true']::before { content: '\2713  '; }
+.spacer { flex: 1; }
+
+/* Terms bar */
+.terms { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s3) var(--s4); margin-bottom: var(--s3); }
+.check { display: flex; gap: var(--s3); align-items: flex-start; font-weight: 600; min-height: 44px; }
+.check input { width: 24px; height: 24px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.terms details { margin-left: 36px; font-size: var(--fs-sm); }
+.terms summary { cursor: pointer; color: var(--accent); font-weight: 600; min-height: 32px; display: inline-flex; align-items: center; }
+
+/* Result row */
+.result-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s3); }
+.result { display: grid; grid-template-columns: 88px minmax(0, 1fr) 200px; gap: var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4); box-shadow: var(--shadow-1); }
+.result.in-pack { border: 2px solid var(--accent); padding: calc(var(--s4) - 1px); }
+.cover { width: 88px; height: 116px; border-radius: var(--r-sm); color: #fff; display: flex; flex-direction: column; justify-content: space-between; padding: var(--s2); font-weight: 800; }
+.cover span { font-size: 1.5rem; line-height: 1; }
+.cover small { font-size: 0.6875rem; font-weight: 600; line-height: 1.2; opacity: 0.95; }
+.c1 { background: #14587f; } .c2 { background: #0f5f63; } .c3 { background: #6b3f8f; } .c4 { background: #33415c; } .c5 { background: #7a4b00; } .c6 { background: #1b6b3a; }
+.result-title { font-size: var(--fs-md); margin: 0; line-height: 1.3; }
+.result-title a { color: var(--text); text-decoration: none; }
+.result-title a:hover { text-decoration: underline; color: var(--accent); }
+.byline { margin: 2px 0 var(--s2); color: var(--muted); font-size: var(--fs-sm); }
+.fitline { margin: 0; display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; font-size: var(--fs-sm); }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 10px; border-radius: 999px; font-weight: 700; font-size: var(--fs-xs); border: 1px solid currentColor; }
+.chip-strong { color: var(--good); background: var(--good-soft); }
+.chip-good { color: var(--accent); background: var(--accent-soft); }
+.chip-partial { color: var(--warn); background: var(--warn-soft); }
+.why { margin-top: var(--s2); font-size: var(--fs-sm); }
+.why summary { cursor: pointer; color: var(--accent); font-weight: 600; min-height: 32px; display: inline-flex; align-items: center; }
+.why ul { list-style: none; padding: 0; margin: var(--s2) 0 0; display: grid; gap: 4px; }
+.why li { display: grid; grid-template-columns: 90px 44px 1fr; gap: var(--s2); align-items: baseline; }
+.dots { letter-spacing: 2px; color: var(--accent); }
+.result-buy { display: grid; gap: var(--s2); align-content: start; border-left: 1px solid var(--line-soft); padding-left: var(--s4); }
+.price { font-size: var(--fs-xl); font-weight: 800; line-height: 1; margin: 0; font-variant-numeric: tabular-nums; }
+.opt { margin: 0; font-size: var(--fs-sm); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 var(--s4); border-radius: var(--r); border: 2px solid var(--accent); background: var(--surface); color: var(--accent); font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-lg { min-height: 52px; font-size: var(--fs-md); width: 100%; }
+.btn-block { width: 100%; }
+.btn[disabled] { background: var(--surface-2); color: var(--muted); border-color: var(--line); cursor: not-allowed; }
+.btn-link { border: 0; background: none; color: var(--accent); padding: 0 var(--s1); min-height: 32px; text-decoration: underline; font-weight: 600; }
+.pack-toggle { display: flex; gap: var(--s2); align-items: center; min-height: 44px; font-weight: 600; font-size: var(--fs-sm); border: 2px dashed var(--line); border-radius: var(--r); padding: 0 var(--s3); }
+.in-pack .pack-toggle { border-style: solid; border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.pack-toggle input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+
+/* Tray */
+.tray { position: sticky; top: var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4); box-shadow: var(--shadow-1); display: grid; gap: var(--s3); }
+.tray h2 { font-size: var(--fs-md); margin: 0; display: flex; gap: var(--s2); align-items: center; }
+.tray ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); font-size: var(--fs-sm); }
+.tray li { display: grid; grid-template-columns: 1fr auto; gap: var(--s2); border-bottom: 1px solid var(--line-soft); padding-bottom: var(--s2); }
+.tray .sum { display: flex; justify-content: space-between; font-weight: 700; font-size: var(--fs-md); }
+.tray p { margin: 0; font-size: var(--fs-sm); }
+.count { background: var(--accent); color: var(--accent-ink); border-radius: 999px; min-width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-xs); }
+.trust { display: flex; gap: var(--s2); align-items: flex-start; font-size: var(--fs-sm); color: var(--muted); }
+.trust svg { flex: none; margin-top: 2px; }
+
+/* Checkout */
+.stepper { list-style: none; padding: 0; margin: 0 0 var(--s5); display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5); font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.stepper li { display: flex; gap: var(--s2); align-items: center; }
+.stepper .n { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); display: inline-flex; align-items: center; justify-content: center; }
+.stepper [aria-current='step'] { color: var(--text); }
+.stepper [aria-current='step'] .n { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.checkout-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--s5); align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4) var(--s5); box-shadow: var(--shadow-1); margin-bottom: var(--s4); }
+.panel h2 { font-size: var(--fs-md); display: flex; gap: var(--s2); align-items: baseline; flex-wrap: wrap; }
+.panel h2 .muted { font-weight: 600; font-size: var(--fs-sm); }
+.line-item { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: var(--s3); align-items: start; padding: var(--s3) 0; border-top: 1px solid var(--line-soft); }
+.line-item .cover { width: 56px; height: 72px; padding: 6px; }
+.line-item .cover span { font-size: 1rem; }
+.line-item h3 { margin: 0; font-size: 1rem; }
+.line-item p { margin: 2px 0 0; font-size: var(--fs-sm); }
+.amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+.subtotal { display: flex; justify-content: space-between; border-top: 1px solid var(--line-soft); padding-top: var(--s3); font-weight: 600; }
+.summary { position: sticky; top: var(--s4); }
+.summary dl { display: grid; grid-template-columns: 1fr auto; gap: var(--s2) 0; margin: 0 0 var(--s3); }
+.summary dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.summary .total { font-size: var(--fs-lg); font-weight: 800; border-top: 1px solid var(--line); padding-top: var(--s3); }
+.notice { background: var(--accent-soft); border: 2px solid var(--accent); border-radius: var(--r); padding: var(--s3); font-size: var(--fs-sm); margin: 0 0 var(--s3); }
+.timer { display: flex; gap: var(--s2); align-items: center; font-size: var(--fs-sm); margin: 0 0 var(--s3); }
+.timer strong { font-variant-numeric: tabular-nums; font-size: 1rem; }
+.fine { font-size: var(--fs-sm); color: var(--muted); margin: var(--s3) 0 0; }
+
+/* Library */
+.tabs { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s3) 0 var(--s4); }
+.lib-list { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s3); }
+.lib { display: grid; grid-template-columns: 72px minmax(0, 1fr) 210px; gap: var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4); box-shadow: var(--shadow-1); }
+.lib .cover { width: 72px; height: 96px; }
+.lib h2 { font-size: var(--fs-md); margin: 0; }
+.lib h2 a { color: var(--text); text-decoration: none; }
+.lib h2 a:hover { text-decoration: underline; }
+.lib .meta { font-size: var(--fs-sm); color: var(--muted); margin: 2px 0 var(--s2); }
+.status { display: inline-flex; gap: 6px; align-items: center; font-weight: 700; padding: 2px 10px; border-radius: var(--r-sm); font-size: var(--fs-sm); border: 1px solid currentColor; }
+.st-ready { color: var(--good); background: var(--good-soft); }
+.st-ended { color: var(--muted); background: var(--surface-2); }
+.st-hold { color: var(--warn); background: var(--warn-soft); }
+.left { margin: var(--s2) 0 6px; font-size: var(--fs-sm); }
+.bar { height: 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; max-width: 320px; }
+.bar span { display: block; height: 100%; background: var(--accent); }
+.w5 { width: 5%; } .w35 { width: 35%; } .w0 { width: 0; }
+.lib-actions { display: grid; gap: var(--s2); align-content: start; }
+.lib-actions .links { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); font-size: var(--fs-sm); }
+.lib-actions .links a { min-height: 32px; display: inline-flex; align-items: center; font-weight: 600; }
+
+footer { border-top: 1px solid var(--line-soft); color: var(--muted); font-size: var(--fs-sm); padding: var(--s4) 0 var(--s6); }
+
+/* Mobile: 400 px */
+@media (max-width: 760px) {
+  .results-layout, .checkout-layout { grid-template-columns: 1fr; }
+  .result { grid-template-columns: 56px minmax(0, 1fr); }
+  .result .cover { width: 56px; height: 76px; padding: 6px; }
+  .result .cover span { font-size: 1rem; }
+  .result .cover small { display: none; }
+  .result-buy { grid-column: 1 / -1; border-left: 0; padding-left: 0; border-top: 1px solid var(--line-soft); padding-top: var(--s3); grid-template-columns: auto 1fr; align-items: center; }
+  .result-buy .price { grid-row: 1; }
+  .result-buy .btn, .result-buy .pack-toggle { grid-column: 1 / -1; }
+  .why li { grid-template-columns: 80px 40px 1fr; }
+  .tray { position: sticky; bottom: 0; top: auto; border-radius: var(--r) var(--r) 0 0; box-shadow: var(--shadow-tray); padding: var(--s3) var(--s4); gap: var(--s2); z-index: 5; }
+  .tray ul, .tray .sum-note { display: none; }
+  .lib { grid-template-columns: 56px minmax(0, 1fr); }
+  .lib .cover { width: 56px; height: 76px; padding: 6px; }
+  .lib .cover small { display: none; }
+  .lib-actions { grid-column: 1 / -1; }
+  .summary { position: static; }
+  .topnav .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .panel { padding: var(--s4); }
+  h1 { font-size: var(--fs-lg); }
+}
+</style></head>
+<body>
+<header class="topbar"><div class="wrap">
+  <a class="brand" href="#">UnitMarket</a>
+  <form class="search" role="search" onsubmit="return false">
+    <label class="vh" for="q">Search articles</label>
+    <input id="q" value="tide table quay walk" aria-describedby="q-hint">
+    <button type="submit"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2"/></svg>Search</button>
+  </form>
+  <nav class="topnav" aria-label="Main">
+    <a href="#"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v16H4zM14 4l5 1-3 15-5-1z" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span class="lbl">Your library</span></a>
+    <a href="#"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span class="lbl">Help</span></a>
+  </nav>
+  <span class="env env-sandbox">Sandbox<span class="vh">: test payments only, no real money</span></span>
+</div></header>
+<main><div class="wrap">
+<p id="q-hint" class="vh">For example: tide tables, under $1, read online.</p>
+<div class="results-layout">
+<section aria-labelledby="results">
+  <div class="results-head">
+    <h1 id="results">4 articles for "tide table quay walk"</h1>
+    <p class="muted">The cards are advice. You choose.</p>
+  </div>
+  <div class="toolbar" role="group" aria-label="Sort and filter">
+    <label for="sort">Sort by</label>
+    <select id="sort"><option>Suggested order</option><option>Price: low to high</option><option>Price: high to low</option></select>
+    <span class="spacer"></span>
+    <button class="fchip" type="button" aria-pressed="false">Read online</button>
+    <button class="fchip" type="button" aria-pressed="false">Download and keep</button>
+  </div>
+  <div class="terms">
+    <label class="check"><input type="checkbox"><span>I accept the terms of purchase for the article I choose.</span></label>
+    <details><summary>What the terms say</summary><p>Personal use only. No redistribution. Download and keep: you have 5 days to download your copy, it is yours to keep. Read online: you can read it online for 5 days. The 5 days start when payment is confirmed.</p></details>
+  </div>
+  <ol class="result-list">
+    <li><article class="result in-pack" aria-labelledby="t1">
+      <div class="cover c1" aria-hidden="true"><span>HL</span><small>Harbour Ledger Review</small></div>
+      <div>
+        <h2 class="result-title" id="t1"><a href="#">Reading a tide table in ten minutes</a></h2>
+        <p class="byline">Harbour Ledger Review (fictional)</p>
+        <p class="fitline"><span class="chip chip-good">Good fit</span><span>Matches 2 of 4 of your words &middot; 12 months old</span></p>
+        <details class="why"><summary>Why this fit</summary><ul>
+          <li><b>Topic</b><span class="dots" aria-hidden="true">&#9679;&#9679;&#9675;</span><span>good: 2 of 4 terms</span></li>
+          <li><b>Recency</b><span class="dots" aria-hidden="true">&#9679;&#9679;&#9675;</span><span>good: 12 months old</span></li>
+          <li><b>Budget</b><span class="dots" aria-hidden="true">&#9675;&#9675;&#9675;</span><span class="muted">not assessed: no ceiling given</span></li>
+          <li><b>Access</b><span class="dots" aria-hidden="true">&#9675;&#9675;&#9675;</span><span class="muted">not assessed: no access option asked for</span></li>
+          <li><b>Language</b><span class="dots" aria-hidden="true">&#9675;&#9675;&#9675;</span><span class="muted">not assessed: language not known</span></li>
+        </ul></details>
+      </div>
+      <div class="result-buy">
+        <p class="price">$0.40</p>
+        <p class="opt">Download and keep<br><span class="muted">5 days to download</span></p>
+        <button class="btn btn-primary" type="button">Choose this article</button>
+        <label class="pack-toggle"><input type="checkbox" checked><span>In your pack<span class="vh">: Reading a tide table in ten minutes</span></span></label>
+      </div>
+    </article></li>
+    <li><article class="result in-pack" aria-labelledby="t2">
+      <div class="cover c2" aria-hidden="true"><span>QG</span><small>Quayside Gazette</small></div>
+      <div>
+        <h2 class="result-title" id="t2"><a href="#">A morning walk along the old quay</a></h2>
+        <p class="byline">Quayside Gazette (fictional)</p>
+        <p class="fitline"><span class="chip chip-good">Good fit</span><span>Matches 2 of 4 of your words &middot; 10 months old</span></p>
+        <details class="why"><summary>Why this fit</summary><ul><li><b>Topic</b><span class="dots" aria-hidden="true">&#9679;&#9679;&#9675;</span><span>good: 2 of 4 terms</span></li></ul></details>
+      </div>
+      <div class="result-buy">
+        <p class="price">$0.90</p>
+        <p class="opt">Download and keep<br><span class="muted">5 days to download</span></p>
+        <button class="btn btn-primary" type="button">Choose this article</button>
+        <label class="pack-toggle"><input type="checkbox" checked><span>In your pack<span class="vh">: A morning walk along the old quay</span></span></label>
+      </div>
+    </article></li>
+    <li><article class="result" aria-labelledby="t3">
+      <div class="cover c2" aria-hidden="true"><span>QG</span><small>Quayside Gazette</small></div>
+      <div>
+        <h2 class="result-title" id="t3"><a href="#">Why the quayside market moved indoors</a></h2>
+        <p class="byline">Quayside Gazette (fictional)</p>
+        <p class="fitline"><span class="chip chip-good">Good fit</span><span>Matches 1 of 4 of your words &middot; 10 months old</span></p>
+        <details class="why"><summary>Why this fit</summary><ul><li><b>Topic</b><span class="dots" aria-hidden="true">&#9679;&#9675;&#9675;</span><span>weak: 1 of 4 terms</span></li></ul></details>
+      </div>
+      <div class="result-buy">
+        <p class="price">$1.20</p>
+        <p class="opt">Read online<br><span class="muted">5 days to read</span></p>
+        <button class="btn btn-primary" type="button">Choose this article</button>
+        <label class="pack-toggle"><input type="checkbox"><span>Add to pack<span class="vh">: Why the quayside market moved indoors</span></span></label>
+      </div>
+    </article></li>
+    <li><article class="result" aria-labelledby="t4">
+      <div class="cover c1" aria-hidden="true"><span>HL</span><small>Harbour Ledger Review</small></div>
+      <div>
+        <h2 class="result-title" id="t4"><a href="#">What a small harbour charges and why</a></h2>
+        <p class="byline">Harbour Ledger Review (fictional)</p>
+        <p class="fitline"><span class="chip chip-good">Good fit</span><span>Matches 1 of 4 of your words &middot; 11 months old</span></p>
+        <details class="why"><summary>Why this fit</summary><ul><li><b>Topic</b><span class="dots" aria-hidden="true">&#9679;&#9675;&#9675;</span><span>weak: 1 of 4 terms</span></li></ul></details>
+      </div>
+      <div class="result-buy">
+        <p class="price">$2.50</p>
+        <p class="opt">Read online<br><span class="muted">5 days to read</span></p>
+        <button class="btn btn-primary" type="button">Choose this article</button>
+        <label class="pack-toggle"><input type="checkbox"><span>Add to pack<span class="vh">: What a small harbour charges and why</span></span></label>
+      </div>
+    </article></li>
+  </ol>
+</section>
+<aside class="tray" aria-labelledby="tray-h">
+  <h2 id="tray-h"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>Your pack <span class="count" aria-label="2 articles">2</span></h2>
+  <ul>
+    <li><span>Reading a tide table in ten minutes<br><span class="muted">Harbour Ledger Review</span></span><span class="amt">$0.40</span></li>
+    <li><span>A morning walk along the old quay<br><span class="muted">Quayside Gazette</span></span><span class="amt">$0.90</span></li>
+  </ul>
+  <div class="sum"><span>2 articles</span><span>$1.30</span></div>
+  <p class="sum-note muted">2 publishers, so 2 PayPal payments, one for each publisher.</p>
+  <button class="btn btn-primary btn-block" type="button">Buy selected together</button>
+  <p class="trust"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11V8a6 6 0 0 1 12 0v3M5 11h14v10H5z" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>You pay nothing until you approve at the payment step.</span></p>
+</aside>
+</div>
+</div></main>
+<footer><div class="wrap">Sandbox build for testing. Test payments only: no real money moves and nothing here is a live payment.</div></footer>
+</body></html>

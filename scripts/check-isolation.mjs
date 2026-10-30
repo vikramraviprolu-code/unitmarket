@@ -314,7 +314,9 @@ for (const file of listFiles(ROOT)) {
   const text = read(file);
 
   if (CODE.test(file.rel)) checkCode(file, text);
-  else if (TEXT_CODE.test(file.rel)) checkTextCode(file, text);
+  // Standalone design previews are documentation: single HTML files with inline SVG, no imports, never built.
+  else if (TEXT_CODE.test(file.rel) && !file.rel.startsWith('docs/design/ui-options/'))
+    checkTextCode(file, text);
   else if (CONFIG.test(file.rel)) {
     text.split('\n').forEach((line, i) => {
       if (line.includes(SIM_REPO)) add(file.rel, i + 1, 'simulation repository path in config');

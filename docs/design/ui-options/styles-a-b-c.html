@@ -1,0 +1,638 @@
+<title>UnitMarket Style Options</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: dark top bar, a trust strip, then filters | result rows | sticky pack tray. Tokens follow the review's style spec. */
+:root {
+  --bg: #f6f5f1; --surface: #ffffff; --surface-2: #f2f0ea; --text: #17202b; --muted: #4b5766;
+  --line: #7a8491; --line-soft: #d9dde3; --accent: #14587f; --accent-hover: #0f4a6b; --accent-ink: #ffffff;
+  --accent-soft: #e3eff6; --header-bg: #17202b; --header-ink: #ffffff; --header-muted: #c9d2dc;
+  --good: #1b6b3a; --good-soft: #e4f3ea; --warn: #7a4b00; --warn-soft: #fcf0d9; --bad: #9b1c1c; --bad-soft: #fbe6e6;
+  --focus: #b35c00; --shadow-1: 0 1px 2px rgba(23,32,43,.08), 0 1px 1px rgba(23,32,43,.04);
+  --r: 8px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161d; --surface: #1a212b; --surface-2: #222b37; --text: #eef2f6; --muted: #b3bdc9; --line: #8795a6;
+    --line-soft: #2e3846; --accent: #8ec6ea; --accent-hover: #b5daf2; --accent-ink: #0b1a24; --accent-soft: #1d3a4d;
+    --header-bg: #0b0f14; --good: #7fd6a0; --good-soft: #17301f; --warn: #f1c46b; --warn-soft: #3a2d10;
+    --bad: #ff9c9c; --bad-soft: #3d1b1b; --focus: #ffb14d; --shadow-1: none; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161d; --surface: #1a212b; --surface-2: #222b37; --text: #eef2f6; --muted: #b3bdc9; --line: #8795a6;
+  --line-soft: #2e3846; --accent: #8ec6ea; --accent-hover: #b5daf2; --accent-ink: #0b1a24; --accent-soft: #1d3a4d;
+  --header-bg: #0b0f14; --good: #7fd6a0; --good-soft: #17301f; --warn: #f1c46b; --warn-soft: #3a2d10;
+  --bad: #ff9c9c; --bad-soft: #3d1b1b; --focus: #ffb14d; --shadow-1: none; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 16px; line-height: 1.5; }
+a { color: var(--accent); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* prototype banner */
+.proto { background: var(--warn-soft); color: var(--warn); font-size: 13px; padding: 6px 16px; text-align: center; border-bottom: 1px solid var(--warn); }
+.proto b { font-weight: 700; }
+
+/* top bar */
+.top { background: var(--header-bg); color: var(--header-ink); }
+.top-in { max-width: 1240px; margin: 0 auto; display: flex; align-items: center; gap: 16px; padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px)); flex-wrap: wrap; }
+.brand { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; color: var(--header-ink); text-decoration: none; }
+.search { flex: 1 1 320px; display: flex; min-width: 0; border-radius: var(--r); overflow: hidden; border: 2px solid var(--header-muted); background: #fff; }
+.search input { flex: 1; min-width: 0; border: 0; padding: 10px 14px; background: #fff; color: #17202b; font-size: 16px; }
+.search button { border: 0; background: #e3eff6; color: #0f3a55; padding: 0 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.nav { display: flex; align-items: center; gap: 4px; }
+.nav a { color: var(--header-ink); text-decoration: none; padding: 8px 10px; border-radius: 8px; display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 15px; }
+.nav a:hover { background: rgba(255,255,255,.1); }
+.pill { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 2px solid var(--header-muted); color: var(--header-muted); }
+.theme { background: none; border: 1px solid var(--header-muted); color: var(--header-ink); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+
+/* trust strip */
+.trust { background: var(--surface); border-bottom: 1px solid var(--line-soft); }
+.trust-in { max-width: 1240px; margin: 0 auto; display: flex; gap: 8px 28px; flex-wrap: wrap; padding: 9px max(16px, env(safe-area-inset-right, 0px)) 9px max(16px, env(safe-area-inset-left, 0px)); font-size: 14px; color: var(--muted); }
+.trust-in span { display: inline-flex; align-items: center; gap: 7px; }
+.trust svg { color: var(--good); }
+
+/* page layout */
+.page { max-width: 1240px; margin: 0 auto; padding: 18px max(16px, env(safe-area-inset-right, 0px)) 120px max(16px, env(safe-area-inset-left, 0px)); display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1100px) { .page { grid-template-columns: 220px minmax(0, 1fr) 320px; align-items: start; padding-bottom: 48px; } }
+.crumbs { font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+h1 { font-size: 26px; line-height: 1.2; margin: 0 0 4px; font-weight: 800; text-wrap: balance; }
+.sub { color: var(--muted); margin: 0 0 14px; }
+
+/* filter rail */
+.rail { background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r); padding: 14px 16px; box-shadow: var(--shadow-1); }
+@media (min-width: 1100px) { .rail { position: sticky; top: 16px; } }
+.rail h2 { font-size: 15px; margin: 14px 0 6px; font-weight: 700; }
+.rail h2:first-child { margin-top: 0; }
+.rail label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 15px; cursor: pointer; }
+.rail .count { margin-left: auto; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.rail input[type=checkbox], .rail input[type=radio] { width: 18px; height: 18px; accent-color: var(--accent); }
+.clear { margin-top: 12px; background: none; border: 0; color: var(--accent); text-decoration: underline; cursor: pointer; padding: 4px 0; }
+.chip.filter-toggle { display: none; }
+@media (max-width: 1099px) {
+  .chip.filter-toggle { display: inline-flex; justify-self: start; }
+  .rail[hidden] { display: none; }
+}
+
+/* results toolbar */
+.bar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 10px 0 12px; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); margin-bottom: 14px; }
+.bar .grow { flex: 1 1 auto; min-width: 0; }
+.bar select { background: var(--surface); border: 2px solid var(--line); border-radius: var(--r); padding: 7px 10px; }
+.chip { background: var(--surface); border: 2px solid var(--line); border-radius: 999px; padding: 6px 14px; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.terms { background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r); padding: 12px 16px; margin-bottom: 14px; }
+.terms label { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; cursor: pointer; }
+.terms input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); }
+.terms details { margin: 6px 0 0 30px; font-size: 14px; color: var(--muted); }
+.terms summary { cursor: pointer; color: var(--accent); }
+.terms.need { border-color: var(--bad); background: var(--bad-soft); }
+.terms .err { display: none; color: var(--bad); font-weight: 600; margin: 6px 0 0 30px; font-size: 14px; }
+.terms.need .err { display: block; }
+
+/* result rows */
+.rows { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+.row { background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r); box-shadow: var(--shadow-1); display: grid; grid-template-columns: 88px minmax(0, 1fr) 210px; gap: 16px; padding: 16px; }
+.row.in-pack { border: 2px solid var(--accent); padding: 15px; }
+.cover { width: 88px; height: 116px; border-radius: 6px; color: #fff; display: flex; flex-direction: column; justify-content: space-between; padding: 8px; font-weight: 800; }
+.cover b { font-size: 28px; line-height: 1; letter-spacing: -0.02em; }
+.cover small { font-size: 11px; line-height: 1.2; font-weight: 600; opacity: .95; }
+.h0 { background: #14587f; } .h1 { background: #0f5f63; } .h2 { background: #6b3f8f; } .h3 { background: #33415c; } .h4 { background: #7a4b00; } .h5 { background: #1b6b3a; }
+.title { font-size: 18px; line-height: 1.3; font-weight: 700; margin: 0; }
+.title a { color: var(--text); text-decoration: none; }
+.title a:hover { color: var(--accent); text-decoration: underline; }
+.by { color: var(--muted); font-size: 14px; margin: 2px 0 6px; }
+.abs { margin: 0 0 8px; font-size: 15px; max-width: 62ch; }
+.topics { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.topic { font-size: 12px; background: var(--surface-2); color: var(--muted); padding: 2px 9px; border-radius: 999px; }
+.fit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+.band { font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor; }
+.band.strong { color: var(--good); background: var(--good-soft); }
+.band.good { color: var(--accent); background: var(--accent-soft); }
+.band.partial { color: var(--warn); background: var(--warn-soft); }
+.why { margin-top: 8px; font-size: 14px; }
+.why summary { color: var(--accent); cursor: pointer; }
+.why dl { display: grid; grid-template-columns: 90px 70px minmax(0,1fr); gap: 4px 8px; margin: 8px 0 0; align-items: center; }
+.why dt { font-weight: 600; } .why dd { margin: 0; color: var(--muted); }
+.dots { letter-spacing: 3px; color: var(--accent); }
+.buy { border-left: 1px solid var(--line-soft); padding-left: 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.price { font-size: 28px; line-height: 1.1; font-weight: 800; font-variant-numeric: tabular-nums; }
+.opt { font-size: 14px; color: var(--muted); margin-top: -4px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 2px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 7px 4px; font-size: 13px; font-weight: 600; cursor: pointer; line-height: 1.2; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button + button { border-left: 2px solid var(--line); }
+.btn { border: 2px solid var(--accent); background: var(--accent); color: var(--accent-ink); border-radius: var(--r); padding: 11px 14px; font-weight: 700; cursor: pointer; min-height: 44px; width: 100%; }
+.btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn[disabled] { background: var(--surface-2); color: var(--muted); border-color: var(--line); cursor: not-allowed; }
+.btn.sec { background: transparent; color: var(--accent); }
+.btn.sec:hover { background: var(--accent-soft); }
+.packtoggle { display: flex; align-items: center; gap: 8px; border: 2px dashed var(--line); border-radius: var(--r); padding: 9px 10px; font-weight: 600; cursor: pointer; font-size: 14px; }
+.packtoggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+.packtoggle.on { border-style: solid; border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.packtoggle.off { opacity: .6; cursor: not-allowed; }
+.hint { font-size: 12px; color: var(--muted); }
+
+/* empty state */
+.empty { background: var(--surface); border: 1px dashed var(--line); border-radius: var(--r); padding: 28px; text-align: center; }
+.empty h2 { margin: 0 0 6px; font-size: 20px; }
+
+/* pack tray */
+.tray { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; box-shadow: var(--shadow-1); }
+@media (min-width: 1100px) { .tray { position: sticky; top: 16px; } }
+.tray h2 { margin: 0 0 8px; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.badge { background: var(--accent); color: var(--accent-ink); border-radius: 999px; min-width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; padding: 0 7px; }
+.tl { list-style: none; margin: 0; padding: 0; }
+.tl li { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 9px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; }
+.tl .amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+.tl .meta { color: var(--muted); font-size: 13px; }
+.tl button { grid-column: 1 / -1; justify-self: start; background: none; border: 0; color: var(--accent); text-decoration: underline; cursor: pointer; padding: 2px 0; font-size: 13px; min-height: 24px; }
+.total { display: flex; justify-content: space-between; font-size: 20px; font-weight: 800; padding: 12px 0 4px; font-variant-numeric: tabular-nums; }
+.note { font-size: 14px; color: var(--muted); margin: 4px 0 12px; }
+.note.warn { color: var(--warn); background: var(--warn-soft); padding: 8px 10px; border-radius: 8px; }
+.lock { display: flex; gap: 8px; font-size: 13px; color: var(--muted); margin-top: 10px; }
+.empty-tray { color: var(--muted); font-size: 14px; margin: 4px 0 12px; }
+
+/* mobile bottom bar */
+.bottom { display: none; }
+@media (max-width: 1099px) {
+  .bottom { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--surface); border-top: 2px solid var(--line); padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); gap: 12px; align-items: center; box-shadow: 0 -6px 18px rgba(23,32,43,.14); }
+  .bottom .txt { flex: 1; min-width: 0; font-size: 14px; }
+  .bottom .txt b { display: block; font-size: 18px; }
+  .bottom .btn { width: auto; padding-inline: 18px; }
+}
+
+/* how it works */
+.how { grid-column: 1 / -1; background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r); padding: 18px 20px; }
+.how h2 { margin: 0 0 12px; font-size: 18px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.steps li { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--muted); }
+.steps b { display: block; color: var(--text); font-size: 15px; }
+.stepno { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 800; }
+.foot { grid-column: 1 / -1; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); background: var(--header-bg); color: var(--header-ink); padding: 10px 16px; border-radius: var(--r); font-size: 14px; max-width: min(92vw, 520px); z-index: 30; box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+.toast[hidden] { display: none; }
+@media (max-width: 760px) {
+  .row { grid-template-columns: 56px minmax(0, 1fr); }
+  .cover { width: 56px; height: 76px; padding: 5px; } .cover b { font-size: 20px; } .cover small { display: none; }
+  .buy { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line-soft); padding: 12px 0 0; }
+  .why dl { grid-template-columns: 80px 64px minmax(0,1fr); }
+  .top-in { gap: 10px; }
+}
+@media (prefers-reduced-motion: no-preference) { .row { transition: border-color .15s; } }
+
+[hidden] { display: none !important; }
+/* ===== style switcher ===== */
+.styles { background: var(--surface); border-bottom: 1px solid var(--line-soft); color: var(--text); font-size: 14px; }
+.styles-in { max-width: 1240px; margin: 0 auto; padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px)); display: flex; gap: 10px 22px; flex-wrap: wrap; align-items: center; }
+.styles .grp { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.styles .lbl { font-weight: 700; color: var(--muted); margin-right: 2px; }
+.styles button { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 6px; padding: 7px 12px; font-weight: 600; cursor: pointer; }
+.styles button[aria-pressed="true"] { background: var(--text); color: var(--surface); border-color: var(--text); }
+.styles .desc { flex: 1 1 340px; margin: 0; color: var(--muted); }
+
+/* ===== shared: stepper, approval view ===== */
+.stepper { list-style: none; counter-reset: st; display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0 0 14px; padding: 0; font-size: 14px; color: var(--muted); }
+.stepper li { counter-increment: st; display: flex; align-items: center; gap: 8px; }
+.stepper li::before { content: counter(st); width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.stepper li.done::before { background: var(--text); border-color: var(--text); color: var(--surface); }
+.stepper li.now { color: var(--text); font-weight: 700; }
+.stepper li.now::before { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.stepper-wrap { display: none; }
+.page.two { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1100px) { .page.two { grid-template-columns: minmax(0, 1fr) 340px; } }
+.pay { background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r); padding: 16px 18px; margin-bottom: 14px; }
+.pay h2 { margin: 0 0 10px; font-size: 17px; }
+.pay h2 span { font-weight: 500; color: var(--muted); font-size: 14px; margin-left: 6px; }
+.pline { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.pline .cover { width: 56px; height: 76px; padding: 6px; } .pline .cover b { font-size: 20px; }
+.pline .amt { font-weight: 800; font-size: 18px; font-variant-numeric: tabular-nums; }
+.psub { display: flex; justify-content: space-between; border-top: 1px solid var(--line-soft); padding-top: 10px; font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); font-size: 14px; }
+.summary { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; box-shadow: var(--shadow-1); }
+@media (min-width: 1100px) { .summary { position: sticky; top: 16px; } }
+.summary h2 { margin: 0 0 8px; font-size: 18px; }
+.srow { display: flex; justify-content: space-between; padding: 4px 0; font-variant-numeric: tabular-nums; }
+.total2 { border-top: 1px solid var(--line-soft); margin-top: 6px; padding-top: 10px; font-size: 22px; font-weight: 800; }
+.notice { background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--r); padding: 10px 12px; font-size: 14px; margin: 12px 0; }
+.clock { font-size: 14px; color: var(--muted); margin: 0 0 10px; }
+.consent { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; font-weight: 600; margin-bottom: 12px; cursor: pointer; }
+.consent input { width: 20px; height: 20px; margin-top: 1px; accent-color: var(--accent); }
+.summary .btn { min-height: 52px; font-size: 16px; }
+
+/* ===== B Catalogue: cover cards, chips, floating pack bar (light only) ===== */
+:root[data-style="b"] { color-scheme: light; --bg: #eceff2; --surface: #ffffff; --surface-2: #e4e8ec; --text: #0f1720; --muted: #465362; --line: #78848f; --line-soft: #d3d9df; --accent: #0e6a64; --accent-hover: #0a5753; --accent-ink: #ffffff; --accent-soft: #def1ee; --header-bg: #ffffff; --header-ink: #0f1720; --header-muted: #465362; --good: #1b6b3a; --good-soft: #e4f3ea; --warn: #7a4b00; --warn-soft: #fcf0d9; --bad: #9b1c1c; --bad-soft: #fbe6e6; --focus: #b35c00; --shadow-1: 0 1px 2px rgba(15,23,32,.06); --r: 6px; }
+:root[data-style="b"] .top { border-bottom: 1px solid var(--line-soft); }
+:root[data-style="b"] .search { border-color: var(--line); }
+:root[data-style="b"] .search button { background: var(--accent); color: var(--accent-ink); }
+:root[data-style="b"] .nav a:hover { background: var(--surface-2); }
+:root[data-style="b"] .h0 { background: #1f3a5f; } :root[data-style="b"] .h1 { background: #0f5257; } :root[data-style="b"] .h2 { background: #5b3a29; }
+:root[data-style="b"] .h3 { background: #2f3e46; } :root[data-style="b"] .h4 { background: #7c4a03; } :root[data-style="b"] .h5 { background: #20573a; }
+:root[data-style="b"] .rail { display: none; }
+:root[data-style="b"] .bottom { display: none; }
+@media (min-width: 1100px) { :root[data-style="b"] .page:not(.two) { grid-template-columns: minmax(0, 1fr); } }
+:root[data-style="b"] h1 { font-weight: 800; letter-spacing: -0.02em; }
+:root[data-style="b"] .rows { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 16px; }
+:root[data-style="b"] .row { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0; overflow: hidden; align-content: start; }
+:root[data-style="b"] .row.in-pack { padding: 0; border: 2px solid var(--accent); }
+:root[data-style="b"] .cover { width: 100%; height: 112px; border-radius: 0; padding: 14px; flex-direction: row; align-items: flex-end; justify-content: space-between; gap: 10px; }
+:root[data-style="b"] .cover b { font-size: 34px; letter-spacing: -0.03em; }
+:root[data-style="b"] .cover small { font-size: 13px; text-align: right; max-width: 11ch; }
+:root[data-style="b"] .row > div:nth-child(2) { padding: 14px 16px 6px; }
+:root[data-style="b"] .abs { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+:root[data-style="b"] .topics, :root[data-style="b"] .why { display: none; }
+:root[data-style="b"] .buy { border-left: 0; border-top: 1px solid var(--line-soft); padding: 12px 16px 16px; }
+:root[data-style="b"] .tray { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; border-color: var(--text); box-shadow: 0 10px 30px rgba(15,23,32,.2); }
+:root[data-style="b"] .tray h2 { margin: 0; }
+:root[data-style="b"] .tray .tl, :root[data-style="b"] .tray .lock, :root[data-style="b"] .tray .empty-tray { display: none; }
+:root[data-style="b"] .tray .total { padding: 0; margin-left: auto; gap: 16px; }
+:root[data-style="b"] .tray .note { margin: 0; flex: 1 1 220px; }
+:root[data-style="b"] .tray .btn { width: auto; padding-inline: 24px; }
+
+/* ===== C Checkout first: one calm column, progress line, black actions (light only) ===== */
+:root[data-style="c"] { color-scheme: light; --bg: #f6f7f9; --surface: #ffffff; --surface-2: #eceff3; --text: #101418; --muted: #4c5662; --line: #7a8592; --line-soft: #e0e4e9; --accent: #0b4fd0; --accent-hover: #083fa6; --accent-ink: #ffffff; --accent-soft: #e8effc; --header-bg: #ffffff; --header-ink: #101418; --header-muted: #4c5662; --good: #1b6b3a; --good-soft: #e4f3ea; --warn: #7a4b00; --warn-soft: #fcf0d9; --bad: #9b1c1c; --bad-soft: #fbe6e6; --focus: #b35c00; --shadow-1: none; --r: 10px; }
+:root[data-style="c"] .top { border-bottom: 1px solid var(--line-soft); }
+:root[data-style="c"] .search { border-color: var(--line); border-width: 1px; }
+:root[data-style="c"] .search button { background: var(--text); color: #fff; }
+:root[data-style="c"] .nav a:hover { background: var(--surface-2); }
+:root[data-style="c"] .trust { display: none; }
+:root[data-style="c"] .stepper-wrap { display: block; background: var(--surface); border-bottom: 1px solid var(--line-soft); }
+:root[data-style="c"] .stepper-wrap .stepper { max-width: 1240px; margin: 0 auto; padding: 12px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px)); }
+:root[data-style="c"] .rail, :root[data-style="c"] .bottom { display: none; }
+:root[data-style="c"] .btn { background: var(--text); border-color: var(--text); color: #fff; border-radius: 8px; }
+:root[data-style="c"] .btn:hover { background: #2a3038; border-color: #2a3038; }
+:root[data-style="c"] .btn.sec { background: transparent; color: var(--text); }
+:root[data-style="c"] .btn[disabled] { background: var(--surface-2); color: var(--muted); border-color: var(--line-soft); }
+:root[data-style="c"] .seg button[aria-pressed="true"] { background: var(--text); color: #fff; }
+:root[data-style="c"] .row { border: 1px solid var(--line-soft); box-shadow: none; padding: 22px; gap: 24px; grid-template-columns: 72px minmax(0, 1fr) 200px; }
+:root[data-style="c"] .row.in-pack { border: 2px solid var(--text); padding: 21px; }
+:root[data-style="c"] .cover { width: 72px; height: 96px; border-radius: 6px; } :root[data-style="c"] .cover small { display: none; }
+:root[data-style="c"] .topics { display: none; }
+:root[data-style="c"] .title { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+:root[data-style="c"] .price { font-size: 26px; }
+:root[data-style="c"] .rows { gap: 12px; }
+:root[data-style="c"] .packtoggle.on { background: var(--surface-2); color: var(--text); border-color: var(--text); }
+:root[data-style="c"] .band.good, :root[data-style="c"] .band.strong { background: var(--surface-2); color: var(--text); }
+:root[data-style="c"] .summary, :root[data-style="c"] .tray { box-shadow: none; border-color: var(--line-soft); }
+:root[data-style="c"] .total2 { font-size: 24px; }
+@media (min-width: 1100px) { :root[data-style="c"] .page:not(.two) { grid-template-columns: minmax(0, 1fr) 320px; } }
+@media (max-width: 760px) {
+  :root[data-style="c"] .row { grid-template-columns: 56px minmax(0, 1fr); }
+  :root[data-style="c"] .cover { width: 56px; height: 76px; }
+  .pline { grid-template-columns: 48px minmax(0, 1fr); } .pline .amt { grid-column: 2; }
+  .stepper { gap: 6px 12px; font-size: 13px; }
+}
+
+/* approval line tile and single progress line, same in every style */
+:root[data-style] .pline .cover { width: 56px; height: 76px; border-radius: 6px; padding: 6px; flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+:root[data-style] .pline .cover b { font-size: 20px; letter-spacing: -0.02em; }
+:root[data-view="approval"] .stepper-wrap { display: none; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4h4v16H5zM10 4h4v16h-4zM15.5 5l3.8-1 3 15.5-3.8 1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1-1.5 2.2M12 17v.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 11V8a4 4 0 018 0v3" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5zM3.5 7.5L12 12l8.5-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7.5" cy="8.5" r="1.3" fill="currentColor"/></symbol>
+</svg>
+
+<div class="proto"><b>Design options, not the live app.</b> The same real articles and prices, shown three ways. Nothing here charges anyone.</div>
+<div class="styles"><div class="styles-in">
+  <div class="grp" role="group" aria-label="Style"><span class="lbl">Style</span>
+    <button type="button" data-style-btn="a" aria-pressed="true">A Marketplace</button>
+    <button type="button" data-style-btn="b" aria-pressed="false">B Catalogue</button>
+    <button type="button" data-style-btn="c" aria-pressed="false">C Checkout first</button></div>
+  <div class="grp" role="group" aria-label="Screen"><span class="lbl">Screen</span>
+    <button type="button" data-view-btn="results" aria-pressed="true">Find articles</button>
+    <button type="button" data-view-btn="approval" aria-pressed="false">Approve a pack</button></div>
+  <p class="desc" id="styledesc"></p>
+</div></div>
+
+<header class="top"><div class="top-in">
+  <a class="brand" href="#" aria-label="UnitMarket home">UnitMarket</a>
+  <form class="search" role="search" id="searchform"><label class="sr" for="q">Search articles</label>
+    <input id="q" type="search" value="tide table quay walk" autocomplete="off">
+    <button type="submit"><svg width="20" height="20"><use href="#i-search"/></svg>Search</button></form>
+  <nav class="nav" aria-label="Main">
+    <a href="#"><svg width="20" height="20"><use href="#i-book"/></svg>Your library</a>
+    <a href="#"><svg width="20" height="20"><use href="#i-help"/></svg>Help</a>
+    <span class="pill">Sandbox</span>
+    <button class="theme" id="theme" type="button" aria-label="Switch light or dark theme">Light / dark</button>
+  </nav>
+</div></header>
+
+<div class="trust"><div class="trust-in">
+  <span><svg width="18" height="18"><use href="#i-lock"/></svg>You pay nothing until you approve at the payment step</span>
+  <span><svg width="18" height="18"><use href="#i-clock"/></svg>Five days of access from the moment payment is confirmed</span>
+  <span><svg width="18" height="18"><use href="#i-tag"/></svg>Pay once. No subscription.</span>
+</div></div>
+
+<div class="stepper-wrap" id="gstep"><ol class="stepper" aria-label="Where you are in buying">
+  <li class="now" aria-current="step">Choose</li><li>Review</li><li>Pay at PayPal</li><li>Read in your library</li></ol></div>
+
+<main class="page" id="main">
+  <button class="chip filter-toggle" id="ftoggle" type="button" aria-expanded="false" aria-controls="rail">Filters</button>
+
+  <aside class="rail" id="rail" aria-label="Filters"></aside>
+
+  <section aria-labelledby="h">
+    <div class="crumbs">Home &rsaquo; Find articles</div>
+    <h1 id="h">Articles for your need</h1>
+    <p class="sub">The cards are advice. You choose.</p>
+
+    <div class="bar">
+      <div class="grow" id="count" role="status" aria-live="polite"></div>
+      <label for="sort" class="sr">Sort by</label>
+      <select id="sort"><option value="fit">Sort: best fit</option><option value="low">Sort: price, low to high</option><option value="high">Sort: price, high to low</option><option value="new">Sort: newest</option></select>
+      <button class="chip" type="button" data-opt="online_read" aria-pressed="false">Read online</button>
+      <button class="chip" type="button" data-opt="keep_retrieve" aria-pressed="false">Download and keep</button>
+    </div>
+
+    <div class="terms" id="terms">
+      <label for="tick"><input type="checkbox" id="tick"><span>I accept the terms of purchase for the article I choose.</span></label>
+      <details><summary>What the terms say</summary><p>Personal use only. No redistribution. Five days of access starting when payment is confirmed. The price and these terms are held for 15 minutes once you start to buy, and you can renew that on the next page.</p></details>
+      <p class="err" role="alert">Tick the terms first. They apply to the article you choose.</p>
+    </div>
+
+    <div class="rows" id="rows"></div>
+  </section>
+
+  <aside class="tray" id="tray" aria-label="Your pack"></aside>
+
+  <section class="how" aria-labelledby="hw">
+    <h2 id="hw">How buying works</h2>
+    <ol class="steps">
+      <li><span class="stepno">1</span><span><b>Choose</b>Pick one article, or tick two or more to buy together.</span></li>
+      <li><span class="stepno">2</span><span><b>Review</b>See the price, the terms and who gets paid. Nothing is charged here.</span></li>
+      <li><span class="stepno">3</span><span><b>Approve at PayPal</b>One approval on PayPal's own page for each publisher.</span></li>
+      <li><span class="stepno">4</span><span><b>Read in your library</b>Your items open at once and stay for five days.</span></li>
+    </ol>
+  </section>
+  <p class="foot">Sandbox build for testing. Test payments only: no real money moves and nothing here is a live payment.</p>
+</main>
+
+
+<main class="page two" id="approval" hidden>
+  <section aria-labelledby="ah">
+    <ol class="stepper" aria-label="Where you are in buying"><li class="done">Choose</li><li class="now" aria-current="step">Review</li><li>Pay at PayPal</li><li>Read in your library</li></ol>
+    <h1 id="ah">Approve your purchase</h1>
+    <p class="sub">Check the details. You pay nothing until you approve at the payment step.</p>
+    <div class="pay">
+      <h2>Payment 1 of 2 <span>to Harbour Ledger Review (fictional)</span></h2>
+      <div class="pline"><div class="cover h0" aria-hidden="true"><b>HL</b></div>
+        <div><b>Reading a tide table in ten minutes</b><br><span class="muted">Download and keep. 5 days to download your copy; it is yours to keep.</span></div><div class="amt">$0.40</div></div>
+      <div class="psub"><span>Subtotal for Harbour Ledger Review</span><b>$0.40</b></div>
+    </div>
+    <div class="pay">
+      <h2>Payment 2 of 2 <span>to Quayside Gazette (fictional)</span></h2>
+      <div class="pline"><div class="cover h1" aria-hidden="true"><b>QG</b></div>
+        <div><b>A morning walk along the old quay</b><br><span class="muted">Download and keep. 5 days to download your copy; it is yours to keep.</span></div><div class="amt">$0.90</div></div>
+      <div class="psub"><span>Subtotal for Quayside Gazette</span><b>$0.90</b></div>
+    </div>
+    <div class="pay"><h2>Terms</h2><p class="muted">Personal use only. No redistribution. Five days of access starting when payment is confirmed. The price and these terms are held for 15 minutes once you start to buy.</p></div>
+  </section>
+  <aside class="summary" aria-label="Order summary">
+    <h2>Order summary</h2>
+    <div class="srow"><span>2 articles</span><span>$1.30</span></div>
+    <div class="srow total2"><span>Total</span><span>$1.30</span></div>
+    <p class="notice">You will approve 2 payments at PayPal, one for each publisher. You are charged only after you have approved both.</p>
+    <p class="clock"><b>14:48</b> to approve this price (example)</p>
+    <label class="consent"><input type="checkbox" id="aconsent"><span>I confirm the price and terms above, and that I accepted them on the previous step.</span></label>
+    <button class="btn" type="button" id="acontinue" disabled>Continue to payment</button>
+    <div class="lock"><svg width="18" height="18"><use href="#i-lock"/></svg><span>You approve each payment on PayPal's own page. Nothing is taken on this page.</span></div>
+  </aside>
+</main>
+
+<div class="bottom" id="bottom"></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(function () {
+  var NOW = new Date('2026-10-29T12:00:00Z');
+  var PUB = {
+    'harbour-ledger': { name: 'Harbour Ledger Review (fictional)', short: 'Harbour Ledger Review', ini: 'HL', hue: 0, cur: 'USD' },
+    'quayside-gazette': { name: 'Quayside Gazette (fictional)', short: 'Quayside Gazette', ini: 'QG', hue: 1, cur: 'USD' },
+    'northfield-quarterly': { name: 'Northfield Quarterly (fictional)', short: 'Northfield Quarterly', ini: 'NQ', hue: 3, cur: 'GBP' }
+  };
+  var A = [
+    ['tide-tables','harbour-ledger','Reading a tide table in ten minutes','A short guide to the columns of a coastal tide table and what they mean for a day on the water.',['sailing','navigation'],'2025-11-03',{online_read:40,keep_retrieve:40}],
+    ['ferry-timetables','harbour-ledger','Why ferry timetables slip in winter','Four small causes of winter delays on short coastal ferry routes, from tides to crew rotas.',['transport','maritime'],'2025-11-10',{online_read:125,keep_retrieve:125}],
+    ['harbour-fees','harbour-ledger','What a small harbour charges and why','A plain-language walk through mooring, berthing and water fees at a small working harbour.',['harbours','costs'],'2025-11-17',{online_read:250,keep_retrieve:300}],
+    ['knot-notebook','harbour-ledger','A notebook of six working knots','Six knots a small-boat sailor uses weekly, with the one mistake that spoils each.',['sailing','skills'],'2025-11-24',{online_read:450,keep_retrieve:450}],
+    ['market-hall-move','quayside-gazette','Why the quayside market moved indoors','A short account of an invented market that left the open quay for a covered hall, and what its traders say changed.',['markets','local'],'2025-12-15',{online_read:120,keep_retrieve:150}],
+    ['quay-walk','quayside-gazette','A morning walk along the old quay','A short walking route past four invented landmarks, with what each was built to do.',['walking','history'],'2025-12-22',{online_read:90,keep_retrieve:90}],
+    ['allotment-diary','northfield-quarterly','An allotment diary for a cold March','Week-by-week notes from an invented allotment on what to sow under cover and what to leave alone.',['gardening','seasonal'],'2025-11-05',{online_read:150,keep_retrieve:150}],
+    ['village-bus','northfield-quarterly','How a village bus route is saved','A case study of an invented rural bus route kept alive by a parish scheme.',['transport','community'],'2025-11-12',{online_read:90,keep_retrieve:90}]
+  ].map(function (r) { return { id: r[0], pub: r[1], title: r[2], abs: r[3], topics: r[4], date: r[5], price: r[6] }; });
+  var OPT = { online_read: 'Read online', keep_retrieve: 'Download and keep' };
+  var DAYS = { online_read: '5 days to read', keep_retrieve: '5 days to download your copy' };
+  var S = { q: 'tide table quay walk', sort: 'fit', opt: null, pubs: {}, price: 'any', topics: {}, pack: {}, chosen: {}, showAll: false, filtersOpen: false };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function money(minor, cur) { return (cur === 'GBP' ? '£' : '$') + (minor / 100).toFixed(2); }
+  function months(d) { var x = new Date(d + 'T00:00:00Z'); return Math.max(0, (NOW.getUTCFullYear() - x.getUTCFullYear()) * 12 + NOW.getUTCMonth() - x.getUTCMonth()); }
+  function tokens(q) { return q.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 3; }); }
+  function hay(a) { return (a.title + ' ' + a.abs + ' ' + a.topics.join(' ') + ' ' + PUB[a.pub].short).toLowerCase(); }
+  function fit(a) {
+    var t = tokens(S.q); if (!t.length) return { k: 0, n: 0, band: null };
+    var h = hay(a), k = t.filter(function (w) { return h.indexOf(w) >= 0; }).length;
+    var r = k / t.length;
+    return { k: k, n: t.length, band: k === 0 ? null : r >= 0.75 ? 'strong' : r >= 0.5 ? 'good' : 'partial', tokens: t, h: h };
+  }
+  function optOf(a) { return S.chosen[a.id] || S.opt || (a.price.online_read <= a.price.keep_retrieve ? 'online_read' : 'keep_retrieve'); }
+
+  function visible() {
+    var list = A.map(function (a) { return { a: a, f: fit(a) }; });
+    if (tokens(S.q).length && !S.showAll) list = list.filter(function (x) { return x.f.k > 0; });
+    var pubsOn = Object.keys(S.pubs).filter(function (k) { return S.pubs[k]; });
+    if (pubsOn.length) list = list.filter(function (x) { return pubsOn.indexOf(x.a.pub) >= 0; });
+    var tops = Object.keys(S.topics).filter(function (k) { return S.topics[k]; });
+    if (tops.length) list = list.filter(function (x) { return x.a.topics.some(function (t) { return tops.indexOf(t) >= 0; }); });
+    if (S.price !== 'any') list = list.filter(function (x) {
+      var p = x.a.price[optOf(x.a)];
+      return S.price === 'u1' ? p < 100 : S.price === 'm' ? p >= 100 && p <= 300 : p > 300;
+    });
+    var s = S.sort;
+    list.sort(function (x, y) {
+      var px = x.a.price[optOf(x.a)], py = y.a.price[optOf(y.a)];
+      if (s === 'low') return px - py; if (s === 'high') return py - px;
+      if (s === 'new') return y.a.date < x.a.date ? -1 : 1;
+      return (y.f.k - x.f.k) || (y.a.date < x.a.date ? -1 : 1);
+    });
+    return list;
+  }
+
+  function renderRail() {
+    var pubCount = {}; A.forEach(function (a) { pubCount[a.pub] = (pubCount[a.pub] || 0) + 1; });
+    var tops = {}; A.forEach(function (a) { a.topics.forEach(function (t) { tops[t] = (tops[t] || 0) + 1; }); });
+    var h = '<h2>Publisher</h2>';
+    Object.keys(PUB).forEach(function (k) {
+      h += '<label><input type="checkbox" data-pub="' + k + '"' + (S.pubs[k] ? ' checked' : '') + '>' + esc(PUB[k].short) + '<span class="count">' + pubCount[k] + '</span></label>';
+    });
+    h += '<h2>Price</h2>';
+    [['any', 'Any price'], ['u1', 'Under $1'], ['m', '$1 to $3'], ['o', 'Over $3']].forEach(function (p) {
+      h += '<label><input type="radio" name="price" value="' + p[0] + '"' + (S.price === p[0] ? ' checked' : '') + '>' + p[1] + '</label>';
+    });
+    h += '<h2>Topic</h2>';
+    Object.keys(tops).sort().forEach(function (t) {
+      h += '<label><input type="checkbox" data-topic="' + t + '"' + (S.topics[t] ? ' checked' : '') + '>' + esc(t) + '<span class="count">' + tops[t] + '</span></label>';
+    });
+    h += '<button class="clear" type="button" id="clear">Clear all filters</button>';
+    $('rail').innerHTML = h;
+  }
+
+  function packInfo() {
+    var ids = Object.keys(S.pack).filter(function (k) { return S.pack[k]; });
+    var items = ids.map(function (id) { return A.filter(function (a) { return a.id === id; })[0]; });
+    var pubs = {}, cur = {}; items.forEach(function (a) { pubs[a.pub] = 1; cur[PUB[a.pub].cur] = 1; });
+    var total = items.reduce(function (s, a) { return s + a.price[optOf(a)]; }, 0);
+    return { items: items, pubN: Object.keys(pubs).length, pubs: pubs, cur: Object.keys(cur)[0] || 'USD', total: total };
+  }
+  function canAdd(a, info) {
+    if (S.pack[a.id]) return { ok: true };
+    if (info.items.length && PUB[a.pub].cur !== info.cur) return { ok: false, why: 'A pack uses one currency.' };
+    if (!info.pubs[a.pub] && info.pubN >= 2) return { ok: false, why: 'A pack holds up to 2 publishers.' };
+    return { ok: true };
+  }
+
+  function renderRows() {
+    var list = visible(), info = packInfo();
+    $('count').innerHTML = '<b>' + list.length + '</b> of ' + A.length + ' articles' + (S.q.trim() ? ' for “' + esc(S.q.trim()) + '”' : '');
+    if (!list.length) {
+      $('rows').innerHTML = '<div class="empty"><h2>No article matches those words</h2><p>Try fewer words, or browse the whole catalogue. Nothing is hidden from you.</p><button class="btn" style="max-width:280px" type="button" id="browse">Browse all ' + A.length + ' articles</button></div>';
+      return;
+    }
+    var h = '';
+    list.forEach(function (x) {
+      var a = x.a, f = x.f, p = PUB[a.pub], o = optOf(a), cur = p.cur, add = canAdd(a, info), inpack = !!S.pack[a.id];
+      var bandText = f.band ? { strong: 'Strong fit', good: 'Good fit', partial: 'Partial fit' }[f.band] : '';
+      var summary = f.n ? 'Matches ' + f.k + ' of ' + f.n + ' of your words · ' + months(a.date) + ' months old' : months(a.date) + ' months old';
+      var why = '';
+      if (f.n) {
+        var dots = function (k, n) { var d = Math.round(3 * k / n); return '●'.repeat(d) + '○'.repeat(3 - d); };
+        why = '<details class="why"><summary>Why this fit</summary><dl>' +
+          '<dt>Topic</dt><dd class="dots" aria-hidden="true">' + dots(f.k, f.n) + '</dd><dd>' + (f.k >= f.n * .75 ? 'strong' : f.k >= f.n * .5 ? 'good' : 'weak') + ': ' + f.k + ' of ' + f.n + ' terms</dd>' +
+          '<dt>Recency</dt><dd class="dots" aria-hidden="true">' + (months(a.date) < 6 ? '●●●' : '●●○') + '</dd><dd>' + months(a.date) + ' months old</dd>' +
+          '<dt>Budget</dt><dd class="dots" aria-hidden="true">○○○</dd><dd>not assessed: no ceiling given</dd>' +
+          '<dt>Access</dt><dd class="dots" aria-hidden="true">○○○</dd><dd>not assessed: no access option asked for</dd></dl></details>';
+      }
+      h += '<article class="row' + (inpack ? ' in-pack' : '') + '" data-id="' + a.id + '">' +
+        '<div class="cover h' + p.hue + '" aria-hidden="true"><b>' + p.ini + '</b><small>' + esc(p.short) + '</small></div>' +
+        '<div><h3 class="title"><a href="#" data-open="' + a.id + '">' + esc(a.title) + '</a></h3>' +
+        '<div class="by">' + esc(p.name) + '</div><p class="abs">' + esc(a.abs) + '</p>' +
+        '<div class="topics">' + a.topics.map(function (t) { return '<span class="topic">' + esc(t) + '</span>'; }).join('') + '</div>' +
+        '<div class="fit">' + (bandText ? '<span class="band ' + f.band + '">' + bandText + '</span>' : '') + '<span>' + summary + '</span></div>' + why + '</div>' +
+        '<div class="buy"><div class="price">' + money(a.price[o], cur) + '</div><div class="opt">' + OPT[o] + ' · ' + DAYS[o] + '</div>' +
+        '<div class="seg" role="group" aria-label="Access option for ' + esc(a.title) + '">' +
+          ['online_read', 'keep_retrieve'].map(function (k) { return '<button type="button" data-seg="' + a.id + '" data-o="' + k + '" aria-pressed="' + (o === k) + '">' + OPT[k] + '<br>' + money(a.price[k], cur) + '</button>'; }).join('') + '</div>' +
+        '<button class="btn" type="button" data-choose="' + a.id + '">Choose this article</button>' +
+        '<label class="packtoggle' + (inpack ? ' on' : '') + (add.ok ? '' : ' off') + '"><input type="checkbox" data-pack="' + a.id + '"' + (inpack ? ' checked' : '') + (add.ok ? '' : ' disabled') + '>' + (inpack ? 'In your pack' : 'Add to pack') + '<span class="sr"> ' + esc(a.title) + '</span></label>' +
+        (add.ok ? '' : '<span class="hint">' + add.why + '</span>') + '</div></article>';
+    });
+    $('rows').innerHTML = h;
+  }
+
+  function renderTray() {
+    var info = packInfo(), n = info.items.length, ok = n >= 2;
+    var h = '<h2><svg width="22" height="22"><use href="#i-box"/></svg>Your pack <span class="badge">' + n + '</span></h2>';
+    if (!n) h += '<p class="empty-tray">Tick “Add to pack” on two or more articles to buy them together. Each publisher is paid separately.</p>';
+    else {
+      h += '<ul class="tl">' + info.items.map(function (a) {
+        return '<li><span>' + esc(a.title) + '<br><span class="meta">' + esc(PUB[a.pub].short) + ' · ' + OPT[optOf(a)] + '</span></span><span class="amt">' + money(a.price[optOf(a)], PUB[a.pub].cur) + '</span><button type="button" data-remove="' + a.id + '">Remove<span class="sr"> ' + esc(a.title) + '</span></button></li>';
+      }).join('') + '</ul><div class="total"><span>' + n + ' article' + (n === 1 ? '' : 's') + '</span><span>' + money(info.total, info.cur) + '</span></div>';
+      h += '<p class="note ' + (ok ? '' : 'warn') + '">' + (ok ? (info.pubN === 1 ? '1 publisher, so 1 PayPal payment.' : info.pubN + ' publishers, so ' + info.pubN + ' PayPal payments, one for each publisher. You are charged only after you have approved both.') : 'Select two or more articles to buy them together.') + '</p>';
+    }
+    h += '<button class="btn" type="button" id="buy"' + (ok ? '' : ' disabled') + '>Buy selected together</button>' +
+      '<div class="lock"><svg width="18" height="18"><use href="#i-lock"/></svg><span>You pay nothing until you approve at the payment step.</span></div>';
+    $('tray').innerHTML = h;
+    $('bottom').innerHTML = '<div class="txt"><b>' + (n ? money(info.total, info.cur) : 'Your pack') + '</b>' + (n ? n + ' article' + (n === 1 ? '' : 's') + ' · ' + info.pubN + ' payment' + (info.pubN === 1 ? '' : 's') : 'Nothing selected yet') + '</div><button class="btn" type="button" id="buy2"' + (ok ? '' : ' disabled') + '>Buy together</button>';
+  }
+
+  function render() { renderRail(); renderRows(); renderTray(); }
+  function toast(msg) { var t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { t.hidden = true; }, 4200); }
+  function needTerms() {
+    if ($('tick').checked) return false;
+    $('terms').classList.add('need'); $('tick').focus(); return true;
+  }
+  $('tick').addEventListener('change', function () { if (this.checked) $('terms').classList.remove('need'); });
+
+  $('searchform').addEventListener('submit', function (e) { e.preventDefault(); S.q = $('q').value; S.showAll = false; render(); });
+  $('q').addEventListener('input', function () { S.q = this.value; S.showAll = false; renderRows(); });
+  $('sort').addEventListener('change', function () { S.sort = this.value; renderRows(); });
+  document.querySelectorAll('.bar .chip').forEach(function (c) {
+    c.addEventListener('click', function () {
+      var o = c.getAttribute('data-opt'); S.opt = S.opt === o ? null : o;
+      document.querySelectorAll('.bar .chip').forEach(function (d) { d.setAttribute('aria-pressed', String(S.opt === d.getAttribute('data-opt'))); });
+      S.chosen = {}; render();
+    });
+  });
+  $('ftoggle').addEventListener('click', function () {
+    S.filtersOpen = !S.filtersOpen; $('rail').hidden = !S.filtersOpen; this.setAttribute('aria-expanded', String(S.filtersOpen));
+  });
+  function syncRail() { if (window.innerWidth >= 1100) { $('rail').hidden = false; } else { $('rail').hidden = !S.filtersOpen; } }
+  window.addEventListener('resize', syncRail);
+
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.matches('[data-pub]')) { S.pubs[t.getAttribute('data-pub')] = t.checked; renderRows(); }
+    else if (t.matches('[data-topic]')) { S.topics[t.getAttribute('data-topic')] = t.checked; renderRows(); }
+    else if (t.name === 'price') { S.price = t.value; renderRows(); }
+    else if (t.matches('[data-pack]')) { S.pack[t.getAttribute('data-pack')] = t.checked; renderRows(); renderTray(); }
+  });
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('button, a'); if (!t) return;
+    if (t.matches('[data-seg]')) { S.chosen[t.getAttribute('data-seg')] = t.getAttribute('data-o'); renderRows(); renderTray(); }
+    else if (t.matches('[data-choose]')) { e.preventDefault(); if (!needTerms()) toast('In the real app this opens the approval page for one article. Nothing is charged here.'); }
+    else if (t.matches('[data-open]')) { e.preventDefault(); toast('In the real app the title opens the offer page, so you can read the abstract before you choose.'); }
+    else if (t.matches('[data-remove]')) { S.pack[t.getAttribute('data-remove')] = false; renderRows(); renderTray(); }
+    else if (t.id === 'clear') { S.pubs = {}; S.topics = {}; S.price = 'any'; S.opt = null; S.showAll = false; document.querySelectorAll('.bar .chip').forEach(function (d) { d.setAttribute('aria-pressed', 'false'); }); render(); }
+    else if (t.id === 'browse') { S.showAll = true; renderRows(); }
+    else if (t.id === 'buy' || t.id === 'buy2') { if (!needTerms()) toast('In the real app this opens the pack approval page with one panel per publisher. Nothing is charged here.'); }
+  });
+  $('theme').addEventListener('click', function () {
+    var r = document.documentElement, dark = r.getAttribute('data-theme') === 'dark' || (!r.getAttribute('data-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    r.setAttribute('data-theme', dark ? 'light' : 'dark');
+  });
+  S.pack['tide-tables'] = true; S.pack['quay-walk'] = true;
+  syncRail(); render();
+})();
+</script>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var DESC = {
+    a: 'Marketplace. Dense and familiar: filters on the left, result rows, a running pack tray. Best for buyers who compare. Follows the light or dark theme.',
+    b: 'Catalogue. Cover cards in a grid, filters as chips, a pack bar that follows you down the page. Best for browsing. Light theme only for now.',
+    c: 'Checkout first. One calm column, a visible progress line, plain black actions. Best for a short, confident buy. Light theme only for now.'
+  };
+  function setStyle(k) {
+    root.setAttribute('data-style', k);
+    document.querySelectorAll('[data-style-btn]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-style-btn') === k)); });
+    document.getElementById('styledesc').textContent = DESC[k];
+    try { localStorage.setItem('um-style', k); } catch (e) { /* no storage */ }
+  }
+  function setView(v) {
+    root.setAttribute('data-view', v);
+    document.getElementById('main').hidden = v !== 'results';
+    document.getElementById('approval').hidden = v !== 'approval';
+    document.querySelectorAll('[data-view-btn]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-view-btn') === v)); });
+  }
+  document.querySelectorAll('[data-style-btn]').forEach(function (b) { b.addEventListener('click', function () { setStyle(b.getAttribute('data-style-btn')); }); });
+  document.querySelectorAll('[data-view-btn]').forEach(function (b) { b.addEventListener('click', function () { setView(b.getAttribute('data-view-btn')); }); });
+  var c = document.getElementById('aconsent'), go = document.getElementById('acontinue');
+  c.addEventListener('change', function () { go.disabled = !c.checked; });
+  go.addEventListener('click', function () {
+    var t = document.getElementById('toast'); t.textContent = 'In the real app this opens the first PayPal page. Nothing is charged here.'; t.hidden = false; setTimeout(function () { t.hidden = true; }, 4200);
+  });
+  var start = 'a'; try { start = localStorage.getItem('um-style') || 'a'; } catch (e) { /* no storage */ }
+  setStyle(['a', 'b', 'c'].indexOf(start) >= 0 ? start : 'a');
+})();
+</script>
