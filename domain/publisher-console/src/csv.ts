@@ -95,3 +95,31 @@ export function statementCsv(statement: PublisherStatement): string {
   }
   return out;
 }
+
+/** The most rows one file holds. The files are small; a publisher over the cap is told so on the page. */
+export const CSV_ROW_CAP = 5000;
+
+/** The sales file with at most CSV_ROW_CAP rows; `truncated` says rows were left out (newest first). */
+export function salesExport(rows: readonly SaleRow[]): { csv: string; truncated: boolean } {
+  const paid = rows.filter((r) => !NOT_A_SALE.includes(r.status));
+  return { csv: salesCsv(paid.slice(0, CSV_ROW_CAP)), truncated: paid.length > CSV_ROW_CAP };
+}
+
+/**
+ * The statement file with at most CSV_ROW_CAP lines in all (oldest first, block by block). The totals of
+ * each block still cover every stored row; only the listed lines are cut.
+ */
+export function statementExport(statement: PublisherStatement): {
+  csv: string;
+  truncated: boolean;
+} {
+  let budget = CSV_ROW_CAP;
+  let truncated = false;
+  const blocks = statement.blocks.map((b) => {
+    const lines = b.lines.slice(0, budget);
+    if (lines.length < b.lines.length) truncated = true;
+    budget -= lines.length;
+    return { ...b, lines };
+  });
+  return { csv: statementCsv({ ...statement, blocks }), truncated };
+}

@@ -17,7 +17,16 @@ export { COMMISSION_LINE, SETTLEMENT_SENTENCE, settlementMode } from './settleme
 export type { Settlement, SettlementFacts, SettlementMode } from './settlement';
 export { publisherExposure } from './exposure';
 export type { ExposureBlock, PublisherExposure, PublisherStatusValue } from './exposure';
-export { csvCell, csvLine, decimalText, salesCsv, statementCsv } from './csv';
+export {
+  CSV_ROW_CAP,
+  csvCell,
+  csvLine,
+  decimalText,
+  salesCsv,
+  salesExport,
+  statementCsv,
+  statementExport,
+} from './csv';
 export { refundsFor } from './refunds';
 export type { RefundRow } from './refunds';
 export { countsSince } from './since';

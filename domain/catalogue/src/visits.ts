@@ -1,5 +1,5 @@
 // The visit cursor of a publisher (PUB-E1, "Since your last visit"): one row per publisher in
-// publisher_visits (migration 0013). It remembers when the publisher last opened its home page and the
+// publisher_visits (migration 0014). It remembers when the publisher last opened its home page and the
 // instant the page counts changes from. The only writer of that table, and only for the actor's own row.
 //
 // A visit more than the gap after the last one is a new visit: the instant to count from becomes the

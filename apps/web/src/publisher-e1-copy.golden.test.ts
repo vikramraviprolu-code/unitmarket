@@ -15,6 +15,7 @@ function lines(): string[] {
   out.push(`export: ${copy.EXPORT_SALES_LABEL} | ${copy.EXPORT_STATEMENT_LABEL}`);
   out.push(`export hrefs: ${copy.EXPORT_SALES_HREF} | ${copy.EXPORT_STATEMENT_HREF}`);
   out.push(`export note: ${copy.EXPORT_NOTE}`);
+  out.push(`export messages: ${copy.EXPORT_FAILED} | ${copy.EXPORT_TRUNCATED}`);
   out.push(`refunds heading: ${copy.REFUNDS_HEADING}`);
   out.push(`refunds lede: ${copy.REFUNDS_LEDE}`);
   out.push(`refunds columns: ${Object.values(copy.REFUNDS_COLUMNS).join(' | ')}`);

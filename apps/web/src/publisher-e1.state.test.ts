@@ -56,33 +56,33 @@ const getExport = (kind: string, session = harbour()) =>
   call(exportRoute.GET as Handler, { url: `/api/publisher/export?kind=${kind}`, session });
 
 describe('CSV export', () => {
-  it('sends the statement as an attachment with the right headers and lines', async () => {
+  const body = async (res: Response) =>
+    (await res.json()) as { filename: string; csv: string; truncated: boolean };
+
+  it('answers the statement as JSON with the file name and the lines', async () => {
     const res = await getExport('statement');
     expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toBe('text/csv; charset=utf-8');
-    expect(res.headers.get('content-disposition')).toBe(
-      'attachment; filename="unitmarket-statement.csv"',
-    );
+    expect(res.headers.get('content-type')).toContain('application/json');
     expect(res.headers.get('cache-control')).toContain('no-store');
-    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
-    const text = await res.text();
-    const lines = text.split('\r\n');
+    const b = await body(res);
+    expect(b.filename).toBe('unitmarket-statement.csv');
+    expect(b.truncated).toBe(false);
+    const lines = b.csv.split('\r\n');
     expect(lines[0]).toBe('date,order_ref_last6,kind,currency,amount_minor,amount,environment');
-    expect(text).toContain(`,${whole.order_ref.slice(-6)},sale,USD,${String(whole.amount_minor)},`);
-    expect(text).toContain(
+    expect(b.csv).toContain(
+      `,${whole.order_ref.slice(-6)},sale,USD,${String(whole.amount_minor)},`,
+    );
+    expect(b.csv).toContain(
       `,${whole.order_ref.slice(-6)},refund,USD,${String(whole.amount_minor)},`,
     );
-    expect(text).toContain(',,total_net,USD,');
-    expect(text).toContain(',dryrun');
+    expect(b.csv).toContain(',,total_net,USD,');
+    expect(b.csv).toContain(',dryrun');
   });
 
-  it('sends the sales with one row per paid unit and the last 6 of each order ref', async () => {
-    const res = await getExport('sales');
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-disposition')).toBe(
-      'attachment; filename="unitmarket-sales.csv"',
-    );
-    const lines = (await res.text()).split('\r\n').filter((l) => l !== '');
+  it('answers the sales with one row per paid unit and the last 6 of each order ref', async () => {
+    const b = await body(await getExport('sales'));
+    expect(b.filename).toBe('unitmarket-sales.csv');
+    const lines = b.csv.split('\r\n').filter((l) => l !== '');
     expect(lines).toHaveLength(1 + 3);
     for (const u of [whole, part, plain]) {
       expect(lines.some((l) => l.includes(`,${u.order_ref.slice(-6)},`))).toBe(true);
@@ -102,7 +102,7 @@ describe('CSV export', () => {
   it('gives another publisher an empty file, never the first publisher’s rows', async () => {
     const res = await getExport('sales', w.pub['quayside-gazette']);
     expect(res.status).toBe(200);
-    expect((await res.text()).split('\r\n').filter((l) => l !== '')).toHaveLength(1);
+    expect((await body(res)).csv.split('\r\n').filter((l) => l !== '')).toHaveLength(1);
     const st = await (await getExport('statement', w.pub['quayside-gazette'])).text();
     expect(st).not.toContain(whole.order_ref.slice(-6));
   });
@@ -125,6 +125,17 @@ describe('CSV export', () => {
     let last = 200;
     for (let i = 0; i < 11; i++) last = (await getExport('sales')).status;
     expect(last).toBe(429);
+  });
+
+  it('the pages offer the download through the button component, not a link to the file', () => {
+    for (const p of ['./app/publisher/sales/page.tsx', './app/publisher/statement/page.tsx']) {
+      const src = read(p);
+      expect(src).toContain('<DownloadCsv');
+      expect(src).not.toMatch(/<a [^>]*download/);
+    }
+    const btn = read('./app/publisher/DownloadCsv.tsx');
+    expect(btn).toContain('getJson');
+    expect(btn).not.toMatch(/publisher_id|style=/);
   });
 });
 

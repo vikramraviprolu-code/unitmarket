@@ -9,6 +9,9 @@ export const EXPORT_SALES_HREF = '/api/publisher/export?kind=sales';
 export const EXPORT_STATEMENT_HREF = '/api/publisher/export?kind=statement';
 export const EXPORT_SALES_LABEL = 'Download sales as CSV';
 export const EXPORT_STATEMENT_LABEL = 'Download statement as CSV';
+export const EXPORT_FAILED = 'The file could not be made. Try again.';
+export const EXPORT_TRUNCATED =
+  'The file lists the first 5000 rows only. The totals in a statement still cover every row.';
 export const EXPORT_NOTE =
   'The file has one row per line, amounts in minor units and as decimals, and a currency column. Order references show the last 6 characters. No buyer is named.';
 

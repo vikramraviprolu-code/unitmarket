@@ -46,7 +46,7 @@ describe('export access', () => {
       for (const kind of ['sales', 'statement']) {
         const res = await get(`/api/publisher/export?kind=${kind}`, s);
         expect([401, 403]).toContain(res.status);
-        expect(res.headers.get('content-type') ?? '').not.toContain('text/csv');
+        expect(await res.text()).not.toContain('order_ref_last6');
         expect(res.headers.get('content-disposition')).toBeNull();
       }
     }
@@ -94,9 +94,8 @@ describe('CSV injection', () => {
       'UPDATE articles SET title = \'=HYPERLINK("http://x","y")\' WHERE id IN (SELECT article_id FROM offers WHERE id = \'ofr_harbour-ledger_ferry-timetables\')',
     );
     await buy(w.refund, { offer: 'ferry-timetables', option: 'keep_retrieve', who: 'B' });
-    const text = await (
-      await get('/api/publisher/export?kind=sales', w.pub['harbour-ledger'])
-    ).text();
+    const res = await get('/api/publisher/export?kind=sales', w.pub['harbour-ledger']);
+    const text = ((await res.json()) as { csv: string }).csv;
     expect(text).toContain(`"'=HYPERLINK(""http://x"",""y"")"`);
     for (const line of text.split('\r\n')) {
       for (const cell of line.split(',')) {

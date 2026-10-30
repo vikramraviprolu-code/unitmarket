@@ -153,9 +153,9 @@ import {
   countsSince,
   publisherExposure,
   refundsFor,
-  salesCsv,
+  salesExport,
   salesFor,
-  statementCsv,
+  statementExport,
   statementFor,
 } from '@umsbx/publisher-console';
 import type {
@@ -622,7 +622,7 @@ export interface Engine {
    */
   publisherRefunds(actor: Actor): Promise<RefundRow[] | null>;
   /**
-   * PUB-E1: "Since your last visit". Records this visit in the publisher's own cursor row (migration 0013)
+   * PUB-E1: "Since your last visit". Records this visit in the publisher's own cursor row (migration 0014)
    * and counts the rows written since the last visit. The first visit has no counts. Null for any other
    * actor kind.
    */
@@ -638,7 +638,7 @@ export interface Engine {
   publisherExport(i: {
     actor: Actor;
     kind: 'statement' | 'sales';
-  }): Promise<{ filename: string; csv: string } | null>;
+  }): Promise<{ filename: string; csv: string; truncated: boolean } | null>;
   /**
    * The id of the live session behind a cookie header, for the actor that session belongs to.
    * Links are bound to it (delivery lane): a link issued in one session is not found in another.
@@ -1647,13 +1647,13 @@ function buildApp(config: Config, opts: AppOptions): App {
     async publisherExport({ actor, kind }) {
       if (actor.kind !== 'publisher') return null;
       if (kind === 'sales') {
-        return { filename: 'unitmarket-sales.csv', csv: salesCsv(await salesFor(db, actor)) };
+        return { filename: 'unitmarket-sales.csv', ...salesExport(await salesFor(db, actor)) };
       }
       const statement = await statementFor(db, actor, {
         own_merchant_id: config.own_merchant_id,
         environment,
       });
-      return { filename: 'unitmarket-statement.csv', csv: statementCsv(statement) };
+      return { filename: 'unitmarket-statement.csv', ...statementExport(statement) };
     },
 
     async sessionIdOf(cookie, actor) {

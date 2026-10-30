@@ -22,6 +22,7 @@ import {
   salesCountText,
   splitSales,
 } from '../../../lib/statement-copy';
+import { DownloadCsv } from '../DownloadCsv';
 import {
   EXPORT_NOTE,
   EXPORT_SALES_HREF,
@@ -63,10 +64,9 @@ export default async function PublisherSales() {
         <Link href="/publisher/statement">{NAV_STATEMENT}</Link>
         {' | '}
         <Link href="/publisher">{NAV_HOME}</Link>
-        {' | '}
-        <a href={EXPORT_SALES_HREF} download>
-          {EXPORT_SALES_LABEL}
-        </a>
+      </p>
+      <p>
+        <DownloadCsv href={EXPORT_SALES_HREF} label={EXPORT_SALES_LABEL} testId="export-sales" />
       </p>
       <p className="muted">{EXPORT_NOTE}</p>
       {rows.length === 0 ? (

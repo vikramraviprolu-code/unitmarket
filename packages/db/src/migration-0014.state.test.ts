@@ -1,4 +1,4 @@
-// PUB-E1: migration 0013 (publisher_visits). One small table, forward only, no defaults, no delete of
+// PUB-E1: migration 0014 (publisher_visits). One small table, forward only, no defaults, no delete of
 // anything that exists. Applies on a copy that holds 0012 era rows and keeps every one of them.
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -26,30 +26,31 @@ const addPublisher = (d: Db, id: string): Promise<unknown> =>
     [id, `slug-${id}`, T],
   );
 
-describe('migration 0013', () => {
-  it('applies after 0012 on a copy, keeps every old row, and a second run is a no-op', async () => {
+describe('migration 0014', () => {
+  it('applies after the earlier ones on a copy, keeps every old row, and a second run is a no-op', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ums-mig13-'));
     try {
       const common = new URL('../migrations/common/', import.meta.url);
-      for (const f of readdirSync(common).filter((n) => /^(000[1-9]|001[0-2])_.+\.sql$/.test(n))) {
+      for (const f of readdirSync(common).filter((n) => /^(000[1-9]|001[0-3])_.+\.sql$/.test(n))) {
         writeFileSync(join(dir, f), readFileSync(new URL(f, common), 'utf8'));
       }
       const d = await openDatabase({ kind: 'pglite-memory' });
       toClose.push(d);
-      expect((await applyMigrations(d, clock, dir)).at(-1)).toBe('0012_publisher_side');
+      // The last file below 0014 is 0012, or 0013 once the applicants lane is on this branch.
+      expect((await applyMigrations(d, clock, dir)).at(-1)).toMatch(/^001[23]_/);
       await addPublisher(d, 'pub_old');
       const before = (await d.query('SELECT * FROM publishers ORDER BY id')).rows;
 
-      expect(await migrate(d, clock)).toEqual(['0013_publisher_visits']);
+      expect(await migrate(d, clock)).toEqual(['0014_publisher_visits']);
 
       expect((await d.query('SELECT * FROM publishers ORDER BY id')).rows).toEqual(before);
       expect((await d.query('SELECT * FROM publisher_visits')).rows).toEqual([]);
       expect(await migrate(d, clock)).toEqual([]);
-      expect(readdirSync(common).filter((n) => /^0013_/.test(n))).toEqual([
-        '0013_publisher_visits.sql',
+      expect(readdirSync(common).filter((n) => /^0014_/.test(n))).toEqual([
+        '0014_publisher_visits.sql',
       ]);
       expect(
-        readdirSync(common).filter((n) => /^0013_.+\.sql$/.test(n) && /down|rollback/i.test(n)),
+        readdirSync(common).filter((n) => /^0014_.+\.sql$/.test(n) && /down|rollback/i.test(n)),
       ).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });

@@ -1,7 +1,16 @@
 // PUB-E1: the CSV writer is pure. Cells are made safe for spreadsheets, amounts are minor unit integers
 // plus a decimal text, the order ref is the last 6 characters and no buyer appears.
 import { describe, expect, it } from 'vitest';
-import { csvCell, csvLine, decimalText, salesCsv, statementCsv } from './csv';
+import {
+  CSV_ROW_CAP,
+  csvCell,
+  csvLine,
+  decimalText,
+  salesCsv,
+  salesExport,
+  statementCsv,
+  statementExport,
+} from './csv';
 import type { SaleRow } from './sales';
 import type { PublisherStatement } from './statement';
 
@@ -142,5 +151,31 @@ describe('statementCsv', () => {
   });
   it('has only the header for no blocks', () => {
     expect(statementCsv(statement([])).split('\r\n')).toHaveLength(2);
+  });
+});
+
+describe('row cap', () => {
+  it('salesExport keeps at most the cap and says so', () => {
+    const many = Array.from({ length: CSV_ROW_CAP + 3 }, (_, i) => sale({ order_ref6: String(i) }));
+    const r = salesExport(many);
+    expect(r.truncated).toBe(true);
+    expect(r.csv.split('\r\n')).toHaveLength(CSV_ROW_CAP + 2);
+    const small = salesExport([sale(), sale({ status: 'declined', status_text: 'Not charged' })]);
+    expect(small.truncated).toBe(false);
+    expect(small.csv).toBe(salesCsv([sale()]));
+  });
+  it('statementExport cuts the lines, keeps the totals, and says so', () => {
+    const b = block('sandbox');
+    b.lines = Array.from({ length: CSV_ROW_CAP + 2 }, (_, i) => ({
+      at: '2026-10-22T10:01:00.000Z',
+      order_ref6: String(i),
+      kind: 'sale' as const,
+      amount_minor: 1,
+    }));
+    const r = statementExport(statement([b]));
+    expect(r.truncated).toBe(true);
+    expect(r.csv).toContain(',,total_sales,USD,500,5.00,sandbox');
+    expect(r.csv.split('\r\n').filter((l) => l.includes(',sale,USD,1,'))).toHaveLength(CSV_ROW_CAP);
+    expect(statementExport(statement([block('sandbox')])).truncated).toBe(false);
   });
 });

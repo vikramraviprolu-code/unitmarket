@@ -1,6 +1,7 @@
 export: Download sales as CSV | Download statement as CSV
 export hrefs: /api/publisher/export?kind=sales | /api/publisher/export?kind=statement
 export note: The file has one row per line, amounts in minor units and as decimals, and a currency column. Order references show the last 6 characters. No buyer is named.
+export messages: The file could not be made. Try again. | The file lists the first 5000 rows only. The totals in a statement still cover every row.
 refunds heading: Refunds
 refunds lede: Units that were refunded, partly refunded, held after a possible reversal, or reversed.
 refunds columns: Date | Order | Article | Original amount | Refunded | Reversed | Status

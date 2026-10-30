@@ -1,4 +1,4 @@
--- SBX migration 0013: publisher_visits (PUB-E1, "Since your last visit"). Owned by SBX lane PUB-E1.
+-- SBX migration 0014: publisher_visits (PUB-E1, "Since your last visit"). Owned by SBX lane PUB-E1.
 -- Forward-only: there is no down step. Nothing existing is changed or deleted; one new table.
 --
 -- One row per publisher: a cursor, not a history, so it may be updated (no append-only guard). The
