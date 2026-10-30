@@ -33,9 +33,14 @@ export async function expectDryRun(page: Page): Promise<void> {
 /** Offer page: pick an option, optionally a ceiling, ask for the price. */
 export async function askPrice(
   page: Page,
-  o: { offer?: string; ceiling?: string; option?: 'Read online' | 'Download and keep' } = {},
+  o: {
+    offer?: string;
+    publisher?: string;
+    ceiling?: string;
+    option?: 'Read online' | 'Download and keep';
+  } = {},
 ): Promise<void> {
-  await page.goto(`/o/harbour-ledger/${o.offer ?? 'tide-tables'}`);
+  await page.goto(`/o/${o.publisher ?? 'harbour-ledger'}/${o.offer ?? 'tide-tables'}`);
   await page
     .getByLabel(o.option ?? 'Read online', { exact: false })
     .first()
@@ -66,9 +71,18 @@ export async function toDryRunCheckout(page: Page): Promise<void> {
  */
 export async function payWithScenario(
   page: Page,
-  o: { offer: string; scenario: string; option?: 'Read online' | 'Download and keep' },
+  o: {
+    offer: string;
+    scenario: string;
+    publisher?: string;
+    option?: 'Read online' | 'Download and keep';
+  },
 ): Promise<void> {
-  await askPrice(page, { offer: o.offer, ...(o.option === undefined ? {} : { option: o.option }) });
+  await askPrice(page, {
+    offer: o.offer,
+    ...(o.publisher === undefined ? {} : { publisher: o.publisher }),
+    ...(o.option === undefined ? {} : { option: o.option }),
+  });
   await toApproval(page);
   await toDryRunCheckout(page);
   await page.getByLabel('What should the pretend payment do?').selectOption(o.scenario);
