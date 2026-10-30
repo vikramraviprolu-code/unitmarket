@@ -79,6 +79,8 @@ describe('item 50: the full terms before the tick', () => {
     const ai = (s: 'agent_allowed' | 'review' | 'not_allowed') =>
       termsPoints({ scope: 'personal_use', ai_scope: s, redistribution: false });
     expect(ai('agent_allowed')).toHaveLength(TERMS_POINTS.length + 1);
+    // F3: there is no review path in the product, so `review` says what is true.
+    expect(ai('review').at(-1)).toBe('This purchase does not include use with AI tools.');
     const lines = [ai('agent_allowed'), ai('review'), ai('not_allowed')].map((p) => p.at(-1));
     expect(new Set(lines).size).toBe(3);
     expect(lines.join(' ')).not.toMatch(/charged|refund|paid| - |\u2014|\u2013/i);
@@ -140,5 +142,55 @@ describe('item 53: the ops order reference is whole', () => {
     expect(css).toMatch(/\.order-ref\s*\{[^}]*white-space:\s*nowrap/);
     expect(css).toMatch(/\.table-scroll\s*\{[^}]*overflow-x:\s*auto/);
     expect(css).not.toMatch(/\.order-ref\s*\{[^}]*(text-overflow|overflow:\s*hidden)/);
+  });
+});
+
+describe('stylesheet: the new rules do not leak into the page frame (review F1)', () => {
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+    sel: m[1]!.trim(),
+    body: m[2]!,
+  }));
+  it('no rule whose selector list contains main sets white-space nowrap', () => {
+    const bad = rules.filter(
+      (r) => /(^|,)\s*main\s*(,|$)/.test(r.sel) && /white-space:\s*nowrap/.test(r.body),
+    );
+    expect(bad).toEqual([]);
+  });
+  it('the frame selector list still sets max-width, margin and padding', () => {
+    const frame = rules.find(
+      (r) => /(^|,)\s*main\s*(,|$)/.test(r.sel) && /max-width:\s*880px/.test(r.body),
+    );
+    expect(frame).toBeDefined();
+    expect(frame!.sel.replace(/\s+/g, ' ')).toBe('.site-header .inner, main, .site-footer');
+    expect(frame!.body).toMatch(/margin:\s*0 auto/);
+    expect(frame!.body).toMatch(/padding:\s*0 var\(--space\)/);
+  });
+});
+
+describe('search page terms carry the AI-use lines of the offers listed (review F2)', () => {
+  const R = (ai: 'agent_allowed' | 'review' | 'not_allowed') =>
+    ({ scope: 'personal_use', ai_scope: ai, redistribution: false }) as const;
+  it('termsPoints takes several rights and prints each distinct AI line once', () => {
+    const one = termsPoints([R('review'), R('review')]);
+    expect(one).toHaveLength(TERMS_POINTS.length + 1);
+    const two = termsPoints([R('review'), R('agent_allowed')]);
+    expect(two).toHaveLength(TERMS_POINTS.length + 2);
+    expect(termsPoints([])).toEqual([...TERMS_POINTS]);
+  });
+  it('the page passes rights to DiscoverForm and the form to TermsConsent', () => {
+    expect(noComments(read('../app/discover/page.tsx'))).toMatch(/<DiscoverForm[^>]*rights=/);
+    const form = noComments(read('../app/discover/DiscoverForm.tsx'));
+    expect(form).toMatch(/<TermsConsent[\s\S]*?rights=\{/);
+  });
+});
+
+describe('receipt fingerprint wording (review F4)', () => {
+  it('says the hash covers the receipt as stored, with details not shown', () => {
+    const src = read('../app/receipts/[order]/page.tsx');
+    expect(src).toContain(
+      'SHA-256 of the receipt as we stored it, which includes payment details not shown here.',
+    );
+    expect(src).toContain('Keep it: we can show the stored receipt was not changed.');
+    expect(src).not.toContain('SHA-256 of this receipt.');
   });
 });
