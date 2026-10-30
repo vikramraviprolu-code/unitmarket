@@ -40,7 +40,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/privacy | heading: What we do not do
 /legal/privacy | text: There is no advertising, no tracking scripts and no third-party fonts on this site. This site does not load scripts, fonts or images from other sites.
 /legal/privacy | heading: Contact
-/legal/privacy | text: Contact details will be added by the owners before submission.
+/legal/privacy | text: You can reach the team at unitmarket@raviprolu.com.
 /legal/refunds | title: Refund policy
 /legal/refunds | updated: Drafted 30 October 2026
 /legal/refunds | heading: About this policy
@@ -88,7 +88,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/publisher-terms | text: UnitMarket uses no payout mechanism. It does not call any PayPal payout service.
 /legal/publisher-terms | text: Each publisher has a statement page. It adds up the stored records of each payment: sales, refunds and reversals. The PayPal fee is shown beside them when PayPal reported it, and is not subtracted.
 /legal/publisher-terms | heading: Contact
-/legal/publisher-terms | text: Contact details will be added by the owners before submission.
+/legal/publisher-terms | text: You can reach the team at unitmarket@raviprolu.com.
 /legal/publisher-terms | heading: Governing law
 /legal/publisher-terms | text: No governing law or court is named in this demo, because no company has been set up yet.
 /legal/publisher-terms | heading: Sandbox disclaimer

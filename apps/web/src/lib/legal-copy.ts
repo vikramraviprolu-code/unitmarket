@@ -133,7 +133,7 @@ export const PRIVACY_DOC: LegalDoc = {
     },
     {
       heading: 'Contact',
-      paragraphs: ['Contact details will be added by the owners before submission.'],
+      paragraphs: ['You can reach the team at unitmarket@raviprolu.com.'],
     },
   ],
 };
@@ -275,7 +275,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     },
     {
       heading: 'Contact',
-      paragraphs: ['Contact details will be added by the owners before submission.'],
+      paragraphs: ['You can reach the team at unitmarket@raviprolu.com.'],
     },
     {
       heading: 'Governing law',

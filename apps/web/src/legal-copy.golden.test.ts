@@ -83,7 +83,8 @@ describe('legal copy rules', () => {
         /GDPR|CCPA|HIPAA|PCI|SOC ?2|ISO ?27001|complian|comply|lawful|legally binding/i,
       );
       expect(t).not.toMatch(/\b(Ltd|Inc|LLC|GmbH|Corp|PLC)\b\.?/);
-      expect(t).not.toMatch(/@|https?:|www\./i);
+      // The owner (Sakthi) supplied one team contact address on 30 Oct 2026 (assumption 39). It is the only address allowed.
+      expect(t.replace('unitmarket@raviprolu.com', '')).not.toMatch(/@|https?:|www\./i);
     }
   });
 
@@ -129,7 +130,7 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/operator/i);
     expect(t).toMatch(/no advertising/i);
     expect(t).toMatch(/third-party fonts/i);
-    expect(t).toContain('Contact details will be added by the owners before submission.');
+    expect(t).toContain('You can reach the team at unitmarket@raviprolu.com.');
   });
 
   it('refunds: decided per unit by an operator; full refund ends access; partial does not', () => {
@@ -174,7 +175,7 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/keep the access they paid for/i);
     expect(t).toMatch(/already approved can still complete/i);
     expect(t).toMatch(/No tax is calculated and no tax invoice is issued in this demo/);
-    expect(t).toContain('Contact details will be added by the owners before submission.');
+    expect(t).toContain('You can reach the team at unitmarket@raviprolu.com.');
     expect(t).toMatch(/No governing law/i);
   });
 });
