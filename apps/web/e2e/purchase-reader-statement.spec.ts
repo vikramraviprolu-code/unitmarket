@@ -43,7 +43,7 @@ test.describe.configure({ mode: 'serial' });
 const seen = { orderRef6: '', priceMinor: 0, receiptTotal: '' };
 let before = { count: 0, sales: 0, net: 0 };
 
-test('buyer pays to read online; the receipt carries the quoted price; the reader shows the paragraphs', async ({
+test('an unpaid order says Not paid yet; then the buyer pays to read online; the receipt carries the quoted price; the reader shows the paragraphs', async ({
   browser,
 }) => {
   const pub = await publisherPage(browser);
@@ -62,6 +62,28 @@ test('buyer pays to read online; the receipt carries the quoted price; the reade
   await toApproval(page);
   await expect(page.getByTestId('approve-total')).toHaveText(quote);
   await toDryRunCheckout(page);
+
+  // The order now exists but nothing is paid (GATE35 D2): in a second tab the library says so in its own words,
+  // with no receipt and no way in. (The same order is paid next; this spends no extra approval, which is
+  // limited to 10 an hour for each buyer.)
+  const lib = await page.context().newPage();
+  await lib.goto('/library');
+  const unpaid = lib.getByTestId('library-item').filter({ hasText: TITLE });
+  await expect(unpaid).toHaveCount(1);
+  await expect(unpaid.getByTestId('library-status')).toContainText('Not paid yet');
+  await expect(unpaid.getByTestId('library-status')).not.toContainText(
+    /Confirming|pending at PayPal/i,
+  );
+  await expect(unpaid.getByRole('button')).toHaveCount(0);
+  await unpaid.getByRole('link', { name: TITLE }).click();
+  await expect(lib.getByTestId('library-status')).toContainText(
+    'Not paid yet. We have not received a payment for this order.',
+  );
+  await expect(lib.locator('dd', { hasText: /^Not paid yet$/ })).toBeVisible();
+  await expect(lib.getByRole('link', { name: 'View receipt' })).toHaveCount(0);
+  await expect(lib.getByRole('link', { name: 'Read here' })).toHaveCount(0);
+  await lib.close();
+
   await page.getByLabel('What should the pretend payment do?').selectOption('happy');
   await page.getByRole('button', { name: 'Approve payment (dry run)' }).click();
   await expect(page).toHaveURL(/\/orders\//);
