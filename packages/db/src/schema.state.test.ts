@@ -273,8 +273,18 @@ describe('migrations', () => {
       `SELECT table_name, column_name FROM information_schema.columns
        WHERE table_schema = 'public' AND column_default IS NOT NULL AND table_name <> 'schema_migrations'`,
     );
-    // The one allowed default (0010, D-041): publishers.payee_shared is false unless set.
-    expect(defaults.rows).toEqual([{ table_name: 'publishers', column_name: 'payee_shared' }]);
+    // The allowed defaults: 0010 (D-041) publishers.payee_shared is false unless set, and 0012 (PUB-A1)
+    // publishers.status is 'active' unless set.
+    expect(
+      [...defaults.rows].sort((a, b) =>
+        String((a as { column_name: string }).column_name).localeCompare(
+          String((b as { column_name: string }).column_name),
+        ),
+      ),
+    ).toEqual([
+      { table_name: 'publishers', column_name: 'payee_shared' },
+      { table_name: 'publishers', column_name: 'status' },
+    ]);
   });
   it('ums_id refuses blank, padded and control-character ids', async () => {
     for (const bad of ['', ' x', 'x ', 'a\nb', 'a​b']) {
@@ -1526,9 +1536,10 @@ describe('0010 publishers.payee_shared (DP-1, D-041)', () => {
       ]);
       const after = await d.query<Record<string, unknown>>('SELECT * FROM publishers ORDER BY id');
       // every old column value is kept; the new column is false for every existing row
+      // 0012 (PUB-A1) also adds publishers.status, which is 'active' for every existing row
       expect(
         after.rows.map(({ payee_shared, ...rest }) => ({ ...rest, flag: payee_shared })),
-      ).toEqual(before.map((r) => ({ ...r, flag: false })));
+      ).toEqual(before.map((r) => ({ ...r, status: 'active', flag: false })));
       // the old uniqueness still holds for these rows (nothing is flagged)
       await expect(add('pub_dup', 'dup', 'SBXMOWNERBUSINESS')).rejects.toThrow();
       // forward-only: there is no down step and a second run is a no-op

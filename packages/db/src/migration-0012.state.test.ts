@@ -27,7 +27,7 @@ async function fresh(): Promise<Db> {
 }
 
 async function ins(d: Db, table: string, row: Record<string, unknown>): Promise<void> {
-  const r = { created_at: T, updated_at: T, ...row };
+  const r: Record<string, unknown> = { created_at: T, updated_at: T, ...row };
   const cols = Object.keys(r);
   await d.query(
     `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')})`,
@@ -193,7 +193,9 @@ describe('payee_change_requests and payee_decisions are append-only', () => {
       /append-only/,
     );
     await expect(d.query('DELETE FROM payee_change_requests')).rejects.toThrow(/append-only/);
-    await expect(d.exec('TRUNCATE payee_change_requests')).rejects.toThrow(/TRUNCATE|append-only/);
+    await expect(d.exec('TRUNCATE payee_change_requests CASCADE')).rejects.toThrow(
+      /TRUNCATE|append-only/,
+    );
     expect((await d.query('SELECT count(*)::int AS n FROM payee_change_requests')).rows).toEqual([
       { n: 1 },
     ]);
