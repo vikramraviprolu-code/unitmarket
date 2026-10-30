@@ -228,6 +228,10 @@ describe('nothing near money moves, and the approval page is still', () => {
     expect(sel).toContain("body:has([data-testid='approve-block']) *");
     expect(sel).toContain("body:has([data-testid='approve-block']) *::before");
     expect(sel).toContain("body:has([data-testid='approve-block']) *::after");
+    // A single article has no approve-block; approve-total is on every approval page.
+    expect(sel).toContain("body:has([data-testid='approve-total']) *");
+    expect(sel).toContain("body:has([data-testid='approve-total']) *::before");
+    expect(sel).toContain("body:has([data-testid='approve-total']) *::after");
     const body = still.map((r) => r.body).join(';');
     expect(body).toMatch(/animation:\s*none\s*!important/);
     expect(body).toMatch(/transition:\s*none\s*!important/);
@@ -238,6 +242,9 @@ describe('nothing near money moves, and the approval page is still', () => {
       r.sel.includes("html:has([data-testid='approve-block'])::view-transition"),
     );
     expect(rules.length).toBeGreaterThan(0);
+    expect(rules.map((r) => r.sel).join(',')).toContain(
+      "html:has([data-testid='approve-total'])::view-transition",
+    );
     expect(rules.map((r) => r.body).join(';')).toMatch(/animation:\s*none\s*!important/);
   });
   it('no markup is added to the approval client', () => {

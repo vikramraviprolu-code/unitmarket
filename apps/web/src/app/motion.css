@@ -4,17 +4,26 @@
    easing is cubic-bezier(0.16, 1, 0.3, 1); nothing bounces; will-change is not used; no inline style; no
    url() or data: URI. With reduced motion every state still shows, as colour, shape and text. */
 
-/* The approval page is completely still: no animation, no transition, no page change fade, no markup change. */
+/* The approval page is completely still: no animation, no transition, no page change fade, no markup change.
+   A pack shows one approve-block per publisher; a single article has no block but always shows approve-total,
+   so both mark the page. */
 body:has([data-testid='approve-block']) *,
 body:has([data-testid='approve-block']) *::before,
-body:has([data-testid='approve-block']) *::after {
+body:has([data-testid='approve-block']) *::after,
+body:has([data-testid='approve-total']) *,
+body:has([data-testid='approve-total']) *::before,
+body:has([data-testid='approve-total']) *::after {
   animation: none !important;
   transition: none !important;
 }
 html:has([data-testid='approve-block'])::view-transition-group(*),
 html:has([data-testid='approve-block'])::view-transition-old(*),
 html:has([data-testid='approve-block'])::view-transition-new(*),
-html:has([data-testid='approve-block'])::view-transition-image-pair(*) {
+html:has([data-testid='approve-block'])::view-transition-image-pair(*),
+html:has([data-testid='approve-total'])::view-transition-group(*),
+html:has([data-testid='approve-total'])::view-transition-old(*),
+html:has([data-testid='approve-total'])::view-transition-new(*),
+html:has([data-testid='approve-total'])::view-transition-image-pair(*) {
   animation: none !important;
 }
 
