@@ -6,6 +6,14 @@ export type Mode = 'offline' | 'sandbox';
 export type OutboundScope = 'mvp_b_polling' | 'mvp_c_refunds';
 export const OUTBOUND_SCOPES: readonly OutboundScope[] = ['mvp_b_polling', 'mvp_c_refunds'];
 
+/** Which model adapter the AI lanes use (D-065 items 15, 16): the scripted offline one, or the Claude one. */
+export type AiAdapter = 'scripted' | 'claude';
+export const AI_ADAPTERS: readonly AiAdapter[] = ['scripted', 'claude'];
+
+/** UMS_OFFER_MAX_MINOR bounds (D-065 item 35): tied to the approval cap, so never above 2000 minor units. */
+export const OFFER_MAX_MINOR_LIMIT = 2000;
+export const OFFER_MAX_MINOR_DEFAULT = 2000;
+
 export interface Config {
   mode: Mode;
   connect: boolean;
@@ -26,6 +34,21 @@ export interface Config {
   approval_secret: Secret;
   link_secret: Secret;
   passcode_hash: string | null;
+  /**
+   * UMS_PUBLISHER_PASSCODE_HASH (CFG-0, D-065 item 34): the publisher sign-in hash, same format as the demo
+   * hash and never equal to it. Null when unset: no publisher can sign in.
+   */
+  publisher_passcode_hash: string | null;
+  /** UMS_OFFER_MAX_MINOR (CFG-0, D-065 item 35): the largest offer price in minor units, 1 to 2000. */
+  offer_max_minor: number;
+  /** UMS_AI_ADAPTER (CFG-0): scripted (default) or claude. Config only parses it; composition wires it. */
+  ai_adapter: AiAdapter;
+  /**
+   * UMS_ANTHROPIC_API_KEY (CFG-0): the model key. Read only when ai_adapter is claude, and then required;
+   * null otherwise. Deliberately not ANTHROPIC_API_KEY, so a key in another process's environment is never
+   * picked up.
+   */
+  ai_api_key: Secret | null;
   /**
    * UMS_OPERATOR_TOTP_KEYS (CO-6, ASM-56): one base32 TOTP key per operator, as Secrets (upper case, no
    * padding). Empty when unset: operators then sign in without a second factor (mfa false).
@@ -76,6 +99,10 @@ export const ENV_NAMES = [
   'UMS_CORRIDORS',
   'UMS_TRUSTED_PROXIES',
   'UMS_MAINTENANCE_FLAG',
+  'UMS_PUBLISHER_PASSCODE_HASH',
+  'UMS_OFFER_MAX_MINOR',
+  'UMS_AI_ADAPTER',
+  'UMS_ANTHROPIC_API_KEY',
   'NEXT_PUBLIC_UMS_ENV_LABEL',
 ] as const;
 
