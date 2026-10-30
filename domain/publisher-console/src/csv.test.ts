@@ -112,6 +112,7 @@ describe('salesCsv', () => {
 const block = (env: 'dryrun' | 'sandbox'): PublisherStatement['blocks'][number] => ({
   currency: 'USD',
   environment: env,
+  units_sold: 1,
   sales_minor: 500,
   refunds_minor: 100,
   reversals_minor: 0,
