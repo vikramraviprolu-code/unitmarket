@@ -46,6 +46,7 @@ const FILES = routeFiles(APP_DIR);
 // Static specifiers (the lint rule bans computed imports). The test below fails when this list and the
 // route files on disk differ, so a new route cannot escape the walk.
 const IMPORTERS: Record<string, () => Promise<unknown>> = {
+  'api/appearance/route.ts': () => import('./app/api/appearance/route'),
   'api/approvals/route.ts': () => import('./app/api/approvals/route'),
   'api/briefs/route.ts': () => import('./app/api/briefs/route'),
   'api/cases/route.ts': () => import('./app/api/cases/route'),

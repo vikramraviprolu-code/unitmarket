@@ -28,6 +28,9 @@ import type {
   Id,
   Ids,
   Logger,
+  ModelPort,
+  ModelSpendStore,
+  ModelWire,
   OutboundRequest,
   PayPalPort,
   PaymentsDeps,
@@ -54,7 +57,7 @@ import type { SqlDriver } from '@umsbx/db';
 import { cryptoIds, systemClock } from '@umsbx/runtime';
 import { createAuditSink, createLogger, redact } from '@umsbx/obs';
 import { createOutboundGate, createSwitchReader, readSafetyStatus, runStop } from '@umsbx/safety';
-import { guard } from '@umsbx/transport';
+import { createModelHttps, guard } from '@umsbx/transport';
 import type { Wire } from '@umsbx/transport';
 import {
   EXPECTED_CERT_PINS,
@@ -64,14 +67,19 @@ import {
   pinComplete,
 } from '@umsbx/paypal';
 import type { AdapterDeps } from '@umsbx/paypal';
-import { createScriptedModel } from '@umsbx/model';
+import { createClaudeModel, createScriptedModel } from '@umsbx/model';
 import {
   SEED_DATA,
   SEED_SUPPLEMENT_COMPOSITE,
+  decidePayeeRequest,
   getOffer,
+  listOpenRequests,
+  payeeView,
+  requestPayeeChange,
   seedCatalogue,
   seedSupplement,
 } from '@umsbx/catalogue';
+import type { OpenRequest, PayeeError, PayeeView } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
 import { discover as discoverOffers, parseNeed } from '@umsbx/discovery';
 import { requestApproval } from '@umsbx/approval';
@@ -124,6 +132,8 @@ import type { OpsGate } from './src/lib/gate-lines';
 import { toBuyerReceipt } from './src/lib/receipt-view';
 import type { ArticleFacts, BuyerReceipt } from './src/lib/receipt-view';
 import { LINE_TEXT, lineKind, packBanner, windowMinutes } from './src/lib/composite-copy';
+import { publisherSlugOf } from './src/lib/publisher-copy';
+import type { PublisherStatus } from './src/lib/publisher-copy';
 import type { LineKind } from './src/lib/composite-copy';
 import {
   buyerRefundNote,
@@ -164,6 +174,11 @@ export interface AppOptions {
    * step (`payees: false`) to build the disk an earlier release left. Refused unless NODE_ENV=test.
    */
   test_seed?: { supplement?: boolean; payees?: boolean };
+  /**
+   * AI-A (tests): a ModelWire standing in for the Claude egress. Used only when UMS_AI_ADAPTER=claude and a
+   * key is set; no socket is opened and no real key is needed. Refused unless NODE_ENV=test.
+   */
+  test_model_wire?: ModelWire;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -172,7 +187,15 @@ export interface AppOptions {
 /** The one publisher of MVP-B (ASM-03): its payee is the owner's own sandbox account (BU-7). */
 const MVPB_PUBLISHER_SLUG = 'harbour-ledger';
 
-export const PERSONAS = ['buyer-a', 'buyer-b', 'publisher', 'operator'] as const;
+// PUB-A1: one sign-in persona per publisher; the slug each maps to is in lib/publisher-copy.ts.
+export const PERSONAS = [
+  'buyer-a',
+  'buyer-b',
+  'publisher-harbour-ledger',
+  'publisher-quayside-gazette',
+  'publisher-northfield-quarterly',
+  'operator',
+] as const;
 export type Persona = (typeof PERSONAS)[number];
 const BUYER_IDS: Record<'buyer-a' | 'buyer-b', Id> = {
   'buyer-a': 'buy_persona_a',
@@ -442,7 +465,20 @@ export interface App {
   readonly security: SecurityDeps;
   /** The sandbox outbound (the five locks); null in offline mode. */
   readonly outbound: Outbound | null;
+  /**
+   * AI-A: the id of the model discovery uses: `scripted-v1` by default, `claude-haiku-5-5` only when
+   * UMS_AI_ADAPTER=claude, a key is set and the app is not in maintenance.
+   */
+  readonly model_id: string;
   close(): Promise<void>;
+}
+
+/** What a publisher sees on /publisher (PUB-A1). The payee is the last 4 characters and the verification time. */
+export interface PublisherHome {
+  display_name: string;
+  status: PublisherStatus;
+  offers_live: number;
+  payee: { last4: string | null; verified_at: string | null };
 }
 
 export interface Engine {
@@ -459,6 +495,12 @@ export interface Engine {
     code?: string | undefined;
   }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
   actorFromCookie(cookie: string | null): Promise<Actor | null>;
+  /**
+   * PUB-A1: the read only home of the publisher behind this session: name, status, live offers and the
+   * payee state (last 4 only). Every query filters by `actor.publisher_id`. Null for any other actor kind
+   * and for a publisher id that names no row.
+   */
+  publisherHome(actor: Actor): Promise<PublisherHome | null>;
   /**
    * The id of the live session behind a cookie header, for the actor that session belongs to.
    * Links are bound to it (delivery lane): a link issued in one session is not found in another.
@@ -570,6 +612,35 @@ export interface Engine {
    * the second factor; `cancel` withdraws a request that is still `requested`.
    */
   refund: RefundFacade;
+  /**
+   * PUB-A2: where a publisher gets paid. `view` is the S6 page data (last 4 only, newest request first);
+   * `request` stores a change request and changes nothing else; `openRequests` and `decide` are the
+   * operator side and need the second factor. A verify is refused with `owner_command_required` when
+   * the app runs in sandbox mode (D-062). The whole merchant id is never returned by any method.
+   */
+  payee: {
+    view(actor: Actor): Promise<(PayeeView & { environment: EnvironmentLabel }) | null>;
+    request(i: {
+      actor: Actor;
+      merchant_id: string;
+      note: string;
+    }): Promise<Result<{ request_id: Id }, PayeeError>>;
+    openRequests(
+      actor: Actor,
+    ): Promise<
+      Result<
+        { requests: (OpenRequest & { age_ms: number })[]; environment: EnvironmentLabel },
+        PayeeError
+      >
+    >;
+    decide(i: {
+      actor: Actor;
+      request_id: string;
+      merchant_id_retyped: string;
+      decision: 'verified' | 'rejected';
+      reason: string;
+    }): Promise<Result<{ decision: 'verified' | 'rejected' }, PayeeError>>;
+  };
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
   /** One pass of the access-window sweep and the automatic recovery rules (the job loop's sweep). */
@@ -697,6 +768,62 @@ async function sharedPayee(db: Database): Promise<OpsSnapshot['shared_payee']> {
     : { publishers: Number(row.n), last4: row.paypal_merchant_id.slice(-4) };
 }
 
+/**
+ * AI-A: the spend ledger of the Claude adapter, kept in audit_log (action `model.spend`, detail
+ * `micro_usd`, actor system). No migration: the sum is read back from the same rows, and the table is
+ * append-only, so a spend record cannot be edited away. A read or write error propagates; the spend
+ * guard treats it as a refusal.
+ */
+export function createModelSpendStore(db: Database, audit: AuditSink): ModelSpendStore {
+  return {
+    async spentMicroUsd(since_iso) {
+      const sum = `SELECT COALESCE(SUM((detail->>'micro_usd')::bigint), 0) AS s FROM audit_log WHERE action = 'model.spend'`;
+      const r =
+        since_iso === null
+          ? await db.query<{ s: string | number }>(sum)
+          : await db.query<{ s: string | number }>(`${sum} AND created_at >= $1::timestamptz`, [
+              since_iso,
+            ]);
+      return Number(r.rows[0]?.s ?? 0);
+    },
+    async charge(micro_usd, note) {
+      await db.transaction((tx) =>
+        audit.record(tx, {
+          actor: { kind: 'system' },
+          action: 'model.spend',
+          target: null,
+          reason: note,
+          detail: { micro_usd },
+        }),
+      );
+    },
+  };
+}
+
+/** AI-A: which ModelPort discovery gets. Scripted unless the config says claude and holds a key. */
+export function chooseModel(
+  c: Pick<Config, 'ai_adapter' | 'ai_api_key'>,
+  d: {
+    db: Database;
+    audit: AuditSink;
+    clock: Clock;
+    maintenance: boolean;
+    /** The kill switch: the paypal_outbound switch, so one stop (safety:stop, /api/ops/stop) ends AI calls too. */
+    switches: SwitchReader;
+    wire?: ModelWire;
+  },
+): ModelPort {
+  const scripted = createScriptedModel();
+  if (c.ai_adapter !== 'claude' || c.ai_api_key === null || d.maintenance) return scripted;
+  return createClaudeModel({
+    wire: d.wire ?? createModelHttps({ apiKey: c.ai_api_key }),
+    spend: createModelSpendStore(d.db, d.audit),
+    clock: d.clock,
+    fallback: scripted,
+    live: () => d.switches.isOn('paypal_outbound'),
+  });
+}
+
 export function createApp(env: Env, opts: AppOptions = {}): App {
   const loaded = loadConfig(env);
   if (!loaded.ok) throw new Error(`boot refused: ${loaded.error.code} ${loaded.error.name}`);
@@ -717,6 +844,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       throw new Error('boot refused: test_loop outside NODE_ENV=test');
     if (opts.test_seed !== undefined)
       throw new Error('boot refused: test_seed outside NODE_ENV=test');
+    if (opts.test_model_wire !== undefined)
+      throw new Error('boot refused: test_model_wire outside NODE_ENV=test');
   }
   const environment = envLabel(config);
   const clock: Clock = systemClock();
@@ -982,7 +1111,18 @@ function buildApp(config: Config, opts: AppOptions): App {
               }),
             ),
         });
-  const agent: AgentDeps = { ...core, model: createScriptedModel() };
+  // AI-A (D-067): the scripted model unless UMS_AI_ADAPTER=claude AND a key is set (config refuses a
+  // claude adapter without a key). The Claude adapter reaches the model API only through the one
+  // egress in packages/transport, with hard spend caps; any failure falls back to the scripted model.
+  const model: ModelPort = chooseModel(config, {
+    db,
+    audit,
+    clock,
+    maintenance,
+    switches,
+    ...(opts.test_model_wire === undefined ? {} : { wire: opts.test_model_wire }),
+  });
+  const agent: AgentDeps = { ...core, model };
   const paymentsDeps: PaymentsDeps = { ...core, paypal, content };
   // The loop's deps carry the cadence (the domain config); test_domain changes it in tests only.
   const loopDeps: PaymentsDeps = {
@@ -1134,12 +1274,17 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     async signIn({ persona, passcode, operator, code }) {
       if (config.passcode_hash === null) return null;
-      if (!(PERSONAS as readonly string[]).includes(persona)) {
-        // Same cost for an unknown persona, so the answer does not reveal the persona list.
+      // PUB-A1: a publisher persona verifies against the publisher hash only; every other persona against
+      // the demo hash only. With the publisher hash unset, or an unknown persona, the answer costs one
+      // verification against the demo hash and is null, so neither shows in the time.
+      const publisherSlug = publisherSlugOf(persona);
+      const hash =
+        publisherSlug === undefined ? config.passcode_hash : config.publisher_passcode_hash;
+      if (!(PERSONAS as readonly string[]).includes(persona) || hash === null) {
         await verifyPasscode(config.passcode_hash, passcode);
         return null;
       }
-      if (!(await verifyPasscode(config.passcode_hash, passcode))) return null;
+      if (!(await verifyPasscode(hash, passcode))) return null;
       let actor: Actor;
       if (persona === 'buyer-a' || persona === 'buyer-b') {
         actor = { kind: 'buyer', buyer_id: BUYER_IDS[persona] };
@@ -1152,7 +1297,9 @@ function buildApp(config: Config, opts: AppOptions): App {
         if (!r.ok) return null;
         actor = { kind: 'operator', operator_id: r.operator_id, mfa: r.mfa };
       } else {
-        const p = await db.query<{ id: string }>('SELECT id FROM publishers ORDER BY slug LIMIT 1');
+        const p = await db.query<{ id: string }>('SELECT id FROM publishers WHERE slug = $1', [
+          publisherSlug ?? '',
+        ]);
         const id = p.rows[0]?.id;
         if (id === undefined) return null;
         actor = { kind: 'publisher', publisher_id: id };
@@ -1162,6 +1309,43 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
 
     actorFromCookie: (cookie) => resolveSession(security, cookie),
+
+    // PUB-A1: the publisher home. Every query below filters by the actor's publisher id.
+    async publisherHome(actor) {
+      if (actor.kind !== 'publisher') return null;
+      const p = await db.query<{
+        display_name: string;
+        status: PublisherStatus;
+        paypal_merchant_id: string | null;
+        payee_verified_at: Date | string | null;
+      }>(
+        'SELECT display_name, status, paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
+        [actor.publisher_id],
+      );
+      const row = p.rows[0];
+      if (row === undefined) return null;
+      // Live: authorised, the newest version of its offer, not superseded and inside its validity dates.
+      const now = clock.now().toISOString();
+      const live = await db.query<{ n: string | number }>(
+        `SELECT count(*) AS n FROM offers o
+          WHERE o.publisher_id = $1 AND o.status = 'authorised' AND o.superseded_by IS NULL
+            AND o.valid_from <= $2 AND (o.valid_until IS NULL OR o.valid_until > $2)
+            AND EXISTS (SELECT 1 FROM publisher_authorisations pa
+                         WHERE pa.offer_id = o.id AND pa.offer_version = o.version)
+            AND NOT EXISTS (SELECT 1 FROM offers n WHERE n.id = o.id AND n.publisher_id = $1
+                             AND (n.created_at, n.version) > (o.created_at, o.version))`,
+        [actor.publisher_id, now],
+      );
+      return {
+        display_name: row.display_name,
+        status: row.status,
+        offers_live: Number(live.rows[0]?.n ?? 0),
+        payee: {
+          last4: row.paypal_merchant_id === null ? null : row.paypal_merchant_id.slice(-4),
+          verified_at: row.payee_verified_at === null ? null : iso(row.payee_verified_at),
+        },
+      };
+    },
 
     async sessionIdOf(cookie, actor) {
       // resolveSession checks the signature, expiry and revocation; only then is the id read.
@@ -1758,6 +1942,37 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     refund: refundFacade,
 
+    payee: {
+      async view(actor) {
+        const v = await payeeView(db, actor);
+        return v === null ? null : { ...v, environment };
+      },
+      request: (i) =>
+        requestPayeeChange(core, i.actor, { merchant_id: i.merchant_id, note: i.note }),
+      async openRequests(actor) {
+        const r = await listOpenRequests(db, actor);
+        if (!r.ok) return r;
+        const now = clock.now().getTime();
+        return {
+          ok: true,
+          value: {
+            requests: r.value.map((x) => ({
+              ...x,
+              age_ms: Math.max(0, now - Date.parse(x.created_at)),
+            })),
+            environment,
+          },
+        };
+      },
+      decide: (i) =>
+        decidePayeeRequest(core, i.actor, {
+          request_id: i.request_id,
+          merchant_id_retyped: i.merchant_id_retyped,
+          decision: i.decision,
+          reason: i.reason,
+        }),
+    },
+
     newKey: () => ids.nonce(),
 
     // Lane 10: turn new alerts and delivery failures into cases; close restored ones.
@@ -1799,6 +2014,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     engine,
     security,
     outbound,
+    model_id: model.model_id,
     startJobs: async () => {
       // CO-7b: no recovery pass, no loop, no database. Nothing to stop.
       if (maintenance) return { stop: async () => undefined };

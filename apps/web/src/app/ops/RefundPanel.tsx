@@ -126,7 +126,7 @@ export function RefundPanel({ overview, keys }: { overview: RefundOverview; keys
       {overview.units.length === 0 ? (
         <p className="muted">No captured payments to refund.</p>
       ) : (
-        <ul style={{ listStyle: 'none', padding: 0 }}>
+        <ul className="plain-list">
           {overview.units.map((u, i) => (
             <UnitCard
               key={u.unit_id}
@@ -178,7 +178,7 @@ function UnitCard({
         ? 'Refund'
         : `Refund ${formatMinor(minor, unit.currency)}`;
   return (
-    <li className="card" data-testid="refund-unit" style={{ listStyle: 'none' }}>
+    <li className="card no-bullet" data-testid="refund-unit">
       <h3 id={`unit-${unit.unit_id}`}>{label}</h3>
       <dl>
         <dt>Order</dt>

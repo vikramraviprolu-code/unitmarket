@@ -6,3 +6,19 @@ export type { OfferView } from './read';
 export { getCorridor, corridorFor } from './corridors';
 export { seedCatalogue, seedSupplement } from './seed';
 export { SEED_DATA, SEED_SUPPLEMENT_COMPOSITE } from './seed-data';
+export {
+  MERCHANT_ID_PATTERN,
+  decidePayeeRequest,
+  listOpenRequests,
+  payeeView,
+  requestPayeeChange,
+} from './payee';
+export type {
+  OpenRequest,
+  PayeeDeps,
+  PayeeError,
+  PayeeErrorCode,
+  PayeeHistoryRow,
+  PayeeView,
+  RequestState,
+} from './payee';

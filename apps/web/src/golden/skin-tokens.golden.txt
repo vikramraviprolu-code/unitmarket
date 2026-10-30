@@ -1,0 +1,86 @@
+# Token table per skin (SKIN-A). Read from globals.css by skin-tokens.golden.test.ts.
+# A change here is a change to how the whole app looks and to the contrast it must keep.
+
+[market] Bright Market
+--bg: #eef3ff
+--surface: #ffffff
+--surface-2: #e2e9fc
+--text: #0e1633
+--muted: #47527a
+--line: #8089ae
+--line-soft: #d4dcf3
+--accent: #1846e5
+--accent-ink: #ffffff
+--accent-soft: #e0e8ff
+--good: #0b7a55
+--good-soft: #d8f4ea
+--warn: #7a4b00
+--warn-soft: #fcefd2
+--bad: #9b1c1c
+--bad-soft: #fbe6e6
+--focus: #b35c00
+--header-bg: #1846e5
+--header-ink: #ffffff
+--header-link: #ffffff
+--header-hover: #3d64e9
+--header-focus: #ffffff
+--h0b: #1846e5
+--h0i: #ffffff
+--h1b: #0b7a55
+--h1i: #ffffff
+--h2b: #c2410c
+--h2i: #ffffff
+--h3b: #7048e8
+--h3i: #ffffff
+--h4b: #c2255c
+--h4i: #ffffff
+--h5b: #0b7285
+--h5i: #ffffff
+--radius: 16px
+--radius-btn: 999px
+--shadow: 0 1px 2px rgba(14, 22, 51, 0.06), 0 10px 28px rgba(14, 22, 51, 0.08)
+--card-border: var(--line-soft)
+--atmosphere: radial-gradient(circle at 1px 1px, rgba(24, 70, 229, 0.1) 1px, transparent 1.4px)
+--display: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', system-ui, -apple-system, 'Segoe UI', sans-serif
+
+[harbour] Deep Harbour
+--bg: #11161d
+--surface: #1a212b
+--surface-2: #222b37
+--text: #eef2f6
+--muted: #b3bdc9
+--line: #8795a6
+--line-soft: #2e3846
+--accent: #8ec6ea
+--accent-ink: #0b1a24
+--accent-soft: #1d3140
+--good: #7fd6a0
+--good-soft: #17301f
+--warn: #f1c46b
+--warn-soft: #3a2c10
+--bad: #ff9c9c
+--bad-soft: #3b1a1a
+--focus: #ffb14d
+--header-bg: #1a212b
+--header-ink: #eef2f6
+--header-link: #8ec6ea
+--header-hover: #222b37
+--header-focus: #ffb14d
+--h0b: #123f5a
+--h0i: #7fe3f0
+--h1b: #1d4a45
+--h1i: #ffc069
+--h2b: #3d3a5c
+--h2i: #b8b0ff
+--h3b: #2e4a3a
+--h3i: #a8f0c0
+--h4b: #5a2f3b
+--h4i: #ffb3c1
+--h5b: #2f4660
+--h5i: #9fd0ff
+--radius: 10px
+--radius-btn: 10px
+--shadow: none
+--card-border: var(--line)
+--atmosphere: none
+--display: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif
