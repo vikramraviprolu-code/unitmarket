@@ -8,6 +8,7 @@ import { buy, count, errorOf } from './refund-support';
 import { bootPayeeWorld } from './payee-support';
 import type { PayeeWebWorld } from './payee-support';
 import { call } from './support';
+import { PUBLISHERS_MFA_BODY } from './lib/ops-publishers-copy';
 import type { Session } from './support';
 
 vi.mock('server-only', () => ({}));
@@ -250,6 +251,19 @@ describe('the pages (source as text)', () => {
     expect(page).toContain('href="/ops/payee-requests"');
     expect(page).not.toMatch(/style=/);
     expect(page).not.toMatch(/merchant/i);
+  });
+  it('an operator without the authenticator code is told why, and only a non operator is redirected at once', () => {
+    const page = strip(read('./app/ops/publishers/page.tsx'));
+    expect(page).toMatch(/actor\?\.kind === 'operator' && !actor\.mfa\) return <MfaNeeded \/>/);
+    expect(page.indexOf('<MfaNeeded />')).toBeLessThan(
+      page.indexOf("actor?.kind !== 'operator') redirect("),
+    );
+    expect(page.match(/error\.code === 'mfa_required'\) return <MfaNeeded \/>/g)).toHaveLength(3);
+    expect(page).toContain('/signin?next=/ops/publishers');
+    expect(PUBLISHERS_MFA_BODY).toBe(
+      'This page needs your authenticator code. Sign out and sign in as Operator again with your name and the current code from your authenticator app.',
+    );
+    expect(PUBLISHERS_MFA_BODY).not.toMatch(/[\u2013\u2014]/);
   });
   it('the status form sends only the id, the status and the reason', () => {
     const form = strip(read('./app/ops/publishers/StatusForm.tsx'));

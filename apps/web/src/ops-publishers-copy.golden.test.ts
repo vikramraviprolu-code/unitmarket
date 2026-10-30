@@ -17,6 +17,9 @@ function lines(): string[] {
   out.push(`heading: ${copy.PUBLISHERS_HEADING}`);
   out.push(`lede: ${copy.PUBLISHERS_LEDE}`);
   out.push(`empty: ${copy.PUBLISHERS_EMPTY}`);
+  out.push(`mfa heading: ${copy.PUBLISHERS_MFA_HEADING}`);
+  out.push(`mfa body: ${copy.PUBLISHERS_MFA_BODY}`);
+  out.push(`mfa link: ${copy.PUBLISHERS_MFA_LINK}`);
   out.push(`back: ${copy.PUBLISHERS_BACK_LINK}`);
   out.push(
     `labels: ${copy.LABEL_STATUS} | ${copy.LABEL_PAYEE} | ${copy.LABEL_SETTLEMENT} | ${copy.LABEL_OFFERS} | ${copy.LABEL_MONEY}`,

@@ -2,9 +2,11 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import '../../tables.css';
+import '../pk-sales.css';
 import { app, salesTotals } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EmptyState } from '../../../ui/EmptyState';
+import { Chip, PageHeader, Section, StatTile } from '../../../ui/publisher/kit';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { formatDateTime, formatMinor, optionLabel } from '../../../lib/format';
 import {
@@ -27,6 +29,8 @@ import {
   splitSales,
 } from '../../../lib/statement-copy';
 import { DownloadCsv } from '../DownloadCsv';
+import { Details, EnvChip } from '../pk-sales-parts';
+import { HOW_MADE_SUMMARY, totalsTiles, unitStatusTone } from '../../../lib/publisher-sales-view';
 import {
   EXPORT_NOTE,
   EXPORT_SALES_HREF,
@@ -62,32 +66,68 @@ export default async function PublisherSales() {
   if (environments.length === 0) environments.push(a.environment);
   return (
     <>
-      <h1>
-        {SALES_HEADING}{' '}
-        {environments.map((e) => (
-          <EnvLabel key={e} environment={e} />
-        ))}
-      </h1>
-      <p className="lede">{SALES_LEDE}</p>
-      <p>
+      <PageHeader
+        title={SALES_HEADING}
+        lede={SALES_LEDE}
+        aside={
+          <>
+            {environments.map((e) => (
+              <EnvLabel key={e} environment={e} />
+            ))}
+            <DownloadCsv
+              href={EXPORT_SALES_HREF}
+              label={EXPORT_SALES_LABEL}
+              testId="export-sales"
+            />
+          </>
+        }
+      />
+      <div className="pk-sublinks">
         <Link href="/publisher/statement">{NAV_STATEMENT}</Link>
-        {' | '}
         <Link href="/publisher">{NAV_HOME}</Link>
-      </p>
-      <p>
-        <DownloadCsv href={EXPORT_SALES_HREF} label={EXPORT_SALES_LABEL} testId="export-sales" />
-      </p>
-      <p className="muted">{EXPORT_NOTE}</p>
+      </div>
+      {totals.length > 0 ? (
+        <Section title={TOTALS_HEADING}>
+          <div data-testid="sales-totals">
+            {totals.map((t) => (
+              <div className="pk-group" key={`${t.currency}-${t.environment}`}>
+                <div className="pk-grouphead">
+                  <h3>{t.currency}</h3>
+                  <EnvChip environment={t.environment} />
+                </div>
+                <div className="pk-tiles">
+                  {totalsTiles(t).map((tile) => (
+                    <StatTile
+                      key={tile.key}
+                      label={tile.label}
+                      value={
+                        tile.key === 'net' ? (
+                          <span data-testid="sales-totals-net">{tile.value}</span>
+                        ) : (
+                          tile.value
+                        )
+                      }
+                      note={tile.note}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      ) : null}
       {rows.length === 0 ? (
-        <EmptyState title={SALES_EMPTY_TITLE}>{SALES_EMPTY_BODY}</EmptyState>
+        <Section>
+          <EmptyState title={SALES_EMPTY_TITLE}>{SALES_EMPTY_BODY}</EmptyState>
+        </Section>
       ) : (
-        <>
-          <p role="status" data-testid="sales-count">
+        <Section>
+          <p className="pk-count" role="status" data-testid="sales-count">
             {salesCountText(rows.length)}
           </p>
           <p className="table-hint muted">Scroll sideways to see more</p>
           <div className="table-scroll">
-            <table data-testid="sales-table">
+            <table className="pk-table" data-testid="sales-table">
               <caption className="visually-hidden">{SALES_HEADING}</caption>
               <thead>
                 <tr>
@@ -95,8 +135,12 @@ export default async function PublisherSales() {
                   <th scope="col">{SALES_COLUMNS.order}</th>
                   <th scope="col">{SALES_COLUMNS.article}</th>
                   <th scope="col">{SALES_COLUMNS.access}</th>
-                  <th scope="col">{SALES_COLUMNS.amount}</th>
-                  <th scope="col">{SALES_COLUMNS.fee}</th>
+                  <th scope="col" className="pk-num">
+                    {SALES_COLUMNS.amount}
+                  </th>
+                  <th scope="col" className="pk-num">
+                    {SALES_COLUMNS.fee}
+                  </th>
                   <th scope="col">{SALES_COLUMNS.status}</th>
                 </tr>
               </thead>
@@ -115,60 +159,23 @@ export default async function PublisherSales() {
                         <div key={`${it.title}-${String(k)}`}>{optionLabel(it.option)}</div>
                       ))}
                     </td>
-                    <td>{formatMinor(r.amount_minor, r.currency)}</td>
-                    <td>{feeText(r.paypal_fee_minor, r.currency, r.environment)}</td>
-                    <td>{r.status_text}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="muted">{SALES_SOURCE_NOTE}</p>
-          <p className="muted">{SALES_ORDER_NOTE}</p>
-        </>
-      )}
-      {totals.length > 0 ? (
-        <section data-testid="sales-totals">
-          <h2>{TOTALS_HEADING}</h2>
-          <p className="table-hint muted">Scroll sideways to see more</p>
-          <div className="table-scroll">
-            <table>
-              <caption className="visually-hidden">{TOTALS_HEADING}</caption>
-              <thead>
-                <tr>
-                  <th scope="col">{TOTALS_COLUMNS.group}</th>
-                  <th scope="col">{TOTALS_COLUMNS.units}</th>
-                  <th scope="col">{TOTALS_COLUMNS.gross}</th>
-                  <th scope="col">{TOTALS_COLUMNS.refunds}</th>
-                  <th scope="col">{TOTALS_COLUMNS.reversals}</th>
-                  <th scope="col">{TOTALS_COLUMNS.net}</th>
-                  <th scope="col">{TOTALS_COLUMNS.fee}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {totals.map((t) => (
-                  <tr key={`${t.currency}-${t.environment}`}>
+                    <td className="pk-num">{formatMinor(r.amount_minor, r.currency)}</td>
+                    <td className="pk-num">
+                      {feeText(r.paypal_fee_minor, r.currency, r.environment)}
+                    </td>
                     <td>
-                      {t.currency} <EnvLabel environment={t.environment} />
+                      <Chip tone={unitStatusTone(r.status)}>{r.status_text}</Chip>
                     </td>
-                    <td>{String(t.units_paid)}</td>
-                    <td>{formatMinor(t.gross_minor, t.currency)}</td>
-                    <td>{formatMinor(t.refunds_minor, t.currency)}</td>
-                    <td>{formatMinor(t.reversals_minor, t.currency)}</td>
-                    <td data-testid="sales-totals-net">
-                      <strong>{formatMinor(t.net_minor, t.currency)}</strong>
-                    </td>
-                    <td>{feeText(t.paypal_fee_minor, t.currency, t.environment)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="muted">{TOTALS_NOTE}</p>
-        </section>
-      ) : null}
+          <p className="muted">{SALES_ORDER_NOTE}</p>
+        </Section>
+      )}
       {mismatchCount > 0 ? (
-        <p className="muted" data-testid="sales-mismatch">
+        <p className="pk-notice" data-testid="sales-mismatch">
           {mismatchSalesText(mismatchCount)}
         </p>
       ) : null}
@@ -177,24 +184,29 @@ export default async function PublisherSales() {
           {notCountedText(notCounted.length)}
         </p>
       ) : null}
-      <h2 id="refunds">{REFUNDS_HEADING}</h2>
-      <p className="lede">{REFUNDS_LEDE}</p>
-      <p role="status" data-testid="refunds-count">
-        {refundsCountText(refunds.length)}
-      </p>
-      {refunds.length === 0 ? null : (
-        <>
+      <Section title={REFUNDS_HEADING} id="refunds">
+        <p className="pk-lede">{REFUNDS_LEDE}</p>
+        <p className="pk-count" role="status" data-testid="refunds-count">
+          {refundsCountText(refunds.length)}
+        </p>
+        {refunds.length === 0 ? null : (
           <div className="table-scroll">
-            <table data-testid="refunds-table">
+            <table className="pk-table" data-testid="refunds-table">
               <caption className="visually-hidden">{REFUNDS_HEADING}</caption>
               <thead>
                 <tr>
                   <th scope="col">{REFUNDS_COLUMNS.date}</th>
                   <th scope="col">{REFUNDS_COLUMNS.order}</th>
                   <th scope="col">{REFUNDS_COLUMNS.article}</th>
-                  <th scope="col">{REFUNDS_COLUMNS.original}</th>
-                  <th scope="col">{REFUNDS_COLUMNS.refunded}</th>
-                  <th scope="col">{REFUNDS_COLUMNS.reversed}</th>
+                  <th scope="col" className="pk-num">
+                    {REFUNDS_COLUMNS.original}
+                  </th>
+                  <th scope="col" className="pk-num">
+                    {REFUNDS_COLUMNS.refunded}
+                  </th>
+                  <th scope="col" className="pk-num">
+                    {REFUNDS_COLUMNS.reversed}
+                  </th>
                   <th scope="col">{REFUNDS_COLUMNS.status}</th>
                 </tr>
               </thead>
@@ -208,18 +220,78 @@ export default async function PublisherSales() {
                         <div key={`${it.title}-${String(k)}`}>{it.title}</div>
                       ))}
                     </td>
-                    <td>{formatMinor(r.amount_minor, r.currency)}</td>
-                    <td>{formatMinor(r.refunded_minor, r.currency)}</td>
-                    <td>{formatMinor(r.reversed_minor, r.currency)}</td>
-                    <td>{r.status_text}</td>
+                    <td className="pk-num">{formatMinor(r.amount_minor, r.currency)}</td>
+                    <td className="pk-num">{formatMinor(r.refunded_minor, r.currency)}</td>
+                    <td className="pk-num">{formatMinor(r.reversed_minor, r.currency)}</td>
+                    <td>
+                      <Chip tone={unitStatusTone(r.status)}>{r.status_text}</Chip>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="muted">{REFUNDS_SOURCE_NOTE}</p>
-        </>
-      )}
+        )}
+      </Section>
+      <Details summary={HOW_MADE_SUMMARY} testId="sales-how-made">
+        <p className="muted">{SALES_SOURCE_NOTE}</p>
+        <p className="muted">{TOTALS_NOTE}</p>
+        {totals.length > 0 ? (
+          <>
+            <h3>{TOTALS_HEADING}</h3>
+            <p className="table-hint muted">Scroll sideways to see more</p>
+            <div className="table-scroll">
+              <table className="pk-table">
+                <caption className="visually-hidden">{TOTALS_HEADING}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{TOTALS_COLUMNS.group}</th>
+                    <th scope="col" className="pk-num">
+                      {TOTALS_COLUMNS.units}
+                    </th>
+                    <th scope="col" className="pk-num">
+                      {TOTALS_COLUMNS.gross}
+                    </th>
+                    <th scope="col" className="pk-num">
+                      {TOTALS_COLUMNS.refunds}
+                    </th>
+                    <th scope="col" className="pk-num">
+                      {TOTALS_COLUMNS.reversals}
+                    </th>
+                    <th scope="col" className="pk-num">
+                      {TOTALS_COLUMNS.net}
+                    </th>
+                    <th scope="col" className="pk-num">
+                      {TOTALS_COLUMNS.fee}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {totals.map((t) => (
+                    <tr key={`${t.currency}-${t.environment}`}>
+                      <td>
+                        {t.currency} <EnvLabel environment={t.environment} />
+                      </td>
+                      <td className="pk-num">{String(t.units_paid)}</td>
+                      <td className="pk-num">{formatMinor(t.gross_minor, t.currency)}</td>
+                      <td className="pk-num">{formatMinor(t.refunds_minor, t.currency)}</td>
+                      <td className="pk-num">{formatMinor(t.reversals_minor, t.currency)}</td>
+                      <td className="pk-num">
+                        <strong>{formatMinor(t.net_minor, t.currency)}</strong>
+                      </td>
+                      <td className="pk-num">
+                        {feeText(t.paypal_fee_minor, t.currency, t.environment)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : null}
+        <p className="muted">{REFUNDS_SOURCE_NOTE}</p>
+        <p className="muted">{EXPORT_NOTE}</p>
+      </Details>
     </>
   );
 }

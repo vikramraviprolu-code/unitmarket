@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EnvLabel, envText } from '../../../ui/EnvLabel';
+import { StatusBanner } from '../../../ui/StatusBanner';
 import { formatMinor } from '../../../lib/format';
 import {
   APPLIED_HINT,
@@ -20,6 +21,9 @@ import {
   NONE_CELL,
   NO_PAYMENTS,
   OPS_LINK_PAYEE_REQUESTS,
+  PUBLISHERS_MFA_BODY,
+  PUBLISHERS_MFA_HEADING,
+  PUBLISHERS_MFA_LINK,
   PUBLISHERS_BACK_LINK,
   PUBLISHERS_EMPTY,
   PUBLISHERS_HEADING,
@@ -82,22 +86,45 @@ function PublisherTermsLine({
   );
 }
 
+function MfaNeeded() {
+  return (
+    <>
+      <h1>{PUBLISHERS_HEADING}</h1>
+      <StatusBanner tone="warn" title={PUBLISHERS_MFA_HEADING}>
+        <span data-testid="publishers-mfa-needed">{PUBLISHERS_MFA_BODY}</span>{' '}
+        <Link href="/signin?next=/ops/publishers">{PUBLISHERS_MFA_LINK}</Link>
+      </StatusBanner>
+    </>
+  );
+}
+
 // PUB-D (S7): the operator's table of publishers. Operator with the second factor only; the engine
 // answers an error to any other session. It shows counts and sums of stored rows and the last 4 of the
 // payee account; it names no buyer. The suspend form posts to the route, which checks everything again.
 export default async function OpsPublishers() {
   const actor = await currentActor();
+  // An operator without the authenticator code is told why, not sent to the sign in page unexplained.
+  if (actor?.kind === 'operator' && !actor.mfa) return <MfaNeeded />;
   if (actor?.kind !== 'operator') redirect('/signin?next=/ops/publishers');
   const r = await (await app()).engine.opsPublishers.list(actor);
-  if (!r.ok) redirect('/signin?next=/ops/publishers');
+  if (!r.ok) {
+    if (r.error.code === 'mfa_required') return <MfaNeeded />;
+    redirect('/signin?next=/ops/publishers');
+  }
   const { environment } = r.value;
   const publishers = r.value.publishers.filter((p) => p.status !== 'applied');
   const ap = await (await app()).engine.opsApplicants.list(actor);
-  if (!ap.ok) redirect('/signin?next=/ops/publishers');
+  if (!ap.ok) {
+    if (ap.error.code === 'mfa_required') return <MfaNeeded />;
+    redirect('/signin?next=/ops/publishers');
+  }
   const applicants = ap.value.applicants;
   // AGREE-1: the seeded, read only publisher terms record, by publisher. An applicant has none.
   const ag = await (await app()).engine.opsAgreements.list(actor);
-  if (!ag.ok) redirect('/signin?next=/ops/publishers');
+  if (!ag.ok) {
+    if (ag.error.code === 'mfa_required') return <MfaNeeded />;
+    redirect('/signin?next=/ops/publishers');
+  }
   const agreementOf = new Map(ag.value.agreements.map((a) => [a.publisher_id, a]));
   return (
     <>
