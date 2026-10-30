@@ -58,15 +58,27 @@ What is AI and what is code:
 
 ## What is real, what is a fixture, what is simulated
 
-| Part                                     | State                                                                                                                                                                        |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PayPal sandbox orders, approval, capture | Real, observed. A pack of two items was paid as two separate sandbox payments on 29 Oct 2026. [`docs/evidence/mvp-d-real-sitting-2026-10-29.md`]                             |
-| Hosted purchases on Google Cloud         | Real sandbox purchases and a refund path were observed on 27 and 28 Oct 2026. [`docs/evidence/mvp-c-hosted-2026-10-28.md`]                                                   |
-| Dry run                                  | Real code on a pretend PayPal (recorded or synthetic fixtures), labelled "Dry run" from the stored environment. Covered by the six offline test suites and browser journeys. |
-| Publishers and articles                  | Fictional. Harbour Ledger Review and Quayside Gazette are demo imprints with demo articles. [`domain/catalogue/src/seed-data.ts`]                                            |
-| Money accounts                           | Sandbox accounts only. No real money moves.                                                                                                                                  |
-| Payee checks                             | Done by an operator by hand, not by PayPal onboarding.                                                                                                                       |
-| Commission                               | No commission in this demo; planned 20 percent, not implemented.                                                                                                             |
+| Part                                     | State                                                                                                                                                                          |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PayPal sandbox orders, approval, capture | Real, observed. A pack of two items was paid as two separate sandbox payments on 29 Oct 2026. [`docs/evidence/mvp-d-real-sitting-2026-10-29.md`]                               |
+| Hosted purchases on Google Cloud         | Real sandbox purchases and a refund path were observed on 27 and 28 Oct 2026. [`docs/evidence/mvp-c-hosted-2026-10-28.md`]                                                     |
+| Dry run                                  | Real code on a pretend PayPal (recorded or synthetic fixtures), labelled "Dry run" from the stored environment. Covered by the six offline test suites and browser journeys.   |
+| Publishers and articles                  | Fictional. Harbour Ledger Review and Quayside Gazette are demo imprints with demo articles. [`domain/catalogue/src/seed-data.ts`]                                              |
+| Money accounts                           | Sandbox accounts only. No real money moves.                                                                                                                                    |
+| Payee checks                             | Done by an operator by hand, not by PayPal onboarding.                                                                                                                         |
+| Commission                               | No commission in this demo; planned 20 percent, not implemented.                                                                                                               |
+| Publisher money                          | UnitMarket never holds a publisher's money and uses no payout service. The design pays each publisher directly through PayPal; with one test account that is not demonstrated. |
+| Refunds                                  | Decided by an operator, for each unit. PayPal keeps its original fee on a refund.                                                                                              |
+| Tax                                      | No tax is calculated and no tax invoice is issued in this demo.                                                                                                                |
+| Legal pages                              | Four drafts for owner approval, including plain English publisher terms. Not legal advice. [`/legal/publisher-terms`, spec LEGAL-B]                                            |
+
+Said plainly, whichever settlement line is used: "Publishers are fictional. In this sandbox demo both selling publishers are paid
+into one sandbox test account that the team controls; multi-merchant payout is not demonstrated. UnitMarket never holds a
+publisher's money and uses no payout service; the design pays each publisher directly through PayPal. No commission in this demo;
+planned 20 percent, not implemented, and collecting it needs PayPal partner approval for platform fees. Payee checks are done by
+an operator, not by PayPal onboarding. Refunds are decided by an operator, and PayPal keeps its original fee on a refund. No tax
+is calculated and no tax invoice is issued in this demo. Simulation and dry run results prove modelled cases only, not PayPal
+compatibility." [`docs/design/publisher-questions-recommendations-2026-10-31.md` section 8, `/legal/publisher-terms`]
 
 Settlement line (use exactly one, after the owners check the evidence file):
 
@@ -138,8 +150,8 @@ human run under a new approval row. This draft does not assume it happened.
 - Partner features that this demo does not use: platform fees and publisher onboarding. Commission is planned at 20 percent and is
   not implemented.
 - Publisher offers, sales and statement are built for the demo. Not built: one sign in hash per publisher (today the three
-  publishers share one passcode hash), a real payee check by PayPal, and a privacy export and delete script (specified, not
-  written).
+  publishers share one passcode hash), a real payee check by PayPal, and a privacy export and delete script (in review, not
+  merged). **TO FINALISE:** say it is built only after that script has merged and a reviewer has seen it work.
 - More publishers and a real catalogue of rights.
 
 ## Built with

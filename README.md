@@ -24,12 +24,28 @@ Licence: Apache-2.0 (see `LICENSE`). Third party licences: `THIRD-PARTY-NOTICES.
 | Judge passcode                       | Merged. A separate passcode (`UMS_JUDGE_PASSCODE_HASH`, a hash, never the value) that signs in the two buyer personas only. Operator and publisher sign-ins refuse it                                                                                                                                          |
 | Two skins and the Appearance control | Merged. Bright Market and Deep Harbour, chosen in the footer, with the motion set. Each skin is one fixed palette                                                                                                                                                                                              |
 | Sign out and navigation              | Merged. Sign out, and a navigation bar that differs for buyer, publisher and operator                                                                                                                                                                                                                          |
-| Legal pages                          | Merged as drafts for the owners to approve: terms of purchase, privacy notice, refund policy and publisher terms. Not legal advice                                                                                                                                                                             |
+| Legal pages                          | Merged as drafts for the owners to approve: terms of purchase, privacy notice, refund policy and publisher terms (rewritten in plain English for the demo as it works today). Not legal advice                                                                                                                 |
 | Deploy kit                           | Merged and prepared, not run by an agent. It maps optional secrets by name and has an offline judge service variant. A person deploys it. No hosted deploy has happened with the publisher area, the reader view, the skins, the judge passcode or the AI adapter                                              |
 | Buyer cancel of an unpaid order      | Merged. The order page offers Continue to payment and Cancel for an unpaid order; cancel is refused once a payment has started                                                                                                                                                                                 |
 | Hosted demo URL                      | Not published in this README. Run it offline as described below                                                                                                                                                                                                                                                |
 
 Simulation and fixture results prove the modelled cases only, not PayPal compatibility in general.
+
+## Money and publishers, said plainly
+
+These lines are true of `main` today. Where a part is a design and not a demonstrated result, the line says so.
+
+- Publishers are fictional. In this sandbox demo both selling publishers are paid into one sandbox test account that the team controls; multi-merchant payout is not demonstrated.
+- UnitMarket never holds a publisher's money and uses no payout service. The design pays each publisher directly through PayPal; that is a design, shown with one test account only.
+- No commission in this demo; planned 20 percent, not implemented. Collecting it needs PayPal partner approval for platform fees.
+- Payee checks are done by an operator, not by PayPal onboarding. An operator can also record an applicant and approve or reject it on the publishers page; nobody signs up by themselves.
+- Refunds are decided by an operator, for each unit. PayPal keeps its original fee on a refund.
+- No tax is calculated and no tax invoice is issued in this demo. A receipt is a record of the sale.
+- The publisher terms page (`/legal/publisher-terms`) says the same in plain English. It is a draft for owner approval and is not legal advice.
+- Simulation and dry run results prove modelled cases only, not PayPal compatibility.
+- A privacy export and deletion script is not merged yet; today an operator carries out such a request by hand.
+
+The thirty open publisher questions, with recommended demo answers for the owners, are in `docs/design/publisher-questions-recommendations-2026-10-31.md`. They are recommendations, not legal or tax advice.
 
 ## Three minute demo path (offline)
 

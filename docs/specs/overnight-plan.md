@@ -142,7 +142,11 @@ if they slip, they need an owner exception row.
 2. D-066 says "`ai_enabled` off" but the existing `ai_enabled` switch gates discovery itself and is seeded on; turning it off
    stops Find. The specs keep the switch as is and make "off" mean `UMS_AI_ADAPTER=scripted` (the default). Owner to confirm.
 3. PUB-A2 against D-062, D-028 and D-041: an operator verifying a new, unshared merchant id on the hosted app would put a
-   named payee into `create_order`, which the seal blocks and D-062 forbids. The spec refuses verification in sandbox mode.
+   named payee into `create_order`. Correction (traceability MT-5): the transport seal does not block that under the D-062
+   scope (`mvp_c_refunds`), which allows a payee, and the approval row has no payee field. What stops a second payee today is
+   data (both selling publishers hold the owner's merchant id), the spec's refusal of verification outside a dry run, and
+   that no owner command to switch a payee is merged. A scope that names one payee is the planned fix (PAYEE-SCOPE). D-062 does
+   not approve a second payee, so paying one needs a new owner decision (items 28 and 30).
    The Quayside switch (item 28) needs a separate owner TTY command lane plus a new approval row (item 30); not specced here.
 4. Demo prices (item 37): editing `seed-data.ts` would ripple through about 20 test files that pin 40, 90, 300 or 450 minor
    units. The spec applies them as audited offer revisions at boot instead. On the hosted database the first boot after

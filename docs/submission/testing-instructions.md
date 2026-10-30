@@ -140,6 +140,15 @@ an article you own, and the four draft legal pages linked from the footer.
 - Today both publishers are paid into one sandbox test account; multi-merchant payout not demonstrated. **TO FINALISE:** replace
   this line only if the Quayside test order has been proven (decision items 28 and 30).
 - No commission in this demo; planned 20 percent, not implemented.
+- Publishers are fictional. UnitMarket never holds a publisher's money and uses no payout service; the design pays each publisher
+  directly through PayPal, which is not demonstrated with a second account. Payee checks are done by an operator, not by PayPal
+  onboarding.
+- Refunds are decided by an operator. PayPal keeps its original fee on a refund. No tax is calculated and no tax invoice is issued
+  in this demo.
+- Simulation and dry run results prove modelled cases only, not PayPal compatibility.
+- The footer links four draft legal pages, including publisher terms in plain English. They are drafts for owner approval and are
+  not legal advice. **TO FINALISE:** a privacy export and delete script is in review and not merged; do not tell judges it exists
+  until it has merged.
 - AI: by default the pack is composed by a scripted model and no AI call is made. The Claude adapter is merged but off by default,
   and no real AI call has ever been made with it. **TO FINALISE (AI-A, human only):** if a person switches the adapter on for the
   hosted app and makes one real call, say so here and name the spend cap and the scripted fall back.
