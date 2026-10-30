@@ -5,8 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Actor } from '@umsbx/contracts';
-import { createScriptedModel, runEvalCases, tally } from '@umsbx/model';
-import cases from '../../../packages/model/test-data/injection-cases.json';
+import { CHECK_CODES as COPY_CODES } from './lib/evals-copy';
 import { createApp, installApp } from '../composition.server';
 import type { App } from '../composition.server';
 import { testEnv } from './support';
@@ -17,6 +16,11 @@ const OPERATOR: Actor = { kind: 'operator', operator_id: 'opr_vikram', mfa: true
 const BUYER: Actor = { kind: 'buyer', buyer_id: 'buy_persona_a' };
 const PUBLISHER: Actor = { kind: 'publisher', publisher_id: 'pub_x' };
 const read = (rel: string): string => readFileSync(new URL(rel, import.meta.url), 'utf8');
+// The committed cases, read as data (apps/web reaches the model only through composition).
+const cases = JSON.parse(read('../../../packages/model/test-data/injection-cases.json')) as {
+  listing_injections: { id: string }[];
+  brief_jailbreaks: { id: string }[];
+};
 
 const apps: App[] = [];
 const dirs: string[] = [];
@@ -44,7 +48,7 @@ const tmpFile = (text: string): string => {
 };
 
 describe('evalsSummary', () => {
-  it('counts equal the committed JSON, and the baseline equals running the shared checks', async () => {
+  it('counts equal the committed JSON, one row per case in order, and the baseline is the tally of the rows', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     const app = await boot();
@@ -52,9 +56,17 @@ describe('evalsSummary', () => {
     expect(s).not.toBeNull();
     expect(s!.listing_cases).toBe(cases.listing_injections.length);
     expect(s!.brief_cases).toBe(cases.brief_jailbreaks.length);
-    const expected = await runEvalCases(createScriptedModel());
-    expect(s!.cases).toEqual(expected);
-    expect(s!.baseline).toEqual(tally(expected));
+    expect(s!.cases.map((c) => c.id)).toEqual([
+      ...cases.listing_injections.map((c) => c.id),
+      ...cases.brief_jailbreaks.map((c) => c.id),
+    ]);
+    expect(s!.cases.filter((c) => c.kind === 'listing')).toHaveLength(s!.listing_cases);
+    expect(s!.baseline).toEqual({
+      passed: s!.cases.filter((c) => c.pass).length,
+      total: s!.cases.length,
+    });
+    // The scripted model passes every case (the same checks the adversarial suite runs).
+    expect(s!.baseline.passed).toBe(s!.baseline.total);
     expect(s!.baseline.total).toBe(s!.listing_cases + s!.brief_cases);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -70,14 +82,19 @@ describe('evalsSummary', () => {
     const s = await app.engine.evalsSummary(OPERATOR);
     expect(s!.claude).toEqual({ state: 'not_run' });
     expect(s!.model_in_use).toBe('scripted');
-    expect(s!.environment).toBe(app.engine.environment);
+    expect(s!.environment).toBe(app.environment);
   });
 
   it('shows a stored Claude result with its counts and date', async () => {
     const f = tmpFile(JSON.stringify({ recorded_on: '2026-11-01', passed: 50, total: 52 }));
     const app = await boot({}, f);
     const s = await app.engine.evalsSummary(OPERATOR);
-    expect(s!.claude).toEqual({ state: 'recorded', recorded_on: '2026-11-01', passed: 50, total: 52 });
+    expect(s!.claude).toEqual({
+      state: 'recorded',
+      recorded_on: '2026-11-01',
+      passed: 50,
+      total: 52,
+    });
   });
 
   it('treats a malformed or impossible result file as not run', async () => {
@@ -104,8 +121,19 @@ describe('evalsSummary', () => {
   it('holds no model free text: case rows are an id, a kind, a verdict and fixed codes', async () => {
     const app = await boot();
     const s = await app.engine.evalsSummary(OPERATOR);
-    for (const c of s!.cases) expect(Object.keys(c).sort()).toEqual(['failed', 'id', 'kind', 'pass']);
+    for (const c of s!.cases)
+      expect(Object.keys(c).sort()).toEqual(['failed', 'id', 'kind', 'pass']);
     expect(JSON.stringify(s)).not.toMatch(/reason|EVIL/);
+  });
+});
+
+describe('copy and checks agree', () => {
+  it('the copy knows every fixed code the checks can give', () => {
+    const src = read('../../../packages/model/src/eval-checks.ts');
+    const list = /CHECK_CODES = \[([^\]]*)\]/.exec(src)![1]!;
+    const codes = [...list.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    expect(codes.length).toBeGreaterThan(0);
+    expect([...COPY_CODES]).toEqual(codes);
   });
 });
 

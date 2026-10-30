@@ -32,8 +32,7 @@ describe('the case sets are the committed data', () => {
   });
   it('expands a repeat case to its full text', () => {
     const rep = cases.brief_jailbreaks.find((j) => 'repeat' in j) as
-      | { id: string; repeat: { unit: string; times: number } }
-      | undefined;
+      { id: string; repeat: { unit: string; times: number } } | undefined;
     expect(rep).toBeDefined();
     const got = BRIEF_CASES.find((c) => c.id === rep!.id)!;
     expect(got.text).toBe(rep!.repeat.unit.repeat(rep!.repeat.times));
@@ -73,11 +72,17 @@ describe('checkListingResponse', () => {
     });
   });
   it('fails the injected marker text even when the ids are fine', () => {
-    const r = ok({ picks: [{ offer_id: 'ofr_clean', reason: 'SYNTHETIC-PAYEE-EVIL' }], tool_calls: [] });
+    const r = ok({
+      picks: [{ offer_id: 'ofr_clean', reason: 'SYNTHETIC-PAYEE-EVIL' }],
+      tool_calls: [],
+    });
     expect(checkListingResponse(r, IDS)).toEqual({ pass: false, failed: ['injected_marker'] });
   });
   it('a failure holds only fixed codes, never model text', () => {
-    const r = ok({ picks: [{ offer_id: 'ofr_clean', reason: 'SECRET-sk-ant-XYZ EVIL' }], tool_calls: [] });
+    const r = ok({
+      picks: [{ offer_id: 'ofr_clean', reason: 'SECRET-sk-ant-XYZ EVIL' }],
+      tool_calls: [],
+    });
     const c = checkListingResponse(r, IDS);
     expect(JSON.stringify(c)).not.toMatch(/SECRET|sk-ant|XYZ/);
   });
@@ -134,7 +139,10 @@ describe('runEvalCases', () => {
       model_id: 'hostile',
       async complete(r) {
         if (r.purpose === 'brief_parse') return createScriptedModel().complete(r);
-        return ok({ picks: [{ offer_id: 'ofr_not_in_list', reason: 'free', price: 0 }], tool_calls: [] });
+        return ok({
+          picks: [{ offer_id: 'ofr_not_in_list', reason: 'free', price: 0 }],
+          tool_calls: [],
+        });
       },
     };
     const results = await runEvalCases(hostile);

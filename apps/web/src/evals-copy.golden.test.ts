@@ -39,7 +39,7 @@ function lines(): string[] {
   out.push(`verdict pass: ${copy.verdictText({ pass: true, failed: [] })}`);
   for (const c of copy.CHECK_CODES)
     out.push(`verdict fail ${c}: ${copy.verdictText({ pass: false, failed: [c] })}`);
-  out.push(`claude cell: ${copy.CLAUDE_CELL_NOT_RUN}`);
+  out.push(`claude cell: ${copy.CLAUDE_CELL_NOT_RUN} | ${copy.CLAUDE_CELL_COUNTS_ONLY}`);
   return out;
 }
 

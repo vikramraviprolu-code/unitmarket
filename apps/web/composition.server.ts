@@ -13,6 +13,7 @@
 import { getSingleton, setSingleton } from './src/server/singleton';
 import 'server-only';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import type {
   Actor,
   AgentDeps,
@@ -67,7 +68,17 @@ import {
   pinComplete,
 } from '@umsbx/paypal';
 import type { AdapterDeps } from '@umsbx/paypal';
-import { createClaudeModel, createScriptedModel } from '@umsbx/model';
+import {
+  CLAUDE_MODEL_ID,
+  createClaudeModel,
+  createScriptedModel,
+  parseClaudeEvalResult,
+  runEvalCases,
+  tally,
+  BRIEF_CASES,
+  LISTING_CASES,
+} from '@umsbx/model';
+import type { CaseResult } from '@umsbx/model';
 import {
   SEED_DATA,
   SEED_SUPPLEMENT_COMPOSITE,
@@ -173,6 +184,11 @@ export interface AppOptions {
    * key is set; no socket is opened and no real key is needed. Refused unless NODE_ENV=test.
    */
   test_model_wire?: ModelWire;
+  /**
+   * AI-B (tests): the path of the stored Claude evaluation result, instead of the committed
+   * packages/model/test-data/claude-eval-result.json. Refused unless NODE_ENV is test.
+   */
+  test_claude_eval_file?: string;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -342,6 +358,24 @@ export interface LibraryEntry {
   open_case: CaseView | null;
   environment: EnvironmentLabel;
 }
+/**
+ * AI-B: what /ops/evals shows. Counts come from the committed injection cases, the baseline from running
+ * the scripted model over them, `claude` from a stored result file or `not_run`. Rows hold an id, a kind
+ * and a verdict of fixed codes; no model free text is ever copied in.
+ */
+export interface EvalsSummary {
+  environment: EnvironmentLabel;
+  listing_cases: number;
+  brief_cases: number;
+  baseline: { passed: number; total: number };
+  cases: CaseResult[];
+  claude:
+    | { state: 'not_run' }
+    | { state: 'recorded'; recorded_on: string; passed: number; total: number };
+  /** The model discovery uses: `claude` only when the adapter is built (UMS_AI_ADAPTER=claude and a key). */
+  model_in_use: 'scripted' | 'claude';
+}
+
 export interface OpsSnapshot {
   environment: EnvironmentLabel;
   switches: Record<SwitchName, boolean>;
@@ -555,6 +589,8 @@ export interface Engine {
     note?: string;
   }): Promise<Result<{ case_id: Id }, { code: 'not_found' | 'duplicate_open' }>>;
   opsSnapshot(actor: Actor): Promise<OpsSnapshot | null>;
+  /** AI-B: the operator evals page. Null for anyone but an operator. Runs the scripted model only. */
+  evalsSummary(actor: Actor): Promise<EvalsSummary | null>;
   /**
    * The ops stop button (BU-2): paypal_outbound off, with a reason, by an operator session. It can
    * only turn the switch off; turning it on is `pnpm safety:resume` at the owner's terminal.
@@ -789,6 +825,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       throw new Error('boot refused: test_seed outside NODE_ENV=test');
     if (opts.test_model_wire !== undefined)
       throw new Error('boot refused: test_model_wire outside NODE_ENV=test');
+    if (opts.test_claude_eval_file !== undefined)
+      throw new Error('boot refused: test_claude_eval_file outside NODE_ENV=test');
   }
   const environment = envLabel(config);
   const clock: Clock = systemClock();
@@ -1684,6 +1722,32 @@ function buildApp(config: Config, opts: AppOptions): App {
         code:
           r.error.code === 'duplicate_open' ? ('duplicate_open' as const) : ('not_found' as const),
       });
+    },
+
+    async evalsSummary(actor) {
+      if (actor.kind !== 'operator') return null;
+      // The scripted model over the committed cases: no network, no key, no spend.
+      const cases = await runEvalCases(createScriptedModel());
+      let stored: string | null = null;
+      try {
+        stored = readFileSync(
+          opts.test_claude_eval_file ??
+            new URL('../../packages/model/test-data/claude-eval-result.json', import.meta.url),
+          'utf8',
+        );
+      } catch {
+        stored = null; // no file: the cases have not been run against Claude
+      }
+      const result = stored === null ? null : parseClaudeEvalResult(stored);
+      return {
+        environment,
+        listing_cases: LISTING_CASES.length,
+        brief_cases: BRIEF_CASES.length,
+        baseline: tally(cases),
+        cases,
+        claude: result === null ? { state: 'not_run' } : { state: 'recorded', ...result },
+        model_in_use: model.model_id === CLAUDE_MODEL_ID ? 'claude' : 'scripted',
+      };
     },
 
     async opsSnapshot(actor) {
