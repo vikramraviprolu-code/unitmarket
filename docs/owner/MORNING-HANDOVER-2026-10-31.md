@@ -70,7 +70,10 @@ DEPLOY RECORD (30 Oct 2026, done by Sakthi, human only): tag `gcp-pub-1` on comm
 publisher console, judge passcode, offer cap and Claude adapter are off. Checked in a browser: sign in as Buyer A, discover with fit cards, demo
 price changes applied, `/legal/privacy` live, `/ops` shows `paypal_outbound` Off. The app is configured for the address
 `https://unitmarket-sandbox-626887286871.europe-west3.run.app`; the other Cloud Run address gives a NOTE from `deploy.sh` and is not used for sign in.
-Not done: offline judge service, optional secrets, real PayPal purchase on this build (needs a new approval row from the owner).
+Second deploy the same evening: Sakthi stored `UMS_JUDGE_PASSCODE_HASH` and `UMS_PUBLISHER_PASSCODE_HASH` in Secret Manager (hashes made in Cloud Shell, never printed or
+shared) and deployed `gcp-pub-1` again: revision `unitmarket-sandbox-00014-mjz`, both secrets `on`. Four sign in checks passed: the judge passcode signs in
+Buyer A, the judge passcode is refused for Operator, the publisher passcode opens the publisher console, the publisher passcode is refused for Buyer A.
+Not done: offline judge service, offer cap, Claude adapter and key, real PayPal purchase on this build (needs a new approval row from the owner).
 
 ## Human only steps, in order
 
