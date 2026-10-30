@@ -3,14 +3,14 @@ heading: Publishers
 lede: What each publisher has on sale, what has been paid to them and what is still open. Suspending a publisher takes its offers off sale. Orders already paid, access already bought and refunds are not changed.
 empty: No publishers yet.
 back: Back to operations
-labels: Status | Payee account | Offers on sale | Money by currency
+labels: Status | Payee account on file | Settlement | Offers on sale | Money by currency
 status applied: Applied. Waiting for approval.
 status active: Active
 status suspended: Suspended
 payee none: No payee account set.
-payee waiting: Account ending AB12. Not checked yet.
-payee checked: Account ending AB12. Marked as checked.
-payee shared: Account ending AB12. Marked as checked. Shared with other test publishers.
+payee waiting: Account on file ending AB12. Not checked yet.
+payee checked: Account on file ending AB12. Marked as checked.
+payee shared: Account on file ending AB12. Marked as checked. Shared with other test publishers.
 offers 0: No offers on sale.
 offers 1: 1 offer on sale.
 offers 2: 2 offers on sale.

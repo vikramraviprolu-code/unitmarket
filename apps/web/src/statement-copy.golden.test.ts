@@ -5,7 +5,14 @@
 // golden/statement-copy.golden.txt. D-051: no italics, no dashes; "Not charged" only for declined.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { COMMISSION_LINE, UNIT_STATUS_TEXT, settlementMode } from '../composition.server';
+import {
+  COMMISSION_LINE,
+  NOTHING_SOLD_SENTENCE,
+  PAYEE_DIRECT_SENTENCE,
+  SETTLEMENT_SENTENCE,
+  UNIT_STATUS_TEXT,
+  settlementMode,
+} from '../composition.server';
 import * as copy from './lib/statement-copy';
 
 vi.mock('server-only', () => ({}));
@@ -59,6 +66,14 @@ function lines(): string[] {
     expect(s.mode).toBe(mode);
     out.push(`settlement ${mode}: ${s.sentence}`);
   }
+  out.push(`settlement mixed: ${SETTLEMENT_SENTENCE.mixed}`);
+  out.push(`settlement direct, page level: ${PAYEE_DIRECT_SENTENCE}`);
+  out.push(`settlement direct, nothing sold: ${NOTHING_SOLD_SENTENCE}`);
+  out.push(`mismatch note: ${copy.MISMATCH_NOTE}`);
+  out.push(`mismatch sales 1: ${copy.mismatchSalesText(1)}`);
+  out.push(`mismatch sales 2: ${copy.mismatchSalesText(2)}`);
+  out.push(`mismatch statement 1: ${copy.mismatchStatementText(1)}`);
+  out.push(`mismatch statement 2: ${copy.mismatchStatementText(2)}`);
   out.push(`commission: ${COMMISSION_LINE}`);
   return out;
 }

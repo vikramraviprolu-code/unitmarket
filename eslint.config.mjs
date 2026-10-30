@@ -311,6 +311,13 @@ const SYNTAX = {
     message:
       'No client-exposed (NEXT_PUBLIC_ and similar) variables except NEXT_PUBLIC_UMS_ENV_LABEL.',
   },
+  // The offline scripts (perf:offline, record:fixtures, owner CLIs) run TypeScript in Node strip-only mode,
+  // which cannot erase a parameter property (`constructor(readonly x: T)`). Twice it broke them after a merge.
+  paramProp: {
+    selector: 'TSParameterProperty',
+    message:
+      'No constructor parameter properties: declare the field and assign it (Node strip-only TypeScript cannot run them).',
+  },
 };
 
 // Local rule: a relative import may not leave the package that contains the file (nor the repo).
@@ -1121,6 +1128,7 @@ function entry(files, { extra = [], paths = [], ignores = [], allow = {} } = {})
         ...(allow.env ? [] : SYNTAX.env),
         ...SYNTAX.dynamicCode,
         SYNTAX.publicName,
+        SYNTAX.paramProp,
       ],
     },
   };

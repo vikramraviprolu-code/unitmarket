@@ -1,6 +1,7 @@
 // FIX-DOCS (docs/specs/fix-docs-gate12.md): pins the gate 12 copy fixes that no golden covers. The unit
 // runner does not compile .tsx, so page sources are read as text. README is read as text too.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { moneyStateText } from './lib/buyer-copy';
 import { LINE_TEXT } from './lib/composite-copy';
@@ -25,8 +26,41 @@ describe('README (D2, D3)', () => {
     expect(readme).toMatch(/legal pages/i);
   });
 
-  it('does not claim lanes that are not merged', () => {
-    expect(readme).not.toMatch(/reader view|sales page|statement page/i);
+  // The reader view (READER-A), the sales page and the statement page (PUB-C) merged to main after this test was
+  // written, so the README now names them. Each claim is tied to its page source on main, so the README cannot
+  // name a lane whose page is missing. Lanes that are not on main stay unclaimed (negative checks below).
+  it('claims the reader view, sales page and statement page only while their pages exist on main', () => {
+    const pages: Array<[RegExp, string]> = [
+      [/reader view/i, './app/library/[entitlement]/read/page.tsx'],
+      [/sales page/i, './app/publisher/sales/page.tsx'],
+      [/statement page/i, './app/publisher/statement/page.tsx'],
+    ];
+    for (const [claim, page] of pages) {
+      if (claim.test(readme)) {
+        expect(
+          existsSync(fileURLToPath(new URL(page, import.meta.url))),
+          `README names ${claim} but ${page} is missing`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('claims a lane as merged only while its route exists, and does not claim lanes that are not merged', () => {
+    // Buyer cancel of an unpaid order (ORDER-A) is merged: its row says Merged and its route exists on main.
+    const cancelRow = readme
+      .split('\n')
+      .find((line) => /Buyer cancel of an unpaid order/.test(line));
+    expect(cancelRow, 'the cancel row is listed').toBeDefined();
+    expect(cancelRow).toMatch(/Merged/i);
+    expect(
+      existsSync(fileURLToPath(new URL('./app/api/orders/[ref]/cancel/route.ts', import.meta.url))),
+      'README says the cancel lane is merged but its route is missing',
+    ).toBe(true);
+    // WordPress lanes are not merged: the README must not name them.
+    expect(readme).not.toMatch(/wordpress/i);
+    // Paying Quayside Gazette into its own account is not built: any sentence about it must say so.
+    const direct = readme.split('\n').filter((line) => /Quayside Gazette directly/i.test(line));
+    for (const line of direct) expect(line).toMatch(/not built/i);
   });
 });
 

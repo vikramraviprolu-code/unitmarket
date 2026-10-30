@@ -18,6 +18,7 @@ import {
   SALES_LEDE,
   SALES_ORDER_NOTE,
   SALES_SOURCE_NOTE,
+  mismatchSalesText,
   notCountedText,
   salesCountText,
   splitSales,
@@ -35,6 +36,7 @@ export default async function PublisherSales() {
   if (all === null) redirect('/signin?next=/publisher/sales');
   // GATE35 D6: only paid units are counted and listed; the rest is one note.
   const { counted: rows, notCounted } = splitSales(all);
+  const mismatchCount = rows.filter((r) => r.status === 'mismatch').length;
   // The label follows the stored environment of the rows; with no rows, the app's.
   const environments = [...new Set(all.map((r) => r.environment))].sort();
   if (environments.length === 0) environments.push(a.environment);
@@ -101,6 +103,11 @@ export default async function PublisherSales() {
           <p className="muted">{SALES_ORDER_NOTE}</p>
         </>
       )}
+      {mismatchCount > 0 ? (
+        <p className="muted" data-testid="sales-mismatch">
+          {mismatchSalesText(mismatchCount)}
+        </p>
+      ) : null}
       {notCounted.length > 0 ? (
         <p className="muted" data-testid="sales-not-counted">
           {notCountedText(notCounted.length)}

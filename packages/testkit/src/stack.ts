@@ -90,10 +90,12 @@ class ModelPayPal {
 
   // own: the account the credentials belong to. A unit created without a payee is answered with it
   // as payee, the way PayPal names the seller's own account (BU-7, D-028). null: no payee echoed.
-  constructor(
-    private readonly clock: Clock,
-    private readonly own: { merchant_id: string } | null = null,
-  ) {}
+  private readonly clock: Clock;
+  private readonly own: { merchant_id: string } | null;
+  constructor(clock: Clock, own: { merchant_id: string } | null = null) {
+    this.clock = clock;
+    this.own = own;
+  }
 
   private stamp(): string {
     return this.clock

@@ -15,6 +15,7 @@ import {
   LABEL_MONEY,
   LABEL_OFFERS,
   LABEL_PAYEE,
+  LABEL_SETTLEMENT,
   LABEL_STATUS,
   NONE_CELL,
   NO_PAYMENTS,
@@ -77,6 +78,8 @@ export default async function OpsPublishers() {
                   shared: p.payee_shared,
                 })}
               </dd>
+              <dt>{LABEL_SETTLEMENT}</dt>
+              <dd data-testid="publisher-row-settlement">{p.settlement.sentence}</dd>
               <dt>{LABEL_OFFERS}</dt>
               <dd>{offersText(p.offers_live)}</dd>
             </dl>

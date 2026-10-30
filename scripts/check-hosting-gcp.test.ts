@@ -28,7 +28,8 @@ const PEM = '-----BEGIN ' + 'PRIVATE KEY-----';
 const HEX_TOKEN = '3f9a' + 'c27d41'.repeat(6);
 // GCP-2: the base image digest taken from the real Cloud Build log of 27 Oct.
 const BASE_DIGEST = 'dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94';
-// INFRA-A: optional secrets of the sandbox service and the four own secrets of the offline service.
+// INFRA-A: optional secrets of the sandbox service and the five own secrets of the offline service
+// (HARD-OFFLINE added the judge hash).
 const OPTIONAL_NAMES = [
   'UMS_PUBLISHER_PASSCODE_HASH',
   'UMS_JUDGE_PASSCODE_HASH',
@@ -41,6 +42,7 @@ const OFFLINE_NAMES = [
   'UMS_OFFLINE_APPROVAL_SECRET',
   'UMS_OFFLINE_LINK_SECRET',
   'UMS_OFFLINE_DEMO_PASSCODE_HASH',
+  'UMS_OFFLINE_JUDGE_PASSCODE_HASH',
 ];
 const SECRET_NAMES = [
   'PAYPAL_CLIENT_ID',
@@ -465,7 +467,7 @@ const CASES: Case[] = [
   [
     'set-secret drops a name',
     'set-secret.sh',
-    ' | UMS_OFFLINE_DEMO_PASSCODE_HASH)',
+    ' | UMS_OFFLINE_JUDGE_PASSCODE_HASH)',
     ')',
     'secret-names',
   ],
@@ -1039,7 +1041,7 @@ const INFRA_A_CASES: Case[] = [
     'secret-in-env',
   ],
   [
-    'the offline script names the judge hash (the offline service is unchanged)',
+    'the offline script names the sandbox judge hash',
     'deploy-offline.sh',
     'SECRET_FLAGS=""',
     'UMS_JUDGE_PASSCODE_HASH=x\nSECRET_FLAGS=""',
@@ -1372,6 +1374,211 @@ const INFRA_A_CASES: Case[] = [
     'OTHER_SA="$RUNTIME_SA"\nSECRET_FLAGS=""',
     'offline-shape',
   ],
+  // HARD-OFFLINE: the offline service gets its own judge hash; judges there sign in buyers only
+  [
+    'set-secret drops the offline judge name',
+    'set-secret.sh',
+    ' | UMS_OFFLINE_JUDGE_PASSCODE_HASH',
+    '',
+    'secret-names',
+  ],
+  [
+    'set-secret allows a made-up offline name',
+    'set-secret.sh',
+    ' | UMS_OFFLINE_JUDGE_PASSCODE_HASH',
+    ' | UMS_OFFLINE_JUDGE_PASSCODE_HASH | UMS_OFFLINE_PAYPAL_CONNECT',
+    'secret-names',
+  ],
+  [
+    'the offline deploy list drops the judge secret',
+    'deploy-offline.sh',
+    ' UMS_OFFLINE_JUDGE_PASSCODE_HASH"',
+    '"',
+    'secret-names',
+  ],
+  [
+    'the setup offline list drops the judge secret',
+    'setup.sh',
+    ' UMS_OFFLINE_JUDGE_PASSCODE_HASH"',
+    '"',
+    'secret-names',
+  ],
+  [
+    'the offline deploy list swaps in the sandbox judge name',
+    'deploy-offline.sh',
+    ' UMS_OFFLINE_JUDGE_PASSCODE_HASH"',
+    ' UMS_JUDGE_PASSCODE_HASH"',
+    'secret-names',
+  ],
+  [
+    'the setup offline list swaps in the sandbox judge name',
+    'setup.sh',
+    ' UMS_OFFLINE_JUDGE_PASSCODE_HASH"',
+    ' UMS_JUDGE_PASSCODE_HASH"',
+    'secret-names',
+  ],
+  [
+    'the setup offline list gains a payment name',
+    'setup.sh',
+    ' UMS_OFFLINE_JUDGE_PASSCODE_HASH"',
+    ' UMS_OFFLINE_JUDGE_PASSCODE_HASH PAYPAL_CLIENT_SECRET"',
+    'secret-names',
+  ],
+  [
+    'the setup optional list gains the offline judge name',
+    'setup.sh',
+    ' UMS_ANTHROPIC_API_KEY"',
+    ' UMS_ANTHROPIC_API_KEY UMS_OFFLINE_JUDGE_PASSCODE_HASH"',
+    'secret-names',
+  ],
+  [
+    'the deploy optional list gains the offline judge name',
+    'deploy.sh',
+    ' UMS_ANTHROPIC_API_KEY"',
+    ' UMS_ANTHROPIC_API_KEY UMS_OFFLINE_JUDGE_PASSCODE_HASH"',
+    'secret-names',
+  ],
+  [
+    'the setup required list gains the offline judge name',
+    'setup.sh',
+    ' UMS_OPERATOR_TOTP_KEYS"',
+    ' UMS_OPERATOR_TOTP_KEYS UMS_OFFLINE_JUDGE_PASSCODE_HASH"',
+    'secret-names',
+  ],
+  [
+    'the offline judge secret is mapped to a connect name',
+    'deploy-offline.sh',
+    'UMS_${NAME#UMS_OFFLINE_}=${NAME}:latest',
+    'UMS_PAYPAL_CONNECT=${NAME}:latest',
+    'deploy-shape',
+  ],
+  [
+    'the offline judge secret is mapped to a mode name',
+    'deploy-offline.sh',
+    'UMS_${NAME#UMS_OFFLINE_}=${NAME}:latest',
+    'UMS_MODE=${NAME}:latest',
+    'deploy-shape',
+  ],
+  [
+    'the offline mapping stops stripping the prefix',
+    'deploy-offline.sh',
+    'UMS_${NAME#UMS_OFFLINE_}=${NAME}:latest',
+    '${NAME}=${NAME}:latest',
+    'deploy-shape',
+  ],
+  [
+    'the offline judge secret gets a hard-coded extra mapping',
+    'deploy-offline.sh',
+    'echo "== deploy $SERVICE',
+    'SECRET_FLAGS="${SECRET_FLAGS},UMS_JUDGE_PASSCODE_HASH=UMS_OFFLINE_JUDGE_PASSCODE_HASH:latest"\necho "== deploy $SERVICE',
+    'deploy-shape',
+  ],
+  [
+    'the offline mapping loop walks another list',
+    'deploy-offline.sh',
+    'SECRET_FLAGS=""\nfor NAME in $OFFLINE_SECRET_NAMES; do',
+    'SECRET_FLAGS=""\nfor NAME in $OFFLINE_SECRET_NAMES $OFFLINE_EXTRA; do',
+    'deploy-shape',
+  ],
+  [
+    'the offline deploy maps a sandbox judge secret by name',
+    'deploy-offline.sh',
+    'echo "== deploy $SERVICE',
+    'SECRET_FLAGS="${SECRET_FLAGS},UMS_JUDGE_PASSCODE_HASH=UMS_JUDGE_PASSCODE_HASH:latest"\necho "== deploy $SERVICE',
+    'offline-secret',
+  ],
+  [
+    'the offline account is bound to the sandbox judge secret outside the loop',
+    'setup.sh',
+    'echo "== Cloud SQL instance',
+    'gcloud secrets add-iam-policy-binding "UMS_JUDGE_PASSCODE_HASH" --member="serviceAccount:${OFFLINE_SA}" --role="roles/secretmanager.secretAccessor" --project="$PROJECT_ID" >/dev/null\necho "== Cloud SQL instance',
+    'offline-shape',
+  ],
+  [
+    'the offline account is bound to a PayPal secret outside the loop',
+    'setup.sh',
+    'echo "== Cloud SQL instance',
+    'gcloud secrets add-iam-policy-binding "PAYPAL_CLIENT_SECRET" --member="serviceAccount:${OFFLINE_SA}" --role="roles/secretmanager.secretAccessor" --project="$PROJECT_ID" >/dev/null\necho "== Cloud SQL instance',
+    'offline-shape',
+  ],
+  [
+    'the offline secret loop also walks the sandbox judge secret',
+    'setup.sh',
+    'for NAME in $OFFLINE_SECRET_NAMES; do',
+    'for NAME in $OFFLINE_SECRET_NAMES UMS_JUDGE_PASSCODE_HASH; do',
+    'offline-shape',
+  ],
+  [
+    'the offline secret loop also walks the optional secrets',
+    'setup.sh',
+    'for NAME in $OFFLINE_SECRET_NAMES; do',
+    'for NAME in $OFFLINE_SECRET_NAMES $OPTIONAL_SECRET_NAMES; do',
+    'offline-shape',
+  ],
+  [
+    'the offline account is bound inside the optional secret loop',
+    'setup.sh',
+    [
+      'echo "== optional secret containers (no values yet)"',
+      'for NAME in $OPTIONAL_SECRET_NAMES; do',
+      '  if ! gcloud secrets describe "$NAME" --project="$PROJECT_ID" >/dev/null 2>&1; then',
+      '    gcloud secrets create "$NAME" --replication-policy=automatic --project="$PROJECT_ID" >/dev/null',
+      '    echo "created $NAME"',
+      '  else',
+      '    echo "kept $NAME"',
+      '  fi',
+      '  gcloud secrets add-iam-policy-binding "$NAME" \\',
+      '    --member="serviceAccount:${RUNTIME_SA}" \\',
+    ].join('\n'),
+    [
+      'echo "== optional secret containers (no values yet)"',
+      'for NAME in $OPTIONAL_SECRET_NAMES; do',
+      '  if ! gcloud secrets describe "$NAME" --project="$PROJECT_ID" >/dev/null 2>&1; then',
+      '    gcloud secrets create "$NAME" --replication-policy=automatic --project="$PROJECT_ID" >/dev/null',
+      '    echo "created $NAME"',
+      '  else',
+      '    echo "kept $NAME"',
+      '  fi',
+      '  gcloud secrets add-iam-policy-binding "$NAME" \\',
+      '    --member="serviceAccount:${OFFLINE_SA}" \\',
+    ].join('\n'),
+    'offline-shape',
+  ],
+  [
+    'the offline judge container is bound to the sandbox account too',
+    'setup.sh',
+    [
+      '    --member="serviceAccount:${OFFLINE_SA}" \\',
+      '    --role="roles/secretmanager.secretAccessor" \\',
+    ].join('\n'),
+    [
+      '    --member="serviceAccount:${OFFLINE_SA}" \\',
+      '    --member="serviceAccount:${RUNTIME_SA}" \\',
+      '    --role="roles/secretmanager.secretAccessor" \\',
+    ].join('\n'),
+    'iam-role',
+  ],
+  [
+    'the offline yaml gives the offline judge name a value',
+    'service-offline.yaml',
+    "UMS_DB: 'pglite-memory'",
+    "UMS_DB: 'pglite-memory'\nUMS_OFFLINE_JUDGE_PASSCODE_HASH: 'x'",
+    'secret-in-env',
+  ],
+  [
+    'the offline yaml gives the sandbox judge name a value',
+    'service-offline.yaml',
+    "UMS_DB: 'pglite-memory'",
+    "UMS_DB: 'pglite-memory'\nUMS_JUDGE_PASSCODE_HASH: 'x'",
+    'secret-in-env',
+  ],
+  [
+    'the offline script gives the offline judge name a literal',
+    'deploy-offline.sh',
+    'SECRET_FLAGS=""',
+    'UMS_OFFLINE_JUDGE_PASSCODE_HASH=abc\nSECRET_FLAGS=""',
+    'secret-literal',
+  ],
   // review F3: OPTIONAL_ON and SECRET_FLAGS come from the reviewed lines only
   [
     'OPTIONAL_ON starts with the connection name',
@@ -1511,6 +1718,19 @@ describe('check-hosting-gcp', () => {
     const setup = read('setup.sh');
     expect(setup).toContain(`OPTIONAL_SECRET_NAMES="${OPTIONAL_NAMES.join(' ')}"`);
     expect(setup).toContain(`OFFLINE_SECRET_NAMES="${OFFLINE_NAMES.join(' ')}"`);
+  });
+
+  it('HARD-OFFLINE: the real offline kit has five own secrets, the judge one mapped to the judge env name', () => {
+    const read = (f: string) => readFileSync(join(REPO_ROOT, 'infra', 'gcp', f), 'utf8');
+    expect(OFFLINE_NAMES).toHaveLength(5);
+    expect(read('deploy-offline.sh')).toContain(
+      `OFFLINE_SECRET_NAMES="${OFFLINE_NAMES.join(' ')}"`,
+    );
+    expect(read('deploy-offline.sh')).toContain('UMS_${NAME#UMS_OFFLINE_}=${NAME}:latest');
+    // the demo and the judge hash are two different secrets; the sandbox judge name is never named
+    expect(read('deploy-offline.sh')).not.toMatch(/(?<!OFFLINE_)\bUMS_JUDGE_PASSCODE_HASH\b/);
+    expect(read('set-secret.sh')).toContain('UMS_OFFLINE_JUDGE_PASSCODE_HASH');
+    expect(read('setup.sh')).toContain(`OFFLINE_SECRET_NAMES="${OFFLINE_NAMES.join(' ')}"`);
   });
 
   it('INFRA-A: the real offline service is offline, in memory, with the connection off and no payment name', () => {

@@ -34,6 +34,7 @@ const OFFLINE = [
   'UMS_OFFLINE_APPROVAL_SECRET',
   'UMS_OFFLINE_LINK_SECRET',
   'UMS_OFFLINE_DEMO_PASSCODE_HASH',
+  'UMS_OFFLINE_JUDGE_PASSCODE_HASH',
 ];
 
 const STUB = `#!/usr/bin/env bash
@@ -199,7 +200,7 @@ describe('INFRA-A deploy.sh against a stub gcloud', () => {
 });
 
 describe('INFRA-A deploy-offline.sh against a stub gcloud', () => {
-  it('maps only its four own secrets, to the env names without OFFLINE_, with no database and no payment name', () => {
+  it('maps only its five own secrets, to the env names without OFFLINE_, with no database and no payment name', () => {
     const r = run('deploy-offline.sh', OFFLINE);
     expect(r.status, r.out).toBe(0);
     expect(secretsOf(r.deploy).sort()).toEqual(
@@ -208,6 +209,7 @@ describe('INFRA-A deploy-offline.sh against a stub gcloud', () => {
         'UMS_APPROVAL_SECRET=UMS_OFFLINE_APPROVAL_SECRET:latest',
         'UMS_LINK_SECRET=UMS_OFFLINE_LINK_SECRET:latest',
         'UMS_DEMO_PASSCODE_HASH=UMS_OFFLINE_DEMO_PASSCODE_HASH:latest',
+        'UMS_JUDGE_PASSCODE_HASH=UMS_OFFLINE_JUDGE_PASSCODE_HASH:latest',
       ].sort(),
     );
     expect(r.deploy).not.toMatch(/PAYPAL|DATABASE_URL|cloudsql|OUTBOUND|MERCHANT|TOTP/i);

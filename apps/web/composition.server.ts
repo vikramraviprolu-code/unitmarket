@@ -131,6 +131,7 @@ import {
 import type { ResolveAction, ResolveDeps } from '@umsbx/recovery';
 import {
   beginCheckout as beginPaymentsCheckout,
+  cancelOrder as cancelPaymentsOrder,
   checkInvariants,
   onBuyerReturn as onPaymentsReturn,
   placeOrder as placePaymentsOrder,
@@ -143,12 +144,29 @@ import {
 import { health as jobsHealth, LEADER_LOCK_KEY, startLoop } from '@umsbx/jobs';
 import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
-import { publisherExposure, salesFor, statementFor } from '@umsbx/publisher-console';
-import type { PublisherExposure, PublisherStatement, SaleRow } from '@umsbx/publisher-console';
+import {
+  payeeSettlement,
+  publisherExposure,
+  salesFor,
+  statementFor,
+} from '@umsbx/publisher-console';
+import type {
+  PublisherExposure,
+  PublisherStatement,
+  SaleRow,
+  Settlement,
+} from '@umsbx/publisher-console';
 
 // PUB-C: the money words of the publisher pages live with the code that decides them; the golden test
 // of the page copy pins them through this re-export.
-export { COMMISSION_LINE, UNIT_STATUS_TEXT, settlementMode } from '@umsbx/publisher-console';
+export {
+  COMMISSION_LINE,
+  NOTHING_SOLD_SENTENCE,
+  PAYEE_DIRECT_SENTENCE,
+  SETTLEMENT_SENTENCE,
+  UNIT_STATUS_TEXT,
+  settlementMode,
+} from '@umsbx/publisher-console';
 import {
   DEFAULT_RATES,
   SESSION_COOKIE,
@@ -264,6 +282,9 @@ export type PlaceError =
 export type CheckoutError = {
   code: 'not_found' | 'wrong_state' | 'create_failed' | 'payments_paused';
 };
+export type CancelError = {
+  code: 'not_found' | 'wrong_state' | 'payment_started' | 'unavailable';
+};
 export type ReturnError = {
   code:
     'not_found' | 'not_approved' | 'frozen' | 'not_charged_content_unavailable' | 'payments_paused';
@@ -316,6 +337,11 @@ export interface PaymentsFacade {
     actor: Actor;
     scenario?: string | null;
   }): Promise<Result<{ order_ref: Id; status: string; next: PackStep | null }, ReturnError>>;
+  /** ORDER-A: the buyer cancels an unpaid order (the abandon transition, with stricter guards). */
+  cancelOrder(i: {
+    order_id: Id;
+    actor: Actor;
+  }): Promise<Result<{ order_ref: Id; status: 'abandoned'; already: boolean }, CancelError>>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -558,6 +584,8 @@ export interface PublisherHome {
   status: PublisherStatus;
   offers_live: number;
   payee: { last4: string | null; verified_at: string | null };
+  /** SETTLE-A: the one settlement sentence for the account as it is now, from stored facts. */
+  settlement: Settlement;
 }
 
 export interface Engine {
@@ -716,7 +744,9 @@ export interface Engine {
    * the app runs in sandbox mode (D-062). The whole merchant id is never returned by any method.
    */
   payee: {
-    view(actor: Actor): Promise<(PayeeView & { environment: EnvironmentLabel }) | null>;
+    view(
+      actor: Actor,
+    ): Promise<(PayeeView & { environment: EnvironmentLabel; settlement: Settlement }) | null>;
     request(i: {
       actor: Actor;
       merchant_id: string;
@@ -1521,8 +1551,9 @@ function buildApp(config: Config, opts: AppOptions): App {
         country: string;
         paypal_merchant_id: string | null;
         payee_verified_at: Date | string | null;
+        payee_shared: boolean;
       }>(
-        'SELECT display_name, status, country, paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
+        'SELECT display_name, status, country, paypal_merchant_id, payee_verified_at, payee_shared FROM publishers WHERE id = $1',
         [actor.publisher_id],
       );
       const row = p.rows[0];
@@ -1551,6 +1582,12 @@ function buildApp(config: Config, opts: AppOptions): App {
           last4: row.paypal_merchant_id === null ? null : row.paypal_merchant_id.slice(-4),
           verified_at: row.payee_verified_at === null ? null : iso(row.payee_verified_at),
         },
+        settlement: payeeSettlement({
+          merchant_id: row.paypal_merchant_id,
+          payee_shared: row.payee_shared,
+          environment,
+          own_merchant_id: config.own_merchant_id,
+        }),
       };
     },
 
@@ -1701,6 +1738,10 @@ function buildApp(config: Config, opts: AppOptions): App {
         const r = await beginPaymentsCheckout(paymentsDeps, i);
         if (!r.ok) return err(r.error);
         return ok({ approve_url: r.value.approve_url, progress: r.value.progress ?? null });
+      },
+      async cancelOrder(i) {
+        const r = await cancelPaymentsOrder(paymentsDeps, i);
+        return r.ok ? ok(r.value) : err(r.error);
       },
       async onBuyerReturn(i) {
         const r = await onPaymentsReturn(paymentsDeps, i);
@@ -2222,7 +2263,22 @@ function buildApp(config: Config, opts: AppOptions): App {
     payee: {
       async view(actor) {
         const v = await payeeView(db, actor);
-        return v === null ? null : { ...v, environment };
+        if (v === null || actor.kind !== 'publisher') return null;
+        const p = await db.query<{ paypal_merchant_id: string | null; payee_shared: boolean }>(
+          'SELECT paypal_merchant_id, payee_shared FROM publishers WHERE id = $1',
+          [actor.publisher_id],
+        );
+        const row = p.rows[0];
+        return {
+          ...v,
+          environment,
+          settlement: payeeSettlement({
+            merchant_id: row?.paypal_merchant_id ?? null,
+            payee_shared: row?.payee_shared ?? false,
+            environment,
+            own_merchant_id: config.own_merchant_id,
+          }),
+        };
       },
       request: (i) =>
         requestPayeeChange(core, i.actor, { merchant_id: i.merchant_id, note: i.note }),
@@ -2284,7 +2340,10 @@ function buildApp(config: Config, opts: AppOptions): App {
       async list(actor) {
         if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
         if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
-        const publishers = await publisherExposure(db, actor, clock.now().toISOString());
+        const publishers = await publisherExposure(db, actor, clock.now().toISOString(), {
+          own_merchant_id: config.own_merchant_id,
+          environment,
+        });
         if (publishers === null) return { ok: false, error: { code: 'not_operator' } };
         return { ok: true, value: { publishers, environment } };
       },

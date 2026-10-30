@@ -6,17 +6,22 @@
 # service, unitmarket-offline, in offline mode: in-memory data, no PayPal, no database, no payment
 # secret, labelled Dry run from the stored data. A judge can always finish a purchase there, with no
 # approval row, because nothing leaves the service. Manual only, in Cloud Shell, in a checkout of TAG,
-# after setup.sh and after set-secret.sh for each of the four own secrets below.
+# after setup.sh and after set-secret.sh for each of the five own secrets below.
 #
 # The data lives in memory: a restart or a new revision starts again from the seed. The service is one
 # instance, always (min 1, max 1, CPU always allocated), so the memory is not split over instances.
-# Its own runtime account (ums-offline) can read only the four own secrets. The fixed values come from
+# Its own runtime account (ums-offline) can read only the five own secrets. The fixed values come from
 # service-offline.yaml, where UMS_PAYPAL_CONNECT is off.
 #
-# The four secrets are UMS_OFFLINE_SESSION_SECRET, UMS_OFFLINE_APPROVAL_SECRET, UMS_OFFLINE_LINK_SECRET
-# and UMS_OFFLINE_DEMO_PASSCODE_HASH. Each is mapped to the env name without OFFLINE_, which is the name
-# the app reads. They are separate from the sandbox service's secrets on purpose: a session cookie signed
-# on one service must not be valid on the other.
+# The five secrets are UMS_OFFLINE_SESSION_SECRET, UMS_OFFLINE_APPROVAL_SECRET, UMS_OFFLINE_LINK_SECRET,
+# UMS_OFFLINE_DEMO_PASSCODE_HASH and UMS_OFFLINE_JUDGE_PASSCODE_HASH (HARD-OFFLINE). Each is mapped to the
+# env name without OFFLINE_, which is the name the app reads. They are separate from the sandbox service's
+# secrets on purpose: a session cookie signed on one service must not be valid on the other.
+#
+# Two passcode hashes, two passcodes. The judge hash is the one judges are told: it signs in the buyer
+# personas only. The demo hash is the app's demo hash (the app needs it for any sign in) and belongs to
+# a separate long random passcode that only the owners keep: it also opens the operator persona, so it
+# is never given to a judge. The app refuses to boot when the two hashes are equal.
 set -euo pipefail
 
 die() {
@@ -43,7 +48,7 @@ SERVICE="unitmarket-offline"
 IMAGE_NAME="unitmarket-sandbox"
 AR_REPO="unitmarket"
 OFFLINE_SA="ums-offline@${PROJECT_ID}.iam.gserviceaccount.com"
-OFFLINE_SECRET_NAMES="UMS_OFFLINE_SESSION_SECRET UMS_OFFLINE_APPROVAL_SECRET UMS_OFFLINE_LINK_SECRET UMS_OFFLINE_DEMO_PASSCODE_HASH"
+OFFLINE_SECRET_NAMES="UMS_OFFLINE_SESSION_SECRET UMS_OFFLINE_APPROVAL_SECRET UMS_OFFLINE_LINK_SECRET UMS_OFFLINE_DEMO_PASSCODE_HASH UMS_OFFLINE_JUDGE_PASSCODE_HASH"
 
 echo "== the checkout must be exactly the reviewed tag $TAG"
 cd "$REPO_ROOT"
@@ -58,7 +63,7 @@ COMMIT="${TAG_COMMIT:0:12}"
 unset TAG_COMMIT
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:${TAG}-${COMMIT}"
 
-echo "== each of the four own secrets needs a value"
+echo "== each of the five own secrets needs a value"
 MISSING=""
 for NAME in $OFFLINE_SECRET_NAMES; do
   HAS_VERSION="$(gcloud secrets versions list "$NAME" --filter='state=ENABLED' --limit=1 --format='value(name)' --project="$PROJECT_ID" 2>/dev/null || true)"

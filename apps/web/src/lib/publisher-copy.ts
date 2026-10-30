@@ -49,7 +49,8 @@ export const PUBLISHER_LEDE = 'This page shows your own publisher account. It is
 export const LABEL_NAME = 'Name';
 export const LABEL_STATUS = 'Status';
 export const LABEL_OFFERS = 'Offers live';
-export const LABEL_PAYEE = 'Where you get paid';
+export const LABEL_PAYEE = 'Payee account on file';
+export const LABEL_SETTLEMENT = 'Settlement';
 
 export function publisherStatusText(status: PublisherStatus): string {
   switch (status) {
@@ -83,6 +84,6 @@ export const LINK_PAYOUT_ACCOUNT = 'Where you get paid';
 /** The payee in words: only the last 4 characters of the account id, and only from stored data. */
 export function payeeText(p: { last4: string | null; verified_at: string | null }): string {
   if (p.last4 === null) return 'No payee account is set yet.';
-  if (p.verified_at === null) return `Waiting for a check. Account ending ${p.last4}.`;
-  return `Marked as checked. Account ending ${p.last4}.`;
+  if (p.verified_at === null) return `Waiting for a check. Account on file ending ${p.last4}.`;
+  return `Marked as checked. Account on file ending ${p.last4}.`;
 }

@@ -13,7 +13,8 @@ export const PUBLISHERS_EMPTY = 'No publishers yet.';
 export const PUBLISHERS_BACK_LINK = 'Back to operations';
 
 export const LABEL_STATUS = 'Status';
-export const LABEL_PAYEE = 'Payee account';
+export const LABEL_PAYEE = 'Payee account on file';
+export const LABEL_SETTLEMENT = 'Settlement';
 export const LABEL_OFFERS = 'Offers on sale';
 export const LABEL_MONEY = 'Money by currency';
 
@@ -33,8 +34,8 @@ export function statusText(status: PublisherStatus): string {
 /** The payee in words: the last 4 characters only, and only from stored data. */
 export function payeeText(p: { last4: string | null; verified: boolean; shared: boolean }): string {
   if (p.last4 === null) return 'No payee account set.';
-  if (!p.verified) return `Account ending ${p.last4}. Not checked yet.`;
-  const base = `Account ending ${p.last4}. Marked as checked.`;
+  if (!p.verified) return `Account on file ending ${p.last4}. Not checked yet.`;
+  const base = `Account on file ending ${p.last4}. Marked as checked.`;
   return p.shared ? `${base} Shared with other test publishers.` : base;
 }
 

@@ -21,16 +21,6 @@ function lines(): string[] {
   out.push(`account set: ${copy.accountText('AB12')}`);
   out.push(`verified none: ${copy.verifiedAtText(null)}`);
   out.push(`verified at: ${copy.verifiedAtText('WHEN')}`);
-  out.push(`settlement none: ${copy.settlementText({ last4: null, verified_at: null }, 'WORD')}`);
-  out.push(
-    `settlement waiting: ${copy.settlementText({ last4: 'AB12', verified_at: null }, 'WORD')}`,
-  );
-  out.push(
-    `settlement verified: ${copy.settlementText({ last4: 'AB12', verified_at: 'x' }, 'Dry run')}`,
-  );
-  out.push(
-    `settlement verified sandbox: ${copy.settlementText({ last4: 'AB12', verified_at: 'x' }, 'Sandbox')}`,
-  );
   out.push(`owner only: ${copy.OWNER_ONLY_NOTE}`);
   out.push(`request heading: ${copy.REQUEST_HEADING}`);
   out.push(`request lede: ${copy.REQUEST_LEDE}`);

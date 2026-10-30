@@ -17,8 +17,11 @@ export interface StatusError {
 const fail = (code: StatusErrorCode): Result<never, StatusError> => err({ code });
 
 class Refused extends Error {
-  constructor(readonly code: StatusErrorCode) {
+  // Declared field, not a parameter property: the offline scripts run this file in Node's strip-only mode.
+  readonly code: StatusErrorCode;
+  constructor(code: StatusErrorCode) {
     super(code);
+    this.code = code;
   }
 }
 

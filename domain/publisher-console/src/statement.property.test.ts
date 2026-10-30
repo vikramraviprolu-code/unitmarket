@@ -40,7 +40,11 @@ function generate(seed: number): StatementRow[] {
       created_at: '2026-10-22T10:00:00.000Z',
       environment: pick(ENVS),
     };
-    rows.push({ order_ref: `ordref_${String(1000 + (i % 9))}`, entry });
+    rows.push({
+      order_ref: `ordref_${String(1000 + (i % 9))}`,
+      payee_merchant_id: 'MERCHANT0001A',
+      entry,
+    });
   }
   return rows;
 }
