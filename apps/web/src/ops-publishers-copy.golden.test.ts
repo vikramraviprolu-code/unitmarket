@@ -19,7 +19,7 @@ function lines(): string[] {
   out.push(`empty: ${copy.PUBLISHERS_EMPTY}`);
   out.push(`back: ${copy.PUBLISHERS_BACK_LINK}`);
   out.push(
-    `labels: ${copy.LABEL_STATUS} | ${copy.LABEL_PAYEE} | ${copy.LABEL_OFFERS} | ${copy.LABEL_MONEY}`,
+    `labels: ${copy.LABEL_STATUS} | ${copy.LABEL_PAYEE} | ${copy.LABEL_SETTLEMENT} | ${copy.LABEL_OFFERS} | ${copy.LABEL_MONEY}`,
   );
   for (const s of ['applied', 'active', 'suspended'] as const)
     out.push(`status ${s}: ${copy.statusText(s)}`);
