@@ -21,16 +21,23 @@ describe('coverInitials', () => {
 
 describe('coverSeed', () => {
   it('joins publisher and title so two articles of one publisher can differ', () => {
-    expect(coverSeed('Harbour Ledger', 'Tide tables')).toBe(coverSeed('Harbour Ledger', 'Tide tables'));
+    expect(coverSeed('Harbour Ledger', 'Tide tables')).toBe(
+      coverSeed('Harbour Ledger', 'Tide tables'),
+    );
     expect(coverSeed('Harbour Ledger', 'Tide tables')).not.toBe(
       coverSeed('Harbour Ledger', 'Ferry timetable'),
     );
   });
   it('feeds coverHue with a stable hue in 0 to 5', () => {
     const hues = new Set(
-      ['Tide tables', 'Ferry timetable', 'Knot notebook', 'Quay map', 'Lighthouse log', 'Tidal gates'].map(
-        (t) => coverHue(coverSeed('Harbour Ledger', t)),
-      ),
+      [
+        'Tide tables',
+        'Ferry timetable',
+        'Knot notebook',
+        'Quay map',
+        'Lighthouse log',
+        'Tidal gates',
+      ].map((t) => coverHue(coverSeed('Harbour Ledger', t))),
     );
     for (const h of hues) expect([0, 1, 2, 3, 4, 5]).toContain(h);
     expect(hues.size).toBeGreaterThanOrEqual(3);

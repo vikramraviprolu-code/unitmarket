@@ -3,6 +3,7 @@
 :root {
   --space: 16px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 /* Two skins, each one fixed palette (SKIN-A, decisions 38 to 41). The server writes data-skin on <html> from
    the um_skin cookie; market is the default when the attribute is missing. The browser's colour preference
@@ -29,6 +30,8 @@
   --bad: #9b1c1c;
   --bad-soft: #fbe6e6;
   --focus: #b35c00;
+  --hot: #ffc933;
+  --hot-ink: #2a2000;
   --header-bg: #1846e5;
   --header-ink: #ffffff;
   --header-link: #ffffff;
@@ -75,6 +78,8 @@
   --bad: #ff9c9c;
   --bad-soft: #3b1a1a;
   --focus: #ffb14d;
+  --hot: #46d9c8;
+  --hot-ink: #062a2a;
   --header-bg: #1a212b;
   --header-ink: #eef2f6;
   --header-link: #8ec6ea;
@@ -307,7 +312,15 @@ h3 {
 }
 .fit-card {
   display: grid;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  align-content: start;
+}
+.fit-body {
+  display: grid;
   gap: 14px;
+  padding: 16px 20px 20px;
 }
 .fit-rows {
   list-style: none;
@@ -383,10 +396,15 @@ h3 {
   background: var(--warn-soft);
 }
 .price {
-  font-family: var(--display);
+  font-family: var(--mono);
   font-size: 1.6rem;
-  font-weight: 800;
+  font-weight: 700;
+  letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
+}
+.fit-card .price,
+.tile .price {
+  font-size: 1.9rem;
 }
 .price-line {
   margin: 8px 0 0;
@@ -413,7 +431,9 @@ h3 {
 }
 .btn[disabled],
 .btn[aria-disabled='true'] {
-  opacity: 0.55;
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--muted);
   cursor: not-allowed;
 }
 .actions {
@@ -608,9 +628,12 @@ td {
 /* Publisher cover tiles (SKIN-A). The hue is chosen by coverHue(slug); the pattern is only gradients, drawn
    as dark overlays so the initials keep their contrast. Decorative: the markup marks the tile aria-hidden. */
 .cover {
+  position: relative;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
+  gap: 8px;
+  min-height: 132px;
   padding: 12px 14px;
   border-radius: var(--radius);
   background-color: var(--cb);
@@ -618,6 +641,184 @@ td {
   font-family: var(--display);
   font-weight: 800;
   overflow: hidden;
+}
+/* A pale sun in the corner makes the pattern read as a poster; it sits under the initials. */
+.cover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 86% 18%,
+    rgba(255, 255, 255, 0.22) 0 26px,
+    transparent 27px
+  );
+}
+.cover-ini,
+.cover-pub {
+  position: relative;
+}
+.cover-ini {
+  font-size: 2.6rem;
+  letter-spacing: -0.04em;
+  line-height: 0.9;
+}
+.cover-pub {
+  font-size: 0.78rem;
+  line-height: 1.25;
+  text-align: right;
+  max-width: 13ch;
+  overflow-wrap: anywhere;
+}
+.cover-wrap {
+  position: relative;
+}
+.fit-card .cover,
+.tile .cover {
+  border-radius: 0;
+}
+/* The one use of the yellow accent: a small tag on a cover, never a button. */
+.tag {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  background: var(--hot);
+  color: var(--hot-ink);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.2;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--space);
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.tile-body {
+  padding: 14px 16px 18px;
+}
+.tile-body h2,
+.tile-body h3 {
+  margin: 0 0 2px;
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+.tile-body h2 a,
+.tile-body h3 a {
+  color: var(--text);
+  text-decoration: none;
+}
+.tile-body h2 a:hover,
+.tile-body h3 a:hover {
+  text-decoration: underline;
+}
+.tile-body p {
+  margin: 0 0 4px;
+}
+.shelf-title {
+  margin-top: 8px;
+}
+/* The poster hero of the home and find pages, in the skin's header colours. */
+.hero {
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 8px;
+  background: var(--header-bg);
+  color: var(--header-ink);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-radial-gradient(
+    circle at 100% 0,
+    transparent 0 22px,
+    rgba(255, 255, 255, 0.1) 22px 24px
+  );
+}
+.hero-in {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  padding: 28px 24px 30px;
+}
+.hero h1 {
+  margin: 0;
+  max-width: 16ch;
+  font-size: clamp(2rem, 7vw, 3.1rem);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  font-weight: 800;
+  text-wrap: balance;
+}
+.hero .lede,
+.hero .hint,
+.hero label {
+  color: var(--header-ink);
+  margin: 0;
+}
+.hero .lede {
+  max-width: 46ch;
+}
+.hero .hint {
+  font-size: 0.9rem;
+}
+.hero a {
+  color: var(--header-link);
+}
+.hero :focus-visible {
+  outline-color: var(--header-focus);
+}
+.search-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 640px;
+  padding: 5px;
+  background: var(--surface);
+  border: 2px solid var(--card-border);
+  border-radius: 999px;
+  box-shadow: 0 12px 30px rgba(7, 20, 70, 0.28);
+}
+.search-pill:focus-within {
+  outline: 3px solid var(--header-focus);
+  outline-offset: 3px;
+}
+.search-pill input[type='text'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  padding: 8px 16px;
+  font-size: 1.05rem;
+}
+.search-pill input[type='text']:focus-visible {
+  outline: none;
+}
+.search-pill .btn {
+  flex: none;
 }
 .cover-h0 {
   --cb: var(--h0b);
