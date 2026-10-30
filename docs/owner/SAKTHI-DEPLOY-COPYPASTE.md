@@ -27,7 +27,7 @@ Expected: `git status` says "nothing to commit, working tree clean". Stop and as
 
 ## Part 2. Check the commit is healthy (your laptop, same folder)
 
-What it does: runs the full offline check list. It takes about 15 minutes and needs Node 22.22.0 (`corepack pnpm` is fine).
+What it does: runs the full offline check list. It takes about 15 minutes and needs Node 22.22.0 (`corepack pnpm` is fine). The coordinator already ran all six test suites and the browser tests on this build, so this part is a second check. Skip it only if you are short on time; do not skip Parts 3 to 6.
 
 ```
 corepack pnpm install --frozen-lockfile
@@ -61,6 +61,8 @@ gcloud secrets list --project="$PROJECT_ID" --format='value(name)'
 ```
 
 Expected: at least eleven names including `DATABASE_URL`. If you did this earlier, only run the last three lines inside the existing folder.
+
+The repository is private. If `git clone` asks for a GitHub username and password, use your GitHub username and a personal access token as the password. Type it only at that prompt. Never paste it into this chat.
 
 ## Part 5. Deploy (Cloud Shell, same folder)
 
