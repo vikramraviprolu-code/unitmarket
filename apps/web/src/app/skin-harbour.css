@@ -1,0 +1,259 @@
+/* Deep Harbour (option E), SKIN-B. Loaded after globals.css (layout.tsx import order), so the tokens below
+   replace the placeholder dark values SKIN-A left in the harbour block. Same token names as Bright Market:
+   contrast of every pair is pinned by src/ui/contrast.test.ts and the table by skin-tokens.golden.test.ts.
+   Everything here follows the rules in docs/specs/skin-b-harbour-motion.md: system fonts only, no url() and no
+   data: URI (the CSP is default-src 'self'), every animation inside a no-preference block, transform and
+   opacity only. The amber is a light source (lamp, beam, lit shelf), never a halo on a card. */
+:root[data-skin='harbour'] {
+  color-scheme: dark;
+  --bg: #0b2233;
+  --surface: #11344a;
+  --surface-2: #174259;
+  --text: #f2f6f8;
+  --muted: #a9c1cd;
+  --line: #6b90a3;
+  --line-soft: #23516b;
+  --accent: #ffb347;
+  --accent-ink: #241400;
+  --accent-soft: #3a3a2e;
+  --good: #7fe0b0;
+  --good-soft: #14423a;
+  --warn: #ffd089;
+  --warn-soft: #3b3320;
+  --focus: #ffb347;
+  --header-bg: #0b2233;
+  --header-ink: #f2f6f8;
+  --header-link: #f2f6f8;
+  --header-hover: #11344a;
+  --header-focus: #ffb347;
+  --shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  --card-border: var(--line-soft);
+  --atmosphere:
+    radial-gradient(circle at 88% -8%, rgba(255, 179, 71, 0.16), rgba(255, 179, 71, 0) 38%),
+    radial-gradient(circle at 4% 108%, rgba(70, 217, 200, 0.12), rgba(70, 217, 200, 0) 42%);
+  --display: ui-serif, 'New York', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+}
+/* The page light: two soft glows fixed to the corners instead of the tiled dots of Bright Market. */
+:root[data-skin='harbour'] body::before {
+  background-size: auto;
+  background-repeat: no-repeat;
+}
+/* Serif display, lighter weight and tighter tracking, as in option E. */
+:root[data-skin='harbour'] h1,
+:root[data-skin='harbour'] h2,
+:root[data-skin='harbour'] h3 {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+:root[data-skin='harbour'] .brand,
+:root[data-skin='harbour'] .site-header .brand {
+  font-weight: 700;
+}
+/* The library is a lit shelf: a warm line under each cover card, with its glow. Still, never animated. */
+:root[data-skin='harbour'] [data-testid='library-item'] {
+  position: relative;
+}
+:root[data-skin='harbour'] [data-testid='library-item']::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -10px;
+  height: 6px;
+  border-radius: 6px;
+  background: var(--accent);
+  box-shadow: 0 0 28px 4px rgba(255, 179, 71, 0.45);
+  pointer-events: none;
+}
+:root[data-skin='harbour'] .plain-list {
+  padding-bottom: 14px;
+}
+
+/* T4 harbour scene (ui/HarbourScene.tsx): home and find, Deep Harbour only. */
+:root:not([data-skin='harbour']) .harbour-scene {
+  display: none;
+}
+.harbour-scene {
+  position: relative;
+  height: 180px;
+  margin: 0 0 20px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #06182a 0%, #0b2233 58%, #11344a 100%);
+  pointer-events: none;
+}
+.harbour-scene svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.harbour-scene .hs-tw {
+  fill: var(--text);
+}
+.harbour-scene .hs-moon {
+  fill: var(--text);
+}
+.harbour-scene .hs-moon-halo {
+  fill: var(--text);
+  opacity: 0.1;
+}
+.harbour-scene .hs-beam-stop {
+  stop-color: var(--accent);
+  stop-opacity: 0.5;
+}
+.harbour-scene .hs-beam-end {
+  stop-opacity: 0;
+}
+.harbour-scene .hs-light polygon,
+.harbour-scene .hs-light rect {
+  fill: #06182a;
+}
+.harbour-scene .hs-light .hs-lamp {
+  fill: var(--accent);
+}
+.harbour-scene .hs-wave-back path {
+  fill: var(--surface);
+  opacity: 0.9;
+}
+.harbour-scene .hs-wave-front path {
+  fill: var(--surface-2);
+}
+.harbour-scene .hs-sail {
+  fill: var(--text);
+}
+.harbour-scene .hs-sail-2 {
+  fill: var(--accent);
+}
+.harbour-scene .hs-hull {
+  fill: #04121c;
+}
+/* Inside the Hero (home and find) the scene is the backdrop of the headline, not a band of its own. */
+.hero > .harbour-scene {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+:root[data-skin='harbour'] .hero::before {
+  display: none;
+}
+/* A dark wash keeps the headline and the search label readable over the scene: left to right on a wide panel,
+   top to bottom on a phone, where the text takes the whole width and only the lighthouse and beam are kept. */
+.hero > .harbour-scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(6, 24, 42, 0.92) 0%,
+    rgba(6, 24, 42, 0.8) 42%,
+    rgba(6, 24, 42, 0) 78%
+  );
+}
+:root[data-skin='harbour'] .hero .lede {
+  max-width: 36ch;
+}
+@media (max-width: 600px) {
+  .hero > .harbour-scene::after {
+    background: linear-gradient(
+      180deg,
+      rgba(6, 24, 42, 0.92) 0%,
+      rgba(6, 24, 42, 0.86) 58%,
+      rgba(6, 24, 42, 0.15) 100%
+    );
+  }
+  .harbour-scene .hs-moon,
+  .harbour-scene .hs-moon-halo,
+  .harbour-scene .hs-boat {
+    display: none;
+  }
+}
+/* Radios and checkboxes take the amber instead of the browser blue. */
+:root[data-skin='harbour'] input[type='radio'],
+:root[data-skin='harbour'] input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+/* The scene moves only for a visitor who has not asked for less motion. With reduced motion the drawing
+   above is the whole scene: same sky, sea, boat and lamp, no movement. */
+@media (prefers-reduced-motion: no-preference) {
+  .harbour-scene .hs-wave-back {
+    animation: hs-wave 24s linear infinite;
+  }
+  .harbour-scene .hs-wave-front {
+    animation: hs-wave 15s linear infinite reverse;
+  }
+  .harbour-scene .hs-boat {
+    transform-box: fill-box;
+    transform-origin: 50% 90%;
+    animation: hs-bob 3.6s cubic-bezier(0.16, 1, 0.3, 1) infinite alternate;
+  }
+  .harbour-scene .hs-beam {
+    transform-origin: 770px 52px;
+    animation: hs-sweep 7s cubic-bezier(0.16, 1, 0.3, 1) infinite alternate;
+  }
+  .harbour-scene .hs-light .hs-lamp {
+    animation: hs-lamp 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite alternate;
+  }
+  .harbour-scene .hs-tw {
+    animation: hs-twinkle 3.4s cubic-bezier(0.16, 1, 0.3, 1) infinite alternate;
+  }
+  .harbour-scene .hs-t2 {
+    animation-duration: 4.2s;
+    animation-delay: -1.1s;
+  }
+  .harbour-scene .hs-t3 {
+    animation-duration: 2.8s;
+    animation-delay: -2.2s;
+  }
+  /* Offscreen or hidden tab: every part holds still. !important so that no part, however specific its own
+     rule (the lamp is three classes deep), keeps running; the lamp is also named for the reviewer. */
+  .harbour-scene.is-paused,
+  .harbour-scene.is-paused *,
+  .harbour-scene.is-paused .hs-light .hs-lamp {
+    animation-play-state: paused !important;
+  }
+  @keyframes hs-wave {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-880px);
+    }
+  }
+  @keyframes hs-bob {
+    from {
+      transform: translateY(2px) rotate(-3deg);
+    }
+    to {
+      transform: translateY(-5px) rotate(3deg);
+    }
+  }
+  @keyframes hs-sweep {
+    from {
+      transform: rotate(-4deg);
+    }
+    to {
+      transform: rotate(6deg);
+    }
+  }
+  @keyframes hs-lamp {
+    from {
+      opacity: 0.7;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes hs-twinkle {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0.2;
+    }
+  }
+}

@@ -1,0 +1,136 @@
+/* The motion set, SKIN-B (docs/specs/skin-b-harbour-motion.md, docs/design/motion-research-2026-10-30.md part 3).
+   Motion explains a state change; it never touches an amount, a total, a fee or a pay or approve control.
+   Rules: every animation sits inside the no-preference block below; only transform and opacity move; the
+   easing is cubic-bezier(0.16, 1, 0.3, 1); nothing bounces; will-change is not used; no inline style; no
+   url() or data: URI. With reduced motion every state still shows, as colour, shape and text. */
+
+/* The approval page is completely still: no animation, no transition, no page change fade, no markup change.
+   A pack shows one approve-block per publisher; a single article has no block but always shows approve-total,
+   so both mark the page. */
+body:has([data-testid='approve-block']) *,
+body:has([data-testid='approve-block']) *::before,
+body:has([data-testid='approve-block']) *::after,
+body:has([data-testid='approve-total']) *,
+body:has([data-testid='approve-total']) *::before,
+body:has([data-testid='approve-total']) *::after {
+  animation: none !important;
+  transition: none !important;
+}
+html:has([data-testid='approve-block'])::view-transition-group(*),
+html:has([data-testid='approve-block'])::view-transition-old(*),
+html:has([data-testid='approve-block'])::view-transition-new(*),
+html:has([data-testid='approve-block'])::view-transition-image-pair(*),
+html:has([data-testid='approve-total'])::view-transition-group(*),
+html:has([data-testid='approve-total'])::view-transition-old(*),
+html:has([data-testid='approve-total'])::view-transition-new(*),
+html:has([data-testid='approve-total'])::view-transition-image-pair(*) {
+  animation: none !important;
+}
+
+/* T10 skeleton (ui/Loading.tsx, shown only while a request is pending): a plain bar for everyone. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  height: 96px;
+  margin: 8px 0;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+/* T12 success check: a drawn tick on the existing success banner and on ready library rows. The text stays
+   beside it; the tick is the same still shape for everyone. */
+.banner-success .banner-title::before,
+[data-testid='library-item']:has(.meter-bar) [data-testid='library-status'] strong::before {
+  content: '';
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.5em;
+  vertical-align: -0.12em;
+  background: var(--good);
+  clip-path: polygon(0% 50%, 11% 39%, 39% 67%, 89% 17%, 100% 28%, 39% 89%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* T3 staggered reveal of the discover results: the whole card fades up; total delay at most 240 ms. */
+  section[aria-labelledby='results'] .pick {
+    animation: um-rise 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  section[aria-labelledby='results'] .pick:nth-child(2) {
+    animation-delay: 60ms;
+  }
+  section[aria-labelledby='results'] .pick:nth-child(3) {
+    animation-delay: 120ms;
+  }
+  section[aria-labelledby='results'] .pick:nth-child(4) {
+    animation-delay: 180ms;
+  }
+  section[aria-labelledby='results'] .pick:nth-child(n + 5) {
+    animation-delay: 240ms;
+  }
+
+  /* T10 shimmer: a highlight slides across the bar. It loops, so it is the one loop besides the scene. */
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(100deg, transparent 30%, var(--surface) 50%, transparent 70%);
+    animation: um-shimmer 1.1s linear infinite;
+  }
+
+  /* T12: the tick scales in once when the row appears. */
+  .banner-success .banner-title::before,
+  [data-testid='library-item']:has(.meter-bar) [data-testid='library-status'] strong::before {
+    animation: um-check 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* T9 view transitions with a fallback (browsers without them just navigate): the new page fades in over
+     the old one in 200 ms. No element is given a view-transition-name, so no price or button is shared. */
+  @view-transition {
+    navigation: auto;
+  }
+  ::view-transition-old(root) {
+    animation: none;
+  }
+  ::view-transition-new(root) {
+    animation: um-fade 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes um-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes um-shimmer {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes um-check {
+    from {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes um-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}

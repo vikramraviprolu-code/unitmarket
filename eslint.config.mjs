@@ -105,6 +105,7 @@ const DOMAIN = [
   'recovery',
   'catalogue',
   'library',
+  'publisher-console',
 ];
 const INFRA = [
   'config',

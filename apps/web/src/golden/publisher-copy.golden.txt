@@ -14,8 +14,8 @@ offers 7: 7 offers are live.
 empty title: No live offers yet
 empty body: When you have an offer on sale, it is counted here.
 payee none: No payee account is set yet.
-payee waiting: Waiting for verification. Account ending AB12.
-payee verified: Verified. Account ending AB12.
+payee waiting: Waiting for a check. Account ending AB12.
+payee verified: Marked as checked. Account ending AB12.
 persona buyer-a: Buyer A
 persona buyer-b: Buyer B
 persona publisher-harbour-ledger: Harbour Ledger (publisher)

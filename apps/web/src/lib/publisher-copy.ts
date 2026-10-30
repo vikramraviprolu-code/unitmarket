@@ -77,6 +77,6 @@ export const NO_OFFERS_BODY = 'When you have an offer on sale, it is counted her
 /** The payee in words: only the last 4 characters of the account id, and only from stored data. */
 export function payeeText(p: { last4: string | null; verified_at: string | null }): string {
   if (p.last4 === null) return 'No payee account is set yet.';
-  if (p.verified_at === null) return `Waiting for verification. Account ending ${p.last4}.`;
-  return `Verified. Account ending ${p.last4}.`;
+  if (p.verified_at === null) return `Waiting for a check. Account ending ${p.last4}.`;
+  return `Marked as checked. Account ending ${p.last4}.`;
 }

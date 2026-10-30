@@ -13,6 +13,9 @@
 import { getSingleton, setSingleton } from './src/server/singleton';
 import 'server-only';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type {
   Actor,
   AgentDeps,
@@ -67,7 +70,17 @@ import {
   pinComplete,
 } from '@umsbx/paypal';
 import type { AdapterDeps } from '@umsbx/paypal';
-import { createClaudeModel, createScriptedModel } from '@umsbx/model';
+import {
+  CLAUDE_MODEL_ID,
+  createClaudeModel,
+  createScriptedModel,
+  parseClaudeEvalResult,
+  runEvalCases,
+  tally,
+  BRIEF_CASES,
+  LISTING_CASES,
+} from '@umsbx/model';
+import type { CaseResult } from '@umsbx/model';
 import {
   SEED_DATA,
   SEED_SUPPLEMENT_COMPOSITE,
@@ -93,12 +106,14 @@ import type {
   PayeeView,
   PriceInput,
 } from '@umsbx/catalogue';
+import type { OpenRequest, PayeeError, PayeeView } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
 import { discover as discoverOffers, parseNeed } from '@umsbx/discovery';
 import { requestApproval } from '@umsbx/approval';
 import type { Selection } from '@umsbx/approval';
 import { createPgContentStore, issueLink, planServe } from '@umsbx/delivery';
 import type { ServePlan } from '@umsbx/delivery';
+import { MAX_READER_BYTES, isReadableMime, splitParagraphs } from './src/lib/reader-view';
 import {
   getReceiptForBuyer,
   paymentOutcome,
@@ -127,11 +142,21 @@ import {
 import { health as jobsHealth, LEADER_LOCK_KEY, startLoop } from '@umsbx/jobs';
 import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
+import { salesFor, statementFor } from '@umsbx/publisher-console';
+import type { PublisherStatement, SaleRow } from '@umsbx/publisher-console';
+
+// PUB-C: the money words of the publisher pages live with the code that decides them; the golden test
+// of the page copy pins them through this re-export.
+export { COMMISSION_LINE, UNIT_STATUS_TEXT, settlementMode } from '@umsbx/publisher-console';
 import {
+  DEFAULT_RATES,
   SESSION_COOKIE,
   createSession,
   operatorSignIn,
   resolveSession,
+  revokeSession,
+  clearSessionCookie,
+  takeToken,
   verifyPasscode,
 } from '@umsbx/security';
 import type { SecurityDeps } from '@umsbx/security';
@@ -144,6 +169,7 @@ import type { OpsGate } from './src/lib/gate-lines';
 import { toBuyerReceipt } from './src/lib/receipt-view';
 import type { ArticleFacts, BuyerReceipt } from './src/lib/receipt-view';
 import { LINE_TEXT, lineKind, packBanner, windowMinutes } from './src/lib/composite-copy';
+import { NOT_PAID_YET } from './src/lib/buyer-copy';
 import { publisherSlugOf } from './src/lib/publisher-copy';
 import type { PublisherStatus } from './src/lib/publisher-copy';
 import type { LineKind } from './src/lib/composite-copy';
@@ -193,6 +219,11 @@ export interface AppOptions {
    * key is set; no socket is opened and no real key is needed. Refused unless NODE_ENV=test.
    */
   test_model_wire?: ModelWire;
+  /**
+   * AI-B (tests): the path of the stored Claude evaluation result, instead of the committed
+   * packages/model/test-data/claude-eval-result.json. Refused unless NODE_ENV is test.
+   */
+  test_claude_eval_file?: string;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -362,6 +393,45 @@ export interface LibraryEntry {
   open_case: CaseView | null;
   environment: EnvironmentLabel;
 }
+/**
+ * AI-B: what /ops/evals shows. Counts come from the committed injection cases, the baseline from running
+ * the scripted model over them, `claude` from a stored result file or `not_run`. Rows hold an id, a kind
+ * and a verdict of fixed codes; no model free text is ever copied in.
+ */
+export interface EvalsSummary {
+  environment: EnvironmentLabel;
+  listing_cases: number;
+  brief_cases: number;
+  baseline: { passed: number; total: number };
+  cases: CaseResult[];
+  claude:
+    | { state: 'not_run' }
+    | { state: 'recorded'; recorded_on: string; passed: number; total: number };
+  /** The model discovery uses: `claude` only when the adapter is built (UMS_AI_ADAPTER=claude and a key). */
+  model_in_use: 'scripted' | 'claude';
+}
+
+export interface ReaderMeta {
+  title: string;
+  publisher: string;
+  option: string;
+  environment: EnvironmentLabel;
+  window: { state: string; ends_at: string | null; days_left: number | null };
+}
+export type ReaderViewResult =
+  | ({ ok: true; kind: 'text'; paragraphs: string[] } & ReaderMeta)
+  | ({ ok: true; kind: 'download' } & ReaderMeta)
+  | {
+      ok: false;
+      code:
+        | 'not_found'
+        | 'window_ended'
+        | 'not_available'
+        | 'expired'
+        | 'store_unavailable'
+        | 'refunded'
+        | 'rate_limited';
+    };
 export interface OpsSnapshot {
   environment: EnvironmentLabel;
   switches: Record<SwitchName, boolean>;
@@ -417,7 +487,10 @@ export function orderMessage(
   switch (status) {
     case 'paid':
     case 'paid_partial':
-      return 'Paid. Your item is in your library.';
+      // D-051: the noun agrees with the number of items (a pack from one publisher is one PayPal order).
+      return unit_statuses.length > 1
+        ? 'Paid. Your items are in your library.'
+        : 'Paid. Your item is in your library.';
     case 'capture_requested':
     case 'capture_claimed':
     case 'unresolved':
@@ -426,6 +499,11 @@ export function orderMessage(
       return 'Not charged. The order did not complete.';
     case 'abandoned':
       return 'Not completed. Nothing was charged.';
+    case 'awaiting_buyer':
+      // FIX-FLOW D4: with no PayPal order approved, nothing was received. Say so, in words that do not
+      // suggest a payment is being confirmed. An approved one (a pack between its two approvals) keeps
+      // the waiting line.
+      return po_states.includes('approved') ? 'Waiting for your approval at PayPal' : NOT_PAID_YET;
     default:
       return 'Waiting for your approval at PayPal';
   }
@@ -496,11 +574,27 @@ export interface Engine {
   }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
   actorFromCookie(cookie: string | null): Promise<Actor | null>;
   /**
+   * FIX-FLOW D1: sign out. Ends the one live session `session_id` of `actor` (never the actor's other
+   * sessions) and returns the Set-Cookie value that clears the cookie. With no session it only clears.
+   */
+  signOut(i: { actor: Actor; session_id: Id | null }): Promise<{ cookie: string }>;
+  /**
    * PUB-A1: the read only home of the publisher behind this session: name, status, live offers and the
    * payee state (last 4 only). Every query filters by `actor.publisher_id`. Null for any other actor kind
    * and for a publisher id that names no row.
    */
   publisherHome(actor: Actor): Promise<PublisherHome | null>;
+  /**
+   * PUB-C (S4): the units the publisher behind this session sold, newest first, from stored rows. No buyer
+   * identity. Every query filters by `actor.publisher_id`; no id comes from the caller. Null for any other
+   * actor kind.
+   */
+  publisherSales(actor: Actor): Promise<SaleRow[] | null>;
+  /**
+   * PUB-C (S5): the statement of the publisher behind this session, one block per currency and stored
+   * environment, summed from its ledger rows with the ledger package. Null for any other actor kind.
+   */
+  publisherStatement(actor: Actor): Promise<PublisherStatement | null>;
   /**
    * The id of the live session behind a cookie header, for the actor that session belongs to.
    * Links are bound to it (delivery lane): a link issued in one session is not found in another.
@@ -561,6 +655,14 @@ export interface Engine {
     | { ok: true; headers: Record<string, string>; stream: ReadableStream<Uint8Array> }
     | { ok: false; code: string }
   >;
+  /**
+   * READER-A: the article read inside the app. It issues a link and serves it with mode `read` through the
+   * same issueLink and planServe as the content route, reads the stream to the end here, and so writes the
+   * same evidence (link_issued, then reader_rendered with the byte count and hash). Only text/plain and
+   * text/markdown up to 200 KB come back as paragraphs; anything else is `kind: 'download'` and nothing is
+   * served. Refusals use the content route's reason codes.
+   */
+  readerView(i: { entitlement_id: Id; actor: Actor; session_id?: Id }): Promise<ReaderViewResult>;
   receipt(i: { order_id: Id; actor: Actor }): Promise<Receipt | null>;
   /**
    * The receipt as a buyer sees it (UX-1A, items 45 and 54): titles and publisher names on the lines,
@@ -575,6 +677,8 @@ export interface Engine {
     note?: string;
   }): Promise<Result<{ case_id: Id }, { code: 'not_found' | 'duplicate_open' }>>;
   opsSnapshot(actor: Actor): Promise<OpsSnapshot | null>;
+  /** AI-B: the operator evals page. Null for anyone but an operator. Runs the scripted model only. */
+  evalsSummary(actor: Actor): Promise<EvalsSummary | null>;
   /**
    * The ops stop button (BU-2): paypal_outbound off, with a reason, by an operator session. It can
    * only turn the switch off; turning it on is `pnpm safety:resume` at the owner's terminal.
@@ -870,6 +974,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       throw new Error('boot refused: test_seed outside NODE_ENV=test');
     if (opts.test_model_wire !== undefined)
       throw new Error('boot refused: test_model_wire outside NODE_ENV=test');
+    if (opts.test_claude_eval_file !== undefined)
+      throw new Error('boot refused: test_claude_eval_file outside NODE_ENV=test');
   }
   const environment = envLabel(config);
   const clock: Clock = systemClock();
@@ -1243,9 +1349,15 @@ function buildApp(config: Config, opts: AppOptions): App {
           money_state: string;
           order_id: string | null;
           unit_status: string | null;
+          order_status: string | null;
+          po_state: string | null;
         }>(
-          `SELECT e.id, e.money_state, u.order_id, u.status AS unit_status
-             FROM entitlements e LEFT JOIN order_units u ON u.id = e.unit_id
+          `SELECT e.id, e.money_state, u.order_id, u.status AS unit_status,
+                  o.status AS order_status, p.state AS po_state
+             FROM entitlements e
+             LEFT JOIN order_units u ON u.id = e.unit_id
+             LEFT JOIN orders o ON o.id = u.order_id
+             LEFT JOIN provider_orders p ON p.id = u.provider_order_ref
             WHERE e.buyer_id = $1`,
           [buyer_id],
         )
@@ -1262,6 +1374,12 @@ function buildApp(config: Config, opts: AppOptions): App {
       const refundFacts = {
         money: fact?.money_state ?? 'unknown',
         unit_status: fact?.unit_status ?? 'unknown',
+      };
+      // FIX-FLOW D4: the order and its PayPal order, so an unpaid order is not worded as a payment
+      // being confirmed.
+      const orderFacts = {
+        order_status: fact?.order_status ?? null,
+        po_state: fact?.po_state ?? null,
       };
       const days =
         running && ends !== null
@@ -1284,6 +1402,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         status_text: buyerStatusText({
           base: v.status_text,
           ...refundFacts,
+          ...orderFacts,
           window_state: v.window.state,
           option: v.option,
         }),
@@ -1342,21 +1461,28 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     actorFromCookie: (cookie) => resolveSession(security, cookie),
 
+    async signOut({ actor, session_id }) {
+      if (session_id !== null) await revokeSession(security, { id: session_id, actor });
+      return { cookie: clearSessionCookie() };
+    },
+
     // PUB-A1: the publisher home. Every query below filters by the actor's publisher id.
     async publisherHome(actor) {
       if (actor.kind !== 'publisher') return null;
       const p = await db.query<{
         display_name: string;
         status: PublisherStatus;
+        country: string;
         paypal_merchant_id: string | null;
         payee_verified_at: Date | string | null;
       }>(
-        'SELECT display_name, status, paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
+        'SELECT display_name, status, country, paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
         [actor.publisher_id],
       );
       const row = p.rows[0];
       if (row === undefined) return null;
-      // Live: authorised, the newest version of its offer, not superseded and inside its validity dates.
+      // Live: authorised, the newest version of its offer, not superseded, inside its validity dates and
+      // covered by an enabled corridor (what a buyer can buy; same rule as discovery, gate 12 D9).
       const now = clock.now().toISOString();
       const live = await db.query<{ n: string | number }>(
         `SELECT count(*) AS n FROM offers o
@@ -1365,8 +1491,10 @@ function buildApp(config: Config, opts: AppOptions): App {
             AND EXISTS (SELECT 1 FROM publisher_authorisations pa
                          WHERE pa.offer_id = o.id AND pa.offer_version = o.version)
             AND NOT EXISTS (SELECT 1 FROM offers n WHERE n.id = o.id AND n.publisher_id = $1
-                             AND (n.created_at, n.version) > (o.created_at, o.version))`,
-        [actor.publisher_id, now],
+                             AND (n.created_at, n.version) > (o.created_at, o.version))
+            AND EXISTS (SELECT 1 FROM corridors c
+                         WHERE c.enabled AND c.currency = o.currency AND $3 = ANY (c.payee_countries))`,
+        [actor.publisher_id, now, row.country],
       );
       return {
         display_name: row.display_name,
@@ -1377,6 +1505,19 @@ function buildApp(config: Config, opts: AppOptions): App {
           verified_at: row.payee_verified_at === null ? null : iso(row.payee_verified_at),
         },
       };
+    },
+
+    // PUB-C: the publisher's own sales and statement. Read only; the id is the actor's.
+    async publisherSales(actor) {
+      if (actor.kind !== 'publisher') return null;
+      return salesFor(db, actor);
+    },
+    async publisherStatement(actor) {
+      if (actor.kind !== 'publisher') return null;
+      return statementFor(db, actor, {
+        own_merchant_id: config.own_merchant_id,
+        environment,
+      });
     },
 
     async sessionIdOf(cookie, actor) {
@@ -1730,6 +1871,107 @@ function buildApp(config: Config, opts: AppOptions): App {
       return { ok: true, headers: plan.headers, stream };
     },
 
+    // READER-A engine block. The page is a server component, so the stream is read here to its last byte
+    // and onFinish is awaited: the reader_rendered evidence exists before the paragraphs are returned.
+    async readerView({ entitlement_id, actor, session_id }) {
+      const b = buyerOf(actor);
+      if (b === null) return { ok: false, code: 'not_found' };
+      const item = (await entitlementRows(b, entitlement_id))[0];
+      if (item === undefined) return { ok: false, code: 'not_found' };
+      // The content route's bucket: one token per read, so a reload loop cannot fill the evidence log.
+      if (!(await takeToken(core, DEFAULT_RATES.content, b)).allowed) {
+        return { ok: false, code: 'rate_limited' };
+      }
+      const who = session_id !== undefined ? { session_id } : {};
+      const meta: ReaderMeta = {
+        title: item.title,
+        publisher: item.publisher,
+        option: item.option,
+        environment: item.environment,
+        window: {
+          state: item.window.state,
+          ends_at: item.window.ends_at,
+          days_left: item.window.days_left,
+        },
+      };
+      const article = (
+        await db.query<{ content_key: string }>('SELECT content_key FROM articles WHERE id = $1', [
+          item.article_id,
+        ])
+      ).rows[0];
+      let head: Awaited<ReturnType<ContentStore['head']>> = null;
+      try {
+        head = article === undefined ? null : await content.head(article.content_key);
+      } catch {
+        head = null;
+      }
+      if (head !== null && (!isReadableMime(head.mime) || head.bytes > MAX_READER_BYTES)) {
+        // A download answer serves nothing and issues no link; the library's own reading of the same
+        // stored state decides whether the item can be opened at all.
+        if (!item.can_open) {
+          return {
+            ok: false,
+            code: item.refunded
+              ? 'refunded'
+              : item.window.state === 'ended' || item.access === 'ended'
+                ? 'window_ended'
+                : 'not_available',
+          };
+        }
+        return { ok: true, kind: 'download', ...meta };
+      }
+      const issued = await issueLink({ ...core, content }, { entitlement_id, actor, ...who });
+      if (!issued.ok) {
+        if (issued.error.code === 'not_available' && item.refunded) {
+          return { ok: false, code: 'refunded' };
+        }
+        return { ok: false, code: issued.error.code };
+      }
+      const planned = await planServe(
+        { ...core, content },
+        { token: issued.value.url.slice('/c/'.length), actor, mode: 'read', ...who },
+      );
+      if (!planned.ok) {
+        const code = planned.error.code;
+        return {
+          ok: false,
+          code:
+            code === 'window_ended' ||
+            code === 'not_available' ||
+            code === 'expired' ||
+            code === 'store_unavailable'
+              ? code
+              : 'not_found',
+        };
+      }
+      const plan: ServePlan = planned.value;
+      const hash = createHash('sha256');
+      const chunks: Uint8Array[] = [];
+      let bytes = 0;
+      try {
+        for await (const chunk of plan.body) {
+          bytes += chunk.byteLength;
+          hash.update(chunk);
+          chunks.push(chunk);
+        }
+      } catch {
+        return { ok: false, code: 'store_unavailable' };
+      }
+      await plan.onFinish({ bytes, sha256: hash.digest('hex') });
+      const all = new Uint8Array(bytes);
+      let at = 0;
+      for (const c of chunks) {
+        all.set(c, at);
+        at += c.byteLength;
+      }
+      return {
+        ok: true,
+        kind: 'text',
+        paragraphs: splitParagraphs(new TextDecoder().decode(all)),
+        ...meta,
+      };
+    },
+
     async receipt({ order_id, actor }) {
       const b = buyerOf(actor);
       return b === null ? null : getReceiptForBuyer(db, { order_id, buyer_id: b });
@@ -1773,6 +2015,42 @@ function buildApp(config: Config, opts: AppOptions): App {
         code:
           r.error.code === 'duplicate_open' ? ('duplicate_open' as const) : ('not_found' as const),
       });
+    },
+
+    async evalsSummary(actor) {
+      if (actor.kind !== 'operator') return null;
+      // The scripted model over the committed cases: no network, no key, no spend.
+      const cases = await runEvalCases(createScriptedModel());
+      let stored: string | null = null;
+      try {
+        // Built as a plain string, not `new URL(literal, import.meta.url)`: the bundler would treat that as an
+        // asset and fail the production build while the (optional) result file is not committed.
+        stored = readFileSync(
+          opts.test_claude_eval_file ??
+            join(
+              dirname(fileURLToPath(import.meta.url)),
+              '..',
+              '..',
+              'packages',
+              'model',
+              'test-data',
+              'claude-eval-result.json',
+            ),
+          'utf8',
+        );
+      } catch {
+        stored = null; // no file: the cases have not been run against Claude
+      }
+      const result = stored === null ? null : parseClaudeEvalResult(stored);
+      return {
+        environment,
+        listing_cases: LISTING_CASES.length,
+        brief_cases: BRIEF_CASES.length,
+        baseline: tally(cases),
+        cases,
+        claude: result === null ? { state: 'not_run' } : { state: 'recorded', ...result },
+        model_in_use: model.model_id === CLAUDE_MODEL_ID ? 'claude' : 'scripted',
+      };
     },
 
     async opsSnapshot(actor) {

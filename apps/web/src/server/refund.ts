@@ -26,6 +26,7 @@ import type {
   Result,
 } from '@umsbx/contracts';
 import type { HttpResult } from '@umsbx/security';
+import { NOT_PAID_YET } from '../lib/buyer-copy';
 import { formatMinor } from '../lib/format';
 
 // ---------------------------------------------------------------------------------------------
@@ -568,6 +569,10 @@ export interface BuyerFacts {
   option: string;
   /** order_units.status */
   unit_status: string;
+  /** orders.status of the unit's order; absent for a caller that does not know it. */
+  order_status?: string | null;
+  /** provider_orders.state of the unit's PayPal order. */
+  po_state?: string | null;
 }
 
 /** A full refund: the money state or the unit says so, and it is not a reversal. */
@@ -576,7 +581,21 @@ export function isFullyRefunded(f: Pick<BuyerFacts, 'money' | 'unit_status'>): b
   return f.money === 'refunded' || f.unit_status === 'refunded';
 }
 
+/**
+ * FIX-FLOW D4: an order left at the pay page (or not yet sent there) with no PayPal order approved. The
+ * money is unknown only because nothing was paid, so the read model's "Confirming payment" is untrue.
+ */
+export function isUnpaidOpenOrder(f: BuyerFacts): boolean {
+  return (
+    (f.order_status === 'awaiting_buyer' || f.order_status === 'created') &&
+    f.po_state !== 'approved' &&
+    (f.money === 'unknown' || f.money === 'pending') &&
+    f.unit_status !== 'pending'
+  );
+}
+
 export function buyerStatusText(f: BuyerFacts): string {
+  if (isUnpaidOpenOrder(f)) return NOT_PAID_YET;
   if (f.money === 'reversed' || f.unit_status === 'reversed') return f.base;
   if (isFullyRefunded(f)) return f.option === 'keep_retrieve' ? REFUNDED_KEEP : REFUNDED_ONLINE;
   if (f.unit_status === 'partially_refunded' && f.money === 'captured') {
