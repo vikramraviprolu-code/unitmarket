@@ -9,8 +9,10 @@ import { REPO_ROOT, materialize, runGuard } from './test-helpers';
 const GUARD = 'check-hosting-gcp.mjs';
 const KIT = [
   'Dockerfile',
+  'deploy-offline.sh',
   'deploy.sh',
   'monitoring.sh',
+  'service-offline.yaml',
   'service.yaml',
   'set-secret.sh',
   'setup.sh',
@@ -26,6 +28,19 @@ const PEM = '-----BEGIN ' + 'PRIVATE KEY-----';
 const HEX_TOKEN = '3f9a' + 'c27d41'.repeat(6);
 // GCP-2: the base image digest taken from the real Cloud Build log of 27 Oct.
 const BASE_DIGEST = 'dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94';
+// INFRA-A: optional secrets of the sandbox service and the four own secrets of the offline service.
+const OPTIONAL_NAMES = [
+  'UMS_PUBLISHER_PASSCODE_HASH',
+  'UMS_OFFER_MAX_MINOR',
+  'UMS_AI_ADAPTER',
+  'UMS_ANTHROPIC_API_KEY',
+];
+const OFFLINE_NAMES = [
+  'UMS_OFFLINE_SESSION_SECRET',
+  'UMS_OFFLINE_APPROVAL_SECRET',
+  'UMS_OFFLINE_LINK_SECRET',
+  'UMS_OFFLINE_DEMO_PASSCODE_HASH',
+];
 const SECRET_NAMES = [
   'PAYPAL_CLIENT_ID',
   'PAYPAL_CLIENT_SECRET',
@@ -445,7 +460,14 @@ const CASES: Case[] = [
     'DATABASE_URL | PAYPAL_CLIENT_ID | ',
     'secret-names',
   ],
-  ['set-secret drops a name', 'set-secret.sh', ' | UMS_OPERATOR_TOTP_KEYS)', ')', 'secret-names'],
+  // INFRA-A: the list now ends with the eight optional and offline names, so the anchor moved.
+  [
+    'set-secret drops a name',
+    'set-secret.sh',
+    ' | UMS_OFFLINE_DEMO_PASSCODE_HASH)',
+    ')',
+    'secret-names',
+  ],
   ['deploy secret list drops a name', 'deploy.sh', ' UMS_OPERATOR_TOTP_KEYS"', '"', 'secret-names'],
   [
     'setup secret list adds a name',
@@ -959,6 +981,345 @@ const ACCEPTED: [name: string, file: string, find: string, replace: string][] = 
   ['UMS_DB in double quotes', 'service.yaml', "UMS_DB: 'postgres'", 'UMS_DB: "postgres"'],
 ];
 
+// INFRA-A: optional secrets for the sandbox service and the prepared offline service. Each case is the
+// clean kit with one unsafe edit; the guard must exit 1 and name the rule.
+const INFRA_A_CASES: Case[] = [
+  // optional secrets stay optional
+  [
+    'an optional name moves into the required list',
+    'deploy.sh',
+    ' UMS_OPERATOR_TOTP_KEYS"',
+    ' UMS_OPERATOR_TOTP_KEYS UMS_AI_ADAPTER"',
+    'secret-names',
+  ],
+  [
+    'the optional list drops a name',
+    'deploy.sh',
+    ' UMS_ANTHROPIC_API_KEY"',
+    '"',
+    'secret-names',
+  ],
+  [
+    'the optional list gains a payment name',
+    'deploy.sh',
+    ' UMS_ANTHROPIC_API_KEY"',
+    ' UMS_ANTHROPIC_API_KEY PAYPAL_CLIENT_ID"',
+    'secret-names',
+  ],
+  [
+    'setup optional list drops a name',
+    'setup.sh',
+    ' UMS_ANTHROPIC_API_KEY"',
+    '"',
+    'secret-names',
+  ],
+  [
+    'deploy stops on a missing optional secret',
+    'deploy.sh',
+    '    echo "off: ${NAME} has no value"',
+    '    die "no value yet for optional ${NAME}"',
+    'optional-secret',
+  ],
+  [
+    'deploy has no optional loop',
+    'deploy.sh',
+    'for NAME in $OPTIONAL_SECRET_NAMES; do',
+    'for NAME in $SECRET_NAMES; do',
+    'optional-secret',
+  ],
+  [
+    'an optional name given a value in service.yaml',
+    'service.yaml',
+    "UMS_DB: 'postgres'",
+    "UMS_DB: 'postgres'\nUMS_AI_ADAPTER: 'claude'",
+    'secret-in-env',
+  ],
+  [
+    'an optional secret given a literal in deploy.sh',
+    'deploy.sh',
+    'SECRET_FLAGS=""',
+    'UMS_ANTHROPIC_API_KEY=abc\nSECRET_FLAGS=""',
+    'secret-literal',
+  ],
+  [
+    'set-secret drops an optional name',
+    'set-secret.sh',
+    ' | UMS_ANTHROPIC_API_KEY',
+    '',
+    'secret-names',
+  ],
+  // the offline service
+  [
+    'offline kit file removed',
+    'service-offline.yaml',
+    '',
+    '',
+    'kit-files',
+  ],
+  [
+    'offline connect on',
+    'service-offline.yaml',
+    "UMS_PAYPAL_CONNECT: 'off'",
+    "UMS_PAYPAL_CONNECT: 'on'",
+    'paypal-connect',
+  ],
+  [
+    'offline connect missing',
+    'service-offline.yaml',
+    "UMS_PAYPAL_CONNECT: 'off'\n",
+    '',
+    'paypal-connect',
+  ],
+  [
+    'offline connect set in the script',
+    'deploy-offline.sh',
+    '  --port=8080 \\\n',
+    '  --port=8080 \\\n  --update-env-vars=UMS_PAYPAL_CONNECT=on \\\n',
+    'paypal-connect',
+  ],
+  [
+    'offline mode becomes sandbox',
+    'service-offline.yaml',
+    "UMS_MODE: 'offline'",
+    "UMS_MODE: 'sandbox'",
+    'fixed-value',
+  ],
+  [
+    'offline mode missing',
+    'service-offline.yaml',
+    "UMS_MODE: 'offline'\n",
+    '',
+    'fixed-value',
+  ],
+  [
+    'offline database becomes postgres',
+    'service-offline.yaml',
+    "UMS_DB: 'pglite-memory'",
+    "UMS_DB: 'postgres'",
+    'db-kind',
+  ],
+  [
+    'offline database on disk',
+    'service-offline.yaml',
+    "UMS_DB: 'pglite-memory'",
+    "UMS_DB: 'pglite-disk'",
+    'db-kind',
+  ],
+  [
+    'offline database missing',
+    'service-offline.yaml',
+    "UMS_DB: 'pglite-memory'\n",
+    '',
+    'db-kind',
+  ],
+  [
+    'offline adapter becomes claude',
+    'service-offline.yaml',
+    "UMS_AI_ADAPTER: 'scripted'",
+    "UMS_AI_ADAPTER: 'claude'",
+    'fixed-value',
+  ],
+  [
+    'offline label says Sandbox',
+    'service-offline.yaml',
+    "UMS_DB: 'pglite-memory'",
+    "UMS_DB: 'pglite-memory'\nNEXT_PUBLIC_UMS_ENV_LABEL: 'Sandbox'",
+    'fixed-value',
+  ],
+  [
+    'offline yaml names a PayPal secret',
+    'service-offline.yaml',
+    "UMS_DB: 'pglite-memory'",
+    "UMS_DB: 'pglite-memory'\nPAYPAL_CLIENT_ID: 'x'",
+    'secret-in-env',
+  ],
+  [
+    'offline yaml names a PayPal setting',
+    'service-offline.yaml',
+    "UMS_DB: 'pglite-memory'",
+    "UMS_DB: 'pglite-memory'\nPAYPAL_MODE: 'x'",
+    'offline-paypal',
+  ],
+  [
+    'offline yaml names the database URL',
+    'service-offline.yaml',
+    "UMS_DB: 'pglite-memory'",
+    "UMS_DB: 'pglite-memory'\nDATABASE_URL: 'x'",
+    'secret-in-env',
+  ],
+  [
+    'offline yaml carries an unknown name',
+    'service-offline.yaml',
+    "UMS_DB: 'pglite-memory'",
+    "UMS_DB: 'pglite-memory'\nUMS_OUTBOUND_SCOPE: 'mvp_c_refunds'",
+    'unknown-name',
+  ],
+  [
+    'offline yaml has a bad origin',
+    'service-offline.yaml',
+    'https://unitmarket-offline-626887286871.europe-west3.run.app',
+    'https://example.org/path',
+    'origin',
+  ],
+  [
+    'offline script maps a PayPal secret',
+    'deploy-offline.sh',
+    'OFFLINE_SECRET_NAMES="UMS_OFFLINE_SESSION_SECRET',
+    'OFFLINE_SECRET_NAMES="PAYPAL_CLIENT_SECRET UMS_OFFLINE_SESSION_SECRET',
+    'secret-names',
+  ],
+  [
+    'offline script reads a PayPal secret name in code',
+    'deploy-offline.sh',
+    'SECRET_FLAGS=""',
+    'SECRET_FLAGS=""\nOTHER="PAYPAL_CLIENT_ID"',
+    'offline-secret',
+  ],
+  [
+    'offline script reads the database secret in code',
+    'deploy-offline.sh',
+    'SECRET_FLAGS=""',
+    'SECRET_FLAGS=""\nOTHER="DATABASE_URL"',
+    'offline-secret',
+  ],
+  [
+    'offline script attaches Cloud SQL',
+    'deploy-offline.sh',
+    '  --set-secrets="$SECRET_FLAGS" \\\n',
+    '  --set-secrets="$SECRET_FLAGS" \\\n  --add-cloudsql-instances="$CONNECTION" \\\n',
+    'offline-shape',
+  ],
+  [
+    'offline script runs as the sandbox runtime account',
+    'deploy-offline.sh',
+    '--service-account="$OFFLINE_SA"',
+    '--service-account="$RUNTIME_SA"',
+    'offline-shape',
+  ],
+  [
+    'offline script drops the secret mapping',
+    'deploy-offline.sh',
+    '  --set-secrets="$SECRET_FLAGS" \\\n',
+    '',
+    'deploy-shape',
+  ],
+  [
+    'offline script ignores its yaml',
+    'deploy-offline.sh',
+    '--env-vars-file="${HERE}/service-offline.yaml"',
+    '--env-vars-file="${HERE}/service.yaml"',
+    'env-file',
+  ],
+  [
+    'offline script env flags',
+    'deploy-offline.sh',
+    '  --port=8080 \\\n',
+    '  --port=8080 \\\n  --set-env-vars=FOO=bar \\\n',
+    'env-flags',
+  ],
+  [
+    'offline max instances 2',
+    'deploy-offline.sh',
+    '--max-instances=1',
+    '--max-instances=2',
+    'max-instances',
+  ],
+  [
+    'offline max instances missing',
+    'deploy-offline.sh',
+    '  --max-instances=1 \\\n',
+    '',
+    'max-instances',
+  ],
+  ['offline min instances 0', 'deploy-offline.sh', '--min-instances=1', '--min-instances=0', 'min-instances'],
+  [
+    'offline cpu throttling missing',
+    'deploy-offline.sh',
+    '  --no-cpu-throttling \\\n',
+    '',
+    'cpu-throttling',
+  ],
+  ['offline ingress internal', 'deploy-offline.sh', '--ingress=all', '--ingress=internal', 'ingress'],
+  [
+    'offline unauthenticated missing',
+    'deploy-offline.sh',
+    '  --allow-unauthenticated \\\n',
+    '',
+    'unauthenticated',
+  ],
+  [
+    'offline image tag without the commit',
+    'deploy-offline.sh',
+    '${IMAGE_NAME}:${TAG}-${COMMIT}"',
+    '${IMAGE_NAME}:${TAG}"',
+    'image-tag',
+  ],
+  [
+    'offline script without the account guard',
+    'deploy-offline.sh',
+    '[ -n "$ACTIVE_ACCOUNT" ] || die',
+    'true || die',
+    'account-guard',
+  ],
+  [
+    'offline script reads a secret back',
+    'deploy-offline.sh',
+    'echo "== image $IMAGE"',
+    'gcloud secrets versions access latest --secret="$NAME" --project="$PROJECT_ID"\necho "== image $IMAGE"',
+    'secret-read',
+  ],
+  [
+    'offline script builds from a trigger',
+    'deploy-offline.sh',
+    'SECRET_FLAGS=""',
+    'gcloud builds triggers create github --repo-name=x\nSECRET_FLAGS=""',
+    'auto-deploy',
+  ],
+  [
+    'a second deploy statement in the offline script',
+    'deploy-offline.sh',
+    'SERVICE_URL="$(gcloud run services describe',
+    'gcloud run deploy "$SERVICE" --image="$IMAGE"\nSERVICE_URL="$(gcloud run services describe',
+    'deploy-shape',
+  ],
+  [
+    'offline script names a PayPal host',
+    'deploy-offline.sh',
+    'SECRET_FLAGS=""',
+    `# ${SANDBOX_HOST}\nSECRET_FLAGS=""`,
+    'paypal-host',
+  ],
+  [
+    'offline script without strict mode',
+    'deploy-offline.sh',
+    'set -euo pipefail',
+    'set -eu',
+    'strict-mode',
+  ],
+];
+
+// Legal edits of the new files that must stay accepted.
+const INFRA_A_ACCEPTED: [name: string, file: string, find: string, replace: string][] = [
+  [
+    'offline yaml with the Dry run label',
+    'service-offline.yaml',
+    "UMS_DB: 'pglite-memory'",
+    "UMS_DB: 'pglite-memory'\nNEXT_PUBLIC_UMS_ENV_LABEL: 'Dry run'",
+  ],
+  [
+    'offline yaml with the placeholder origin',
+    'service-offline.yaml',
+    'https://unitmarket-offline-626887286871.europe-west3.run.app',
+    'https://pending.invalid',
+  ],
+  [
+    'offline script --max-instances 1 with a space',
+    'deploy-offline.sh',
+    '--max-instances=1',
+    '--max-instances 1',
+  ],
+];
+
 describe('check-hosting-gcp', () => {
   it('passes on the good fixture', () => {
     const r = runGuard(GUARD, materialize('hosting-gcp/good'));
@@ -996,6 +1357,70 @@ describe('check-hosting-gcp', () => {
     expect(r.status).toBe(1);
     expect(r.out).toContain(`hosting-gcp: FAIL ${rule}`);
     expect(r.out).not.toContain('hosting-gcp ok');
+  });
+
+  it('INFRA-A: has no duplicate case name and at least 40 cases', () => {
+    const names = [...CASES, ...GCP2_CASES, ...INFRA_A_CASES].map((c) => c[0]);
+    expect(new Set(names).size).toBe(names.length);
+    expect(INFRA_A_CASES.length).toBeGreaterThanOrEqual(40);
+  });
+
+  it.each(INFRA_A_CASES)('INFRA-A refuses: %s', (_name, file, find, replace, rule) => {
+    let dir: string;
+    if (_name === 'offline kit file removed') {
+      dir = materialize('hosting-gcp/good');
+      rmSync(join(dir, 'infra', 'gcp', file));
+    } else {
+      dir = mutate(file, find, replace);
+    }
+    const r = runGuard(GUARD, dir);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(`hosting-gcp: FAIL ${rule}`);
+    expect(r.out).not.toContain('hosting-gcp ok');
+  });
+
+  it.each(INFRA_A_ACCEPTED)('INFRA-A accepts: %s', (_name, file, find, replace) => {
+    const r = runGuard(GUARD, mutate(file, find, replace));
+    expect(r.out).toContain('hosting-gcp ok');
+    expect(r.status).toBe(0);
+  });
+
+  it('INFRA-A: the real kit maps the optional names only when they have a value', () => {
+    const read = (f: string) => readFileSync(join(REPO_ROOT, 'infra', 'gcp', f), 'utf8');
+    const deploy = read('deploy.sh');
+    expect(deploy).toContain(`OPTIONAL_SECRET_NAMES="${OPTIONAL_NAMES.join(' ')}"`);
+    expect(deploy).toContain('for NAME in $OPTIONAL_SECRET_NAMES; do');
+    expect(deploy).not.toMatch(/die[^\n]*OPTIONAL/);
+    // the required list never holds an optional name
+    const required = deploy.match(/^SECRET_NAMES="([^"]*)"$/m)?.[1] ?? '';
+    for (const n of OPTIONAL_NAMES) expect(required.split(' ')).not.toContain(n);
+    const setSecret = read('set-secret.sh');
+    for (const n of [...OPTIONAL_NAMES, ...OFFLINE_NAMES]) expect(setSecret, n).toContain(n);
+    const setup = read('setup.sh');
+    expect(setup).toContain(`OPTIONAL_SECRET_NAMES="${OPTIONAL_NAMES.join(' ')}"`);
+    expect(setup).toContain(`OFFLINE_SECRET_NAMES="${OFFLINE_NAMES.join(' ')}"`);
+  });
+
+  it('INFRA-A: the real offline service is offline, in memory, with the connection off and no payment name', () => {
+    const y = readFileSync(join(REPO_ROOT, 'infra', 'gcp', 'service-offline.yaml'), 'utf8');
+    expect(y).toContain("UMS_MODE: 'offline'");
+    expect(y).toContain("UMS_DB: 'pglite-memory'");
+    expect(y).toContain("UMS_PAYPAL_CONNECT: 'off'");
+    expect(y).not.toContain('NEXT_PUBLIC_UMS_ENV_LABEL:');
+    const keys = [...y.matchAll(/^([A-Z][A-Z0-9_]*):/gm)].map((m) => m[1] as string);
+    for (const k of keys) expect(k, k).not.toMatch(/PAYPAL_(?!CONNECT$)|DATABASE_URL|OUTBOUND|MERCHANT|TOTP/);
+    const d = readFileSync(join(REPO_ROOT, 'infra', 'gcp', 'deploy-offline.sh'), 'utf8');
+    for (const flag of [
+      '--min-instances=1',
+      '--max-instances=1',
+      '--no-cpu-throttling',
+      '--allow-unauthenticated',
+      '--set-secrets="$SECRET_FLAGS"',
+      '--service-account="$OFFLINE_SA"',
+      '--env-vars-file="${HERE}/service-offline.yaml"',
+    ])
+      expect(d, flag).toContain(flag);
+    expect(d).not.toContain('--add-cloudsql-instances');
   });
 
   it('GCP-2: has no duplicate case name', () => {
