@@ -2,13 +2,14 @@
 import { useState } from 'react';
 import { postJson, rememberCsrf } from '../../lib/client-api';
 import { ErrorState } from '../../ui/ErrorState';
-
-const PERSONAS = [
-  { id: 'buyer-a', label: 'Buyer A' },
-  { id: 'buyer-b', label: 'Buyer B' },
-  { id: 'publisher', label: 'Publisher' },
-  { id: 'operator', label: 'Operator' },
-];
+import {
+  DEMO_PASSCODE_HINT,
+  DEMO_PASSCODE_LABEL,
+  PUBLISHER_PASSCODE_HINT,
+  PUBLISHER_PASSCODE_LABEL,
+  SIGNIN_PERSONAS,
+  isPublisherPersona,
+} from '../../lib/publisher-copy';
 
 export function SignInForm({ next }: { next: string }) {
   const [persona, setPersona] = useState('buyer-a');
@@ -54,7 +55,7 @@ export function SignInForm({ next }: { next: string }) {
       <div className="field">
         <label htmlFor="persona">Who are you testing as?</label>
         <select id="persona" value={persona} onChange={(e) => setPersona(e.target.value)}>
-          {PERSONAS.map((p) => (
+          {SIGNIN_PERSONAS.map((p) => (
             <option key={p.id} value={p.id}>
               {p.label}
             </option>
@@ -62,9 +63,11 @@ export function SignInForm({ next }: { next: string }) {
         </select>
       </div>
       <div className="field">
-        <label htmlFor="passcode">Demo passcode</label>
+        <label htmlFor="passcode">
+          {isPublisherPersona(persona) ? PUBLISHER_PASSCODE_LABEL : DEMO_PASSCODE_LABEL}
+        </label>
         <p className="hint" id="passcode-hint">
-          The passcode your team lead gave you. You can paste it.
+          {isPublisherPersona(persona) ? PUBLISHER_PASSCODE_HINT : DEMO_PASSCODE_HINT}
         </p>
         <input
           id="passcode"

@@ -1,8 +1,9 @@
 // Fails when the Google Cloud deployment kit (infra/gcp) holds an unsafe setting. GCP-1, D-049.
 //
-// The kit is six files: a Dockerfile, four bash scripts and service.yaml (the fixed, non-secret
-// environment of the Cloud Run service). This guard reads them as text, with no dependency, and reports
-// every violation by rule name. Values are never printed: a line number or a name only.
+// The kit is eight files: a Dockerfile, five bash scripts, service.yaml (the fixed, non-secret environment
+// of the Cloud Run service) and service-offline.yaml (the same for the prepared second service, INFRA-A).
+// This guard reads them as text, with no dependency, and reports every violation by rule name. Values are
+// never printed: a line number or a name only.
 //
 // Rules: kit-files, bytes, strict-mode, account-guard, login, terminal-check, print-secret, secret-read,
 // secret-literal, secret-in-env, secret-names, forbidden-name, paypal-host, live-value, paypal-connect,
@@ -10,7 +11,9 @@
 // env-file, max-instances, min-instances, cpu-throttling, resources, probe, ingress, unauthenticated,
 // auto-deploy, deploy-shape, literal-project, literal-value, docker-node, docker-user, docker-cmd,
 // docker-env; GCP-2 adds sql-network, sql-protection, sql-ssl, sql-connector, sql-storage, iam-role, scaling,
-// read-ifs, image-tag and docker-workdir.
+// read-ifs, image-tag and docker-workdir; INFRA-A adds optional-secret, offline-paypal, offline-secret and
+// offline-shape, and applies the instance, env-file, image-tag and deploy rules to each deploy script
+// (deploy.sh for the sandbox service, deploy-offline.sh for the offline one).
 //
 // Pinned forms (GCP-2): an instance flag is `--max-instances=1` or `--max-instances 1`; a service.yaml
 // value is `KEY: 'value'` or `KEY: "value"` with nothing else on the line.
@@ -27,17 +30,25 @@ const ROOT = resolveRoot(process.argv, import.meta.url);
 const KIT_DIR = join(ROOT, 'infra', 'gcp');
 const KIT = [
   'Dockerfile',
+  'deploy-offline.sh',
   'deploy.sh',
   'monitoring.sh',
+  'service-offline.yaml',
   'service.yaml',
   'set-secret.sh',
   'setup.sh',
 ];
+// Each deploy script, the yaml it passes, and the variable that names the image in its IMAGE line.
+const DEPLOYERS = {
+  'deploy.sh': { yaml: 'service.yaml', imageVar: 'SERVICE' },
+  'deploy-offline.sh': { yaml: 'service-offline.yaml', imageVar: 'IMAGE_NAME' },
+};
+const YAMLS = ['service.yaml', 'service-offline.yaml'];
 const SCRIPTS = KIT.filter((f) => f.endsWith('.sh'));
 
 // The names set-secret.sh may store: the `sync: false` names of render.yaml minus UMS_PUBLIC_ORIGIN
 // (not a secret; it goes in service.yaml). DATABASE_URL is made by setup.sh and is a secret too.
-const SETTABLE = [
+const REQUIRED = [
   'PAYPAL_CLIENT_ID',
   'PAYPAL_CLIENT_SECRET',
   'PAYPAL_WEBHOOK_ID',
@@ -49,7 +60,24 @@ const SETTABLE = [
   'UMS_OWN_MERCHANT_ID',
   'UMS_OPERATOR_TOTP_KEYS',
 ];
+// INFRA-A: optional secrets of the sandbox service (no value means the feature is off), and the four own
+// secrets of the offline service (mapped by deploy-offline.sh to the env names without OFFLINE_).
+const OPTIONAL = [
+  'UMS_PUBLISHER_PASSCODE_HASH',
+  'UMS_OFFER_MAX_MINOR',
+  'UMS_AI_ADAPTER',
+  'UMS_ANTHROPIC_API_KEY',
+];
+const OFFLINE = [
+  'UMS_OFFLINE_SESSION_SECRET',
+  'UMS_OFFLINE_APPROVAL_SECRET',
+  'UMS_OFFLINE_LINK_SECRET',
+  'UMS_OFFLINE_DEMO_PASSCODE_HASH',
+];
+const SETTABLE = [...REQUIRED, ...OPTIONAL, ...OFFLINE];
 const SECRETS = new Set([...SETTABLE, 'DATABASE_URL']);
+// The names of the sandbox service: the offline script must not name any of them.
+const MAIN_SECRETS = new Set([...REQUIRED, ...OPTIONAL, 'DATABASE_URL']);
 // Fixed, non-secret values service.yaml must carry exactly. UMS_PAYPAL_CONNECT and UMS_DB have their own rules.
 const FIXED = {
   NODE_ENV: 'production',
@@ -58,6 +86,16 @@ const FIXED = {
   UMS_OUTBOUND_SCOPE: 'mvp_c_refunds',
   UMS_TRUSTED_PROXIES: '1',
   NEXT_PUBLIC_UMS_ENV_LABEL: 'Sandbox',
+};
+// Fixed values service-offline.yaml must carry exactly. UMS_PAYPAL_CONNECT, UMS_DB and UMS_PUBLIC_ORIGIN
+// have their own rules; NEXT_PUBLIC_UMS_ENV_LABEL may be absent (the label comes from stored data) but
+// never says anything but Dry run.
+const FIXED_OFFLINE = {
+  NODE_ENV: 'production',
+  NEXT_TELEMETRY_DISABLED: '1',
+  UMS_MODE: 'offline',
+  UMS_AI_ADAPTER: 'scripted',
+  UMS_TRUSTED_PROXIES: '1',
 };
 const PLACEHOLDER_ORIGIN = 'https://pending.invalid';
 const RUN_APP_ORIGIN = /^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.run\.app$/;
@@ -160,14 +198,14 @@ function main() {
         if (tok.length >= 32 && /\d/.test(tok) && /[A-Za-z]/.test(tok) && !/^[A-Z0-9_]+$/.test(tok))
           fail('secret-literal', `${f}:${l.no} holds a long random-looking token`);
       for (const n of SECRETS) {
-        if (f === 'service.yaml') continue; // secret-in-env covers it
+        if (YAMLS.includes(f)) continue; // secret-in-env covers it
         if (new RegExp(`\\b${n}\\s*[:=]\\s*["']?[^\\s"'$]`).test(l.raw))
           fail('secret-literal', `${f}:${l.no} gives ${n} a literal value`);
       }
       if (EMAIL.test(l.raw)) fail('literal-value', `${f}:${l.no} holds an e-mail address`);
       if (
         /[a-z0-9-]+\.run\.app/.test(l.raw) &&
-        !(f === 'service.yaml' && /^UMS_PUBLIC_ORIGIN:/.test(l.raw))
+        !(YAMLS.includes(f) && /^UMS_PUBLIC_ORIGIN:/.test(l.raw))
       )
         fail('literal-value', `${f}:${l.no} holds a run.app host`);
       if (/\bUMS_PGLITE_DIR\b/.test(l.raw))
@@ -176,11 +214,9 @@ function main() {
   }
 
   // ---- connection, database and instance settings, anywhere ------------------------------------
-  let connectFound = false;
   for (const f of Object.keys(files)) {
     for (const l of lines[f]) {
       for (const m of l.raw.matchAll(/\bUMS_PAYPAL_CONNECT\s*[:=]\s*["']?([A-Za-z0-9_-]*)/g)) {
-        connectFound = true;
         if (m[1] !== 'off')
           fail(
             'paypal-connect',
@@ -188,21 +224,37 @@ function main() {
           );
       }
       for (const m of l.raw.matchAll(/\bUMS_DB\b(?!_)\s*[:=]\s*["']?([A-Za-z0-9_-]*)/g))
-        if (m[1] !== 'postgres')
-          fail('db-kind', `${f}:${l.no} sets UMS_DB to something other than postgres`);
+        if (m[1] !== (f === 'service-offline.yaml' ? 'pglite-memory' : 'postgres'))
+          fail(
+            'db-kind',
+            `${f}:${l.no} sets UMS_DB to something other than ${f === 'service-offline.yaml' ? 'pglite-memory' : 'postgres'}`,
+          );
     }
   }
-  if (!connectFound) fail('paypal-connect', 'UMS_PAYPAL_CONNECT with the value off is missing');
+  // Each yaml must carry the connection flag, set to off (a missing line must not pass).
+  for (const y of YAMLS)
+    if (files[y] && !/^UMS_PAYPAL_CONNECT: (?:'off'|"off")$/m.test(files[y]))
+      fail('paypal-connect', `${y}: UMS_PAYPAL_CONNECT with the value off is missing`);
 
   // ---- instance flags: counted over the code lines of the whole kit -------------------------------
   const code = [];
   for (const f of Object.keys(files)) for (const s of stmts[f]) code.push({ f, ...s });
   const count = (re) => code.flatMap((s) => [...s.text.matchAll(re)].map((m) => ({ s, m })));
+  // INFRA-A: a rule about the deploy scripts holds for each of them: exactly one hit in each deploy
+  // script, none in any other file.
+  const outside = (hits) => hits.some((h) => !(h.s.f in DEPLOYERS));
   const only = (hits, name, rule, want) => {
-    if (hits.length !== 1 || hits[0].s.f !== 'deploy.sh' || hits[0].m[1] !== want)
+    const bad =
+      outside(hits) ||
+      Object.keys(DEPLOYERS).some((d) => {
+        if (!files[d]) return false;
+        const mine = hits.filter((h) => h.s.f === d);
+        return mine.length !== 1 || mine[0].m[1] !== want;
+      });
+    if (bad)
       fail(
         rule,
-        `${name} must appear exactly once, in deploy.sh, as ${name}=${want} or ${name} ${want}`,
+        `${name} must appear exactly once in each deploy script (deploy.sh, deploy-offline.sh), as ${name}=${want} or ${name} ${want}`,
       );
   };
   only(count(/--max-instances(?:[=\s]+(\S+))?/g), '--max-instances', 'max-instances', '1');
@@ -216,61 +268,87 @@ function main() {
   for (const f of Object.keys(files))
     if (/\bminScale\b/.test(files[f])) fail('min-instances', `${f} sets a minScale annotation`);
   const nt = count(/(?<![A-Za-z-])--no-cpu-throttling\b/g);
-  if (nt.length !== 1 || nt[0].s.f !== 'deploy.sh')
-    fail('cpu-throttling', '--no-cpu-throttling must appear exactly once, in deploy.sh');
+  if (
+    outside(nt) ||
+    Object.keys(DEPLOYERS).some((d) => files[d] && nt.filter((h) => h.s.f === d).length !== 1)
+  )
+    fail(
+      'cpu-throttling',
+      '--no-cpu-throttling must appear exactly once in each deploy script (deploy.sh, deploy-offline.sh)',
+    );
   if (count(/(?<!no-)--cpu-throttling\b/g).length > 0)
     fail('cpu-throttling', '--cpu-throttling (CPU only while serving) is not allowed');
+  const envHits = count(/--env-vars-file/g);
   if (
-    count(/--env-vars-file/g).length !== 1 ||
-    !/--env-vars-file="\$\{HERE\}\/service\.yaml"/.test(files['deploy.sh'] ?? '')
+    outside(envHits) ||
+    Object.entries(DEPLOYERS).some(
+      ([d, { yaml }]) =>
+        files[d] &&
+        (envHits.filter((h) => h.s.f === d).length !== 1 ||
+          !new RegExp(`--env-vars-file="\\$\\{HERE\\}\\/${yaml.replace('.', '\\.')}"`).test(
+            files[d],
+          )),
+    )
   )
     fail(
       'env-file',
-      'deploy.sh must pass --env-vars-file="${HERE}/service.yaml", once and only that',
+      'each deploy script must pass --env-vars-file="${HERE}/<its yaml>" (service.yaml or service-offline.yaml), once and only that',
     );
   if (count(/--(?:set|update|remove)-env-vars|--clear-env-vars/g).length > 0)
-    fail('env-flags', 'environment values must come from service.yaml only');
+    fail('env-flags', 'environment values must come from the service yaml files only');
   for (const h of count(/--(?:set|update)-env-vars[= ]\S*?\b([A-Z][A-Z0-9_]*)=/g))
     if (SECRETS.has(h.m[1]))
       fail('secret-in-env', `${h.s.f}:${h.s.no} passes a secret name as an env var`);
   if (count(/\bgcloud\s+(?:beta\s+)?builds\s+triggers\b|--source\b|--git-repo\b/g).length > 0)
     fail('auto-deploy', 'no build trigger, no deploy from source or from Git');
 
-  // ---- the deploy statement ---------------------------------------------------------------------
-  const deploys = (stmts['deploy.sh'] ?? []).filter((s) =>
-    /\bgcloud\s+run\s+deploy\b/.test(s.text),
-  );
-  if (deploys.length !== 1)
-    fail('deploy-shape', 'deploy.sh must hold exactly one gcloud run deploy');
-  else {
-    const d = deploys[0].text;
-    if (!/^gcloud run deploy "\$SERVICE" /.test(d))
-      fail('deploy-shape', 'the deploy must name "$SERVICE"');
-    if (!/(?<!no-)--allow-unauthenticated\b/.test(d))
+  // ---- the deploy statements -----------------------------------------------------------------------
+  for (const d of Object.keys(DEPLOYERS)) {
+    if (!files[d]) continue;
+    const deploys = (stmts[d] ?? []).filter((s) => /\bgcloud\s+run\s+deploy\b/.test(s.text));
+    if (deploys.length !== 1) {
+      fail('deploy-shape', `${d} must hold exactly one gcloud run deploy`);
+      continue;
+    }
+    const x = deploys[0].text;
+    if (!/^gcloud run deploy "\$SERVICE" /.test(x))
+      fail('deploy-shape', `the deploy in ${d} must name "$SERVICE"`);
+    if (!/(?<!no-)--allow-unauthenticated\b/.test(x))
       fail(
         'unauthenticated',
-        'the app service must be public (--allow-unauthenticated): webhooks need it',
+        `the service of ${d} must be public (--allow-unauthenticated): webhooks and judges need it`,
       );
-    if (!/--ingress=all(?:\s|$)/.test(d)) fail('ingress', 'the app service needs --ingress=all');
-    if (!/--memory=2Gi(?:\s|$)/.test(d)) fail('resources', '--memory=2Gi is required');
-    if (!/--cpu=1(?:\s|$)/.test(d)) fail('resources', '--cpu=1 is required');
-    const conc = d.match(/--concurrency=(\d+)(?:\s|$)/);
+    if (!/--ingress=all(?:\s|$)/.test(x))
+      fail('ingress', `the service of ${d} needs --ingress=all`);
+    if (!/--memory=2Gi(?:\s|$)/.test(x)) fail('resources', `${d}: --memory=2Gi is required`);
+    if (!/--cpu=1(?:\s|$)/.test(x)) fail('resources', `${d}: --cpu=1 is required`);
+    const conc = x.match(/--concurrency=(\d+)(?:\s|$)/);
     if (!conc || Number(conc[1]) < 1 || Number(conc[1]) > 40)
-      fail('resources', '--concurrency must be given, 1 to 40');
-    const probe = d.match(/--startup-probe=(\S+)/);
+      fail('resources', `${d}: --concurrency must be given, 1 to 40`);
+    const probe = x.match(/--startup-probe=(\S+)/);
     if (!probe || !probe[1].includes('httpGet.path=/healthz'))
-      fail('probe', 'a startup probe on /healthz is required');
-    if (!/--set-secrets="\$SECRET_FLAGS"/.test(d))
-      fail('deploy-shape', 'secrets must be mapped with --set-secrets="$SECRET_FLAGS"');
-    if (!/--add-cloudsql-instances="\$CONNECTION"/.test(d))
-      fail('deploy-shape', 'the Cloud SQL instance must be attached');
+      fail('probe', `${d}: a startup probe on /healthz is required`);
+    if (!/--set-secrets="\$SECRET_FLAGS"/.test(x))
+      fail('deploy-shape', `${d}: secrets must be mapped with --set-secrets="$SECRET_FLAGS"`);
+    if (d === 'deploy.sh') {
+      if (!/--add-cloudsql-instances="\$CONNECTION"/.test(x))
+        fail('deploy-shape', 'the Cloud SQL instance must be attached');
+    } else {
+      // The offline service has no database and runs as its own account, not the sandbox one.
+      if (/cloudsql/i.test(x)) fail('offline-shape', `${d}: the offline service has no Cloud SQL`);
+      if (!/--service-account="\$OFFLINE_SA"/.test(x))
+        fail('offline-shape', `${d}: the offline service must run as "$OFFLINE_SA"`);
+    }
   }
   const unauth = count(/(?<!no-)--allow-unauthenticated\b/g);
   if (
-    unauth.some((h) => !(h.s.f === 'deploy.sh' && /\bgcloud run deploy\b/.test(h.s.text))) ||
-    unauth.length > 1
+    unauth.some((h) => !(h.s.f in DEPLOYERS && /\bgcloud run deploy\b/.test(h.s.text))) ||
+    Object.keys(DEPLOYERS).some((d) => files[d] && unauth.filter((h) => h.s.f === d).length > 1)
   )
-    fail('unauthenticated', '--allow-unauthenticated is only for the app service deploy, once');
+    fail(
+      'unauthenticated',
+      '--allow-unauthenticated is only for the two service deploys, once in each',
+    );
 
   // ---- the database instance and IAM (GCP-2) ----------------------------------------------------
   if (count(/(?<![A-Za-z0-9-])--authorized-networks\b/g).length > 0)
@@ -338,18 +416,21 @@ function main() {
     else if (/\broles\/secretmanager\b/.test(s.text))
       fail('iam-role', `${s.f}:${s.no} a Secret Manager role outside a per-secret binding`);
   }
-  // The image tag carries the commit as well as the tag name (GCP-2).
-  if (files['deploy.sh']) {
-    const d = files['deploy.sh'];
+  // The image tag carries the commit as well as the tag name (GCP-2); each deploy script has the rule.
+  for (const [name, { imageVar }] of Object.entries(DEPLOYERS)) {
+    if (!files[name]) continue;
+    const d = files[name];
     const images = d.match(/^IMAGE=.*$/gm) ?? [];
     if (
       images.length !== 1 ||
-      !/^IMAGE="[^"]*\/\$\{SERVICE\}:\$\{TAG\}-\$\{COMMIT\}"$/.test(images[0]) ||
+      !new RegExp(`^IMAGE="[^"]*\\/\\$\\{${imageVar}\\}:\\$\\{TAG\\}-\\$\\{COMMIT\\}"$`).test(
+        images[0],
+      ) ||
       !/^COMMIT="\$\{TAG_COMMIT:0:12\}"$/m.test(d)
     )
       fail(
         'image-tag',
-        'the image tag must be ${TAG}-${COMMIT}, with COMMIT the first 12 characters of the tag commit',
+        `${name}: the image tag must be \${TAG}-\${COMMIT}, with COMMIT the first 12 characters of the tag commit`,
       );
   }
 
@@ -430,38 +511,175 @@ function main() {
           .sort()
       : [];
     if (got.join(',') !== [...SETTABLE].sort().join(','))
-      fail('secret-names', 'set-secret.sh must allow exactly the nine settable secret names');
+      fail(
+        'secret-names',
+        'set-secret.sh must allow exactly the ten required, four optional and four offline secret names',
+      );
   }
-  for (const f of ['setup.sh', 'deploy.sh']) {
-    const m = (files[f] ?? '').match(/^SECRET_NAMES="([^"]*)"$/m);
+  // A name list assignment must hold exactly the given names (no more, no fewer).
+  const listIs = (f, variable, want, rule, what) => {
+    if (!files[f]) return;
+    const m = files[f].match(new RegExp(`^${variable}="([^"]*)"$`, 'm'));
     const got = m ? m[1].split(' ').filter(Boolean).sort() : [];
-    if (got.join(',') !== [...SECRETS].sort().join(','))
-      fail('secret-names', `${f}: SECRET_NAMES must be DATABASE_URL plus the nine settable names`);
+    if (got.join(',') !== [...want].sort().join(','))
+      fail(rule, `${f}: ${variable} must be ${what}`);
+  };
+  for (const f of ['setup.sh', 'deploy.sh'])
+    listIs(
+      f,
+      'SECRET_NAMES',
+      [...REQUIRED, 'DATABASE_URL'],
+      'secret-names',
+      'DATABASE_URL plus the ten required names',
+    );
+  for (const f of ['setup.sh', 'deploy.sh'])
+    listIs(f, 'OPTIONAL_SECRET_NAMES', OPTIONAL, 'secret-names', 'the four optional names');
+  for (const f of ['setup.sh', 'deploy-offline.sh'])
+    listIs(f, 'OFFLINE_SECRET_NAMES', OFFLINE, 'secret-names', 'the four offline names');
+
+  // ---- optional secrets never stop the sandbox deploy (INFRA-A) ----------------------------------
+  if (files['deploy.sh']) {
+    let inLoop = false;
+    let sawLoop = false;
+    for (const s of stmts['deploy.sh']) {
+      if (/^for NAME in \$OPTIONAL_SECRET_NAMES; do$/.test(s.text)) {
+        inLoop = true;
+        sawLoop = true;
+      } else if (inLoop && /^done$/.test(s.text)) inLoop = false;
+      else if (inLoop && /(?:^|[\s;&|])(?:die|exit)\b/.test(s.text))
+        fail(
+          'optional-secret',
+          `deploy.sh:${s.no} stops the deploy inside the optional secret loop`,
+        );
+      if (/\bdie\b[^\n]*\bOPTIONAL_[A-Z_]+/.test(s.text))
+        fail('optional-secret', `deploy.sh:${s.no} stops the deploy on an optional secret`);
+    }
+    if (!sawLoop)
+      fail(
+        'optional-secret',
+        'deploy.sh must look at each optional secret in "for NAME in $OPTIONAL_SECRET_NAMES; do"',
+      );
   }
 
-  // ---- service.yaml ------------------------------------------------------------------------------
-  if (files['service.yaml']) {
+  // ---- the offline script: no payment name, no database (INFRA-A) ---------------------------------
+  for (const s of stmts['deploy-offline.sh'] ?? []) {
+    const named = [...MAIN_SECRETS].find((n) => new RegExp(`\\b${n}\\b`).test(s.text));
+    if (named)
+      fail(
+        'offline-secret',
+        `deploy-offline.sh:${s.no} names ${named}, a secret of the sandbox service`,
+      );
+    else if (/paypal/i.test(s.text))
+      fail('offline-paypal', `deploy-offline.sh:${s.no} names PayPal`);
+    if (/cloudsql|CONNECTION\b/i.test(s.text))
+      fail('offline-shape', `deploy-offline.sh:${s.no} names Cloud SQL`);
+  }
+
+  // ---- the offline account is pinned and reads only the offline secrets (INFRA-A review F2) -------------
+  const OFFLINE_SA_LINE = 'OFFLINE_SA="ums-offline@${PROJECT_ID}.iam.gserviceaccount.com"';
+  for (const f of ['setup.sh', 'deploy-offline.sh']) {
+    if (!files[f]) continue;
+    const sets = stmts[f].filter((s) => /^OFFLINE_SA\s*\+?=/.test(s.text));
+    if (sets.length !== 1 || sets[0].text !== OFFLINE_SA_LINE)
+      fail('offline-shape', `${f}: OFFLINE_SA must be set once, exactly as ${OFFLINE_SA_LINE}`);
+    if (f === 'deploy-offline.sh')
+      for (const s of stmts[f])
+        if (/\bRUNTIME_SA\b|ums-runtime/.test(s.text))
+          fail('offline-shape', `${f}:${s.no} names the sandbox runtime account`);
+  }
+  for (const f of Object.keys(files)) {
+    if (!f.endsWith('.sh')) continue;
+    const loops = [];
+    for (const s of stmts[f]) {
+      if (/^for\b.*; do$/.test(s.text)) loops.push(s.text);
+      else if (/^done\b/.test(s.text)) loops.pop();
+      else if (/\badd-iam-policy-binding\b/.test(s.text)) {
+        const member = s.text.match(/--member[=\s]+"?([^"\s]+)"?/)?.[1] ?? '';
+        const isSecret = /\bsecrets\s+add-iam-policy-binding\b/.test(s.text);
+        const inOffline =
+          isSecret && loops[loops.length - 1] === 'for NAME in $OFFLINE_SECRET_NAMES; do';
+        const toOffline = /OFFLINE_SA|ums-offline/.test(member);
+        if (toOffline && !inOffline)
+          fail(
+            'offline-shape',
+            `${f}:${s.no} binds the offline account outside "for NAME in $OFFLINE_SECRET_NAMES; do"`,
+          );
+        if (
+          isSecret &&
+          loops[loops.length - 1] === 'for NAME in $OFFLINE_SECRET_NAMES; do' &&
+          member !== 'serviceAccount:${OFFLINE_SA}'
+        )
+          fail(
+            'offline-shape',
+            `${f}:${s.no} the offline secret loop binds only "${'${OFFLINE_SA}'}"`,
+          );
+      }
+    }
+  }
+
+  // ---- OPTIONAL_ON and SECRET_FLAGS are built from the reviewed lines only (INFRA-A review F3) ------
+  if (files['deploy.sh']) {
+    const loops = [];
+    const okOptional = [
+      ['OPTIONAL_ON=""', null],
+      ['OPTIONAL_ON="${OPTIONAL_ON} ${NAME}"', 'for NAME in $OPTIONAL_SECRET_NAMES; do'],
+      ['OPTIONAL_ON="${OPTIONAL_ON/ UMS_AI_ADAPTER/}"', null],
+    ];
+    const okFlags = [
+      ['SECRET_FLAGS=""', null],
+      [
+        'SECRET_FLAGS="${SECRET_FLAGS:+${SECRET_FLAGS},}${NAME}=${NAME}:latest"',
+        'for NAME in $SECRET_NAMES; do',
+      ],
+      ['SECRET_FLAGS="${SECRET_FLAGS},${NAME}=${NAME}:latest"', 'for NAME in $OPTIONAL_ON; do'],
+    ];
+    for (const s of stmts['deploy.sh']) {
+      if (/^for\b.*; do$/.test(s.text)) loops.push(s.text);
+      else if (/^done\b/.test(s.text)) loops.pop();
+      const here = loops[loops.length - 1] ?? null;
+      for (const [name, ok] of [
+        ['OPTIONAL_ON', okOptional],
+        ['SECRET_FLAGS', okFlags],
+      ]) {
+        if (!new RegExp(`(?:^|[\\s;&|(])${name}\\s*\\+?=`).test(s.text)) continue;
+        if (!ok.some(([text, loop]) => s.text === text && (loop === null || loop === here)))
+          fail(
+            name === 'OPTIONAL_ON' ? 'optional-secret' : 'deploy-shape',
+            `deploy.sh:${s.no} sets ${name} in a way the reviewed kit does not`,
+          );
+      }
+    }
+    const loopHeaders = stmts['deploy.sh'].filter((s) =>
+      /^for NAME in \$OPTIONAL_ON; do$/.test(s.text),
+    );
+    if (loopHeaders.length !== 1)
+      fail(
+        'optional-secret',
+        'deploy.sh must map the optional names in "for NAME in $OPTIONAL_ON; do"',
+      );
+  }
+
+  // ---- service.yaml and service-offline.yaml -------------------------------------------------------
+  for (const y of YAMLS) {
+    if (!files[y]) continue;
+    const offline = y === 'service-offline.yaml';
+    const fixed = offline ? FIXED_OFFLINE : FIXED;
     const seen = new Set();
-    for (const l of lines['service.yaml']) {
+    for (const l of lines[y]) {
       if (l.comment || l.raw.trim() === '') continue;
       const m = l.raw.match(/^([A-Za-z_][A-Za-z0-9_]*): (?:'([^'\\]*)'|"([^"\\]*)")$/);
       if (!m) {
         fail(
           'value-type',
-          `service.yaml:${l.no} must be KEY: 'value' or KEY: "value" (a quoted string, nothing else on the line)`,
+          `${y}:${l.no} must be KEY: 'value' or KEY: "value" (a quoted string, nothing else on the line)`,
         );
         continue;
       }
       const key = m[1];
       const value = m[2] ?? m[3];
-      if (seen.has(key)) fail('duplicate-key', `service.yaml:${l.no} repeats ${key}`);
+      if (seen.has(key)) fail('duplicate-key', `${y}:${l.no} repeats ${key}`);
       seen.add(key);
-      if (SECRETS.has(key))
-        fail(
-          'secret-in-env',
-          `service.yaml:${l.no} lists ${key}; secrets come from Secret Manager`,
-        );
-      else if (key === 'UMS_PAYPAL_CONNECT' || key === 'UMS_DB' || key === 'UMS_PUBLIC_ORIGIN') {
+      if (key === 'UMS_PAYPAL_CONNECT' || key === 'UMS_DB' || key === 'UMS_PUBLIC_ORIGIN') {
         if (
           key === 'UMS_PUBLIC_ORIGIN' &&
           value !== PLACEHOLDER_ORIGIN &&
@@ -471,19 +689,33 @@ function main() {
             'origin',
             'UMS_PUBLIC_ORIGIN must be the placeholder or an https run.app origin with no path',
           );
-        if (key === 'UMS_DB' && value !== 'postgres') fail('db-kind', 'UMS_DB must be postgres');
-      } else if (key in FIXED) {
-        if (value !== FIXED[key]) fail('fixed-value', `${key} must be the reviewed fixed value`);
-      } else if (CLIENT_PREFIX.test(key))
+        const wantDb = offline ? 'pglite-memory' : 'postgres';
+        if (key === 'UMS_DB' && value !== wantDb) fail('db-kind', `${y}: UMS_DB must be ${wantDb}`);
+      } else if (key in fixed) {
+        if (value !== fixed[key])
+          fail('fixed-value', `${y}: ${key} must be the reviewed fixed value`);
+      } else if (offline && key === 'NEXT_PUBLIC_UMS_ENV_LABEL') {
+        if (value !== 'Dry run')
+          fail('fixed-value', `${y}: ${key} may only say Dry run (or be left out)`);
+      } else if (SECRETS.has(key))
+        fail('secret-in-env', `${y}:${l.no} lists ${key}; secrets come from Secret Manager`);
+      else if (offline && /paypal/i.test(key))
+        fail('offline-paypal', `${y}:${l.no} names a PayPal setting; the offline service has none`);
+      else if (CLIENT_PREFIX.test(key))
         fail(
           'public-name',
           `${key} is client-exposed; only NEXT_PUBLIC_UMS_ENV_LABEL may be public`,
         );
-      else fail('unknown-name', `${key} is not a name the kit may set`);
+      else fail('unknown-name', `${y}: ${key} is not a name the kit may set`);
     }
-    for (const k of Object.keys(FIXED)) if (!seen.has(k)) fail('fixed-value', `${k} is missing`);
-    if (!seen.has('UMS_DB')) fail('db-kind', 'UMS_DB with the value postgres is missing');
-    if (!seen.has('UMS_PUBLIC_ORIGIN')) fail('origin', 'UMS_PUBLIC_ORIGIN is missing');
+    for (const k of Object.keys(fixed))
+      if (!seen.has(k)) fail('fixed-value', `${y}: ${k} is missing`);
+    if (!seen.has('UMS_DB'))
+      fail(
+        'db-kind',
+        `${y}: UMS_DB with the value ${offline ? 'pglite-memory' : 'postgres'} is missing`,
+      );
+    if (!seen.has('UMS_PUBLIC_ORIGIN')) fail('origin', `${y}: UMS_PUBLIC_ORIGIN is missing`);
   }
 
   // ---- Dockerfile --------------------------------------------------------------------------------

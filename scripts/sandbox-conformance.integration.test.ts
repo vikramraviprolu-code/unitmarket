@@ -27,6 +27,9 @@ const STOP_REASON = /connect_off/;
 
 const SCRIPT = join(REPO_ROOT, 'scripts', 'sandbox-conformance.mjs');
 const tmps: string[] = [];
+// A folder of its own as the working directory: the config guard reads .env.local from there, never the repo's.
+const CWD = mkdtempSync(join(tmpdir(), 'sbx-conf-cwd-'));
+tmps.push(CWD);
 afterAll(() => {
   for (const t of tmps) rmSync(t, { recursive: true, force: true });
 });
@@ -132,7 +135,7 @@ describe('refusals (nothing is loaded, no database is opened, no call is made)',
   });
   it('the command refuses without a terminal and says why', () => {
     const r = spawnSync(process.execPath, [SCRIPT], {
-      cwd: REPO_ROOT,
+      cwd: CWD,
       encoding: 'utf8',
       input: '',
       env: { UMS_SANDBOX_TESTS: '1' },
@@ -192,7 +195,7 @@ function plainRun(
   mkdirSync(home);
   mkdirSync(data);
   const r = spawnSync(process.execPath, [...flags, driver(dir), ...args], {
-    cwd: REPO_ROOT,
+    cwd: dir,
     encoding: 'utf8',
     timeout: 240_000,
     // built by hand: the caller's environment (which may hold real values) is never inherited
@@ -306,7 +309,7 @@ const hasScript = spawnSync('script', ['--version'], { encoding: 'utf8' }).statu
 describe.skipIf(!hasScript)('refusals on a pseudo-terminal', () => {
   it('the command sees the terminal: without the flag it refuses with flag_missing, not not_a_tty', () => {
     const r = spawnSync('script', ['-qec', `${process.execPath} ${SCRIPT}`, '/dev/null'], {
-      cwd: REPO_ROOT,
+      cwd: CWD,
       encoding: 'utf8',
       env: {},
       timeout: 60_000,

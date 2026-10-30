@@ -6,6 +6,8 @@ import { app } from '../server/access';
 import { currentActor } from '../server/session';
 import { EnvLabel } from '../ui/EnvLabel';
 import { siteDescription, siteFooter } from '../ui/env-copy';
+import { LEGAL_NAV } from '../lib/legal-copy';
+import { PUBLISHER_NAV_LABEL } from '../lib/publisher-copy';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +43,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                     <Link href="/library">My library</Link>
                   </li>
                 ) : null}
+                {actor?.kind === 'publisher' ? (
+                  <li>
+                    <Link href="/publisher">{PUBLISHER_NAV_LABEL}</Link>
+                  </li>
+                ) : null}
                 {actor?.kind === 'operator' ? (
                   <li>
                     <Link href="/ops">Operations</Link>
@@ -65,6 +72,22 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         </main>
         <footer className="site-footer">
           <p>{siteFooter(a.environment)}</p>
+          <nav aria-label="Legal">
+            <ul>
+              <li>
+                <Link href="/legal/terms">{LEGAL_NAV.terms}</Link>
+              </li>
+              <li>
+                <Link href="/legal/privacy">{LEGAL_NAV.privacy}</Link>
+              </li>
+              <li>
+                <Link href="/legal/refunds">{LEGAL_NAV.refunds}</Link>
+              </li>
+              <li>
+                <Link href="/legal/publisher-terms">{LEGAL_NAV['publisher-terms']}</Link>
+              </li>
+            </ul>
+          </nav>
         </footer>
       </body>
     </html>
