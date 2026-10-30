@@ -60,8 +60,8 @@ const REQUIRED = [
   'UMS_OWN_MERCHANT_ID',
   'UMS_OPERATOR_TOTP_KEYS',
 ];
-// INFRA-A: optional secrets of the sandbox service (no value means the feature is off), and the four own
-// secrets of the offline service (mapped by deploy-offline.sh to the env names without OFFLINE_).
+// INFRA-A: optional secrets of the sandbox service (no value means the feature is off), and the five own
+// secrets of the offline service (HARD-OFFLINE added the judge hash) (mapped by deploy-offline.sh to the env names without OFFLINE_).
 const OPTIONAL = [
   'UMS_PUBLISHER_PASSCODE_HASH',
   'UMS_JUDGE_PASSCODE_HASH',
@@ -74,6 +74,7 @@ const OFFLINE = [
   'UMS_OFFLINE_APPROVAL_SECRET',
   'UMS_OFFLINE_LINK_SECRET',
   'UMS_OFFLINE_DEMO_PASSCODE_HASH',
+  'UMS_OFFLINE_JUDGE_PASSCODE_HASH',
 ];
 const SETTABLE = [...REQUIRED, ...OPTIONAL, ...OFFLINE];
 const SECRETS = new Set([...SETTABLE, 'DATABASE_URL']);
@@ -400,6 +401,9 @@ function main() {
       s.text,
     );
     const roles = [...s.text.matchAll(/--role[=\s]+"?([^"\s]+)"?/g)].map((m) => m[1]);
+    // HARD-OFFLINE: one binding names one member, so the member check below sees all of it.
+    if (bind && (s.text.match(/--member(?![A-Za-z-])/g) ?? []).length !== 1)
+      fail('iam-role', `${s.f}:${s.no} an IAM binding must name exactly one --member`);
     if (/\bprojects\s+add-iam-policy-binding\b/.test(s.text)) {
       if (roles.length !== 1 || roles[0] !== 'roles/cloudsql.client')
         fail(
@@ -514,7 +518,7 @@ function main() {
     if (got.join(',') !== [...SETTABLE].sort().join(','))
       fail(
         'secret-names',
-        'set-secret.sh must allow exactly the ten required, five optional and four offline secret names',
+        'set-secret.sh must allow exactly the ten required, five optional and five offline secret names',
       );
   }
   // A name list assignment must hold exactly the given names (no more, no fewer).
@@ -536,7 +540,7 @@ function main() {
   for (const f of ['setup.sh', 'deploy.sh'])
     listIs(f, 'OPTIONAL_SECRET_NAMES', OPTIONAL, 'secret-names', 'the five optional names');
   for (const f of ['setup.sh', 'deploy-offline.sh'])
-    listIs(f, 'OFFLINE_SECRET_NAMES', OFFLINE, 'secret-names', 'the four offline names');
+    listIs(f, 'OFFLINE_SECRET_NAMES', OFFLINE, 'secret-names', 'the five offline names');
 
   // ---- optional secrets never stop the sandbox deploy (INFRA-A) ----------------------------------
   if (files['deploy.sh']) {
@@ -657,6 +661,39 @@ function main() {
       fail(
         'optional-secret',
         'deploy.sh must map the optional names in "for NAME in $OPTIONAL_ON; do"',
+      );
+  }
+
+  // ---- the offline SECRET_FLAGS are built from the reviewed lines only (HARD-OFFLINE) ----------------
+  // Each own secret is mapped to its name without OFFLINE_ and to nothing else, so the judge hash can
+  // only become UMS_JUDGE_PASSCODE_HASH. The list the loop walks is pinned by the OFFLINE_SECRET_NAMES rule.
+  if (files['deploy-offline.sh']) {
+    const loops = [];
+    const loop = 'for NAME in $OFFLINE_SECRET_NAMES; do';
+    const okFlags = [
+      ['SECRET_FLAGS=""', null],
+      [
+        'SECRET_FLAGS="${SECRET_FLAGS:+${SECRET_FLAGS},}UMS_${NAME#UMS_OFFLINE_}=${NAME}:latest"',
+        loop,
+      ],
+    ];
+    let mapped = 0;
+    for (const s of stmts['deploy-offline.sh']) {
+      if (/^for\b.*; do$/.test(s.text)) loops.push(s.text);
+      else if (/^done\b/.test(s.text)) loops.pop();
+      if (!/(?:^|[\s;&|(])SECRET_FLAGS\s*\+?=/.test(s.text)) continue;
+      const here = loops[loops.length - 1] ?? null;
+      if (!okFlags.some(([text, l]) => s.text === text && (l === null || l === here)))
+        fail(
+          'deploy-shape',
+          `deploy-offline.sh:${s.no} sets SECRET_FLAGS in a way the reviewed kit does not`,
+        );
+      else if (s.text !== 'SECRET_FLAGS=""') mapped += 1;
+    }
+    if (mapped !== 1)
+      fail(
+        'deploy-shape',
+        'deploy-offline.sh must map its secrets once, in "for NAME in $OFFLINE_SECRET_NAMES; do"',
       );
   }
 

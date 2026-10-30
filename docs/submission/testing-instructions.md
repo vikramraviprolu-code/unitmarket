@@ -115,8 +115,9 @@ Operator (safety gate, about two minutes, best on Path A):
 The judge passcode (`UMS_JUDGE_PASSCODE_HASH`, JUDGE-A, merged) signs in Buyer A and Buyer B only, so a judge cannot reach `/ops`
 or Stop with it. Anyone who holds the demo passcode still can, without a code when no authenticator keys are set (accepted risk,
 D-040), so keep the demo passcode out of the Devpost form. The owners decide whether judges are told about the `/ops` page at all.
-The offline judge service is unchanged: its single passcode still opens Operator there, and Stop affects only that service's
-in memory data.
+The offline judge service works the same way (HARD-OFFLINE): it holds its own judge hash (`UMS_OFFLINE_JUDGE_PASSCODE_HASH`,
+mapped to `UMS_JUDGE_PASSCODE_HASH`), so the passcode judges receive there signs in Buyer A and Buyer B only. Its demo hash
+(`UMS_OFFLINE_DEMO_PASSCODE_HASH`) is a separate passcode that only the owners keep.
 
 Publisher:
 

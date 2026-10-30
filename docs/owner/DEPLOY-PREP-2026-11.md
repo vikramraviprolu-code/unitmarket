@@ -155,7 +155,7 @@ gcloud secrets list --project="$PROJECT_ID" --format='value(name)'
 ```
 
 Expected: at least eleven names, the ten secrets above and `DATABASE_URL`. If you have run `setup.sh` after INFRA-A, the list also
-holds the five optional names and the four `UMS_OFFLINE_` names; those may have no value. This shows names only, never values. `deploy.sh` checks the
+holds the five optional names and the five `UMS_OFFLINE_` names; those may have no value. This shows names only, never values. `deploy.sh` checks the
 same for the eleven required names and stops with the missing names if any has no enabled version. It does not stop for an
 optional name.
 
@@ -181,7 +181,7 @@ not edit the file on the host.
 A second Cloud Run service, `unitmarket-offline`, lets a judge finish a purchase at any time, because it runs in offline mode:
 in-memory data, no PayPal, no database, no payment secret, no approval row, labelled Dry run from the stored data. The data is
 lost whenever the service restarts or a new revision starts. It is one instance, always on. It runs as its own account
-`ums-offline`, which can read only four secrets of its own. The files are `infra/gcp/service-offline.yaml` and
+`ums-offline`, which can read only five secrets of its own. The files are `infra/gcp/service-offline.yaml` and
 `infra/gcp/deploy-offline.sh`; the guard `corepack pnpm check:hosting-gcp` checks both and refuses any PayPal name or a
 connection that is not off.
 
@@ -191,15 +191,22 @@ connection that is not off.
    bash infra/gcp/setup.sh "$PROJECT_ID" "$REGION"
    ```
 
-2. Store the four own secrets, each at a hidden prompt in a real terminal. Use new values, not the ones of the sandbox service
-   (a cookie signed there must not be valid here). For the passcode hash, use the judge passcode hash:
+2. Store the five own secrets, each at a hidden prompt in a real terminal. Use new values, not the ones of the sandbox service
+   (a cookie signed there must not be valid here). Two of them are passcode hashes and they must differ from each other (the app
+   refuses to boot when they are equal). `UMS_OFFLINE_JUDGE_PASSCODE_HASH` is the hash of the passcode that judges receive; it
+   signs in Buyer A and Buyer B only. `UMS_OFFLINE_DEMO_PASSCODE_HASH` is the hash of a separate, long random passcode that only
+   the owners keep (it opens the operator persona, so never give it to a judge, never put it in the Devpost form):
 
    ```
    bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OFFLINE_SESSION_SECRET
    bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OFFLINE_APPROVAL_SECRET
    bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OFFLINE_LINK_SECRET
    bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OFFLINE_DEMO_PASSCODE_HASH
+   bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OFFLINE_JUDGE_PASSCODE_HASH
    ```
+
+   `deploy-offline.sh` maps each name to the env name without `OFFLINE_`, so the judge hash reaches the app as
+   `UMS_JUDGE_PASSCODE_HASH`. `setup.sh` gives only `ums-offline` read access to the new container.
 
 3. In a checkout of the tag, as in step 4, deploy:
 
@@ -207,7 +214,7 @@ connection that is not off.
    bash infra/gcp/deploy-offline.sh "$PROJECT_ID" "$REGION" TAG
    ```
 
-   It builds the same image as `deploy.sh` for that tag and commit (an existing image is kept), refuses if any of the four
+   It builds the same image as `deploy.sh` for that tag and commit (an existing image is kept), refuses if any of the five
    secrets has no value, and deploys the service `unitmarket-offline`. Copy the `deployed ...` and `service URL:` lines.
 
 4. `UMS_PUBLIC_ORIGIN` in `service-offline.yaml` holds the address form Cloud Run normally prints
@@ -218,17 +225,13 @@ connection that is not off.
 5. Check: open `<service URL>/signin` and sign in as Buyer A with the judge passcode. The screens should say Dry run. Whether the
    production image starts with in memory data on Cloud Run has not been tried; the first deploy is the test.
 
-6. Known limit, read from the code (`operatorSignIn` in `packages/security/src/totp.ts`): the offline service has no authenticator
-   keys, so the operator persona signs in with the judge passcode alone, as the unverified operator. That session can open
-   `/ops` and press Stop (it cannot refund or turn a switch on). So anyone with the judge passcode can stop the offline
-   service for every other judge. Resuming is a command line step only, so the service stays stopped until it restarts. This
-   affects only the offline service's own in memory data: nothing real, no PayPal, no database, and the sandbox service is not
-   touched. Recovery, by a human: start a new revision, for example by deploying a different tag with step 3 (a new revision
-   starts with fresh memory and the stop is gone). Whether deploying the same tag again starts a new revision has not been
-   checked. The judge passcode of lane JUDGE-A (`UMS_JUDGE_PASSCODE_HASH`) fixes this on the sandbox service only. The offline
-   service is unchanged on purpose (decision in `docs/specs/judge-a-passcode.md`): it still maps its four own secrets, and
-   the hash stored as `UMS_OFFLINE_DEMO_PASSCODE_HASH` is the app's demo hash there, so its passcode holder can still open
-   `/ops`. A fifth, optional offline secret that maps to `UMS_JUDGE_PASSCODE_HASH` would close it; see open question 7.
+6. What the passcodes open on this service (HARD-OFFLINE, resolves open question 7). The judge passcode signs in Buyer A and
+   Buyer B only; the operator and the publisher personas refuse it, so a judge cannot open `/ops` or press Stop. Only the owners'
+   private demo passcode can sign in as the operator here (there are no authenticator keys on this service, so that sign in
+   needs the passcode alone and can open `/ops` and press Stop). Keep it out of anything judges see. If a stop ever happens,
+   recovery by a human is a new revision, for example by deploying a different tag with step 3 (fresh memory, the stop is gone).
+   Whether deploying the same tag again starts a new revision has not been checked. Nothing real is behind this service: in
+   memory data, no PayPal, no database, and the sandbox service is not touched.
 
 The offline service never changes `UMS_PAYPAL_CONNECT` and holds no approval row, so it is outside the judging window rules of
 the sandbox service. To remove it: `gcloud run services delete unitmarket-offline --region="$REGION" --project="$PROJECT_ID"` (a
@@ -325,12 +328,13 @@ None of that is in this file. After 15 Dec, cancel the project as in Step L of t
 2. Which tag name is used for the deploy, and which tag is serving now (needed for rollback)?
 3. Are the optional secrets (publisher console, Claude adapter) wanted on the hosted app before judging? Until you store a value
    and deploy, the hosted app shows neither.
-4. The offline service uses its own four secrets and its own account (a choice made in INFRA-A so a session signed on one service is
-   not valid on the other). Is that wanted, or should it share the sandbox service secrets? It also gives judges the demo
-   passcode of a separate secret; who sets it and who tells the judges?
+4. The offline service uses its own five secrets and its own account (a choice made in INFRA-A so a session signed on one service is
+   not valid on the other). Is that wanted, or should it share the sandbox service secrets? Judges there get the passcode behind
+   `UMS_OFFLINE_JUDGE_PASSCODE_HASH`; who sets it and who tells the judges?
 5. Should the offline service also take the publisher passcode and the Claude adapter? INFRA-A leaves both out (scripted model,
    no publisher secret).
 6. Does an extra on demand backup matter before migration 0012? The kit has no command for it.
-7. JUDGE-A leaves the offline service unchanged, so its passcode holder can still open `/ops` there (in memory data only). Do you
-   want a follow up lane that adds an optional fifth offline secret mapped to `UMS_JUDGE_PASSCODE_HASH`, with the stored demo hash
-   kept private? It widens the guard rules `offline-secret` and `secret-names`.
+7. Resolved by HARD-OFFLINE: the offline service has a fifth own secret, `UMS_OFFLINE_JUDGE_PASSCODE_HASH`, mapped to
+   `UMS_JUDGE_PASSCODE_HASH`. Judges receive only that passcode and can sign in buyer personas only. The stored demo hash
+   (`UMS_OFFLINE_DEMO_PASSCODE_HASH`) stays, with a separate random passcode the owners keep private. Still open for the owners:
+   who generates the two passcodes, and confirm that the demo passcode never reaches a judge or the Devpost form.

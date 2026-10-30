@@ -13,7 +13,7 @@
 # instance (backups, point in time recovery, deletion protection, no authorized networks, connector
 # enforcement, a storage limit), one database, one database user, and the empty secret containers.
 # INFRA-A adds the empty containers of the optional secrets (readable by the runtime account) and
-# the second service's runtime account, ums-offline, with four own empty containers it alone can read.
+# the second service's runtime account, ums-offline, with five own empty containers it alone can read.
 set -euo pipefail
 
 die() {
@@ -43,10 +43,11 @@ RUNTIME_SA="${RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 SECRET_NAMES="DATABASE_URL PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID UMS_OUTBOUND_APPROVAL_REF UMS_SESSION_SECRET UMS_APPROVAL_SECRET UMS_LINK_SECRET UMS_DEMO_PASSCODE_HASH UMS_OWN_MERCHANT_ID UMS_OPERATOR_TOTP_KEYS"
 # Optional: a name with no value leaves its feature off (deploy.sh).
 OPTIONAL_SECRET_NAMES="UMS_PUBLISHER_PASSCODE_HASH UMS_JUDGE_PASSCODE_HASH UMS_OFFER_MAX_MINOR UMS_AI_ADAPTER UMS_ANTHROPIC_API_KEY"
-# The second service (deploy-offline.sh) has its own account and its own four secrets, no payment secret.
+# The second service (deploy-offline.sh) has its own account and its own five secrets, no payment secret.
+# Only ums-offline reads them, and the loop below binds nothing else.
 OFFLINE_SA_NAME="ums-offline"
 OFFLINE_SA="ums-offline@${PROJECT_ID}.iam.gserviceaccount.com"
-OFFLINE_SECRET_NAMES="UMS_OFFLINE_SESSION_SECRET UMS_OFFLINE_APPROVAL_SECRET UMS_OFFLINE_LINK_SECRET UMS_OFFLINE_DEMO_PASSCODE_HASH"
+OFFLINE_SECRET_NAMES="UMS_OFFLINE_SESSION_SECRET UMS_OFFLINE_APPROVAL_SECRET UMS_OFFLINE_LINK_SECRET UMS_OFFLINE_DEMO_PASSCODE_HASH UMS_OFFLINE_JUDGE_PASSCODE_HASH"
 
 echo "== billing"
 BILLING_ENABLED="$(gcloud billing projects describe "$PROJECT_ID" --format='value(billingEnabled)' 2>/dev/null || true)"

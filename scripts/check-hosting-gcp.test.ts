@@ -1723,7 +1723,9 @@ describe('check-hosting-gcp', () => {
   it('HARD-OFFLINE: the real offline kit has five own secrets, the judge one mapped to the judge env name', () => {
     const read = (f: string) => readFileSync(join(REPO_ROOT, 'infra', 'gcp', f), 'utf8');
     expect(OFFLINE_NAMES).toHaveLength(5);
-    expect(read('deploy-offline.sh')).toContain(`OFFLINE_SECRET_NAMES="${OFFLINE_NAMES.join(' ')}"`);
+    expect(read('deploy-offline.sh')).toContain(
+      `OFFLINE_SECRET_NAMES="${OFFLINE_NAMES.join(' ')}"`,
+    );
     expect(read('deploy-offline.sh')).toContain('UMS_${NAME#UMS_OFFLINE_}=${NAME}:latest');
     // the demo and the judge hash are two different secrets; the sandbox judge name is never named
     expect(read('deploy-offline.sh')).not.toMatch(/(?<!OFFLINE_)\bUMS_JUDGE_PASSCODE_HASH\b/);

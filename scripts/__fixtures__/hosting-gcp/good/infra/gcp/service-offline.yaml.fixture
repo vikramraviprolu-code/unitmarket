@@ -1,6 +1,6 @@
 # Fixed, non-secret environment values for the SECOND Cloud Run service, unitmarket-offline (INFRA-A,
 # D-049). deploy-offline.sh passes this file to "gcloud run deploy --env-vars-file". It is a flat map of
-# quoted strings, like service.yaml. Secret values are NOT here: deploy-offline.sh maps four own secrets
+# quoted strings, like service.yaml. Secret values are NOT here: deploy-offline.sh maps five own secrets
 # from Secret Manager by name, and "node scripts/check-hosting-gcp.mjs" (pnpm check:hosting-gcp) fails
 # if a secret name or value shows up in this file.
 #
