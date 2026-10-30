@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { App } from '../composition.server';
 import { bootTestApp } from './support';
-import { readGlobalsCss, stripComments } from './skin-css-support';
+import { readGlobalsCss, stripComments } from './skin-css-test-support';
 import { SKIN_COOKIE, SKIN_COOKIE_MAX_AGE_S, skinFromCookie } from './lib/skin';
 import {
   APPEARANCE_LEGEND,

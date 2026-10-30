@@ -2,7 +2,7 @@
 // The reviewed file is the contract for how the app looks; SKIN-B updates the harbour block.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { SKINS, readGlobalsCss, skinTokens } from './skin-css-support';
+import { SKINS, readGlobalsCss, skinTokens } from './skin-css-test-support';
 
 const NAMES: Record<(typeof SKINS)[number], string> = {
   market: 'Bright Market',

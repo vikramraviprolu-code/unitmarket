@@ -2,7 +2,7 @@
 // Each skin is one fixed palette, so every pair is checked once per skin. A failing token is changed
 // minimally in the stylesheet and listed in the hand-back; this file is not loosened.
 import { describe, expect, it } from 'vitest';
-import { SKINS, contrast, readGlobalsCss, tokenMap } from '../skin-css-support';
+import { SKINS, contrast, readGlobalsCss, tokenMap } from '../skin-css-test-support';
 
 const css = readGlobalsCss();
 
