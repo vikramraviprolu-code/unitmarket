@@ -75,11 +75,18 @@ describe('offerInitials', () => {
   it('skips a leading article so the letters mean something', () => {
     expect(offerInitials('A morning walk along the old quay')).toBe('MW');
     expect(offerInitials('The tide tables')).toBe('TT');
-    expect(offerInitials('Why the quayside market moved indoors')).toBe('WT');
+    expect(offerInitials('Why the quayside market moved indoors')).toBe('WQ');
+  });
+  it('skips stop words anywhere, so the letters come from the first two significant words', () => {
+    expect(offerInitials('A notebook of six working knots')).toBe('NS');
+    expect(offerInitials('Notes on the history of tea in Japan')).toBe('NH');
+    expect(offerInitials('Tides and moons')).toBe('TM');
+    expect(offerInitials('The Quayside')).toBe('QU');
   });
   it('handles one word, only articles and no letters', () => {
     expect(offerInitials('Quayside')).toBe('QU');
     expect(offerInitials('The')).toBe('TH');
+    expect(offerInitials('Of the')).toBe('OT');
     expect(offerInitials('123')).toBe('');
   });
 });

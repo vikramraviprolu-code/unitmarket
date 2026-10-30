@@ -15,7 +15,9 @@ export const FIELD_SLUG =
   'Short name (3 to 40 lowercase letters or numbers, single hyphens allowed between parts)';
 export const FIELD_COUNTRY = 'Country (two capital letters, for example GB)';
 export const FIELD_NOTE = 'Why you are adding them (3 to 200 characters)';
-export const FIELD_DECISION_REASON = 'Reason for your answer (3 to 200 characters)';
+/** The name comes first, so the label reads cleanly even when the name has brackets of its own. */
+export const decisionReasonLabel = (name: string): string =>
+  `${name}: reason for your answer, 3 to 200 characters`;
 
 export const ADD_BUTTON = 'Add applicant';
 export const APPROVE_BUTTON = 'Approve';

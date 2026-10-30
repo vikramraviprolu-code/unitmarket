@@ -3,7 +3,9 @@
 import { describe, expect, it } from 'vitest';
 import { parsePriceMinor } from './offer-copy';
 import {
+  BUYER_SEES_NOTE_READONLY,
   BUYER_SEES_OFF,
+  OFFER_READONLY_LEDE,
   collectOptions,
   SECTION_LICENCE,
   SECTION_PRICES,
@@ -100,6 +102,8 @@ describe('words', () => {
   it('no dash character in any new sentence', () => {
     for (const s of [
       BUYER_SEES_OFF,
+      OFFER_READONLY_LEDE,
+      BUYER_SEES_NOTE_READONLY,
       priceHelp('a'),
       optionHelp('keep_retrieve'),
       optionHelp('online_read'),

@@ -9,12 +9,12 @@ import {
   DONE_APPROVED,
   DONE_REJECTED,
   FIELD_COUNTRY,
-  FIELD_DECISION_REASON,
   FIELD_NAME,
   FIELD_NOTE,
   FIELD_SLUG,
   REJECT_BUTTON,
   applicantErrorText,
+  decisionReasonLabel,
 } from '../../../lib/ops-applicants-copy';
 import { ErrorState } from '../../../ui/ErrorState';
 
@@ -145,9 +145,7 @@ export function DecideApplicantForm({ publisherId, name }: { publisherId: string
   return (
     <div>
       <div className="field">
-        <label htmlFor={`decision-${publisherId}`}>
-          {FIELD_DECISION_REASON} ({name})
-        </label>
+        <label htmlFor={`decision-${publisherId}`}>{decisionReasonLabel(name)}</label>
         <input
           id={`decision-${publisherId}`}
           type="text"
