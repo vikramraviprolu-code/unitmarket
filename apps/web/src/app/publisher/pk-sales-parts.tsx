@@ -37,3 +37,12 @@ export function Details({
     </details>
   );
 }
+
+/** A table that may be wider than the screen: a labelled region the keyboard can scroll. */
+export function TableScroll({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="table-scroll" tabIndex={0} role="region" aria-label={label}>
+      {children}
+    </div>
+  );
+}

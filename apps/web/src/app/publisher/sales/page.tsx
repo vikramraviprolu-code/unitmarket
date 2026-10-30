@@ -29,7 +29,7 @@ import {
   splitSales,
 } from '../../../lib/statement-copy';
 import { DownloadCsv } from '../DownloadCsv';
-import { Details, EnvChip } from '../pk-sales-parts';
+import { Details, EnvChip, TableScroll } from '../pk-sales-parts';
 import { HOW_MADE_SUMMARY, totalsTiles, unitStatusTone } from '../../../lib/publisher-sales-view';
 import {
   EXPORT_NOTE,
@@ -74,11 +74,13 @@ export default async function PublisherSales() {
             {environments.map((e) => (
               <EnvLabel key={e} environment={e} />
             ))}
-            <DownloadCsv
-              href={EXPORT_SALES_HREF}
-              label={EXPORT_SALES_LABEL}
-              testId="export-sales"
-            />
+            {rows.length > 0 ? (
+              <DownloadCsv
+                href={EXPORT_SALES_HREF}
+                label={EXPORT_SALES_LABEL}
+                testId="export-sales"
+              />
+            ) : null}
           </>
         }
       />
@@ -125,8 +127,8 @@ export default async function PublisherSales() {
           <p className="pk-count" role="status" data-testid="sales-count">
             {salesCountText(rows.length)}
           </p>
-          <p className="table-hint muted">Scroll sideways to see more</p>
-          <div className="table-scroll">
+          <p className="table-hint pk-hint muted">Scroll sideways to see more</p>
+          <TableScroll label={SALES_HEADING}>
             <table className="pk-table" data-testid="sales-table">
               <caption className="visually-hidden">{SALES_HEADING}</caption>
               <thead>
@@ -147,30 +149,36 @@ export default async function PublisherSales() {
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={`${r.order_ref6}-${String(i)}`} id={`order-${r.order_ref6}`}>
-                    <td>{formatDateTime(r.at)}</td>
-                    <td className="mono">{r.order_ref6}</td>
-                    <td>
+                    <td className="pk-nowrap" data-label={SALES_COLUMNS.date}>
+                      {formatDateTime(r.at)}
+                    </td>
+                    <td className="mono pk-nowrap" data-label={SALES_COLUMNS.order}>
+                      {r.order_ref6}
+                    </td>
+                    <td data-label={SALES_COLUMNS.article}>
                       {r.items.map((it, k) => (
                         <div key={`${it.title}-${String(k)}`}>{it.title}</div>
                       ))}
                     </td>
-                    <td>
+                    <td data-label={SALES_COLUMNS.access}>
                       {r.items.map((it, k) => (
                         <div key={`${it.title}-${String(k)}`}>{optionLabel(it.option)}</div>
                       ))}
                     </td>
-                    <td className="pk-num">{formatMinor(r.amount_minor, r.currency)}</td>
-                    <td className="pk-num">
+                    <td className="pk-num" data-label={SALES_COLUMNS.amount}>
+                      {formatMinor(r.amount_minor, r.currency)}
+                    </td>
+                    <td className="pk-num" data-label={SALES_COLUMNS.fee}>
                       {feeText(r.paypal_fee_minor, r.currency, r.environment)}
                     </td>
-                    <td>
+                    <td data-label={SALES_COLUMNS.status}>
                       <Chip tone={unitStatusTone(r.status)}>{r.status_text}</Chip>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
           <p className="muted">{SALES_ORDER_NOTE}</p>
         </Section>
       )}
@@ -190,7 +198,7 @@ export default async function PublisherSales() {
           {refundsCountText(refunds.length)}
         </p>
         {refunds.length === 0 ? null : (
-          <div className="table-scroll">
+          <TableScroll label={REFUNDS_HEADING}>
             <table className="pk-table" data-testid="refunds-table">
               <caption className="visually-hidden">{REFUNDS_HEADING}</caption>
               <thead>
@@ -213,24 +221,34 @@ export default async function PublisherSales() {
               <tbody>
                 {refunds.map((r, i) => (
                   <tr key={`${r.order_ref6}-${String(i)}`}>
-                    <td>{formatDateTime(r.at)}</td>
-                    <td className="mono">{r.order_ref6}</td>
-                    <td>
+                    <td className="pk-nowrap" data-label={REFUNDS_COLUMNS.date}>
+                      {formatDateTime(r.at)}
+                    </td>
+                    <td className="mono pk-nowrap" data-label={REFUNDS_COLUMNS.order}>
+                      {r.order_ref6}
+                    </td>
+                    <td data-label={REFUNDS_COLUMNS.article}>
                       {r.items.map((it, k) => (
                         <div key={`${it.title}-${String(k)}`}>{it.title}</div>
                       ))}
                     </td>
-                    <td className="pk-num">{formatMinor(r.amount_minor, r.currency)}</td>
-                    <td className="pk-num">{formatMinor(r.refunded_minor, r.currency)}</td>
-                    <td className="pk-num">{formatMinor(r.reversed_minor, r.currency)}</td>
-                    <td>
+                    <td className="pk-num" data-label={REFUNDS_COLUMNS.original}>
+                      {formatMinor(r.amount_minor, r.currency)}
+                    </td>
+                    <td className="pk-num" data-label={REFUNDS_COLUMNS.refunded}>
+                      {formatMinor(r.refunded_minor, r.currency)}
+                    </td>
+                    <td className="pk-num" data-label={REFUNDS_COLUMNS.reversed}>
+                      {formatMinor(r.reversed_minor, r.currency)}
+                    </td>
+                    <td data-label={REFUNDS_COLUMNS.status}>
                       <Chip tone={unitStatusTone(r.status)}>{r.status_text}</Chip>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         )}
       </Section>
       <Details summary={HOW_MADE_SUMMARY} testId="sales-how-made">
@@ -239,8 +257,8 @@ export default async function PublisherSales() {
         {totals.length > 0 ? (
           <>
             <h3>{TOTALS_HEADING}</h3>
-            <p className="table-hint muted">Scroll sideways to see more</p>
-            <div className="table-scroll">
+            <p className="table-hint pk-hint muted">Scroll sideways to see more</p>
+            <TableScroll label={TOTALS_HEADING}>
               <table className="pk-table">
                 <caption className="visually-hidden">{TOTALS_HEADING}</caption>
                 <thead>
@@ -269,24 +287,32 @@ export default async function PublisherSales() {
                 <tbody>
                   {totals.map((t) => (
                     <tr key={`${t.currency}-${t.environment}`}>
-                      <td>
+                      <td data-label={TOTALS_COLUMNS.group}>
                         {t.currency} <EnvLabel environment={t.environment} />
                       </td>
-                      <td className="pk-num">{String(t.units_paid)}</td>
-                      <td className="pk-num">{formatMinor(t.gross_minor, t.currency)}</td>
-                      <td className="pk-num">{formatMinor(t.refunds_minor, t.currency)}</td>
-                      <td className="pk-num">{formatMinor(t.reversals_minor, t.currency)}</td>
-                      <td className="pk-num">
+                      <td className="pk-num" data-label={TOTALS_COLUMNS.units}>
+                        {String(t.units_paid)}
+                      </td>
+                      <td className="pk-num" data-label={TOTALS_COLUMNS.gross}>
+                        {formatMinor(t.gross_minor, t.currency)}
+                      </td>
+                      <td className="pk-num" data-label={TOTALS_COLUMNS.refunds}>
+                        {formatMinor(t.refunds_minor, t.currency)}
+                      </td>
+                      <td className="pk-num" data-label={TOTALS_COLUMNS.reversals}>
+                        {formatMinor(t.reversals_minor, t.currency)}
+                      </td>
+                      <td className="pk-num" data-label={TOTALS_COLUMNS.net}>
                         <strong>{formatMinor(t.net_minor, t.currency)}</strong>
                       </td>
-                      <td className="pk-num">
+                      <td className="pk-num" data-label={TOTALS_COLUMNS.fee}>
                         {feeText(t.paypal_fee_minor, t.currency, t.environment)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </>
         ) : null}
         <p className="muted">{REFUNDS_SOURCE_NOTE}</p>

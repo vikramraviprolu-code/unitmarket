@@ -22,7 +22,6 @@ import {
   NO_PAYMENTS,
   OPS_LINK_PAYEE_REQUESTS,
   PUBLISHERS_MFA_BODY,
-  PUBLISHERS_MFA_HEADING,
   PUBLISHERS_MFA_LINK,
   PUBLISHERS_BACK_LINK,
   PUBLISHERS_EMPTY,
@@ -101,7 +100,7 @@ function MfaNeeded() {
   return (
     <>
       <h1>{PUBLISHERS_HEADING}</h1>
-      <StatusBanner tone="warn" title={PUBLISHERS_MFA_HEADING}>
+      <StatusBanner tone="warn">
         <span data-testid="publishers-mfa-needed">{PUBLISHERS_MFA_BODY}</span>{' '}
         <Link href="/signin?next=/ops/publishers">{PUBLISHERS_MFA_LINK}</Link>
       </StatusBanner>

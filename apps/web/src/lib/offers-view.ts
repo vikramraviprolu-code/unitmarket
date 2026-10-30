@@ -56,8 +56,27 @@ export const tabText = (f: OfferFilter, count: number): string =>
 
 export const filterHref = (f: OfferFilter): string => `/publisher/offers?status=${f}`;
 
-const LEADING_ARTICLE = /^\s*(?:a|an|the)\s+(?=\p{L})/iu;
+const STOP_WORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'of',
+  'in',
+  'for',
+  'to',
+  'and',
+  'on',
+  'at',
+  'by',
+  'with',
+]);
 
-/** Two letters for a cover: a leading article is skipped, so "A morning walk" reads MW. */
-export const offerInitials = (title: string): string =>
-  coverInitials(title.replace(LEADING_ARTICLE, ''));
+/**
+ * Two letters for a cover from the title: the first letters of the first two significant words, so
+ * "A notebook of six working knots" reads NS. Stop words are skipped; a title made only of them keeps them.
+ */
+export function offerInitials(title: string): string {
+  const words = title.match(/\p{L}+/gu) ?? [];
+  const significant = words.filter((w) => !STOP_WORDS.has(w.toLowerCase()));
+  return coverInitials((significant.length > 0 ? significant : words).join(' '));
+}

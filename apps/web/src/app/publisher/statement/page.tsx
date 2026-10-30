@@ -6,7 +6,7 @@ import '../pk-sales.css';
 import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EmptyState } from '../../../ui/EmptyState';
-import { Chip, PageHeader, Section } from '../../../ui/publisher/kit';
+import { Chip, PageHeader, Section, StatTile } from '../../../ui/publisher/kit';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { formatDateTime, formatMinor } from '../../../lib/format';
 import {
@@ -29,7 +29,7 @@ import {
   visibleLines,
 } from '../../../lib/statement-copy';
 import { DownloadCsv } from '../DownloadCsv';
-import { Details, EnvChip } from '../pk-sales-parts';
+import { Details, EnvChip, TableScroll } from '../pk-sales-parts';
 import { STATEMENT_FILE_SUMMARY, ledgerKindTone } from '../../../lib/publisher-sales-view';
 import {
   EXPORT_NOTE,
@@ -53,11 +53,13 @@ export default async function PublisherStatement() {
         title={STATEMENT_HEADING}
         lede={STATEMENT_LEDE}
         aside={
-          <DownloadCsv
-            href={EXPORT_STATEMENT_HREF}
-            label={EXPORT_STATEMENT_LABEL}
-            testId="export-statement"
-          />
+          statement.blocks.length > 0 ? (
+            <DownloadCsv
+              href={EXPORT_STATEMENT_HREF}
+              label={EXPORT_STATEMENT_LABEL}
+              testId="export-statement"
+            />
+          ) : null
         }
       />
       <div className="pk-sublinks">
@@ -86,9 +88,17 @@ export default async function PublisherStatement() {
               {b.currency} <EnvChip environment={b.environment} />
             </h2>
             <p className="pk-settle" data-testid="settlement-sentence">
-              <Chip tone="info">{SETTLEMENT_HEADING}</Chip>
+              <span className="pk-settle-label">{SETTLEMENT_HEADING}</span>
               {b.settlement.sentence}
             </p>
+            <div className="pk-tiles pk-block-tiles">
+              <StatTile label={LINE_LABEL.sales} value={formatMinor(b.sales_minor, b.currency)} />
+              <StatTile
+                label={LINE_LABEL.refunds}
+                value={formatMinor(b.refunds_minor, b.currency)}
+              />
+              <StatTile label={LINE_LABEL.net} value={formatMinor(b.net_minor, b.currency)} />
+            </div>
             <dl className="pk-facts">
               <dt>{LINE_LABEL.sales}</dt>
               <dd>
@@ -119,8 +129,8 @@ export default async function PublisherStatement() {
               </dd>
             </dl>
             <h3>{LINES_HEADING}</h3>
-            <p className="table-hint muted">Scroll sideways to see more</p>
-            <div className="table-scroll">
+            <p className="table-hint pk-hint muted">Scroll sideways to see more</p>
+            <TableScroll label={LINES_HEADING}>
               <table className="pk-table">
                 <caption className="visually-hidden">{LINES_HEADING}</caption>
                 <thead>
@@ -136,19 +146,23 @@ export default async function PublisherStatement() {
                 <tbody>
                   {visibleLines(b.lines, b.environment).map((l, i) => (
                     <tr key={`${l.order_ref6}-${l.kind}-${String(i)}`}>
-                      <td>{formatDateTime(l.at)}</td>
-                      <td className="mono">
+                      <td className="pk-nowrap" data-label={LINES_COLUMNS.date}>
+                        {formatDateTime(l.at)}
+                      </td>
+                      <td className="mono pk-nowrap" data-label={LINES_COLUMNS.order}>
                         <Link href={salesAnchor(l.order_ref6)}>{l.order_ref6}</Link>
                       </td>
-                      <td>
+                      <td data-label={LINES_COLUMNS.entry}>
                         <Chip tone={ledgerKindTone(l.kind)}>{ENTRY_TEXT[l.kind]}</Chip>
                       </td>
-                      <td className="pk-num">{formatMinor(l.amount_minor, b.currency)}</td>
+                      <td className="pk-num" data-label={LINES_COLUMNS.amount}>
+                        {formatMinor(l.amount_minor, b.currency)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </section>
         ))
       )}

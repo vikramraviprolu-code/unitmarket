@@ -41,6 +41,9 @@ export const BUYER_SEES_HEADING = 'What a buyer sees';
 export const BUYER_SEES_NOTE =
   'This is the saved version. What you type below shows here after you save.';
 export const BUYER_SEES_OFF = 'Buyers see this offer as not on sale.';
+// The same page for an offer that is withdrawn or still a draft: it only shows what is saved.
+export const OFFER_READONLY_LEDE = 'This page shows the saved offer. Nothing on it can be changed.';
+export const BUYER_SEES_NOTE_READONLY = 'This is the saved version.';
 
 // Withdraw
 export const WITHDRAW_HELP = 'Give a short reason, 3 to 200 characters.';

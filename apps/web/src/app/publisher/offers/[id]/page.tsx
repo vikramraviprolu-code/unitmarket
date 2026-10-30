@@ -5,6 +5,7 @@ import { app } from '../../../../server/access';
 import { currentActor } from '../../../../server/session';
 import { EnvLabel } from '../../../../ui/EnvLabel';
 import { Chip, PageHeader, Section } from '../../../../ui/publisher/kit';
+import { StatusBanner } from '../../../../ui/StatusBanner';
 import { formatDateTime, formatMinor, optionLabel } from '../../../../lib/format';
 import {
   ARTICLE_FACTS_HEADING,
@@ -43,8 +44,10 @@ import {
 import {
   BUYER_SEES_HEADING,
   BUYER_SEES_NOTE,
+  BUYER_SEES_NOTE_READONLY,
   BUYER_SEES_OFF,
   HELP_LICENCE,
+  OFFER_READONLY_LEDE,
   SECTION_LICENCE,
   SECTION_WHAT,
   offerStatusTone,
@@ -100,9 +103,16 @@ export default async function PublisherOffer({ params }: { params: Promise<{ id:
       </p>
       <PageHeader
         title={o.article_title}
-        lede={OFFER_LEDE}
+        lede={live ? OFFER_LEDE : OFFER_READONLY_LEDE}
         aside={<EnvLabel environment={o.environment} />}
       />
+      {live ? null : (
+        <StatusBanner tone="warn">
+          <span data-testid="offer-withdrawn-notice">
+            {o.status === 'draft' ? DRAFT_NOTICE : WITHDRAWN_NOTICE}
+          </span>
+        </StatusBanner>
+      )}
       <p className="pk-chips">
         <Chip tone={offerStatusTone(o.status)}>{offerStatusText(o.status)}</Chip>
         <Chip tone="neutral">{`${LABEL_VERSION} ${o.version}`}</Chip>
@@ -121,7 +131,7 @@ export default async function PublisherOffer({ params }: { params: Promise<{ id:
           <p className="muted" data-testid="offer-freeze-note">
             {FREEZE_NOTE}
           </p>
-          <p className="pk-help">{BUYER_SEES_NOTE}</p>
+          <p className="pk-help">{live ? BUYER_SEES_NOTE : BUYER_SEES_NOTE_READONLY}</p>
         </div>
       </Section>
       <Section title={SECTION_WHAT} id="offer-what">
@@ -167,12 +177,7 @@ export default async function PublisherOffer({ params }: { params: Promise<{ id:
           <WithdrawForm offerId={o.offer_id} version={o.version} />
         </>
       ) : (
-        <>
-          {licence}
-          <p role="status" className="muted" data-testid="offer-withdrawn-notice">
-            <strong>{o.status === 'draft' ? DRAFT_NOTICE : WITHDRAWN_NOTICE}</strong>
-          </p>
-        </>
+        <>{licence}</>
       )}
       <Section title={HISTORY_HEADING} id="offer-history-section">
         <div className="pk-panel">

@@ -21,7 +21,7 @@ function lines(): string[] {
   out.push(
     `fields: ${copy.FIELD_NAME} | ${copy.FIELD_SLUG} | ${copy.FIELD_COUNTRY} | ${copy.FIELD_NOTE}`,
   );
-  out.push(`field reason: ${copy.FIELD_DECISION_REASON}`);
+  out.push(`field reason: ${copy.decisionReasonLabel('Gate Test Applicant (fake)')}`);
   out.push(`buttons: ${copy.ADD_BUTTON} | ${copy.APPROVE_BUTTON} | ${copy.REJECT_BUTTON}`);
   out.push(`approve hint: ${copy.APPROVE_HINT}`);
   out.push(`reject hint: ${copy.REJECT_HINT}`);

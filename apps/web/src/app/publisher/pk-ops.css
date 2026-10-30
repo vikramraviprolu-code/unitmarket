@@ -6,6 +6,9 @@
   padding: 0;
   list-style: none;
 }
+.pk-section.pk-stack {
+  margin-top: 28px;
+}
 .pk-item-head {
   display: flex;
   flex-wrap: wrap;
@@ -78,6 +81,7 @@
   margin: 16px 0 0;
 }
 .pk-form-grid {
+  align-items: end;
   display: grid;
   gap: 0 16px;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
