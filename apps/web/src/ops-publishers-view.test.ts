@@ -93,7 +93,7 @@ describe('summary figures', () => {
 
 describe('words', () => {
   it('has no dashes, italics marks or emoji in any string it exports', () => {
-    const texts = Object.values(view).filter((v): v is string => typeof v === 'string');
+    const texts = Object.values(view).filter((v: unknown): v is string => typeof v === 'string');
     expect(texts.length).toBeGreaterThan(8);
     for (const t of texts) {
       expect(t).not.toMatch(NO_DASH);

@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { app } from '../../server/access';
 import { currentActor } from '../../server/session';
 import { EnvLabel, envText } from '../../ui/EnvLabel';
@@ -8,6 +7,12 @@ import { formatMinor, formatDateTime } from '../../lib/format';
 import { gateLines } from '../../lib/gate-lines';
 import { EVALS_OPS_LINK } from '../../lib/evals-copy';
 import { OPS_LINK_PAYEE_REQUESTS, OPS_LINK_PUBLISHERS } from '../../lib/ops-publishers-copy';
+import {
+  OPS_CARD_EVALS_TEXT,
+  OPS_CARD_PAYEE_TEXT,
+  OPS_CARD_PUBLISHERS_TEXT,
+} from '../../lib/ops-publishers-view';
+import { ActionCard } from '../../ui/publisher/kit';
 import { StopButton } from './StopButton';
 import { RefundPanel } from './RefundPanel';
 
@@ -34,15 +39,23 @@ export default async function Ops() {
         Read only, except the stop button and, with the authenticator code, refunds. Everything else
         is changed with the operator command line.
       </p>
-      <p>
-        <Link href="/ops/evals">{EVALS_OPS_LINK}</Link>
-      </p>
-      <p>
-        <Link href="/ops/publishers">{OPS_LINK_PUBLISHERS}</Link>
-      </p>
-      <p>
-        <Link href="/ops/payee-requests">{OPS_LINK_PAYEE_REQUESTS}</Link>
-      </p>
+      <ul className="pk-cards">
+        <li>
+          <ActionCard href="/ops/evals" title={EVALS_OPS_LINK}>
+            {OPS_CARD_EVALS_TEXT}
+          </ActionCard>
+        </li>
+        <li>
+          <ActionCard href="/ops/publishers" title={OPS_LINK_PUBLISHERS}>
+            {OPS_CARD_PUBLISHERS_TEXT}
+          </ActionCard>
+        </li>
+        <li>
+          <ActionCard href="/ops/payee-requests" title={OPS_LINK_PAYEE_REQUESTS}>
+            {OPS_CARD_PAYEE_TEXT}
+          </ActionCard>
+        </li>
+      </ul>
 
       <h2>Switches</h2>
       <table>

@@ -4,11 +4,11 @@ import type { Metadata } from 'next';
 import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EnvLabel } from '../../../ui/EnvLabel';
+import { Chip, PageHeader, StatTile } from '../../../ui/publisher/kit';
 import { StatusBanner } from '../../../ui/StatusBanner';
 import { formatDateTime } from '../../../lib/format';
 import {
   OPS_COL_AGE,
-  OPS_COL_PUBLISHER,
   OPS_COL_REQUESTED,
   OPS_EMPTY,
   OPS_HEADING,
@@ -19,6 +19,14 @@ import {
   OWNER_ONLY_NOTE,
   ageText,
 } from '../../../lib/payee-copy';
+import {
+  REQUEST_STATE_OPEN,
+  TILE_NONE,
+  TILE_OLDEST,
+  TILE_OPEN_REQUESTS,
+  oldestAgeMs,
+} from '../../../lib/ops-publishers-view';
+import { PUBLISHERS_BACK_LINK } from '../../../lib/ops-publishers-copy';
 import { DecisionForm } from './DecisionForm';
 
 export const metadata: Metadata = { title: 'Payee requests' };
@@ -43,54 +51,62 @@ export default async function PayeeRequests() {
   const r = await (await app()).engine.payee.openRequests(actor);
   if (!r.ok) redirect('/signin?next=/ops/payee-requests');
   const { requests, environment } = r.value;
+  const oldest = oldestAgeMs(requests);
   return (
     <>
-      <h1>
-        {OPS_HEADING} <EnvLabel environment={environment} />
-      </h1>
-      <p className="lede">{OPS_LEDE}</p>
+      <PageHeader
+        title={OPS_HEADING}
+        lede={OPS_LEDE}
+        aside={<EnvLabel environment={environment} />}
+      />
       {environment === 'sandbox' ? (
-        <p role="status" className="muted" data-testid="payee-owner-only">
-          <strong>{OWNER_ONLY_NOTE}</strong>
-        </p>
+        <StatusBanner tone="info">
+          <span data-testid="payee-owner-only">
+            <strong>{OWNER_ONLY_NOTE}</strong>
+          </span>
+        </StatusBanner>
       ) : null}
+      <div className="pk-tiles">
+        <StatTile label={TILE_OPEN_REQUESTS} value={requests.length} />
+        <StatTile label={TILE_OLDEST} value={oldest === null ? TILE_NONE : ageText(oldest)} />
+      </div>
       {requests.length === 0 ? (
-        <p className="muted" data-testid="payee-queue-empty">
+        <p className="muted pk-section" data-testid="payee-queue-empty">
           {OPS_EMPTY}
         </p>
       ) : (
-        <div className="table-scroll" role="region" aria-label={OPS_HEADING} tabIndex={0}>
-          <table>
-            <caption className="visually-hidden">{OPS_HEADING}</caption>
-            <thead>
-              <tr>
-                <th scope="col">{OPS_COL_PUBLISHER}</th>
-                <th scope="col">{OPS_COL_REQUESTED}</th>
-                <th scope="col">{OPS_COL_AGE}</th>
-                <th scope="col">
-                  <span className="visually-hidden">Decision</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map((q) => (
-                <tr key={q.request_id} data-testid="payee-queue-row">
-                  <td>{q.publisher_name}</td>
-                  <td>Ending {q.requested_last4}</td>
-                  <td title={formatDateTime(q.created_at)}>{ageText(q.age_ms)}</td>
-                  <td>
-                    <DecisionForm
-                      requestId={q.request_id}
-                      last4={q.requested_last4}
-                      canVerify={environment !== 'sandbox'}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="pk-section pk-stack">
+          {requests.map((q) => (
+            <article
+              key={q.request_id}
+              className="pk-panel"
+              aria-labelledby={`req-${q.request_id}`}
+              data-testid="payee-queue-row"
+            >
+              <div className="pk-item-head">
+                <h2 id={`req-${q.request_id}`}>{q.publisher_name}</h2>
+                <div className="pk-chips">
+                  <Chip tone="info">{REQUEST_STATE_OPEN}</Chip>
+                </div>
+              </div>
+              <dl className="pk-facts">
+                <dt>{OPS_COL_REQUESTED}</dt>
+                <dd>Ending {q.requested_last4}</dd>
+                <dt>{OPS_COL_AGE}</dt>
+                <dd title={formatDateTime(q.created_at)}>{ageText(q.age_ms)}</dd>
+              </dl>
+              <DecisionForm
+                requestId={q.request_id}
+                last4={q.requested_last4}
+                canVerify={environment !== 'sandbox'}
+              />
+            </article>
+          ))}
         </div>
       )}
+      <p className="pk-links">
+        <Link href="/ops">{PUBLISHERS_BACK_LINK}</Link>
+      </p>
     </>
   );
 }
