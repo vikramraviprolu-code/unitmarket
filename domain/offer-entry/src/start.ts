@@ -137,6 +137,12 @@ export async function startFromOffer(
   );
   if (auth.rows.length === 0 || offer.status !== 'authorised') return ok(noMatch('not_authorised'));
 
+  // 3b. a publisher that is not active (suspended, or not yet approved) sells nothing (PUB-D)
+  const pub = await d.db.query<{ status: string }>('SELECT status FROM publishers WHERE id = $1', [
+    offer.publisher_id,
+  ]);
+  if (pub.rows[0]?.status !== 'active') return ok(noMatch('not_authorised'));
+
   // 4. corridor: exists, enabled, and the domestic-only rule holds
   const corridor = await corridorFor(d.db, {
     currency: offer.currency,

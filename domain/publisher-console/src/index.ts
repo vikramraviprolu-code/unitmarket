@@ -15,3 +15,5 @@ export type {
 } from './statement';
 export { COMMISSION_LINE, SETTLEMENT_SENTENCE, settlementMode } from './settlement';
 export type { Settlement, SettlementFacts, SettlementMode } from './settlement';
+export { publisherExposure } from './exposure';
+export type { ExposureBlock, PublisherExposure, PublisherStatusValue } from './exposure';

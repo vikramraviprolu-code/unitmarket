@@ -74,6 +74,12 @@ export function offersLiveText(n: number): string {
 export const NO_OFFERS_TITLE = 'No live offers yet';
 export const NO_OFFERS_BODY = 'When you have an offer on sale, it is counted here.';
 
+/** The links on the publisher home page: the pages a publisher can reach from here. */
+export const LINK_OFFERS = 'Your offers';
+export const LINK_SALES = 'Sales';
+export const LINK_STATEMENT = 'Statement';
+export const LINK_PAYOUT_ACCOUNT = 'Where you get paid';
+
 /** The payee in words: only the last 4 characters of the account id, and only from stored data. */
 export function payeeText(p: { last4: string | null; verified_at: string | null }): string {
   if (p.last4 === null) return 'No payee account is set yet.';

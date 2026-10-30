@@ -7,6 +7,7 @@ import { EnvLabel, envText } from '../../ui/EnvLabel';
 import { formatMinor, formatDateTime } from '../../lib/format';
 import { gateLines } from '../../lib/gate-lines';
 import { EVALS_OPS_LINK } from '../../lib/evals-copy';
+import { OPS_LINK_PAYEE_REQUESTS, OPS_LINK_PUBLISHERS } from '../../lib/ops-publishers-copy';
 import { StopButton } from './StopButton';
 import { RefundPanel } from './RefundPanel';
 
@@ -35,6 +36,12 @@ export default async function Ops() {
       </p>
       <p>
         <Link href="/ops/evals">{EVALS_OPS_LINK}</Link>
+      </p>
+      <p>
+        <Link href="/ops/publishers">{OPS_LINK_PUBLISHERS}</Link>
+      </p>
+      <p>
+        <Link href="/ops/payee-requests">{OPS_LINK_PAYEE_REQUESTS}</Link>
       </p>
 
       <h2>Switches</h2>

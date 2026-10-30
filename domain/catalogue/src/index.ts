@@ -41,5 +41,7 @@ export type {
   PriceInput,
   ReviseInput,
 } from './write';
+export { setPublisherStatus } from './status';
+export type { StatusDeps, StatusError, StatusErrorCode } from './status';
 export { DEMO_AUDIT_REASON, DEMO_MAX_MINOR, DEMO_MIN_MINOR, applyDemoPrices } from './demo-prices';
 export type { DemoRevision } from './demo-prices';

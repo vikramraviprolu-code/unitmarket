@@ -177,7 +177,7 @@ describe('suspend and reactivate through the route', () => {
       reason: 'Cleared again',
     });
     const q = await w.app.engine.quote({
-      offer: { publisher_slug: 'harbour-ledger', offer_code: 'dock-history' },
+      offer: { publisher_slug: 'harbour-ledger', offer_code: 'knot-notebook' },
       actor: w.refund.actorB,
       source: 'direct',
     });
