@@ -1,25 +1,26 @@
 import { formatDateTime } from '../lib/format';
+import { windowUntilLine } from '../lib/buyer-copy';
 
 const TOTAL_DAYS = 5;
 
-// Shows the access window as words first and a bar second (not colour alone, WCAG 1.4.1).
+// Shows the access window as words first and a bar second (not colour alone, WCAG 1.4.1). The time left
+// is said once, by the library status line above it; this says only when the window ends (UX-1A, U1).
 export function WindowMeter({
   state,
   daysLeft,
   endsAt,
+  option,
 }: {
   state: string;
   daysLeft: number | null;
   endsAt: string | null;
+  option?: string;
 }) {
   if (state === 'running' && daysLeft !== null) {
     const used = Math.min(TOTAL_DAYS, Math.max(0, TOTAL_DAYS - daysLeft));
     return (
       <div className="meter" data-testid="window-meter">
-        <p>
-          <strong>{daysLeft === 1 ? '1 day left' : `${daysLeft} days left`}</strong>
-          {endsAt ? <span className="muted"> until {formatDateTime(endsAt)}</span> : null}
-        </p>
+        {endsAt ? <p className="muted">{windowUntilLine(option, formatDateTime(endsAt))}</p> : null}
         <div className="meter-bar" role="img" aria-label={`${used} of ${TOTAL_DAYS} days used`}>
           <span style={{ width: `${(used / TOTAL_DAYS) * 100}%` }} />
         </div>

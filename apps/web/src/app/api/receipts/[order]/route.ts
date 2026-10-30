@@ -17,7 +17,7 @@ export const routeMeta: RouteMeta = {
 const Input = z.object({ order: z.string().min(1).max(200) }).strict();
 
 export const GET = withRoute(routeMeta, Input, async ({ actor, input }) => {
-  const r = await (await app()).engine.receipt({ order_id: input.order, actor });
+  const r = await (await app()).engine.buyerReceipt({ order_id: input.order, actor });
   return r === null
     ? { status: 404, code: 'not_found', message: 'We could not find that receipt.' }
     : { status: 200, body: r };
