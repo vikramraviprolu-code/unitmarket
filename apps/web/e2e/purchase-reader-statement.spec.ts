@@ -76,6 +76,7 @@ test('an unpaid order says Not paid yet; then the buyer pays to read online; the
   );
   await expect(unpaid.getByRole('button')).toHaveCount(0);
   await unpaid.getByRole('link', { name: TITLE }).click();
+  await expect(lib).toHaveURL(/\/library\/[^/]+$/);
   await expect(lib.getByTestId('library-status')).toContainText(
     'Not paid yet. We have not received a payment for this order.',
   );
