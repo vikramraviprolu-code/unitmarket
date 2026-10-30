@@ -71,15 +71,28 @@ import { createClaudeModel, createScriptedModel } from '@umsbx/model';
 import {
   SEED_DATA,
   SEED_SUPPLEMENT_COMPOSITE,
+  applyDemoPrices,
   decidePayeeRequest,
   getOffer,
+  getOwnOffer,
   listOpenRequests,
+  listOwnOffers,
   payeeView,
   requestPayeeChange,
+  reviseOffer,
   seedCatalogue,
   seedSupplement,
+  withdrawOffer,
 } from '@umsbx/catalogue';
-import type { OpenRequest, PayeeError, PayeeView } from '@umsbx/catalogue';
+import type {
+  OfferWriteError,
+  OpenRequest,
+  OwnOffer,
+  OwnOfferDetail,
+  PayeeError,
+  PayeeView,
+  PriceInput,
+} from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
 import { discover as discoverOffers, parseNeed } from '@umsbx/discovery';
 import { requestApproval } from '@umsbx/approval';
@@ -171,8 +184,10 @@ export interface AppOptions {
   /**
    * DP-5 (tests): leave out the Quayside supplement (`supplement: false`) and/or the sandbox payee
    * step (`payees: false`) to build the disk an earlier release left. Refused unless NODE_ENV=test.
+   * PUB-B: `demo_prices: true` runs the demo price step (decision 37) at boot. Outside NODE_ENV=test the
+   * step always runs; in tests it is off unless asked for, so the seed prices (40, 90, 300, 450) hold.
    */
-  test_seed?: { supplement?: boolean; payees?: boolean };
+  test_seed?: { supplement?: boolean; payees?: boolean; demo_prices?: boolean };
   /**
    * AI-A (tests): a ModelWire standing in for the Claude egress. Used only when UMS_AI_ADAPTER=claude and a
    * key is set; no socket is opened and no real key is needed. Refused unless NODE_ENV=test.
@@ -618,6 +633,38 @@ export interface Engine {
       reason: string;
     }): Promise<Result<{ decision: 'verified' | 'rejected' }, PayeeError>>;
   };
+  /**
+   * PUB-B: the signed-in publisher's own offers. `list` and `get` filter every query by the actor's
+   * publisher id and answer null for any other actor; `get` answers null for another publisher's offer
+   * and for an id that does not exist. `revise` and `withdraw` each write a new offer version with its own
+   * authorisation row and audit row (never an in-place price update). The cap is UMS_OFFER_MAX_MINOR.
+   */
+  offers: {
+    list(actor: Actor): Promise<{
+      offers: OwnOffer[];
+      environment: EnvironmentLabel;
+      offer_max_minor: number;
+    } | null>;
+    get(
+      actor: Actor,
+      offer_id: string,
+    ): Promise<
+      (OwnOfferDetail & { environment: EnvironmentLabel; offer_max_minor: number }) | null
+    >;
+    revise(i: {
+      actor: Actor;
+      offer_id: string;
+      expected_version: string;
+      options: PriceInput[];
+      attestation: boolean;
+    }): Promise<Result<{ offer_id: Id; version: string }, OfferWriteError>>;
+    withdraw(i: {
+      actor: Actor;
+      offer_id: string;
+      expected_version: string;
+      reason: string;
+    }): Promise<Result<{ offer_id: Id; version: string }, OfferWriteError>>;
+  };
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
   /** One pass of the access-window sweep and the automatic recovery rules (the job loop's sweep). */
@@ -879,6 +926,12 @@ function buildApp(config: Config, opts: AppOptions): App {
     // never sets a merchant id, a verification time or the payee_shared flag.
     if (opts.test_seed?.supplement !== false)
       await seedSupplement(d, clock, ids, SEED_SUPPLEMENT_COMPOSITE);
+    // PUB-B (decision 37): demo prices 1.00 to 2.50 USD as audited offer revisions, not a seed edit. Every
+    // boot, after the seed; an offer that was already revised (by this step or by its publisher) is not
+    // touched again, so a second run, and a later boot on the hosted disk, revise nothing. Tests keep the
+    // seed prices unless they ask for the step.
+    if (config.node_env !== 'test' || opts.test_seed?.demo_prices === true)
+      await applyDemoPrices({ db: d, clock, ids, audit, offer_max_minor: config.offer_max_minor });
     const now = clock.now().toISOString();
     if (config.mode === 'offline') {
       // Dry run only: a synthetic payee label so approvals can be built. It is not a PayPal account.
@@ -1061,6 +1114,8 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
     environment,
   };
+  // PUB-B: what the offer writes need; the price cap is the configured one (UMS_OFFER_MAX_MINOR).
+  const offerDeps = { db, clock, ids, audit, offer_max_minor: config.offer_max_minor };
   const packWindowMs = core.config.pack_approval_window_ms ?? PACK_APPROVAL_WINDOW_MS;
   // CO-1d (D-038): the learn window's recorder. Built only when a window was configured; the window
   // itself is checked per delivery against the clock. It describes the certificate through the one
@@ -1867,6 +1922,36 @@ function buildApp(config: Config, opts: AppOptions): App {
           decision: i.decision,
           reason: i.reason,
         }),
+    },
+
+    offers: {
+      async list(actor) {
+        const offers = await listOwnOffers(db, actor);
+        return offers === null
+          ? null
+          : { offers, environment, offer_max_minor: config.offer_max_minor };
+      },
+      async get(actor, offer_id) {
+        const o = await getOwnOffer(db, actor, offer_id);
+        return o === null ? null : { ...o, environment, offer_max_minor: config.offer_max_minor };
+      },
+      async revise(i) {
+        const r = await reviseOffer(offerDeps, i.actor, {
+          offer_id: i.offer_id,
+          expected_version: i.expected_version,
+          options: i.options,
+          attestation: i.attestation,
+        });
+        return r.ok ? { ok: true, value: { offer_id: i.offer_id, version: r.value.version } } : r;
+      },
+      async withdraw(i) {
+        const r = await withdrawOffer(offerDeps, i.actor, {
+          offer_id: i.offer_id,
+          expected_version: i.expected_version,
+          reason: i.reason,
+        });
+        return r.ok ? { ok: true, value: { offer_id: i.offer_id, version: r.value.version } } : r;
+      },
     },
 
     newKey: () => ids.nonce(),

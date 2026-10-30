@@ -52,6 +52,7 @@ function lines(): string[] {
   out.push(`s3 saved: ${copy.savedText('3')}`);
   out.push(`s3 freeze note: ${copy.FREEZE_NOTE}`);
   out.push(`s3 withdrawn notice: ${copy.WITHDRAWN_NOTICE}`);
+  out.push(`s3 draft notice: ${copy.DRAFT_NOTICE}`);
   out.push(`s3 withdraw heading: ${copy.WITHDRAW_HEADING}`);
   out.push(`s3 withdraw lede: ${copy.WITHDRAW_LEDE}`);
   out.push(`s3 withdraw reason: ${copy.WITHDRAW_REASON_LABEL}`);
@@ -71,6 +72,7 @@ function lines(): string[] {
     'attestation_required',
     'invalid_reason',
     'withdrawn',
+    'not_live',
     'publisher_not_active',
     'not_found',
     'forbidden',

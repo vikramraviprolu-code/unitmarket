@@ -1,0 +1,66 @@
+s2 heading: Your offers
+s2 lede: Each offer is one article on sale. Open an offer to change its price or take it off sale.
+s2 columns: Article | Options and prices | Status | Change
+s2 empty: No offers yet | When an offer is created for your articles it appears here.
+status authorised: On sale
+status withdrawn: Withdrawn
+status draft: Draft
+option keep: Download and keep: $1.00
+option read: Read online: $2.50
+option read gbp: Read online: £0.90
+not offered: Not offered
+edit link: Change Tide tables
+s3 back: Back to your offers
+s3 lede: Set the price of each option, choose which options are offered, then save. Saving makes a new version of the offer.
+s3 labels: Article | Status | Version | Currency
+s3 options heading: Options and prices
+s3 offered: Offer Download and keep | Offer Read online
+s3 price: Price for Download and keep (USD) | Price for Read online (GBP)
+s3 price hint: From $1.00 to $20.00.
+s3 window: Access window | Set by UnitMarket
+s3 licence: Licence | Personal use only. No redistribution. AI assistants may read it for the buyer.
+s3 licence review: Personal use only. No redistribution. AI assistants may read it for the buyer after the buyer reviews it.
+s3 licence none: Personal use only. No redistribution. AI assistants may not read it.
+s3 terms: Terms version
+s3 attest: I confirm that I hold the rights to sell this article at this price on these terms.
+s3 save: Save as new version
+s3 saved: Saved. This is now version 3.
+s3 freeze note: Buyers who already approved keep the price they saw.
+s3 withdrawn notice: This offer is withdrawn. It cannot be changed here.
+s3 draft notice: This offer is a draft and is not on sale. It cannot be changed here.
+s3 withdraw heading: Take this offer off sale
+s3 withdraw lede: New buyers will not find it. Buyers who already approved keep the price they saw.
+s3 withdraw reason: Why are you withdrawing it?
+s3 withdraw submit: Withdraw this offer
+s3 withdrawn: Withdrawn. New buyers will not find this offer.
+s3 history heading: Version history
+s3 history: Version 2. On sale. $1.00, $2.50. WHEN
+s3 history withdrawn: Version 3. Withdrawn. WHEN
+error conflict: This offer changed since you opened it. Reload the page and try again.
+error invalid_price: Enter each price with at most two decimals, from the lowest to the highest price shown.
+error invalid_options: Offer at least one option, and each option once.
+error attestation_required: Tick the box to confirm before you save.
+error invalid_reason: Give a reason of 3 to 200 characters.
+error withdrawn: This offer is withdrawn and cannot be changed.
+error not_live: Only an offer on sale can be changed.
+error publisher_not_active: Your account is not active, so offers cannot be changed. Contact the operator.
+error not_found: We could not find that offer.
+error forbidden: This account cannot do that.
+error unknown: Something went wrong. Try again.
+parse "2.50": 250
+parse "1": 100
+parse "1.5": 150
+parse "0.99": 99
+parse "20.00": 2000
+parse "20.01": 2001
+parse "": null
+parse "abc": null
+parse "1,50": null
+parse "-1": null
+parse "1.505": null
+parse " 2 ": 200
+parse "００1": null
+input 100: 1.00
+input 250: 2.50
+input 5: 0.05
+input 2000: 20.00

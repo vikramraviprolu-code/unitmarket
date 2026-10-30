@@ -128,9 +128,10 @@ describe('reviseOffer', () => {
     const o = (await getOffer(w.db, { offer_id: FERRY }))!;
     expect(o.offer.version).toBe('2');
     expect(prices(o.offer.options)).toEqual({ keep_retrieve: 130, online_read: 90 });
-    const list = await listAuthorisedOffers(w.db, { corridor_id: 'usd_us', limit: 100 });
+    const list = await listAuthorisedOffers(w.db, { corridor_id: 'us-usd', limit: 100 });
     const rows = list.filter((x) => x.offer.id === FERRY);
     expect(rows.map((x) => x.offer.version)).toEqual(['2']);
+    expect(list.length).toBeGreaterThan(1);
   });
 
   it('a version 3 follows version 2, and the numbers compare as numbers', async () => {
@@ -359,7 +360,7 @@ describe('withdrawOffer', () => {
     );
     expect(audit.rows).toEqual([{ reason: 'Pulled for a rewrite.' }]);
     expect((await getOffer(w.db, { offer_id: TIDE }))!.offer.status).toBe('withdrawn');
-    const list = await listAuthorisedOffers(w.db, { corridor_id: 'usd_us', limit: 100 });
+    const list = await listAuthorisedOffers(w.db, { corridor_id: 'us-usd', limit: 100 });
     expect(list.some((x) => x.offer.id === TIDE)).toBe(false);
   });
 

@@ -52,3 +52,41 @@ Acceptance: `corepack pnpm test:state domain/catalogue apps/web`, `corepack pnpm
 Do not: edit `seed-data.ts` or `fixtures/catalogue/*.json`; touch `domain/approval`, `domain/payments`, `domain/offer-entry`
 code; add create-offer or article upload (SHOULD, later); edit `globals.css`; change `getOffer` ordering.
 Evidence: outputs, red run, the list of offers the demo step revised (ids and old to new minor units), cost line.
+
+## Built as (PUB-B build notes, deviations and the hosted first deploy)
+
+Deviations from the text above, each with its reason; the owner or the reviewer may reverse any of them.
+
+- Version numbers keep the style of the row they follow: the seed has `1`, so a revise writes `2` (a row
+  numbered `v1` would write `v2`). `getOffer` already compares the number.
+- `superseded_by` on the old row holds `<offer_id>@<new version>`; nothing parses it, every reader tests it for null.
+- Added `getOwnOffer(db, actor, offer_id)` (version history, licence and terms for S3) and the error codes
+  `publisher_not_active` (publisher status is not `active`) and `not_live` (a draft cannot be changed here).
+  A withdraw also writes an authorisation row (attestation text null: nothing was ticked) so that every change
+  is a version plus an authorisation row.
+- Demo prices run for an offer that has never been revised (one version row). The spec text revises "every
+  current authorised USD offer outside 100 to 250", which would clamp a price a publisher chose on every
+  later boot; this way the step is idempotent and a publisher's edit is never undone. The authorisation row of
+  a demo revision records `SEED-DEMO-PRICES-37`, not the publisher attestation text, because no one ticked it.
+- The boot gate is `NODE_ENV !== 'test' || test_seed.demo_prices === true`, not `test_seed.demo_prices !== false`.
+  Tests that build an app through `createApp` (about 30 call sites under `tests/`, `scripts/`, `apps/web`) keep
+  the seed prices without each one passing a flag; `bootTestApp` needed no change, so `support.ts` is untouched.
+- Route input uses `price_minor: z.number()` (not `.int()`), so 1.5 reaches the domain and answers `invalid_price`
+  like 0 and 2001; the schema stays strict, also inside an option. Status codes: 404 not found, 409 conflict,
+  withdrawn or not live, 422 invalid input, 403 other.
+- Locks: the newest offer row is read `FOR UPDATE` (two changes from one base take turns; the second answers
+  `conflict`, also when it waited on the lock) and the article row `FOR SHARE` before an authorised version
+  is inserted, so the migration 0012 freeze trigger sees the new authorised offer (PUB-A1 review note).
+  The in-memory test database has one connection, so the lock order is tested from the statements, not by a race.
+
+Hosted first deploy (assumption 4, item 37). On the hosted database the offers are already seeded at the old
+prices (Harbour tide tables 40, harbour fees 300 and 250, knot notebook 450, Quayside quay walk 90). The first
+boot after this release runs the step once and writes version 2 of each of those four offers (100, 250 and 250,
+250 and 250, 100), each with an authorisation row and an audit row with the reason `seed: demo prices (decision
+37)`, as the offer's own publisher; later boots find nothing to do. Effects to expect: a buyer who holds a quote
+for one of those offers from before the deploy gets `offer_changed` at approval and must quote again; an
+approval already made keeps the price it saw (snapshot, A-08); the catalogue pages and the Find results show the
+new prices from the first request. The step cannot be undone by the app: a different price is a normal revise
+by the publisher. If the hosted pg database is shared by two instances booting at once, the second one meets
+`conflict` on the row lock and skips; nothing is written twice. `apps/web/e2e/journeys.spec.ts` may pin old
+prices (it runs a production build, so the step is on); it is not run here.
