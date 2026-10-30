@@ -1035,8 +1035,25 @@ function buildApp(config: Config, opts: AppOptions): App {
     // boot, after the seed; an offer that was already revised (by this step or by its publisher) is not
     // touched again, so a second run, and a later boot on the hosted disk, revise nothing. Tests keep the
     // seed prices unless they ask for the step.
-    if (config.node_env !== 'test' || opts.test_seed?.demo_prices === true)
-      await applyDemoPrices({ db: d, clock, ids, audit, offer_max_minor: config.offer_max_minor });
+    // A convenience for the demo: a failure here (a refused write is already skipped inside the step; this
+    // catches a thrown database error) must never stop the app from starting. One line, no values.
+    if (config.node_env !== 'test' || opts.test_seed?.demo_prices === true) {
+      try {
+        await applyDemoPrices({
+          db: d,
+          clock,
+          ids,
+          audit,
+          offer_max_minor: config.offer_max_minor,
+        });
+      } catch (e) {
+        log.log({
+          msg: 'demo_prices.failed',
+          level: 'warn',
+          fields: { err_name: e instanceof Error ? e.name : 'unknown' },
+        });
+      }
+    }
     const now = clock.now().toISOString();
     if (config.mode === 'offline') {
       // Dry run only: a synthetic payee label so approvals can be built. It is not a PayPal account.

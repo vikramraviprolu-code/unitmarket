@@ -1,5 +1,7 @@
 // Lane 15 e2e (offline, dry-run). Journeys that need the payments lane (05a) are test.fixme with
 // the lane named; they are written against the final page text so they run once 05a is wired.
+// PUB-B: tide tables read $1.00 here, not $0.40. The e2e server runs with NODE_ENV=production, so the demo
+// price step (decision 37) applies at boot. The earlier $0.40 contradicted decision 37.
 import { test, expect } from '@playwright/test';
 import { askPrice, buyerPage, expectDryRun, payWithScenario, toApproval } from './support';
 
@@ -9,10 +11,10 @@ test.describe('offer and discovery journeys up to the approval screen', () => {
   }) => {
     const page = await buyerPage(browser);
     await askPrice(page);
-    await expect(page.getByTestId('quote-price')).toHaveText('$0.40');
+    await expect(page.getByTestId('quote-price')).toHaveText('$1.00');
     await toApproval(page);
     await expect(page.getByRole('heading', { name: 'Approve your purchase' })).toBeVisible();
-    await expect(page.getByTestId('approve-total')).toHaveText('$0.40');
+    await expect(page.getByTestId('approve-total')).toHaveText('$1.00');
   });
 
   test('ceiling below price shows no match without alternatives (A-05)', async ({ browser }) => {
@@ -105,7 +107,7 @@ test.describe('labels and accessibility', () => {
     await page.keyboard.press('Tab'); // ceiling
     await page.keyboard.type('1.00');
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('quote-price')).toHaveText('$0.40');
+    await expect(page.getByTestId('quote-price')).toHaveText('$1.00');
     await page.getByLabel('I accept the terms of this purchase.').focus();
     await page.keyboard.press('Space');
     await page.getByRole('button', { name: 'Review and approve' }).focus();

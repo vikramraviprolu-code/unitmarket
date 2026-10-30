@@ -62,6 +62,9 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/refunds/[id]/cancel/route.ts': () => import('./app/api/refunds/[id]/cancel/route'),
   'api/refunds/route.ts': () => import('./app/api/refunds/route'),
   'api/ops/payee-decisions/route.ts': () => import('./app/api/ops/payee-decisions/route'),
+  'api/publisher/offers/revise/route.ts': () => import('./app/api/publisher/offers/revise/route'),
+  'api/publisher/offers/withdraw/route.ts': () =>
+    import('./app/api/publisher/offers/withdraw/route'),
   'api/publisher/payee-requests/route.ts': () => import('./app/api/publisher/payee-requests/route'),
   'api/session/route.ts': () => import('./app/api/session/route'),
   'api/session/signout/route.ts': () => import('./app/api/session/signout/route'),

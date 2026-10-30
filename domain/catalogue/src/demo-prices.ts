@@ -1,10 +1,10 @@
 // Demo prices (PUB-B, D-065 item 37): PayPal's fixed fee can exceed a 0.40 sale, so every USD offer on sale
 // is priced from 1.00 to 2.50 USD in the demo. This is NOT a seed edit: it is one audited offer revision
-// per offer, made as the offer's own publisher, so the history shows what the price was and when it moved.
+// per offer, recorded against the system (not the publisher, who made no change), so the history shows what the price was and when it moved.
 //
 // Rules, all idempotent:
-//   - only offers that are authorised, current, USD and have never been revised (a single version row)
-//     and carry an option price below 100 or above 250 minor units are touched;
+//   - only the offers of the seed (SEED_DATA and the composite supplement, by id) that are authorised,
+//     current, USD and have never been revised (a single version row) and carry an option price below 100 or above 250 minor units are touched;
 //   - each price is clamped into 100 to 250 (40 becomes 100, 300 and 450 become 250, 90 becomes 100);
 //     120, 125, 150 and 200 stay and so do GBP offers, withdrawn offers and drafts;
 //   - an offer a publisher has already revised is never touched again, so a later boot cannot undo a
@@ -12,6 +12,8 @@
 // On a database that already holds the seed (the hosted one) the first boot after the deploy writes the
 // new versions; later boots find nothing to do.
 import type { AccessOption } from '@umsbx/contracts';
+import { offerIdFor } from './read';
+import { SEED_DATA, SEED_SUPPLEMENT_COMPOSITE } from './seed-data';
 import { reviseWithMark } from './write';
 import type { OfferWriteDeps } from './write';
 
@@ -28,6 +30,21 @@ export interface DemoRevision {
   to: { option: AccessOption; price_minor: number }[];
 }
 
+/** The ids of the seeded offers. A publisher created offer is never in this set, so it is never clamped. */
+function seedOfferIds(): string[] {
+  const out: string[] = [];
+  for (const block of [SEED_DATA, SEED_SUPPLEMENT_COMPOSITE]) {
+    const slugOf = new Map<string, string>(
+      block.articles.map((a) => [a.key, a.publisher_slug] as [string, string]),
+    );
+    for (const o of block.offers) {
+      const slug = slugOf.get(o.article_key);
+      if (slug !== undefined) out.push(offerIdFor(slug, o.code));
+    }
+  }
+  return out;
+}
+
 interface Candidate {
   id: string;
   version: string;
@@ -39,11 +56,12 @@ export async function applyDemoPrices(deps: OfferWriteDeps): Promise<DemoRevisio
   const { rows } = await deps.db.query<Candidate>(
     `SELECT o.id, o.version, o.publisher_id, o.options
        FROM offers o
-      WHERE o.currency = 'USD' AND o.status = 'authorised' AND o.superseded_by IS NULL
+      WHERE o.id = ANY ($1) AND o.currency = 'USD' AND o.status = 'authorised' AND o.superseded_by IS NULL
         AND (SELECT count(*) FROM offers x WHERE x.id = o.id) = 1
         AND EXISTS (SELECT 1 FROM publisher_authorisations pa
                      WHERE pa.offer_id = o.id AND pa.offer_version = o.version)
       ORDER BY o.id`,
+    [seedOfferIds()],
   );
   const done: DemoRevision[] = [];
   for (const c of rows) {
@@ -62,7 +80,7 @@ export async function applyDemoPrices(deps: OfferWriteDeps): Promise<DemoRevisio
       deps,
       { kind: 'publisher', publisher_id: c.publisher_id },
       { offer_id: c.id, expected_version: c.version, options: to, attestation: true },
-      { attestation_version: DEMO_ATTESTATION, reason: DEMO_AUDIT_REASON },
+      { attestation_version: DEMO_ATTESTATION, reason: DEMO_AUDIT_REASON, by_system: true },
     );
     // A refusal (another boot got there first, a lower cap, a suspended publisher) is not an error here:
     // the step is a convenience for the demo and must never stop the app from starting.
