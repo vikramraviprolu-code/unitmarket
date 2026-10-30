@@ -69,16 +69,16 @@ describe('U3 terms where they are accepted', () => {
     expect([TERMS_SUMMARY, ...TERMS_POINTS].join(' ')).not.toMatch(/charged|refund|paid/i);
   });
 
-  it('DiscoverForm shows them in a closed <details> under the tick; tick label and default unchanged', () => {
+  // Changed by the addendum (item 50): the terms are open and BEFORE the tick, through TermsConsent. The
+  // earlier wording of this test wanted a closed <details> under the tick.
+  it('DiscoverForm shows them through TermsConsent; tick label and default unchanged', () => {
     const src = noComments(formSrc);
-    expect(src).toContain('TERMS_SUMMARY');
-    expect(src).toContain('TERMS_POINTS');
-    expect(src).not.toMatch(/<details[^>]*\bopen\b/);
+    expect(src).toContain('<TermsConsent');
     expect(src).toContain('useState(false)');
-    const tick = src.indexOf('I accept the terms of purchase for the article I choose.');
-    expect(tick).toBeGreaterThan(0);
-    expect(src.indexOf('<details', tick)).toBeGreaterThan(tick);
-    expect(src.indexOf('<details', tick)).toBeLessThan(src.indexOf('className="grid-2"'));
+    expect(src).toContain('I accept the terms of purchase for the article I choose.');
+    const terms = noComments(read('./TermsConsent.tsx'));
+    expect(terms).toContain('TERMS_SUMMARY');
+    expect(terms).toContain('termsPoints(');
   });
 });
 

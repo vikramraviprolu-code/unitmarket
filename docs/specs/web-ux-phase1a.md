@@ -37,3 +37,30 @@ string this spec changes (name each in your hand-back).
 Disk: about 2.5 GB free; run `df -h /home` before heavy steps and stop under 400 MB; remove only your own temp folders.
 Evidence: commands with output, the list of tests you changed and why, screenshots of the library card and the fit card at
 1280 and 400 px if you can take them with the pre-installed Chromium, and a cost line.
+
+## Addendum (30 Oct 2026): buyer fixes, owner decisions 42, 45, 46, 50, 53, 54 (lane L1)
+
+Lane L1 finishes the four fixes above and adds five more. The Do-not list above is lifted only for the
+`receipts` page and the receipt JSON (item 45 and 54); `approve`, `checkout`, `orders`, `cancel` stay as they are.
+Detail: the domain receipt (hashed, stored) is not changed. A web-layer view `lib/receipt-view.ts` builds the buyer
+receipt from it, and `Engine.buyerReceipt` fills titles and publisher names from `articles` and `publishers`.
+
+5. Item 45: the receipt page and `GET /api/receipts/[order]` show, per line, the article title and the publisher
+   name (no article id column). `engine.receipt` (domain shape) stays for other callers.
+6. Item 46: when search finds no match, the page lists every current authorised offer ("Browse all articles", each a
+   link to its offer page) and the banner links to that list. An empty catalogue says so in words.
+7. Item 50: the full terms (personal use, no redistribution, the AI-use line from the offer's stored rights, five days
+   from confirmed payment, the 15 minute hold) show in a `<details open>` BEFORE the consent tick, on the search page and
+   the offer page. One component (`ui/TermsConsent.tsx`) renders terms then tick, so a tick never exists without its terms;
+   the tick is `aria-describedby` the terms. This replaces U3's "closed details under the tick".
+8. Item 53: `/ops` order references are shown whole (no slicing, no clipped cell: a scroll wrapper, no wrap
+   inside a reference). The library says the time left once (U1); the item page too.
+9. Item 54: the buyer receipt JSON has no `payee_merchant_id` and no key or value holding a merchant id, at any depth
+   (items and publishers of the snapshot included). Operator views keep the last 4 characters only (unchanged).
+   `sha256` and `content_hash` stay as stored; the buyer cannot recompute the hash from the trimmed JSON (noted, not hidden).
+
+Acceptance (add): `corepack pnpm exec vitest run --maxWorkers=2 --project unit apps/web/src/lib apps/web/src/ui` (new
+unit tests: receipt-view, terms, browse-all, ops reference); `corepack pnpm test:state` (engine.buyerReceipt titles,
+ops reference whole); `corepack pnpm test:adversarial` (buyer receipt payload has no merchant id key or value, another
+buyer gets 404); `corepack pnpm test:golden` (buyer receipt key set pinned). Changed existing tests: the U3 test
+that wanted a closed `<details>` under the tick (item 50 contradicts it).
