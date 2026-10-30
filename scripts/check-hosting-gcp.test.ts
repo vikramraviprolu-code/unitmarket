@@ -992,13 +992,7 @@ const INFRA_A_CASES: Case[] = [
     ' UMS_OPERATOR_TOTP_KEYS UMS_AI_ADAPTER"',
     'secret-names',
   ],
-  [
-    'the optional list drops a name',
-    'deploy.sh',
-    ' UMS_ANTHROPIC_API_KEY"',
-    '"',
-    'secret-names',
-  ],
+  ['the optional list drops a name', 'deploy.sh', ' UMS_ANTHROPIC_API_KEY"', '"', 'secret-names'],
   [
     'the optional list gains a payment name',
     'deploy.sh',
@@ -1006,13 +1000,7 @@ const INFRA_A_CASES: Case[] = [
     ' UMS_ANTHROPIC_API_KEY PAYPAL_CLIENT_ID"',
     'secret-names',
   ],
-  [
-    'setup optional list drops a name',
-    'setup.sh',
-    ' UMS_ANTHROPIC_API_KEY"',
-    '"',
-    'secret-names',
-  ],
+  ['setup optional list drops a name', 'setup.sh', ' UMS_ANTHROPIC_API_KEY"', '"', 'secret-names'],
   [
     'deploy stops on a missing optional secret',
     'deploy.sh',
@@ -1049,13 +1037,7 @@ const INFRA_A_CASES: Case[] = [
     'secret-names',
   ],
   // the offline service
-  [
-    'offline kit file removed',
-    'service-offline.yaml',
-    '',
-    '',
-    'kit-files',
-  ],
+  ['offline kit file removed', 'service-offline.yaml', '', '', 'kit-files'],
   [
     'offline connect on',
     'service-offline.yaml',
@@ -1084,13 +1066,7 @@ const INFRA_A_CASES: Case[] = [
     "UMS_MODE: 'sandbox'",
     'fixed-value',
   ],
-  [
-    'offline mode missing',
-    'service-offline.yaml',
-    "UMS_MODE: 'offline'\n",
-    '',
-    'fixed-value',
-  ],
+  ['offline mode missing', 'service-offline.yaml', "UMS_MODE: 'offline'\n", '', 'fixed-value'],
   [
     'offline database becomes postgres',
     'service-offline.yaml',
@@ -1105,13 +1081,7 @@ const INFRA_A_CASES: Case[] = [
     "UMS_DB: 'pglite-disk'",
     'db-kind',
   ],
-  [
-    'offline database missing',
-    'service-offline.yaml',
-    "UMS_DB: 'pglite-memory'\n",
-    '',
-    'db-kind',
-  ],
+  ['offline database missing', 'service-offline.yaml', "UMS_DB: 'pglite-memory'\n", '', 'db-kind'],
   [
     'offline adapter becomes claude',
     'service-offline.yaml',
@@ -1231,7 +1201,13 @@ const INFRA_A_CASES: Case[] = [
     '',
     'max-instances',
   ],
-  ['offline min instances 0', 'deploy-offline.sh', '--min-instances=1', '--min-instances=0', 'min-instances'],
+  [
+    'offline min instances 0',
+    'deploy-offline.sh',
+    '--min-instances=1',
+    '--min-instances=0',
+    'min-instances',
+  ],
   [
     'offline cpu throttling missing',
     'deploy-offline.sh',
@@ -1239,7 +1215,13 @@ const INFRA_A_CASES: Case[] = [
     '',
     'cpu-throttling',
   ],
-  ['offline ingress internal', 'deploy-offline.sh', '--ingress=all', '--ingress=internal', 'ingress'],
+  [
+    'offline ingress internal',
+    'deploy-offline.sh',
+    '--ingress=all',
+    '--ingress=internal',
+    'ingress',
+  ],
   [
     'offline unauthenticated missing',
     'deploy-offline.sh',
@@ -1408,7 +1390,8 @@ describe('check-hosting-gcp', () => {
     expect(y).toContain("UMS_PAYPAL_CONNECT: 'off'");
     expect(y).not.toContain('NEXT_PUBLIC_UMS_ENV_LABEL:');
     const keys = [...y.matchAll(/^([A-Z][A-Z0-9_]*):/gm)].map((m) => m[1] as string);
-    for (const k of keys) expect(k, k).not.toMatch(/PAYPAL_(?!CONNECT$)|DATABASE_URL|OUTBOUND|MERCHANT|TOTP/);
+    for (const k of keys)
+      expect(k, k).not.toMatch(/PAYPAL_(?!CONNECT$)|DATABASE_URL|OUTBOUND|MERCHANT|TOTP/);
     const d = readFileSync(join(REPO_ROOT, 'infra', 'gcp', 'deploy-offline.sh'), 'utf8');
     for (const flag of [
       '--min-instances=1',

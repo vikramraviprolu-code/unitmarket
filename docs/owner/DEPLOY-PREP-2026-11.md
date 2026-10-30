@@ -3,7 +3,9 @@
 Status: DRAFT written on 30 Oct 2026 against `main` at commit `cb8eabe`. Nothing in this file has been run. No agent runs any
 command below, creates a tag or deploys (D-066). A human runs every step. The sources are `infra/gcp/deploy.sh`,
 `infra/gcp/service.yaml`, `docs/owner/MVPC-OWNER-STEPS-GCP.md` (Steps A, D, F, G, I and K) and `package.json`. Lines that start
-with **TO FINALISE** depend on a lane that is not on `main` yet.
+with **TO FINALISE** depend on a lane that is not on `main` yet. Lane INFRA-A (branch `feat/infra-a-deploy-kit`, spec
+`docs/specs/infra-a-optional-secrets-offline-service.md`) adds the optional secrets and the offline judge service described
+below; its facts apply once that branch is merged into the tag you deploy.
 
 Placeholders used below, never filled in this file: `PROJECT_ID` (your Google Cloud project id), `REGION` (for example the one
 printed by `setup.sh`), `TAG` (the reviewed tag). No project number, id, secret or credential is written here.
@@ -19,21 +21,61 @@ printed by `setup.sh`), `TAG` (the reviewed tag). No project number, id, secret 
 3. Never run `delete` or `--no-deletion-protection` on `unitmarket-sbx-pg`.
 4. If any command prints a value that looks like a secret, stop. Rotate within the hour and note it in `docs/decision-log.md`.
 
-## What the hosted app will NOT have after this deploy
+## What the hosted app has after this deploy (INFRA-A)
 
-`deploy.sh` maps only its fixed list of secret names (`SECRET_NAMES` in the script): `DATABASE_URL`, `PAYPAL_CLIENT_ID`,
-`PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `UMS_OUTBOUND_APPROVAL_REF`, `UMS_SESSION_SECRET`, `UMS_APPROVAL_SECRET`,
-`UMS_LINK_SECRET`, `UMS_DEMO_PASSCODE_HASH`, `UMS_OWN_MERCHANT_ID` and `UMS_OPERATOR_TOTP_KEYS`. So, whatever the tag contains:
+`deploy.sh` maps two groups of secrets by name. The required eleven (`SECRET_NAMES` in the script) are `DATABASE_URL`,
+`PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `UMS_OUTBOUND_APPROVAL_REF`, `UMS_SESSION_SECRET`,
+`UMS_APPROVAL_SECRET`, `UMS_LINK_SECRET`, `UMS_DEMO_PASSCODE_HASH`, `UMS_OWN_MERCHANT_ID` and `UMS_OPERATOR_TOTP_KEYS`. A missing
+value stops the deploy, as before. The optional four (`OPTIONAL_SECRET_NAMES`) are mapped only when each has an enabled version:
 
-- Publisher personas. They need `UMS_PUBLISHER_PASSCODE_HASH`. Until a reviewed infra change maps it and the owner stores a value
-  with `set-secret.sh`, the hosted publisher console stays off.
-- The Claude adapter. It needs `UMS_AI_ADAPTER` and `UMS_ANTHROPIC_API_KEY`. Until the same change and a stored key, the hosted app
-  uses the scripted model and calls no AI.
-- `set-secret.sh` also lists allowed names in its `case`; the new names must be added there by the same reviewed change.
+| Optional secret               | What it switches on                                                      | Without a value                 |
+| ----------------------------- | ------------------------------------------------------------------------ | ------------------------------- |
+| `UMS_PUBLISHER_PASSCODE_HASH` | The publisher sign in, with its own passcode hash                        | The publisher console stays off |
+| `UMS_OFFER_MAX_MINOR`         | The largest offer price in minor units, an integer 1 to 2000             | The app default, 2000           |
+| `UMS_AI_ADAPTER`              | The value `claude` selects the Claude adapter; `scripted` is the default | The scripted model, no AI call  |
+| `UMS_ANTHROPIC_API_KEY`       | The key the Claude adapter needs                                         | The adapter stays scripted      |
 
-That change is the lane called INFRA-A in `docs/specs/overnight-plan.md` section 6 and `docs/owner/OVERNIGHT-ASSUMPTIONS.md` item 6.
-It was not specced or built overnight. **TO FINALISE:** write and review INFRA-A before judging if the owners want these on the hosted
-app, then set the secrets by hand (never in chat). Judges on the hosted URL will not see the publisher console until then.
+What the script does, in facts: it asks Secret Manager only whether each optional secret has an enabled version (it never reads
+a value). A secret with no value, or a lookup that fails, prints `off: <name> has no value` and the deploy goes on. If
+`UMS_AI_ADAPTER` has a value but `UMS_ANTHROPIC_API_KEY` has none, the adapter name is left out and the script prints that,
+because the app refuses to boot on `claude` without a key. `--set-secrets` replaces the whole mapping, so a secret you disable
+later is unmapped by the next deploy. `service.yaml` is unchanged: `UMS_PAYPAL_CONNECT: 'off'` is in it, so every deploy ends with
+the connection off whatever the optional secrets are.
+
+The script cannot check a value, and the app stops at boot on a bad one: `UMS_OFFER_MAX_MINOR` outside 1 to 2000,
+`UMS_AI_ADAPTER` other than `scripted` or `claude`, a publisher hash that is malformed or equal to the demo hash. Cloud Run
+should keep the previous revision serving when a new revision fails its startup probe (expected, not verified here). Check the
+deploy output and `/signin` after every deploy.
+
+## Optional: switch the publisher console or the Claude adapter on (human only)
+
+Nothing here is needed for the deploy in the steps below. Do it only when the owners want these features on the hosted app and the
+tag contains the lanes that read the names (the publisher console and the Claude adapter, lanes PUB-A1 and AI-A).
+**TO FINALISE:** confirm those lanes are in the tag.
+
+1. Make the empty secret containers and the read permission for the runtime account. `setup.sh` is safe to run again; it keeps
+   everything that exists and prints names only:
+
+   ```
+   bash infra/gcp/setup.sh "$PROJECT_ID" "$REGION"
+   ```
+
+2. Store a value for each feature you want, in a real terminal (the value is typed at a hidden prompt, twice, never printed):
+
+   ```
+   bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_PUBLISHER_PASSCODE_HASH
+   bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OFFER_MAX_MINOR
+   bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_ANTHROPIC_API_KEY
+   bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_AI_ADAPTER
+   ```
+
+   The adapter value is the word `claude`. The publisher hash is made like the demo hash and must differ from it. Store the key
+   before the adapter name.
+
+3. Run step 6 below again with the same tag (or a new one). The output shows `on:` for each secret that now has a value.
+
+To switch a feature off again, disable the enabled versions of that secret in the console (the script does not delete anything) and
+deploy again.
 
 ## Steps
 
@@ -105,8 +147,10 @@ working tree is clean.
 gcloud secrets list --project="$PROJECT_ID" --format='value(name)'
 ```
 
-Expected: eleven names, the ten secrets above and `DATABASE_URL`. This shows names only, never values. `deploy.sh` checks the
-same and stops with the missing names if any has no enabled version.
+Expected: at least eleven names, the ten secrets above and `DATABASE_URL`. If you have run `setup.sh` after INFRA-A, the list also
+holds the four optional names and the four `UMS_OFFLINE_` names; those may have no value. This shows names only, never values. `deploy.sh` checks the
+same for the eleven required names and stops with the missing names if any has no enabled version. It does not stop for an
+optional name.
 
 ### 6. Deploy (Step F)
 
@@ -124,6 +168,53 @@ service `unitmarket-sandbox` as one instance, CPU always allocated, public ingre
 If the output ends with a line starting `NOTE: UMS_PUBLIC_ORIGIN in service.yaml is not this URL`, browser sign in is refused until a
 reviewed change sets the origin to the printed address and a new tag is deployed (Step E of the GCP owner steps). Tell Vikram; do
 not edit the file on the host.
+
+### 6b. Optional: the offline judge service (human only, prepared by INFRA-A, never run by an agent)
+
+A second Cloud Run service, `unitmarket-offline`, lets a judge finish a purchase at any time, because it runs in offline mode:
+in-memory data, no PayPal, no database, no payment secret, no approval row, labelled Dry run from the stored data. The data is
+lost whenever the service restarts or a new revision starts. It is one instance, always on. It runs as its own account
+`ums-offline`, which can read only four secrets of its own. The files are `infra/gcp/service-offline.yaml` and
+`infra/gcp/deploy-offline.sh`; the guard `corepack pnpm check:hosting-gcp` checks both and refuses any PayPal name or a
+connection that is not off.
+
+1. Make the containers and the account (safe to run again):
+
+   ```
+   bash infra/gcp/setup.sh "$PROJECT_ID" "$REGION"
+   ```
+
+2. Store the four own secrets, each at a hidden prompt in a real terminal. Use new values, not the ones of the sandbox service
+   (a cookie signed there must not be valid here). For the passcode hash, use the judge passcode hash:
+
+   ```
+   bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OFFLINE_SESSION_SECRET
+   bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OFFLINE_APPROVAL_SECRET
+   bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OFFLINE_LINK_SECRET
+   bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" UMS_OFFLINE_DEMO_PASSCODE_HASH
+   ```
+
+3. In a checkout of the tag, as in step 4, deploy:
+
+   ```
+   bash infra/gcp/deploy-offline.sh "$PROJECT_ID" "$REGION" TAG
+   ```
+
+   It builds the same image as `deploy.sh` for that tag and commit (an existing image is kept), refuses if any of the four
+   secrets has no value, and deploys the service `unitmarket-offline`. Copy the `deployed ...` and `service URL:` lines.
+
+4. `UMS_PUBLIC_ORIGIN` in `service-offline.yaml` holds the address form Cloud Run normally prints
+   (`https://unitmarket-offline-<project number>.<region>.run.app`, UNVERIFIED until the first deploy). If the script ends with
+   `NOTE: UMS_PUBLIC_ORIGIN in service-offline.yaml is not this URL`, browser sign in is refused until a reviewed change sets the
+   printed address and you deploy again, as in step 6.
+
+5. Check: open `<service URL>/signin` and sign in as Buyer A with the judge passcode. The screens should say Dry run. The operator
+   should not be able to sign in there, because the service has no operator authenticator keys (read from the code, not tried). Whether the production image starts with in memory
+   data on Cloud Run has not been tried; the first deploy is the test.
+
+The offline service never changes `UMS_PAYPAL_CONNECT` and holds no approval row, so it is outside the judging window rules of
+the sandbox service. To remove it: `gcloud run services delete unitmarket-offline --region="$REGION" --project="$PROJECT_ID"` (a
+separate human decision; the kit has no script for it).
 
 ### 7. First checks after the deploy
 
@@ -199,6 +290,9 @@ None of that is in this file. After 15 Dec, cancel the project as in Step L of t
 | `git clone`, `cd`, `git fetch --tags`, `git checkout TAG`              | `MVPC-OWNER-STEPS-GCP.md` Step A item 3                                    |
 | `gcloud secrets list --project=... --format='value(name)'`             | `MVPC-OWNER-STEPS-GCP.md` Step D                                           |
 | `bash infra/gcp/deploy.sh "$PROJECT_ID" "$REGION" TAG`                 | `MVPC-OWNER-STEPS-GCP.md` Step F; usage line of `infra/gcp/deploy.sh`      |
+| `bash infra/gcp/deploy-offline.sh "$PROJECT_ID" "$REGION" TAG`         | usage line of `infra/gcp/deploy-offline.sh` (INFRA-A)                      |
+| `bash infra/gcp/setup.sh "$PROJECT_ID" "$REGION"` (run again)          | usage line of `infra/gcp/setup.sh`; "safe to run again" in its header      |
+| `bash infra/gcp/set-secret.sh "$PROJECT_ID" "$REGION" NAME`            | usage line of `infra/gcp/set-secret.sh`; names in its `case`               |
 | `gcloud auth login`, `application-default login`, `config set project` | `MVPC-OWNER-STEPS-GCP.md` Step I item 1                                    |
 | `cloud-sql-proxy --port 5433 ...`                                      | `MVPC-OWNER-STEPS-GCP.md` Step I item 2                                    |
 | `RAW=...`, `export DATABASE_URL=...`, `unset RAW`, `export UMS_DB=...` | `MVPC-OWNER-STEPS-GCP.md` Step I item 3                                    |
@@ -211,5 +305,11 @@ None of that is in this file. After 15 Dec, cancel the project as in Step L of t
 
 1. Is the shortened prefix in step 7.5 acceptable, or should the status check be skipped in favour of `/ops` only?
 2. Which tag name is used for the deploy, and which tag is serving now (needed for rollback)?
-3. Is INFRA-A (publisher secret, Claude adapter secrets) wanted before judging? Without it the hosted app shows neither.
-4. Does an extra on demand backup matter before migration 0012? The kit has no command for it.
+3. Are the optional secrets (publisher console, Claude adapter) wanted on the hosted app before judging? Until you store a value
+   and deploy, the hosted app shows neither.
+4. The offline service uses its own four secrets and its own account (a choice made in INFRA-A so a session signed on one service is
+   not valid on the other). Is that wanted, or should it share the sandbox service secrets? It also gives judges the demo
+   passcode of a separate secret; who sets it and who tells the judges?
+5. Should the offline service also take the publisher passcode and the Claude adapter? INFRA-A leaves both out (scripted model,
+   no publisher secret).
+6. Does an extra on demand backup matter before migration 0012? The kit has no command for it.

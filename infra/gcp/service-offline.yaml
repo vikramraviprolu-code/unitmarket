@@ -1,0 +1,22 @@
+# Fixed, non-secret environment values for the SECOND Cloud Run service, unitmarket-offline (INFRA-A,
+# D-049). deploy-offline.sh passes this file to "gcloud run deploy --env-vars-file". It is a flat map of
+# quoted strings, like service.yaml. Secret values are NOT here: deploy-offline.sh maps four own secrets
+# from Secret Manager by name, and "node scripts/check-hosting-gcp.mjs" (pnpm check:hosting-gcp) fails
+# if a secret name or value shows up in this file.
+#
+# Offline mode: the app uses its recorded and synthetic data, keeps everything in memory and has no
+# PayPal account, no PayPal secret and no database. UMS_PAYPAL_CONNECT is off, as in service.yaml, and
+# the guard refuses any other value. NEXT_PUBLIC_UMS_ENV_LABEL is left out on purpose: the screens show
+# Dry run from the stored environment, not from a string set here.
+NODE_ENV: 'production'
+NEXT_TELEMETRY_DISABLED: '1'
+UMS_MODE: 'offline'
+UMS_PAYPAL_CONNECT: 'off'
+UMS_DB: 'pglite-memory'
+UMS_AI_ADAPTER: 'scripted'
+# One proxy in front (Cloud Run's front end), as for the sandbox service. UNVERIFIED until the curl test
+# of Step 3 in the owner steps passes on this service too.
+UMS_TRUSTED_PROXIES: '1'
+# Not a secret. The form below is the one Cloud Run prints (https://<service>-<project number>.<region>.run.app).
+# deploy-offline.sh prints a NOTE when the real address differs; a reviewed change then sets it.
+UMS_PUBLIC_ORIGIN: 'https://unitmarket-offline-626887286871.europe-west3.run.app'

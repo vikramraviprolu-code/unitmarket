@@ -92,7 +92,15 @@ function run(script: string, has: string[], fail: string[] = []): Run {
   // The stub directory goes first on PATH; $0 of the wrapper is that directory.
   const r = spawnSync(
     'bash',
-    ['-c', 'PATH="$0:$PATH"; exec bash "$@"', stub, join(repo, 'infra', 'gcp', script), 'ums-test-project', 'europe-west3', 't1'],
+    [
+      '-c',
+      'PATH="$0:$PATH"; exec bash "$@"',
+      stub,
+      join(repo, 'infra', 'gcp', script),
+      'ums-test-project',
+      'europe-west3',
+      't1',
+    ],
     { cwd: repo, encoding: 'utf8' },
   );
   const calls = readFileSync(join(stub, 'calls.txt'), 'utf8').split('\n').filter(Boolean);
@@ -166,7 +174,10 @@ describe('INFRA-A deploy.sh against a stub gcloud', () => {
   });
 
   it('a missing REQUIRED secret still stops the deploy before any deploy call', () => {
-    const r = run('deploy.sh', REQUIRED.filter((n) => n !== 'UMS_LINK_SECRET'));
+    const r = run(
+      'deploy.sh',
+      REQUIRED.filter((n) => n !== 'UMS_LINK_SECRET'),
+    );
     expect(r.status).toBe(1);
     expect(r.out).toContain('UMS_LINK_SECRET');
     expect(r.deploy).toBeUndefined();
@@ -196,7 +207,9 @@ describe('INFRA-A deploy-offline.sh against a stub gcloud', () => {
     );
     expect(r.deploy).not.toMatch(/PAYPAL|DATABASE_URL|cloudsql|OUTBOUND|MERCHANT|TOTP/i);
     expect(r.deploy).toContain('run deploy unitmarket-offline');
-    expect(r.deploy).toContain('--service-account=ums-offline@ums-test-project.iam.gserviceaccount.com');
+    expect(r.deploy).toContain(
+      '--service-account=ums-offline@ums-test-project.iam.gserviceaccount.com',
+    );
     expect(r.deploy).toContain('--min-instances=1');
     expect(r.deploy).toContain('--max-instances=1');
   });
@@ -212,7 +225,10 @@ describe('INFRA-A deploy-offline.sh against a stub gcloud', () => {
 
   it('refuses, before any deploy call, when one of its own secrets has no value', () => {
     for (const missing of OFFLINE) {
-      const r = run('deploy-offline.sh', OFFLINE.filter((n) => n !== missing));
+      const r = run(
+        'deploy-offline.sh',
+        OFFLINE.filter((n) => n !== missing),
+      );
       expect(r.status, missing).toBe(1);
       expect(r.out).toContain(missing);
       expect(r.deploy).toBeUndefined();
