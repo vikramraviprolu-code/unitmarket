@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "UnitMarket PayPal sandbox track (SBX). Offline by default. Not connected to any PayPal account.",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@10.34.7",
   "engines": {
@@ -30,6 +30,7 @@
     "record:fixtures": "node --import ./scripts/lib/ts-register.mjs scripts/record-fixtures.mjs",
     "check:routes": "node scripts/route-inventory.mjs --check",
     "check:provenance": "node scripts/check-provenance.mjs",
+    "check:licences": "node scripts/licenses-report.mjs --check",
     "check:bundle": "node scripts/check-bundle-secrets.mjs",
     "mutation": "node scripts/mutation-checks.mjs",
     "evidence": "node scripts/evidence.mjs",

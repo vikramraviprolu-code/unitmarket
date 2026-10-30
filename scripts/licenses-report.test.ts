@@ -3,7 +3,6 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-// @ts-expect-error plain .mjs module without types
 import { classify, evaluate, renderNotices } from './licenses-report.mjs';
 
 const SCRIPT = join(import.meta.dirname, 'licenses-report.mjs');
