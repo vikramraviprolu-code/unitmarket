@@ -1,0 +1,56 @@
+heading: Where you get paid
+lede: This page shows the account your sales are paid into. You cannot change it yourself. You can ask for a change, and an operator checks it before anything happens.
+labels: Account | Verified | Verified by | Settlement
+verified by: Operator check, not PayPal onboarding.
+account none: No payee account is set yet.
+account set: Account ending AB12.
+verified none: Not verified yet.
+verified at: Verified on WHEN.
+settlement none: No payee account is set, so your offers cannot be sold yet.
+settlement waiting: Sales cannot settle until the account ending AB12 is verified.
+settlement verified: Dry run sales are recorded against the account ending AB12. No real money moves.
+settlement verified sandbox: Sandbox sales are recorded against the account ending AB12. No real money moves.
+owner only: Payee changes on the hosted app are made by the owner.
+request heading: Ask for a change
+request lede: Type the new merchant id. An operator confirms it with you before anything changes.
+field merchant: New merchant id | 13 capital letters and digits.
+field note: Why are you changing it?
+submit: Send the request
+sent: Request sent. Nothing changes until an operator verifies it.
+history heading: Your requests
+history empty: You have not asked for a change yet.
+state open: Open
+state verified: Verified
+state rejected: Rejected
+history line: Account ending AB12. Open.
+request error invalid_merchant_id: A merchant id is 13 capital letters and digits.
+request error same_as_current: That is already your payee account.
+request error invalid_input: Please say why in 1 to 200 characters.
+request error rate_limited: You can send 3 requests a day. Please try again tomorrow.
+request error forbidden: This account cannot do that.
+request error unknown: The request could not be sent. Please try again.
+ops heading: Payee requests
+ops lede: Verify a request only after you have confirmed the new merchant id with the publisher. Type the whole id again to confirm it.
+ops empty: No open requests.
+ops columns: Publisher | Requested account | Age
+ops fields: Type the full merchant id again | Reason
+ops buttons: Verify | Reject
+ops done verified: Verified. The publisher is now paid into the new account.
+ops done rejected: Rejected. Nothing changed.
+age 0: less than a minute
+age 59000: less than a minute
+age 60000: 1 minute
+age 3599000: 59 minutes
+age 3600000: 1 hour
+age 86399000: 23 hours
+age 86400000: 1 day
+age 172800000: 2 days
+ops error owner_command_required: Payee changes on the hosted app are made by the owner.
+ops error id_mismatch: The id you typed is not the id that was requested. Nothing changed.
+ops error already_decided: This request was already decided.
+ops error merchant_in_use: That merchant id is held by another publisher. Nothing changed.
+ops error not_found: That request was not found.
+ops error mfa_required: Payee decisions need a sign in with your authenticator code.
+ops error invalid_input: Please type the full id again and give a reason of 3 to 200 characters.
+ops error rate_limited: Too many decisions this hour. Please try again later.
+ops error unknown: The decision could not be saved. Please try again.
