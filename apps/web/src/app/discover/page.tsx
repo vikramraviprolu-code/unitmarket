@@ -5,6 +5,7 @@ import { currentActor } from '../../server/session';
 import { DiscoverForm } from './DiscoverForm';
 import { StatusBanner } from '../../ui/StatusBanner';
 import { formatMinor } from '../../lib/format';
+import { browseEntries } from '../../lib/buyer-copy';
 
 export const metadata: Metadata = { title: 'Find articles' };
 
@@ -34,11 +35,12 @@ export default async function Discover() {
       </>
     );
   }
+  const browse = browseEntries(await a.engine.listOffers());
   return (
     <>
       <h1>Find articles for my need</h1>
       <p className="lede">Describe what you need and what you can pay. You pick the article.</p>
-      <DiscoverForm signedIn={actor?.kind === 'buyer'} />
+      <DiscoverForm signedIn={actor?.kind === 'buyer'} browse={browse} />
     </>
   );
 }

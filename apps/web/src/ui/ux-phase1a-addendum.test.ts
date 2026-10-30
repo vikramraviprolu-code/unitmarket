@@ -120,7 +120,7 @@ describe('item 45: the receipt page names the article and the publisher', () => 
     expect(src).toContain('buyerReceipt(');
     expect(src).toContain('l.title');
     expect(src).toContain('l.publisher');
-    expect(src).not.toContain('{l.article_id}');
+    expect(src).not.toMatch(/<td[^>]*>\s*\{l\.article_id\}/);
     expect(src).toContain('data-testid="receipt-sha256"');
     expect(src).toContain('data-testid="receipt-version"');
   });

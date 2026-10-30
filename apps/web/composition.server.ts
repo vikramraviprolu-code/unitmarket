@@ -32,6 +32,7 @@ import type {
   PayPalPort,
   PaymentsDeps,
   Receipt,
+  Rights,
   Result,
   SqlExecutor,
   SwitchName,
@@ -119,6 +120,8 @@ import { createLearnRecorder, receiveWebhook, webhookAllowed } from './src/serve
 import type { WebhookInput, WebhookResponse } from './src/server/webhook';
 import type { Outbound } from './src/server/outbound.server';
 import type { OpsGate } from './src/lib/gate-lines';
+import { toBuyerReceipt } from './src/lib/receipt-view';
+import type { ArticleFacts, BuyerReceipt } from './src/lib/receipt-view';
 import { LINE_TEXT, lineKind, packBanner, windowMinutes } from './src/lib/composite-copy';
 import type { LineKind } from './src/lib/composite-copy';
 import {
@@ -259,7 +262,7 @@ export interface OfferPage {
   options: { option: 'keep_retrieve' | 'online_read'; price_minor: number }[];
   renegotiation_allowed: boolean;
   floor_minor: number | null;
-  rights: { scope: string; ai_scope: string; redistribution: boolean };
+  rights: Rights;
 }
 export interface ApprovalView {
   approval_id: Id;
@@ -502,6 +505,11 @@ export interface Engine {
     | { ok: false; code: string }
   >;
   receipt(i: { order_id: Id; actor: Actor }): Promise<Receipt | null>;
+  /**
+   * The receipt as a buyer sees it (UX-1A, items 45 and 54): titles and publisher names on the lines,
+   * and no merchant id anywhere. The stored, hashed receipt is `receipt`; pages and routes use this.
+   */
+  buyerReceipt(i: { order_id: Id; actor: Actor }): Promise<BuyerReceipt | null>;
   receiptHtml(r: Receipt): string;
   openCase(i: {
     actor: Actor;
@@ -1486,6 +1494,25 @@ function buildApp(config: Config, opts: AppOptions): App {
     async receipt({ order_id, actor }) {
       const b = buyerOf(actor);
       return b === null ? null : getReceiptForBuyer(db, { order_id, buyer_id: b });
+    },
+
+    async buyerReceipt({ order_id, actor }) {
+      const b = buyerOf(actor);
+      if (b === null) return null;
+      const r = await getReceiptForBuyer(db, { order_id, buyer_id: b });
+      if (r === null) return null;
+      const facts = new Map<string, ArticleFacts>();
+      for (const l of r.lines) {
+        const row = (
+          await db.query<{ title: string; publisher: string }>(
+            `SELECT a.title, p.display_name AS publisher FROM articles a
+               JOIN publishers p ON p.id = a.publisher_id WHERE a.id = $1`,
+            [l.article_id],
+          )
+        ).rows[0];
+        if (row !== undefined) facts.set(l.article_id, row);
+      }
+      return toBuyerReceipt(r, facts);
     },
 
     receiptHtml: (r) => renderReceiptHtml(r, receiptLabel(r.environment)),

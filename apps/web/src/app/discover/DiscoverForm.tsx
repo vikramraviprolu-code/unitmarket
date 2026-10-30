@@ -6,7 +6,9 @@ import { FitCard } from '../../ui/FitCard';
 import { StatusBanner } from '../../ui/StatusBanner';
 import { ErrorState } from '../../ui/ErrorState';
 import { BUY_SELECTED } from '../../lib/composite-copy';
-import { TERMS_POINTS, TERMS_SUMMARY } from '../../lib/buyer-copy';
+import { BROWSE_EMPTY, BROWSE_HEADING, browseLinkText } from '../../lib/buyer-copy';
+import type { BrowseEntry } from '../../lib/buyer-copy';
+import { TermsConsent } from '../../ui/TermsConsent';
 
 type Item = {
   quote: { quote_id: string; offer_id: string; option: AccessOption; price: Money };
@@ -18,7 +20,7 @@ type Result =
   | { kind: 'proposal'; proposal_id: string; items: Item[] }
   | { kind: 'no_match'; reasons: string[] };
 
-export function DiscoverForm({ signedIn }: { signedIn: boolean }) {
+export function DiscoverForm({ signedIn, browse }: { signedIn: boolean; browse: BrowseEntry[] }) {
   const [need, setNeed] = useState('');
   const [result, setResult] = useState<Result | null>(null);
   const [terms, setTerms] = useState(false);
@@ -129,25 +131,43 @@ export function DiscoverForm({ signedIn }: { signedIn: boolean }) {
         {result?.kind === 'no_match' ? (
           <StatusBanner tone="warn" title="No match">
             Nothing in the catalogue fits that need and ceiling. We do not stretch the match. Try
-            different words or a higher ceiling.
+            different words or a higher ceiling
+            {browse.length > 0 ? (
+              <>
+                , or <a href="#browse-all">{browseLinkText(browse.length).toLowerCase()}</a>{' '}
+                yourself
+              </>
+            ) : null}
+            .
           </StatusBanner>
+        ) : null}
+        {result?.kind === 'no_match' ? (
+          <section aria-labelledby="browse-all-heading" id="browse-all">
+            <h2 id="browse-all-heading">{BROWSE_HEADING}</h2>
+            {browse.length === 0 ? (
+              <p className="muted">{BROWSE_EMPTY}</p>
+            ) : (
+              <ul data-testid="browse-all">
+                {browse.map((b) => (
+                  <li key={b.offer_id}>
+                    <a href={b.href}>{b.title}</a>, {b.publisher}{' '}
+                    <span className="muted">{b.price_text}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         ) : null}
         {result?.kind === 'proposal' ? (
           <section aria-labelledby="results">
             <h2 id="results">Articles that fit</h2>
             <p className="muted">The cards are advice. You choose.</p>
-            <label className="check">
-              <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} />
-              <span>I accept the terms of purchase for the article I choose.</span>
-            </label>
-            <details className="terms-more">
-              <summary>{TERMS_SUMMARY}</summary>
-              <ul>
-                {TERMS_POINTS.map((t) => (
-                  <li key={t}>{t}</li>
-                ))}
-              </ul>
-            </details>
+            <TermsConsent
+              id="discover-terms"
+              label="I accept the terms of purchase for the article I choose."
+              checked={terms}
+              onChange={setTerms}
+            />
             <div className="grid-2">
               {result.items.map((it) => (
                 <div key={it.quote.offer_id} className="pick">

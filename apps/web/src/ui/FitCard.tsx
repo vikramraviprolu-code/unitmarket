@@ -73,11 +73,13 @@ export function FitCard({
         </p>
         <p className="muted access-days">{accessDaysLine(option)}</p>
       </header>
-      <ul className="fit-rows">
-        {assessed.map((d) => (
-          <FitRow key={d.key} d={d} />
-        ))}
-      </ul>
+      {assessed.length > 0 ? (
+        <ul className="fit-rows">
+          {assessed.map((d) => (
+            <FitRow key={d.key} d={d} />
+          ))}
+        </ul>
+      ) : null}
       {notAssessed.length > 0 ? (
         <details className="fit-more">
           <summary>{WHY_THIS_FIT}</summary>
