@@ -5,7 +5,7 @@
 
 export const LEGAL_BANNER = 'Draft for owner approval. This is not legal advice.';
 export const LEGAL_SANDBOX_LINE =
-  'This is a sandbox demo. No real money moves, and every payment is test money.';
+  "This is a test build. No real money moves. Payments use PayPal's sandbox with test money, or, in a dry run, nothing contacts PayPal at all.";
 
 export interface LegalSection {
   readonly heading: string;
@@ -53,7 +53,7 @@ export const TERMS_DOC: LegalDoc = {
     {
       heading: 'How long you have access',
       paragraphs: [
-        'Access lasts five days from verified payment and ready delivery. The five days start once your payment is verified and the content is ready to deliver, whichever happens later. If delivery fails on our side, your days are paused and then restored, so you do not lose time.',
+        'Access lasts five days from verified payment and ready delivery. The five days start once your payment is verified and the content is ready to deliver, whichever happens later. If we detect a delivery failure on our side, the lost time is credited back once delivery works again.',
         'Access to a unit ends early if a full refund is made for that unit. The refund policy explains how refunds work.',
       ],
     },
@@ -66,13 +66,13 @@ export const TERMS_DOC: LegalDoc = {
     {
       heading: 'How you pay',
       paragraphs: [
-        "You pay through PayPal, on PayPal's own pages. There is one PayPal payment for each publisher. If your order has content from two publishers, it is paid in two separate PayPal payments, one for each publisher.",
+        'You pay through PayPal. There is one PayPal payment for each publisher. If your order has content from two publishers, it is paid in two separate PayPal payments, one for each publisher.',
       ],
     },
     {
       heading: 'Test money only',
       paragraphs: [
-        'This is a sandbox demo. Every payment uses test money from a test account. No real money moves, and nothing you buy here has real value.',
+        "This is a test build. No real money moves. Payments use PayPal's sandbox with test money, or, in a dry run, nothing contacts PayPal at all. Nothing you buy here has real value.",
       ],
     },
   ],
@@ -98,6 +98,7 @@ export const PRIVACY_DOC: LegalDoc = {
         'A session cookie, which keeps you signed in as the test persona you chose.',
         'A hashed network address. We do not keep your network address itself. We keep a hash of it, so we can limit how fast requests arrive and keep the demo safe.',
         'The persona you chose, your orders, and your access events, such as when access to a unit started and when it ended.',
+        'What you type to describe what you need, and the quotes and approvals made from it. If the AI helper is switched on, that text is sent to an AI model provider. It never receives payment data.',
         'PayPal processes your payment details on its own pages. We never see card data. Payer email addresses and names are redacted from our logs.',
       ],
     },
@@ -110,13 +111,13 @@ export const PRIVACY_DOC: LegalDoc = {
     {
       heading: 'How long we keep it',
       paragraphs: [
-        'Logs are kept for 30 days at the host. Records of calls to the payment provider are kept for 90 days. Orders and the ledger are kept for the judging period. Some records, such as receipts, may need to be kept as financial records.',
+        'The design keeps logs for 30 days at the host and records of calls to the payment provider for 90 days. Deletion after these periods is not automated yet. Orders, the ledger and database backups are kept for the judging period. Some records, such as receipts, may need to be kept as financial records.',
       ],
     },
     {
       heading: 'Export or deletion',
       paragraphs: [
-        'You can ask for a copy of your data, or ask for it to be deleted, through the operator. An operator carries out the request by hand.',
+        'You can ask for a copy of your data, or ask for it to be deleted, through the operator. An operator carries out the request by hand. There is no export or deletion tool yet.',
       ],
     },
     {
@@ -149,19 +150,19 @@ export const REFUNDS_DOC: LegalDoc = {
     {
       heading: 'Who decides',
       paragraphs: [
-        'Refunds are decided by an operator, for each unit. Nothing is refunded automatically, and there is no button for buyers to refund themselves. To ask for a refund, contact the operator.',
+        'Refunds are decided by an operator, for each unit. Nothing is refunded automatically, and there is no button for buyers to refund themselves. To ask for a refund, open a help case from your order or your library.',
       ],
     },
     {
-      heading: 'A full refund ends access',
+      heading: 'A full refund',
       paragraphs: [
-        'A full refund ends access to that unit. Links to it stop working. A copy you already downloaded cannot be recalled.',
+        "A full refund of one publisher's part of your order ends access to what you bought from that publisher. Links to it stop working. A copy you already downloaded cannot be recalled.",
       ],
     },
     {
-      heading: 'A partial refund does not end access',
+      heading: 'A partial refund',
       paragraphs: [
-        'A partial refund does not end access. It is treated as a price adjustment for the order, and access to every item in the order continues.',
+        "A partial refund does not end access to that publisher's part of your order, unless partial refunds together reach the full amount paid for it. It is treated as a price adjustment for the order.",
       ],
     },
     {
@@ -173,7 +174,7 @@ export const REFUNDS_DOC: LegalDoc = {
     {
       heading: 'Test money only',
       paragraphs: [
-        'This is a sandbox demo. A refund returns test money to a test account. No real money moves.',
+        'This is a test build. A refund returns test money to a test account, or, in a dry run, nothing is sent to PayPal. No real money moves.',
       ],
     },
   ],
@@ -202,7 +203,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     {
       heading: 'How a payee is checked',
       paragraphs: [
-        'Before a publisher is treated as ready to be paid, an operator checks the payee details by hand. This is a check by an operator. It is not PayPal onboarding, and PayPal does not check the publisher in this demo.',
+        "In this demo the publishers' payee details are marked as checked when the demo data is loaded. It is not PayPal onboarding. Both fictional publishers are paid into one test account the owners control.",
       ],
     },
     {
@@ -215,14 +216,13 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
       heading: 'Where the money goes',
       paragraphs: [
         'UnitMarket uses no payout mechanism. It does not call any PayPal payout service.',
-        "A publisher's statement shows where that publisher's money goes. It is read from the stored records of each payment, not typed in by hand.",
-        'In this demo, payments for fictional publishers are received in a test account that the owners control.',
+        'A statement page for publishers is planned but not built yet. It will be read from the stored records of each payment.',
       ],
     },
     {
       heading: 'Sandbox disclaimer',
       paragraphs: [
-        "This is a sandbox demo. Every payment uses PayPal's sandbox and test money. Nothing here is a live payment, a real sale or an offer to sell anything of real value. No real money moves.",
+        "This is a test build. No real money moves. Payments use PayPal's sandbox with test money, or, in a dry run, nothing contacts PayPal at all. Nothing here is a live payment, a real sale or an offer to sell anything of real value.",
         'Publishers keep their rights in their content. Buyers get personal use only, as the terms of purchase say.',
       ],
     },

@@ -87,10 +87,11 @@ describe('legal copy rules', () => {
     }
   });
 
-  it('says plainly: not legal advice, sandbox demo, test money, draft for owner approval', () => {
+  it('says plainly: not legal advice, test build, test money, draft for owner approval', () => {
     const joined = allText().join('\n');
     expect(joined).toMatch(/not legal advice/i);
-    expect(joined).toMatch(/sandbox demo/i);
+    expect(joined).toMatch(/test build/i);
+    expect(joined).toMatch(/dry run/i);
     expect(joined).toMatch(/test money/i);
     expect(joined).toMatch(/draft/i);
   });
@@ -127,15 +128,17 @@ describe('legal copy rules', () => {
     const t = flat('refunds');
     expect(t).toMatch(/operator/i);
     expect(t).toMatch(/each unit/i);
-    expect(t).toMatch(/full refund ends access/i);
+    expect(t).toMatch(/full refund of one publisher's part of your order ends access/i);
+    expect(t).toMatch(/open a help case/i);
     expect(t).toMatch(/partial refund does not/i);
     expect(t).toMatch(/test money/i);
   });
 
-  it('publisher terms: fictional, operator payee checks, no commission, 20 percent not implemented', () => {
+  it('publisher terms: fictional, payee marked checked at load, no commission, 20 percent not implemented', () => {
     const t = flat('publisher-terms');
     expect(t).toMatch(/fictional/i);
-    expect(t).toMatch(/operator/i);
+    expect(t).toMatch(/marked as checked/i);
+    expect(t).toMatch(/planned but not built yet/i);
     expect(t).toMatch(/no commission in this demo/i);
     expect(t).toMatch(/20 percent/);
     expect(t).toMatch(/not implemented/i);
