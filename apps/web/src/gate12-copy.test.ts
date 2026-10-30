@@ -45,18 +45,17 @@ describe('README (D2, D3)', () => {
     }
   });
 
-  it('does not claim lanes that are not merged', () => {
-    // Buyer cancel of an unpaid order (ORDER-A) is on a branch only: its row must not say Merged.
+  it('claims a lane as merged only while its route exists, and does not claim lanes that are not merged', () => {
+    // Buyer cancel of an unpaid order (ORDER-A) is merged: its row says Merged and its route exists on main.
     const cancelRow = readme
       .split('\n')
       .find((line) => /Buyer cancel of an unpaid order/.test(line));
     expect(cancelRow, 'the cancel row is listed').toBeDefined();
-    expect(cancelRow).not.toMatch(/Merged/i);
-    expect(cancelRow).toMatch(/not on `main`/);
-    // The cancel route must not exist on main while the README says it is not there.
+    expect(cancelRow).toMatch(/Merged/i);
     expect(
       existsSync(fileURLToPath(new URL('./app/api/orders/[ref]/cancel/route.ts', import.meta.url))),
-    ).toBe(false);
+      'README says the cancel lane is merged but its route is missing',
+    ).toBe(true);
     // WordPress lanes are not merged: the README must not name them.
     expect(readme).not.toMatch(/wordpress/i);
     // Paying Quayside Gazette into its own account is not built: any sentence about it must say so.

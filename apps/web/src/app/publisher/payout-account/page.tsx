@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EmptyState } from '../../../ui/EmptyState';
-import { EnvLabel, envText } from '../../../ui/EnvLabel';
+import { EnvLabel } from '../../../ui/EnvLabel';
 import { formatDateTime } from '../../../lib/format';
 import {
   HISTORY_EMPTY,
@@ -17,7 +17,6 @@ import {
   PAYEE_LEDE,
   accountText,
   historyLine,
-  settlementText,
   verifiedAtText,
   verifiedByText,
 } from '../../../lib/payee-copy';
@@ -33,7 +32,6 @@ export default async function PayoutAccount() {
   if (actor?.kind !== 'publisher') redirect('/signin?next=/publisher/payout-account');
   const view = await (await app()).engine.payee.view(actor);
   if (view === null) redirect('/signin?next=/publisher/payout-account');
-  const stored = { last4: view.last4, verified_at: view.verified_at };
   return (
     <>
       <h1>
@@ -53,9 +51,7 @@ export default async function PayoutAccount() {
             {verifiedByText(view.history.some((h) => h.state === 'verified'))}
           </dd>
           <dt>{LABEL_SETTLEMENT}</dt>
-          <dd data-testid="payee-settlement">
-            {settlementText(stored, envText(view.environment))}
-          </dd>
+          <dd data-testid="payee-settlement">{view.settlement.sentence}</dd>
         </dl>
       </div>
       {view.environment === 'sandbox' ? (

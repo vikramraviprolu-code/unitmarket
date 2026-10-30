@@ -13,10 +13,23 @@ export type {
   StatementLine,
   StatementRow,
 } from './statement';
-export { COMMISSION_LINE, SETTLEMENT_SENTENCE, settlementMode } from './settlement';
-export type { Settlement, SettlementFacts, SettlementMode } from './settlement';
+export {
+  COMMISSION_LINE,
+  NOTHING_SOLD_SENTENCE,
+  PAYEE_DIRECT_SENTENCE,
+  SETTLEMENT_SENTENCE,
+  blockSettlement,
+  payeeSettlement,
+  settlementMode,
+} from './settlement';
+export type { BlockFacts, Settlement, SettlementFacts, SettlementMode } from './settlement';
 export { publisherExposure } from './exposure';
-export type { ExposureBlock, PublisherExposure, PublisherStatusValue } from './exposure';
+export type {
+  ExposureBlock,
+  ExposureContext,
+  PublisherExposure,
+  PublisherStatusValue,
+} from './exposure';
 export {
   CSV_ROW_CAP,
   csvCell,

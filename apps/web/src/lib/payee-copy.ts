@@ -5,13 +5,14 @@
 
 export const PAYEE_HEADING = 'Where you get paid';
 export const PAYEE_LEDE =
-  'This page shows the account your sales are paid into. You cannot change it yourself. You can ask for a change, and an operator checks it before anything happens.';
+  'This page shows the payee account on file for you and what happens to your sales money. You cannot change it yourself. You can ask for a change, and an operator checks it before anything happens.';
 export const LABEL_ACCOUNT = 'Account';
 export const LABEL_VERIFIED = 'Verified';
 export const LABEL_VERIFIED_BY = 'How it was checked';
 export const LABEL_SETTLEMENT = 'Settlement';
 export const VERIFIED_BY = 'An operator checked it. Not PayPal onboarding.';
-// GATE35 D5: the legal pages say payee details are marked as checked when the demo data is loaded.
+// GATE35 D5: the legal pages say payee details are marked as checked when the demo data is loaded or by an
+// operator check (GATEFIX2); an operator's decision on a request is shown as an operator check below.
 export const MARKED_CHECKED =
   'Marked as checked when the demo data was loaded. Not PayPal onboarding.';
 
@@ -21,21 +22,10 @@ export const verifiedByText = (operatorDecided: boolean): string =>
 
 /** Only the last 4 characters of the account id are ever shown. */
 export const accountText = (last4: string | null): string =>
-  last4 === null ? 'No payee account is set yet.' : `Account ending ${last4}.`;
+  last4 === null ? 'No payee account is set yet.' : `Account on file ending ${last4}.`;
 
 export const verifiedAtText = (when: string | null): string =>
   when === null ? 'Not verified yet.' : `Verified on ${when}.`;
-
-/** The settlement sentence, from stored data. `envWord` comes from the stored environment. */
-export function settlementText(
-  p: { last4: string | null; verified_at: string | null },
-  envWord: string,
-): string {
-  if (p.last4 === null) return 'No payee account is set, so your offers cannot be sold yet.';
-  if (p.verified_at === null)
-    return `Sales cannot settle until the account ending ${p.last4} is verified.`;
-  return `${envWord} sales are recorded against the account ending ${p.last4}. No real money moves.`;
-}
 
 export const OWNER_ONLY_NOTE = 'Payee changes on the hosted app are made by the owner.';
 

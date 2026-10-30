@@ -53,6 +53,7 @@ describe('routes', () => {
       '/api/approvals',
       '/api/orders',
       '/api/orders/[ref]/checkout',
+      '/api/orders/[ref]/cancel',
       '/api/orders/[ref]',
       '/api/library',
       '/api/library/[id]/link',

@@ -46,7 +46,15 @@ status declined: Not charged
 status mismatch: On hold: under review
 status expected: Awaiting payment
 settlement dryrun: Dry run: no money moved.
-settlement owner_account: Collected into the UnitMarket team's sandbox test account. Not paid out: sandbox demo; UnitMarket has no payout mechanism.
+settlement owner_account: In this sandbox demo every payment is received in the UnitMarket team's one test account. Nothing is paid out to the publisher.
 settlement direct: Paid by PayPal directly into your own sandbox account.
 settlement not_set: No PayPal account is linked yet.
+settlement mixed: These sales were received in more than one account, so no single sentence describes them.
+settlement direct, page level: New sales are paid by PayPal directly into your own sandbox account.
+settlement direct, nothing sold: Nothing sold yet.
+mismatch note: Amount disagreed with the quote: under review.
+mismatch sales 1: Amount disagreed with the quote: under review. 1 unit is listed above but not added up on the statement.
+mismatch sales 2: Amount disagreed with the quote: under review. 2 units are listed above but not added up on the statement.
+mismatch statement 1: Amount disagreed with the quote: under review. 1 unit is listed on the sales page but not added up here.
+mismatch statement 2: Amount disagreed with the quote: under review. 2 units are listed on the sales page but not added up here.
 commission: No commission in this demo; planned 20 percent, not implemented.

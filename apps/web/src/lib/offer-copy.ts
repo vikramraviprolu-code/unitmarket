@@ -31,6 +31,11 @@ export function offerStatusText(s: OfferStatus): string {
   }
 }
 
+/** Version history: only the newest version of an authorised offer is on sale; older ones were replaced. */
+export function historyStatusText(s: OfferStatus, newest: boolean): string {
+  return s === 'authorised' && !newest ? 'Replaced by a newer version' : offerStatusText(s);
+}
+
 export const optionPriceText = (option: string, minor: number, currency: string): string =>
   `${optionLabel(option)}: ${formatMinor(minor, currency)}`;
 
@@ -87,11 +92,13 @@ export const HISTORY_HEADING = 'Version history';
 export function historyLine(h: {
   version: string;
   status: OfferStatus;
+  /** True for a version a newer one has replaced (history is newest first, so every row after the first). */
+  superseded?: boolean;
   when: string;
   prices: string[];
 }): string {
   const tail = h.prices.length === 0 ? '' : ` ${h.prices.join(', ')}.`;
-  return `Version ${h.version}. ${offerStatusText(h.status)}.${tail} ${h.when}`.trimEnd();
+  return `Version ${h.version}. ${historyStatusText(h.status, h.superseded !== true)}.${tail} ${h.when}`.trimEnd();
 }
 
 export function offerErrorText(code: string): string {

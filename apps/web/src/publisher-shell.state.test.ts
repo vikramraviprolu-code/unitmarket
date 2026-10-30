@@ -116,7 +116,13 @@ describe('publisherHome', () => {
   it('returns name, status, live offers and the payee state, the last 4 only', async () => {
     const actor: Actor = { kind: 'publisher', publisher_id: await idOf('harbour-ledger') };
     const home = (await app.engine.publisherHome(actor))!;
-    expect(Object.keys(home).sort()).toEqual(['display_name', 'offers_live', 'payee', 'status']);
+    expect(Object.keys(home).sort()).toEqual([
+      'display_name',
+      'offers_live',
+      'payee',
+      'settlement',
+      'status',
+    ]);
     expect(home.status).toBe('active');
     const live = await app.db.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM offers o
@@ -159,6 +165,8 @@ describe('publisherHome', () => {
       status: 'applied',
       offers_live: 0,
       payee: { last4: null, verified_at: null },
+      // SETTLE-A: the home carries the one settlement sentence (a dry run here, so no money moved).
+      settlement: { mode: 'dryrun', sentence: 'Dry run: no money moved.' },
     });
     await app.db.query(`UPDATE publishers SET status = 'suspended' WHERE id = 'pub_empty'`);
     expect((await app.engine.publisherHome(actor))?.status).toBe('suspended');

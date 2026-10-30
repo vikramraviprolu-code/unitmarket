@@ -137,6 +137,7 @@ import {
 import type { ResolveAction, ResolveDeps } from '@umsbx/recovery';
 import {
   beginCheckout as beginPaymentsCheckout,
+  cancelOrder as cancelPaymentsOrder,
   checkInvariants,
   onBuyerReturn as onPaymentsReturn,
   placeOrder as placePaymentsOrder,
@@ -151,6 +152,7 @@ import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
 import {
   countsSince,
+  payeeSettlement,
   publisherExposure,
   refundsFor,
   salesExport,
@@ -163,12 +165,20 @@ import type {
   PublisherStatement,
   RefundRow,
   SaleRow,
+  Settlement,
   SinceCounts,
 } from '@umsbx/publisher-console';
 
 // PUB-C: the money words of the publisher pages live with the code that decides them; the golden test
 // of the page copy pins them through this re-export.
-export { COMMISSION_LINE, UNIT_STATUS_TEXT, settlementMode } from '@umsbx/publisher-console';
+export {
+  COMMISSION_LINE,
+  NOTHING_SOLD_SENTENCE,
+  PAYEE_DIRECT_SENTENCE,
+  SETTLEMENT_SENTENCE,
+  UNIT_STATUS_TEXT,
+  settlementMode,
+} from '@umsbx/publisher-console';
 import {
   DEFAULT_RATES,
   SESSION_COOKIE,
@@ -191,6 +201,7 @@ import { toBuyerReceipt } from './src/lib/receipt-view';
 import type { ArticleFacts, BuyerReceipt } from './src/lib/receipt-view';
 import { LINE_TEXT, lineKind, packBanner, windowMinutes } from './src/lib/composite-copy';
 import { NOT_PAID_YET } from './src/lib/buyer-copy';
+import { offerOnSale } from './src/lib/offer-flow-view';
 import { publisherSlugOf } from './src/lib/publisher-copy';
 import type { PublisherStatus } from './src/lib/publisher-copy';
 import type { LineKind } from './src/lib/composite-copy';
@@ -284,6 +295,9 @@ export type PlaceError =
 export type CheckoutError = {
   code: 'not_found' | 'wrong_state' | 'create_failed' | 'payments_paused';
 };
+export type CancelError = {
+  code: 'not_found' | 'wrong_state' | 'payment_started' | 'unavailable';
+};
 export type ReturnError = {
   code:
     'not_found' | 'not_approved' | 'frozen' | 'not_charged_content_unavailable' | 'payments_paused';
@@ -336,6 +350,11 @@ export interface PaymentsFacade {
     actor: Actor;
     scenario?: string | null;
   }): Promise<Result<{ order_ref: Id; status: string; next: PackStep | null }, ReturnError>>;
+  /** ORDER-A: the buyer cancels an unpaid order (the abandon transition, with stricter guards). */
+  cancelOrder(i: {
+    order_id: Id;
+    actor: Actor;
+  }): Promise<Result<{ order_ref: Id; status: 'abandoned'; already: boolean }, CancelError>>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -353,6 +372,8 @@ export interface OfferPage {
   renegotiation_allowed: boolean;
   floor_minor: number | null;
   rights: Rights;
+  /** GATEFIX2 item 7: from stored data, the tests startFromOffer applies. False shows "Not on sale" and no prices. */
+  on_sale: boolean;
 }
 export interface ApprovalView {
   approval_id: Id;
@@ -408,6 +429,8 @@ export interface LibraryEntry {
   refunded: boolean;
   can_open: boolean;
   order_id: Id | null;
+  /** GATEFIX2 item 3: the order's reference, for a link to the order page; null when there is no order. */
+  order_ref: string | null;
   /** Receipt versions of the order, oldest first (lane 10). */
   receipt_versions: number[];
   /** The case still being worked on for this item, if any (lane 10). */
@@ -578,6 +601,8 @@ export interface PublisherHome {
   status: PublisherStatus;
   offers_live: number;
   payee: { last4: string | null; verified_at: string | null };
+  /** SETTLE-A: the one settlement sentence for the account as it is now, from stored facts. */
+  settlement: Settlement;
 }
 
 export interface Engine {
@@ -645,6 +670,11 @@ export interface Engine {
    */
   sessionIdOf(cookie: string | null, actor: Actor): Promise<Id | null>;
   offerPage(i: { publisher: string; offer: string }): Promise<OfferPage | null>;
+  /**
+   * GATEFIX2 item 3: the reference of the buyer's open unpaid order for the article this offer sells, or null.
+   * Only a buyer's own order is ever returned.
+   */
+  unpaidOrderRef(i: { publisher: string; offer: string; actor: Actor }): Promise<string | null>;
   listOffers(): Promise<OfferPage[]>;
   quote: typeof startFromOffer extends (d: never, i: infer I) => infer R ? (i: I) => R : never;
   aiEnabled(): Promise<boolean>;
@@ -759,7 +789,9 @@ export interface Engine {
    * the app runs in sandbox mode (D-062). The whole merchant id is never returned by any method.
    */
   payee: {
-    view(actor: Actor): Promise<(PayeeView & { environment: EnvironmentLabel }) | null>;
+    view(
+      actor: Actor,
+    ): Promise<(PayeeView & { environment: EnvironmentLabel; settlement: Settlement }) | null>;
     request(i: {
       actor: Actor;
       merchant_id: string;
@@ -1420,7 +1452,9 @@ function buildApp(config: Config, opts: AppOptions): App {
   };
 
   // --- engine --------------------------------------------------------------------------------
-  const offerPageOf = (v: NonNullable<Awaited<ReturnType<typeof getOffer>>>): OfferPage => ({
+  const offerPageOf = async (
+    v: NonNullable<Awaited<ReturnType<typeof getOffer>>>,
+  ): Promise<OfferPage> => ({
     offer_id: v.offer.id,
     title: v.article.title,
     abstract: v.article.abstract,
@@ -1434,6 +1468,19 @@ function buildApp(config: Config, opts: AppOptions): App {
     renegotiation_allowed: v.offer.affordability.renegotiation_allowed,
     floor_minor: v.offer.affordability.floor_minor,
     rights: v.offer.rights,
+    on_sale: offerOnSale({
+      status: v.offer.status,
+      superseded_by: v.offer.superseded_by,
+      publisher_status:
+        (
+          await db.query<{ status: string }>('SELECT status FROM publishers WHERE id = $1', [
+            v.offer.publisher_id,
+          ])
+        ).rows[0]?.status ?? 'unknown',
+      valid_from: v.offer.valid_from,
+      valid_until: v.offer.valid_until,
+      now_ms: clock.now().getTime(),
+    }),
   });
 
   const entitlementRows = async (buyer_id: Id, only: Id | null): Promise<LibraryEntry[]> => {
@@ -1446,11 +1493,12 @@ function buildApp(config: Config, opts: AppOptions): App {
           id: string;
           money_state: string;
           order_id: string | null;
+          order_ref: string | null;
           unit_status: string | null;
           order_status: string | null;
           po_state: string | null;
         }>(
-          `SELECT e.id, e.money_state, u.order_id, u.status AS unit_status,
+          `SELECT e.id, e.money_state, u.order_id, o.order_ref, u.status AS unit_status,
                   o.status AS order_status, p.state AS po_state
              FROM entitlements e
              LEFT JOIN order_units u ON u.id = e.unit_id
@@ -1508,6 +1556,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         refunded: isFullyRefunded(refundFacts),
         can_open: v.can_open,
         order_id: facts.get(v.entitlement_id)?.order_id ?? null,
+        order_ref: facts.get(v.entitlement_id)?.order_ref ?? null,
         receipt_versions: v.receipt_versions,
         open_case: v.open_case,
         environment: v.environment,
@@ -1582,8 +1631,9 @@ function buildApp(config: Config, opts: AppOptions): App {
         country: string;
         paypal_merchant_id: string | null;
         payee_verified_at: Date | string | null;
+        payee_shared: boolean;
       }>(
-        'SELECT display_name, status, country, paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
+        'SELECT display_name, status, country, paypal_merchant_id, payee_verified_at, payee_shared FROM publishers WHERE id = $1',
         [actor.publisher_id],
       );
       const row = p.rows[0];
@@ -1612,6 +1662,12 @@ function buildApp(config: Config, opts: AppOptions): App {
           last4: row.paypal_merchant_id === null ? null : row.paypal_merchant_id.slice(-4),
           verified_at: row.payee_verified_at === null ? null : iso(row.payee_verified_at),
         },
+        settlement: payeeSettlement({
+          merchant_id: row.paypal_merchant_id,
+          payee_shared: row.payee_shared,
+          environment,
+          own_merchant_id: config.own_merchant_id,
+        }),
       };
     },
 
@@ -1667,7 +1723,7 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     async offerPage({ publisher, offer }) {
       const v = await getOffer(db, { publisher_slug: publisher, offer_code: offer });
-      return v === null ? null : offerPageOf(v);
+      return v === null ? null : await offerPageOf(v);
     },
 
     async listOffers() {
@@ -1679,9 +1735,35 @@ function buildApp(config: Config, opts: AppOptions): App {
       const out: OfferPage[] = [];
       for (const r of rows.rows) {
         const v = await getOffer(db, { offer_id: r.id });
-        if (v !== null && v.offer.currency === 'USD') out.push(offerPageOf(v));
+        if (v !== null && v.offer.currency === 'USD') out.push(await offerPageOf(v));
       }
       return out;
+    },
+
+    async unpaidOrderRef({ publisher, offer, actor }) {
+      const b = buyerOf(actor);
+      if (b === null) return null;
+      const found = await getOffer(db, { publisher_slug: publisher, offer_code: offer });
+      if (found === null) return null;
+      // The same test as startFromOffer step 6 and buyerStatusText: an order waiting for its buyer, no
+      // approved PayPal order, nothing paid. Scoped to this buyer by the query.
+      const r = await db.query<{ order_ref: string }>(
+        `SELECT o.order_ref
+           FROM entitlements e
+           JOIN order_units u ON u.id = e.unit_id
+           JOIN orders o ON o.id = u.order_id
+           LEFT JOIN provider_orders p ON p.id = u.provider_order_ref
+          WHERE e.buyer_id = $1 AND e.article_id = $2
+            AND e.money_state IN ('unknown', 'pending')
+            AND e.access_state IN ('locked', 'available')
+            AND o.status IN ('awaiting_buyer', 'created')
+            AND COALESCE(p.state, '') <> 'approved'
+            AND u.status <> 'pending'
+          ORDER BY e.created_at DESC
+          LIMIT 1`,
+        [b, found.article.id],
+      );
+      return r.rows[0]?.order_ref ?? null;
     },
 
     quote: ((i: Parameters<typeof startFromOffer>[1]) =>
@@ -1790,6 +1872,10 @@ function buildApp(config: Config, opts: AppOptions): App {
         const r = await beginPaymentsCheckout(paymentsDeps, i);
         if (!r.ok) return err(r.error);
         return ok({ approve_url: r.value.approve_url, progress: r.value.progress ?? null });
+      },
+      async cancelOrder(i) {
+        const r = await cancelPaymentsOrder(paymentsDeps, i);
+        return r.ok ? ok(r.value) : err(r.error);
       },
       async onBuyerReturn(i) {
         const r = await onPaymentsReturn(paymentsDeps, i);
@@ -2311,7 +2397,22 @@ function buildApp(config: Config, opts: AppOptions): App {
     payee: {
       async view(actor) {
         const v = await payeeView(db, actor);
-        return v === null ? null : { ...v, environment };
+        if (v === null || actor.kind !== 'publisher') return null;
+        const p = await db.query<{ paypal_merchant_id: string | null; payee_shared: boolean }>(
+          'SELECT paypal_merchant_id, payee_shared FROM publishers WHERE id = $1',
+          [actor.publisher_id],
+        );
+        const row = p.rows[0];
+        return {
+          ...v,
+          environment,
+          settlement: payeeSettlement({
+            merchant_id: row?.paypal_merchant_id ?? null,
+            payee_shared: row?.payee_shared ?? false,
+            environment,
+            own_merchant_id: config.own_merchant_id,
+          }),
+        };
       },
       request: (i) =>
         requestPayeeChange(core, i.actor, { merchant_id: i.merchant_id, note: i.note }),
@@ -2395,7 +2496,10 @@ function buildApp(config: Config, opts: AppOptions): App {
       async list(actor) {
         if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
         if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
-        const publishers = await publisherExposure(db, actor, clock.now().toISOString());
+        const publishers = await publisherExposure(db, actor, clock.now().toISOString(), {
+          own_merchant_id: config.own_merchant_id,
+          environment,
+        });
         if (publishers === null) return { ok: false, error: { code: 'not_operator' } };
         return { ok: true, value: { publishers, environment } };
       },

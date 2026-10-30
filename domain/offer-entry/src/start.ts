@@ -167,17 +167,30 @@ export async function startFromOffer(
   // 6. already holds the article: money pending, unknown or captured and access not ended or
   // revoked, so also a locked entitlement with a capture in flight or access paused (FIX-05A H3).
   // domain/payments placeOrder and the partial unique index entitlements_one_active_per_buyer_article
-  // use the same set.
+  // use the same set. GATEFIX2: when every such hold is an open unpaid order (the buyer left the pay
+  // page: the order waits, no PayPal order is approved, nothing is paid), the answer is unpaid_order,
+  // not already_owned, so the buyer is told to continue or cancel the order, not that the article is
+  // in the library. The test is the one the library uses (buyerStatusText, isUnpaidOpenOrder).
   if (buyerId !== null) {
-    const owned = await d.db.query(
-      `SELECT 1 AS x FROM entitlements e
+    const owned = await d.db.query<{ unpaid: boolean }>(
+      `SELECT (o.status IN ('awaiting_buyer', 'created')
+               AND COALESCE(p.state, '') <> 'approved'
+               AND e.money_state IN ('unknown', 'pending')
+               AND u.status <> 'pending') AS unpaid
+         FROM entitlements e
+         LEFT JOIN order_units u ON u.id = e.unit_id
+         LEFT JOIN orders o ON o.id = u.order_id
+         LEFT JOIN provider_orders p ON p.id = u.provider_order_ref
         WHERE e.buyer_id = $1 AND e.article_id = $2
           AND e.money_state IN ('pending', 'captured', 'unknown')
-          AND e.access_state IN ('locked', 'available')
-        LIMIT 1`,
+          AND e.access_state IN ('locked', 'available')`,
       [buyerId, article.id],
     );
-    if (owned.rows.length > 0) return ok(noMatch('already_owned'));
+    if (owned.rows.length > 0) {
+      return ok(
+        noMatch(owned.rows.every((r) => r.unpaid === true) ? 'unpaid_order' : 'already_owned'),
+      );
+    }
   }
 
   // 7. price: the publisher's option price, or a permitted proposal. The proposal never raises it.

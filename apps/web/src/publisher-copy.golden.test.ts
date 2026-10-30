@@ -13,7 +13,7 @@ function lines(): string[] {
   out.push(`heading: ${copy.PUBLISHER_HEADING}`);
   out.push(`lede: ${copy.PUBLISHER_LEDE}`);
   out.push(
-    `labels: ${copy.LABEL_NAME} | ${copy.LABEL_STATUS} | ${copy.LABEL_OFFERS} | ${copy.LABEL_PAYEE}`,
+    `labels: ${copy.LABEL_NAME} | ${copy.LABEL_STATUS} | ${copy.LABEL_OFFERS} | ${copy.LABEL_PAYEE} | ${copy.LABEL_SETTLEMENT}`,
   );
   for (const s of ['applied', 'active', 'suspended'] as const)
     out.push(`status ${s}: ${copy.publisherStatusText(s)}`);

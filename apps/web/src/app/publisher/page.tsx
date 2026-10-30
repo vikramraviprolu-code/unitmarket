@@ -13,6 +13,7 @@ import {
   LINK_STATEMENT,
   LABEL_OFFERS,
   LABEL_PAYEE,
+  LABEL_SETTLEMENT,
   LABEL_STATUS,
   NO_OFFERS_BODY,
   NO_OFFERS_TITLE,
@@ -68,6 +69,8 @@ export default async function PublisherHome() {
           <dd data-testid="publisher-offers">{offersLiveText(home.offers_live)}</dd>
           <dt>{LABEL_PAYEE}</dt>
           <dd data-testid="publisher-payee">{payeeText(home.payee)}</dd>
+          <dt>{LABEL_SETTLEMENT}</dt>
+          <dd data-testid="publisher-settlement">{home.settlement.sentence}</dd>
         </dl>
       </div>
       <section aria-labelledby="since-heading" data-testid="publisher-since">

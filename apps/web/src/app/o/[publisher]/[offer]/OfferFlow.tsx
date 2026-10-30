@@ -7,6 +7,12 @@ import { postJson, remember } from '../../../../lib/client-api';
 import { StatusBanner } from '../../../../ui/StatusBanner';
 import { ErrorState } from '../../../../ui/ErrorState';
 import { TermsConsent } from '../../../../ui/TermsConsent';
+import {
+  NOT_ON_SALE_BODY,
+  NOT_ON_SALE_HEADING,
+  noMatchView,
+  refusedQuoteView,
+} from '../../../../lib/offer-flow-view';
 
 type Quote = {
   kind: 'quote';
@@ -15,18 +21,7 @@ type Quote = {
   price: { currency: string; minor: number };
   expires_at: string;
 };
-type NoMatch = { kind: 'no_match'; reason: string };
-
-const REASON: Record<string, string> = {
-  above_ceiling:
-    'This article costs more than your ceiling. We do not swap in other articles on our own. You can raise your ceiling or look at other articles yourself.',
-  withdrawn: 'The publisher has withdrawn this offer.',
-  not_authorised: 'This offer is not available right now.',
-  corridor_unsupported: 'This offer is not available in your country yet.',
-  already_owned: 'You already have this article in your library.',
-  below_publisher_floor: 'That price is below what the publisher will accept.',
-  option_not_offered: 'The publisher does not sell that way for this article.',
-};
+type NoMatch = { kind: 'no_match'; reason: string; order_ref?: string };
 
 function toMinor(text: string): number | null | 'bad' {
   const t = text.trim();
@@ -43,11 +38,13 @@ export function OfferFlow({ offer, signedIn }: { offer: OfferPage; signedIn: boo
   const [terms, setTerms] = useState(false);
   const [identity, setIdentity] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function quote(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setRefusal(null);
     setResult(null);
     const c = toMinor(ceiling);
     const p = toMinor(proposal);
@@ -82,7 +79,11 @@ export function OfferFlow({ offer, signedIn }: { offer: OfferPage; signedIn: boo
     });
     setBusy(false);
     if (!r.ok) {
-      setError(r.message);
+      // GATEFIX2 item 5: a quote the server refuses is dropped with its card, and one message is shown.
+      const refused = refusedQuoteView(r.code, r.message);
+      if (refused.hideQuote) setResult(null);
+      setRefusal(refused.title);
+      setError(refused.body);
       return;
     }
     remember(`um_apr_${r.data.approval_id}`, r.data.token);
@@ -94,6 +95,15 @@ export function OfferFlow({ offer, signedIn }: { offer: OfferPage; signedIn: boo
   }
 
   const chosen = offer.options.find((o) => o.option === option);
+  // GATEFIX2 item 7: a withdrawn, replaced or suspended offer advertises no price and has no form.
+  if (!offer.on_sale) {
+    return (
+      <StatusBanner tone="warn" title={NOT_ON_SALE_HEADING}>
+        {NOT_ON_SALE_BODY} <Link href="/discover">Find articles</Link>
+      </StatusBanner>
+    );
+  }
+  const noMatch = result?.kind === 'no_match' ? noMatchView(result.reason, result.order_ref) : null;
   return (
     <>
       {!signedIn ? (
@@ -170,10 +180,16 @@ export function OfferFlow({ offer, signedIn }: { offer: OfferPage; signedIn: boo
       </form>
 
       <div aria-live="polite" data-testid="quote-result">
-        {error ? <ErrorState title="Could not get a price">{error}</ErrorState> : null}
-        {result?.kind === 'no_match' ? (
-          <StatusBanner tone="warn" title="No match">
-            {REASON[result.reason] ?? 'There is no match for this request.'}
+        {error ? <ErrorState title={refusal ?? 'Could not get a price'}>{error}</ErrorState> : null}
+        {noMatch !== null ? (
+          <StatusBanner tone="warn" title={noMatch.heading}>
+            {noMatch.text}
+            {noMatch.link ? (
+              <>
+                {' '}
+                <Link href={noMatch.link.href}>{noMatch.link.text}</Link>
+              </>
+            ) : null}
           </StatusBanner>
         ) : null}
         {result?.kind === 'quote' ? (

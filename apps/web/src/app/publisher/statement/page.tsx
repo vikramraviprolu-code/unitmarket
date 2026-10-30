@@ -20,6 +20,7 @@ import {
   STATEMENT_EMPTY_TITLE,
   STATEMENT_HEADING,
   STATEMENT_LEDE,
+  mismatchStatementText,
   blockHeading,
   feeText,
   salesAnchor,
@@ -139,6 +140,11 @@ export default async function PublisherStatement() {
           </section>
         ))
       )}
+      {statement.mismatch_units > 0 ? (
+        <p className="muted" data-testid="statement-mismatch">
+          {mismatchStatementText(statement.mismatch_units)}
+        </p>
+      ) : null}
       <h2>{COMMISSION_HEADING}</h2>
       <p data-testid="commission-line">{statement.commission}</p>
     </>

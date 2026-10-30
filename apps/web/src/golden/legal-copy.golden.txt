@@ -14,7 +14,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/terms | text: Access lasts five days from verified payment and ready delivery. The five days start once your payment is verified and the content is ready to deliver, whichever happens later. If we detect a delivery failure on our side, the lost time is credited back once delivery works again.
 /legal/terms | text: Access to a unit ends early if a full refund is made for that unit. The refund policy explains how refunds work.
 /legal/terms | heading: Price and terms are held for 15 minutes
-/legal/terms | text: Once you start to buy, the price and the terms you were shown are held for 15 minutes. If you do not approve within that time, nothing is charged for that attempt. You can start again, and the price or terms may be different the next time.
+/legal/terms | text: Once you start to buy, the price and the terms you were shown are held for 15 minutes. Nothing is charged until you approve the payment at PayPal. If you leave without paying, your unpaid order stays open until you cancel it or it expires, and you can continue to payment or cancel it from the order page. When the held price has gone, ask for a price again; the price or terms may be different the next time.
 /legal/terms | heading: How you pay
 /legal/terms | text: You pay through PayPal. There is one PayPal payment for each publisher. If your order has content from two publishers, it is paid in two separate PayPal payments, one for each publisher.
 /legal/terms | heading: Test money only
@@ -61,7 +61,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/publisher-terms | heading: Publishers here are fictional
 /legal/publisher-terms | text: Every publisher in this demo is fictional. Their names, articles and prices are made up for the demo and have no connection to any real publisher.
 /legal/publisher-terms | heading: How a payee is checked
-/legal/publisher-terms | text: In this demo the publishers' payee details are marked as checked when the demo data is loaded. It is not PayPal onboarding. In the sandbox, payments for the publishers that have articles on sale are received in one test account the owners control, so their account endings match. A publisher with nothing on sale may have no payee account set. In a dry run nothing is paid, and the account endings are demo values.
+/legal/publisher-terms | text: In this demo the publishers' payee details are marked as checked when the demo data is loaded or by an operator check. It is not PayPal onboarding. In the sandbox, payments for the publishers that have articles on sale are received in one test account the owners control, so their account endings match. A publisher with nothing on sale may have no payee account set. In a dry run nothing is paid, and the account endings are demo values.
 /legal/publisher-terms | heading: Commission
 /legal/publisher-terms | text: There is no commission in this demo. A commission of 20 percent is planned. It is not implemented.
 /legal/publisher-terms | heading: Where the money goes

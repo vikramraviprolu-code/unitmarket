@@ -9,6 +9,7 @@ export const NoMatchReasonSchema = z.enum([
   'not_authorised',
   'corridor_unsupported',
   'already_owned',
+  'unpaid_order',
   'below_publisher_floor',
   'option_not_offered',
 ]);

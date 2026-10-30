@@ -65,6 +65,9 @@ function lines(): string[] {
   out.push(
     `s3 history withdrawn: ${copy.historyLine({ version: '3', status: 'withdrawn', when: 'WHEN', prices: [] })}`,
   );
+  out.push(
+    `s3 history replaced: ${copy.historyLine({ version: '1', status: 'authorised', superseded: true, when: 'WHEN', prices: ['$1.00'] })}`,
+  );
   for (const c of [
     'conflict',
     'invalid_price',

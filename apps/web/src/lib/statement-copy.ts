@@ -44,8 +44,12 @@ export function visibleLines<T extends { kind: string }>(
   return lines.filter((l) => !(environment === 'dryrun' && l.kind === 'paypal_fee'));
 }
 
-// GATE35 D6: a unit counts as a sale only once it has been paid. Awaiting payment, pending at PayPal and
-// declined units are not sales; the statement (ledger sale rows) does not count them either.
+// GATE35 D6: a unit counts as a sale on the sales page once it has been paid. Awaiting payment, pending
+// at PayPal and declined units are not counted there, and the statement (ledger sale rows) does not
+// count them either. A `mismatch` unit is different: it IS counted on the sales page (it is not in the
+// list below), but the statement has no sale row for it, because the ledger writes a sale row only for
+// a verified capture. The two pages therefore differ for a mismatch unit until the owner decides
+// assumption 30. Both pages say so with MISMATCH_NOTE; the counting is unchanged.
 const NOT_A_SALE: readonly string[] = ['expected', 'pending', 'declined'];
 export const isCountedSale = (status: string): boolean => !NOT_A_SALE.includes(status);
 
@@ -60,6 +64,14 @@ export function splitSales<T extends { status: string }>(
 
 export const notCountedText = (n: number): string =>
   `Awaiting payment, not counted: ${String(n)} ${n === 1 ? 'unit' : 'units'}.`;
+
+/** A unit whose amount disagreed with the quote: shown on the sales page, not added up on the statement. */
+export const MISMATCH_NOTE = 'Amount disagreed with the quote: under review.';
+const unitsAre = (n: number): string => `${String(n)} ${n === 1 ? 'unit is' : 'units are'}`;
+export const mismatchSalesText = (n: number): string =>
+  `${MISMATCH_NOTE} ${unitsAre(n)} listed above but not added up on the statement.`;
+export const mismatchStatementText = (n: number): string =>
+  `${MISMATCH_NOTE} ${unitsAre(n)} listed on the sales page but not added up here.`;
 
 export const SALES_SOURCE_NOTE =
   'Source: the stored order units. The PayPal fee is shown only when PayPal reported it.';

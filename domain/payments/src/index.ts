@@ -5,6 +5,8 @@ export const PACKAGE_NAME = '@umsbx/payments' as const;
 export { requestIdFor, readbackKeyFor, MAX_REQUEST_ID_LENGTH } from './keys';
 export { placeOrder } from './place';
 export { beginCheckout } from './checkout';
+export { cancelOrder } from './cancel';
+export type { CancelError, CancelOk } from './cancel';
 export { onBuyerReturn, loadOrderView } from './return';
 export { matchReadback } from './match';
 export { deriveOrderStatus, expectedFor, poRefFor } from './composite';

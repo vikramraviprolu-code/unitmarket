@@ -20,6 +20,6 @@ describe('quote', () => {
       true,
     );
     expect(NoMatchSchema.safeParse({ kind: 'no_match', reason: 'because' }).success).toBe(false);
-    expect(NoMatchReasonSchema.options).toHaveLength(7);
+    expect(NoMatchReasonSchema.options).toHaveLength(8); // GATEFIX2: unpaid_order added
   });
 });

@@ -4,6 +4,8 @@
 // no order reference and no whole merchant id leaves this module. The caller is an operator with the
 // second factor; any other actor gets null.
 import type { Actor, EnvironmentLabel, SqlExecutor } from '@umsbx/contracts';
+import { payeeSettlement } from './settlement';
+import type { Settlement } from './settlement';
 
 export type PublisherStatusValue = 'applied' | 'active' | 'suspended';
 
@@ -31,6 +33,8 @@ export interface PublisherExposure {
   payee_last4: string | null;
   payee_verified_at: string | null;
   payee_shared: boolean;
+  /** The same settlement sentence as the publisher's own pages, for the account as it is now. */
+  settlement: Settlement;
   offers_live: number;
   /** Ordered by currency, then environment. */
   by_currency: ExposureBlock[];
@@ -62,10 +66,17 @@ function blockOf(map: Map<string, ExposureBlock>, p: string, c: string, e: Envir
   return b;
 }
 
+/** What the composition knows and the database does not: the owner's merchant id and the app environment. */
+export interface ExposureContext {
+  own_merchant_id: string | null;
+  environment: EnvironmentLabel;
+}
+
 export async function publisherExposure(
   db: SqlExecutor,
   actor: Actor,
   at: string,
+  ctx: ExposureContext,
 ): Promise<PublisherExposure[] | null> {
   if (actor.kind !== 'operator' || !actor.mfa) return null;
   const pubs = await db.query<{
@@ -157,6 +168,12 @@ export async function publisherExposure(
     payee_last4: p.paypal_merchant_id === null ? null : p.paypal_merchant_id.slice(-4),
     payee_verified_at: p.payee_verified_at == null ? null : iso(p.payee_verified_at),
     payee_shared: p.payee_shared,
+    settlement: payeeSettlement({
+      merchant_id: p.paypal_merchant_id,
+      payee_shared: p.payee_shared,
+      environment: ctx.environment,
+      own_merchant_id: ctx.own_merchant_id,
+    }),
     offers_live: liveBy.get(p.id) ?? 0,
     by_currency: (byPublisher.get(p.id) ?? []).sort(
       (a, b) =>

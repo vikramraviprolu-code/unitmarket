@@ -60,7 +60,7 @@ export const TERMS_DOC: LegalDoc = {
     {
       heading: 'Price and terms are held for 15 minutes',
       paragraphs: [
-        'Once you start to buy, the price and the terms you were shown are held for 15 minutes. If you do not approve within that time, nothing is charged for that attempt. You can start again, and the price or terms may be different the next time.',
+        'Once you start to buy, the price and the terms you were shown are held for 15 minutes. Nothing is charged until you approve the payment at PayPal. If you leave without paying, your unpaid order stays open until you cancel it or it expires, and you can continue to payment or cancel it from the order page. When the held price has gone, ask for a price again; the price or terms may be different the next time.',
       ],
     },
     {
@@ -204,7 +204,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     {
       heading: 'How a payee is checked',
       paragraphs: [
-        "In this demo the publishers' payee details are marked as checked when the demo data is loaded. It is not PayPal onboarding. In the sandbox, payments for the publishers that have articles on sale are received in one test account the owners control, so their account endings match. A publisher with nothing on sale may have no payee account set. In a dry run nothing is paid, and the account endings are demo values.",
+        "In this demo the publishers' payee details are marked as checked when the demo data is loaded or by an operator check. It is not PayPal onboarding. In the sandbox, payments for the publishers that have articles on sale are received in one test account the owners control, so their account endings match. A publisher with nothing on sale may have no payee account set. In a dry run nothing is paid, and the account endings are demo values.",
       ],
     },
     {
