@@ -1,11 +1,16 @@
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { app } from '../../server/access';
 import { currentActor } from '../../server/session';
 import { EmptyState } from '../../ui/EmptyState';
 import {
   APPLIED_NOTICE,
   LABEL_NAME,
+  LINK_OFFERS,
+  LINK_PAYOUT_ACCOUNT,
+  LINK_SALES,
+  LINK_STATEMENT,
   LABEL_OFFERS,
   LABEL_PAYEE,
   LABEL_STATUS,
@@ -54,6 +59,20 @@ export default async function PublisherHome() {
           <dd data-testid="publisher-payee">{payeeText(home.payee)}</dd>
         </dl>
       </div>
+      <ul data-testid="publisher-links">
+        <li>
+          <Link href="/publisher/offers">{LINK_OFFERS}</Link>
+        </li>
+        <li>
+          <Link href="/publisher/sales">{LINK_SALES}</Link>
+        </li>
+        <li>
+          <Link href="/publisher/statement">{LINK_STATEMENT}</Link>
+        </li>
+        <li>
+          <Link href="/publisher/payout-account">{LINK_PAYOUT_ACCOUNT}</Link>
+        </li>
+      </ul>
       {home.offers_live === 0 ? (
         <EmptyState title={NO_OFFERS_TITLE}>{NO_OFFERS_BODY}</EmptyState>
       ) : null}

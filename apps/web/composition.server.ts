@@ -95,6 +95,7 @@ import {
   reviseOffer,
   seedCatalogue,
   seedSupplement,
+  setPublisherStatus,
   withdrawOffer,
 } from '@umsbx/catalogue';
 import type {
@@ -105,6 +106,7 @@ import type {
   PayeeError,
   PayeeView,
   PriceInput,
+  StatusError,
 } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
 import { discover as discoverOffers, parseNeed } from '@umsbx/discovery';
@@ -141,8 +143,8 @@ import {
 import { health as jobsHealth, LEADER_LOCK_KEY, startLoop } from '@umsbx/jobs';
 import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
-import { salesFor, statementFor } from '@umsbx/publisher-console';
-import type { PublisherStatement, SaleRow } from '@umsbx/publisher-console';
+import { publisherExposure, salesFor, statementFor } from '@umsbx/publisher-console';
+import type { PublisherExposure, PublisherStatement, SaleRow } from '@umsbx/publisher-console';
 
 // PUB-C: the money words of the publisher pages live with the code that decides them; the golden test
 // of the page copy pins them through this re-export.
@@ -767,6 +769,25 @@ export interface Engine {
       expected_version: string;
       reason: string;
     }): Promise<Result<{ offer_id: Id; version: string }, OfferWriteError>>;
+  };
+  /**
+   * PUB-D: the operator's publishers page (S7). Both methods need an operator with the second factor.
+   * `list` answers what each publisher holds or is owed (counts and sums of stored rows, the payee as the
+   * last 4 only); `setStatus` suspends or reactivates one publisher with a reason and one audit row.
+   * Suspending takes the publisher's offers off sale and ends its open quotes; paid orders are untouched.
+   */
+  opsPublishers: {
+    list(
+      actor: Actor,
+    ): Promise<
+      Result<{ publishers: PublisherExposure[]; environment: EnvironmentLabel }, StatusError>
+    >;
+    setStatus(i: {
+      actor: Actor;
+      publisher_id: Id;
+      status: 'suspended' | 'active';
+      reason: string;
+    }): Promise<Result<{ status: 'suspended' | 'active' }, StatusError>>;
   };
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
@@ -1524,7 +1545,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       return {
         display_name: row.display_name,
         status: row.status,
-        offers_live: Number(live.rows[0]?.n ?? 0),
+        // A suspended or unapproved publisher sells nothing (the same rule as the buyer side, PUB-D).
+        offers_live: row.status === 'active' ? Number(live.rows[0]?.n ?? 0) : 0,
         payee: {
           last4: row.paypal_merchant_id === null ? null : row.paypal_merchant_id.slice(-4),
           verified_at: row.payee_verified_at === null ? null : iso(row.payee_verified_at),
@@ -1562,7 +1584,8 @@ function buildApp(config: Config, opts: AppOptions): App {
     async listOffers() {
       const rows = await db.query<{ slug: string; id: string }>(
         `SELECT p.slug, o.id FROM offers o JOIN publishers p ON p.id = o.publisher_id
-          WHERE o.status = 'authorised' AND o.superseded_by IS NULL ORDER BY o.id`,
+          WHERE o.status = 'authorised' AND o.superseded_by IS NULL AND p.status = 'active'
+          ORDER BY o.id`,
       );
       const out: OfferPage[] = [];
       for (const r of rows.rows) {
@@ -2255,6 +2278,22 @@ function buildApp(config: Config, opts: AppOptions): App {
         });
         return r.ok ? { ok: true, value: { offer_id: i.offer_id, version: r.value.version } } : r;
       },
+    },
+
+    opsPublishers: {
+      async list(actor) {
+        if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
+        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
+        const publishers = await publisherExposure(db, actor, clock.now().toISOString());
+        if (publishers === null) return { ok: false, error: { code: 'not_operator' } };
+        return { ok: true, value: { publishers, environment } };
+      },
+      setStatus: (i) =>
+        setPublisherStatus(offerDeps, i.actor, {
+          publisher_id: i.publisher_id,
+          status: i.status,
+          reason: i.reason,
+        }),
     },
 
     newKey: () => ids.nonce(),

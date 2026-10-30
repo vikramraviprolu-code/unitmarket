@@ -101,8 +101,8 @@ export async function getOffer(
   return rows[0] ? toView(rows[0]) : null;
 }
 
-// Authorised, current (not superseded, newest version) offers whose currency and payee country fit
-// an enabled corridor. Validity dates are not filtered here (no clock in this signature); startFromOffer
+// Authorised, current (not superseded, newest version) offers of an active publisher whose currency
+// and payee country fit an enabled corridor. Validity dates are not filtered here (no clock in this signature); startFromOffer
 // checks them on every quote (ASM-14A-4).
 export async function listAuthorisedOffers(
   db: SqlExecutor,
@@ -113,7 +113,7 @@ export async function listAuthorisedOffers(
   const limit = Math.max(1, Math.min(500, Math.trunc(i.limit) || 1));
   const { rows } = await db.query<Row>(
     `${SELECT}
-      WHERE o.status = 'authorised' AND o.superseded_by IS NULL
+      WHERE o.status = 'authorised' AND o.superseded_by IS NULL AND p.status = 'active'
         AND o.currency = $1 AND p.country = ANY ($2)
         AND EXISTS (SELECT 1 FROM publisher_authorisations pa WHERE pa.offer_id = o.id AND pa.offer_version = o.version)
         AND NOT EXISTS (SELECT 1 FROM offers n WHERE n.id = o.id AND (n.created_at, n.version) > (o.created_at, o.version))

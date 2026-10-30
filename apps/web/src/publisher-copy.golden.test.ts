@@ -22,6 +22,9 @@ function lines(): string[] {
   for (const n of [0, 1, 2, 7]) out.push(`offers ${String(n)}: ${copy.offersLiveText(n)}`);
   out.push(`empty title: ${copy.NO_OFFERS_TITLE}`);
   out.push(`empty body: ${copy.NO_OFFERS_BODY}`);
+  out.push(
+    `links: ${copy.LINK_OFFERS} | ${copy.LINK_SALES} | ${copy.LINK_STATEMENT} | ${copy.LINK_PAYOUT_ACCOUNT}`,
+  );
   out.push(`payee none: ${copy.payeeText({ last4: null, verified_at: null })}`);
   out.push(`payee waiting: ${copy.payeeText({ last4: 'AB12', verified_at: null })}`);
   out.push(
