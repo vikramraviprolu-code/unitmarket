@@ -102,7 +102,10 @@ describe('the two passcodes stay apart', () => {
       });
       expect(res.status).toBe(401);
       expect(res.headers.get('set-cookie')).toBeNull();
-      answers.push(await res.json());
+      // the support code is random per answer; everything else must be identical
+      const { error } = (await res.json()) as { error: Record<string, unknown> };
+      delete error['support_code'];
+      answers.push(error);
     }
     expect(answers[1]).toEqual(answers[0]);
     expect(answers[2]).toEqual(answers[0]);
