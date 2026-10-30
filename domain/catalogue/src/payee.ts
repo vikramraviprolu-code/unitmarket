@@ -62,8 +62,11 @@ const fail = (code: PayeeErrorCode): Result<never, PayeeError> => err({ code });
 
 /** Thrown inside a transaction to roll it back; the caller turns it into an error value. */
 class Refused extends Error {
-  constructor(readonly code: PayeeErrorCode) {
+  // Declared field, not a parameter property: the offline scripts run this file in Node's strip-only TypeScript mode.
+  readonly code: PayeeErrorCode;
+  constructor(code: PayeeErrorCode) {
     super(code);
+    this.code = code;
   }
 }
 const isUniqueViolation = (e: unknown): boolean =>

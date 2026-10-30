@@ -42,6 +42,7 @@ const FS_ALLOWED = new Set([
   'tools/spike-kit/src/spike.ts', // owner-run spike kit
   'packages/config/src/maintenance.ts', // the flag reader (CO-7b): lstat only
   'packages/config/src/env-file.ts', // .env.local reader (F8): readFileSync only
+  'apps/web/composition.server.ts', // AI-B: reads the optional recorded Claude eval result (readFileSync, one file, no flag)
 ]);
 
 const WRITE_API =

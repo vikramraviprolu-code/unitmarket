@@ -3,7 +3,7 @@
 // (the free text `reason` of a pick is never copied into a verdict).
 import type { ModelPort, ModelResponse } from '@umsbx/contracts';
 import { z } from 'zod';
-import cases from '../test-data/injection-cases.json';
+import cases from '../test-data/injection-cases.json' with { type: 'json' };
 import { AGENT_TOOLS, BRIEF_SYSTEM, COMPOSE_SYSTEM } from './prompts';
 import { BriefParseOutputSchema } from './schemas';
 import { dispatchTool, sanitiseModelOutput } from './tools';

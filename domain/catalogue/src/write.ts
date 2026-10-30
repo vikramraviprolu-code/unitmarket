@@ -190,8 +190,11 @@ export async function getOwnOffer(
 
 /** Thrown inside a transaction to roll it back; the caller turns it into an error value. */
 class Refused extends Error {
-  constructor(readonly code: OfferWriteErrorCode) {
+  // Declared field, not a parameter property: the offline scripts run this file in Node's strip-only TypeScript mode.
+  readonly code: OfferWriteErrorCode;
+  constructor(code: OfferWriteErrorCode) {
     super(code);
+    this.code = code;
   }
 }
 const isUniqueViolation = (e: unknown): boolean =>
