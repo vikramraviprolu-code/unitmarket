@@ -8,7 +8,6 @@ import { EmptyState } from '../../../ui/EmptyState';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { formatDateTime, formatMinor, optionLabel } from '../../../lib/format';
 import {
-  blockHeading,
   feeText,
   NAV_HOME,
   NAV_STATEMENT,
@@ -131,6 +130,7 @@ export default async function PublisherSales() {
       {totals.length > 0 ? (
         <section data-testid="sales-totals">
           <h2>{TOTALS_HEADING}</h2>
+          <p className="table-hint muted">Scroll sideways to see more</p>
           <div className="table-scroll">
             <table>
               <caption className="visually-hidden">{TOTALS_HEADING}</caption>
@@ -149,8 +149,7 @@ export default async function PublisherSales() {
                 {totals.map((t) => (
                   <tr key={`${t.currency}-${t.environment}`}>
                     <td>
-                      {blockHeading(t.currency, t.environment)}{' '}
-                      <EnvLabel environment={t.environment} />
+                      {t.currency} <EnvLabel environment={t.environment} />
                     </td>
                     <td>{String(t.units_paid)}</td>
                     <td>{formatMinor(t.gross_minor, t.currency)}</td>

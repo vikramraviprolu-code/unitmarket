@@ -240,7 +240,7 @@ nav a {
   padding: 0 12px;
   border-radius: var(--radius-btn);
 }
-nav a:hover {
+.site-header nav a:hover {
   background: var(--header-hover);
 }
 .spacer {

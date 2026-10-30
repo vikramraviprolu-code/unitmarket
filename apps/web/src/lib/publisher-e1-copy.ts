@@ -80,7 +80,7 @@ export const CREATE_ARTICLE_LABEL = 'Article';
 export const CREATE_BACK = 'Back to your offers';
 export const CREATE_LABEL = 'Put this article on sale';
 export const CREATE_TERMS_NOTE = (terms: string): string =>
-  `Terms version ${terms}. The access window is set by UnitMarket. Personal use only. No redistribution. AI assistants may read it for the buyer after the buyer reviews it.`;
+  `Terms version ${terms}. The access window is set by UnitMarket. Personal use only. No redistribution. Buyers may not use it with AI tools under this offer.`;
 export const createdText = (version: string): string =>
   `Created. This offer is on sale as version ${version}.`;
 

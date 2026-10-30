@@ -258,9 +258,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     },
     {
       heading: 'Commission',
-      paragraphs: [
-        'There is no commission in this demo. A commission of 20 percent is planned. It is not implemented.',
-      ],
+      paragraphs: ['No commission in this demo.'],
     },
     {
       heading: 'Tax',

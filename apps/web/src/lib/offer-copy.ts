@@ -68,7 +68,7 @@ export function licenceText(r: {
     r.ai_scope === 'agent_allowed'
       ? 'AI assistants may read it for the buyer.'
       : r.ai_scope === 'review'
-        ? 'AI assistants may read it for the buyer after the buyer reviews it.'
+        ? 'Buyers may not use it with AI tools under this offer.'
         : 'AI assistants may not read it.';
   return `Personal use only. No redistribution. ${ai}`;
 }

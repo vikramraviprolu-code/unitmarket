@@ -6,7 +6,6 @@ import { CANCEL_BODY, CANCEL_BODY_NO_REF } from './lib/composite-copy';
 import { licenceText } from './lib/offer-copy';
 import { CREATE_TERMS_NOTE } from './lib/publisher-e1-copy';
 import { PUBLISHER_TERMS_DOC } from './lib/legal-copy';
-import { COMMISSION_LINE } from '@umsbx/publisher-console';
 
 const read = (rel: string): string => readFileSync(new URL(rel, import.meta.url), 'utf8');
 
@@ -28,14 +27,16 @@ describe('defect 4: publisher sales totals table', () => {
   });
   it('the currency cell shows the plain code beside the label, not the block heading', () => {
     expect(page).not.toContain('blockHeading');
-    expect(page).toMatch(/\{t\.currency\}\{' '\}\s*<EnvLabel environment=\{t\.environment\} \/>/);
+    expect(page).toMatch(/\{t\.currency\}\s*<EnvLabel environment=\{t\.environment\} \/>/);
   });
 });
 
 describe('defect 5: the AI-use terms agree on both sides', () => {
   it('the publisher licence for `review` says what the buyer is told', () => {
     const t = licenceText({ scope: 'personal_use', ai_scope: 'review', redistribution: false });
-    expect(t).toBe('Personal use only. No redistribution. Buyers may not use it with AI tools under this offer.');
+    expect(t).toBe(
+      'Personal use only. No redistribution. Buyers may not use it with AI tools under this offer.',
+    );
     expect(t).not.toMatch(/AI assistants may read/);
   });
   it('the create-offer terms note agrees', () => {
@@ -53,7 +54,9 @@ describe('defect 6: copy items', () => {
     expect(CANCEL_BODY).toContain('at the payment step.');
   });
   it('the commission line makes no promise of a plan', () => {
-    expect(COMMISSION_LINE).toBe('No commission in this demo.');
+    expect(read('../../../domain/publisher-console/src/settlement.ts')).toContain(
+      "export const COMMISSION_LINE = 'No commission in this demo.';",
+    );
     const flat = JSON.stringify(PUBLISHER_TERMS_DOC);
     expect(flat).not.toMatch(/20 percent|not implemented/i);
     expect(flat).toContain('No commission in this demo.');
@@ -61,6 +64,8 @@ describe('defect 6: copy items', () => {
   it('the frozen help topic does not claim a case was opened before any order is named', () => {
     const src = read('./app/help/[case]/page.tsx');
     expect(src).not.toContain('We opened a case');
-    expect(src).toContain('If this happens, we open a case and will write to you with the outcome.');
+    expect(src).toContain(
+      'If this happens, we open a case and will write to you with the outcome.',
+    );
   });
 });
