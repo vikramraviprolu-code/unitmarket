@@ -31,7 +31,7 @@ function lines(): string[] {
     { new_sales: 0, refunds: 0, operator_offer_changes: 0, payee_decisions: 2 },
     { new_sales: 0, refunds: 0, operator_offer_changes: 0, payee_decisions: 0 },
   ])
-    out.push(`since lines ${JSON.stringify(c)}: ${copy.sinceLines(c).join(' ')}`);
+    out.push(`since lines ${JSON.stringify(c)}: ${copy.sinceLines(c).join(' ') || '(none)'}`);
   out.push(`create: ${copy.CREATE_LINK} | ${copy.CREATE_HEADING} | ${copy.CREATE_BACK}`);
   out.push(`create lede: ${copy.CREATE_LEDE}`);
   out.push(`create none: ${copy.CREATE_NONE_TITLE} | ${copy.CREATE_NONE_BODY}`);

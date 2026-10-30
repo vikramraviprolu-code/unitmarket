@@ -19,6 +19,7 @@ import {
   offerStatusText,
   optionPriceText,
 } from '../../../lib/offer-copy';
+import { CREATE_LINK } from '../../../lib/publisher-e1-copy';
 
 export const metadata: Metadata = { title: 'Your offers' };
 
@@ -35,6 +36,9 @@ export default async function PublisherOffers() {
         {OFFERS_HEADING} <EnvLabel environment={view.environment} />
       </h1>
       <p className="lede">{OFFERS_LEDE}</p>
+      <p>
+        <Link href="/publisher/offers/new">{CREATE_LINK}</Link>
+      </p>
       {view.offers.length === 0 ? (
         <EmptyState title={OFFERS_EMPTY_TITLE}>{OFFERS_EMPTY_BODY}</EmptyState>
       ) : (

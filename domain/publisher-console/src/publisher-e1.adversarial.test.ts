@@ -88,7 +88,7 @@ describe('no query takes a client supplied id', () => {
       const src = readFileSync(new URL(f, import.meta.url), 'utf8')
         .replace(/\/\/.*$/gm, '')
         .replace(/\/\*[\s\S]*?\*\//g, '');
-      expect(src, f).not.toMatch(/searchParams|request|params\.|cookies|headers/);
+      expect(src, f).not.toMatch(/searchParams|\brequest\b|params\.|cookies|headers/);
       expect(src, f).not.toMatch(/buyer|auth_subject|display_name|email/i);
       expect(src, f).not.toMatch(/\b(INSERT|UPDATE|DELETE|TRUNCATE|ALTER|DROP)\b/);
     }

@@ -151,7 +151,7 @@ describe('engine.publisherRefunds', () => {
     expect(src).toContain('engine.publisherRefunds(actor)');
     expect(src).toContain('REFUNDS_HEADING');
     expect(src).toContain('refunds-table');
-    expect(src).toContain('/api/publisher/export?kind=sales');
+    expect(src).toContain('EXPORT_SALES_HREF');
   });
 });
 

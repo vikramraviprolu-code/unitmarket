@@ -46,7 +46,9 @@ export type OfferWriteErrorCode =
   | 'invalid_price'
   | 'invalid_options'
   | 'attestation_required'
-  | 'invalid_reason';
+  | 'invalid_reason'
+  | 'already_offered'
+  | 'no_corridor';
 export interface OfferWriteError {
   code: OfferWriteErrorCode;
 }
@@ -455,4 +457,181 @@ export async function withdrawOffer(
     kind: 'withdraw',
     reason,
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Create an offer for an article the publisher already owns (PUB-E1)
+
+/** The terms version a new offer carries (the terms every seeded offer carries). */
+export const NEW_OFFER_TERMS = 'terms-1';
+/** The licence of a new offer: personal use, no redistribution, AI assistants after the buyer reviews. */
+export const NEW_OFFER_RIGHTS = {
+  scope: 'personal_use',
+  ai_scope: 'review',
+  redistribution: false,
+} as const;
+
+export interface OfferableArticle {
+  article_id: Id;
+  title: string;
+}
+
+/**
+ * The articles of the signed-in publisher that have no current offer on sale or in draft (a withdrawn offer
+ * does not count). Null for any actor that is not a publisher. Filtered by the actor's publisher id.
+ */
+export async function listOfferableArticles(
+  db: Database,
+  actor: Actor,
+): Promise<OfferableArticle[] | null> {
+  if (actor.kind !== 'publisher') return null;
+  const { rows } = await db.query<Row>(
+    `SELECT a.id, a.title FROM articles a
+      WHERE a.publisher_id = $1
+        AND NOT EXISTS (SELECT 1 FROM offers o
+                         WHERE o.article_id = a.id AND o.superseded_by IS NULL
+                           AND o.status IN ('authorised', 'draft'))
+      ORDER BY a.title, a.id`,
+    [actor.publisher_id],
+  );
+  return rows.map((r) => ({ article_id: r.id as Id, title: r.title as string }));
+}
+
+/**
+ * The currency a new offer of the signed-in publisher would carry: the enabled corridor of the publisher's
+ * country. Null when there is none, and for any actor that is not a publisher.
+ */
+export async function offerCurrencyFor(db: Database, actor: Actor): Promise<string | null> {
+  if (actor.kind !== 'publisher') return null;
+  const { rows } = await db.query<{ currency: string }>(
+    `SELECT c.currency FROM corridors c JOIN publishers p ON p.country = ANY (c.payee_countries)
+      WHERE p.id = $1 AND c.enabled ORDER BY c.id LIMIT 1`,
+    [actor.publisher_id],
+  );
+  return rows[0]?.currency ?? null;
+}
+
+export interface CreateInput {
+  article_id: Id;
+  options: PriceInput[];
+  attestation: boolean;
+}
+
+/**
+ * The publisher puts one of its own articles on sale. The publisher must be active; the article must be the
+ * actor's (another publisher's article and a guessed id both give not_found) and have no current offer on
+ * sale or in draft (already_offered). Each price is an integer from 1 to the cap; the options are a non empty
+ * subset of keep_retrieve and online_read; the attestation must be true. The currency is the one of the
+ * enabled corridor of the publisher's country; terms, licence, affordability and validity are fixed here and
+ * cannot be given by the caller. Writes offer version 1 (status authorised), one authorisation row with the
+ * attestation text version and one audit row, all in one transaction, with the article row locked so two
+ * creates for one article take turns and the article freeze of migration 0012 sees the new offer.
+ */
+export async function createOffer(
+  deps: OfferWriteDeps,
+  actor: Actor,
+  input: CreateInput,
+): Promise<Result<{ offer_id: Id; version: string }, OfferWriteError>> {
+  if (actor.kind !== 'publisher') return fail('not_publisher');
+  if (input.attestation !== true) return fail('attestation_required');
+  const options = cleanOptions(input.options, deps.offer_max_minor);
+  if (!options.ok) return options;
+  const article_id = input.article_id;
+  if (typeof article_id !== 'string' || !IdSchema.safeParse(article_id).success)
+    return fail('not_found');
+  try {
+    return await deps.db.transaction(async (tx: SqlExecutor) => {
+      const pub = await tx.query<{ slug: string; status: string; country: string }>(
+        'SELECT slug, status, country FROM publishers WHERE id = $1',
+        [actor.publisher_id],
+      );
+      const p = pub.rows[0];
+      if (p === undefined) throw new Refused('not_found');
+      if (p.status !== 'active') throw new Refused('publisher_not_active');
+      const art = await tx.query(
+        'SELECT id FROM articles WHERE id = $1 AND publisher_id = $2 FOR UPDATE',
+        [article_id, actor.publisher_id],
+      );
+      if (art.rows.length === 0) throw new Refused('not_found');
+      const live = await tx.query(
+        `SELECT 1 AS x FROM offers WHERE article_id = $1 AND superseded_by IS NULL
+            AND status IN ('authorised', 'draft') LIMIT 1`,
+        [article_id],
+      );
+      if (live.rows.length > 0) throw new Refused('already_offered');
+      const corridor = await tx.query<{ currency: string }>(
+        'SELECT currency FROM corridors WHERE enabled AND $1 = ANY (payee_countries) ORDER BY id LIMIT 1',
+        [p.country],
+      );
+      const currency = corridor.rows[0]?.currency;
+      if (currency === undefined) throw new Refused('no_corridor');
+      for (const o of options.value) {
+        const pol = await tx.query(
+          'SELECT 1 AS x FROM access_policies WHERE id = $1 AND version = $2 AND option = $1',
+          [o.option, '1'],
+        );
+        if (pol.rows.length === 0) throw new Refused('invalid_options');
+      }
+      // The offer id carries the publisher slug and the article (the public offer address); an article that
+      // had an offer before gets a fresh id with a suffix, so no earlier history is reused.
+      const base = `ofr_${p.slug}_${article_id.startsWith('art_') ? article_id.slice(4) : article_id}`;
+      let offer_id = base;
+      for (let n = 2; ; n += 1) {
+        const taken = await tx.query('SELECT 1 AS x FROM offers WHERE id = $1 LIMIT 1', [offer_id]);
+        if (taken.rows.length === 0) break;
+        if (n > 50) throw new Refused('conflict');
+        offer_id = `${base}-r${String(n)}`;
+      }
+      if (!IdSchema.safeParse(offer_id).success) throw new Refused('not_found');
+      const at = deps.clock.now().toISOString();
+      const built = options.value.map((o) => ({
+        option: o.option,
+        price_minor: o.price_minor,
+        policy_id: o.option,
+        policy_version: '1',
+      }));
+      try {
+        await tx.query(
+          `INSERT INTO offers (id, version, publisher_id, article_id, status, currency, options, affordability,
+                               terms_version, rights, valid_from, valid_until, superseded_by, created_at, updated_at)
+           VALUES ($1,'1',$2,$3,'authorised',$4,$5,$6,$7,$8,$9,NULL,NULL,$9,$9)`,
+          [
+            offer_id,
+            actor.publisher_id,
+            article_id,
+            currency,
+            JSON.stringify(built),
+            JSON.stringify({ renegotiation_allowed: false, floor_minor: null }),
+            NEW_OFFER_TERMS,
+            JSON.stringify(NEW_OFFER_RIGHTS),
+            at,
+          ],
+        );
+      } catch (e) {
+        if (isUniqueViolation(e)) throw new Refused('conflict');
+        throw e;
+      }
+      await tx.query(
+        `INSERT INTO publisher_authorisations (id, offer_id, offer_version, authorised_by, at, created_at, updated_at, attestation_version)
+         VALUES ($1,$2,'1',$3,$4,$4,$4,$5)`,
+        [`auth_${offer_id}_1`, offer_id, actor.publisher_id, at, PUB_ATTEST_1],
+      );
+      await deps.audit.record(tx, {
+        actor,
+        action: 'offer.created',
+        target: offer_id,
+        reason: null,
+        detail: {
+          to_version: '1',
+          article_id,
+          currency,
+          new_prices: pricesText(built),
+        },
+      });
+      return ok({ offer_id, version: '1' });
+    });
+  } catch (e) {
+    if (e instanceof Refused) return fail(e.code);
+    throw e;
+  }
 }

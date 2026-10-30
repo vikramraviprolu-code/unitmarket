@@ -84,22 +84,28 @@ import type { CaseResult } from '@umsbx/model';
 import {
   SEED_DATA,
   SEED_SUPPLEMENT_COMPOSITE,
+  NEW_OFFER_TERMS,
   applyDemoPrices,
+  createOffer,
   decidePayeeRequest,
   getOffer,
   getOwnOffer,
+  listOfferableArticles,
   listOpenRequests,
   listOwnOffers,
+  offerCurrencyFor,
   payeeView,
   requestPayeeChange,
   reviseOffer,
   seedCatalogue,
   seedSupplement,
   setPublisherStatus,
+  touchVisit,
   withdrawOffer,
 } from '@umsbx/catalogue';
 import type {
   OfferWriteError,
+  OfferableArticle,
   OpenRequest,
   OwnOffer,
   OwnOfferDetail,
@@ -143,8 +149,22 @@ import {
 import { health as jobsHealth, LEADER_LOCK_KEY, startLoop } from '@umsbx/jobs';
 import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
-import { publisherExposure, salesFor, statementFor } from '@umsbx/publisher-console';
-import type { PublisherExposure, PublisherStatement, SaleRow } from '@umsbx/publisher-console';
+import {
+  countsSince,
+  publisherExposure,
+  refundsFor,
+  salesCsv,
+  salesFor,
+  statementCsv,
+  statementFor,
+} from '@umsbx/publisher-console';
+import type {
+  PublisherExposure,
+  PublisherStatement,
+  RefundRow,
+  SaleRow,
+  SinceCounts,
+} from '@umsbx/publisher-console';
 
 // PUB-C: the money words of the publisher pages live with the code that decides them; the golden test
 // of the page copy pins them through this re-export.
@@ -597,6 +617,29 @@ export interface Engine {
    */
   publisherStatement(actor: Actor): Promise<PublisherStatement | null>;
   /**
+   * PUB-E1: the refunds of the publisher behind this session: refunded, partly refunded, held and reversed
+   * units, with the sums of the stored refund and reversal ledger rows. Null for any other actor kind.
+   */
+  publisherRefunds(actor: Actor): Promise<RefundRow[] | null>;
+  /**
+   * PUB-E1: "Since your last visit". Records this visit in the publisher's own cursor row (migration 0013)
+   * and counts the rows written since the last visit. The first visit has no counts. Null for any other
+   * actor kind.
+   */
+  publisherSince(actor: Actor): Promise<{
+    first_visit: boolean;
+    since: string | null;
+    counts: SinceCounts | null;
+  } | null>;
+  /**
+   * PUB-E1: the statement or the sales of the publisher behind this session as CSV text with its file name.
+   * Built from the same read models as the pages. Null for any other actor kind.
+   */
+  publisherExport(i: {
+    actor: Actor;
+    kind: 'statement' | 'sales';
+  }): Promise<{ filename: string; csv: string } | null>;
+  /**
    * The id of the live session behind a cookie header, for the actor that session belongs to.
    * Links are bound to it (delivery lane): a link issued in one session is not found in another.
    */
@@ -756,6 +799,24 @@ export interface Engine {
     ): Promise<
       (OwnOfferDetail & { environment: EnvironmentLabel; offer_max_minor: number }) | null
     >;
+    /**
+     * PUB-E1: the own articles that have no current offer, the cap and the terms a new offer carries. Null
+     * for any other actor kind.
+     */
+    offerable(actor: Actor): Promise<{
+      articles: OfferableArticle[];
+      environment: EnvironmentLabel;
+      offer_max_minor: number;
+      terms_version: string;
+      currency: string | null;
+    } | null>;
+    /** PUB-E1: version 1 of an offer for an own article that has none on sale. */
+    create(i: {
+      actor: Actor;
+      article_id: string;
+      options: PriceInput[];
+      attestation: boolean;
+    }): Promise<Result<{ offer_id: Id; version: string }, OfferWriteError>>;
     revise(i: {
       actor: Actor;
       offer_id: string;
@@ -1567,6 +1628,34 @@ function buildApp(config: Config, opts: AppOptions): App {
       });
     },
 
+    // PUB-E1: refunds, the visit cursor and the CSV files. Each filters by the actor's publisher id.
+    async publisherRefunds(actor) {
+      if (actor.kind !== 'publisher') return null;
+      return refundsFor(db, actor);
+    },
+    async publisherSince(actor) {
+      if (actor.kind !== 'publisher') return null;
+      const visit = await touchVisit(db, actor, clock.now().toISOString());
+      if (visit === null) return null;
+      if (visit.since === null) return { first_visit: true, since: null, counts: null };
+      return {
+        first_visit: false,
+        since: visit.since,
+        counts: await countsSince(db, actor, visit.since),
+      };
+    },
+    async publisherExport({ actor, kind }) {
+      if (actor.kind !== 'publisher') return null;
+      if (kind === 'sales') {
+        return { filename: 'unitmarket-sales.csv', csv: salesCsv(await salesFor(db, actor)) };
+      }
+      const statement = await statementFor(db, actor, {
+        own_merchant_id: config.own_merchant_id,
+        environment,
+      });
+      return { filename: 'unitmarket-statement.csv', csv: statementCsv(statement) };
+    },
+
     async sessionIdOf(cookie, actor) {
       // resolveSession checks the signature, expiry and revocation; only then is the id read.
       const live = await resolveSession(security, cookie);
@@ -2260,6 +2349,28 @@ function buildApp(config: Config, opts: AppOptions): App {
       async get(actor, offer_id) {
         const o = await getOwnOffer(db, actor, offer_id);
         return o === null ? null : { ...o, environment, offer_max_minor: config.offer_max_minor };
+      },
+      async offerable(actor) {
+        const articles = await listOfferableArticles(db, actor);
+        return articles === null
+          ? null
+          : {
+              articles,
+              environment,
+              offer_max_minor: config.offer_max_minor,
+              terms_version: NEW_OFFER_TERMS,
+              currency: await offerCurrencyFor(db, actor),
+            };
+      },
+      async create(i) {
+        const r = await createOffer(offerDeps, i.actor, {
+          article_id: i.article_id,
+          options: i.options,
+          attestation: i.attestation,
+        });
+        return r.ok
+          ? { ok: true, value: { offer_id: r.value.offer_id, version: r.value.version } }
+          : r;
       },
       async revise(i) {
         const r = await reviseOffer(offerDeps, i.actor, {

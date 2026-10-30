@@ -23,10 +23,15 @@ export type {
   RequestState,
 } from './payee';
 export {
+  NEW_OFFER_RIGHTS,
+  NEW_OFFER_TERMS,
   PUB_ATTEST_1,
   checkPrice,
+  createOffer,
   getOwnOffer,
+  listOfferableArticles,
   listOwnOffers,
+  offerCurrencyFor,
   reviseOffer,
   withdrawOffer,
 } from './write';
@@ -34,6 +39,8 @@ export type {
   OfferWriteDeps,
   OfferWriteError,
   OfferWriteErrorCode,
+  OfferableArticle,
+  CreateInput,
   OwnOffer,
   OwnOfferDetail,
   OwnOfferVersion,
@@ -45,3 +52,4 @@ export { setPublisherStatus } from './status';
 export type { StatusDeps, StatusError, StatusErrorCode } from './status';
 export { DEMO_AUDIT_REASON, DEMO_MAX_MINOR, DEMO_MIN_MINOR, applyDemoPrices } from './demo-prices';
 export type { DemoRevision } from './demo-prices';
+export { VISIT_GAP_MS, touchVisit } from './visits';

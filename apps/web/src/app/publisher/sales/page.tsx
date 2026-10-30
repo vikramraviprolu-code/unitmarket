@@ -22,6 +22,16 @@ import {
   salesCountText,
   splitSales,
 } from '../../../lib/statement-copy';
+import {
+  EXPORT_NOTE,
+  EXPORT_SALES_HREF,
+  EXPORT_SALES_LABEL,
+  REFUNDS_COLUMNS,
+  REFUNDS_HEADING,
+  REFUNDS_LEDE,
+  REFUNDS_SOURCE_NOTE,
+  refundsCountText,
+} from '../../../lib/publisher-e1-copy';
 
 export const metadata: Metadata = { title: 'Sales' };
 
@@ -33,6 +43,8 @@ export default async function PublisherSales() {
   const a = await app();
   const all = await a.engine.publisherSales(actor);
   if (all === null) redirect('/signin?next=/publisher/sales');
+  // PUB-E1: the refunds, apart from the sales, from the stored ledger rows.
+  const refunds = (await a.engine.publisherRefunds(actor)) ?? [];
   // GATE35 D6: only paid units are counted and listed; the rest is one note.
   const { counted: rows, notCounted } = splitSales(all);
   // The label follows the stored environment of the rows; with no rows, the app's.
@@ -51,7 +63,12 @@ export default async function PublisherSales() {
         <Link href="/publisher/statement">{NAV_STATEMENT}</Link>
         {' | '}
         <Link href="/publisher">{NAV_HOME}</Link>
+        {' | '}
+        <a href={EXPORT_SALES_HREF} download>
+          {EXPORT_SALES_LABEL}
+        </a>
       </p>
+      <p className="muted">{EXPORT_NOTE}</p>
       {rows.length === 0 ? (
         <EmptyState title={SALES_EMPTY_TITLE}>{SALES_EMPTY_BODY}</EmptyState>
       ) : (
@@ -106,6 +123,49 @@ export default async function PublisherSales() {
           {notCountedText(notCounted.length)}
         </p>
       ) : null}
+      <h2 id="refunds">{REFUNDS_HEADING}</h2>
+      <p className="lede">{REFUNDS_LEDE}</p>
+      <p role="status" data-testid="refunds-count">
+        {refundsCountText(refunds.length)}
+      </p>
+      {refunds.length === 0 ? null : (
+        <>
+          <div className="table-scroll">
+            <table data-testid="refunds-table">
+              <caption className="visually-hidden">{REFUNDS_HEADING}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{REFUNDS_COLUMNS.date}</th>
+                  <th scope="col">{REFUNDS_COLUMNS.order}</th>
+                  <th scope="col">{REFUNDS_COLUMNS.article}</th>
+                  <th scope="col">{REFUNDS_COLUMNS.original}</th>
+                  <th scope="col">{REFUNDS_COLUMNS.refunded}</th>
+                  <th scope="col">{REFUNDS_COLUMNS.reversed}</th>
+                  <th scope="col">{REFUNDS_COLUMNS.status}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {refunds.map((r, i) => (
+                  <tr key={`${r.order_ref6}-${String(i)}`}>
+                    <td>{formatDateTime(r.at)}</td>
+                    <td className="mono">{r.order_ref6}</td>
+                    <td>
+                      {r.items.map((it, k) => (
+                        <div key={`${it.title}-${String(k)}`}>{it.title}</div>
+                      ))}
+                    </td>
+                    <td>{formatMinor(r.amount_minor, r.currency)}</td>
+                    <td>{formatMinor(r.refunded_minor, r.currency)}</td>
+                    <td>{formatMinor(r.reversed_minor, r.currency)}</td>
+                    <td>{r.status_text}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted">{REFUNDS_SOURCE_NOTE}</p>
+        </>
+      )}
     </>
   );
 }
