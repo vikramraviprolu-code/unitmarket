@@ -57,7 +57,7 @@ describe('touchVisit', () => {
 
   it('publishers do not share an instant', async () => {
     expect(await touchVisit(w.db, w.northfield, at(500))).toEqual({ since: at(0) });
-    expect((await touchVisit(w.db, w.harbour, at(501))).since).not.toBe(at(0));
+    expect((await touchVisit(w.db, w.harbour, at(501)))?.since).not.toBe(at(0));
   });
 
   it('writes nothing for a buyer, an operator or the system', async () => {
