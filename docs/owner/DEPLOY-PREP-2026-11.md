@@ -208,9 +208,18 @@ connection that is not off.
    `NOTE: UMS_PUBLIC_ORIGIN in service-offline.yaml is not this URL`, browser sign in is refused until a reviewed change sets the
    printed address and you deploy again, as in step 6.
 
-5. Check: open `<service URL>/signin` and sign in as Buyer A with the judge passcode. The screens should say Dry run. The operator
-   should not be able to sign in there, because the service has no operator authenticator keys (read from the code, not tried). Whether the production image starts with in memory
-   data on Cloud Run has not been tried; the first deploy is the test.
+5. Check: open `<service URL>/signin` and sign in as Buyer A with the judge passcode. The screens should say Dry run. Whether the
+   production image starts with in memory data on Cloud Run has not been tried; the first deploy is the test.
+
+6. Known limit, read from the code (`operatorSignIn` in `packages/security/src/totp.ts`): the offline service has no authenticator
+   keys, so the operator persona signs in with the judge passcode alone, as the unverified operator. That session can open
+   `/ops` and press Stop (it cannot refund or turn a switch on). So anyone with the judge passcode can stop the offline
+   service for every other judge. Resuming is a command line step only, so the service stays stopped until it restarts. This
+   affects only the offline service's own in memory data: nothing real, no PayPal, no database, and the sandbox service is not
+   touched. Recovery, by a human: start a new revision, for example by deploying a different tag with step 3 (a new revision
+   starts with fresh memory and the stop is gone). Whether deploying the same tag again starts a new revision has not been
+   checked. A separate judge passcode that cannot sign in as operator is lane JUDGE-A (`OVERNIGHT-ASSUMPTIONS.md` item 22); it is
+   not built.
 
 The offline service never changes `UMS_PAYPAL_CONNECT` and holds no approval row, so it is outside the judging window rules of
 the sandbox service. To remove it: `gcloud run services delete unitmarket-offline --region="$REGION" --project="$PROJECT_ID"` (a

@@ -575,6 +575,90 @@ function main() {
       fail('offline-shape', `deploy-offline.sh:${s.no} names Cloud SQL`);
   }
 
+  // ---- the offline account is pinned and reads only the offline secrets (INFRA-A review F2) -------------
+  const OFFLINE_SA_LINE = 'OFFLINE_SA="ums-offline@${PROJECT_ID}.iam.gserviceaccount.com"';
+  for (const f of ['setup.sh', 'deploy-offline.sh']) {
+    if (!files[f]) continue;
+    const sets = stmts[f].filter((s) => /^OFFLINE_SA\s*\+?=/.test(s.text));
+    if (sets.length !== 1 || sets[0].text !== OFFLINE_SA_LINE)
+      fail('offline-shape', `${f}: OFFLINE_SA must be set once, exactly as ${OFFLINE_SA_LINE}`);
+    if (f === 'deploy-offline.sh')
+      for (const s of stmts[f])
+        if (/\bRUNTIME_SA\b|ums-runtime/.test(s.text))
+          fail('offline-shape', `${f}:${s.no} names the sandbox runtime account`);
+  }
+  for (const f of Object.keys(files)) {
+    if (!f.endsWith('.sh')) continue;
+    const loops = [];
+    for (const s of stmts[f]) {
+      if (/^for\b.*; do$/.test(s.text)) loops.push(s.text);
+      else if (/^done\b/.test(s.text)) loops.pop();
+      else if (/\badd-iam-policy-binding\b/.test(s.text)) {
+        const member = s.text.match(/--member[=\s]+"?([^"\s]+)"?/)?.[1] ?? '';
+        const isSecret = /\bsecrets\s+add-iam-policy-binding\b/.test(s.text);
+        const inOffline =
+          isSecret && loops[loops.length - 1] === 'for NAME in $OFFLINE_SECRET_NAMES; do';
+        const toOffline = /OFFLINE_SA|ums-offline/.test(member);
+        if (toOffline && !inOffline)
+          fail(
+            'offline-shape',
+            `${f}:${s.no} binds the offline account outside "for NAME in $OFFLINE_SECRET_NAMES; do"`,
+          );
+        if (
+          isSecret &&
+          loops[loops.length - 1] === 'for NAME in $OFFLINE_SECRET_NAMES; do' &&
+          member !== 'serviceAccount:${OFFLINE_SA}'
+        )
+          fail(
+            'offline-shape',
+            `${f}:${s.no} the offline secret loop binds only "${'${OFFLINE_SA}'}"`,
+          );
+      }
+    }
+  }
+
+  // ---- OPTIONAL_ON and SECRET_FLAGS are built from the reviewed lines only (INFRA-A review F3) ------
+  if (files['deploy.sh']) {
+    const loops = [];
+    const okOptional = [
+      ['OPTIONAL_ON=""', null],
+      ['OPTIONAL_ON="${OPTIONAL_ON} ${NAME}"', 'for NAME in $OPTIONAL_SECRET_NAMES; do'],
+      ['OPTIONAL_ON="${OPTIONAL_ON/ UMS_AI_ADAPTER/}"', null],
+    ];
+    const okFlags = [
+      ['SECRET_FLAGS=""', null],
+      [
+        'SECRET_FLAGS="${SECRET_FLAGS:+${SECRET_FLAGS},}${NAME}=${NAME}:latest"',
+        'for NAME in $SECRET_NAMES; do',
+      ],
+      ['SECRET_FLAGS="${SECRET_FLAGS},${NAME}=${NAME}:latest"', 'for NAME in $OPTIONAL_ON; do'],
+    ];
+    for (const s of stmts['deploy.sh']) {
+      if (/^for\b.*; do$/.test(s.text)) loops.push(s.text);
+      else if (/^done\b/.test(s.text)) loops.pop();
+      const here = loops[loops.length - 1] ?? null;
+      for (const [name, ok] of [
+        ['OPTIONAL_ON', okOptional],
+        ['SECRET_FLAGS', okFlags],
+      ]) {
+        if (!new RegExp(`(?:^|[\\s;&|(])${name}\\s*\\+?=`).test(s.text)) continue;
+        if (!ok.some(([text, loop]) => s.text === text && (loop === null || loop === here)))
+          fail(
+            name === 'OPTIONAL_ON' ? 'optional-secret' : 'deploy-shape',
+            `deploy.sh:${s.no} sets ${name} in a way the reviewed kit does not`,
+          );
+      }
+    }
+    const loopHeaders = stmts['deploy.sh'].filter((s) =>
+      /^for NAME in \$OPTIONAL_ON; do$/.test(s.text),
+    );
+    if (loopHeaders.length !== 1)
+      fail(
+        'optional-secret',
+        'deploy.sh must map the optional names in "for NAME in $OPTIONAL_ON; do"',
+      );
+  }
+
   // ---- service.yaml and service-offline.yaml -------------------------------------------------------
   for (const y of YAMLS) {
     if (!files[y]) continue;

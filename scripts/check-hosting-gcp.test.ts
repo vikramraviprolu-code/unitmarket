@@ -1278,6 +1278,92 @@ const INFRA_A_CASES: Case[] = [
     'set -eu',
     'strict-mode',
   ],
+  // review F2: the offline account is pinned and reads only the offline secrets
+  [
+    'offline script runs as the sandbox runtime account name',
+    'deploy-offline.sh',
+    'OFFLINE_SA="ums-offline@',
+    'OFFLINE_SA="ums-runtime@',
+    'offline-shape',
+  ],
+  [
+    'setup sets the offline account to the sandbox runtime account',
+    'setup.sh',
+    'OFFLINE_SA="ums-offline@',
+    'OFFLINE_SA="ums-runtime@',
+    'offline-shape',
+  ],
+  [
+    'setup sets the offline account twice',
+    'setup.sh',
+    'echo "== billing"',
+    'OFFLINE_SA="ums-offline@${PROJECT_ID}.iam.gserviceaccount.com"\necho "== billing"',
+    'offline-shape',
+  ],
+  [
+    'setup offline loop also walks the required secrets',
+    'setup.sh',
+    'for NAME in $OFFLINE_SECRET_NAMES; do',
+    'for NAME in $OFFLINE_SECRET_NAMES $SECRET_NAMES; do',
+    'offline-shape',
+  ],
+  [
+    'setup binds the offline account at project level',
+    'setup.sh',
+    '--member="serviceAccount:${RUNTIME_SA}"',
+    '--member="serviceAccount:${OFFLINE_SA}"',
+    'offline-shape',
+  ],
+  [
+    'setup binds the runtime account inside the offline loop',
+    'setup.sh',
+    '--member="serviceAccount:${OFFLINE_SA}"',
+    '--member="serviceAccount:${RUNTIME_SA}"',
+    'offline-shape',
+  ],
+  [
+    'offline script names the runtime account',
+    'deploy-offline.sh',
+    'SECRET_FLAGS=""',
+    'OTHER_SA="$RUNTIME_SA"\nSECRET_FLAGS=""',
+    'offline-shape',
+  ],
+  // review F3: OPTIONAL_ON and SECRET_FLAGS come from the reviewed lines only
+  [
+    'OPTIONAL_ON starts with the connection name',
+    'deploy.sh',
+    'OPTIONAL_ON=""',
+    'OPTIONAL_ON=" UMS_PAYPAL_CONNECT"',
+    'optional-secret',
+  ],
+  [
+    'OPTIONAL_ON gets the mode name',
+    'deploy.sh',
+    'echo "== the database instance must be running"',
+    'OPTIONAL_ON="${OPTIONAL_ON} UMS_MODE"\necho "== the database instance must be running"',
+    'optional-secret',
+  ],
+  [
+    'OPTIONAL_ON grown with +=',
+    'deploy.sh',
+    'echo "== the database instance must be running"',
+    'OPTIONAL_ON+=" UMS_MODE"\necho "== the database instance must be running"',
+    'optional-secret',
+  ],
+  [
+    'OPTIONAL_ON appended outside its loop',
+    'deploy.sh',
+    'echo "== the database instance must be running"',
+    'OPTIONAL_ON="${OPTIONAL_ON} ${NAME}"\necho "== the database instance must be running"',
+    'optional-secret',
+  ],
+  [
+    'SECRET_FLAGS gets an extra mapping',
+    'deploy.sh',
+    'echo "== deploy $SERVICE',
+    'SECRET_FLAGS="${SECRET_FLAGS},UMS_MODE=UMS_MODE:latest"\necho "== deploy $SERVICE',
+    'deploy-shape',
+  ],
 ];
 
 // Legal edits of the new files that must stay accepted.
