@@ -77,7 +77,10 @@ export class FakePayPal implements PayPalPort {
   private createdBy = new Map<string, CreateOrderRes>();
   private capturedBy = new Map<string, CaptureRes>();
 
-  constructor(private readonly nowIso: () => string) {}
+  private readonly nowIso: () => string;
+  constructor(nowIso: () => string) {
+    this.nowIso = nowIso;
+  }
 
   count(op: FakeCall['op']): number {
     return this.calls.filter((c) => c.op === op).length;
