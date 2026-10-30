@@ -17,7 +17,7 @@ const run = (extra: Record<string, string>, ...args: string[]) => {
     cwd: CWD,
     encoding: 'utf8',
     input: '',
-    env: { PATH: process.env['PATH'] ?? '', HOME: CWD, ...extra },
+    env: { HOME: CWD, ...extra },
   });
   return { status: r.status, out: r.stdout, err: r.stderr };
 };

@@ -28,6 +28,14 @@ const PUB2 = 'Ledger Letters';
 const MERCH1 = 'MERCHPOND1';
 const MERCH2 = 'MERCHLEDGE2';
 
+const POLICY = {
+  id: 'keep_retrieve',
+  version: '1',
+  option: 'keep_retrieve',
+  window_ms: 432_000_000,
+  start_rule: 'payment_verified_and_delivery_ready',
+};
+
 type Db = Awaited<ReturnType<typeof openDatabase>>;
 const j = (v: unknown) => JSON.stringify(v);
 
@@ -46,7 +54,14 @@ const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 async function seedBuyer(
   db: Db,
   k: string,
-  o: { name: string; subject: string; brief: string; pub: string; article: string; merchant: string },
+  o: {
+    name: string;
+    subject: string;
+    brief: string;
+    pub: string;
+    article: string;
+    merchant: string;
+  },
 ) {
   const B = `buy_${k}`;
   await ins(db, 'buyers', { id: B, display_name: o.name, auth_subject: o.subject, country: 'US' });
@@ -175,7 +190,7 @@ async function seedBuyer(
     article_id: o.article,
     unit_id: `unt_${k}`,
     option: 'keep_retrieve',
-    policy: j({}),
+    policy: j(POLICY),
     money_state: 'captured',
     access_state: 'locked',
     licence_state: 'granted',
@@ -210,7 +225,8 @@ async function seedBuyer(
     environment: 'dryrun',
   });
   // The receipt body names the publisher (as a real one does) and never the buyer.
-  const body = j({ order_id: `ord_${k}`, lines: [{ publisher_display_name: o.pub, minor: 500 }] });
+  // Keys in the order jsonb hands them back (shorter first), so the stored text hashes the same after a read.
+  const body = j({ lines: [{ minor: 500, publisher_display_name: o.pub }], order_id: `ord_${k}` });
   await ins(db, 'receipts', {
     id: `rct_${k}`,
     order_id: `ord_${k}`,
@@ -307,6 +323,8 @@ const changedTables = (a: Record<string, string>, b: Record<string, string>): st
     .filter((k) => a[k] !== b[k])
     .sort();
 
+// Each call gets its own id seed, so two audit sinks in one test never mint the same id.
+let sinkCount = 0;
 function opts(db: Db, over: Record<string, unknown> = {}) {
   const clock = fakeClock(LATER);
   const out: string[] = [];
@@ -315,7 +333,7 @@ function opts(db: Db, over: Record<string, unknown> = {}) {
     args: {
       db,
       clock,
-      audit: createAuditSink(seededIds('privacy-test'), clock),
+      audit: createAuditSink(seededIds(`privacy-test-${String((sinkCount += 1))}`), clock),
       tty: TTY,
       ask: async () => 'buy_a',
       write: (line: string) => void out.push(line),
@@ -449,9 +467,13 @@ describe('delete', () => {
     ])
       expect(after[tbl], tbl).toBe(before[tbl]);
 
-    const buyer = await db.query(`SELECT display_name, auth_subject FROM buyers WHERE id = 'buy_a'`);
+    const buyer = await db.query(
+      `SELECT display_name, auth_subject FROM buyers WHERE id = 'buy_a'`,
+    );
     expect(buyer.rows).toEqual([{ display_name: pseudo, auth_subject: `deleted:${pseudo}` }]);
-    const brief = await db.query(`SELECT raw_text, structured FROM briefs WHERE buyer_id = 'buy_a'`);
+    const brief = await db.query(
+      `SELECT raw_text, structured FROM briefs WHERE buyer_id = 'buy_a'`,
+    );
     expect(brief.rows).toEqual([{ raw_text: '[removed]', structured: {} }]);
     const ses = await db.query(`SELECT revoked_at FROM sessions WHERE actor_id = 'buy_a'`);
     expect(ses.rows).toHaveLength(1);
@@ -506,8 +528,8 @@ describe('delete', () => {
     const detail = a.rows[0]!['detail'] as Record<string, unknown>;
     expect(detail).toMatchObject({ buyers: 1, briefs: 1, sessions_revoked: 1 });
     // Counts only. The audit sink adds one flag for the operator's second factor; it is not a personal value.
-    const { actor_mfa: _mfa, ...counts } = detail;
-    for (const v of Object.values(counts)) expect(typeof v).toBe('number');
+    for (const [k, v] of Object.entries(detail))
+      if (k !== 'actor_mfa') expect(typeof v, k).toBe('number');
     await db.close();
   }, 60_000);
 
@@ -527,7 +549,9 @@ describe('delete', () => {
   it('refuses an unknown buyer without writing anything', async () => {
     const db = await seed();
     const before = await dump(db);
-    const r = await runDelete(opts(db, { buyer_id: 'buy_nobody', ask: async () => 'buy_nobody' }).args);
+    const r = await runDelete(
+      opts(db, { buyer_id: 'buy_nobody', ask: async () => 'buy_nobody' }).args,
+    );
     expect(r).toEqual({ ok: false, error: 'unknown buyer' });
     expect(changedTables(before, await dump(db))).toEqual([]);
     await db.close();
@@ -586,7 +610,9 @@ describe('delete', () => {
     });
     const r = await runDelete(opts(db).args);
     expect(r).toMatchObject({ ok: true, value: { changed: true } });
-    const open = await db.query(`SELECT id FROM sessions WHERE actor_id = 'buy_a' AND revoked_at IS NULL`);
+    const open = await db.query(
+      `SELECT id FROM sessions WHERE actor_id = 'buy_a' AND revoked_at IS NULL`,
+    );
     expect(open.rows).toEqual([]);
     const n = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM audit_log`);
     expect(n.rows[0]!.n).toBe(2);
@@ -608,7 +634,9 @@ describe('guards', () => {
       [{ isTTY: true, env: { CLAUDE_CODE_REMOTE: 'true' } }, 'AI session'],
     ];
     for (const [tty, error] of cases) {
-      expect(await runExport({ db, now: new Date(LATER), tty, buyer_id: 'buy_a' } as never)).toEqual({
+      expect(
+        await runExport({ db, now: new Date(LATER), tty, buyer_id: 'buy_a' } as never),
+      ).toEqual({
         ok: false,
         error,
       });
