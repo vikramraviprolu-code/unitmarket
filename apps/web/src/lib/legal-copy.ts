@@ -192,13 +192,58 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     {
       heading: 'About these terms',
       paragraphs: [
-        'These terms say what publishers can expect in this demo. They are a draft written for the owners to read and approve. They are not legal advice, and they may change before the demo is submitted.',
+        'These terms say what publishers can expect in this demo. They are a draft written for the owners to read and approve. They are not legal advice, and they may change before the demo is submitted. They describe only what the demo does today.',
       ],
     },
     {
       heading: 'Publishers here are fictional',
       paragraphs: [
         'Every publisher in this demo is fictional. Their names, articles and prices are made up for the demo and have no connection to any real publisher.',
+      ],
+    },
+    {
+      heading: 'Not exclusive',
+      paragraphs: [
+        'These terms are not exclusive. A publisher may sell the same articles anywhere else. In this demo either side may stop at any time, and there are no fees.',
+      ],
+    },
+    {
+      heading: 'Your rights and our licence',
+      paragraphs: [
+        'When a publisher makes an offer for an article, it confirms that it owns the article or may license it. The publisher confirms this again with a rights checkbox on every revision of an offer, and UnitMarket stores that confirmation with the revision.',
+        'The publisher gives UnitMarket a licence to sell access to single articles. The licence is not exclusive and it covers this demo.',
+      ],
+    },
+    {
+      heading: 'What buyers get',
+      paragraphs: [
+        'A buyer gets personal use access to the article for the window shown on the offer, which is five days from verified payment and ready delivery. A buyer may not copy it for others, resell it or share the access. A copy a buyer has already downloaded cannot be recalled.',
+      ],
+    },
+    {
+      heading: 'Takedown and corrections',
+      paragraphs: [
+        "A publisher can withdraw an article at any time. Withdrawing stops new sales at once. If an operator decides that buyers must be repaid, for example after a takedown request, the operator refunds buyers in full, one unit at a time, and a full refund ends that buyer's access.",
+        'Once an offer is authorised, the content of the article does not change. A correction is published as a new article with a new offer. Buyers who already paid keep the version they bought for their window.',
+      ],
+    },
+    {
+      heading: 'Refunds',
+      paragraphs: [
+        'Refunds are decided by an operator, for each unit. A publisher cannot contest a refund in this demo. A refund is booked when PayPal confirms it. PayPal keeps the fee it charged on the original payment, so that fee is not returned when a payment is refunded.',
+      ],
+    },
+    {
+      heading: 'Disputes',
+      paragraphs: [
+        'This demo does not use the PayPal disputes service. It shows only the reversals that PayPal has confirmed. If a payment is disputed, the evidence is the stored delivery record for the unit, which shows when access was ready and when the links were used.',
+      ],
+    },
+    {
+      heading: 'Leaving',
+      paragraphs: [
+        "In this demo, leaving means a suspension by an operator. A suspended publisher's offers are hidden and no new approvals are accepted. A payment a buyer has already approved can still complete within its 15 minutes. The publisher keeps a final statement on its statement page.",
+        'Buyers keep the access they paid for until their window ends. There is no balance to settle, because UnitMarket uses no payout mechanism.',
       ],
     },
     {
@@ -214,10 +259,26 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
       ],
     },
     {
+      heading: 'Tax',
+      paragraphs: [
+        'No tax is calculated and no tax invoice is issued in this demo. Prices are the amounts the publisher sets. A receipt is a record of the sale, not a tax invoice.',
+      ],
+    },
+    {
       heading: 'Where the money goes',
       paragraphs: [
         'UnitMarket uses no payout mechanism. It does not call any PayPal payout service.',
         'Each publisher has a statement page. It adds up the stored records of each payment: sales, refunds and reversals. The PayPal fee is shown beside them when PayPal reported it, and is not subtracted.',
+      ],
+    },
+    {
+      heading: 'Contact',
+      paragraphs: ['Contact details will be added by the owners before submission.'],
+    },
+    {
+      heading: 'Governing law',
+      paragraphs: [
+        'No governing law or court is named in this demo, because no company has been set up yet.',
       ],
     },
     {

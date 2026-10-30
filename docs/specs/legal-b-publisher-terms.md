@@ -8,8 +8,9 @@ Goal: the publisher terms page covers: not exclusive; rights confirmation per re
 
 Outputs: `apps/web/src/lib/legal-copy.ts` (publisher doc only), `apps/web/src/golden/legal-copy.golden.txt`, `apps/web/src/legal-copy.golden.test.ts` (one new test), `README.md`, `docs/submission/submission-text.md`, `docs/submission/testing-instructions.md`, `docs/specs/overnight-plan.md` (MT-5 claim only).
 Acceptance tests:
+
 - `corepack pnpm test:golden apps/web/src/legal-copy.golden.test.ts`: passes (red before the copy change).
 - `corepack pnpm test:state apps/web/src/legal.state.test.ts`: passes unchanged.
 - `corepack pnpm check:no-live-host` and `corepack pnpm check:secrets-names`: pass.
 - `corepack pnpm exec prettier --check` on the changed files: passes.
-Do not: touch other pages, tests whose pinned copy did not change, code outside the files above, add dependencies.
+  Do not: touch other pages, tests whose pinned copy did not change, code outside the files above, add dependencies.
