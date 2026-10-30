@@ -51,3 +51,14 @@ create or print any real secret or the real `.env.local`; contact any network or
 settings; run `pkill`; run a suite without `--maxWorkers=2`.
 Disk: about 2.5 GB free; run `df -h /home` before heavy steps and stop under 400 MB; remove only your own temp folders.
 Evidence: commands with output, the scratch demonstration, the Dockerfile finding, a cost line.
+
+Known limits (review of 30 Oct 2026): Next also loads `.env.development.local`, `.env.production.local` and `.env`; a
+guarded name set there and not in `.env.local` is refused (the guard fails closed). Next expands `$NAME` inside values
+while `util.parseEnv` does not, so a guarded value containing `$` (for example a database URL password) is refused
+falsely; remove the `$` or quote the value. Cloud Run passes only because the image has no `.env.local`.
+
+Review fixes (coordinator approved the extra files): F1 `defaultReadEnvFile` and its `node:fs` import moved from `load.ts`
+to `packages/config/src/env-file.ts`, listed in `FS_ALLOWED` in `scripts/maintenance-flag.test.ts`. F2 the tests that spawn
+the safety CLI or the conformance runner use their own temp folder as `cwd` instead of the repository root, so a real
+`.env.local` there cannot trip the guard: `scripts/safety-launch.test.ts`, `scripts/safety-cli.test.ts`,
+`scripts/sandbox-conformance.integration.test.ts`, `scripts/safety-cli.postgres.integration.test.ts`.

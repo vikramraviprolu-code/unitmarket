@@ -2,9 +2,9 @@
 // plain object, so tests never touch the real environment.
 import { err, ok } from '@umsbx/contracts';
 import type { Result } from '@umsbx/contracts';
-import { readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { parseEnv } from 'node:util';
+import { defaultReadEnvFile } from './env-file';
 import type { BootRefusal } from './refusal';
 import { BOOT_REFUSAL_EXIT_CODE, refusalLine } from './refusal';
 import { makeSecret } from './secret';
@@ -440,15 +440,6 @@ export function findEnvOverride(env: Env, fileText: string): string | null {
   }
   return null;
 }
-
-const defaultReadEnvFile: EnvFileReader = (path) => {
-  try {
-    return readFileSync(path, 'utf8');
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw e;
-  }
-};
 
 function envFileRefusal(env: Env, read: EnvFileReader): BootRefusal | null {
   const text = read(join(process.cwd(), '.env.local'));
