@@ -1,9 +1,9 @@
 # Testing instructions for judges: draft for the owners (DOCS-B)
 
-Status: DRAFT written on 30 Oct 2026 against `main` at commit `cb8eabe`. The owners approve every word (decision item 69).
+Status: DRAFT, updated on 30 Oct 2026 against `main` at commit `a897c69` (first written at `cb8eabe`). The owners approve every word (decision item 69).
 Paste the block between the two rules below into the Devpost testing instructions field. Credentials appear only as the
 placeholders shown; the real values go into the Devpost form and nowhere else (decision items 22 and 24). Lines that start with
-**TO FINALISE** describe something that is not on `main` yet; remove or complete them before pasting.
+**TO FINALISE** mark something that is not true yet or needs a person; remove or complete them before pasting.
 
 ---
 
@@ -57,9 +57,9 @@ corepack pnpm check:secrets-names
 `test:e2e` runs the browser journeys; build the app first. The six test suites are `test:unit`, `test:state`, `test:contract`,
 `test:integration`, `test:adversarial` and `test:golden`. The whole offline check list is `corepack pnpm run ci` (several minutes).
 
-**TO FINALISE:** these Path A commands are copied from the README rewrite in the branch `feat/repo-compliance`, which is not on
-`main` yet, and from `package.json` scripts that are on `main`. Before submission, a person must run this path from a fresh clone of
-the public repository on a clean machine, time it, and fix any step that fails.
+These Path A commands match the README on `main` and the scripts in `package.json`. **TO FINALISE (human only):** before
+submission, a person must run this path from a fresh clone of the public repository on a clean machine, time it, and fix any step
+that fails. Nobody has done that yet.
 
 ### Path B: the hosted app
 
@@ -75,12 +75,13 @@ When hosted payments are live. The hosted app makes real PayPal sandbox calls on
 30 Nov, 7 Dec and 14 Dec 2026 (decision item 21), and only while the owners have switched the connection on. Outside those windows
 the connection is off and the app does not call PayPal.
 
-**TO FINALISE (decision item 23):** the plan says that outside the windows the hosted app runs a labelled Dry run path so a
-judge always has a working purchase. On `main` the hosted service runs in sandbox mode, its label reads "Sandbox", and with the
-connection off the outbound gate refuses PayPal calls, so a purchase does not complete (D-056: checkout paused, nothing charged).
-The owners must choose one of: (a) a second hosted service in offline mode for the Dry run, (b) a mode change in a reviewed infra
-change, or (c) word this section as "outside the windows, browse only; use Path A for a full purchase". Pick one and rewrite this
-paragraph. Until then, tell judges to use Path A for a purchase.
+**TO FINALISE (decision item 23, human only):** the plan says that outside the windows a judge always has a working purchase. On
+the hosted sandbox service this is not so: its label reads "Sandbox", and with the connection off the outbound gate refuses PayPal
+calls, so a purchase does not complete (D-056: checkout paused, nothing charged). The deploy kit now has a second service, the
+offline judge service (`infra/gcp/deploy-offline.sh`), which runs in offline mode with in memory data, no PayPal and the label
+"Dry run" from stored data. It is prepared and not deployed. If a person deploys it, add its URL here as Path B2 and say that a
+purchase completes there at any time. If not, word this section as "outside the windows, browse only; use Path A for a full
+purchase". Until one of these is done, tell judges to use Path A for a purchase.
 
 How to tell Sandbox from Dry run. Every page shows a label. "Sandbox" means the app is allowed to talk to the PayPal sandbox.
 "Dry run" means a pretend PayPal and no contact at all. The label comes from the stored environment of the order, not from a fixed
@@ -111,16 +112,23 @@ Operator (safety gate, about two minutes, best on Path A):
    do not press it.
 3. Refunds need an authenticator code held by the owners, so they are not part of the judge instructions.
 
-**TO FINALISE:** with the judge passcode (`UMS_JUDGE_PASSCODE_HASH`, JUDGE-A) a judge cannot sign in as Operator on the hosted app,
-so `/ops` and Stop are out of reach. Anyone who holds the demo passcode still can, without a code when no authenticator keys are
-set (accepted risk, D-040), so keep the demo passcode out of the Devpost form. The owners decide whether judges are told about the
-hosted `/ops` page at all. The offline judge service is unchanged: its single passcode still opens Operator there.
+The judge passcode (`UMS_JUDGE_PASSCODE_HASH`, JUDGE-A, merged) signs in Buyer A and Buyer B only, so a judge cannot reach `/ops`
+or Stop with it. Anyone who holds the demo passcode still can, without a code when no authenticator keys are set (accepted risk,
+D-040), so keep the demo passcode out of the Devpost form. The owners decide whether judges are told about the `/ops` page at all.
+The offline judge service is unchanged: its single passcode still opens Operator there, and Stop affects only that service's
+in memory data.
 
 Publisher:
 
-- On `main` the Publisher persona signs in but there are no publisher screens yet. **TO FINALISE (PUB-A1, PUB-B, PUB-C):** describe
-  the publisher console (offers and prices, sales, statement) only after it has merged, and state that it appears on the hosted app
-  only after the infra change and the publisher secret are in place (`docs/owner/DEPLOY-PREP-2026-11.md`).
+- On `main` the sign in page offers three publishers: Harbour Ledger, Quayside Gazette and Northfield Quarterly. They use their own
+  passcode (`UMS_PUBLISHER_PASSCODE_HASH`), not the demo or judge passcode; without it they refuse. A publisher sees a home page, its
+  offers with a revise and a withdraw action (new versions, within a price cap), a sales page and a statement page, and can ask for
+  a payee change that an operator checks. On Path A, make the publisher passcode as the README describes. **TO FINALISE (deploy,
+  human only):** the publisher area appears on the hosted app only after a person deploys it and stores the publisher secret
+  (`docs/owner/DEPLOY-PREP-2026-11.md`). Judges are not given the publisher passcode.
+
+Other things to look at, on Path A: the Appearance control in the footer (Bright Market and Deep Harbour), the in app reader on
+an article you own, and the four draft legal pages linked from the footer.
 
 ### What is real and what is not
 
@@ -131,8 +139,9 @@ Publisher:
 - Today both publishers are paid into one sandbox test account; multi-merchant payout not demonstrated. **TO FINALISE:** replace
   this line only if the Quayside test order has been proven (decision items 28 and 30).
 - No commission in this demo; planned 20 percent, not implemented.
-- AI: the pack is composed by a scripted model today. **TO FINALISE (AI-A):** if the Claude adapter is on for the hosted app, say
-  so here and name the spend cap and the scripted fall back.
+- AI: by default the pack is composed by a scripted model and no AI call is made. The Claude adapter is merged but off by default,
+  and no real AI call has ever been made with it. **TO FINALISE (AI-A, human only):** if a person switches the adapter on for the
+  hosted app and makes one real call, say so here and name the spend cap and the scripted fall back.
 
 ### Help
 

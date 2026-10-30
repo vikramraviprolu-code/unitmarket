@@ -1,12 +1,12 @@
-# Devpost submission text: draft for the owners (DOCS-B)
+# Devpost submission text: draft for the owners (DOCS-B, finalised against main)
 
-Status: DRAFT written on 30 Oct 2026 against `main` at commit `cb8eabe`. The owners approve every word (decision items 68 and 69,
+Status: DRAFT, updated on 30 Oct 2026 against `main` at commit `a897c69` (first written at `cb8eabe`). The owners approve every word (decision items 68 and 69,
 D-065). The submission closes Thu 12 Nov 2026, 12:00 PT (21:00 CET) and cannot be changed after that.
 
 How to read this file:
 
 - Each claim is followed by where it can be checked, in square brackets.
-- A line that starts with **TO FINALISE** is not true of `main` today. It is a slot for a feature that is planned or in a branch.
+- A line that starts with **TO FINALISE** is not true yet or needs a person to act. It is a slot for something planned, on a branch, or human only.
   Delete the line or fill it in only after the feature has merged and a reviewer has seen it work. Do not leave the marker in the
   Devpost form.
 - Wording rules: no italics, no dashes, only PayPal and Claude named as third party tools, no personal data, no credentials.
@@ -44,12 +44,17 @@ What is AI and what is code:
 
 - Code, not AI: the money path (order creation, capture, read back, ledger, refunds), the approval and the safety gate with its
   five locks, the access clock, delivery checks and receipts. [`domain/payments`, `domain/approval`, `packages/safety`]
-- Scripted model, not AI: today the brief parser and the pack composer are a deterministic scripted model. No AI model is called
-  on `main`. [`packages/model/src/scripted.ts`, `README.md` status]
-- **TO FINALISE (AI-A, D-067):** the Claude adapter. Say here, only once it has merged and a human has switched it on, that Claude
-  reads the buyer's need and proposes the pack, with read only tools, no PayPal data, a hard spend cap and a fall back to the
-  scripted model. If the adapter is not switched on for the hosted demo, say so: the rules ask for an AI tool inside the project,
-  so the owners must decide how to present this before 12 Nov.
+- Scripted model, not AI: by default the brief parser and the pack composer are a deterministic scripted model, and no AI call is
+  made. [`packages/model/src/scripted.ts`, `README.md` status]
+- The Claude adapter is merged and off by default. When a person sets `UMS_AI_ADAPTER=claude` and a key, Claude reads the buyer's
+  need and proposes the pack, with read only tools, no PayPal data, a hard spend cap, a stop switch and a fall back to the scripted
+  model. It has one fixed outbound address, reachable only from the transport package. The adapter has been tested only against a
+  scripted stand in; no real AI call has ever been made. [`packages/model`, decision D-067, specs AI-A and AI-H]
+- An operator evals page shows the evaluation cases, a verdict for each and a keyword baseline, run against the scripted model and
+  recorded results. [`/ops` evals page, spec AI-B]
+- **TO FINALISE (AI-A, human only):** a person must store the key, switch the adapter on for the hosted demo and make one real call
+  before this text may say that Claude runs in the demo. If that is not done, say so: the rules ask for an AI tool inside the
+  project, so the owners must decide how to present this before 12 Nov.
 
 ## What is real, what is a fixture, what is simulated
 
@@ -101,7 +106,7 @@ human run under a new approval row. This draft does not assume it happened.
 - Honest settlement. Paying a second, separate merchant needs a second sandbox account and a payee check by hand. We say which
   parts are demonstrated and which are not. [`docs/proposals/publisher-side-proposal-2026-10-30.md` section 4]
 - Fees. PayPal's fixed fee can exceed a very small sale, so the demo prices are set in the range 1.00 to 2.50 USD (decision item
-  37). **TO FINALISE (PUB-B):** say this only when the price change has merged.
+  37), applied as audited offer revisions. [spec PUB-B]
 
 ## Accomplishments that we are proud of
 
@@ -110,10 +115,14 @@ human run under a new approval row. This draft does not assume it happened.
   holds no credentials. [`pnpm check:no-live-host`, `pnpm check:secrets-names`]
 - A complete operator side: safety gate, Stop button, refunds behind an authenticator code, invariants that must hold.
 - Every claim in this text has a file or a check behind it.
-- **TO FINALISE (PUB-A1, PUB-C):** the publisher console, if it has merged and works on the hosted app. Check
-  `docs/owner/DEPLOY-PREP-2026-11.md`: the hosted app does not show it until a reviewed infra change and a secret are in place.
-- **TO FINALISE (SKIN-A, SKIN-B, READER-A, LEGAL-A):** two switchable skins, the in app reader, and four draft legal pages, each only
-  if merged.
+- A publisher area: three publisher sign-ins, offers that a publisher revises or withdraws within a price cap, a sales page, a
+  statement page, and payee change requests that an operator checks. An operator page shows each publisher's exposure and can
+  suspend a publisher. [specs PUB-A1, PUB-A2, PUB-B, PUB-C, PUB-D]
+- Two switchable skins with the Appearance control and a small motion set, an in app reader with a time left meter, sign out and
+  navigation per role, and four draft legal pages. [specs SKIN-A, SKIN-B, READER-A, LEGAL-A]
+- **TO FINALISE (deploy, human only):** none of the items in the last two bullets has been deployed to the hosted app. They appear
+  there only after a person deploys the reviewed commit and stores the optional secrets
+  (`docs/owner/DEPLOY-PREP-2026-11.md`). Until then they are shown by the offline run only.
 
 ## What we learned
 
@@ -128,8 +137,9 @@ human run under a new approval row. This draft does not assume it happened.
 - Prove a second merchant by paying one publisher directly into its own sandbox account, then say so. (Not done.)
 - Partner features that this demo does not use: platform fees and publisher onboarding. Commission is planned at 20 percent and is
   not implemented.
-- A publisher console where a publisher revises prices and sees its own sales and statement. **TO FINALISE:** state what has merged.
-- Per publisher sign in, a real payee check, and a full privacy export and delete flow.
+- Publisher offers, sales and statement are built for the demo. Not built: one sign in hash per publisher (today the three
+  publishers share one passcode hash), a real payee check by PayPal, and a privacy export and delete script (specified, not
+  written).
 - More publishers and a real catalogue of rights.
 
 ## Built with
@@ -145,8 +155,8 @@ has merged and is switched on. Claude is also named under "How we built it" as a
 - Video: public YouTube link, under 3 minutes (decision item 66).
 - Testing instructions: paste `docs/submission/testing-instructions.md`, with the credential placeholders replaced in the Devpost
   form only.
-- Licence: Apache-2.0 shown in the repository About. **TO FINALISE:** the LICENSE file and README rewrite are in the
-  `feat/repo-compliance` branch and are not on `main` yet.
+- Licence: Apache-2.0. The `LICENSE` file, the README and the notices file are on `main`. **TO FINALISE (human only):** set the
+  licence in the repository About section when the repository is made public.
 
 ## Open questions for the owners
 

@@ -10,17 +10,24 @@ Licence: Apache-2.0 (see `LICENSE`). Third party licences: `THIRD-PARTY-NOTICES.
 
 ## Status
 
-| Area                                 | State                                                                                                                                                                                       |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PayPal sandbox payments              | Real, observed in the owner's sittings (evidence in `docs/evidence/`): order, approval, capture and read back, and on 29 Oct 2026 a pack of two items paid as two separate sandbox payments |
-| Dry run (default)                    | Real code on a pretend PayPal. The same buyer journey, labelled "Dry run" from the stored environment, covered by the offline test suites and 27 browser journeys                           |
-| Settlement                           | In the 29 Oct sitting both publishers were paid into the same sandbox merchant account. A second merchant account for a separate publisher is planned, not done                             |
-| Discovery and pack composition       | Built. The default model is scripted (deterministic, no AI call)                                                                                                                            |
-| AI model adapter (Claude)            | Merged, off by default, with spend caps and a stop switch. Without `UMS_AI_ADAPTER=claude` and a key the scripted model answers and no network call is made                                 |
-| Publisher pages                      | Merged. Three publisher sign-ins, a read only publisher home, and payee change requests that an operator checks before anything changes                                                     |
-| Two skins and the Appearance control | Merged. Bright Market and Deep Harbour, chosen in the footer                                                                                                                                |
-| Legal pages                          | Merged as drafts for the owners to approve: terms of purchase, privacy notice, refund policy and publisher terms. Not legal advice                                                          |
-| Hosted demo URL                      | Not published in this README. Run it offline as described below                                                                                                                             |
+| Area                                 | State                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PayPal sandbox payments              | Real, observed in the owner's sittings (evidence in `docs/evidence/`): order, approval, capture and read back, and on 29 Oct 2026 a pack of two items paid as two separate sandbox payments                                                                                                                    |
+| Dry run (default)                    | Real code on a pretend PayPal. The same buyer journey, labelled "Dry run" from the stored environment, covered by the offline test suites and 27 browser tests                                                                                                                                                 |
+| Settlement                           | In the 29 Oct sitting both publishers were paid into the same sandbox merchant account. Paying Quayside Gazette directly into its own account is not built or tested; it needs a second sandbox Business account made by a person                                                                              |
+| Discovery and pack composition       | Built. The default model is scripted (deterministic, no AI call)                                                                                                                                                                                                                                               |
+| AI model adapter (Claude)            | Merged, off by default, with spend caps and a stop switch. Without `UMS_AI_ADAPTER=claude` and a key the scripted model answers and no network call is made. No real AI call has ever been made with it                                                                                                        |
+| Operator evals page                  | Merged. Shows the evaluation cases and verdicts against the scripted model and recorded results, with a keyword baseline                                                                                                                                                                                       |
+| Publisher area                       | Merged. Three publisher sign-ins and personas, a publisher home, offers that a publisher can revise or withdraw as new versions within a price cap, a sales page and a statement page, and payee change requests that an operator checks before anything changes (verification is refused outside the dry run) |
+| Operator publishers page             | Merged. Shows each publisher's exposure and lets an operator suspend a publisher. An approval made before a suspension can still be placed inside its 15 minute window (known gap, pinned by a test)                                                                                                           |
+| Reader view                          | Merged. Articles open in the app with a time left meter and a per reader rate limit                                                                                                                                                                                                                            |
+| Judge passcode                       | Merged. A separate passcode (`UMS_JUDGE_PASSCODE_HASH`, a hash, never the value) that signs in the two buyer personas only. Operator and publisher sign-ins refuse it                                                                                                                                          |
+| Two skins and the Appearance control | Merged. Bright Market and Deep Harbour, chosen in the footer, with the motion set. Each skin is one fixed palette                                                                                                                                                                                              |
+| Sign out and navigation              | Merged. Sign out, and a navigation bar that differs for buyer, publisher and operator                                                                                                                                                                                                                          |
+| Legal pages                          | Merged as drafts for the owners to approve: terms of purchase, privacy notice, refund policy and publisher terms. Not legal advice                                                                                                                                                                             |
+| Deploy kit                           | Merged and prepared, not run by an agent. It maps optional secrets by name and has an offline judge service variant. A person deploys it. No hosted deploy has happened with the publisher area, the reader view, the skins, the judge passcode or the AI adapter                                              |
+| Buyer cancel of an unpaid order      | TO FINALISE. Built on a branch (`feat/order-a-cancel`), not on `main`                                                                                                                                                                                                                                          |
+| Hosted demo URL                      | Not published in this README. Run it offline as described below                                                                                                                                                                                                                                                |
 
 Simulation and fixture results prove the modelled cases only, not PayPal compatibility in general.
 
@@ -71,11 +78,15 @@ To make one, run `corepack pnpm owner:secrets` again at a terminal and type a di
 
 By default a scripted model answers and no AI call is made. To try the Claude adapter, set `UMS_AI_ADAPTER=claude` and `UMS_ANTHROPIC_API_KEY` in your own `.env.local`. Names are listed in `.env.example`; never paste a key anywhere else.
 
+### Judge passcode (optional)
+
+A separate passcode lets a judge sign in as Buyer A or Buyer B without being able to reach `/ops` or any publisher page. The variable name is `UMS_JUDGE_PASSCODE_HASH`; it holds a hash, never the passcode, and it must differ from the demo and publisher hashes. Make it the same way as the publisher hash above. Without it no judge passcode exists.
+
 Checks you can run without any credential:
 
 ```sh
 corepack pnpm test:unit        # one of six suites: unit, state, contract, integration, adversarial, golden
-corepack pnpm test:e2e         # 27 browser journeys on the dry run; build the app first
+corepack pnpm test:e2e         # 27 browser tests on the dry run; build the app first
 corepack pnpm check:licences   # dependency licence audit
 corepack pnpm run ci           # every offline check, several minutes
 ```

@@ -137,3 +137,84 @@ copyrighted music, no third-party trademarks; the work must be solely owned by t
 
 No PayPal call and no approval row. No creation of accounts, keys or secrets. No deploy to Google Cloud (Sakthi runs
 the deploy command prepared at the end). No YouTube upload. No repo visibility change. No tag.
+
+## Status of each item at `a897c69` (30 Oct 2026, FINALISE-DOCS)
+
+DONE means built and merged on `main` (or a decision taken and recorded). PARTIAL means some of it is built or drafted and the rest
+is open. HUMAN-ONLY means a person must act; no agent may. Commit pointers are in `MORNING-HANDOVER-2026-10-31.md`. The ORDER-A
+lane (buyer cancel of an unpaid order) is not an item here and is TO FINALISE on branch `feat/order-a-cancel`.
+
+| #   | Status     | One line                                                                                                 |
+| --- | ---------- | -------------------------------------------------------------------------------------------------------- |
+| 1   | PARTIAL    | Rules recorded as D-065; the re-checks on 5 Nov and 11 Nov are a person's job                            |
+| 2   | HUMAN-ONLY | Representative is chosen and registered by Vikram                                                        |
+| 3   | HUMAN-ONLY | Each member confirms eligibility in writing                                                              |
+| 4   | HUMAN-ONLY | Ownership and prize split agreement                                                                      |
+| 5   | HUMAN-ONLY | Devpost registration and draft by 6 Nov                                                                  |
+| 6   | DONE       | The sandbox repo is the entry; the simulation repo stays private                                         |
+| 7   | DONE       | Apache-2.0 `LICENSE` on `main`; setting it in the About section waits for going public                   |
+| 8   | DONE       | Licence audit and `THIRD-PARTY-NOTICES.md`; `check:licences` runs in `ci`                                |
+| 9   | HUMAN-ONLY | Go public after the full history scan                                                                    |
+| 10  | PARTIAL    | Incident rows D-059, D-061, D-063 are in the log; a person checks that no values appear before public    |
+| 11  | DONE       | README rewrite with status, demo path, offline run and optional modes                                    |
+| 12  | HUMAN-ONLY | Freeze, submit and tag `submission-1` are a person's actions                                             |
+| 13  | PARTIAL    | Claude adapter merged and off by default; no key stored, no real AI call ever made                       |
+| 14  | DONE       | D-067 replaces "no Claude API ever" with a controlled exception                                          |
+| 15  | PARTIAL    | One fixed egress inside the transport package and the switch are built; the key is human only            |
+| 16  | PARTIAL    | Spend caps and scripted fallback built; the model price needs an owner re-check (assumption 8)           |
+| 17  | DONE       | Agentic framing is in the submission draft: the agent finds and composes, a person approves              |
+| 18  | DONE       | Operator evals page merged                                                                               |
+| 19  | PARTIAL    | Injection tests run against a stand in transport; nothing run against the real service, no README result |
+| 20  | PARTIAL    | Path A (offline) is written and matches the README; the hosted path waits for a deploy                   |
+| 21  | HUMAN-ONLY | Three seven day windows each need a new basis and approval row                                           |
+| 22  | HUMAN-ONLY | Judge sandbox buyer account is created and rotated by a person                                           |
+| 23  | PARTIAL    | Offline judge service prepared in the deploy kit (INFRA-A); a person must deploy it                      |
+| 24  | PARTIAL    | Judge passcode merged (JUDGE-A); its value and rotation are human only                                   |
+| 25  | HUMAN-ONLY | Vikram keeps the developer account until about 21 Dec                                                    |
+| 26  | HUMAN-ONLY | GCP budget alert                                                                                         |
+| 27  | DONE       | Publisher area merged: personas, offers, sales, statement, payee requests, operator page                 |
+| 28  | HUMAN-ONLY | Quayside direct payee is not built or tested; needs a second account, a command and a new approval row   |
+| 29  | HUMAN-ONLY | Second sandbox Business account is made by a person                                                      |
+| 30  | HUMAN-ONLY | Narrow approval row inserted at a terminal                                                               |
+| 31  | PARTIAL    | The freeze rule is recorded; the payee change is merged; ORDER-A (money path) is still unmerged          |
+| 32  | DONE       | Payouts API not used (D-004 kept)                                                                        |
+| 33  | HUMAN-ONLY | Leave the Payouts box unticked on the PayPal app                                                         |
+| 34  | PARTIAL    | Separate publisher passcode hash built; one hash serves all three publishers; value is human only        |
+| 35  | DONE       | Offer price cap `UMS_OFFER_MAX_MINOR`, default 2000 minor units                                          |
+| 36  | DONE       | Commission wording in the drafts and legal pages                                                         |
+| 37  | DONE       | Demo prices 1.00 to 2.50 USD applied as audited offer revisions                                          |
+| 38  | DONE       | Bright Market and Deep Harbour merged as switchable skins                                                |
+| 39  | DONE       | Bright Market is the default skin                                                                        |
+| 40  | DONE       | Appearance control in the footer, cookie based                                                           |
+| 41  | DONE       | Nothing built from the other options; previews kept under `docs/design/ui-options`                       |
+| 42  | DONE       | Phase 1A screen fixes merged                                                                             |
+| 43  | DONE       | Motion set merged with the skins; amounts never animate                                                  |
+| 44  | DONE       | In app reader with the time left meter merged                                                            |
+| 45  | DONE       | Receipt shows titles and publisher                                                                       |
+| 46  | DONE       | Browse all when nothing matches                                                                          |
+| 47  | DONE       | Approval step stays still in both skins                                                                  |
+| 48  | DONE       | Sponsor tools skipped; the 10 Nov revisit is a person's call                                             |
+| 49  | PARTIAL    | Four legal pages merged as drafts; the owners must approve them; not legal advice                        |
+| 50  | DONE       | Terms are shown before the tick                                                                          |
+| 51  | DONE       | Privacy notice on sign in                                                                                |
+| 52  | PARTIAL    | Script is specified (`docs/specs/ops-privacy-export-delete.md`) and not written                          |
+| 53  | PARTIAL    | Receipt and full order reference fixes merged; the library time statement was not re-checked here        |
+| 54  | DONE       | Merchant id removed from buyer data                                                                      |
+| 55  | PARTIAL    | Keyboard checklist written; the pass and the axe-core dependency are not done                            |
+| 56  | HUMAN-ONLY | ZAP scan run by Sakthi on a local copy                                                                   |
+| 57  | DONE       | Threat model at `docs/design/threat-model.md`                                                            |
+| 58  | DONE       | Environment guard merged                                                                                 |
+| 59  | PARTIAL    | D-045 waiver kept; the two optional timing tests are not written                                         |
+| 60  | HUMAN-ONLY | Recorder fix merged (B-13); the fixtures push is Sakthi's                                                |
+| 61  | HUMAN-ONLY | Finishing hosted payments needs the approval row and a real run before 3 Nov                             |
+| 62  | DONE       | Rehearsal rows left and documented, because approval rows are append only                                |
+| 63  | HUMAN-ONLY | Hosted passcode, test logins, `calls.json`, billing viewer, GitHub Admin                                 |
+| 64  | HUMAN-ONLY | Rotate secrets before going public                                                                       |
+| 65  | HUMAN-ONLY | Sakthi's extra GCP role is changed after 3 Nov                                                           |
+| 66  | HUMAN-ONLY | Video recording under its own approval row                                                               |
+| 67  | PARTIAL    | Publishers and articles are fictional; blurring emails in the video is a person's job                    |
+| 68  | PARTIAL    | Submission text updated against `main`; owners approve; human only markers remain                        |
+| 69  | PARTIAL    | Testing instructions updated against `main`; owners approve; human only markers remain                   |
+| 70  | PARTIAL    | WordPress not started; the signed link branch is paused (D-064)                                          |
+| 71  | DONE       | WordPress host and brand deferred as decided                                                             |
+| 72  | DONE       | Working pattern under D-066; the builder cap was raised to six (assumption 20)                           |
