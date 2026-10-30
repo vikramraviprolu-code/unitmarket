@@ -42,11 +42,15 @@ function sandboxEnv(dir: string, extra: Record<string, string> = {}): Record<str
   };
 }
 
-/** The node arguments of a package.json script, exactly as the script string spells them. */
+/** The node arguments of a package.json script, as the script string spells them; a repo path is made absolute because the child runs in a temp folder. */
 function nodeArgs(script: string, rest: string[]): string[] {
   const m = /^node\s+(.*)$/.exec(script);
   if (m === null) throw new Error(`not a plain node command: ${script}`);
-  return [...(m[1] as string).split(/\s+/).filter(Boolean), ...rest];
+  const words = (m[1] as string)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => (w.startsWith('scripts/') ? join(REPO_ROOT, w) : w));
+  return [...words, ...rest];
 }
 
 describe('the package.json operator scripts', () => {
@@ -79,7 +83,7 @@ describe('the status command against a fake sandbox config', () => {
     a.startsWith('--env-file') ? '--env-file-if-exists=/nonexistent/.env.local' : a,
   );
   const r = spawnSync(process.execPath, args, {
-    cwd: REPO_ROOT,
+    cwd: dir,
     encoding: 'utf8',
     timeout: 120_000,
     env: sandboxEnv(dir),
@@ -114,7 +118,7 @@ describe('the in-process helper keeps process.execArgv free of the flagged optio
       ].join('\n'),
     );
     const r = spawnSync(process.execPath, [probe], {
-      cwd: REPO_ROOT,
+      cwd: dir,
       encoding: 'utf8',
       timeout: 60_000,
       env: sandboxEnv(dir),
@@ -140,7 +144,7 @@ describe('the in-process helper keeps process.execArgv free of the flagged optio
         join(REPO_ROOT, 'scripts/safety-cli.mjs'),
         'status',
       ],
-      { cwd: REPO_ROOT, encoding: 'utf8', timeout: 120_000, env: sandboxEnv(dir) },
+      { cwd: dir, encoding: 'utf8', timeout: 120_000, env: sandboxEnv(dir) },
     );
     expect(`${r.stdout}${r.stderr}`).toContain('transport_env_override');
     expect(r.status).toBe(78);
@@ -157,7 +161,7 @@ describe('the guard is unchanged: an added flag or NODE_OPTIONS is still refused
   );
   const run = (flags: string[], env: Record<string, string> = {}) =>
     spawnSync(process.execPath, [...flags, ...base], {
-      cwd: REPO_ROOT,
+      cwd: dir,
       encoding: 'utf8',
       timeout: 120_000,
       env: sandboxEnv(dir, env),

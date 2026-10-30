@@ -2,11 +2,14 @@
 // plain object, so tests never touch the real environment.
 import { err, ok } from '@umsbx/contracts';
 import type { Result } from '@umsbx/contracts';
-import { posix } from 'node:path';
+import { join, posix } from 'node:path';
+import { parseEnv } from 'node:util';
+import { defaultReadEnvFile } from './env-file';
 import type { BootRefusal } from './refusal';
 import { BOOT_REFUSAL_EXIT_CODE, refusalLine } from './refusal';
 import { makeSecret } from './secret';
 import {
+  AI_ADAPTERS,
   KNOWN_CORRIDORS,
   LEARN_UNTIL_PATTERN,
   MAINTENANCE_FLAG_NAME,
@@ -14,12 +17,14 @@ import {
   MERCHANT_ID_PATTERN,
   MIN_SECRET_BYTES,
   MIN_TOTP_KEY_BYTES,
+  OFFER_MAX_MINOR_DEFAULT,
+  OFFER_MAX_MINOR_LIMIT,
   OPERATOR_NAME_PATTERN,
   OUTBOUND_SCOPES,
   RESERVED_OPERATOR_NAME,
   isPublicOrigin,
 } from './schema';
-import type { Config, Mode, OutboundScope } from './schema';
+import type { AiAdapter, Config, Mode, OutboundScope } from './schema';
 
 type Env = Record<string, string | undefined>;
 
@@ -383,6 +388,44 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
     maintenance_flag = rawFlag;
   }
 
+  // 17. the publisher passcode hash (CFG-0, D-065 item 34): optional, same shape as the demo hash, and
+  // never equal to it (a separate hash is the point). Equality ignores the separator form, so the `:` and
+  // `$` spellings of one hash count as equal. The error names the variable, never the value.
+  const publisher_passcode_hash = val(env, 'UMS_PUBLISHER_PASSCODE_HASH') ?? null;
+  if (publisher_passcode_hash !== null) {
+    if (!PASSCODE_HASH_SHAPE.test(publisher_passcode_hash))
+      return refuse('invalid_value', 'UMS_PUBLISHER_PASSCODE_HASH');
+    if (
+      passcode_hash !== null &&
+      passcode_hash.replaceAll('$', ':') === publisher_passcode_hash.replaceAll('$', ':')
+    )
+      return refuse('equal_secrets', 'UMS_PUBLISHER_PASSCODE_HASH');
+  }
+
+  // 18. the largest offer price in minor units (CFG-0, D-065 item 35): a plain integer 1 to 2000.
+  const rawOfferMax = val(env, 'UMS_OFFER_MAX_MINOR');
+  let offer_max_minor = OFFER_MAX_MINOR_DEFAULT;
+  if (rawOfferMax !== undefined) {
+    if (!/^[1-9][0-9]{0,3}$/.test(rawOfferMax))
+      return refuse('invalid_value', 'UMS_OFFER_MAX_MINOR');
+    offer_max_minor = Number(rawOfferMax);
+    if (offer_max_minor > OFFER_MAX_MINOR_LIMIT)
+      return refuse('invalid_value', 'UMS_OFFER_MAX_MINOR');
+  }
+
+  // 19. the model adapter and its key (CFG-0): an exact known value; the key is read only for claude and
+  // is then required. The name is UMS_ANTHROPIC_API_KEY on purpose; ANTHROPIC_API_KEY is never read.
+  const rawAdapter = val(env, 'UMS_AI_ADAPTER') ?? 'scripted';
+  if (!(AI_ADAPTERS as readonly string[]).includes(rawAdapter))
+    return refuse('invalid_value', 'UMS_AI_ADAPTER');
+  const ai_adapter = rawAdapter as AiAdapter;
+  let ai_api_key: Config['ai_api_key'] = null;
+  if (ai_adapter === 'claude') {
+    const key = val(env, 'UMS_ANTHROPIC_API_KEY');
+    if (key === undefined) return refuse('missing_value', 'UMS_ANTHROPIC_API_KEY');
+    ai_api_key = makeSecret(key);
+  }
+
   return ok<Config>({
     mode,
     connect,
@@ -395,6 +438,10 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
     approval_secret: makeSecret(secretValues[1] ?? ''),
     link_secret: makeSecret(secretValues[2] ?? ''),
     passcode_hash,
+    publisher_passcode_hash,
+    offer_max_minor,
+    ai_adapter,
+    ai_api_key,
     operator_totp_keys: totp.value,
     webhook_cert_learn_until,
     public_origin,
@@ -406,12 +453,59 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
   });
 }
 
+// F8 (D-059): Node's --env-file-if-exists and Next never replace a value the process already holds, so a
+// terminal that still exports DATABASE_URL, UMS_DB or UMS_PAYPAL_CONNECT silently beats .env.local.
+// The names below are compared with the file; every other name, every secret included, never is.
+const GUARDED_NAMES: readonly string[] = [
+  'UMS_MODE',
+  'UMS_PAYPAL_CONNECT',
+  'UMS_DB',
+  'UMS_PGLITE_DIR',
+  'DATABASE_URL',
+  'UMS_OUTBOUND_APPROVAL_REF',
+  'UMS_OUTBOUND_SCOPE',
+  'UMS_OWN_MERCHANT_ID',
+  'UMS_PUBLIC_ORIGIN',
+];
+
+/** Reads a file as text; null when it does not exist. */
+export type EnvFileReader = (path: string) => string | null;
+
+/**
+ * The first guarded name for which the process holds a value and the file holds a different one or none.
+ * A name the process does not hold is skipped (the file was not loaded, as in tests). Returns the name,
+ * never a value. Parsed with util.parseEnv, the parser behind --env-file.
+ */
+export function findEnvOverride(env: Env, fileText: string): string | null {
+  const file = parseEnv(fileText);
+  for (const name of GUARDED_NAMES) {
+    const held = env[name];
+    if (held === undefined) continue;
+    if (file[name] !== held) return name;
+  }
+  return null;
+}
+
+function envFileRefusal(env: Env, read: EnvFileReader): BootRefusal | null {
+  const text = read(join(process.cwd(), '.env.local'));
+  if (text === null) return null;
+  const name = findEnvOverride(env, text);
+  return name === null ? null : { code: 'env_overrides_file', name };
+}
+
 // Refuses to boot with exit code 78. The message names the variable and the rule, never a value.
+// With readEnvFile the env is also checked against .env.local first (loadConfigFromProcess does the same).
 export function bootOrExit(
   env: Env,
   exit: (code: number) => never,
   write: (line: string) => void,
+  readEnvFile?: EnvFileReader,
 ): Config {
+  const overridden = readEnvFile === undefined ? null : envFileRefusal(env, readEnvFile);
+  if (overridden !== null) {
+    write(refusalLine(overridden));
+    return exit(BOOT_REFUSAL_EXIT_CODE);
+  }
   const r = loadConfig(env, { execArgv: process.execArgv });
   if (!r.ok) {
     write(refusalLine(r.error));
@@ -433,7 +527,17 @@ export function terminalEnv(): Record<string, string | undefined> {
   };
 }
 
-/** The one place that hands the real environment to loadConfig. */
-export function loadConfigFromProcess(): Result<Config, BootRefusal> {
+export interface ProcessLoadOptions {
+  /** Reads .env.local; the default reads the file with fs and gives null when it is missing. */
+  readEnvFile?: EnvFileReader;
+}
+
+/**
+ * The one place that hands the real environment to loadConfig. A .env.local in the current folder that
+ * the process environment overrides (see findEnvOverride) is refused before loadConfig runs.
+ */
+export function loadConfigFromProcess(opts: ProcessLoadOptions = {}): Result<Config, BootRefusal> {
+  const overridden = envFileRefusal(process.env, opts.readEnvFile ?? defaultReadEnvFile);
+  if (overridden !== null) return err<BootRefusal>(overridden);
   return loadConfig(process.env, { execArgv: process.execArgv });
 }
