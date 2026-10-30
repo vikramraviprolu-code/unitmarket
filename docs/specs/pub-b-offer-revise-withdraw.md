@@ -64,10 +64,15 @@ Deviations from the text above, each with its reason; the owner or the reviewer 
   `publisher_not_active` (publisher status is not `active`) and `not_live` (a draft cannot be changed here).
   A withdraw also writes an authorisation row (attestation text null: nothing was ticked) so that every change
   is a version plus an authorisation row.
-- Demo prices run for an offer that has never been revised (one version row). The spec text revises "every
+- Demo prices run only for the seed offers (SEED_DATA and the composite supplement, by id), so an offer a
+  publisher creates later is never clamped under a seed audit row, and only for an offer that has never been
+  revised (one version row). The spec text revises "every
   current authorised USD offer outside 100 to 250", which would clamp a price a publisher chose on every
   later boot; this way the step is idempotent and a publisher's edit is never undone. The authorisation row of
-  a demo revision records `SEED-DEMO-PRICES-37`, not the publisher attestation text, because no one ticked it.
+  a demo revision records `SEED-DEMO-PRICES-37` (no one ticked the attestation) and, with the audit row, names
+  the system, not the publisher, who made no change. A throwing step is caught at boot and logged as one line
+  with the error name only; it never stops the app. The e2e expectations for tide tables moved from $0.40 to
+  $1.00: the old ones contradicted decision 37 (the e2e server runs with NODE_ENV=production).
 - The boot gate is `NODE_ENV !== 'test' || test_seed.demo_prices === true`, not `test_seed.demo_prices !== false`.
   Tests that build an app through `createApp` (about 30 call sites under `tests/`, `scripts/`, `apps/web`) keep
   the seed prices without each one passing a flag; `bootTestApp` needed no change, so `support.ts` is untouched.

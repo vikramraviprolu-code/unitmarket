@@ -213,6 +213,11 @@ interface Mark {
   attestation_version: string | null;
   /** The audit reason of a revise (a withdraw takes the publisher's own reason). */
   reason: string | null;
+  /**
+   * True for a change the platform made on its own (the demo price step): the authorisation row and the
+   * audit row then name the system, not the publisher, so no one is shown a version they did not make.
+   */
+  by_system?: boolean;
 }
 
 export interface ReviseInput {
@@ -366,13 +371,16 @@ async function writeVersion(
           `auth_${offer_id}_${version}`,
           offer_id,
           version,
-          actor.publisher_id,
+          change.kind === 'revise' && change.mark.by_system === true
+            ? 'system'
+            : actor.publisher_id,
           at,
           change.kind === 'revise' ? change.mark.attestation_version : null,
         ],
       );
       await deps.audit.record(tx, {
-        actor,
+        actor:
+          change.kind === 'revise' && change.mark.by_system === true ? { kind: 'system' } : actor,
         action: change.kind === 'revise' ? 'offer.revised' : 'offer.withdrawn',
         target: offer_id,
         reason: change.kind === 'revise' ? change.mark.reason : change.reason,

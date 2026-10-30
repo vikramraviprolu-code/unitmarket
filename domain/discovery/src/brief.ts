@@ -93,7 +93,8 @@ export async function parseNeed(
         language: brief.language,
         terms: brief.terms,
       }),
-      d.model.model_id,
+      // AI-H: the model that really answered (a Claude fallback says scripted-v1), else the port id.
+      response.served_model ?? d.model.model_id,
       now,
     ],
   );

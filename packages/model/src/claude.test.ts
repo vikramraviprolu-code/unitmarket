@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ModelResponseSchema } from '@umsbx/contracts';
 import type { Clock, ModelPort, ModelRequest, ModelSpendStore, ModelWire } from '@umsbx/contracts';
 import {
   BRIEF_SYSTEM,
@@ -57,7 +58,13 @@ const COMPOSE_OUT = { picks: [{ offer_id: 'ofr_a', reason: 'Matches solar.' }], 
 
 const envelope = (
   text: string,
-  over: { stop_reason?: string; status?: number; usage?: unknown; content?: unknown } = {},
+  over: {
+    stop_reason?: string;
+    status?: number;
+    usage?: unknown;
+    content?: unknown;
+    model?: unknown;
+  } = {},
 ) => ({
   status: over.status ?? 200,
   body: JSON.stringify({
@@ -67,6 +74,7 @@ const envelope = (
     content: over.content ?? [{ type: 'text', text }],
     stop_reason: over.stop_reason ?? 'end_turn',
     usage: over.usage ?? { input_tokens: 11, output_tokens: 22 },
+    ...(over.model === undefined ? {} : { model: over.model }),
   }),
 });
 
@@ -152,6 +160,7 @@ describe('a good answer', () => {
       output: BRIEF_OUT,
       input_tokens: 11,
       output_tokens: 22,
+      served_model: 'claude-haiku-5-5',
     });
     expect(r.fallbackSpy).not.toHaveBeenCalled();
   });
@@ -173,6 +182,7 @@ describe('a good answer', () => {
       },
       input_tokens: 11,
       output_tokens: 22,
+      served_model: 'claude-haiku-5-5',
     });
     expect(r.fallbackSpy).not.toHaveBeenCalled();
   });
@@ -398,5 +408,46 @@ describe('the adapter never throws', () => {
   it('a wire that rejects with a plain string still gets an answer from the fallback', async () => {
     const r = rig(() => Promise.reject('plain string'));
     expect((await r.model.complete(briefReq())).kind).toBe('ok');
+  });
+});
+
+// AI-H: each answer says which model really produced it.
+describe('the served model id (AI-H)', () => {
+  const served = (x: Awaited<ReturnType<ModelPort['complete']>>) =>
+    x.kind === 'ok' ? x.served_model : 'error';
+  it('a Claude answer carries the id the API reported', async () => {
+    const r = rig(() =>
+      envelope(JSON.stringify(BRIEF_OUT), { model: 'claude-haiku-5-5-20261001' }),
+    );
+    expect(served(await r.model.complete(briefReq()))).toBe('claude-haiku-5-5-20261001');
+  });
+  it('a Claude answer without a model field says the adapter model', async () => {
+    const r = rig(() => envelope(JSON.stringify(COMPOSE_OUT)));
+    expect(served(await r.model.complete(composeReq()))).toBe(CLAUDE_MODEL_ID);
+  });
+  it('an odd model field (not a plain id) is not copied', async () => {
+    for (const odd of ['x'.repeat(200), 'a b', 'https://evil.example', '', 5, null, { a: 1 }]) {
+      const r = rig(() => envelope(JSON.stringify(BRIEF_OUT), { model: odd }));
+      expect(served(await r.model.complete(briefReq())), String(odd)).toBe(CLAUDE_MODEL_ID);
+    }
+  });
+  it('a fallback answer says scripted-v1, not the Claude id', async () => {
+    const r = rig(() => envelope('not json'));
+    expect(served(await r.model.complete(briefReq()))).toBe('scripted-v1');
+    expect(r.fallbackSpy).toHaveBeenCalledTimes(1);
+  });
+  it('the scripted model says scripted-v1', async () => {
+    expect(served(await createScriptedModel().complete(briefReq()))).toBe('scripted-v1');
+  });
+  it('the contract accepts and bounds served_model', () => {
+    const ok = { kind: 'ok', output: {}, input_tokens: 0, output_tokens: 0 };
+    expect(ModelResponseSchema.safeParse({ ...ok, served_model: 'scripted-v1' }).success).toBe(
+      true,
+    );
+    expect(ModelResponseSchema.safeParse(ok).success).toBe(true);
+    expect(ModelResponseSchema.safeParse({ ...ok, served_model: '' }).success).toBe(false);
+    expect(ModelResponseSchema.safeParse({ ...ok, served_model: 'x'.repeat(200) }).success).toBe(
+      false,
+    );
   });
 });

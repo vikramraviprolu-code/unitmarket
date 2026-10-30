@@ -468,7 +468,8 @@ describe('applyDemoPrices (decision 37)', () => {
     expect(audit.rows.map((r) => r.target)).toEqual([FEES, KNOT, QUAY, TIDE].sort());
     for (const r of audit.rows) {
       expect(r.reason).toBe('seed: demo prices (decision 37)');
-      expect(r.actor_kind).toBe('publisher');
+      // The platform made the change, not the publisher.
+      expect(r.actor_kind).toBe('system');
     }
     for (const id of [TIDE, FEES, KNOT, QUAY]) {
       const v = await versionsOf(dw.db, id);
@@ -481,6 +482,13 @@ describe('applyDemoPrices (decision 37)', () => {
           [id, '2'],
         ),
       ).toBe(1);
+      const by = await dw.db.query<{ authorised_by: string; attestation_version: string }>(
+        "SELECT authorised_by, attestation_version FROM publisher_authorisations WHERE offer_id = $1 AND offer_version = '2'",
+        [id],
+      );
+      expect(by.rows).toEqual([
+        { authorised_by: 'system', attestation_version: 'SEED-DEMO-PRICES-37' },
+      ]);
     }
   });
 
@@ -526,6 +534,38 @@ describe('applyDemoPrices respects a publisher who already changed the offer', (
       expect(prices((await getOffer(x.db, { offer_id: HALL }))!.offer.options)).toEqual({
         keep_retrieve: 900,
         online_read: 900,
+      });
+    } finally {
+      await x.db.close();
+    }
+  });
+});
+
+describe('applyDemoPrices only touches the seed offers', () => {
+  it('an offer a publisher created later is never clamped, even at 0.40 USD', async () => {
+    const x = await offersWorld();
+    try {
+      const id = 'ofr_harbour-ledger_made-later';
+      await x.db.query(
+        `INSERT INTO offers (id, version, publisher_id, article_id, status, currency, options, affordability,
+                             terms_version, rights, valid_from, valid_until, superseded_by, created_at, updated_at)
+         SELECT $1, '1', publisher_id, article_id, status, currency, options, affordability,
+                terms_version, rights, valid_from, valid_until, NULL, created_at, updated_at
+           FROM offers WHERE id = $2`,
+        [id, TIDE],
+      );
+      await x.db.query(
+        `INSERT INTO publisher_authorisations (id, offer_id, offer_version, authorised_by, at, created_at, updated_at)
+         VALUES ('auth_made_later_1', $1, '1', $2, now(), now(), now())`,
+        [id, x.pubId['harbour-ledger']],
+      );
+      const revised = await applyDemoPrices(x.deps());
+      expect(revised.map((v) => v.offer_id)).not.toContain(id);
+      expect(revised.map((v) => v.offer_id)).toContain(TIDE);
+      expect(await versionsOf(x.db, id)).toHaveLength(1);
+      expect(prices((await getOffer(x.db, { offer_id: id }))!.offer.options)).toEqual({
+        keep_retrieve: 40,
+        online_read: 40,
       });
     } finally {
       await x.db.close();
