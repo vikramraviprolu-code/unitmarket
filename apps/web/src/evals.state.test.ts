@@ -164,3 +164,12 @@ describe('the evals page source', () => {
     expect(read('./app/ops/page.tsx')).toMatch(/href="\/ops\/evals"/);
   });
 });
+
+// Regression: `new URL(literal, import.meta.url)` is read by the bundler as an asset and fails the production
+// build while the optional result file is not committed (found by the SKIN-B2 builder).
+describe('production build safety', () => {
+  it('composition does not name the optional result file through new URL(..., import.meta.url)', () => {
+    const src = read('../composition.server.ts');
+    expect(src).not.toMatch(/new URL\([^)]*claude-eval-result/);
+  });
+});

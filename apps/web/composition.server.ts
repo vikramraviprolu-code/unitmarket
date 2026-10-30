@@ -14,6 +14,8 @@ import { getSingleton, setSingleton } from './src/server/singleton';
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type {
   Actor,
   AgentDeps,
@@ -1832,9 +1834,19 @@ function buildApp(config: Config, opts: AppOptions): App {
       const cases = await runEvalCases(createScriptedModel());
       let stored: string | null = null;
       try {
+        // Built as a plain string, not `new URL(literal, import.meta.url)`: the bundler would treat that as an
+        // asset and fail the production build while the (optional) result file is not committed.
         stored = readFileSync(
           opts.test_claude_eval_file ??
-            new URL('../../packages/model/test-data/claude-eval-result.json', import.meta.url),
+            join(
+              dirname(fileURLToPath(import.meta.url)),
+              '..',
+              '..',
+              'packages',
+              'model',
+              'test-data',
+              'claude-eval-result.json',
+            ),
           'utf8',
         );
       } catch {
