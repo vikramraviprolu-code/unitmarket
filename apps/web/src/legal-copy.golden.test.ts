@@ -138,7 +138,7 @@ describe('legal copy rules', () => {
     const t = flat('publisher-terms');
     expect(t).toMatch(/fictional/i);
     expect(t).toMatch(/marked as checked/i);
-    expect(t).toMatch(/planned but not built yet/i);
+    expect(t).toMatch(/statement page/i);
     expect(t).toMatch(/no commission in this demo/i);
     expect(t).toMatch(/20 percent/);
     expect(t).toMatch(/not implemented/i);

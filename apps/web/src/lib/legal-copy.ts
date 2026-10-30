@@ -216,7 +216,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
       heading: 'Where the money goes',
       paragraphs: [
         'UnitMarket uses no payout mechanism. It does not call any PayPal payout service.',
-        'A statement page for publishers is planned but not built yet. It will be read from the stored records of each payment.',
+        'Each publisher has a statement page. It adds up the stored records of each payment: sales, refunds and reversals. The PayPal fee is shown beside them when PayPal reported it, and is not subtracted.',
       ],
     },
     {
