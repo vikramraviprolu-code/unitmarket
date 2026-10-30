@@ -1,0 +1,8 @@
+/* READER-A: the reading width of the in-app reader. Kept out of globals.css, which the skin lanes own. */
+.reader {
+  max-width: 70ch;
+  line-height: 1.6;
+}
+.reader p {
+  margin: 0 0 1em;
+}
