@@ -6,3 +6,6 @@ go through specs and the decision log, not by editing these files silently.
 This folder is the ONE allow-listed docs folder for live PayPal hostnames: the design documents
 name them in order to forbid them. `scripts/check-no-live-host.mjs` skips `docs/design/` and
 nowhere else. No code, fixture or config file may contain them.
+
+Later changes: `architecture-addendum-2026-10-31.md` (changes since this snapshot), `../REQUIREMENTS-REGISTER.md` and
+`../specs/README.md`.
