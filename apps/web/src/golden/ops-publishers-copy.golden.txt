@@ -1,0 +1,36 @@
+links: Publishers | Payee requests
+heading: Publishers
+lede: What each publisher has on sale, what has been paid to them and what is still open. Suspending a publisher takes its offers off sale. Orders already paid, access already bought and refunds are not changed.
+empty: No publishers yet.
+back: Back to operations
+labels: Status | Payee account | Offers on sale | Money by currency
+status applied: Applied. Waiting for approval.
+status active: Active
+status suspended: Suspended
+payee none: No payee account set.
+payee waiting: Account ending AB12. Not checked yet.
+payee checked: Account ending AB12. Marked as checked.
+payee shared: Account ending AB12. Marked as checked. Shared with other test publishers.
+offers 0: No offers on sale.
+offers 1: 1 offer on sale.
+offers 2: 2 offers on sale.
+offers 7: 7 offers on sale.
+no payments: No payments yet.
+columns: Currency | Units paid | Paid and not refunded | Refunds open | On hold
+none cell: None
+count amount: 3, $4.50
+count amount one: 1, $0.40
+units: 1 unit | 4 units
+suspend: Suspend this publisher | Reactivate this publisher
+suspend hint: Its offers go off sale at once and quotes already given stop working. Orders, access and refunds are not changed.
+reactivate hint: Its offers go back on sale. Buyers need a new quote.
+applicant hint: This account has not been approved yet, so there is nothing to suspend here.
+field reason: Reason
+done: Suspended. The offers are off sale. | Reactivated. The offers are back on sale.
+error unchanged: The publisher already has that status. Nothing changed.
+error not_allowed: This publisher has not been approved yet. Nothing changed.
+error not_found: That publisher was not found.
+error mfa_required: Changing a publisher needs a sign in with your authenticator code.
+error invalid_input: Please give a reason of 3 to 200 characters.
+error rate_limited: Too many changes this hour. Please try again later.
+error unknown: The change could not be saved. Please try again.
