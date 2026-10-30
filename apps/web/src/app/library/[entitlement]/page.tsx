@@ -7,6 +7,7 @@ import { WindowMeter } from '../../../ui/WindowMeter';
 import { OpenButton } from '../OpenButton';
 import { Refresher } from '../../../ui/Refresher';
 import { optionLabel, formatDateTime } from '../../../lib/format';
+import { READER_LINK_TEXT } from '../../../lib/reader-copy';
 
 export const metadata: Metadata = { title: 'Library item' };
 
@@ -54,6 +55,11 @@ export default async function LibraryItem({
             entitlementId={item.entitlement_id}
             mode={item.option === 'keep_retrieve' ? 'download' : 'read'}
           />
+        ) : null}
+        {item.can_open && item.option === 'online_read' ? (
+          <Link className="btn" href={`/library/${encodeURIComponent(item.entitlement_id)}/read`}>
+            {READER_LINK_TEXT}
+          </Link>
         ) : null}
         {item.order_id ? (
           <Link className="btn" href={`/receipts/${encodeURIComponent(item.order_id)}`}>

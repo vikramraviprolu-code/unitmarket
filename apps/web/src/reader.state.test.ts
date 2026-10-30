@@ -37,12 +37,16 @@ const eventsOf = async (entitlement_id: string): Promise<EventRow[]> =>
     )
   ).rows;
 
-/** The events of a read with the per-link values (link id, expiry) taken out, so two reads compare. */
+/** The events of a read with the per-order and per-link values (capture id, expiry) taken out, so two reads compare. */
 const shape = (rows: EventRow[]): unknown[] =>
-  rows.map((r) => {
-    const { expires_at: _e, ...rest } = r.evidence;
-    return { kind: r.kind, source: r.source, environment: r.environment, evidence: rest };
-  });
+  rows.map((r) => ({
+    kind: r.kind,
+    source: r.source,
+    environment: r.environment,
+    evidence: Object.fromEntries(
+      Object.entries(r.evidence).filter(([k]) => k !== 'expires_at' && k !== 'capture_id'),
+    ),
+  }));
 
 const storedText = async (entitlement_id: string): Promise<string> => {
   const r = await w.app.db.query<{ data: Uint8Array }>(
@@ -151,7 +155,7 @@ describe('the reader view of a ready entitlement', () => {
 
 describe('refusals are the content route reasons', () => {
   it('another buyer sees not_found, and no event is written for the owner', async () => {
-    const u = await buy(w, { offer: 'knot-notebook', option: 'online_read' });
+    const u = await buy(w, { offer: 'ferry-timetables', option: 'online_read' });
     const before = (await eventsOf(u.entitlement_id)).length;
     const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorB });
     expect(v).toEqual({ ok: false, code: 'not_found' });
@@ -163,7 +167,7 @@ describe('refusals are the content route reasons', () => {
       ok: false,
       code: 'not_found',
     });
-    const u = await buy(w, { offer: 'knot-notebook', option: 'online_read' });
+    const u = await buy(w, { offer: 'knot-notebook', option: 'online_read', who: 'B' });
     expect(
       await w.app.engine.readerView({
         entitlement_id: u.entitlement_id,
@@ -173,19 +177,19 @@ describe('refusals are the content route reasons', () => {
   });
 
   it('an ended window gives window_ended, the same code the link route gives', async () => {
-    const u = await buy(w, { offer: 'knot-notebook', option: 'online_read' });
+    const u = await buy(w, { offer: 'harbour-fees', option: 'online_read', who: 'B' });
     const past = new Date(w.app.security.clock.now().getTime() - 1000).toISOString();
     await w.app.db.query('UPDATE access_windows SET ends_at = $2 WHERE entitlement_id = $1', [
       u.entitlement_id,
       past,
     ]);
-    const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorA });
+    const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorB });
     expect(v).toEqual({ ok: false, code: 'window_ended' });
     const route = await call(w.link.POST, {
       url: `/api/library/${u.entitlement_id}/link`,
       method: 'POST',
       body: {},
-      session: w.A,
+      session: w.B,
       params: { id: u.entitlement_id },
     });
     expect(route.status).toBe(403);
@@ -194,17 +198,17 @@ describe('refusals are the content route reasons', () => {
   });
 
   it('a refunded item gives the reason the link route gives and writes no reader_rendered', async () => {
-    const u = await buy(w, { offer: 'knot-notebook', option: 'online_read' });
+    const u = await buy(w, { offer: 'ferry-timetables', option: 'online_read', who: 'B' });
     const refund = await postRefund(w, w.op, {
       unit_id: u.unit_id,
       amount_minor: u.amount_minor,
       reason: 'Reader refusal test',
     });
     expect(refund.status).toBe(200);
-    const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorA });
+    const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorB });
     const viaLink = await w.app.engine.issueLink({
       entitlement_id: u.entitlement_id,
-      actor: w.actorA,
+      actor: w.actorB,
     });
     expect(v.ok).toBe(false);
     expect(viaLink.ok).toBe(false);
@@ -239,7 +243,9 @@ describe('the reader page source', () => {
   it('the library item page links to it for online_read items and keeps the open button', () => {
     const item = read('./app/library/[entitlement]/page.tsx').replace(/\/\/.*$/gm, '');
     expect(item).toMatch(/option === 'online_read'/);
-    expect(item).toMatch(/href=\{`\/library\/\$\{encodeURIComponent\(item\.entitlement_id\)\}\/read`\}/);
+    expect(item).toMatch(
+      /href=\{`\/library\/\$\{encodeURIComponent\(item\.entitlement_id\)\}\/read`\}/,
+    );
     expect(item).toContain('<OpenButton');
   });
 });

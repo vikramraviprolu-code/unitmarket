@@ -78,6 +78,7 @@ import { requestApproval } from '@umsbx/approval';
 import type { Selection } from '@umsbx/approval';
 import { createPgContentStore, issueLink, planServe } from '@umsbx/delivery';
 import type { ServePlan } from '@umsbx/delivery';
+import { MAX_READER_BYTES, isReadableMime, splitParagraphs } from './src/lib/reader-view';
 import {
   getReceiptForBuyer,
   paymentOutcome,
@@ -324,6 +325,20 @@ export interface LibraryEntry {
   open_case: CaseView | null;
   environment: EnvironmentLabel;
 }
+export interface ReaderMeta {
+  title: string;
+  publisher: string;
+  option: string;
+  environment: EnvironmentLabel;
+  window: { state: string; ends_at: string | null; days_left: number | null };
+}
+export type ReaderViewResult =
+  | ({ ok: true; kind: 'text'; paragraphs: string[] } & ReaderMeta)
+  | ({ ok: true; kind: 'download' } & ReaderMeta)
+  | {
+      ok: false;
+      code: 'not_found' | 'window_ended' | 'not_available' | 'expired' | 'store_unavailable';
+    };
 export interface OpsSnapshot {
   environment: EnvironmentLabel;
   switches: Record<SwitchName, boolean>;
@@ -504,6 +519,14 @@ export interface Engine {
     | { ok: true; headers: Record<string, string>; stream: ReadableStream<Uint8Array> }
     | { ok: false; code: string }
   >;
+  /**
+   * READER-A: the article read inside the app. It issues a link and serves it with mode `read` through the
+   * same issueLink and planServe as the content route, reads the stream to the end here, and so writes the
+   * same evidence (link_issued, then reader_rendered with the byte count and hash). Only text/plain and
+   * text/markdown up to 200 KB come back as paragraphs; anything else is `kind: 'download'` and nothing is
+   * served. Refusals use the content route's reason codes.
+   */
+  readerView(i: { entitlement_id: Id; actor: Actor; session_id?: Id }): Promise<ReaderViewResult>;
   receipt(i: { order_id: Id; actor: Actor }): Promise<Receipt | null>;
   /**
    * The receipt as a buyer sees it (UX-1A, items 45 and 54): titles and publisher names on the lines,
@@ -1489,6 +1512,87 @@ function buildApp(config: Config, opts: AppOptions): App {
         },
       });
       return { ok: true, headers: plan.headers, stream };
+    },
+
+    // READER-A engine block. The page is a server component, so the stream is read here to its last byte
+    // and onFinish is awaited: the reader_rendered evidence exists before the paragraphs are returned.
+    async readerView({ entitlement_id, actor, session_id }) {
+      const b = buyerOf(actor);
+      if (b === null) return { ok: false, code: 'not_found' };
+      const item = (await entitlementRows(b, entitlement_id))[0];
+      if (item === undefined) return { ok: false, code: 'not_found' };
+      const who = session_id !== undefined ? { session_id } : {};
+      const issued = await issueLink({ ...core, content }, { entitlement_id, actor, ...who });
+      if (!issued.ok) return { ok: false, code: issued.error.code };
+      const meta: ReaderMeta = {
+        title: item.title,
+        publisher: item.publisher,
+        option: item.option,
+        environment: item.environment,
+        window: {
+          state: item.window.state,
+          ends_at: item.window.ends_at,
+          days_left: item.window.days_left,
+        },
+      };
+      const article = (
+        await db.query<{ content_key: string }>('SELECT content_key FROM articles WHERE id = $1', [
+          item.article_id,
+        ])
+      ).rows[0];
+      let head: Awaited<ReturnType<ContentStore['head']>> = null;
+      try {
+        head = article === undefined ? null : await content.head(article.content_key);
+      } catch {
+        head = null;
+      }
+      if (head === null) return { ok: false, code: 'store_unavailable' };
+      if (!isReadableMime(head.mime) || head.bytes > MAX_READER_BYTES) {
+        return { ok: true, kind: 'download', ...meta };
+      }
+      const planned = await planServe(
+        { ...core, content },
+        { token: issued.value.url.slice('/c/'.length), actor, mode: 'read', ...who },
+      );
+      if (!planned.ok) {
+        const code = planned.error.code;
+        return {
+          ok: false,
+          code:
+            code === 'window_ended' ||
+            code === 'not_available' ||
+            code === 'expired' ||
+            code === 'store_unavailable'
+              ? code
+              : 'not_found',
+        };
+      }
+      const plan: ServePlan = planned.value;
+      const hash = createHash('sha256');
+      const chunks: Uint8Array[] = [];
+      let bytes = 0;
+      try {
+        for await (const chunk of plan.body) {
+          bytes += chunk.byteLength;
+          hash.update(chunk);
+          chunks.push(chunk);
+        }
+      } catch {
+        return { ok: false, code: 'store_unavailable' };
+      }
+      await plan.onFinish({ bytes, sha256: hash.digest('hex') });
+      const all = new Uint8Array(bytes);
+      let at = 0;
+      for (const c of chunks) {
+        all.set(c, at);
+        at += c.byteLength;
+      }
+      return {
+        ok: true,
+        kind: 'text',
+        paragraphs: splitParagraphs(new TextDecoder().decode(all)),
+        ...meta,
+      };
     },
 
     async receipt({ order_id, actor }) {

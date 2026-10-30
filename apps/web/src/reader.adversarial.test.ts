@@ -79,7 +79,9 @@ describe('article text is shown as text', () => {
       new URL('./app/library/[entitlement]/read/page.tsx', import.meta.url),
       'utf8',
     ).replace(/\/\/.*$/gm, '');
-    expect(page).not.toMatch(/dangerouslySetInnerHTML|innerHTML|marked|markdown-it|remark|DOMPurify/i);
+    expect(page).not.toMatch(
+      /dangerouslySetInnerHTML|innerHTML|marked|markdown-it|remark|DOMPurify/i,
+    );
     expect(page).not.toMatch(/from 'react-dom|from 'next\/script|<script/);
     expect(page).toMatch(/<p key=\{[^}]+\}>\{[a-z]+\}<\/p>/);
   });
@@ -102,7 +104,7 @@ describe('who gets no content', () => {
   });
 
   it('the other buyer cannot read it either', async () => {
-    const u = await buy(w, { offer: 'harbour-fees', option: 'online_read' });
+    const u = await buy(w, { offer: 'ferry-timetables', option: 'online_read' });
     const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorB });
     expect(v).toEqual({ ok: false, code: 'not_found' });
   });
@@ -110,7 +112,11 @@ describe('who gets no content', () => {
 
 describe('items that do not open in the reader', () => {
   it('a PDF gets the download answer, with the title and window, and no reader evidence', async () => {
-    await setArticle('tide-tables', new TextEncoder().encode('%PDF-1.4 synthetic'), 'application/pdf');
+    await setArticle(
+      'tide-tables',
+      new TextEncoder().encode('%PDF-1.4 synthetic'),
+      'application/pdf',
+    );
     const u = await buy(w, { offer: 'tide-tables', option: 'online_read' });
     const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorA });
     expect(v.ok).toBe(true);
@@ -123,24 +129,28 @@ describe('items that do not open in the reader', () => {
   });
 
   it('text over 200 KB gets the download answer too', async () => {
-    await setArticle('knot-notebook', 'x'.repeat(MAX_READER_BYTES + 1));
-    const u = await buy(w, { offer: 'knot-notebook', option: 'online_read' });
-    const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorA });
+    await setArticle('ferry-timetables', 'x'.repeat(MAX_READER_BYTES + 1));
+    const u = await buy(w, { offer: 'ferry-timetables', option: 'online_read', who: 'B' });
+    const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorB });
     expect(v.ok && v.kind).toBe('download');
     expect(await kinds(u.entitlement_id)).not.toContain('reader_rendered');
   });
 
   it('text of exactly 200 KB is still read', async () => {
     await setArticle('knot-notebook', 'y'.repeat(MAX_READER_BYTES));
-    const u = await buy(w, { offer: 'knot-notebook', option: 'online_read' });
-    const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorA });
+    const u = await buy(w, { offer: 'knot-notebook', option: 'online_read', who: 'B' });
+    const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorB });
     expect(v.ok && v.kind).toBe('text');
   });
 
   it('text/markdown is read as plain paragraphs, with its markup left alone', async () => {
-    await setArticle('knot-notebook', '# Heading\n\n**bold** [link](javascript:alert(1))', 'text/markdown');
-    const u = await buy(w, { offer: 'knot-notebook', option: 'online_read' });
-    const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorA });
+    await setArticle(
+      'harbour-fees',
+      '# Heading\n\n**bold** [link](javascript:alert(1))',
+      'text/markdown',
+    );
+    const u = await buy(w, { offer: 'harbour-fees', option: 'online_read', who: 'B' });
+    const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorB });
     if (!v.ok || v.kind !== 'text') throw new Error('expected a text view');
     expect(v.paragraphs).toEqual(['# Heading', '**bold** [link](javascript:alert(1))']);
   });
