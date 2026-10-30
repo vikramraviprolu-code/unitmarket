@@ -116,7 +116,9 @@ describe('migration 0011 on a copy of an MVP-C-shaped database (DP-2a)', () => {
     const { db, dir } = await mvpCShaped();
     try {
       const before = (await db.query('SELECT * FROM provider_orders ORDER BY id')).rows;
-      expect(await migrate(db, clock)).toEqual(['0011_provider_order_state']);
+      // Later migrations (0012 and on) also apply to this copy; 0011 must be the first one applied.
+      const applied = await migrate(db, clock);
+      expect(applied[0]).toBe('0011_provider_order_state');
       const after = await db.query<Record<string, unknown>>(
         `SELECT p.*, o.status AS order_status, o.order_ref FROM provider_orders p
            JOIN orders o ON o.id = p.order_id ORDER BY p.id`,
