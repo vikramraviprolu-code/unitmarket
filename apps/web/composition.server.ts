@@ -119,6 +119,8 @@ import {
   createSession,
   operatorSignIn,
   resolveSession,
+  revokeSession,
+  clearSessionCookie,
   verifyPasscode,
 } from '@umsbx/security';
 import type { SecurityDeps } from '@umsbx/security';
@@ -131,6 +133,7 @@ import type { OpsGate } from './src/lib/gate-lines';
 import { toBuyerReceipt } from './src/lib/receipt-view';
 import type { ArticleFacts, BuyerReceipt } from './src/lib/receipt-view';
 import { LINE_TEXT, lineKind, packBanner, windowMinutes } from './src/lib/composite-copy';
+import { NOT_PAID_YET } from './src/lib/buyer-copy';
 import { publisherSlugOf } from './src/lib/publisher-copy';
 import type { PublisherStatus } from './src/lib/publisher-copy';
 import type { LineKind } from './src/lib/composite-copy';
@@ -411,6 +414,11 @@ export function orderMessage(
       return 'Not charged. The order did not complete.';
     case 'abandoned':
       return 'Not completed. Nothing was charged.';
+    case 'awaiting_buyer':
+      // FIX-FLOW D4: with no PayPal order approved, nothing was received. Say so, in words that do not
+      // suggest a payment is being confirmed. An approved one (a pack between its two approvals) keeps
+      // the waiting line.
+      return po_states.includes('approved') ? 'Waiting for your approval at PayPal' : NOT_PAID_YET;
     default:
       return 'Waiting for your approval at PayPal';
   }
@@ -480,6 +488,11 @@ export interface Engine {
     code?: string | undefined;
   }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
   actorFromCookie(cookie: string | null): Promise<Actor | null>;
+  /**
+   * FIX-FLOW D1: sign out. Ends the one live session `session_id` of `actor` (never the actor's other
+   * sessions) and returns the Set-Cookie value that clears the cookie. With no session it only clears.
+   */
+  signOut(i: { actor: Actor; session_id: Id | null }): Promise<{ cookie: string }>;
   /**
    * PUB-A1: the read only home of the publisher behind this session: name, status, live offers and the
    * payee state (last 4 only). Every query filters by `actor.publisher_id`. Null for any other actor kind
@@ -1188,9 +1201,15 @@ function buildApp(config: Config, opts: AppOptions): App {
           money_state: string;
           order_id: string | null;
           unit_status: string | null;
+          order_status: string | null;
+          po_state: string | null;
         }>(
-          `SELECT e.id, e.money_state, u.order_id, u.status AS unit_status
-             FROM entitlements e LEFT JOIN order_units u ON u.id = e.unit_id
+          `SELECT e.id, e.money_state, u.order_id, u.status AS unit_status,
+                  o.status AS order_status, p.state AS po_state
+             FROM entitlements e
+             LEFT JOIN order_units u ON u.id = e.unit_id
+             LEFT JOIN orders o ON o.id = u.order_id
+             LEFT JOIN provider_orders p ON p.id = u.provider_order_ref
             WHERE e.buyer_id = $1`,
           [buyer_id],
         )
@@ -1207,6 +1226,12 @@ function buildApp(config: Config, opts: AppOptions): App {
       const refundFacts = {
         money: fact?.money_state ?? 'unknown',
         unit_status: fact?.unit_status ?? 'unknown',
+      };
+      // FIX-FLOW D4: the order and its PayPal order, so an unpaid order is not worded as a payment
+      // being confirmed.
+      const orderFacts = {
+        order_status: fact?.order_status ?? null,
+        po_state: fact?.po_state ?? null,
       };
       const days =
         running && ends !== null
@@ -1229,6 +1254,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         status_text: buyerStatusText({
           base: v.status_text,
           ...refundFacts,
+          ...orderFacts,
           window_state: v.window.state,
           option: v.option,
         }),
@@ -1286,6 +1312,11 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
 
     actorFromCookie: (cookie) => resolveSession(security, cookie),
+
+    async signOut({ actor, session_id }) {
+      if (session_id !== null) await revokeSession(security, { id: session_id, actor });
+      return { cookie: clearSessionCookie() };
+    },
 
     // PUB-A1: the publisher home. Every query below filters by the actor's publisher id.
     async publisherHome(actor) {

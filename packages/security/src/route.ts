@@ -73,6 +73,8 @@ export interface RouteMeta {
 export interface RouteContext<I> {
   actor: Actor;
   input: I;
+  /** The id of the live session behind this request, or null (a public route with no session). */
+  session_id: string | null;
   req_id: string;
   ip_hash: string;
   log: Logger;
@@ -466,7 +468,14 @@ export function withRoute<I, O>(
         idem = scope;
       }
 
-      const result = await handler({ actor, input: parsed.data, req_id, ip_hash, log });
+      const result = await handler({
+        actor,
+        input: parsed.data,
+        session_id: record?.id ?? null,
+        req_id,
+        ip_hash,
+        log,
+      });
 
       // M3: a failure against a spent shared bucket is throttled; a success resets that bucket
       // (only this target's, for the same client key).

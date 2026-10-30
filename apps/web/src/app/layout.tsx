@@ -10,7 +10,8 @@ import { EnvLabel } from '../ui/EnvLabel';
 import { siteDescription, siteFooter } from '../ui/env-copy';
 import { SKIN_COOKIE, skinFromCookie } from '../lib/skin';
 import { LEGAL_NAV } from '../lib/legal-copy';
-import { PUBLISHER_NAV_LABEL } from '../lib/publisher-copy';
+import { navItems } from '../lib/nav';
+import { SignOutButton } from '../ui/SignOutButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,11 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const a = await app();
   const actor = await currentActor();
+  const nav = navItems(
+    actor?.kind === 'buyer' || actor?.kind === 'publisher' || actor?.kind === 'operator'
+      ? actor.kind
+      : null,
+  );
   const skin = skinFromCookie((await cookies()).get(SKIN_COOKIE)?.value);
   return (
     <html lang="en" data-skin={skin}>
@@ -39,30 +45,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </Link>
             <nav aria-label="Main">
               <ul>
-                <li>
-                  <Link href="/discover">Find articles</Link>
-                </li>
-                {actor?.kind === 'buyer' ? (
-                  <li>
-                    <Link href="/library">My library</Link>
+                {nav.items.map((n) => (
+                  <li key={n.href}>
+                    <Link href={n.href}>{n.label}</Link>
                   </li>
-                ) : null}
-                {actor?.kind === 'publisher' ? (
+                ))}
+                {nav.sign_out ? (
                   <li>
-                    <Link href="/publisher">{PUBLISHER_NAV_LABEL}</Link>
-                  </li>
-                ) : null}
-                {actor?.kind === 'operator' ? (
-                  <li>
-                    <Link href="/ops">Operations</Link>
-                  </li>
-                ) : null}
-                <li>
-                  <Link href="/help/payment">Help</Link>
-                </li>
-                {actor === null ? (
-                  <li>
-                    <Link href="/signin">Sign in</Link>
+                    <SignOutButton />
                   </li>
                 ) : null}
               </ul>

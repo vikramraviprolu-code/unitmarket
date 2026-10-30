@@ -2,7 +2,7 @@
 // clears it; the header shows only the items of the signed in role. Offline app, synthetic values.
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { App } from '../composition.server';
-import { bootTestApp, call, signIn } from './support';
+import { ORIGIN, bootTestApp, call, signIn } from './support';
 import { SIGN_OUT_LABEL, navItems } from './lib/nav';
 
 vi.mock('server-only', () => ({}));
@@ -55,12 +55,13 @@ describe('POST /api/session/signout', () => {
     const res = await call(signout.POST, { url: '/api/session/signout', method: 'POST', body: {} });
     expect(res.status).toBe(200);
     expect(res.headers.get('set-cookie') ?? '').toMatch(/Max-Age=0/);
-    const bad = await call(signout.POST, {
-      url: '/api/session/signout',
-      method: 'POST',
-      body: {},
-      headers: { origin: 'https://elsewhere.example' },
-    });
+    const bad = await signout.POST(
+      new Request(`${ORIGIN}/api/session/signout`, {
+        method: 'POST',
+        headers: { origin: 'https://elsewhere.example', 'content-type': 'application/json' },
+        body: '{}',
+      }),
+    );
     expect(bad.status).toBe(403);
   });
 });

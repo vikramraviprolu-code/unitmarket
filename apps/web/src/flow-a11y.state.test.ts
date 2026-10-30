@@ -34,7 +34,9 @@ describe('DiscoverForm focus (D10)', () => {
   it('moves focus to a results heading that can take focus', () => {
     expect(src).toContain('useRef');
     expect(src).toMatch(/\.focus\(\)/);
-    expect(src).toMatch(/<h2[^>]*id="results"[^>]*tabIndex=\{-1\}|<h2[^>]*tabIndex=\{-1\}[^>]*id="results"/);
+    expect(src).toMatch(
+      /<h2[^>]*id="results"[^>]*tabIndex=\{-1\}|<h2[^>]*tabIndex=\{-1\}[^>]*id="results"/,
+    );
   });
   it('shows the open order notice with a library link when the reasons say so', () => {
     expect(src).toContain('discoverNoMatchView(');

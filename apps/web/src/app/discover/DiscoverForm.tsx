@@ -1,12 +1,18 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AccessOption, FitCard as FitCardData, Money, Rights } from '@umsbx/contracts';
 import { postJson, remember } from '../../lib/client-api';
 import { FitCard } from '../../ui/FitCard';
 import { StatusBanner } from '../../ui/StatusBanner';
 import { ErrorState } from '../../ui/ErrorState';
 import { BUY_SELECTED } from '../../lib/composite-copy';
-import { BROWSE_EMPTY, BROWSE_HEADING, browseLinkText } from '../../lib/buyer-copy';
+import {
+  BROWSE_EMPTY,
+  BROWSE_HEADING,
+  OPEN_ORDER_LINK,
+  browseLinkText,
+  discoverNoMatchView,
+} from '../../lib/buyer-copy';
 import type { BrowseEntry } from '../../lib/buyer-copy';
 import { TermsConsent } from '../../ui/TermsConsent';
 
@@ -18,7 +24,7 @@ type Item = {
 };
 type Result =
   | { kind: 'proposal'; proposal_id: string; items: Item[] }
-  | { kind: 'no_match'; reasons: string[] };
+  | { kind: 'no_match'; reasons?: string[] };
 
 export function DiscoverForm({
   signedIn,
@@ -35,6 +41,11 @@ export function DiscoverForm({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
+  // FIX-FLOW D10: after a search the results heading takes focus, so a keyboard user is not dropped on <body>.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (result !== null) headingRef.current?.focus();
+  }, [result]);
 
   async function find(e: React.FormEvent) {
     e.preventDefault();
@@ -105,6 +116,7 @@ export function DiscoverForm({
     setPicked((p) => (p.includes(offerId) ? p.filter((x) => x !== offerId) : [...p, offerId]));
   }
 
+  const noMatch = discoverNoMatchView(result?.kind === 'no_match' ? (result.reasons ?? []) : []);
   return (
     <>
       {!signedIn ? (
@@ -137,17 +149,31 @@ export function DiscoverForm({
       <div aria-live="polite">
         {error ? <ErrorState title="Could not continue">{error}</ErrorState> : null}
         {result?.kind === 'no_match' ? (
-          <StatusBanner tone="warn" title="No match">
-            Nothing in the catalogue fits that need and ceiling. We do not stretch the match. Try
-            different words or a higher ceiling
-            {browse.length > 0 ? (
-              <>
-                , or <a href="#browse-all">{browseLinkText(browse.length).toLowerCase()}</a>{' '}
-                yourself
-              </>
+          <section aria-labelledby="results">
+            <h2 id="results" tabIndex={-1} ref={headingRef}>
+              {noMatch.open_order !== null && !noMatch.nothing_fits
+                ? noMatch.open_order.heading
+                : 'No match'}
+            </h2>
+            {noMatch.open_order !== null ? (
+              <StatusBanner tone="info">
+                {noMatch.open_order.body} <a href={noMatch.open_order.href}>{OPEN_ORDER_LINK}</a>
+              </StatusBanner>
             ) : null}
-            .
-          </StatusBanner>
+            {noMatch.nothing_fits ? (
+              <StatusBanner tone="warn">
+                Nothing in the catalogue fits that need and ceiling. We do not stretch the match.
+                Try different words or a higher ceiling
+                {browse.length > 0 ? (
+                  <>
+                    , or <a href="#browse-all">{browseLinkText(browse.length).toLowerCase()}</a>{' '}
+                    yourself
+                  </>
+                ) : null}
+                .
+              </StatusBanner>
+            ) : null}
+          </section>
         ) : null}
         {result?.kind === 'no_match' ? (
           <section aria-labelledby="browse-all-heading" id="browse-all">
@@ -168,7 +194,9 @@ export function DiscoverForm({
         ) : null}
         {result?.kind === 'proposal' ? (
           <section aria-labelledby="results">
-            <h2 id="results">Articles that fit</h2>
+            <h2 id="results" tabIndex={-1} ref={headingRef}>
+              Articles that fit
+            </h2>
             <p className="muted">The cards are advice. You choose.</p>
             <TermsConsent
               id="discover-terms"

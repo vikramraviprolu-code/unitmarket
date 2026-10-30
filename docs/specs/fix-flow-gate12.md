@@ -9,6 +9,7 @@ Goal: every signed in actor can sign out from the header; an order that is not p
 Causes found. D1: no revoke path in the app. D4: the library read model words every `unknown` money state as "Confirming payment", and an `awaiting_buyer` order has a pending entitlement. D5: `startFromOffer` answers `already_owned` for a pending entitlement, discovery folds it into `no_match` with `reasons: ['already_owned']`, and the form ignores `reasons`. A buyer cancel needs a per order abandon in `domain/payments`; only the 24 hour sweep exists (`sweepAbandoned`, not exported). That is a domain change, so it is out of scope: see "Needs an owner".
 
 Inputs: `packages/security/src/session.ts`, `apps/web` pages and `lib` copy. Outputs:
+
 - `POST /api/session/signout` (auth public, CSRF Origin check, ip rate 30 per minute): revokes the one session of the cookie (never the actor's other sessions: personas are shared) and clears the cookie. `revokeSession` in `@umsbx/security`; `RouteContext.session_id`; `engine.signOut`.
 - `SignOutButton` in the header for a signed in actor; `lib/nav.ts` decides the items: signed out: Find articles, Help, Sign in; buyer: Find articles, My library, Help, Sign out; publisher: Publisher, Help, Sign out; operator: Operations, Help, Sign out.
 - Library and order page: an `awaiting_buyer` (or `created`) order with no approved PayPal order reads "Not paid yet. We have not received a payment for this order." Never "Confirming payment" for it.
@@ -17,6 +18,7 @@ Inputs: `packages/security/src/session.ts`, `apps/web` pages and `lib` copy. Out
 - `DiscoverForm`: after a search, focus moves to the results heading (`tabIndex={-1}`).
 
 Acceptance tests (each run with `corepack pnpm test:unit -- <file>` style targeted runs, red first):
+
 - `packages/security/src/session.state.test.ts`: `revokeSession` ends one session, leaves the actor's other one, audits it.
 - `apps/web/src/signout.state.test.ts`: signout route clears the cookie and the session no longer resolves; a second session of the same persona stays live; `lib/nav.ts` items per role.
 - `apps/web/src/flow-honesty.state.test.ts`: a pack left at `awaiting_buyer` gives the order message and library text above and not "Confirming payment"; a paid order is unchanged; the discover no match view for `already_owned`.
