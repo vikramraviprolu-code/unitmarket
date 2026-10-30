@@ -368,7 +368,7 @@ describe('T4 harbour scene', () => {
       expect(page, rel).toMatch(/import \{ HarbourScene \} from '[./]+\/ui\/HarbourScene';/);
       expect(page, rel).toContain('<HarbourScene />');
     }
-    for (const rel of ['app/library/page.tsx', 'app/signin/page.tsx', 'app/help/payment/page.tsx'])
+    for (const rel of ['app/library/page.tsx', 'app/signin/page.tsx', 'app/help/[case]/page.tsx'])
       expect(noComments(read(rel)), rel).not.toContain('HarbourScene');
   });
 });

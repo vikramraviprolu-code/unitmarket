@@ -6,6 +6,7 @@ import { DiscoverForm } from './DiscoverForm';
 import { StatusBanner } from '../../ui/StatusBanner';
 import { formatMinor } from '../../lib/format';
 import { browseEntries } from '../../lib/buyer-copy';
+import { HarbourScene } from '../../ui/HarbourScene';
 
 export const metadata: Metadata = { title: 'Find articles' };
 
@@ -40,6 +41,7 @@ export default async function Discover() {
   const rights = offers.map((o) => o.rights);
   return (
     <>
+      <HarbourScene />
       <h1>Find articles for my need</h1>
       <p className="lede">Describe what you need and what you can pay. You pick the article.</p>
       <DiscoverForm signedIn={actor?.kind === 'buyer'} browse={browse} rights={rights} />

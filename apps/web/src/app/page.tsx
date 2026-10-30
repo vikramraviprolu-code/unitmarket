@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { app } from '../server/access';
 import { formatMinor } from '../lib/format';
+import { HarbourScene } from '../ui/HarbourScene';
 
 export default async function Home() {
   const a = await app();
   const offers = await a.engine.listOffers();
   return (
     <>
+      <HarbourScene />
       <h1>Buy just the article you need</h1>
       <p className="lede">
         Pay once for one article, with a clear price and five days of access. No subscription.

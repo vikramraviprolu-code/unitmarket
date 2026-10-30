@@ -44,28 +44,28 @@
 --display: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', system-ui, -apple-system, 'Segoe UI', sans-serif
 
 [harbour] Deep Harbour
---bg: #11161d
---surface: #1a212b
---surface-2: #222b37
---text: #eef2f6
---muted: #b3bdc9
---line: #8795a6
---line-soft: #2e3846
---accent: #8ec6ea
---accent-ink: #0b1a24
---accent-soft: #1d3140
---good: #7fd6a0
---good-soft: #17301f
---warn: #f1c46b
---warn-soft: #3a2c10
+--bg: #0b2233
+--surface: #11344a
+--surface-2: #174259
+--text: #f2f6f8
+--muted: #a9c1cd
+--line: #6b90a3
+--line-soft: #23516b
+--accent: #ffb347
+--accent-ink: #241400
+--accent-soft: #3a3a2e
+--good: #7fe0b0
+--good-soft: #14423a
+--warn: #ffd089
+--warn-soft: #3b3320
 --bad: #ff9c9c
 --bad-soft: #3b1a1a
---focus: #ffb14d
---header-bg: #1a212b
---header-ink: #eef2f6
---header-link: #8ec6ea
---header-hover: #222b37
---header-focus: #ffb14d
+--focus: #ffb347
+--header-bg: #0b2233
+--header-ink: #f2f6f8
+--header-link: #f2f6f8
+--header-hover: #11344a
+--header-focus: #ffb347
 --h0b: #123f5a
 --h0i: #7fe3f0
 --h1b: #1d4a45
@@ -80,7 +80,7 @@
 --h5i: #9fd0ff
 --radius: 10px
 --radius-btn: 10px
---shadow: none
---card-border: var(--line)
---atmosphere: none
---display: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif
+--shadow: 0 14px 40px rgba(0, 0, 0, 0.35)
+--card-border: var(--line-soft)
+--atmosphere: radial-gradient(circle at 88% -8%, rgba(255, 179, 71, 0.16), rgba(255, 179, 71, 0) 38%), radial-gradient(circle at 4% 108%, rgba(70, 217, 200, 0.12), rgba(70, 217, 200, 0) 42%)
+--display: ui-serif, 'New York', 'Iowan Old Style', Georgia, 'Times New Roman', serif

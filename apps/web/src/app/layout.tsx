@@ -3,6 +3,8 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import './globals.css';
+import './skin-harbour.css';
+import './motion.css';
 import { app } from '../server/access';
 import { currentActor } from '../server/session';
 import { AppearanceControl } from '../ui/AppearanceControl';
