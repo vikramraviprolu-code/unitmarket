@@ -34,8 +34,8 @@ describe('agreement copy', () => {
   });
 
   it('says the record is a demo record and never claims a person clicked', () => {
-    expect(copy.agreementText({ accepted_at: '2026-10-30T10:00:00.000Z', terms_version: 'v1' })).toMatch(
-      /demo record/,
-    );
+    expect(
+      copy.agreementText({ accepted_at: '2026-10-30T10:00:00.000Z', terms_version: 'v1' }),
+    ).toMatch(/demo record/);
   });
 });

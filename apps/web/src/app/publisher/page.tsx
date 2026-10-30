@@ -24,6 +24,7 @@ import {
   payeeText,
   publisherStatusText,
 } from '../../lib/publisher-copy';
+import { LINK_PUBLISHER_TERMS, NOT_ACCEPTED_TEXT, agreementText } from '../../lib/agreement-copy';
 
 export const metadata: Metadata = { title: 'Publisher' };
 
@@ -34,6 +35,7 @@ export default async function PublisherHome() {
   if (actor?.kind !== 'publisher') redirect('/signin?next=/publisher');
   const home = await (await app()).engine.publisherHome(actor);
   if (home === null) redirect('/signin?next=/publisher');
+  const agreement = await (await app()).engine.publisherAgreement(actor);
   return (
     <>
       <h1>{PUBLISHER_HEADING}</h1>
@@ -62,6 +64,10 @@ export default async function PublisherHome() {
           <dd data-testid="publisher-settlement">{home.settlement.sentence}</dd>
         </dl>
       </div>
+      <p className="muted" data-testid="publisher-agreement">
+        {agreement === null ? NOT_ACCEPTED_TEXT : agreementText(agreement)}{' '}
+        <Link href="/legal/publisher-terms">{LINK_PUBLISHER_TERMS}</Link>
+      </p>
       <ul data-testid="publisher-links">
         <li>
           <Link href="/publisher/offers">{LINK_OFFERS}</Link>

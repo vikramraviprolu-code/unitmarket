@@ -44,10 +44,43 @@ import {
   applicantStateText,
   rejectedReasonText,
 } from '../../../lib/ops-applicants-copy';
+import { PUBLISHER_TERMS_VERSION } from '../../../lib/legal-copy';
+import {
+  LINK_PUBLISHER_TERMS,
+  NOT_ACCEPTED_TEXT,
+  acceptedByText,
+  agreementChangedText,
+  agreementText,
+} from '../../../lib/agreement-copy';
 import { StatusForm } from './StatusForm';
 import { AddApplicantForm, DecideApplicantForm } from './ApplicantForms';
 
 export const metadata: Metadata = { title: 'Publishers' };
+
+// AGREE-1: the stored record, in words, with the flag when its version is not the current one.
+function PublisherTermsLine({
+  agreement,
+}: {
+  agreement: { accepted_at: string; terms_version: string; accepted_by_label: string } | null;
+}) {
+  if (agreement === null)
+    return (
+      <p className="muted" data-testid="publisher-agreement">
+        {NOT_ACCEPTED_TEXT} <Link href="/legal/publisher-terms">{LINK_PUBLISHER_TERMS}</Link>
+      </p>
+    );
+  return (
+    <p className="muted" data-testid="publisher-agreement">
+      {agreementText(agreement)} {acceptedByText(agreement.accepted_by_label)}{' '}
+      {agreement.terms_version !== PUBLISHER_TERMS_VERSION ? (
+        <strong data-testid="publisher-agreement-changed">
+          {agreementChangedText(PUBLISHER_TERMS_VERSION)}
+        </strong>
+      ) : null}{' '}
+      <Link href="/legal/publisher-terms">{LINK_PUBLISHER_TERMS}</Link>
+    </p>
+  );
+}
 
 // PUB-D (S7): the operator's table of publishers. Operator with the second factor only; the engine
 // answers an error to any other session. It shows counts and sums of stored rows and the last 4 of the
@@ -62,6 +95,10 @@ export default async function OpsPublishers() {
   const ap = await (await app()).engine.opsApplicants.list(actor);
   if (!ap.ok) redirect('/signin?next=/ops/publishers');
   const applicants = ap.value.applicants;
+  // AGREE-1: the seeded, read only publisher terms record, by publisher. An applicant has none.
+  const ag = await (await app()).engine.opsAgreements.list(actor);
+  if (!ag.ok) redirect('/signin?next=/ops/publishers');
+  const agreementOf = new Map(ag.value.agreements.map((a) => [a.publisher_id, a]));
   return (
     <>
       <h1>
@@ -91,6 +128,9 @@ export default async function OpsPublishers() {
             >
               <h3 id={`applicant-${a.publisher_id}`}>{a.display_name}</h3>
               <p className="muted">{applicantLine(a)}</p>
+              <p className="muted" data-testid="applicant-agreement">
+                {NOT_ACCEPTED_TEXT}
+              </p>
               <p data-testid="applicant-state">
                 {a.state === 'rejected' && a.decision_reason !== null
                   ? rejectedReasonText(a.decision_reason)
@@ -138,6 +178,7 @@ export default async function OpsPublishers() {
               <dt>{LABEL_OFFERS}</dt>
               <dd>{offersText(p.offers_live)}</dd>
             </dl>
+            <PublisherTermsLine agreement={agreementOf.get(p.publisher_id) ?? null} />
             <h3>{LABEL_MONEY}</h3>
             {p.by_currency.length === 0 ? (
               <p className="muted">{NO_PAYMENTS}</p>

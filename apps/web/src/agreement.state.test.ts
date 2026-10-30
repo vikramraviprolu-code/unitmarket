@@ -53,8 +53,12 @@ describe('who can read it', () => {
   it('a publisher reads only its own; a buyer, a system actor and an operator get none here', async () => {
     const h = await idOf('harbour-ledger');
     const q = await idOf('quayside-gazette');
-    expect((await app.engine.publisherAgreement({ kind: 'publisher', publisher_id: h }))!.publisher_id).toBe(h);
-    expect((await app.engine.publisherAgreement({ kind: 'publisher', publisher_id: q }))!.publisher_id).toBe(q);
+    expect(
+      (await app.engine.publisherAgreement({ kind: 'publisher', publisher_id: h }))!.publisher_id,
+    ).toBe(h);
+    expect(
+      (await app.engine.publisherAgreement({ kind: 'publisher', publisher_id: q }))!.publisher_id,
+    ).toBe(q);
     expect(await app.engine.publisherAgreement({ kind: 'buyer', buyer_id: 'buy_x' })).toBeNull();
     expect(await app.engine.publisherAgreement(OP)).toBeNull();
     expect(await app.engine.publisherAgreement({ kind: 'system' })).toBeNull();
@@ -94,7 +98,8 @@ describe('no write path for a publisher', () => {
 
   it('no file under app/ names the table, and the engine exposes reads only', () => {
     const appDir = join(__dirname, 'app');
-    for (const f of files(appDir)) expect(readFileSync(f, 'utf8'), f).not.toMatch(/publisher_agreements/);
+    for (const f of files(appDir))
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(/publisher_agreements/);
     const keys = Object.keys(app.engine).filter((k) => /agree/i.test(k));
     expect(keys.sort()).toEqual(['opsAgreements', 'publisherAgreement']);
     expect(Object.keys(app.engine.opsAgreements)).toEqual(['list']);
@@ -102,7 +107,8 @@ describe('no write path for a publisher', () => {
 
   it('no route directory for agreements exists', () => {
     const routes = files(join(__dirname, 'app')).filter((f) => /route\.ts$/.test(f));
-    for (const f of routes) expect(f).not.toMatch(/agree|terms|accept/i);
+    for (const f of routes)
+      expect(f.slice(join(__dirname, 'app').length)).not.toMatch(/agree|terms|accept/i);
   });
 });
 

@@ -62,9 +62,9 @@ describe('seedAgreements', () => {
       publisher_slugs: [...SLUGS, 'tidewater-review', 'nobody-here'],
     });
     expect(await n()).toBe(3);
-    expect(await ownAgreement(w.db, { kind: 'publisher', publisher_id: a.value.publisher_id })).toBe(
-      null,
-    );
+    expect(
+      await ownAgreement(w.db, { kind: 'publisher', publisher_id: a.value.publisher_id }),
+    ).toBe(null);
   });
 });
 
@@ -89,7 +89,9 @@ describe('reads', () => {
   });
 
   it('the record cannot be changed or removed through the database', async () => {
-    await expect(w.db.query("UPDATE publisher_agreements SET terms_version = 'v9'")).rejects.toThrow();
+    await expect(
+      w.db.query("UPDATE publisher_agreements SET terms_version = 'v9'"),
+    ).rejects.toThrow();
     await expect(w.db.query('DELETE FROM publisher_agreements')).rejects.toThrow();
   });
 });
