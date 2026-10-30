@@ -6,14 +6,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('server-only', () => ({}));
+import { createApp } from '../../apps/web/composition.server';
+import type { App } from '../../apps/web/composition.server';
+import { testEnv } from '../../apps/web/src/support';
+import { createAuditSink } from '@umsbx/obs';
+import { fakeClock, seededIds } from '@umsbx/runtime';
+import { runDelete } from '../../scripts/lib/privacy.mjs';
 
-import { createApp } from '../apps/web/composition.server';
-import type { App } from '../apps/web/composition.server';
-import { testEnv } from '../apps/web/src/support';
-import { createAuditSink } from '../packages/obs/src/index';
-import { fakeClock, seededIds } from '../packages/runtime/src/index';
-import { runDelete } from './lib/privacy.mjs';
+vi.mock('server-only', () => ({}));
 
 let tmp = '';
 let app: App | null = null;
