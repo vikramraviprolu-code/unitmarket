@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
+import '../../tables.css';
 import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EmptyState } from '../../../ui/EmptyState';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { formatDateTime, formatMinor, optionLabel } from '../../../lib/format';
 import {
-  FEE_NOT_REPORTED,
+  feeText,
   NAV_HOME,
   NAV_STATEMENT,
   SALES_COLUMNS,
@@ -17,7 +18,9 @@ import {
   SALES_LEDE,
   SALES_ORDER_NOTE,
   SALES_SOURCE_NOTE,
+  notCountedText,
   salesCountText,
+  splitSales,
 } from '../../../lib/statement-copy';
 
 export const metadata: Metadata = { title: 'Sales' };
@@ -28,10 +31,12 @@ export default async function PublisherSales() {
   const actor = await currentActor();
   if (actor?.kind !== 'publisher') redirect('/signin?next=/publisher/sales');
   const a = await app();
-  const rows = await a.engine.publisherSales(actor);
-  if (rows === null) redirect('/signin?next=/publisher/sales');
+  const all = await a.engine.publisherSales(actor);
+  if (all === null) redirect('/signin?next=/publisher/sales');
+  // GATE35 D6: only paid units are counted and listed; the rest is one note.
+  const { counted: rows, notCounted } = splitSales(all);
   // The label follows the stored environment of the rows; with no rows, the app's.
-  const environments = [...new Set(rows.map((r) => r.environment))].sort();
+  const environments = [...new Set(all.map((r) => r.environment))].sort();
   if (environments.length === 0) environments.push(a.environment);
   return (
     <>
@@ -54,6 +59,7 @@ export default async function PublisherSales() {
           <p role="status" data-testid="sales-count">
             {salesCountText(rows.length)}
           </p>
+          <p className="table-hint muted">Scroll sideways to see more</p>
           <div className="table-scroll">
             <table data-testid="sales-table">
               <caption className="visually-hidden">{SALES_HEADING}</caption>
@@ -84,11 +90,7 @@ export default async function PublisherSales() {
                       ))}
                     </td>
                     <td>{formatMinor(r.amount_minor, r.currency)}</td>
-                    <td>
-                      {r.paypal_fee_minor === null
-                        ? FEE_NOT_REPORTED
-                        : formatMinor(r.paypal_fee_minor, r.currency)}
-                    </td>
+                    <td>{feeText(r.paypal_fee_minor, r.currency, r.environment)}</td>
                     <td>{r.status_text}</td>
                   </tr>
                 ))}
@@ -99,6 +101,11 @@ export default async function PublisherSales() {
           <p className="muted">{SALES_ORDER_NOTE}</p>
         </>
       )}
+      {notCounted.length > 0 ? (
+        <p className="muted" data-testid="sales-not-counted">
+          {notCountedText(notCounted.length)}
+        </p>
+      ) : null}
     </>
   );
 }

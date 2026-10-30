@@ -1,14 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { SIGNIN_PRIVACY_END, SIGNIN_PRIVACY_LEAD, SIGNIN_PRIVACY_LINK } from '../../lib/legal-copy';
+import { safeNext } from '../../lib/next-path';
 import { SignInForm } from './SignInForm';
 
 export const metadata: Metadata = { title: 'Sign in' };
-
-function safeNext(v: string | string[] | undefined): string {
-  const s = Array.isArray(v) ? v[0] : v;
-  return s !== undefined && /^\/(?![/\\])[A-Za-z0-9._~\-/[\]?=&%]*$/.test(s) ? s : '/';
-}
 
 export default async function SignIn({
   searchParams,

@@ -15,11 +15,11 @@ import {
   OWNER_ONLY_NOTE,
   PAYEE_HEADING,
   PAYEE_LEDE,
-  VERIFIED_BY,
   accountText,
   historyLine,
   settlementText,
   verifiedAtText,
+  verifiedByText,
 } from '../../../lib/payee-copy';
 import { RequestForm } from './RequestForm';
 
@@ -49,7 +49,9 @@ export default async function PayoutAccount() {
             {verifiedAtText(view.verified_at === null ? null : formatDateTime(view.verified_at))}
           </dd>
           <dt>{LABEL_VERIFIED_BY}</dt>
-          <dd data-testid="payee-verified-by">{VERIFIED_BY}</dd>
+          <dd data-testid="payee-verified-by">
+            {verifiedByText(view.history.some((h) => h.state === 'verified'))}
+          </dd>
           <dt>{LABEL_SETTLEMENT}</dt>
           <dd data-testid="payee-settlement">
             {settlementText(stored, envText(view.environment))}

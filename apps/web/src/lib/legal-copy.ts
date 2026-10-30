@@ -96,6 +96,7 @@ export const PRIVACY_DOC: LegalDoc = {
       heading: 'What we process',
       paragraphs: [
         'A session cookie, which keeps you signed in as the test persona you chose.',
+        'An appearance cookie named um_skin. It holds only the name of the skin you chose, and nothing about you. It is set only when you choose a skin, and it lasts 180 days.',
         'A hashed network address. We do not keep your network address itself. We keep a hash of it, so we can limit how fast requests arrive and keep the demo safe.',
         'The persona you chose, your orders, and your access events, such as when access to a unit started and when it ended.',
         'What you type to describe what you need, and the quotes and approvals made from it. If the AI helper is switched on, that text is sent to an AI model provider. It never receives payment data.',
@@ -150,7 +151,7 @@ export const REFUNDS_DOC: LegalDoc = {
     {
       heading: 'Who decides',
       paragraphs: [
-        'Refunds are decided by an operator, for each unit. Nothing is refunded automatically, and there is no button for buyers to refund themselves. To ask for a refund, open a help case from your order or your library.',
+        'Refunds are decided by an operator, for each unit. Nothing is refunded automatically, and there is no button for buyers to refund themselves. There is no refund request form yet. If an item did not open, choose "Problem with this item?" on its page in your library. An operator reads help cases about an order and decides whether a refund is right.',
       ],
     },
     {
@@ -246,7 +247,7 @@ export const LEGAL_NAV: Readonly<Record<LegalDoc['slug'], string>> = {
 
 // Sign-in page (PRIV-6). The last three words are the link to /legal/privacy.
 export const SIGNIN_PRIVACY_LEAD =
-  'We use a session cookie and a hashed network address to keep this demo safe. Read ';
+  'We use a session cookie, an appearance cookie that holds only your skin name, and a hashed network address. Read ';
 export const SIGNIN_PRIVACY_LINK = 'the privacy notice';
 export const SIGNIN_PRIVACY_END = '.';
 export const SIGNIN_PRIVACY_SENTENCE = `${SIGNIN_PRIVACY_LEAD}${SIGNIN_PRIVACY_LINK}${SIGNIN_PRIVACY_END}`;

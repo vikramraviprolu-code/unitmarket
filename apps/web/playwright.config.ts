@@ -21,6 +21,8 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [['list']],
+  // GATE35 D11: screenshots and traces stay in an ignored directory; no tracked file is rewritten.
+  outputDir: './test-results',
   timeout: 45_000,
   use: { baseURL: `http://localhost:${PORT}`, trace: 'off' },
   projects: [

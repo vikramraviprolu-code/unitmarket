@@ -1,7 +1,8 @@
 heading: Where you get paid
 lede: This page shows the account your sales are paid into. You cannot change it yourself. You can ask for a change, and an operator checks it before anything happens.
-labels: Account | Verified | Verified by | Settlement
-verified by: Operator check, not PayPal onboarding.
+labels: Account | Verified | How it was checked | Settlement
+verified by: An operator checked it. Not PayPal onboarding.
+marked checked: Marked as checked when the demo data was loaded. Not PayPal onboarding.
 account none: No payee account is set yet.
 account set: Account ending AB12.
 verified none: Not verified yet.
@@ -31,6 +32,7 @@ request error forbidden: This account cannot do that.
 request error unknown: The request could not be sent. Please try again.
 ops heading: Payee requests
 ops lede: Verify a request only after you have confirmed the new merchant id with the publisher. Type the whole id again to confirm it.
+ops mfa: Operator actions need the authenticator code | Sign in again as an operator and enter the code from your authenticator app to see this queue. In the offline demo from the README there is no code, so this queue is not available. | Sign in with the code
 ops empty: No open requests.
 ops columns: Publisher | Requested account | Age
 ops fields: Type the full merchant id again | Reason

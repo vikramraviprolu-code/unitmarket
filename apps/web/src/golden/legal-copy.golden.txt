@@ -25,6 +25,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/privacy | text: This notice says what data this demo processes and why. It is a draft written for the owners to read and approve. It is not legal advice, and it may change before the demo is submitted.
 /legal/privacy | heading: What we process
 /legal/privacy | text: A session cookie, which keeps you signed in as the test persona you chose.
+/legal/privacy | text: An appearance cookie named um_skin. It holds only the name of the skin you chose, and nothing about you. It is set only when you choose a skin, and it lasts 180 days.
 /legal/privacy | text: A hashed network address. We do not keep your network address itself. We keep a hash of it, so we can limit how fast requests arrive and keep the demo safe.
 /legal/privacy | text: The persona you chose, your orders, and your access events, such as when access to a unit started and when it ended.
 /legal/privacy | text: What you type to describe what you need, and the quotes and approvals made from it. If the AI helper is switched on, that text is sent to an AI model provider. It never receives payment data.
@@ -44,7 +45,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/refunds | heading: About this policy
 /legal/refunds | text: This policy says how refunds work in this demo. It is a draft written for the owners to read and approve. It is not legal advice, and it may change before the demo is submitted.
 /legal/refunds | heading: Who decides
-/legal/refunds | text: Refunds are decided by an operator, for each unit. Nothing is refunded automatically, and there is no button for buyers to refund themselves. To ask for a refund, open a help case from your order or your library.
+/legal/refunds | text: Refunds are decided by an operator, for each unit. Nothing is refunded automatically, and there is no button for buyers to refund themselves. There is no refund request form yet. If an item did not open, choose "Problem with this item?" on its page in your library. An operator reads help cases about an order and decides whether a refund is right.
 /legal/refunds | heading: A full refund
 /legal/refunds | text: A full refund of one publisher's part of your order ends access to what you bought from that publisher. Links to it stop working. A copy you already downloaded cannot be recalled.
 /legal/refunds | heading: A partial refund
@@ -73,4 +74,4 @@ footer link, terms: Terms of purchase
 footer link, privacy: Privacy notice
 footer link, refunds: Refund policy
 footer link, publisher-terms: Publisher terms
-sign-in notice: We use a session cookie and a hashed network address to keep this demo safe. Read the privacy notice.
+sign-in notice: We use a session cookie, an appearance cookie that holds only your skin name, and a hashed network address. Read the privacy notice.

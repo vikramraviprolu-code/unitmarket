@@ -1,8 +1,10 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EnvLabel } from '../../../ui/EnvLabel';
+import { StatusBanner } from '../../../ui/StatusBanner';
 import { formatDateTime } from '../../../lib/format';
 import {
   OPS_COL_AGE,
@@ -11,6 +13,9 @@ import {
   OPS_EMPTY,
   OPS_HEADING,
   OPS_LEDE,
+  OPS_MFA_BODY,
+  OPS_MFA_HEADING,
+  OPS_MFA_LINK,
   OWNER_ONLY_NOTE,
   ageText,
 } from '../../../lib/payee-copy';
@@ -23,7 +28,18 @@ export const metadata: Metadata = { title: 'Payee requests' };
 // operator types the whole id again to verify. On the hosted sandbox app the form is not shown.
 export default async function PayeeRequests() {
   const actor = await currentActor();
-  if (actor?.kind !== 'operator' || !actor.mfa) redirect('/signin?next=/ops/payee-requests');
+  // GATE35 D4b: an operator without the authenticator code is told why, not sent away silently.
+  if (actor?.kind === 'operator' && !actor.mfa)
+    return (
+      <>
+        <h1>{OPS_HEADING}</h1>
+        <StatusBanner tone="warn" title={OPS_MFA_HEADING}>
+          <span data-testid="payee-mfa-needed">{OPS_MFA_BODY}</span>{' '}
+          <Link href="/signin?next=/ops/payee-requests">{OPS_MFA_LINK}</Link>
+        </StatusBanner>
+      </>
+    );
+  if (actor?.kind !== 'operator') redirect('/signin?next=/ops/payee-requests');
   const r = await (await app()).engine.payee.openRequests(actor);
   if (!r.ok) redirect('/signin?next=/ops/payee-requests');
   const { requests, environment } = r.value;

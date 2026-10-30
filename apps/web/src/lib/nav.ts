@@ -26,3 +26,22 @@ export function navItems(kind: NavActorKind): { items: NavItem[]; sign_out: bool
       return { items: [FIND, HELP, { label: 'Sign in', href: '/signin' }], sign_out: false };
   }
 }
+
+/** GATE35 D7: /discover is a buyer screen. A publisher or operator is told so and offered their own home. */
+export function discoverForNonBuyer(kind: 'publisher' | 'operator'): {
+  line: string;
+  href: string;
+  label: string;
+} {
+  return kind === 'publisher'
+    ? {
+        line: 'Finding articles is for buyer accounts. You are signed in as a publisher.',
+        href: '/publisher',
+        label: 'Go to your publisher pages',
+      }
+    : {
+        line: 'Finding articles is for buyer accounts. You are signed in as an operator.',
+        href: '/ops',
+        label: 'Go to operations',
+      };
+}

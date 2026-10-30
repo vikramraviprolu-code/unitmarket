@@ -123,7 +123,7 @@ describe('pages S4 and S5', () => {
     const src = read('./app/publisher/sales/page.tsx');
     expect(src).toContain('engine.publisherSales(actor)');
     expect(src).toContain('SALES_EMPTY_TITLE');
-    expect(src).toContain('FEE_NOT_REPORTED');
+    expect(src).toContain('feeText(');
     expect(src).toContain('SALES_SOURCE_NOTE');
     expect(src).toMatch(/id=\{`order-/);
   });
