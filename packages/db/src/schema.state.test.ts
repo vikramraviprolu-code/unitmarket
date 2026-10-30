@@ -1531,7 +1531,9 @@ describe('0010 publishers.payee_shared (DP-1, D-041)', () => {
 
       // 0011 (DP-2a) and 0012 (PUB-A1) exist now, so migrating the 0009 copy applies all three, in
       // order; the 0010 checks below are unchanged.
-      expect(await migrate(d, clock)).toEqual([
+      // later migrations keep landing, so only the head of the applied list is pinned
+      const appliedNow = await migrate(d, clock);
+      expect(appliedNow.slice(0, 5)).toEqual([
         '0010_publisher_payee_shared',
         '0011_provider_order_state',
         '0012_publisher_side',

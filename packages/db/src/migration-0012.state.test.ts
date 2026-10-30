@@ -107,7 +107,7 @@ describe('migration 0012 is forward-only and keeps existing rows', () => {
       // Later migrations (0013 and on) also apply to this copy; 0012 must be the first one applied.
       const applied = await migrate(d, clock);
       expect(applied[0]).toBe('0012_publisher_side');
-      expect(applied.at(-1)).toBe('0014_publisher_visits');
+      expect(applied).toContain('0014_publisher_visits');
 
       const after = await d.query<Record<string, unknown>>('SELECT * FROM publishers ORDER BY id');
       expect(after.rows.map(({ status, ...rest }) => ({ ...rest, s: status }))).toEqual(

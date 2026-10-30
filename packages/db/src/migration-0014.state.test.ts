@@ -41,7 +41,7 @@ describe('migration 0014', () => {
       await addPublisher(d, 'pub_old');
       const before = (await d.query('SELECT * FROM publishers ORDER BY id')).rows;
 
-      expect(await migrate(d, clock)).toEqual(['0014_publisher_visits']);
+      expect((await migrate(d, clock))[0]).toBe('0014_publisher_visits');
 
       expect((await d.query('SELECT * FROM publishers ORDER BY id')).rows).toEqual(before);
       expect((await d.query('SELECT * FROM publisher_visits')).rows).toEqual([]);
