@@ -210,10 +210,58 @@ describe('refusals are the content route reasons', () => {
       entitlement_id: u.entitlement_id,
       actor: w.actorB,
     });
-    expect(v.ok).toBe(false);
+    // The link route's reason is not_available; the reader says it more plainly for a refund (F3).
+    expect(v).toEqual({ ok: false, code: 'refunded' });
     expect(viaLink.ok).toBe(false);
-    if (!v.ok && !viaLink.ok) expect(v.code).toBe(viaLink.error.code);
+    if (!viaLink.ok) expect(viaLink.error.code).toBe('not_available');
     expect((await eventsOf(u.entitlement_id)).map((e) => e.kind)).not.toContain('reader_rendered');
+  });
+});
+
+describe('the rate limit (F2)', () => {
+  // A buyer's item that can be opened (every offer is already bought above).
+  const openable = async (actor: typeof w.actorA): Promise<{ entitlement_id: string }> =>
+    (await w.app.engine.library({ actor })).find((i) => i.can_open)!;
+
+  it('shares the content route bucket: an empty bucket gives rate_limited and writes nothing', async () => {
+    const u = await openable(w.actorA);
+    const key = `content:actor:${(w.actorA as { buyer_id: string }).buyer_id}`;
+    const stamp = w.app.security.clock.now().toISOString();
+    await w.app.db.query(
+      `INSERT INTO rate_buckets (bucket_key, tokens, refilled_at, created_at, updated_at)
+       VALUES ($1, 0, $2, $2, $2)
+       ON CONFLICT (bucket_key) DO UPDATE SET tokens = 0, refilled_at = $2, updated_at = $2`,
+      [key, stamp],
+    );
+    const before = await eventsOf(u.entitlement_id);
+    const v = await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorA });
+    expect(v).toEqual({ ok: false, code: 'rate_limited' });
+    expect(await eventsOf(u.entitlement_id)).toEqual(before);
+    // The content route's link call is limited by the same bucket.
+    const route = await call(w.link.POST, {
+      url: `/api/library/${u.entitlement_id}/link`,
+      method: 'POST',
+      body: {},
+      session: w.A,
+      params: { id: u.entitlement_id },
+    });
+    expect(route.status).toBe(429);
+  });
+
+  it('a read spends a token', async () => {
+    const u = await openable(w.actorB);
+    const tokens = async (): Promise<number> =>
+      Number(
+        (
+          await w.app.db.query<{ tokens: number }>(
+            'SELECT tokens FROM rate_buckets WHERE bucket_key = $1',
+            [`content:actor:${(w.actorB as { buyer_id: string }).buyer_id}`],
+          )
+        ).rows[0]?.tokens ?? 60,
+      );
+    const before = await tokens();
+    await w.app.engine.readerView({ entitlement_id: u.entitlement_id, actor: w.actorB });
+    expect(await tokens()).toBeLessThan(before);
   });
 });
 
@@ -235,6 +283,14 @@ describe('the reader page source', () => {
     expect(code).toContain('notFound()');
   });
 
+  it('imports its own reading-width stylesheet, which sets 70ch and does not touch globals.css', () => {
+    expect(code).toMatch(/import '\.\.\/\.\.\/\.\.\/reader\.css'/);
+    const css = read('./app/reader.css');
+    expect(css).toMatch(/\.reader\b[^}]*max-width:\s*70ch/);
+    expect(css).toMatch(/line-height/);
+    expect(code).toMatch(/className="reader"/);
+  });
+
   it('puts article text in React text nodes only: no HTML injection, no inline style', () => {
     expect(code).not.toMatch(/dangerouslySetInnerHTML|innerHTML|style=|<script|<img|<iframe/);
     expect(code).not.toMatch(/Date\.now|new Date\(|Math\.random/);
@@ -247,5 +303,6 @@ describe('the reader page source', () => {
       /href=\{`\/library\/\$\{encodeURIComponent\(item\.entitlement_id\)\}\/read`\}/,
     );
     expect(item).toContain('<OpenButton');
+    expect(item).toMatch(/prefetch=\{false\}/);
   });
 });

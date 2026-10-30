@@ -38,10 +38,16 @@ async function setArticle(key: string, text: string | Uint8Array, mime = 'text/p
     'UPDATE content_blobs SET data = $2, sha256 = $3, bytes = $4, mime = $5 WHERE content_key = $1',
     [content_key, bytes, sha, bytes.length, mime],
   );
-  await w.app.db.query(
-    'UPDATE articles SET sha256 = $2, bytes = $3, mime = $4 WHERE content_key = $1',
-    [content_key, sha, bytes.length, mime],
-  );
+  // 0012 freezes an article's hash and key while an offer uses it; a test fixture lifts that for one update.
+  await w.app.db.query('ALTER TABLE articles DISABLE TRIGGER articles_content_frozen');
+  try {
+    await w.app.db.query(
+      'UPDATE articles SET sha256 = $2, bytes = $3, mime = $4 WHERE content_key = $1',
+      [content_key, sha, bytes.length, mime],
+    );
+  } finally {
+    await w.app.db.query('ALTER TABLE articles ENABLE TRIGGER articles_content_frozen');
+  }
 }
 
 const kinds = async (entitlement_id: string): Promise<string[]> =>
@@ -126,6 +132,8 @@ describe('items that do not open in the reader', () => {
     expect(v.title.length).toBeGreaterThan(0);
     expect(v.window.state).toBe('running');
     expect(await kinds(u.entitlement_id)).not.toContain('reader_rendered');
+    // F4: a visit that only gets the download answer issues no link.
+    expect(await kinds(u.entitlement_id)).not.toContain('link_issued');
   });
 
   it('text over 200 KB gets the download answer too', async () => {
