@@ -180,6 +180,7 @@ describe('migrations', () => {
     expect(first).toContain('0008_access_events_unique');
     expect(first).toContain('0009_active_entitlement_unique');
     expect(first).toContain('0011_provider_order_state');
+    expect(first).toContain('0012_publisher_side');
     expect(await migrate(d, clock)).toEqual([]);
     const rows = await d.query<{ version: string; applied_at: Date | string }>(
       'SELECT version, applied_at FROM schema_migrations ORDER BY version',
@@ -220,11 +221,14 @@ describe('migrations', () => {
       expect(sql, f).not.toMatch(
         /current_timestamp|clock_timestamp|statement_timestamp|transaction_timestamp/i,
       );
-      // The one allowed default (0010, D-041): publishers.payee_shared starts false for every row.
+      // The allowed defaults: 0010 (D-041) publishers.payee_shared starts false for every row, and
+      // 0012 (PUB-A1) publishers.status starts 'active' for every existing row.
       const withoutAllowed =
         f === '0010_publisher_payee_shared.sql'
           ? sql.replace(/payee_shared\s+boolean\s+NOT\s+NULL\s+DEFAULT\s+false/i, '')
-          : sql;
+          : f === '0012_publisher_side.sql'
+            ? sql.replace(/status\s+text\s+NOT\s+NULL\s+DEFAULT\s+'active'/i, '')
+            : sql;
       expect(withoutAllowed, f).not.toMatch(/\bDEFAULT\b/i);
       expect(sql, f).not.toMatch(/CREATE\s+EXTENSION/i);
     }
@@ -269,8 +273,18 @@ describe('migrations', () => {
       `SELECT table_name, column_name FROM information_schema.columns
        WHERE table_schema = 'public' AND column_default IS NOT NULL AND table_name <> 'schema_migrations'`,
     );
-    // The one allowed default (0010, D-041): publishers.payee_shared is false unless set.
-    expect(defaults.rows).toEqual([{ table_name: 'publishers', column_name: 'payee_shared' }]);
+    // The allowed defaults: 0010 (D-041) publishers.payee_shared is false unless set, and 0012 (PUB-A1)
+    // publishers.status is 'active' unless set.
+    expect(
+      [...defaults.rows].sort((a, b) =>
+        String((a as { column_name: string }).column_name).localeCompare(
+          String((b as { column_name: string }).column_name),
+        ),
+      ),
+    ).toEqual([
+      { table_name: 'publishers', column_name: 'payee_shared' },
+      { table_name: 'publishers', column_name: 'status' },
+    ]);
   });
   it('ums_id refuses blank, padded and control-character ids', async () => {
     for (const bad of ['', ' x', 'x ', 'a\nb', 'a​b']) {
@@ -1513,17 +1527,19 @@ describe('0010 publishers.payee_shared (DP-1, D-041)', () => {
       await add('pub_n', 'northfield-quarterly', null);
       const before = (await d.query('SELECT * FROM publishers ORDER BY id')).rows;
 
-      // 0011 (DP-2a) exists now, so migrating the 0009 copy applies both, in order; the 0010 checks
-      // below are unchanged.
+      // 0011 (DP-2a) and 0012 (PUB-A1) exist now, so migrating the 0009 copy applies all three, in
+      // order; the 0010 checks below are unchanged.
       expect(await migrate(d, clock)).toEqual([
         '0010_publisher_payee_shared',
         '0011_provider_order_state',
+        '0012_publisher_side',
       ]);
       const after = await d.query<Record<string, unknown>>('SELECT * FROM publishers ORDER BY id');
       // every old column value is kept; the new column is false for every existing row
+      // 0012 (PUB-A1) also adds publishers.status, which is 'active' for every existing row
       expect(
         after.rows.map(({ payee_shared, ...rest }) => ({ ...rest, flag: payee_shared })),
-      ).toEqual(before.map((r) => ({ ...r, flag: false })));
+      ).toEqual(before.map((r) => ({ ...r, status: 'active', flag: false })));
       // the old uniqueness still holds for these rows (nothing is flagged)
       await expect(add('pub_dup', 'dup', 'SBXMOWNERBUSINESS')).rejects.toThrow();
       // forward-only: there is no down step and a second run is a no-op

@@ -7,6 +7,7 @@ import { currentActor } from '../server/session';
 import { EnvLabel } from '../ui/EnvLabel';
 import { siteDescription, siteFooter } from '../ui/env-copy';
 import { LEGAL_NAV } from '../lib/legal-copy';
+import { PUBLISHER_NAV_LABEL } from '../lib/publisher-copy';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +41,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 {actor?.kind === 'buyer' ? (
                   <li>
                     <Link href="/library">My library</Link>
+                  </li>
+                ) : null}
+                {actor?.kind === 'publisher' ? (
+                  <li>
+                    <Link href="/publisher">{PUBLISHER_NAV_LABEL}</Link>
                   </li>
                 ) : null}
                 {actor?.kind === 'operator' ? (
