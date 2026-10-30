@@ -21,8 +21,8 @@ async function fresh(): Promise<Db> {
 const pub = (d: Db, id: string, status = 'applied') =>
   d.query(
     `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)
-     VALUES ($1, $1, 'P', 'US', $2, $3, $3)`,
-    [id, status, T],
+     VALUES ($1, $2, 'P', 'US', $3, $4, $4)`,
+    [id, `slug-${id}`, status, T],
   );
 const dec = (d: Db, id: string, publisher: string, decision: string) =>
   d.query(
@@ -43,7 +43,10 @@ describe('migration 0013', () => {
     expect(await migrate(d, clock)).toEqual([]);
     const dir = new URL('../migrations/common/', import.meta.url);
     expect(readdirSync(dir).filter((n) => /^0013_.*(down|rollback)/i.test(n))).toEqual([]);
-    const sql = readFileSync(new URL('0013_publisher_applicants.sql', dir), 'utf8').replace(/--.*$/gm, '');
+    const sql = readFileSync(new URL('0013_publisher_applicants.sql', dir), 'utf8').replace(
+      /--.*$/gm,
+      '',
+    );
     expect(sql).not.toMatch(/\bDEFAULT\b/i);
     expect(sql).not.toMatch(/\bnow\s*\(/i);
   });
@@ -63,7 +66,9 @@ describe('migration 0013', () => {
     const d = await fresh();
     await pub(d, 'pub_a');
     await dec(d, 'aud_1', 'pub_a', 'approved');
-    await expect(d.query("UPDATE publisher_applicant_decisions SET reason = 'x'")).rejects.toThrow();
+    await expect(
+      d.query("UPDATE publisher_applicant_decisions SET reason = 'x'"),
+    ).rejects.toThrow();
     await expect(d.query('DELETE FROM publisher_applicant_decisions')).rejects.toThrow();
     await expect(d.query('TRUNCATE publisher_applicant_decisions')).rejects.toThrow();
   });

@@ -63,10 +63,10 @@ const goodAdd = () => {
 };
 const q = async <T>(sql: string, p: unknown[] = []): Promise<T[]> =>
   (await w.app.db.query<T>(sql, p)).rows;
-const countOf = async (sql: string): Promise<number> =>
-  Number((await q<{ c: string }>(sql))[0]!.c);
+const countOf = async (sql: string): Promise<number> => Number((await q<{ c: string }>(sql))[0]!.c);
 const pubs = () => countOf('SELECT count(*) AS c FROM publishers');
-const audits = () => countOf("SELECT count(*) AS c FROM audit_log WHERE action LIKE 'publisher.applicant_%'");
+const audits = () =>
+  countOf("SELECT count(*) AS c FROM audit_log WHERE action LIKE 'publisher.applicant_%'");
 const decisions = () => countOf('SELECT count(*) AS c FROM publisher_applicant_decisions');
 const statusOf = async (id: string): Promise<string> =>
   (await q<{ status: string }>('SELECT status FROM publishers WHERE id = $1', [id]))[0]!.status;
@@ -86,7 +86,11 @@ describe('who may add or decide', () => {
     expect(res.status).toBe(403);
     expect((await errorOf(res)).code).toBe('mfa_required');
     const id = await newApplicant();
-    const res2 = await decide(w.refund.demo, { publisher_id: id, decision: 'approve', reason: 'Looks fine' });
+    const res2 = await decide(w.refund.demo, {
+      publisher_id: id,
+      decision: 'approve',
+      reason: 'Looks fine',
+    });
     expect(res2.status).toBe(403);
     expect((await errorOf(res2)).code).toBe('mfa_required');
     expect(await statusOf(id)).toBe('applied');
@@ -98,11 +102,23 @@ describe('who may add or decide', () => {
     const before = [await pubs(), await audits(), await decisions()];
     for (const s of [w.pub['harbour-ledger'], w.pub['northfield-quarterly'], w.refund.A]) {
       expect((await add(s, goodAdd())).status).toBe(403);
-      expect((await decide(s, { publisher_id: id, decision: 'approve', reason: 'Self serve' })).status).toBe(403);
-      expect((await decide(s, { publisher_id: w.pubId['harbour-ledger'], decision: 'reject', reason: 'Self serve' })).status).toBe(403);
+      expect(
+        (await decide(s, { publisher_id: id, decision: 'approve', reason: 'Self serve' })).status,
+      ).toBe(403);
+      expect(
+        (
+          await decide(s, {
+            publisher_id: w.pubId['harbour-ledger'],
+            decision: 'reject',
+            reason: 'Self serve',
+          })
+        ).status,
+      ).toBe(403);
     }
     expect((await add(null, goodAdd())).status).toBe(401);
-    expect((await decide(null, { publisher_id: id, decision: 'approve', reason: 'Self serve' })).status).toBe(401);
+    expect(
+      (await decide(null, { publisher_id: id, decision: 'approve', reason: 'Self serve' })).status,
+    ).toBe(401);
     expect(await statusOf(id)).toBe('applied');
     expect([await pubs(), await audits(), await decisions()]).toEqual(before);
   });
@@ -126,7 +142,11 @@ describe('the shape of the call', () => {
     const a = await add(w.refund.op, goodAdd(), { csrf: false });
     expect(a.status).toBe(403);
     expect((await errorOf(a)).code).toBe('csrf');
-    const d = await decide(w.refund.op, { publisher_id: id, decision: 'approve', reason: 'Fine fine' }, { csrf: false });
+    const d = await decide(
+      w.refund.op,
+      { publisher_id: id, decision: 'approve', reason: 'Fine fine' },
+      { csrf: false },
+    );
     expect(d.status).toBe(403);
     expect((await errorOf(d)).code).toBe('csrf');
     expect(await pubs()).toBe(before);
@@ -147,7 +167,12 @@ describe('the shape of the call', () => {
       const a = await add(w.refund.op, { ...goodAdd(), ...extra });
       expect(a.status, JSON.stringify(extra)).toBe(422);
       expect((await errorOf(a)).code).toBe('invalid_input');
-      const d = await decide(w.refund.op, { publisher_id: id, decision: 'approve', reason: 'Fine fine', ...extra });
+      const d = await decide(w.refund.op, {
+        publisher_id: id,
+        decision: 'approve',
+        reason: 'Fine fine',
+        ...extra,
+      });
       expect(d.status, JSON.stringify(extra)).toBe(422);
     }
     expect([await pubs(), await audits()]).toEqual(before);
@@ -190,7 +215,12 @@ describe('the shape of the call', () => {
       { publisher_id: '' },
       { publisher_id: 5 },
     ]) {
-      const res = await decide(w.refund.op, { publisher_id: id, decision: 'approve', reason: 'Fine fine', ...bad });
+      const res = await decide(w.refund.op, {
+        publisher_id: id,
+        decision: 'approve',
+        reason: 'Fine fine',
+        ...bad,
+      });
       expect(res.status, JSON.stringify(bad)).toBe(422);
     }
     expect(await statusOf(id)).toBe('applied');
@@ -200,7 +230,13 @@ describe('the shape of the call', () => {
   it('an oversized body is 413', async () => {
     expect((await add(w.refund.op, { ...goodAdd(), reason: 'z'.repeat(3000) })).status).toBe(413);
     expect(
-      (await decide(w.refund.op, { publisher_id: 'p', decision: 'approve', reason: 'z'.repeat(3000) })).status,
+      (
+        await decide(w.refund.op, {
+          publisher_id: 'p',
+          decision: 'approve',
+          reason: 'z'.repeat(3000),
+        })
+      ).status,
     ).toBe(413);
   });
 });
@@ -221,7 +257,11 @@ describe('the rules', () => {
   it('a guessed id is 404 not_found and creates nothing', async () => {
     const before = [await decisions(), await audits()];
     for (const publisher_id of ['pub_guess', 'pub_00000000000000000000000000', "x' OR 1=1 --"]) {
-      const res = await decide(w.refund.op, { publisher_id, decision: 'approve', reason: 'Guessing' });
+      const res = await decide(w.refund.op, {
+        publisher_id,
+        decision: 'approve',
+        reason: 'Guessing',
+      });
       expect(res.status).toBe(404);
       expect((await errorOf(res)).code).toBe('not_found');
     }
@@ -231,25 +271,42 @@ describe('the rules', () => {
   it('applied becomes active on approve, with no login, no payee and no offers', async () => {
     const id = await newApplicant();
     const moneyBefore = await countOf(MONEY);
-    const res = await decide(w.refund.op, { publisher_id: id, decision: 'approve', reason: 'Checked their site' });
+    const res = await decide(w.refund.op, {
+      publisher_id: id,
+      decision: 'approve',
+      reason: 'Checked their site',
+    });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ state: 'active' });
     expect(await statusOf(id)).toBe('active');
-    const row = (await q<Record<string, unknown>>('SELECT paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1', [id]))[0];
+    const row = (
+      await q<Record<string, unknown>>(
+        'SELECT paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
+        [id],
+      )
+    )[0];
     expect(row).toEqual({ paypal_merchant_id: null, payee_verified_at: null });
     expect(await countOf(`SELECT count(*) AS c FROM offers WHERE publisher_id = '${id}'`)).toBe(0);
     expect(await countOf(MONEY)).toBe(moneyBefore);
     // an approved applicant is still not a persona: the list is the fixed composition list
     expect(w.app.engine.personas().some((x) => x.includes('applicant'))).toBe(false);
     // and the decision cannot be repeated
-    const again = await decide(w.refund.op, { publisher_id: id, decision: 'reject', reason: 'Changed my mind' });
+    const again = await decide(w.refund.op, {
+      publisher_id: id,
+      decision: 'reject',
+      reason: 'Changed my mind',
+    });
     expect(again.status).toBe(409);
     expect(await statusOf(id)).toBe('active');
   });
 
   it('reject keeps the row applied, is final, and a second answer is 409', async () => {
     const id = await newApplicant();
-    const res = await decide(w.refund.op, { publisher_id: id, decision: 'reject', reason: 'Not a fit right now' });
+    const res = await decide(w.refund.op, {
+      publisher_id: id,
+      decision: 'reject',
+      reason: 'Not a fit right now',
+    });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ state: 'rejected' });
     expect(await statusOf(id)).toBe('applied');
@@ -268,7 +325,11 @@ describe('the rules', () => {
         url: '/api/ops/publishers/status',
         method: 'POST',
         session: w.refund.op,
-        body: { publisher_id: w.pubId['quayside-gazette'], status: 'suspended', reason: 'Under review' },
+        body: {
+          publisher_id: w.pubId['quayside-gazette'],
+          status: 'suspended',
+          reason: 'Under review',
+        },
       },
     );
     expect(sres.status).toBe(200);
@@ -287,12 +348,15 @@ describe('the rules', () => {
 
   it('the status route still refuses to activate an applicant', async () => {
     const id = await newApplicant();
-    const res = await call((await import('./app/api/ops/publishers/status/route')).POST as Handler, {
-      url: '/api/ops/publishers/status',
-      method: 'POST',
-      session: w.refund.op,
-      body: { publisher_id: id, status: 'active', reason: 'Skip approval' },
-    });
+    const res = await call(
+      (await import('./app/api/ops/publishers/status/route')).POST as Handler,
+      {
+        url: '/api/ops/publishers/status',
+        method: 'POST',
+        session: w.refund.op,
+        body: { publisher_id: id, status: 'active', reason: 'Skip approval' },
+      },
+    );
     expect(res.status).toBe(409);
     expect(await statusOf(id)).toBe('applied');
   });

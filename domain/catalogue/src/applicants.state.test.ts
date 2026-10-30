@@ -35,9 +35,7 @@ const audits = async (like: string) =>
     )
   ).rows;
 const n = async (table: string): Promise<number> =>
-  Number(
-    (await w.db.query<{ c: string }>(`SELECT count(*) AS c FROM ${table}`)).rows[0]!.c,
-  );
+  Number((await w.db.query<{ c: string }>(`SELECT count(*) AS c FROM ${table}`)).rows[0]!.c);
 const MONEY = ['orders', 'order_units', 'ledger_entries', 'approvals', 'entitlements', 'offers'];
 
 describe('addApplicant', () => {
@@ -58,9 +56,10 @@ describe('addApplicant', () => {
     expect(
       Number(
         (
-          await w.db.query<{ c: string }>('SELECT count(*) AS c FROM offers WHERE publisher_id = $1', [
-            id,
-          ])
+          await w.db.query<{ c: string }>(
+            'SELECT count(*) AS c FROM offers WHERE publisher_id = $1',
+            [id],
+          )
         ).rows[0]!.c,
       ),
     ).toBe(0);
@@ -84,7 +83,16 @@ describe('addApplicant', () => {
   });
 
   it('validates slug, name, country and reason', async () => {
-    for (const slug of ['ab', 'a'.repeat(41), 'has space', '-lead', 'trail-', 'dou--ble', 'under_score', 'ünï']) {
+    for (const slug of [
+      'ab',
+      'a'.repeat(41),
+      'has space',
+      '-lead',
+      'trail-',
+      'dou--ble',
+      'under_score',
+      'ünï',
+    ]) {
       expect(await add({ slug }), slug).toEqual({ ok: false, error: { code: 'invalid_slug' } });
     }
     for (const bad of [
@@ -135,7 +143,9 @@ describe('listApplicants', () => {
     expect(l!.map((a) => [a.slug, a.state])).toEqual([['tidewater-review', 'pending']]);
     expect(await listApplicants(w.db, w.harbour)).toBeNull();
     expect(await listApplicants(w.db, w.buyer)).toBeNull();
-    expect(await listApplicants(w.db, { kind: 'operator', operator_id: 'opr_x', mfa: false })).toBeNull();
+    expect(
+      await listApplicants(w.db, { kind: 'operator', operator_id: 'opr_x', mfa: false }),
+    ).toBeNull();
   });
 });
 
@@ -143,8 +153,11 @@ describe('decideApplicant', () => {
   const id = async (slug: string): Promise<string> =>
     (await w.db.query<{ id: string }>('SELECT id FROM publishers WHERE slug = $1', [slug])).rows[0]!
       .id;
-  const decide = (publisher_id: string, decision: 'approve' | 'reject', reason = 'Checked in person') =>
-    decideApplicant(w.deps(), w.operator, { publisher_id, decision, reason });
+  const decide = (
+    publisher_id: string,
+    decision: 'approve' | 'reject',
+    reason = 'Checked in person',
+  ) => decideApplicant(w.deps(), w.operator, { publisher_id, decision, reason });
 
   it('approve makes the applicant active, records the decision, one audit row, money untouched', async () => {
     const pid = await id('tidewater-review');
@@ -223,7 +236,10 @@ describe('decideApplicant', () => {
   });
 
   it('an unknown id is not_found; bad input and bad actors change nothing', async () => {
-    expect(await decide('pub_guessed', 'approve')).toEqual({ ok: false, error: { code: 'not_found' } });
+    expect(await decide('pub_guessed', 'approve')).toEqual({
+      ok: false,
+      error: { code: 'not_found' },
+    });
     const r = await add({ slug: 'third-applicant', display_name: 'Third Applicant' });
     if (!r.ok) throw new Error(r.error.code);
     const pid = r.value.publisher_id;
@@ -244,7 +260,11 @@ describe('decideApplicant', () => {
     }
     for (const a of [w.harbour, w.buyer, w.system]) {
       expect(
-        await decideApplicant(w.deps(), a, { publisher_id: pid, decision: 'approve', reason: 'Nope nope' }),
+        await decideApplicant(w.deps(), a, {
+          publisher_id: pid,
+          decision: 'approve',
+          reason: 'Nope nope',
+        }),
       ).toEqual({ ok: false, error: { code: 'not_operator' } });
     }
     expect(

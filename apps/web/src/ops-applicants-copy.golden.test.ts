@@ -18,7 +18,9 @@ function lines(): string[] {
   out.push(`no login: ${copy.APPLICANTS_NO_LOGIN}`);
   out.push(`empty: ${copy.APPLICANTS_EMPTY}`);
   out.push(`add heading: ${copy.ADD_HEADING}`);
-  out.push(`fields: ${copy.FIELD_NAME} | ${copy.FIELD_SLUG} | ${copy.FIELD_COUNTRY} | ${copy.FIELD_NOTE}`);
+  out.push(
+    `fields: ${copy.FIELD_NAME} | ${copy.FIELD_SLUG} | ${copy.FIELD_COUNTRY} | ${copy.FIELD_NOTE}`,
+  );
   out.push(`field reason: ${copy.FIELD_DECISION_REASON}`);
   out.push(`buttons: ${copy.ADD_BUTTON} | ${copy.APPROVE_BUTTON} | ${copy.REJECT_BUTTON}`);
   out.push(`approve hint: ${copy.APPROVE_HINT}`);

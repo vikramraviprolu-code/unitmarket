@@ -1,0 +1,24 @@
+heading: Applicants
+lede: Publishers who have asked to join. An operator adds each one here after talking to them. Nobody signs up by themselves on this site.
+no login: Approving an applicant makes it an active publisher, but it cannot sign in yet. The owners must add a persona and a passcode for it first. Until then it has no payee account and no offers.
+empty: No applicants waiting.
+add heading: Add an applicant
+fields: Display name | Short name (3 to 40 lowercase letters or numbers, single hyphens allowed between parts) | Country (two capital letters, for example GB) | Why you are adding them (3 to 200 characters)
+field reason: Reason for your answer (3 to 200 characters)
+buttons: Add applicant | Approve | Reject
+approve hint: Approve makes the publisher active. It cannot sign in until the owners add a persona and a passcode.
+reject hint: Reject keeps the record and the reason. It cannot be undone and the applicant stays unable to sign in or sell.
+state pending: Waiting for your answer
+state rejected: Rejected
+rejected with reason: Rejected. Reason given: Not a fit right now
+applicant line: GB, short name tidewater-review
+done: Applicant added. It is waiting for your answer. | Approved. The publisher is active but cannot sign in until the owners add a persona. | Rejected. The record and your reason are kept.
+error invalid_slug: The short name must be 3 to 40 lowercase letters or numbers, with single hyphens between parts.
+error slug_taken: That short name is already used. Nothing was saved.
+error already_decided: This applicant has already been answered. Nothing changed.
+error not_allowed: Only an applicant can be approved or rejected. Nothing changed.
+error not_found: That applicant was not found.
+error mfa_required: Changing applicants needs a sign in with your authenticator code.
+error invalid_input: Please check the name, the country (two capital letters) and the reason (3 to 200 characters).
+error rate_limited: Too many changes this hour. Please try again later.
+error unknown: The change could not be saved. Please try again.

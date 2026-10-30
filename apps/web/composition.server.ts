@@ -97,8 +97,13 @@ import {
   seedSupplement,
   setPublisherStatus,
   withdrawOffer,
+  addApplicant,
+  decideApplicant,
+  listApplicants,
 } from '@umsbx/catalogue';
 import type {
+  Applicant,
+  ApplicantError,
   OfferWriteError,
   OpenRequest,
   OwnOffer,
@@ -828,6 +833,27 @@ export interface Engine {
       status: 'suspended' | 'active';
       reason: string;
     }): Promise<Result<{ status: 'suspended' | 'active' }, StatusError>>;
+  };
+  /**
+   * PUB-E2, operator only (second factor required). `list` shows applicants waiting or turned down; `add`
+   * records an applicant (status applied, no payee, no offers, no sign in); `decide` approves it (active)
+   * or rejects it (stays applied, a decision row). This is not signup and it adds no persona.
+   */
+  opsApplicants: {
+    list(actor: Actor): Promise<Result<{ applicants: Applicant[] }, ApplicantError>>;
+    add(i: {
+      actor: Actor;
+      slug: string;
+      display_name: string;
+      country: string;
+      reason: string;
+    }): Promise<Result<{ publisher_id: Id }, ApplicantError>>;
+    decide(i: {
+      actor: Actor;
+      publisher_id: Id;
+      decision: 'approve' | 'reject';
+      reason: string;
+    }): Promise<Result<{ state: 'active' | 'rejected' }, ApplicantError>>;
   };
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
@@ -2404,6 +2430,29 @@ function buildApp(config: Config, opts: AppOptions): App {
         setPublisherStatus(offerDeps, i.actor, {
           publisher_id: i.publisher_id,
           status: i.status,
+          reason: i.reason,
+        }),
+    },
+
+    opsApplicants: {
+      async list(actor) {
+        if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
+        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
+        const applicants = await listApplicants(db, actor);
+        if (applicants === null) return { ok: false, error: { code: 'not_operator' } };
+        return { ok: true, value: { applicants } };
+      },
+      add: (i) =>
+        addApplicant(offerDeps, i.actor, {
+          slug: i.slug,
+          display_name: i.display_name,
+          country: i.country,
+          reason: i.reason,
+        }),
+      decide: (i) =>
+        decideApplicant(offerDeps, i.actor, {
+          publisher_id: i.publisher_id,
+          decision: i.decision,
           reason: i.reason,
         }),
     },

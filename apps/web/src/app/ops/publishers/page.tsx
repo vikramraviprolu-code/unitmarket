@@ -32,7 +32,20 @@ import {
   statusText,
   unitsText,
 } from '../../../lib/ops-publishers-copy';
+import {
+  ADD_HEADING,
+  APPLICANTS_EMPTY,
+  APPLICANTS_HEADING,
+  APPLICANTS_LEDE,
+  APPLICANTS_NO_LOGIN,
+  APPROVE_HINT,
+  REJECT_HINT,
+  applicantLine,
+  applicantStateText,
+  rejectedReasonText,
+} from '../../../lib/ops-applicants-copy';
 import { StatusForm } from './StatusForm';
+import { AddApplicantForm, DecideApplicantForm } from './ApplicantForms';
 
 export const metadata: Metadata = { title: 'Publishers' };
 
@@ -44,7 +57,11 @@ export default async function OpsPublishers() {
   if (actor?.kind !== 'operator') redirect('/signin?next=/ops/publishers');
   const r = await (await app()).engine.opsPublishers.list(actor);
   if (!r.ok) redirect('/signin?next=/ops/publishers');
-  const { publishers, environment } = r.value;
+  const { environment } = r.value;
+  const publishers = r.value.publishers.filter((p) => p.status !== 'applied');
+  const ap = await (await app()).engine.opsApplicants.list(actor);
+  if (!ap.ok) redirect('/signin?next=/ops/publishers');
+  const applicants = ap.value.applicants;
   return (
     <>
       <h1>
@@ -54,6 +71,44 @@ export default async function OpsPublishers() {
       <p>
         <Link href="/ops/payee-requests">{OPS_LINK_PAYEE_REQUESTS}</Link>
       </p>
+      <section className="card" aria-labelledby="applicants-heading" data-testid="applicants">
+        <h2 id="applicants-heading">{APPLICANTS_HEADING}</h2>
+        <p>{APPLICANTS_LEDE}</p>
+        <p className="muted" data-testid="applicants-no-login">
+          {APPLICANTS_NO_LOGIN}
+        </p>
+        {applicants.length === 0 ? (
+          <p className="muted" data-testid="applicants-empty">
+            {APPLICANTS_EMPTY}
+          </p>
+        ) : (
+          applicants.map((a) => (
+            <section
+              key={a.publisher_id}
+              className="card"
+              aria-labelledby={`applicant-${a.publisher_id}`}
+              data-testid="applicant-row"
+            >
+              <h3 id={`applicant-${a.publisher_id}`}>{a.display_name}</h3>
+              <p className="muted">{applicantLine(a)}</p>
+              <p data-testid="applicant-state">
+                {a.state === 'rejected' && a.decision_reason !== null
+                  ? rejectedReasonText(a.decision_reason)
+                  : applicantStateText(a.state)}
+              </p>
+              {a.state === 'pending' ? (
+                <>
+                  <p className="muted">{APPROVE_HINT}</p>
+                  <p className="muted">{REJECT_HINT}</p>
+                  <DecideApplicantForm publisherId={a.publisher_id} name={a.display_name} />
+                </>
+              ) : null}
+            </section>
+          ))
+        )}
+        <h3>{ADD_HEADING}</h3>
+        <AddApplicantForm />
+      </section>
       {publishers.length === 0 ? (
         <p className="muted" data-testid="publishers-empty">
           {PUBLISHERS_EMPTY}
