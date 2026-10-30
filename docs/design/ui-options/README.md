@@ -14,3 +14,16 @@ Rules every option keeps: "You pay nothing until you approve at the payment step
 D-051 wording, no ratings, no fake urgency. The live app allows only system fonts and no inline styles (CSP).
 The owners chose to keep all five options for now. The screens work (spec `docs/specs/web-ux-phase1a.md` on branch
 `feat/web-ux-phase1a`) starts only after the owners pick a direction.
+
+## Round 2 (30 Oct 2026): options F, G, H
+
+Built after a survey of open source UI sources (`round2/survey.md`, licences read from each repository's licence file where
+marked verified). Previews are single self-contained HTML files in `round2/`. Preview only; not tested against the app's real
+CSP, only in Chromium. Published copies:
+
+- F Morning Edition (editorial print, the Stamp): https://claude.ai/artifact/BTNbUhkKn3idGnvd5A5c9W
+- G Departure Board (high-contrast technical, the Flap Board): https://claude.ai/artifact/L2Bs4Qc7pxwtpM36qdpb1v
+- H Swiss Ledger (Swiss grid, kinetic type, the Split): https://claude.ai/artifact/G9X556FduBiGEBPVsh1zYZ
+
+Worker ranking: H, then G, then F. Suggested combinations: H with D, G with E, and take F's Stamp idea into either.
+No screens work starts until the owners choose a direction.
