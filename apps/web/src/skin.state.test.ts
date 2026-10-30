@@ -65,7 +65,7 @@ describe('Appearance control and copy', () => {
     expect(src).toContain('<fieldset');
     expect(src).toContain('<legend');
     expect(src).toContain('type="radio"');
-    expect(src).toContain("'/api/appearance'");
+    expect(src).toContain("postJson('/api/appearance'");
     expect(src).toContain('window.location.reload()');
     expect(src).not.toMatch(/localStorage|sessionStorage/);
     expect(src).toContain('APPEARANCE_LEGEND');
@@ -157,12 +157,16 @@ describe('POST /api/appearance', () => {
       { skin: '' },
       { skin: 'harbour', extra: 1 },
       {},
-      '{not json',
     ]) {
+      // withRoute answers a body that fails the strict schema with 422 (the first run of this test
+      // guessed 400; the spec names no code, so the test follows the route wrapper).
       const res = await post(body);
-      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(res.status, JSON.stringify(body)).toBe(422);
       expect(res.headers.get('set-cookie')).toBeNull();
     }
+    const unreadable = await post('{not json');
+    expect(unreadable.status).toBe(400);
+    expect(unreadable.headers.get('set-cookie')).toBeNull();
   });
 
   it('refuses a cross-origin POST and a POST with no origin, with no cookie', async () => {

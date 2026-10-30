@@ -1,45 +1,103 @@
 /* UnitMarket sandbox design system: calm, plain, high contrast. Tokens first, then components.
    Contrast: text on surface at least 7:1; UI borders at least 3:1 (A11Y-2). Targets at least 44px. */
 :root {
-  --bg: #fbfaf7;
-  --surface: #ffffff;
-  --text: #17202b;
-  --muted: #4b5766;
-  --line: #8a93a0;
-  --line-soft: #d9dde3;
-  --accent: #14587f;
-  --accent-ink: #ffffff;
-  --accent-soft: #e3eff6;
-  --good: #1b6b3a;
-  --good-soft: #e4f3ea;
-  --warn: #7a4b00;
-  --warn-soft: #fcf0d9;
-  --bad: #9b1c1c;
-  --bad-soft: #fbe6e6;
-  --focus: #b35c00;
-  --radius: 10px;
   --space: 16px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #11161d;
-    --surface: #1a212b;
-    --text: #eef2f6;
-    --muted: #b3bdc9;
-    --line: #8795a6;
-    --line-soft: #2e3846;
-    --accent: #8ec6ea;
-    --accent-ink: #0b1a24;
-    --accent-soft: #1d3140;
-    --good: #7fd6a0;
-    --good-soft: #17301f;
-    --warn: #f1c46b;
-    --warn-soft: #3a2c10;
-    --bad: #ff9c9c;
-    --bad-soft: #3b1a1a;
-    --focus: #ffb14d;
-  }
+/* Two skins, each one fixed palette (SKIN-A, decisions 38 to 41). The server writes data-skin on <html> from
+   the um_skin cookie; market is the default when the attribute is missing. The browser's colour preference
+   is not read: a visitor who prefers dark chooses Deep Harbour in the footer. No url() and no data: URI
+   anywhere in this file (the CSP is default-src 'self'); covers and the page texture are CSS gradients.
+   Contrast of every pair is pinned by src/ui/contrast.test.ts. */
+:root,
+:root[data-skin='market'] {
+  color-scheme: light;
+  --bg: #eef3ff;
+  --surface: #ffffff;
+  --surface-2: #e2e9fc;
+  --text: #0e1633;
+  --muted: #47527a;
+  --line: #8089ae;
+  --line-soft: #d4dcf3;
+  --accent: #1846e5;
+  --accent-ink: #ffffff;
+  --accent-soft: #e0e8ff;
+  --good: #0b7a55;
+  --good-soft: #d8f4ea;
+  --warn: #7a4b00;
+  --warn-soft: #fcefd2;
+  --bad: #9b1c1c;
+  --bad-soft: #fbe6e6;
+  --focus: #b35c00;
+  --header-bg: #1846e5;
+  --header-ink: #ffffff;
+  --header-link: #ffffff;
+  --header-hover: #3d64e9;
+  --header-focus: #ffffff;
+  --h0b: #1846e5;
+  --h0i: #ffffff;
+  --h1b: #0b7a55;
+  --h1i: #ffffff;
+  --h2b: #c2410c;
+  --h2i: #ffffff;
+  --h3b: #7048e8;
+  --h3i: #ffffff;
+  --h4b: #c2255c;
+  --h4i: #ffffff;
+  --h5b: #0b7285;
+  --h5i: #ffffff;
+  --radius: 16px;
+  --radius-btn: 999px;
+  --shadow: 0 1px 2px rgba(14, 22, 51, 0.06), 0 10px 28px rgba(14, 22, 51, 0.08);
+  --card-border: var(--line-soft);
+  --atmosphere: radial-gradient(circle at 1px 1px, rgba(24, 70, 229, 0.1) 1px, transparent 1.4px);
+  --display:
+    ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', system-ui, -apple-system, 'Segoe UI',
+    sans-serif;
+}
+/* Until SKIN-B, Deep Harbour holds the dark values the app already had. */
+:root[data-skin='harbour'] {
+  color-scheme: dark;
+  --bg: #11161d;
+  --surface: #1a212b;
+  --surface-2: #222b37;
+  --text: #eef2f6;
+  --muted: #b3bdc9;
+  --line: #8795a6;
+  --line-soft: #2e3846;
+  --accent: #8ec6ea;
+  --accent-ink: #0b1a24;
+  --accent-soft: #1d3140;
+  --good: #7fd6a0;
+  --good-soft: #17301f;
+  --warn: #f1c46b;
+  --warn-soft: #3a2c10;
+  --bad: #ff9c9c;
+  --bad-soft: #3b1a1a;
+  --focus: #ffb14d;
+  --header-bg: #1a212b;
+  --header-ink: #eef2f6;
+  --header-link: #8ec6ea;
+  --header-hover: #222b37;
+  --header-focus: #ffb14d;
+  --h0b: #123f5a;
+  --h0i: #7fe3f0;
+  --h1b: #1d4a45;
+  --h1i: #ffc069;
+  --h2b: #3d3a5c;
+  --h2i: #b8b0ff;
+  --h3b: #2e4a3a;
+  --h3i: #a8f0c0;
+  --h4b: #5a2f3b;
+  --h4i: #ffb3c1;
+  --h5b: #2f4660;
+  --h5i: #9fd0ff;
+  --radius: 10px;
+  --radius-btn: 10px;
+  --shadow: none;
+  --card-border: var(--line);
+  --atmosphere: none;
+  --display: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 * {
   box-sizing: border-box;
@@ -53,6 +111,16 @@ body {
   color: var(--text);
   font-family: var(--font);
   line-height: 1.55;
+}
+/* The page texture is a gradient on a layer behind the content (none in Deep Harbour). */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--atmosphere);
+  background-size: 22px 22px;
 }
 a {
   color: var(--accent);
@@ -91,8 +159,15 @@ main:focus {
   top: 8px;
 }
 .site-header {
-  background: var(--surface);
+  background: var(--header-bg);
+  color: var(--header-ink);
   border-bottom: 1px solid var(--line-soft);
+}
+.site-header a {
+  color: var(--header-link);
+}
+.site-header :focus-visible {
+  outline-color: var(--header-focus);
 }
 .site-header .inner,
 main,
@@ -115,10 +190,13 @@ main,
   gap: 12px 20px;
   min-height: 64px;
 }
-.brand {
-  font-weight: 700;
-  font-size: 1.15rem;
-  color: var(--text);
+.brand,
+.site-header .brand {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 1.3rem;
+  letter-spacing: -0.03em;
+  color: var(--header-ink);
   text-decoration: none;
 }
 nav ul {
@@ -133,7 +211,11 @@ nav a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  padding: 0 10px;
+  padding: 0 12px;
+  border-radius: var(--radius-btn);
+}
+nav a:hover {
+  background: var(--header-hover);
 }
 .spacer {
   flex: 1;
@@ -156,6 +238,12 @@ nav a {
 main {
   padding-top: 28px;
   padding-bottom: 56px;
+}
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  letter-spacing: -0.02em;
 }
 h1 {
   font-size: 1.9rem;
@@ -187,8 +275,9 @@ h3 {
 .card,
 .fit-card {
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow);
   padding: 20px;
 }
 .card h2 {
@@ -272,7 +361,10 @@ h3 {
   background: var(--warn-soft);
 }
 .price {
+  font-family: var(--display);
   font-size: 1.6rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 .price-line {
   margin: 8px 0 0;
@@ -283,8 +375,8 @@ h3 {
   justify-content: center;
   min-height: 44px;
   min-width: 44px;
-  padding: 0 18px;
-  border-radius: var(--radius);
+  padding: 0 20px;
+  border-radius: var(--radius-btn);
   border: 2px solid var(--accent);
   background: var(--surface);
   color: var(--accent);
@@ -420,8 +512,31 @@ legend {
 }
 .meter-bar span {
   display: block;
+  width: 0;
   height: 100%;
   background: var(--accent);
+}
+.meter-fill-1 {
+  width: 20%;
+}
+.meter-fill-2 {
+  width: 40%;
+}
+.meter-fill-3 {
+  width: 60%;
+}
+.meter-fill-4 {
+  width: 80%;
+}
+.meter-fill-5 {
+  width: 100%;
+}
+.plain-list {
+  list-style: none;
+  padding: 0;
+}
+.no-bullet {
+  list-style: none;
 }
 table {
   width: 100%;
@@ -443,6 +558,99 @@ td {
   color: var(--muted);
   padding-bottom: 32px;
   font-size: 0.9rem;
+}
+.appearance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 20px;
+  margin: 12px 0 0;
+  padding: 4px 16px;
+}
+.appearance legend {
+  color: var(--text);
+}
+.appearance .radio {
+  min-height: 44px;
+  padding: 0;
+  align-items: center;
+  color: var(--text);
+}
+.appearance .radio input {
+  margin: 0;
+}
+.appearance .hint {
+  margin: 0;
+}
+/* Publisher cover tiles (SKIN-A). The hue is chosen by coverHue(slug); the pattern is only gradients, drawn
+   as dark overlays so the initials keep their contrast. Decorative: the markup marks the tile aria-hidden. */
+.cover {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background-color: var(--cb);
+  color: var(--ci);
+  font-family: var(--display);
+  font-weight: 800;
+  overflow: hidden;
+}
+.cover-h0 {
+  --cb: var(--h0b);
+  --ci: var(--h0i);
+  background-image: repeating-radial-gradient(
+    circle at 0 100%,
+    transparent 0 14px,
+    rgba(0, 0, 0, 0.16) 14px 16px
+  );
+}
+.cover-h1 {
+  --cb: var(--h1b);
+  --ci: var(--h1i);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 12px,
+    rgba(0, 0, 0, 0.16) 12px 14px
+  );
+}
+.cover-h2 {
+  --cb: var(--h2b);
+  --ci: var(--h2i);
+  background-image: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 0, 0, 0.18) 0 2px,
+    transparent 2.5px
+  );
+  background-size: 14px 14px;
+}
+.cover-h3 {
+  --cb: var(--h3b);
+  --ci: var(--h3i);
+  background-image: repeating-radial-gradient(
+    circle at 100% 0,
+    transparent 0 10px,
+    rgba(0, 0, 0, 0.16) 10px 12px
+  );
+}
+.cover-h4 {
+  --cb: var(--h4b);
+  --ci: var(--h4i);
+  background-image:
+    repeating-linear-gradient(45deg, transparent 0 14px, rgba(0, 0, 0, 0.14) 14px 15px),
+    repeating-linear-gradient(135deg, transparent 0 14px, rgba(0, 0, 0, 0.14) 14px 15px);
+}
+.cover-h5 {
+  --cb: var(--h5b);
+  --ci: var(--h5i);
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0 8px,
+    rgba(0, 0, 0, 0.18) 8px 12px
+  );
+  background-size: 100% 6px;
+  background-position: 0 70%;
+  background-repeat: repeat-x;
 }
 .spinner {
   display: inline-block;
