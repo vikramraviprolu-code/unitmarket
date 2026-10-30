@@ -99,6 +99,15 @@ function lines(): string[] {
   ])
     out.push(`parse "${t}": ${String(copy.parsePriceMinor(t))}`);
   for (const m of [100, 250, 5, 2000]) out.push(`input ${String(m)}: ${copy.priceInputValue(m)}`);
+  // PUB-UI-OFFERS: filter tabs, the card button and the empty view.
+  out.push(`s2 filter nav: ${copy.FILTER_NAV_LABEL}`);
+  out.push(
+    `s2 filters: ${copy.FILTER_ALL} | ${copy.FILTER_ON_SALE} | ${copy.FILTER_DRAFT} | ${copy.FILTER_WITHDRAWN}`,
+  );
+  out.push(`s2 edit: ${copy.EDIT_LABEL}`);
+  out.push(
+    `s2 filter empty: ${copy.FILTER_EMPTY_TITLE} | ${copy.FILTER_EMPTY_BODY} | ${copy.FILTER_EMPTY_ACTION}`,
+  );
   return out;
 }
 
