@@ -5,7 +5,12 @@
 import { publisherBalances } from '@umsbx/ledger';
 import type { EnvironmentLabel, Id, LedgerEntry, SqlExecutor } from '@umsbx/contracts';
 import type { PublisherActor } from './sales';
-import { COMMISSION_LINE, settlementMode } from './settlement';
+import {
+  COMMISSION_LINE,
+  NOTHING_SOLD_SENTENCE,
+  blockSettlement,
+  payeeSettlement,
+} from './settlement';
 import type { Settlement } from './settlement';
 
 export type StatementKind = 'sale' | 'refund' | 'reversal' | 'paypal_fee';
@@ -40,6 +45,11 @@ export interface PublisherStatement {
   /** The settlement sentence for that environment (a block carries its own). */
   settlement: Settlement;
   commission: string;
+  /**
+   * Units whose amount disagreed with the quote (status mismatch). The sales page lists them; the ledger
+   * has no sale row for them, so no block adds them up (assumption 30 awaits an owner decision).
+   */
+  mismatch_units: number;
   blocks: StatementBlock[];
 }
 
@@ -53,6 +63,8 @@ export interface StatementFacts {
 /** One ledger row of the publisher, with the order it belongs to. */
 export interface StatementRow {
   order_ref: string;
+  /** The payee stored on the unit (order_units.payee_merchant_id): where PayPal was told to send this sale. */
+  payee_merchant_id: string;
   entry: LedgerEntry;
 }
 
@@ -72,6 +84,12 @@ function byTimeThenOrder(a: StatementRow, b: StatementRow): number {
   return x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
 }
 
+// The statement-level sentence: the account as it is now. With no sales, direct mode says nothing sold yet.
+function emptyOrCurrent(blockCount: number, facts: StatementFacts): Settlement {
+  const s = payeeSettlement(facts);
+  return blockCount === 0 && s.mode === 'direct' ? { mode: s.mode, sentence: NOTHING_SOLD_SENTENCE } : s;
+}
+
 /**
  * Pure: group the rows by currency and environment, sum each group with publisherBalances, and add the
  * fee rows. The blocks are ordered by currency, then environment, so the order of the rows is irrelevant.
@@ -79,6 +97,7 @@ function byTimeThenOrder(a: StatementRow, b: StatementRow): number {
 export function buildStatement(
   rows: readonly StatementRow[],
   facts: StatementFacts,
+  mismatch_units = 0,
 ): PublisherStatement {
   const groups = new Map<
     string,
@@ -116,14 +135,21 @@ export function buildStatement(
       net_minor: bal.net_minor,
       paypal_fee_minor:
         fees.length === 0 ? null : fees.reduce((t, r) => t + r.entry.amount.minor, 0),
-      settlement: settlementMode({ ...facts, environment: g.environment }),
+      settlement: blockSettlement({
+        environment: g.environment,
+        payees: g.rows.map((r) => r.payee_merchant_id),
+        own_merchant_id: facts.own_merchant_id,
+        current_merchant_id: facts.merchant_id,
+        payee_shared: facts.payee_shared,
+      }),
       lines,
     };
   });
   return {
     environment: facts.environment,
-    settlement: settlementMode(facts),
+    settlement: emptyOrCurrent(blocks.length, facts),
     commission: COMMISSION_LINE,
+    mismatch_units,
     blocks,
   };
 }
@@ -160,9 +186,10 @@ export async function statementFor(
     environment: EnvironmentLabel;
     at: string;
     order_ref: string;
+    payee_merchant_id: string;
   }>(
     `SELECT l.id, l.unit_id, l.capture_id, l.kind, l.amount_minor, l.currency, l.refund_id, l.ref_entry_id,
-            l.environment, o.order_ref,
+            l.environment, o.order_ref, u.payee_merchant_id,
             to_char(l.created_at AT TIME ZONE 'UTC', ${ISO}) AS at
        FROM ledger_entries l
        JOIN order_units u ON u.id = l.unit_id
@@ -173,6 +200,7 @@ export async function statementFor(
   );
   const rows = ledger.rows.map((r): StatementRow => ({
     order_ref: r.order_ref,
+    payee_merchant_id: r.payee_merchant_id,
     entry: {
       id: r.id,
       unit_id: r.unit_id,
@@ -185,9 +213,17 @@ export async function statementFor(
       environment: r.environment,
     },
   }));
-  return buildStatement(rows, {
-    merchant_id: p?.paypal_merchant_id ?? null,
-    payee_shared: p?.payee_shared ?? false,
-    ...ctx,
-  });
+  const held = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM order_units WHERE publisher_id = $1 AND status = 'mismatch'`,
+    [actor.publisher_id],
+  );
+  return buildStatement(
+    rows,
+    {
+      merchant_id: p?.paypal_merchant_id ?? null,
+      payee_shared: p?.payee_shared ?? false,
+      ...ctx,
+    },
+    Number(held.rows[0]?.n ?? 0),
+  );
 }
