@@ -39,6 +39,7 @@ function recorded(db: SqlExecutor): {
         calls.push({ sql, params: params ?? [] });
         return db.query(sql, params);
       }) as SqlExecutor['query'],
+      exec: (sql: string) => db.exec(sql),
     },
   };
 }

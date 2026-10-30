@@ -1,11 +1,14 @@
 // PUB-C golden: every string the sales page (S4) and the statement page (S5) show. Page copy comes from
 // lib/statement-copy.ts; the money words (status words, settlement sentences, commission line) come
-// from the publisher console package and are pinned here with them. The reviewed file is
+// from the publisher console package (re-exported by composition.server.ts, the one place apps/web
+// may reach it) and are pinned here with them. The reviewed file is
 // golden/statement-copy.golden.txt. D-051: no italics, no dashes; "Not charged" only for declined.
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
-import { COMMISSION_LINE, UNIT_STATUS_TEXT, settlementMode } from '@umsbx/publisher-console';
+import { describe, expect, it, vi } from 'vitest';
+import { COMMISSION_LINE, UNIT_STATUS_TEXT, settlementMode } from '../composition.server';
 import * as copy from './lib/statement-copy';
+
+vi.mock('server-only', () => ({}));
 
 const golden = readFileSync(new URL('./golden/statement-copy.golden.txt', import.meta.url), 'utf8');
 

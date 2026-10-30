@@ -125,6 +125,12 @@ import {
 import { health as jobsHealth, LEADER_LOCK_KEY, startLoop } from '@umsbx/jobs';
 import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
+import { salesFor, statementFor } from '@umsbx/publisher-console';
+import type { PublisherStatement, SaleRow } from '@umsbx/publisher-console';
+
+// PUB-C: the money words of the publisher pages live with the code that decides them; the golden test
+// of the page copy pins them through this re-export.
+export { COMMISSION_LINE, UNIT_STATUS_TEXT, settlementMode } from '@umsbx/publisher-console';
 import {
   SESSION_COOKIE,
   createSession,
@@ -523,6 +529,17 @@ export interface Engine {
    * and for a publisher id that names no row.
    */
   publisherHome(actor: Actor): Promise<PublisherHome | null>;
+  /**
+   * PUB-C (S4): the units the publisher behind this session sold, newest first, from stored rows. No buyer
+   * identity. Every query filters by `actor.publisher_id`; no id comes from the caller. Null for any other
+   * actor kind.
+   */
+  publisherSales(actor: Actor): Promise<SaleRow[] | null>;
+  /**
+   * PUB-C (S5): the statement of the publisher behind this session, one block per currency and stored
+   * environment, summed from its ledger rows with the ledger package. Null for any other actor kind.
+   */
+  publisherStatement(actor: Actor): Promise<PublisherStatement | null>;
   /**
    * The id of the live session behind a cookie header, for the actor that session belongs to.
    * Links are bound to it (delivery lane): a link issued in one session is not found in another.
@@ -1367,6 +1384,19 @@ function buildApp(config: Config, opts: AppOptions): App {
           verified_at: row.payee_verified_at === null ? null : iso(row.payee_verified_at),
         },
       };
+    },
+
+    // PUB-C: the publisher's own sales and statement. Read only; the id is the actor's.
+    async publisherSales(actor) {
+      if (actor.kind !== 'publisher') return null;
+      return salesFor(db, actor);
+    },
+    async publisherStatement(actor) {
+      if (actor.kind !== 'publisher') return null;
+      return statementFor(db, actor, {
+        own_merchant_id: config.own_merchant_id,
+        environment,
+      });
     },
 
     async sessionIdOf(cookie, actor) {
