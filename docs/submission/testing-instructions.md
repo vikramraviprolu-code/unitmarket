@@ -147,8 +147,8 @@ an article you own, and the four draft legal pages linked from the footer.
   in this demo.
 - Simulation and dry run results prove modelled cases only, not PayPal compatibility.
 - The footer links four draft legal pages, including publisher terms in plain English. They are drafts for owner approval and are
-  not legal advice. **TO FINALISE:** a privacy export and delete script is in review and not merged; do not tell judges it exists
-  until it has merged.
+  not legal advice. A privacy export and delete script is merged (`pnpm privacy:export`, `pnpm privacy:delete`). It runs only from the owner's
+  terminal.
 - AI: by default the pack is composed by a scripted model and no AI call is made. The Claude adapter is merged but off by default,
   and no real AI call has ever been made with it. **TO FINALISE (AI-A, human only):** if a person switches the adapter on for the
   hosted app and makes one real call, say so here and name the spend cap and the scripted fall back.

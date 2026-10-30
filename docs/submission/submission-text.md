@@ -150,8 +150,8 @@ human run under a new approval row. This draft does not assume it happened.
 - Partner features that this demo does not use: platform fees and publisher onboarding. Commission is planned at 20 percent and is
   not implemented.
 - Publisher offers, sales and statement are built for the demo. Not built: one sign in hash per publisher (today the three
-  publishers share one passcode hash), a real payee check by PayPal, and a privacy export and delete script (in review, not
-  merged). **TO FINALISE:** say it is built only after that script has merged and a reviewer has seen it work.
+  publishers share one passcode hash) and a real payee check by PayPal. A privacy export and delete script is merged and runs
+  only from the owner's terminal. **TO FINALISE:** a reviewer should see it work before the submission says more than that.
 - More publishers and a real catalogue of rights.
 
 ## Built with

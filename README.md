@@ -43,7 +43,7 @@ These lines are true of `main` today. Where a part is a design and not a demonst
 - No tax is calculated and no tax invoice is issued in this demo. A receipt is a record of the sale.
 - The publisher terms page (`/legal/publisher-terms`) says the same in plain English. It is a draft for owner approval and is not legal advice.
 - Simulation and dry run results prove modelled cases only, not PayPal compatibility.
-- A privacy export and deletion script is not merged yet; today an operator carries out such a request by hand.
+- A privacy export and deletion script is merged (`pnpm privacy:export`, `pnpm privacy:delete`). It runs only from the owner's own terminal and refuses in an agent session. A person still has to run it for each request.
 
 The thirty open publisher questions, with recommended demo answers for the owners, are in `docs/design/publisher-questions-recommendations-2026-10-31.md`. They are recommendations, not legal or tax advice.
 

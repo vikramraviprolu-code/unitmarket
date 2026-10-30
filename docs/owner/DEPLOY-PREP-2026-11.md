@@ -107,7 +107,7 @@ deploy again.
 
    This check (also part of `ci`) fails if the file holds a secret name or value.
 
-4. The tag contains migration `0012_publisher_side.sql` (publisher side, merged). It is forward only and is expected to apply to the live
+4. The tag contains migrations `0012_publisher_side.sql`, `0013_publisher_applicants.sql`, `0014_publisher_visits.sql` and `0015_publisher_agreements.sql` (publisher side, merged). They are forward only and is expected to apply to the live
    database when the app first starts (tested on the in memory database and the test Postgres, not yet on the hosted one). The demo price
    revisions (lane PUB-B) also write new offer versions for four seed offers on that first boot (`OVERNIGHT-ASSUMPTIONS.md` item 4); a failure of
    that step cannot stop the app from starting. Take the backup in step 2 BEFORE the first deploy of this tag.
