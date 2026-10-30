@@ -9,6 +9,7 @@ import type { World } from './world';
 let w: World;
 const AT = '2026-10-22T12:00:00.000Z';
 const OP = { kind: 'operator', operator_id: 'opr_x', mfa: true } as const;
+const CTX = { own_merchant_id: 'OWNERMERCH001', environment: 'sandbox' } as const;
 
 async function offer(
   id: string,
@@ -120,7 +121,7 @@ afterAll(async () => {
 
 describe('publisherExposure', () => {
   it('gives one row per publisher, by name, with status, payee last 4 and the verified flag', async () => {
-    const rows = (await publisherExposure(w.db, OP, AT))!;
+    const rows = (await publisherExposure(w.db, OP, AT, CTX))!;
     expect(rows.map((r) => [r.slug, r.display_name, r.status])).toEqual([
       ['p1', 'Pub One', 'active'],
       ['p2', 'Pub Two', 'suspended'],
@@ -133,12 +134,12 @@ describe('publisherExposure', () => {
   });
 
   it('counts offers live by the discovery rule: authorised, newest, not superseded, active publisher', async () => {
-    const rows = (await publisherExposure(w.db, OP, AT))!;
+    const rows = (await publisherExposure(w.db, OP, AT, CTX))!;
     expect(rows.map((r) => r.offers_live)).toEqual([2, 0, 0]);
   });
 
   it('adds up per currency: captured not refunded, open refunds, held units', async () => {
-    const rows = (await publisherExposure(w.db, OP, AT))!;
+    const rows = (await publisherExposure(w.db, OP, AT, CTX))!;
     expect(rows[0]!.by_currency).toEqual([
       {
         currency: 'EUR',
@@ -178,7 +179,7 @@ describe('publisherExposure', () => {
 
   it('keeps dry run rows apart from sandbox rows of the same currency', async () => {
     await w.unit({ n: 20, publisher: 'pub_1', amount_minor: 60, environment: 'sandbox' });
-    const rows = (await publisherExposure(w.db, OP, AT))!;
+    const rows = (await publisherExposure(w.db, OP, AT, CTX))!;
     const usd = rows[0]!.by_currency.filter((b) => b.currency === 'USD');
     expect(
       usd.map((b) => [b.environment, b.units_captured, b.captured_not_refunded_minor]),
@@ -195,12 +196,12 @@ describe('publisherExposure', () => {
       { kind: 'buyer', buyer_id: 'buy_1' },
       { kind: 'system' },
     ] as const) {
-      expect(await publisherExposure(w.db, actor, AT)).toBeNull();
+      expect(await publisherExposure(w.db, actor, AT, CTX)).toBeNull();
     }
   });
 
   it('names no buyer, no order reference and no whole merchant id', async () => {
-    const text = JSON.stringify(await publisherExposure(w.db, OP, AT));
+    const text = JSON.stringify(await publisherExposure(w.db, OP, AT, CTX));
     for (const secret of [
       'Ann Buyer',
       'Bob Buyer',
@@ -218,7 +219,7 @@ describe('publisherExposure', () => {
   it('only reads: no row changes', async () => {
     const before = (await w.db.query<{ n: string }>('SELECT count(*) AS n FROM order_units'))
       .rows[0]!.n;
-    await publisherExposure(w.db, OP, AT);
+    await publisherExposure(w.db, OP, AT, CTX);
     const after = (await w.db.query<{ n: string }>('SELECT count(*) AS n FROM order_units'))
       .rows[0]!.n;
     expect(after).toBe(before);

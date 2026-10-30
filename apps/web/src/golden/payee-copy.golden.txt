@@ -1,16 +1,12 @@
 heading: Where you get paid
-lede: This page shows the account your sales are paid into. You cannot change it yourself. You can ask for a change, and an operator checks it before anything happens.
+lede: This page shows the payee account on file for you and what happens to your sales money. You cannot change it yourself. You can ask for a change, and an operator checks it before anything happens.
 labels: Account | Verified | How it was checked | Settlement
 verified by: An operator checked it. Not PayPal onboarding.
 marked checked: Marked as checked when the demo data was loaded. Not PayPal onboarding.
 account none: No payee account is set yet.
-account set: Account ending AB12.
+account set: Account on file ending AB12.
 verified none: Not verified yet.
 verified at: Verified on WHEN.
-settlement none: No payee account is set, so your offers cannot be sold yet.
-settlement waiting: Sales cannot settle until the account ending AB12 is verified.
-settlement verified: Dry run sales are recorded against the account ending AB12. No real money moves.
-settlement verified sandbox: Sandbox sales are recorded against the account ending AB12. No real money moves.
 owner only: Payee changes on the hosted app are made by the owner.
 request heading: Ask for a change
 request lede: Type the new merchant id. An operator confirms it with you before anything changes.

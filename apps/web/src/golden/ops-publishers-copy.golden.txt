@@ -8,9 +8,9 @@ status applied: Applied. Waiting for approval.
 status active: Active
 status suspended: Suspended
 payee none: No payee account set.
-payee waiting: Account ending AB12. Not checked yet.
-payee checked: Account ending AB12. Marked as checked.
-payee shared: Account ending AB12. Marked as checked. Shared with other test publishers.
+payee waiting: Account on file ending AB12. Not checked yet.
+payee checked: Account on file ending AB12. Marked as checked.
+payee shared: Account on file ending AB12. Marked as checked. Shared with other test publishers.
 offers 0: No offers on sale.
 offers 1: 1 offer on sale.
 offers 2: 2 offers on sale.

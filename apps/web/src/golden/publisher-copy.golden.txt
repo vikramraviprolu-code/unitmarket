@@ -1,7 +1,7 @@
 nav: Publisher
 heading: Publisher home
 lede: This page shows your own publisher account. It is read only.
-labels: Name | Status | Offers live | Where you get paid
+labels: Name | Status | Offers live | Payee account on file | Settlement
 status applied: Applied. Waiting for approval.
 status active: Active
 status suspended: Suspended
@@ -15,8 +15,8 @@ empty title: No live offers yet
 empty body: When you have an offer on sale, it is counted here.
 links: Your offers | Sales | Statement | Where you get paid
 payee none: No payee account is set yet.
-payee waiting: Waiting for a check. Account ending AB12.
-payee verified: Marked as checked. Account ending AB12.
+payee waiting: Waiting for a check. Account on file ending AB12.
+payee verified: Marked as checked. Account on file ending AB12.
 persona buyer-a: Buyer A
 persona buyer-b: Buyer B
 persona publisher-harbour-ledger: Harbour Ledger (publisher)

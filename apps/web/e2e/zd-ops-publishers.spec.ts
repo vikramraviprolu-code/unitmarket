@@ -121,7 +121,7 @@ test.describe('payee change requests (PUB-A2)', () => {
     await expect(o.getByTestId('payee-queue-row').filter({ hasText: NORTHFIELD })).toHaveCount(0);
 
     await p.goto('/publisher/payout-account');
-    await expect(p.getByTestId('payee-account')).toHaveText('Account ending NT01.');
+    await expect(p.getByTestId('payee-account')).toHaveText('Account on file ending NT01.');
     await expect(p.getByTestId('payee-verified')).toContainText('Verified on');
     await expect(p.getByTestId('payee-verified-by')).toHaveText(
       'An operator checked it. Not PayPal onboarding.',
@@ -149,7 +149,7 @@ test.describe('payee change requests (PUB-A2)', () => {
     await expect(o.getByTestId('payee-queue-row').filter({ hasText: NORTHFIELD })).toHaveCount(0);
 
     await p.goto('/publisher/payout-account');
-    await expect(p.getByTestId('payee-account')).toHaveText('Account ending NT01.');
+    await expect(p.getByTestId('payee-account')).toHaveText('Account on file ending NT01.');
     await expect(p.getByTestId('payee-history')).toContainText('Account ending NT02. Rejected.');
     await expect(p.getByTestId('payee-history')).toContainText('Account ending NT01. Verified.');
   });
@@ -165,7 +165,7 @@ test.describe('operator publishers page (PUB-D)', () => {
     await expect(o.getByTestId('publisher-row')).toHaveCount(3);
     const northfield = o.getByTestId('publisher-row').filter({ hasText: NORTHFIELD });
     await expect(northfield.getByTestId('publisher-row-status')).toHaveText('Active');
-    await expect(northfield).toContainText('Account ending NT01. Marked as checked.');
+    await expect(northfield).toContainText('Account on file ending NT01. Marked as checked.');
     await expect(o.getByRole('link', { name: 'Payee requests' })).toBeVisible();
   });
 

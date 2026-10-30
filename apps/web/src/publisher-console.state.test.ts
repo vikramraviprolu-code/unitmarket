@@ -138,3 +138,39 @@ describe('pages S4 and S5', () => {
     expect(src).toContain('STATEMENT_EMPTY_TITLE');
   });
 });
+
+// SETTLE-A (traceability gap 4): S1, S6 and S7 say where the money goes with the same sentence, from the
+// one source in the publisher console package; "Account ending" never reads as the place money went.
+describe('one settlement sentence on S1, S6 and S7', () => {
+  const op = { kind: 'operator', operator_id: 'opr_x', mfa: true } as const;
+
+  it('the home, the payout page and the operator page carry the same sentence for the same publisher', async () => {
+    const home = await w.app.engine.publisherHome(harbour);
+    const view = await w.app.engine.payee.view(harbour);
+    const list = await w.app.engine.opsPublishers.list(op);
+    expect(list.ok).toBe(true);
+    const row = list.ok ? list.value.publishers.find((p) => p.slug === 'harbour-ledger') : undefined;
+    expect(home!.settlement.sentence.length).toBeGreaterThan(0);
+    expect(view!.settlement.sentence).toBe(home!.settlement.sentence);
+    expect(row!.settlement.sentence).toBe(home!.settlement.sentence);
+  });
+
+  it('the three pages print that sentence and no page says the account is where the money went', () => {
+    expect(read('./app/publisher/page.tsx')).toContain('home.settlement.sentence');
+    expect(read('./app/publisher/payout-account/page.tsx')).toContain('view.settlement.sentence');
+    expect(read('./app/ops/publishers/page.tsx')).toContain('p.settlement.sentence');
+    for (const f of ['./lib/payee-copy.ts', './lib/publisher-copy.ts', './lib/ops-publishers-copy.ts']) {
+      const src = read(f);
+      expect(src, f).not.toMatch(/recorded against the account/);
+      expect(src.replace(/\/\/.*$/gm, ''), f).not.toMatch(/`Account ending \$\{(p\.)?last4\}/);
+    }
+  });
+
+  it('S4 and S5 carry the mismatch note, from the one copy file (assumption 30: counting is unchanged)', () => {
+    expect(read('./app/publisher/sales/page.tsx')).toContain('mismatchSalesText(');
+    expect(read('./app/publisher/statement/page.tsx')).toContain('mismatchStatementText(');
+    expect(read('./lib/statement-copy.ts')).toContain(
+      "'Amount disagreed with the quote: under review.'",
+    );
+  });
+});

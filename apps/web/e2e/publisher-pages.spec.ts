@@ -23,7 +23,7 @@ test('the publisher home shows the signed in publisher only, from stored data', 
   await expect(page.getByTestId('publisher-name')).toHaveText('Harbour Ledger Review (fictional)');
   await expect(page.getByTestId('publisher-status')).toHaveText('Active');
   await expect(page.getByTestId('publisher-offers')).toHaveText(/^\d+ offers? (is|are) live\.$/);
-  await expect(page.getByTestId('publisher-payee')).toContainText('Account ending');
+  await expect(page.getByTestId('publisher-payee')).toContainText('Account on file ending');
   const nav = page.getByRole('navigation', { name: 'Main' });
   await expect(nav.getByRole('link', { name: 'Publisher' })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'Find articles' })).toHaveCount(0);
