@@ -1,0 +1,92 @@
+/* PUB-UI-OPS: extra pieces for the operator publisher screens. Tokens only; builds on publisher.css. */
+.pk-stack {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pk-section.pk-stack {
+  margin-top: 28px;
+}
+.pk-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 0 12px;
+}
+.pk-item-head h2,
+.pk-item-head h3 {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pk-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.pk-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+.pk-note strong {
+  color: var(--warn);
+}
+.pk-money {
+  margin: 14px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+}
+.pk-money h4 {
+  margin: 0 0 8px;
+}
+.pk-sub {
+  margin: 16px 0 8px;
+  font-size: 1rem;
+}
+.pk-details {
+  margin: 14px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--line);
+}
+.pk-details > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  color: var(--accent);
+}
+.pk-details > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.pk-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 28px 0 0;
+}
+.pk-add {
+  margin: 16px 0 0;
+}
+.pk-form-grid {
+  align-items: end;
+  display: grid;
+  gap: 0 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.pk-cards > li {
+  display: grid;
+  min-width: 0;
+}

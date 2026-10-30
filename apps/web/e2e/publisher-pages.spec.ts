@@ -11,7 +11,7 @@ async function signInPublisher(page: Page, persona: string): Promise<void> {
   await page.getByLabel('Who are you testing as?').selectOption(persona);
   await page.getByLabel('Publisher passcode').fill(PUBLISHER_PASSCODE);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Publisher home' })).toBeVisible();
+  await expect(page.getByTestId('publisher-name')).toBeVisible();
 }
 
 test('the publisher home shows the signed in publisher only, from stored data', async ({

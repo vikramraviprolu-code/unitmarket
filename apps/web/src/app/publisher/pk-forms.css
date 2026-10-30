@@ -1,0 +1,146 @@
+/* PUB-UI-FORMS: the three publisher forms (create an offer, change an offer, payout account). Tokens only,
+   so the Bright Market and Deep Harbour looks both apply. Prefix pk- as in publisher.css. */
+.pk-back {
+  margin: 0 0 12px;
+}
+.pk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 8px;
+}
+.pk-panel > h3 {
+  margin: 20px 0 8px;
+  font-size: 1rem;
+}
+.pk-panel > h3:first-child {
+  margin-top: 0;
+}
+.pk-panel .pk-facts + h3 {
+  margin-top: 20px;
+}
+.pk-help {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 400;
+}
+.pk-help-indent {
+  margin: 0 0 8px 34px;
+}
+.pk-field-error {
+  margin: 6px 0 0;
+  padding: 6px 10px;
+  border-left: 4px solid var(--bad);
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.pk-field {
+  margin: 14px 0;
+}
+.pk-field:last-child {
+  margin-bottom: 0;
+}
+.pk-field input[aria-invalid='true'] {
+  border-color: var(--bad);
+}
+.pk-option {
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+.pk-option:last-of-type {
+  margin-bottom: 0;
+}
+.pk-option .pk-field {
+  margin: 4px 0 0;
+}
+.pk-money {
+  display: flex;
+  align-items: stretch;
+  max-width: 280px;
+}
+.pk-money-prefix {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 2px solid var(--line);
+  border-right: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-weight: 700;
+}
+.pk-money input {
+  min-width: 0;
+  font-family: var(--mono);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.pk-panel .pk-actions {
+  margin-top: 16px;
+}
+.pk-buyer-list {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+.pk-buyer-list li {
+  margin: 2px 0;
+}
+.pk-panel > p {
+  margin: 0 0 8px;
+}
+.pk-panel > p:last-child {
+  margin-bottom: 0;
+}
+.pk-note {
+  border-left: 4px solid var(--accent);
+}
+.pk-danger {
+  border-color: var(--bad);
+}
+.pk-danger > h2,
+.pk-section.pk-danger-zone > h2 {
+  color: var(--bad);
+}
+.btn.pk-btn-danger:not([disabled]) {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+.pk-history {
+  margin: 0;
+  padding-left: 20px;
+}
+.pk-history li {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.pk-panel > .pk-ending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 16px;
+}
+.pk-ending-text {
+  font-family: var(--mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .pk-help-indent {
+    margin-left: 34px;
+  }
+  .pk-money {
+    max-width: none;
+  }
+  .pk-option {
+    padding: 10px 12px;
+  }
+}

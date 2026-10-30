@@ -1,0 +1,61 @@
+/* PUB-UI-HOME: rules for the publisher home only. Tokens only (no colour literals), so both looks apply. */
+.pk-eyebrow {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pk-notice {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--warn-soft);
+  color: var(--text);
+}
+.pk-notice-bad {
+  border-color: var(--bad);
+  background: var(--bad-soft);
+}
+.pk-notice p {
+  margin: 0;
+}
+.pk-fact-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.pk-feed {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.pk-feed li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.pk-feed li:last-child {
+  border-bottom: 0;
+}
+.pk-feed-note {
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.pk-since-from {
+  margin: 8px 0 0;
+}

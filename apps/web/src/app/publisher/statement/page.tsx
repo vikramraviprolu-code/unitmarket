@@ -1,9 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
+import '../../tables.css';
+import '../pk-sales.css';
 import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EmptyState } from '../../../ui/EmptyState';
+import { Chip, PageHeader, Section, StatTile } from '../../../ui/publisher/kit';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { formatDateTime, formatMinor } from '../../../lib/format';
 import {
@@ -21,12 +24,13 @@ import {
   STATEMENT_HEADING,
   STATEMENT_LEDE,
   mismatchStatementText,
-  blockHeading,
   feeText,
   salesAnchor,
   visibleLines,
 } from '../../../lib/statement-copy';
 import { DownloadCsv } from '../DownloadCsv';
+import { Details, EnvChip, TableScroll } from '../pk-sales-parts';
+import { STATEMENT_FILE_SUMMARY, ledgerKindTone } from '../../../lib/publisher-sales-view';
 import {
   EXPORT_NOTE,
   EXPORT_STATEMENT_HREF,
@@ -45,28 +49,30 @@ export default async function PublisherStatement() {
   if (statement === null) redirect('/signin?next=/publisher/statement');
   return (
     <>
-      <h1>{STATEMENT_HEADING}</h1>
-      <p className="lede">{STATEMENT_LEDE}</p>
-      <p>
+      <PageHeader
+        title={STATEMENT_HEADING}
+        lede={STATEMENT_LEDE}
+        aside={
+          statement.blocks.length > 0 ? (
+            <DownloadCsv
+              href={EXPORT_STATEMENT_HREF}
+              label={EXPORT_STATEMENT_LABEL}
+              testId="export-statement"
+            />
+          ) : null
+        }
+      />
+      <div className="pk-sublinks">
         <Link href="/publisher/sales">{NAV_SALES}</Link>
-        {' | '}
         <Link href="/publisher">{NAV_HOME}</Link>
-      </p>
-      <p>
-        <DownloadCsv
-          href={EXPORT_STATEMENT_HREF}
-          label={EXPORT_STATEMENT_LABEL}
-          testId="export-statement"
-        />
-      </p>
-      <p className="muted">{EXPORT_NOTE}</p>
+      </div>
       {statement.blocks.length === 0 ? (
         <>
           <p>
             <EnvLabel environment={statement.environment} />
           </p>
           <EmptyState title={STATEMENT_EMPTY_TITLE}>{STATEMENT_EMPTY_BODY}</EmptyState>
-          <div className="card">
+          <div className="pk-panel pk-block">
             <h2>{SETTLEMENT_HEADING}</h2>
             <p data-testid="settlement-sentence">{statement.settlement.sentence}</p>
           </div>
@@ -75,78 +81,102 @@ export default async function PublisherStatement() {
         statement.blocks.map((b) => (
           <section
             key={`${b.currency}-${b.environment}`}
-            className="card"
+            className="pk-panel pk-block"
             data-testid="statement-block"
           >
             <h2>
-              {blockHeading(b.currency, b.environment)} <EnvLabel environment={b.environment} />
+              {b.currency} <EnvChip environment={b.environment} />
             </h2>
-            <p data-testid="settlement-sentence">
-              <strong>{SETTLEMENT_HEADING}:</strong> {b.settlement.sentence}
+            <p className="pk-settle" data-testid="settlement-sentence">
+              <span className="pk-settle-label">{SETTLEMENT_HEADING}</span>
+              {b.settlement.sentence}
             </p>
-            <dl>
+            <div className="pk-tiles pk-block-tiles">
+              <StatTile label={LINE_LABEL.sales} value={formatMinor(b.sales_minor, b.currency)} />
+              <StatTile
+                label={LINE_LABEL.refunds}
+                value={formatMinor(b.refunds_minor, b.currency)}
+              />
+              <StatTile label={LINE_LABEL.net} value={formatMinor(b.net_minor, b.currency)} />
+            </div>
+            <dl className="pk-facts">
               <dt>{LINE_LABEL.sales}</dt>
               <dd>
-                {formatMinor(b.sales_minor, b.currency)}
-                <span className="muted"> {LINE_SOURCE.sales}</span>
+                <span className="pk-fig">{formatMinor(b.sales_minor, b.currency)}</span>
+                <span className="pk-src">{LINE_SOURCE.sales}</span>
               </dd>
               <dt>{LINE_LABEL.refunds}</dt>
               <dd>
-                {formatMinor(b.refunds_minor, b.currency)}
-                <span className="muted"> {LINE_SOURCE.refunds}</span>
+                <span className="pk-fig">{formatMinor(b.refunds_minor, b.currency)}</span>
+                <span className="pk-src">{LINE_SOURCE.refunds}</span>
               </dd>
               <dt>{LINE_LABEL.reversals}</dt>
               <dd>
-                {formatMinor(b.reversals_minor, b.currency)}
-                <span className="muted"> {LINE_SOURCE.reversals}</span>
-              </dd>
-              <dt>{LINE_LABEL.fee}</dt>
-              <dd>
-                {feeText(b.paypal_fee_minor, b.currency, b.environment)}
-                <span className="muted"> {LINE_SOURCE.fee}</span>
+                <span className="pk-fig">{formatMinor(b.reversals_minor, b.currency)}</span>
+                <span className="pk-src">{LINE_SOURCE.reversals}</span>
               </dd>
               <dt>{LINE_LABEL.net}</dt>
               <dd data-testid="statement-net">
-                <strong>{formatMinor(b.net_minor, b.currency)}</strong>
-                <span className="muted"> {LINE_SOURCE.net}</span>
+                <strong className="pk-fig">{formatMinor(b.net_minor, b.currency)}</strong>
+                <span className="pk-src">{LINE_SOURCE.net}</span>
+              </dd>
+              <dt>{LINE_LABEL.fee}</dt>
+              <dd>
+                <span className="pk-fig pk-fig-muted">
+                  {feeText(b.paypal_fee_minor, b.currency, b.environment)}
+                </span>
+                <span className="pk-src">{LINE_SOURCE.fee}</span>
               </dd>
             </dl>
             <h3>{LINES_HEADING}</h3>
-            <div className="table-scroll">
-              <table>
+            <p className="table-hint pk-hint muted">Scroll sideways to see more</p>
+            <TableScroll label={LINES_HEADING}>
+              <table className="pk-table">
                 <caption className="visually-hidden">{LINES_HEADING}</caption>
                 <thead>
                   <tr>
                     <th scope="col">{LINES_COLUMNS.date}</th>
                     <th scope="col">{LINES_COLUMNS.order}</th>
                     <th scope="col">{LINES_COLUMNS.entry}</th>
-                    <th scope="col">{LINES_COLUMNS.amount}</th>
+                    <th scope="col" className="pk-num">
+                      {LINES_COLUMNS.amount}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {visibleLines(b.lines, b.environment).map((l, i) => (
                     <tr key={`${l.order_ref6}-${l.kind}-${String(i)}`}>
-                      <td>{formatDateTime(l.at)}</td>
-                      <td className="mono">
+                      <td className="pk-nowrap" data-label={LINES_COLUMNS.date}>
+                        {formatDateTime(l.at)}
+                      </td>
+                      <td className="mono pk-nowrap" data-label={LINES_COLUMNS.order}>
                         <Link href={salesAnchor(l.order_ref6)}>{l.order_ref6}</Link>
                       </td>
-                      <td>{ENTRY_TEXT[l.kind]}</td>
-                      <td>{formatMinor(l.amount_minor, b.currency)}</td>
+                      <td data-label={LINES_COLUMNS.entry}>
+                        <Chip tone={ledgerKindTone(l.kind)}>{ENTRY_TEXT[l.kind]}</Chip>
+                      </td>
+                      <td className="pk-num" data-label={LINES_COLUMNS.amount}>
+                        {formatMinor(l.amount_minor, b.currency)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </section>
         ))
       )}
       {statement.mismatch_units > 0 ? (
-        <p className="muted" data-testid="statement-mismatch">
+        <p className="pk-notice" data-testid="statement-mismatch">
           {mismatchStatementText(statement.mismatch_units)}
         </p>
       ) : null}
-      <h2>{COMMISSION_HEADING}</h2>
-      <p data-testid="commission-line">{statement.commission}</p>
+      <Section title={COMMISSION_HEADING}>
+        <p data-testid="commission-line">{statement.commission}</p>
+      </Section>
+      <Details summary={STATEMENT_FILE_SUMMARY}>
+        <p className="muted">{EXPORT_NOTE}</p>
+      </Details>
     </>
   );
 }

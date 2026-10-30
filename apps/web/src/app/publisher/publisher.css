@@ -71,6 +71,10 @@
   padding: 0;
   list-style: none;
 }
+.pk-tiles > li {
+  display: grid;
+  min-width: 0;
+}
 .pk-tile {
   background: var(--surface);
   border: 1px solid var(--card-border);

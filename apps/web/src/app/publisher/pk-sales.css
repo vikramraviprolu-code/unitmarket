@@ -1,0 +1,178 @@
+/* PUB-UI-SALES: the sales page and the statement page. Skin tokens only, so both looks apply. */
+.pk-sublinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 20px;
+  font-weight: 600;
+}
+.pk-sublinks p {
+  margin: 0;
+}
+.pk-group + .pk-group {
+  margin-top: 20px;
+}
+.pk-grouphead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0 0 10px;
+}
+.pk-grouphead h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.pk-count {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+.pk-lede {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+.pk-table th {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  border-bottom: 2px solid var(--line);
+}
+.pk-table .pk-num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pk-table td > div + div {
+  margin-top: 2px;
+}
+.pk-table td.pk-nowrap {
+  white-space: nowrap;
+}
+.pk-table tr:target {
+  background: var(--accent-soft);
+}
+.pk-table tr {
+  scroll-margin-top: 80px;
+}
+.pk-notice {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--warn-soft);
+  color: var(--text);
+}
+.pk-details {
+  margin: 28px 0 0;
+  padding: 0 16px;
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+}
+.pk-details > summary {
+  padding: 12px 0;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--accent);
+}
+.pk-details > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.pk-details-body {
+  padding: 0 0 12px;
+}
+.pk-details-body > p {
+  margin: 0 0 8px;
+}
+.pk-details-body > h3 {
+  margin: 16px 0 8px;
+  font-size: 1rem;
+}
+.pk-block + .pk-block,
+.empty + .pk-block,
+.pk-block + .pk-notice {
+  margin-top: 16px;
+}
+.pk-block h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0 0 12px;
+}
+.pk-block h3 {
+  margin: 18px 0 8px;
+  font-size: 1rem;
+}
+.pk-settle {
+  margin: 0 0 14px;
+}
+.pk-settle-label {
+  display: block;
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.pk-block-tiles {
+  margin: 0 0 16px;
+}
+.pk-facts .pk-fig {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pk-facts .pk-src {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.pk-facts .pk-fig.pk-fig-muted {
+  color: var(--muted);
+  font-family: inherit;
+  font-weight: 400;
+}
+/* Narrow screens: each row becomes a card with its column names beside the values, so no column is off
+   screen. The head row stays for assistive tech and is hidden from sight. The sideways hint is for the
+   wider range only. */
+@media (max-width: 600px) {
+  .table-hint.pk-hint {
+    display: none;
+  }
+  .pk-table,
+  .pk-table tbody,
+  .pk-table tr,
+  .pk-table td {
+    display: block;
+  }
+  .pk-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .pk-table tr {
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .pk-table td,
+  .pk-table td.pk-num {
+    padding: 4px 0;
+    border: 0;
+    text-align: left;
+  }
+  .pk-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+}

@@ -115,9 +115,10 @@ describe('no write path for a publisher', () => {
 describe('the pages', () => {
   it('the publisher home shows the line and the link to the publisher terms, read only', () => {
     const src = read('./app/publisher/page.tsx');
+    // PUB-UI-HOME: the page reads the record through a local engine handle and shows it as a chip with the
+    // dated line from lib/publisher-home-copy.ts; the sentence is still the read only record, no form.
     expect(src).toContain('engine.publisherAgreement(actor)');
     expect(src).toContain('/legal/publisher-terms');
-    expect(src).toContain('agreementText');
     expect(src).not.toMatch(/<form|<button|method=/);
   });
 

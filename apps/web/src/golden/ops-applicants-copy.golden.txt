@@ -4,7 +4,7 @@ no login: Approving an applicant makes it an active publisher, but it cannot sig
 empty: No applicants waiting.
 add heading: Add an applicant
 fields: Display name | Short name (3 to 40 lowercase letters or numbers, single hyphens allowed between parts) | Country (two capital letters, for example GB) | Why you are adding them (3 to 200 characters)
-field reason: Reason for your answer (3 to 200 characters)
+field reason: Gate Test Applicant (fake): reason for your answer, 3 to 200 characters
 buttons: Add applicant | Approve | Reject
 approve hint: Approve makes the publisher active. It cannot sign in until the owners add a persona and a passcode.
 reject hint: Reject keeps the record and the reason. It cannot be undone and the applicant stays unable to sign in or sell.

@@ -1,0 +1,35 @@
+switches heading: Switches
+switches lede: The stop button below turns off outbound PayPal calls. The other switches are changed with the operator command line.
+switch paypal_outbound: Outbound PayPal calls | The emergency stop. Off blocks every PayPal call.
+switch paypal_outbound on: warn On: PayPal calls allowed | off: good Off: no PayPal calls
+switch checkout_enabled: Checkout | Off stops new orders and captures.
+switch checkout_enabled on: good On | off: warn Off
+switch refunds_enabled: Refunds | Off stops refunds being made.
+switch refunds_enabled on: good On | off: warn Off
+switch unlock_enabled: Unlock | Off stops buyers opening what they bought.
+switch unlock_enabled on: good On | off: warn Off
+switch ai_enabled: AI help | Off turns the model features off.
+switch ai_enabled on: good On | off: warn Off
+switch webhook_enabled: PayPal notices | Off answers incoming PayPal notices with a request to retry.
+switch webhook_enabled on: good On | off: warn Off
+kill state label: State of the kill switch
+orders list heading: Latest orders
+orders notes: in the latest order | in the latest orders
+states note: operations in this state
+order paid: good Paid
+order paid_partial: good Paid partial
+order awaiting_buyer: info Awaiting buyer
+order created: info Created
+order capture_requested: info Capture requested
+order capture_claimed: info Capture claimed
+order unresolved: warn Unresolved
+order frozen: bad Frozen
+order failed: bad Failed
+order abandoned: neutral Abandoned
+operation confirmed: good Confirmed
+operation prepared: info Prepared
+operation sent: info Sent
+operation unknown: warn Unknown
+operation failed: bad Failed
+invariant chips: Holds | Failing
+invariants summary: All hold. | 1 failing.

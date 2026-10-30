@@ -10,7 +10,7 @@
 // Northfield Quarterly is used because its offers are in GBP, so no buyer journey depends on it.
 import { createHmac } from 'node:crypto';
 import { test, expect } from '@playwright/test';
-import type { Browser, BrowserContext, Page } from '@playwright/test';
+import type { Browser, BrowserContext, Locator, Page } from '@playwright/test';
 import { PASSCODE, TOTP_KEY_BYTES } from './support';
 
 const PUBLISHER_PASSCODE = 'e2e publisher passcode';
@@ -67,7 +67,7 @@ async function publisherPage(
   await page.getByLabel('Who are you testing as?').selectOption(persona);
   await page.getByLabel('Publisher passcode').fill(PUBLISHER_PASSCODE);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Publisher home' })).toBeVisible();
+  await expect(page.getByTestId('publisher-name')).toBeVisible();
   return { ctx, page };
 }
 
@@ -80,6 +80,13 @@ async function askForPayee(page: Page, merchant: string, note: string): Promise<
   await expect(page.getByTestId('payee-request-result')).toHaveText(
     'Request sent. Nothing changes until an operator verifies it.',
   );
+}
+
+// The suspend form sits in a details element ("Change status"), open by default only for a suspended publisher.
+async function openStatusForm(card: Locator): Promise<void> {
+  const details = card.locator('details');
+  const isOpen = await details.evaluate((el) => (el as HTMLDetailsElement).open);
+  if (!isOpen) await details.locator('summary').click();
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -174,6 +181,7 @@ test.describe('operator publishers page (PUB-D)', () => {
     await o.goto('/ops/publishers');
     await o.waitForLoadState('networkidle');
     const northfield = () => o.getByTestId('publisher-row').filter({ hasText: NORTHFIELD });
+    await openStatusForm(northfield());
     const suspend = northfield().getByRole('button', { name: 'Suspend this publisher' });
     await expect(suspend).toBeDisabled();
     await northfield()
@@ -192,6 +200,7 @@ test.describe('operator publishers page (PUB-D)', () => {
     );
 
     await o.waitForLoadState('networkidle');
+    await openStatusForm(northfield());
     await northfield()
       .getByLabel(/^Reason/)
       .fill('e2e drill over');

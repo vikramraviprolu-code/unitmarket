@@ -112,7 +112,13 @@ describe('the pages take the facts from the copy file and stay plain', () => {
   });
 
   it('none of the pages reads a publisher or article id from the request for the facts', () => {
-    for (const src of [s2, s3]) {
+    // PUB-UI-OFFERS: the offers list reads one parameter, the status tab, which only narrows the rows shown.
+    // It is the one use of searchParams allowed on S2; the page still takes the facts from the engine rows.
+    const s2Plain = s2.replace(
+      /searchParams: Promise<[^>]*>>;|\(await searchParams\)\.status|\{\s*searchParams,?\s*\}/g,
+      '',
+    );
+    for (const src of [s2Plain, s3]) {
       expect(src).not.toMatch(/searchParams|headers\(\)|cookies\(\)\.get\(['"]pub/);
     }
   });

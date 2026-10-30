@@ -1,15 +1,16 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EmptyState } from '../../../ui/EmptyState';
 import { EnvLabel } from '../../../ui/EnvLabel';
+import { Chip, PageHeader, Section } from '../../../ui/publisher/kit';
 import { formatDateTime } from '../../../lib/format';
 import {
   HISTORY_EMPTY,
   HISTORY_HEADING,
   LABEL_ACCOUNT,
-  LABEL_SETTLEMENT,
   LABEL_VERIFIED,
   LABEL_VERIFIED_BY,
   OWNER_ONLY_NOTE,
@@ -20,7 +21,15 @@ import {
   verifiedAtText,
   verifiedByText,
 } from '../../../lib/payee-copy';
+import {
+  BACK_TO_PUBLISHER_HOME,
+  PAYEE_SECTION_CURRENT,
+  PAYEE_SECTION_SETTLEMENT,
+  payeeChip,
+  payeeEndingText,
+} from '../../../lib/publisher-forms-copy';
 import { RequestForm } from './RequestForm';
+import '../pk-forms.css';
 
 export const metadata: Metadata = { title: 'Where you get paid' };
 
@@ -32,46 +41,66 @@ export default async function PayoutAccount() {
   if (actor?.kind !== 'publisher') redirect('/signin?next=/publisher/payout-account');
   const view = await (await app()).engine.payee.view(actor);
   if (view === null) redirect('/signin?next=/publisher/payout-account');
+  const operatorChecked = view.history.some((h) => h.state === 'verified');
+  const chip = payeeChip({
+    last4: view.last4,
+    verifiedAt: view.verified_at,
+    operatorChecked,
+  });
   return (
     <>
-      <h1>
-        {PAYEE_HEADING} <EnvLabel environment={view.environment} />
-      </h1>
-      <p className="lede">{PAYEE_LEDE}</p>
-      <div className="card">
-        <dl>
-          <dt>{LABEL_ACCOUNT}</dt>
-          <dd data-testid="payee-account">{accountText(view.last4)}</dd>
-          <dt>{LABEL_VERIFIED}</dt>
-          <dd data-testid="payee-verified">
-            {verifiedAtText(view.verified_at === null ? null : formatDateTime(view.verified_at))}
-          </dd>
-          <dt>{LABEL_VERIFIED_BY}</dt>
-          <dd data-testid="payee-verified-by">
-            {verifiedByText(view.history.some((h) => h.state === 'verified'))}
-          </dd>
-          <dt>{LABEL_SETTLEMENT}</dt>
-          <dd data-testid="payee-settlement">{view.settlement.sentence}</dd>
-        </dl>
-      </div>
-      {view.environment === 'sandbox' ? (
-        <p role="status" className="muted" data-testid="payee-owner-only">
-          <strong>{OWNER_ONLY_NOTE}</strong>
-        </p>
-      ) : null}
+      <p className="pk-back">
+        <Link href="/publisher">{BACK_TO_PUBLISHER_HOME}</Link>
+      </p>
+      <PageHeader
+        title={PAYEE_HEADING}
+        lede={PAYEE_LEDE}
+        aside={<EnvLabel environment={view.environment} />}
+      />
+      <Section title={PAYEE_SECTION_CURRENT} id="payee-current">
+        <div className="pk-panel">
+          <p className="pk-ending">
+            <Chip tone={chip.tone}>{chip.text}</Chip>
+            <span className="pk-ending-text">{payeeEndingText(view.last4)}</span>
+          </p>
+          <dl className="pk-facts">
+            <dt>{LABEL_ACCOUNT}</dt>
+            <dd data-testid="payee-account">{accountText(view.last4)}</dd>
+            <dt>{LABEL_VERIFIED}</dt>
+            <dd data-testid="payee-verified">
+              {verifiedAtText(view.verified_at === null ? null : formatDateTime(view.verified_at))}
+            </dd>
+            <dt>{LABEL_VERIFIED_BY}</dt>
+            <dd data-testid="payee-verified-by">{verifiedByText(operatorChecked)}</dd>
+          </dl>
+        </div>
+      </Section>
+      <Section title={PAYEE_SECTION_SETTLEMENT} id="payee-settlement-section">
+        <div className="pk-panel pk-note">
+          <p data-testid="payee-settlement">{view.settlement.sentence}</p>
+          {view.environment === 'sandbox' ? (
+            <p role="status" className="muted" data-testid="payee-owner-only">
+              <strong>{OWNER_ONLY_NOTE}</strong>
+            </p>
+          ) : null}
+        </div>
+      </Section>
       <RequestForm />
-      <h2>{HISTORY_HEADING}</h2>
-      {view.history.length === 0 ? (
-        <EmptyState title={HISTORY_EMPTY} />
-      ) : (
-        <ul data-testid="payee-history">
-          {view.history.map((h) => (
-            <li key={h.request_id}>
-              {historyLine(h)} <span className="muted">{formatDateTime(h.created_at)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <Section title={HISTORY_HEADING} id="payee-history-section">
+        {view.history.length === 0 ? (
+          <EmptyState title={HISTORY_EMPTY} />
+        ) : (
+          <div className="pk-panel">
+            <ul className="pk-history" data-testid="payee-history">
+              {view.history.map((h) => (
+                <li key={h.request_id}>
+                  {historyLine(h)} <span className="muted">{formatDateTime(h.created_at)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Section>
     </>
   );
 }

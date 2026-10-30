@@ -312,7 +312,11 @@ describe('the pages (source text)', () => {
     expect(s2).toContain('engine.offers.list');
     expect(s2).toContain('EnvLabel');
     expect(s2).not.toMatch(/style=/);
-    expect(s2).not.toMatch(/searchParams|publisher_id/);
+    // The publisher is never taken from the address. PUB-UI-OFFERS: the one parameter read is the status tab,
+    // which only narrows the rows the engine already returned for the session publisher.
+    expect(s2).not.toMatch(/publisher_id/);
+    expect(s2.match(/searchParams/g)?.length ?? 0).toBeLessThanOrEqual(3);
+    expect(s2).toContain('(await searchParams).status');
   });
 
   it('S3 reads only the offer id from the address and asks the engine as the session actor', () => {
