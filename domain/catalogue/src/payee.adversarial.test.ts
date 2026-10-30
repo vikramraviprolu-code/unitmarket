@@ -27,7 +27,12 @@ const ask = async (actor: Actor, merchant_id: string) => {
   return r.value.request_id;
 };
 
-const verify = (actor: Actor, request_id: string, typed: string, env: 'dryrun' | 'sandbox' = 'dryrun') =>
+const verify = (
+  actor: Actor,
+  request_id: string,
+  typed: string,
+  env: 'dryrun' | 'sandbox' = 'dryrun',
+) =>
   decidePayeeRequest(w.deps(env), actor, {
     request_id,
     merchant_id_retyped: typed,
@@ -84,14 +89,14 @@ describe('who may decide', () => {
   });
 
   it('a buyer, the system and an operator without the second factor cannot decide', async () => {
-    const id = await ask(w.actorA, 'NOTANOPERATOR1');
+    const id = await ask(w.actorA, 'NOTANOPERATO1');
     const cases: [Actor, string][] = [
       [w.buyer, 'not_operator'],
       [{ kind: 'system' }, 'not_operator'],
       [w.opNoMfa, 'mfa_required'],
     ];
     for (const [actor, code] of cases) {
-      expect(await verify(actor, id, 'NOTANOPERATOR1')).toEqual({ ok: false, error: { code } });
+      expect(await verify(actor, id, 'NOTANOPERATO1')).toEqual({ ok: false, error: { code } });
     }
     expect(
       await count(w.db, 'SELECT count(*) AS c FROM payee_decisions WHERE request_id = $1', [id]),
@@ -101,10 +106,10 @@ describe('who may decide', () => {
 
 describe('what a publisher can see', () => {
   it('never sees another publisher request or history, and cannot list the open queue', async () => {
-    const idA = await ask(w.actorA, 'ONLYAPUBLISH01');
+    const idA = await ask(w.actorA, 'ONLYAPUBLIS01');
     const viewB = (await payeeView(w.db, w.actorB))!;
     expect(viewB.history.map((h) => h.request_id)).not.toContain(idA);
-    expect(JSON.stringify(viewB)).not.toContain('ONLYAPUBLISH01');
+    expect(JSON.stringify(viewB)).not.toContain('ONLYAPUBLIS01');
     for (const actor of [w.actorA, w.actorB, w.buyer, w.opNoMfa]) {
       const r = await listOpenRequests(w.db, actor);
       expect(r.ok).toBe(false);

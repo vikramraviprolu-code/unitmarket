@@ -22,6 +22,9 @@ beforeEach(async () => {
 
 const rows = async (sql: string, params: unknown[] = []) =>
   (await w.app.db.query<Record<string, unknown>>(sql, params)).rows;
+const reset = async () => {
+  await w.app.db.query('DELETE FROM rate_buckets');
+};
 const harbour = () => w.pub['harbour-ledger'];
 
 describe('the decision route', () => {
@@ -125,6 +128,7 @@ describe('the request route', () => {
       { paypal_merchant_id: 'BBBBBBBBBBBBB' },
       { payee_shared: true },
     ]) {
+      await reset();
       const res = await postRequest(w, harbour(), {
         merchant_id: 'AAAAAAAAAAAAA',
         note: 'x',
@@ -137,6 +141,7 @@ describe('the request route', () => {
 
   it('a malformed merchant id is 422 and the request writes nothing', async () => {
     for (const bad of ['lower', 'aaaaaaaaaaaaa', 'AAAAAAAAAAAAAA', 'AAAAAAAAAAAA', 42, null]) {
+      await reset();
       const res = await postRequest(w, harbour(), { merchant_id: bad, note: 'x' });
       expect(res.status).toBe(422);
     }
@@ -144,7 +149,10 @@ describe('the request route', () => {
   });
 
   it('a body over 1 KB is 413', async () => {
-    const res = await postRequest(w, harbour(), { merchant_id: 'AAAAAAAAAAAAA', note: 'n'.repeat(2000) });
+    const res = await postRequest(w, harbour(), {
+      merchant_id: 'AAAAAAAAAAAAA',
+      note: 'n'.repeat(2000),
+    });
     expect(res.status).toBe(413);
   });
 
@@ -153,7 +161,7 @@ describe('the request route', () => {
       'SELECT paypal_merchant_id, payee_verified_at, payee_shared FROM publishers WHERE id = $1',
       [w.pubId['harbour-ledger']],
     );
-    const res = await postRequest(w, harbour(), { merchant_id: 'SNEAKYMERCH001', note: 'please' });
+    const res = await postRequest(w, harbour(), { merchant_id: 'SNEAKYMERCH01', note: 'please' });
     expect(res.status).toBe(200);
     const after = await rows(
       'SELECT paypal_merchant_id, payee_verified_at, payee_shared FROM publishers WHERE id = $1',

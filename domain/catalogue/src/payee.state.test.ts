@@ -1,11 +1,6 @@
 // PUB-A2 state tests: the payee request and the operator decision, on a migrated in-memory database.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  decidePayeeRequest,
-  listOpenRequests,
-  payeeView,
-  requestPayeeChange,
-} from './index';
+import { decidePayeeRequest, listOpenRequests, payeeView, requestPayeeChange } from './index';
 import { MERCH_NEW, MERCH_OLD, count, payeeWorld, publisherRow } from './payee-support';
 import type { PayeeWorld } from './payee-support';
 
@@ -61,10 +56,11 @@ describe('requestPayeeChange', () => {
   });
 
   it('writes one audit row with the last 4 of the new and the current id only', async () => {
-    await ask('REQUESTAUDIT1');
+    const id = await ask('REQUESTAUDIT1');
     const row = (
       await w.db.query<{ detail: Record<string, unknown>; actor_kind: string }>(
-        "SELECT detail, actor_kind FROM audit_log WHERE action = 'payee.change_requested' ORDER BY created_at DESC, id DESC LIMIT 1",
+        "SELECT detail, actor_kind FROM audit_log WHERE action = 'payee.change_requested' AND target = $1",
+        [id],
       )
     ).rows[0]!;
     expect(row.actor_kind).toBe('publisher');
