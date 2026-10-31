@@ -72,8 +72,10 @@ describe('header items per role (D11)', () => {
     expect(labels(null)).toEqual(['Find articles', 'Help', 'Sign in']);
     expect(navItems(null).sign_out).toBe(false);
   });
-  it('buyer: find, library, help, sign out', () => {
-    expect(labels('buyer')).toEqual(['Find articles', 'My library', 'Help']);
+  it('buyer: find, library, account, help, sign out (ID-ACCOUNTS adds Account)', () => {
+    expect(labels('buyer')).toEqual(['Find articles', 'My library', 'Account', 'Help']);
+    expect(navItems('buyer').items.find((i) => i.label === 'Account')?.href).toBe('/account');
+    for (const k of [null, 'publisher', 'operator'] as const) expect(labels(k)).not.toContain('Account');
     expect(navItems('buyer').sign_out).toBe(true);
   });
   it('publisher: publisher, help, sign out; never Find articles', () => {
