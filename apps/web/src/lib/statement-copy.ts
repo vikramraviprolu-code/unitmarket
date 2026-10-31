@@ -105,6 +105,8 @@ export const STATEMENT_EMPTY_BODY =
   'When a buyer pays for one of your offers, its ledger lines are added up here.';
 export const SETTLEMENT_HEADING = 'Where the money is';
 export const COMMISSION_HEADING = 'Commission';
+/** The fold under the figure tiles that lists the same figures with where each comes from. */
+export const FIGURES_SUMMARY = 'Where these figures come from';
 
 export const LINE_LABEL = {
   sales: 'Sales',

@@ -180,7 +180,7 @@ function UnitCard({
   return (
     <li className="card no-bullet" data-testid="refund-unit">
       <h3 id={`unit-${unit.unit_id}`}>{label}</h3>
-      <dl>
+      <dl className="pk-facts">
         <dt>Order</dt>
         <dd className="mono">{unit.order_ref}</dd>
         <dt>Paid</dt>

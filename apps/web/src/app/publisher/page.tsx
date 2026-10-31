@@ -176,7 +176,7 @@ export default async function PublisherHome() {
         </div>
       </Section>
       <Section title={CARDS_LABEL} id="next">
-        <ul className="pk-cards" data-testid="publisher-links">
+        <ul className="pk-cards pk-cards-home" data-testid="publisher-links">
           <li>
             <HomeCard
               slug="offers"

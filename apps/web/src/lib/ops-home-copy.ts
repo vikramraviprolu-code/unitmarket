@@ -13,9 +13,9 @@ export interface ChipView {
 export const OPS_HOME_HEADING_SWITCHES = 'Switches';
 export const OPS_HOME_SWITCHES_LEDE =
   'The stop button below turns off outbound PayPal calls. The other switches are changed with the operator command line.';
-export const OPS_HOME_KILL_STATE_LABEL = 'State of the kill switch';
-export const OPS_HOME_ORDERS_NOTE_ONE = 'in the latest order';
-export const OPS_HOME_ORDERS_NOTE_MANY = 'in the latest orders';
+export const OPS_HOME_KILL_STATE_LABEL = 'Outbound PayPal calls';
+export const OPS_HOME_ORDERS_NOTE_ONE = 'order';
+export const OPS_HOME_ORDERS_NOTE_MANY = 'orders';
 export const OPS_HOME_ORDERS_LIST_HEADING = 'Latest orders';
 export const OPS_HOME_STATES_NOTE = 'operations in this state';
 export const OPS_HOME_INVARIANTS_HOLD = 'All hold';
@@ -187,6 +187,13 @@ export function invariantsSummary(invariants: { ok: boolean }[]): { text: string
     : { text: `${failing} failing.`, chip: { tone: 'bad', text: `${failing} failing` } };
 }
 
-export function ordersNote(total: number): string {
-  return total === 1 ? OPS_HOME_ORDERS_NOTE_ONE : OPS_HOME_ORDERS_NOTE_MANY;
+/** The caption under an order status tile, for example '1 order paid' or '3 orders awaiting buyer'. */
+export function ordersNote(count: number, status: string): string {
+  const noun = count === 1 ? OPS_HOME_ORDERS_NOTE_ONE : OPS_HOME_ORDERS_NOTE_MANY;
+  return `${String(count)} ${noun} ${statusWord(status).toLowerCase()}`;
+}
+
+/** The detail the engine gives an invariant ends in ': holds' when it holds. The Holds chip already says so. */
+export function invariantDetailText(detail: string, ok: boolean): string {
+  return ok ? detail.replace(/: holds$/, '') : detail;
 }

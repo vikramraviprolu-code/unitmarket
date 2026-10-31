@@ -171,8 +171,23 @@
   .pk-table td::before {
     content: attr(data-label);
     display: block;
+    font-family: var(--font);
     color: var(--muted);
     font-size: 0.8rem;
     font-weight: 600;
   }
+}
+/* The sourced figures sit under the tiles, folded: the tiles already show the same numbers. */
+.pk-figs {
+  margin: 0 0 16px;
+}
+.pk-figs > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 4px 0 10px;
+}
+.pk-figs > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }

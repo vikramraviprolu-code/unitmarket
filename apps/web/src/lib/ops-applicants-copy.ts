@@ -4,7 +4,7 @@
 
 export const APPLICANTS_HEADING = 'Applicants';
 export const APPLICANTS_LEDE =
-  'Publishers who have asked to join. An operator adds each one here after talking to them. Nobody signs up by themselves on this site.';
+  'Publishers who applied on the public form, or whom an operator added. Nobody gets an account or sign in from applying.';
 export const APPLICANTS_NO_LOGIN =
   'Approving an applicant makes it an active publisher, but it cannot sign in yet. The owners must add a persona and a passcode for it first. Until then it has no payee account and no offers.';
 export const APPLICANTS_EMPTY = 'No applicants waiting.';

@@ -39,11 +39,18 @@
   color: var(--muted);
   font-size: 0.9rem;
 }
+/* The kill switch panel takes the full width so its facts do not wrap; the stop button sits below it. */
 .oh-split {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
+}
+.oh-kill-facts {
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr);
+}
+.oh-time {
+  white-space: nowrap;
 }
 .oh-state-row {
   display: flex;
@@ -99,6 +106,10 @@
   flex: 1 1 220px;
   min-width: 0;
   color: var(--muted);
+}
+/* Tiles keep a card width of their own: a single tile no longer stretches across the page. */
+.pk-tiles.oh-tiles {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 }
 .oh-tiles > li {
   display: grid;
@@ -171,7 +182,7 @@
   margin: 0;
 }
 @media (max-width: 640px) {
-  .oh-split {
+  .oh-kill-facts {
     grid-template-columns: minmax(0, 1fr);
   }
   .oh-orders-table td:last-child,

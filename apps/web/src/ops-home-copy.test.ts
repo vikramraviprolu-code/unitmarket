@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import * as view from './lib/ops-home-copy';
 import {
   invariantChip,
+  invariantDetailText,
   invariantsSummary,
+  ordersNote,
   operationTiles,
   orderStatusChip,
   orderTiles,
@@ -96,6 +98,24 @@ describe('invariants', () => {
     const s = invariantsSummary([{ ok: true }, { ok: false }, { ok: false }]);
     expect(s.text).toBe('2 failing.');
     expect(s.chip).toEqual({ tone: 'bad', text: '2 failing' });
+  });
+});
+
+describe('tile captions and invariant details', () => {
+  it('says how many orders are in a status, singular or plural', () => {
+    expect(ordersNote(1, 'paid')).toBe('1 order paid');
+    expect(ordersNote(3, 'awaiting_buyer')).toBe('3 orders awaiting buyer');
+  });
+  it('drops the trailing holds word of a passing invariant and keeps a failing detail whole', () => {
+    expect(
+      invariantDetailText('every window end equals the end the event log gives: holds', true),
+    ).toBe('every window end equals the end the event log gives');
+    expect(invariantDetailText('check: 2 violations: a; b', false)).toBe(
+      'check: 2 violations: a; b',
+    );
+    expect(invariantDetailText('check: 2 violations: holds', false)).toBe(
+      'check: 2 violations: holds',
+    );
   });
 });
 

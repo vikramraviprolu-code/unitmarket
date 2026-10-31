@@ -59,3 +59,12 @@
 .pk-since-from {
   margin: 8px 0 0;
 }
+/* Four cards sit two by two, so none is left alone on a second row. One column on a phone. */
+.pk-cards.pk-cards-home {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 540px) {
+  .pk-cards.pk-cards-home {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
