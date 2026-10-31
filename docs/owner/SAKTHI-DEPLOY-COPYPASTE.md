@@ -134,3 +134,58 @@ Checks in the browser (Chrome):
 5. Apply check (needed before anyone is told about the Apply link): open `/apply` on the hosted address, apply as "Test Applicant (fake)", country GB, note "test only". Expected: "Application received" with a reference. If it says "We cannot take new applications right now", the hosted proxy count is wrong: tell the coordinator and do not share the link. Then reject that applicant in Operations, Publishers, with the reason "test".
 
 Paste back: the deploy output's last two lines and what you saw in checks 1 to 5. Never paste a passcode.
+
+## Starting the PayPal sandbox gateway (works with the environment guard)
+
+Run this only at the owner's own terminal, never in Cloud Shell or an AI session, and only after the deploy. A deploy always leaves the connection off, so do it after the deploy, not before. The approval basis is D-062 (see the decision log for its limits and end date).
+
+Window 1 (leave open):
+
+```
+cloud-sql-proxy --port 5433 unitmarket-sbx-vr1:europe-west3:unitmarket-sbx-pg
+```
+
+Window 2, in the repository folder. The guard refuses a terminal that holds `DATABASE_URL` or `UMS_DB` and differs from `.env.local`, so the file is changed for a few minutes and restored afterwards:
+
+```
+git checkout gcp-pub-2
+RAW="$(gcloud secrets versions access latest --secret=DATABASE_URL --project=unitmarket-sbx-vr1)"
+export DATABASE_URL="$(printf '%s' "$RAW" | sed 's#@/\([^?]*\)?host=[^ ]*#@127.0.0.1:5433/\1#')"
+unset RAW
+cp .env.local .env.local.bak
+grep -v -E '^(UMS_DB|UMS_PGLITE_DIR|DATABASE_URL|UMS_PAYPAL_CONNECT|UMS_OUTBOUND_APPROVAL_REF)=' .env.local.bak > .env.local
+printf 'UMS_DB=postgres\nDATABASE_URL=%s\nUMS_OUTBOUND_APPROVAL_REF=D-062\n' "$DATABASE_URL" >> .env.local
+unset DATABASE_URL UMS_DB
+grep -E '^(UMS_MODE|UMS_OUTBOUND_SCOPE)=' .env.local
+corepack pnpm safety:status
+```
+
+Expected: `UMS_MODE=sandbox`, `UMS_OUTBOUND_SCOPE=mvp_c_refunds`, and `mode=sandbox connect=off db=postgres`. Before the approval, the status says no active approval. Check that the live app looks for the same reference (it prints only MATCH or DIFFERENT):
+
+```
+[ "$(gcloud secrets versions access latest --secret=UMS_OUTBOUND_APPROVAL_REF --project=unitmarket-sbx-vr1)" = "D-062" ] && echo MATCH || echo DIFFERENT
+```
+
+Insert the approval and turn the switch on. Each asks you to type `mvp_c_refunds`:
+
+```
+corepack pnpm safety:approve --operator vikram --ref D-062 --scope mvp_c_refunds \
+  --ops oauth_token,create_order,get_order,capture_order,get_capture \
+  --max-amount 2000 --max-calls 120 --valid-until 2026-11-03T12:00:00Z --approved-by vikram
+corepack pnpm safety:resume --operator vikram --reason "tester sitting"
+```
+
+Restore and close, always:
+
+```
+mv .env.local.bak .env.local
+unset DATABASE_URL UMS_DB
+```
+
+Then press Ctrl+C in the proxy window. In Cloud Shell set the flag, wait for the new revision, and check Operations (switch On, calls left):
+
+```
+gcloud run services update unitmarket-sandbox --region=europe-west3 --project=unitmarket-sbx-vr1 --update-env-vars=UMS_PAYPAL_CONNECT=on
+```
+
+To stop at any time: the "Stop PayPal now" button on Operations, or the same flag command with `UMS_PAYPAL_CONNECT=off`. The approval ends on 2026-11-03 at 12:00 UTC.
