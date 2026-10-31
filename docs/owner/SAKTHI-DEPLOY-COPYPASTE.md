@@ -97,3 +97,40 @@ Do not delete anything. Stop and paste the last 20 lines of the output to the co
 ## Not part of this guide (separate, later)
 
 The publisher passcode, the judge passcode, the Claude key and the offline judge service each need secret values that only you or Vikram can type. Say so when you are ready for those steps.
+
+## Second deploy: tag `gcp-pub-2` (publisher screens, operator home, Apply form)
+
+Commit to deploy: `d6698da`. It adds no new database migration, so it changes no tables. Tag it exactly as in Part 1, with the new name. The optional secrets you stored for the first deploy are kept. Do not deploy while anyone is testing the hosted app.
+
+Where to run it: Part 1 on a laptop that has the repository (Vikram's) or in Cloud Shell if your GitHub account can push tags. Then the rest in Cloud Shell.
+
+```
+git fetch origin
+git checkout d6698da
+git status
+git tag gcp-pub-2
+git push origin gcp-pub-2
+```
+
+Then in Cloud Shell, in the repository folder:
+
+```
+PROJECT_ID=unitmarket-sbx-vr1
+REGION=europe-west3
+gcloud sql backups list --instance=unitmarket-sbx-pg --project="$PROJECT_ID"
+git fetch --tags
+git checkout gcp-pub-2
+bash infra/gcp/deploy.sh "$PROJECT_ID" "$REGION" gcp-pub-2
+```
+
+Expected: the backup list shows a successful backup less than a day old. The deploy output shows `on: UMS_PUBLISHER_PASSCODE_HASH` and `on: UMS_JUDGE_PASSCODE_HASH`, and ends with `deployed unitmarket-sandbox from tag gcp-pub-2`. The NOTE about the other address is the same as before. Keep using `https://unitmarket-sandbox-626887286871.europe-west3.run.app`.
+
+Checks in the browser (Chrome):
+
+1. Sign in as a publisher with the publisher passcode. The home page shows the publisher name, four figure tiles, an account panel and four cards.
+2. Open Your offers. Cards with cover initials and filter tabs.
+3. Sign in as Operator with the name, passcode and current code, then open Operations. Switch cards, a kill switch panel, and `paypal_outbound` shown as Off with the words "Off: no PayPal calls".
+4. Open Publishers. Applicants queue, publisher cards.
+5. Apply check (needed before anyone is told about the Apply link): open `/apply` on the hosted address, apply as "Test Applicant (fake)", country GB, note "test only". Expected: "Application received" with a reference. If it says "We cannot take new applications right now", the hosted proxy count is wrong: tell the coordinator and do not share the link. Then reject that applicant in Operations, Publishers, with the reason "test".
+
+Paste back: the deploy output's last two lines and what you saw in checks 1 to 5. Never paste a passcode.
