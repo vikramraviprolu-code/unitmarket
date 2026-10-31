@@ -54,6 +54,7 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/discover/route.ts': () => import('./app/api/discover/route'),
   'api/library/[id]/link/route.ts': () => import('./app/api/library/[id]/link/route'),
   'api/library/route.ts': () => import('./app/api/library/route'),
+  'api/ops/start/route.ts': () => import('./app/api/ops/start/route'),
   'api/ops/stop/route.ts': () => import('./app/api/ops/stop/route'),
   'api/orders/[ref]/cancel/route.ts': () => import('./app/api/orders/[ref]/cancel/route'),
   'api/orders/[ref]/checkout/route.ts': () => import('./app/api/orders/[ref]/checkout/route'),
