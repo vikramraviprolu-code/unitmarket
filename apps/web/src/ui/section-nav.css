@@ -1,0 +1,53 @@
+/* SectionNav: tokens only, so it follows Bright Market and Deep Harbour. Targets are at least 44px. */
+html {
+  scroll-padding-top: 5.5rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+.section-nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 0 var(--space);
+  padding: 8px 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line-soft);
+  overflow-x: auto;
+}
+.section-nav ul {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  white-space: nowrap;
+}
+.section-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.section-nav a:hover {
+  background: var(--accent-soft);
+}
+.section-nav a:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.section-nav-top {
+  margin-left: auto;
+}
+.section-nav-top a {
+  color: var(--muted);
+  font-weight: 500;
+}
