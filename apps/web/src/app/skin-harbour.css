@@ -32,6 +32,13 @@
     radial-gradient(circle at 88% -8%, rgba(255, 179, 71, 0.16), rgba(255, 179, 71, 0) 38%),
     radial-gradient(circle at 4% 108%, rgba(70, 217, 200, 0.12), rgba(70, 217, 200, 0) 42%);
   --display: ui-serif, 'New York', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --band:
+    radial-gradient(
+      circle at 94% -20%,
+      color-mix(in srgb, var(--accent) 26%, transparent),
+      transparent 52%
+    ),
+    linear-gradient(135deg, var(--surface), var(--surface-2));
 }
 /* The page light: two soft glows fixed to the corners instead of the tiled dots of Bright Market. */
 :root[data-skin='harbour'] body::before {
@@ -49,6 +56,11 @@
 :root[data-skin='harbour'] .site-header .brand {
   font-weight: 700;
 }
+/* Deep Harbour fills the chosen skin with the amber of its lamp instead of the pale header ink. */
+:root[data-skin='harbour'] .skin-switch button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
 /* The library is a lit shelf: a warm line under each cover card, with its glow. Still, never animated. */
 :root[data-skin='harbour'] [data-testid='library-item'] {
   position: relative;
@@ -62,7 +74,7 @@
   height: 6px;
   border-radius: 6px;
   background: var(--accent);
-  box-shadow: 0 0 28px 4px rgba(255, 179, 71, 0.45);
+  box-shadow: 0 0 28px 4px color-mix(in srgb, var(--accent) 45%, transparent);
   pointer-events: none;
 }
 :root[data-skin='harbour'] .plain-list {
@@ -80,7 +92,7 @@
   overflow: hidden;
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
-  background: linear-gradient(180deg, #06182a 0%, #0b2233 58%, #11344a 100%);
+  background: linear-gradient(180deg, var(--night) 0%, var(--bg) 58%, var(--surface) 100%);
   pointer-events: none;
 }
 .harbour-scene svg {
@@ -107,7 +119,7 @@
 }
 .harbour-scene .hs-light polygon,
 .harbour-scene .hs-light rect {
-  fill: #06182a;
+  fill: var(--night);
 }
 .harbour-scene .hs-light .hs-lamp {
   fill: var(--accent);
@@ -126,7 +138,7 @@
   fill: var(--accent);
 }
 .harbour-scene .hs-hull {
-  fill: #04121c;
+  fill: var(--night-deep);
 }
 /* Inside the Hero (home and find) the scene is the backdrop of the headline, not a band of its own. */
 .hero > .harbour-scene {
@@ -148,9 +160,9 @@
   inset: 0;
   background: linear-gradient(
     90deg,
-    rgba(6, 24, 42, 0.92) 0%,
-    rgba(6, 24, 42, 0.8) 42%,
-    rgba(6, 24, 42, 0) 78%
+    color-mix(in srgb, var(--night) 92%, transparent) 0%,
+    color-mix(in srgb, var(--night) 80%, transparent) 42%,
+    color-mix(in srgb, var(--night) 0%, transparent) 78%
   );
 }
 :root[data-skin='harbour'] .hero .lede {
@@ -160,9 +172,9 @@
   .hero > .harbour-scene::after {
     background: linear-gradient(
       180deg,
-      rgba(6, 24, 42, 0.92) 0%,
-      rgba(6, 24, 42, 0.86) 58%,
-      rgba(6, 24, 42, 0.15) 100%
+      color-mix(in srgb, var(--night) 92%, transparent) 0%,
+      color-mix(in srgb, var(--night) 86%, transparent) 58%,
+      color-mix(in srgb, var(--night) 15%, transparent) 100%
     );
   }
   .harbour-scene .hs-moon,

@@ -112,7 +112,7 @@ export function Section({
   id?: string;
 }) {
   return (
-    <section className="pk-section" aria-labelledby={id ? `${id}-h` : undefined} id={id}>
+    <section className="pk-section" aria-labelledby={id && title ? `${id}-h` : undefined} id={id}>
       {title ? <h2 id={id ? `${id}-h` : undefined}>{title}</h2> : null}
       {children}
     </section>

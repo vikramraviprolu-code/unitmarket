@@ -5,6 +5,7 @@ import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EmptyState } from '../../../ui/EmptyState';
 import { EnvLabel } from '../../../ui/EnvLabel';
+import { SectionNav } from '../../../ui/SectionNav';
 import { Chip, PageHeader, Section } from '../../../ui/publisher/kit';
 import { formatDateTime } from '../../../lib/format';
 import {
@@ -56,6 +57,15 @@ export default async function PayoutAccount() {
         title={PAYEE_HEADING}
         lede={PAYEE_LEDE}
         aside={<EnvLabel environment={view.environment} />}
+      />
+      <SectionNav
+        label="On this page"
+        items={[
+          { id: 'payee-current', label: 'Your account' },
+          { id: 'payee-settlement-section', label: 'Where sales money goes' },
+          { id: 'payee-request', label: 'Ask for a change' },
+          { id: 'payee-history-section', label: 'Your requests' },
+        ]}
       />
       <Section title={PAYEE_SECTION_CURRENT} id="payee-current">
         <div className="pk-panel">

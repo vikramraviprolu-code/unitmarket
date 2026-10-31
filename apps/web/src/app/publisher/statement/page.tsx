@@ -8,6 +8,7 @@ import { currentActor } from '../../../server/session';
 import { EmptyState } from '../../../ui/EmptyState';
 import { Chip, PageHeader, Section, StatTile } from '../../../ui/publisher/kit';
 import { EnvLabel } from '../../../ui/EnvLabel';
+import { SectionNav } from '../../../ui/SectionNav';
 import { formatDateTime, formatMinor } from '../../../lib/format';
 import {
   COMMISSION_HEADING,
@@ -67,6 +68,16 @@ export default async function PublisherStatement() {
         <Link href="/publisher/sales">{NAV_SALES}</Link>
         <Link href="/publisher">{NAV_HOME}</Link>
       </div>
+      <SectionNav
+        label="On this page"
+        items={[
+          ...statement.blocks.map((b) => ({
+            id: `statement-${b.currency}-${b.environment}`,
+            label: b.currency,
+          })),
+          { id: 'commission', label: 'Commission' },
+        ]}
+      />
       {statement.blocks.length === 0 ? (
         <>
           <p>
@@ -82,6 +93,7 @@ export default async function PublisherStatement() {
         statement.blocks.map((b) => (
           <section
             key={`${b.currency}-${b.environment}`}
+            id={`statement-${b.currency}-${b.environment}`}
             className="pk-panel pk-block"
             data-testid="statement-block"
           >
@@ -175,7 +187,7 @@ export default async function PublisherStatement() {
           {mismatchStatementText(statement.mismatch_units)}
         </p>
       ) : null}
-      <Section title={COMMISSION_HEADING}>
+      <Section title={COMMISSION_HEADING} id="commission">
         <p data-testid="commission-line">{statement.commission}</p>
       </Section>
       <Details summary={STATEMENT_FILE_SUMMARY}>

@@ -1,8 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { postJson } from '../lib/client-api';
 import type { Skin } from '../lib/skin';
-import { SKINS } from '../lib/skin';
+import { SKINS, skinFromCookie } from '../lib/skin';
 import {
   APPEARANCE_LEGEND,
   APPEARANCE_SAVE_FAILED,
@@ -19,6 +19,18 @@ export function AppearanceControl({ skin }: { skin: Skin }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [said, setSaid] = useState('');
+
+  // WEB-THEME: the header switch changes <html data-skin> too, so the radios follow that attribute.
+  useEffect(() => {
+    const watcher = new MutationObserver(() => {
+      setSelected(skinFromCookie(document.documentElement.getAttribute('data-skin') ?? undefined));
+    });
+    watcher.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-skin'],
+    });
+    return () => watcher.disconnect();
+  }, []);
 
   async function choose(next: Skin) {
     if (next === selected || busy) return;

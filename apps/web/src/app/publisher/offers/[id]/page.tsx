@@ -5,6 +5,7 @@ import { app } from '../../../../server/access';
 import { currentActor } from '../../../../server/session';
 import { EnvLabel } from '../../../../ui/EnvLabel';
 import { Chip, PageHeader, Section } from '../../../../ui/publisher/kit';
+import { SectionNav } from '../../../../ui/SectionNav';
 import { StatusBanner } from '../../../../ui/StatusBanner';
 import { formatDateTime, formatMinor, optionLabel } from '../../../../lib/format';
 import {
@@ -117,6 +118,15 @@ export default async function PublisherOffer({ params }: { params: Promise<{ id:
         <Chip tone={offerStatusTone(o.status)}>{offerStatusText(o.status)}</Chip>
         <Chip tone="neutral">{`${LABEL_VERSION} ${o.version}`}</Chip>
       </p>
+      <SectionNav
+        label="On this page"
+        items={[
+          { id: 'offer-buyer', label: 'What buyers see' },
+          { id: 'offer-what', label: 'The article' },
+          { id: 'offer-licence-section', label: 'Licence' },
+          { id: 'offer-history-section', label: 'History' },
+        ]}
+      />
       <Section title={BUYER_SEES_HEADING} id="offer-buyer">
         <div className="pk-panel">
           {live ? (

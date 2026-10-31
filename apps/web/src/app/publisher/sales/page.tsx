@@ -7,6 +7,7 @@ import { app, salesTotals } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EmptyState } from '../../../ui/EmptyState';
 import { Chip, PageHeader, Section, StatTile } from '../../../ui/publisher/kit';
+import { SectionNav } from '../../../ui/SectionNav';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { formatDateTime, formatMinor, optionLabel } from '../../../lib/format';
 import {
@@ -88,8 +89,16 @@ export default async function PublisherSales() {
         <Link href="/publisher/statement">{NAV_STATEMENT}</Link>
         <Link href="/publisher">{NAV_HOME}</Link>
       </div>
+      <SectionNav
+        label="On this page"
+        items={[
+          ...(totals.length > 0 ? [{ id: 'totals', label: 'Totals' }] : []),
+          ...(rows.length > 0 ? [{ id: 'sales-list', label: 'Sales' }] : []),
+          { id: 'refunds', label: 'Refunds' },
+        ]}
+      />
       {totals.length > 0 ? (
-        <Section title={TOTALS_HEADING}>
+        <Section title={TOTALS_HEADING} id="totals">
           <div data-testid="sales-totals">
             {totals.map((t) => (
               <div className="pk-group" key={`${t.currency}-${t.environment}`}>
@@ -123,7 +132,7 @@ export default async function PublisherSales() {
           <EmptyState title={SALES_EMPTY_TITLE}>{SALES_EMPTY_BODY}</EmptyState>
         </Section>
       ) : (
-        <Section>
+        <Section id="sales-list">
           <p className="pk-count" role="status" data-testid="sales-count">
             {salesCountText(rows.length)}
           </p>

@@ -1,20 +1,69 @@
 /* PUB-UI: styles for the publisher and operator-publisher screens. Tokens only (no colour literals), so the Bright Market
    and Deep Harbour looks both apply. Prefix pk- keeps these away from the buyer styles. */
+/* The page header is the skin's poster band, as the hero is on the buyer pages: Bright Market a bright blue
+   band with rings, Deep Harbour a dark teal panel with an amber lamp in the corner (--band). */
 .pk-head {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px 24px;
   margin: 0 0 20px;
+  padding: 22px 24px;
+  background: var(--band);
+  color: var(--header-ink);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.pk-head::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-radial-gradient(
+    circle at 100% 0,
+    transparent 0 22px,
+    color-mix(in srgb, var(--glint) 10%, transparent) 22px 24px
+  );
+}
+:root[data-skin='harbour'] .pk-head::before {
+  display: none;
+}
+.pk-head > * {
+  position: relative;
+  min-width: 0;
 }
 .pk-head h1 {
   margin: 0 0 6px;
+  font-family: var(--display);
+  line-height: 1.12;
+  overflow-wrap: anywhere;
 }
 .pk-head .lede {
   margin: 0;
   max-width: 62ch;
-  color: var(--muted);
+  color: var(--header-ink);
+}
+.pk-head a:not(.btn) {
+  color: var(--header-link);
+}
+.pk-head :focus-visible {
+  outline-color: var(--header-focus);
+}
+/* A filled button would vanish into the blue band, so Bright Market turns the primary button round: a white
+   button with blue words. Deep Harbour keeps the amber fill, which stands out on the dark panel. */
+:root:not([data-skin='harbour']) .pk-head .btn-primary {
+  background: var(--surface);
+  border-color: var(--surface);
+  color: var(--accent);
+}
+.pk-head .pk-eyebrow,
+.pk-head .muted,
+.pk-head .hint {
+  color: var(--header-ink);
 }
 .pk-head-aside {
   display: flex;
@@ -26,12 +75,26 @@
   margin: 28px 0 0;
 }
 .pk-section > h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0 0 12px;
+  font-family: var(--display);
+}
+/* A short bar in the accent colour leads each section heading. */
+.pk-section > h2::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 1.1em;
+  border-radius: var(--radius-btn);
+  background: var(--accent);
 }
 .pk-chip {
   display: inline-block;
   padding: 2px 10px;
-  border-radius: 999px;
+  font-family: var(--display);
+  border-radius: var(--radius-btn);
   border: 1px solid transparent;
   font-size: 0.82rem;
   font-weight: 700;
@@ -76,6 +139,7 @@
   min-width: 0;
 }
 .pk-tile {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--card-border);
   border-radius: var(--radius);
@@ -86,14 +150,26 @@
 .pk-tile p {
   margin: 0;
 }
+/* A short accent tab on the top edge of each figure tile. */
+.pk-tile::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 16px;
+  width: 36px;
+  height: 4px;
+  border-radius: 0 0 4px 4px;
+  background: var(--accent);
+}
 .pk-tile-label {
+  font-family: var(--display);
   color: var(--muted);
   font-size: 0.85rem;
   font-weight: 600;
 }
 .pk-tile-value {
-  font-family: var(--mono);
-  font-size: 1.8rem;
+  font-family: var(--display);
+  font-size: 1.9rem;
   font-weight: 700;
   line-height: 1.25;
   font-variant-numeric: tabular-nums;
@@ -126,12 +202,17 @@
 }
 .pk-card:hover {
   border-color: var(--accent);
+  box-shadow:
+    var(--shadow),
+    0 0 0 1px var(--accent);
 }
 .pk-card:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
 .pk-card-title {
+  font-family: var(--display);
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--accent);
 }
@@ -175,5 +256,20 @@
   }
   .pk-facts dd {
     margin-bottom: 8px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pk-card {
+    transition:
+      transform 160ms cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .pk-card:hover {
+    transform: translateY(-2px);
+  }
+}
+@media (max-width: 600px) {
+  .pk-head {
+    padding: 18px 16px;
   }
 }

@@ -8,6 +8,7 @@ import './motion.css';
 import { app } from '../server/access';
 import { currentActor } from '../server/session';
 import { AppearanceControl } from '../ui/AppearanceControl';
+import { AppearanceSwitch } from '../ui/AppearanceSwitch';
 import { EnvLabel } from '../ui/EnvLabel';
 import { siteDescription, siteFooter } from '../ui/env-copy';
 import { SKIN_COOKIE, skinFromCookie } from '../lib/skin';
@@ -60,6 +61,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               </ul>
             </nav>
             <span className="spacer" />
+            <AppearanceSwitch skin={skin} />
             <EnvLabel environment={a.environment} />
           </div>
         </header>

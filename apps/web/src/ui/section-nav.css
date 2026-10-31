@@ -1,6 +1,8 @@
-/* SectionNav: tokens only, so it follows Bright Market and Deep Harbour. Targets are at least 44px. */
+/* SectionNav: tokens only, so it follows Bright Market and Deep Harbour. Targets are at least 44px. The tabs
+   stick directly under the sticky site header (--header-h, globals.css); scroll-padding-top clears both bars,
+   so a jumped-to heading is never hidden behind either of them. */
 html {
-  scroll-padding-top: 5.5rem;
+  scroll-padding-top: calc(var(--header-h) + 72px);
 }
 @media (prefers-reduced-motion: no-preference) {
   html {
@@ -9,40 +11,52 @@ html {
 }
 .section-nav {
   position: sticky;
-  top: 0;
+  top: var(--header-h);
   z-index: 5;
   margin: 0 0 var(--space);
   padding: 8px 0;
   background: var(--bg);
-  border-bottom: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--card-border);
   overflow-x: auto;
 }
 .section-nav ul {
   display: flex;
+  flex-wrap: nowrap;
   gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
   white-space: nowrap;
 }
+.section-nav li {
+  flex: none;
+}
 .section-nav a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 32ch;
+  height: 44px;
   padding: 0 16px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-btn);
   background: var(--surface);
   color: var(--accent);
+  font-family: var(--display);
   font-weight: 600;
+  line-height: 42px;
   text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .section-nav a:hover {
   background: var(--accent-soft);
+  border-color: var(--accent);
 }
 .section-nav a:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
+  border-radius: var(--radius-btn);
 }
 .section-nav-top {
   margin-left: auto;

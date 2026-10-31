@@ -1,0 +1,38 @@
+[
+  {
+    "w": 1280,
+    "headerBottom": 64,
+    "navTop": 64,
+    "navBottom": 131.796875,
+    "headingTop": 424.21875,
+    "scrollY": 909,
+    "ok": true
+  },
+  {
+    "w": 1280,
+    "switch": {
+      "pressed": "true",
+      "footerChecked": true,
+      "afterReload": "harbour",
+      "h": 44
+    }
+  },
+  {
+    "w": 400,
+    "headerBottom": 104,
+    "navTop": 104,
+    "navBottom": 171.796875,
+    "headingTop": 303.78125,
+    "scrollY": 1672,
+    "ok": true
+  },
+  {
+    "w": 400,
+    "switch": {
+      "pressed": "true",
+      "footerChecked": true,
+      "afterReload": "harbour",
+      "h": 44
+    }
+  }
+]
