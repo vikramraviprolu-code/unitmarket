@@ -1,5 +1,5 @@
 heading: Applicants
-lede: Publishers who have asked to join. An operator adds each one here after talking to them. Nobody signs up by themselves on this site.
+lede: Publishers who applied on the public form, or whom an operator added. Nobody gets an account or sign in from applying.
 no login: Approving an applicant makes it an active publisher, but it cannot sign in yet. The owners must add a persona and a passcode for it first. Until then it has no payee account and no offers.
 empty: No applicants waiting.
 add heading: Add an applicant

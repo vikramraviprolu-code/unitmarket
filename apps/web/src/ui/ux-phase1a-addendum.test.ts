@@ -141,7 +141,11 @@ describe('item 53: the ops order reference is whole', () => {
     expect(src).not.toMatch(/order_ref\s*\.\s*(slice|substring|substr)/);
     expect(src).not.toMatch(/order_ref[^}]*\.\.\./);
     expect(src).toContain('className="mono order-ref"');
-    expect(src).toContain('className="table-scroll"');
+    // PUB-UI-FIX3: the wrapper is the shared TableScroll (a labelled, focusable table-scroll region).
+    expect(src).toContain('<TableScroll label="Latest orders">');
+    expect(noComments(read('../app/publisher/pk-sales-parts.tsx'))).toMatch(
+      /className="table-scroll"\s+tabIndex=\{0\}\s+role="region"\s+aria-label=\{label\}/,
+    );
     expect(css).toMatch(/\.order-ref\s*\{[^}]*white-space:\s*nowrap/);
     expect(css).toMatch(/\.table-scroll\s*\{[^}]*overflow-x:\s*auto/);
     expect(css).not.toMatch(/\.order-ref\s*\{[^}]*(text-overflow|overflow:\s*hidden)/);

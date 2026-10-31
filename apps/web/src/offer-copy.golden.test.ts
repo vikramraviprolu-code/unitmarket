@@ -104,7 +104,7 @@ function lines(): string[] {
   out.push(
     `s2 filters: ${copy.FILTER_ALL} | ${copy.FILTER_ON_SALE} | ${copy.FILTER_DRAFT} | ${copy.FILTER_WITHDRAWN}`,
   );
-  out.push(`s2 edit: ${copy.EDIT_LABEL}`);
+  out.push(`s2 edit: ${copy.EDIT_LABEL} | view (withdrawn): ${copy.VIEW_LABEL}`);
   out.push(
     `s2 filter empty: ${copy.FILTER_EMPTY_TITLE} | ${copy.FILTER_EMPTY_BODY} | ${copy.FILTER_EMPTY_ACTION}`,
   );

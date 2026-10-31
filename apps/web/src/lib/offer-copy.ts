@@ -28,6 +28,8 @@ export const FILTER_ON_SALE = 'On sale';
 export const FILTER_DRAFT = 'Draft';
 export const FILTER_WITHDRAWN = 'Withdrawn';
 export const EDIT_LABEL = 'Edit';
+/** The card button of a withdrawn offer: it can be read but not changed. */
+export const VIEW_LABEL = 'View';
 export const FILTER_EMPTY_TITLE = 'No offers in this view';
 export const FILTER_EMPTY_BODY = 'Choose another tab to see your other offers.';
 export const FILTER_EMPTY_ACTION = 'Show all offers';

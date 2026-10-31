@@ -20,6 +20,7 @@ import {
   OPS_HOME_STATES_NOTE,
   OPS_HOME_SWITCHES_LEDE,
   invariantChip,
+  invariantDetailText,
   invariantsSummary,
   operationTiles,
   orderStatusChip,
@@ -31,6 +32,9 @@ import {
 } from '../../lib/ops-home-copy';
 import { StopButton } from './StopButton';
 import { RefundPanel } from './RefundPanel';
+import '../tables.css';
+import '../publisher/pk-sales.css';
+import { TableScroll } from '../publisher/pk-sales-parts';
 import './pk-opshome.css';
 
 export const metadata: Metadata = { title: 'Operations' };
@@ -102,14 +106,16 @@ export default async function Ops() {
               <p>{OPS_HOME_KILL_STATE_LABEL}</p>
               <Chip tone={killChip.tone}>{killChip.text}</Chip>
             </div>
-            <dl className="pk-facts">
-              <dt>Outbound PayPal calls (paypal_outbound)</dt>
+            <dl className="pk-facts oh-kill-facts">
+              <dt>Last change (paypal_outbound)</dt>
               <dd>
                 {snap.kill_switch.outbound_on ? 'On' : 'Off'}. Last changed by{' '}
                 {snap.kill_switch.changed_by}
-                {snap.kill_switch.changed_at
-                  ? `, ${formatDateTime(snap.kill_switch.changed_at)}`
-                  : ''}
+                {snap.kill_switch.changed_at ? (
+                  <>
+                    , <span className="oh-time">{formatDateTime(snap.kill_switch.changed_at)}</span>
+                  </>
+                ) : null}
                 . {snap.kill_switch.reason}
               </dd>
               <dt>Calls left today under the active approval</dt>
@@ -120,9 +126,14 @@ export default async function Ops() {
               </dd>
               <dt>Job loop</dt>
               <dd>
-                {snap.jobs.last_pass_at === null
-                  ? 'No pass finished yet.'
-                  : `Last pass ${formatDateTime(snap.jobs.last_pass_at)}.`}{' '}
+                {snap.jobs.last_pass_at === null ? (
+                  'No pass finished yet.'
+                ) : (
+                  <>
+                    Last pass{' '}
+                    <span className="oh-time">{formatDateTime(snap.jobs.last_pass_at)}</span>.
+                  </>
+                )}{' '}
                 {snap.jobs.due} due.
               </dd>
             </dl>
@@ -178,15 +189,15 @@ export default async function Ops() {
                   <StatTile
                     label={t.label}
                     value={t.count}
-                    note={ordersNote(snap.orders.length)}
+                    note={ordersNote(t.count, t.key)}
                     testId={`ops-orders-${t.key}`}
                   />
                 </li>
               ))}
             </ul>
             <h3 className="oh-sub">{OPS_HOME_ORDERS_LIST_HEADING}</h3>
-            <div className="table-scroll" role="region" aria-label="Latest orders" tabIndex={0}>
-              <table className="oh-orders-table">
+            <TableScroll label="Latest orders">
+              <table className="pk-table oh-orders-table">
                 <caption className="visually-hidden">Latest orders</caption>
                 <thead>
                   <tr>
@@ -200,17 +211,21 @@ export default async function Ops() {
                     const chip = orderStatusChip(o.status);
                     return (
                       <tr key={o.order_ref}>
-                        <td className="mono order-ref">{o.order_ref}</td>
-                        <td>
+                        <td className="mono order-ref" data-label="Reference">
+                          {o.order_ref}
+                        </td>
+                        <td data-label="Status">
                           <Chip tone={chip.tone}>{chip.text}</Chip>
                         </td>
-                        <td>{formatMinor(o.total_minor, o.currency)}</td>
+                        <td className="pk-num" data-label="Total">
+                          {formatMinor(o.total_minor, o.currency)}
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </>
         )}
       </Section>
@@ -264,7 +279,7 @@ export default async function Ops() {
                 <li key={v.id} className="oh-check">
                   <Chip tone={c.tone}>{c.text}</Chip>
                   <span className="oh-check-id">{v.id}</span>
-                  <span className="oh-check-detail">{v.detail}</span>
+                  <span className="oh-check-detail">{invariantDetailText(v.detail, v.ok)}</span>
                 </li>
               );
             })}

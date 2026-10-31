@@ -22,6 +22,7 @@ block heading sandbox: USD, Sandbox
 block heading dryrun: EUR, Dry run
 settlement heading: Where the money is
 commission heading: Commission
+figures summary: Where these figures come from
 line label sales: Sales
 line label refunds: Refunds
 line label reversals: Reversals

@@ -9,6 +9,7 @@ import { Chip, PageHeader } from '../../../ui/publisher/kit';
 import {
   COL_OPTIONS,
   EDIT_LABEL,
+  VIEW_LABEL,
   FILTER_EMPTY_ACTION,
   FILTER_EMPTY_BODY,
   FILTER_EMPTY_TITLE,
@@ -137,7 +138,9 @@ export default async function PublisherOffers({
                         className="btn"
                         href={`/publisher/offers/${encodeURIComponent(o.offer_id)}`}
                       >
-                        <span aria-hidden="true">{EDIT_LABEL}</span>
+                        <span aria-hidden="true">
+                          {o.status === 'withdrawn' ? VIEW_LABEL : EDIT_LABEL}
+                        </span>
                         <span className="visually-hidden">{editLinkText(o.article_title)}</span>
                       </Link>
                     </div>

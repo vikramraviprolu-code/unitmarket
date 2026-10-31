@@ -50,6 +50,7 @@ function lines(): string[] {
   out.push(`block heading dryrun: ${copy.blockHeading('EUR', 'dryrun')}`);
   out.push(`settlement heading: ${copy.SETTLEMENT_HEADING}`);
   out.push(`commission heading: ${copy.COMMISSION_HEADING}`);
+  out.push(`figures summary: ${copy.FIGURES_SUMMARY}`);
   for (const k of ['sales', 'refunds', 'reversals', 'fee', 'net'] as const)
     out.push(`line label ${k}: ${copy.LINE_LABEL[k]}`);
   for (const k of ['sales', 'refunds', 'reversals', 'fee', 'net'] as const)

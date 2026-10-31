@@ -11,6 +11,7 @@ import { EnvLabel } from '../../../ui/EnvLabel';
 import { formatDateTime, formatMinor } from '../../../lib/format';
 import {
   COMMISSION_HEADING,
+  FIGURES_SUMMARY,
   ENTRY_TEXT,
   LINES_COLUMNS,
   LINES_HEADING,
@@ -99,35 +100,38 @@ export default async function PublisherStatement() {
               />
               <StatTile label={LINE_LABEL.net} value={formatMinor(b.net_minor, b.currency)} />
             </div>
-            <dl className="pk-facts">
-              <dt>{LINE_LABEL.sales}</dt>
-              <dd>
-                <span className="pk-fig">{formatMinor(b.sales_minor, b.currency)}</span>
-                <span className="pk-src">{LINE_SOURCE.sales}</span>
-              </dd>
-              <dt>{LINE_LABEL.refunds}</dt>
-              <dd>
-                <span className="pk-fig">{formatMinor(b.refunds_minor, b.currency)}</span>
-                <span className="pk-src">{LINE_SOURCE.refunds}</span>
-              </dd>
-              <dt>{LINE_LABEL.reversals}</dt>
-              <dd>
-                <span className="pk-fig">{formatMinor(b.reversals_minor, b.currency)}</span>
-                <span className="pk-src">{LINE_SOURCE.reversals}</span>
-              </dd>
-              <dt>{LINE_LABEL.net}</dt>
-              <dd data-testid="statement-net">
-                <strong className="pk-fig">{formatMinor(b.net_minor, b.currency)}</strong>
-                <span className="pk-src">{LINE_SOURCE.net}</span>
-              </dd>
-              <dt>{LINE_LABEL.fee}</dt>
-              <dd>
-                <span className="pk-fig pk-fig-muted">
-                  {feeText(b.paypal_fee_minor, b.currency, b.environment)}
-                </span>
-                <span className="pk-src">{LINE_SOURCE.fee}</span>
-              </dd>
-            </dl>
+            <details className="pk-figs" data-testid="statement-figures">
+              <summary>{FIGURES_SUMMARY}</summary>
+              <dl className="pk-facts">
+                <dt>{LINE_LABEL.sales}</dt>
+                <dd>
+                  <span className="pk-fig">{formatMinor(b.sales_minor, b.currency)}</span>
+                  <span className="pk-src">{LINE_SOURCE.sales}</span>
+                </dd>
+                <dt>{LINE_LABEL.refunds}</dt>
+                <dd>
+                  <span className="pk-fig">{formatMinor(b.refunds_minor, b.currency)}</span>
+                  <span className="pk-src">{LINE_SOURCE.refunds}</span>
+                </dd>
+                <dt>{LINE_LABEL.reversals}</dt>
+                <dd>
+                  <span className="pk-fig">{formatMinor(b.reversals_minor, b.currency)}</span>
+                  <span className="pk-src">{LINE_SOURCE.reversals}</span>
+                </dd>
+                <dt>{LINE_LABEL.net}</dt>
+                <dd data-testid="statement-net">
+                  <strong className="pk-fig">{formatMinor(b.net_minor, b.currency)}</strong>
+                  <span className="pk-src">{LINE_SOURCE.net}</span>
+                </dd>
+                <dt>{LINE_LABEL.fee}</dt>
+                <dd>
+                  <span className="pk-fig pk-fig-muted">
+                    {feeText(b.paypal_fee_minor, b.currency, b.environment)}
+                  </span>
+                  <span className="pk-src">{LINE_SOURCE.fee}</span>
+                </dd>
+              </dl>
+            </details>
             <h3>{LINES_HEADING}</h3>
             <p className="table-hint pk-hint muted">Scroll sideways to see more</p>
             <TableScroll label={LINES_HEADING}>

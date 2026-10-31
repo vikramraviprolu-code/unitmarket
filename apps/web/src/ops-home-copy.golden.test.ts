@@ -28,7 +28,7 @@ function lines(): string[] {
   }
   out.push(`kill state label: ${copy.OPS_HOME_KILL_STATE_LABEL}`);
   out.push(`orders list heading: ${copy.OPS_HOME_ORDERS_LIST_HEADING}`);
-  out.push(`orders notes: ${copy.ordersNote(1)} | ${copy.ordersNote(5)}`);
+  out.push(`orders notes: ${copy.ordersNote(1, 'paid')} | ${copy.ordersNote(3, 'awaiting_buyer')}`);
   out.push(`states note: ${copy.OPS_HOME_STATES_NOTE}`);
   for (const s of [
     'paid',
