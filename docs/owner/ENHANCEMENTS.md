@@ -2,9 +2,10 @@
 
 Requests from the owners that are not defects. Each row says who asked, when, what was asked, and what is known. Nothing here is scheduled until an owner says so.
 
-| Id    | Date       | Asked by | Request                                                                                                                                                                       | State            |
-| ----- | ---------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| ENH-1 | 2026-10-31 | Sakthi   | Make starting the PayPal sandbox gateway simpler, so that testers can be started without a developer. The owner does not call the current steps a defect, but an enhancement. | Open. See notes. |
+| Id    | Date       | Asked by | Request                                                                                                                                                                       | State                                      |
+| ----- | ---------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| ENH-1 | 2026-10-31 | Sakthi   | Make starting the PayPal sandbox gateway simpler, so that testers can be started without a developer. The owner does not call the current steps a defect, but an enhancement. | Open. See notes.                           |
+| ENH-2 | 2026-10-31 | Sakthi   | Add a Start button next to the existing Stop button on the Operations page, for the next round of changes.                                                                    | Open. Taken for the next round. See notes. |
 
 ## ENH-1 notes
 
@@ -20,3 +21,23 @@ Options to discuss (none decided, none built):
 4. A time-boxed "sitting" with an expiry, so the gateway turns itself off after a set time.
 
 Wording to confirm with Sakthi: "so that I can start people" was read as "so that testers can be started". If something else was meant, correct this row.
+
+## ENH-2 notes
+
+Request: a Start button beside the Stop button on the Operations page, so an operator can turn the PayPal gateway on without a terminal. Stop already exists ("Stop PayPal now" with a reason).
+
+What a Start button could safely do (proposal for the owners to decide, nothing built):
+
+- It turns the `paypal_outbound` switch on, as `safety:resume` does today. It needs the operator's authenticator code, a reason, and typing the scope name, as the terminal command does.
+- It works only when an active approval row already exists for the configured reference and has calls left. The approval row stays a terminal step (`safety:approve`), because the two-key rule needs the owner to insert it at a terminal that refuses agent sessions and CI.
+- It refuses when the approval has expired, when the budget is used up, or when the connection flag is off.
+- It writes an audit row and shows the new state at once.
+
+What it cannot do: change the Cloud Run flag `UMS_PAYPAL_CONNECT`. The app has no permission to change its own Google Cloud settings, and it should not have one. Today the flag is the deploy-time lock that every deploy resets to off. So the owners need to decide one of two things:
+
+1. Keep the flag as a separate lock, set from Cloud Shell. The button then only works after the flag is on, and the screen says which key is missing.
+2. Leave the flag on permanently in the hosted settings and let the switch plus the approval row be the two keys. This weakens the rule that a deploy always leaves PayPal off, so it needs a written decision.
+
+Recommendation: option 1, plus a screen that shows exactly what is missing (approval row, switch, flag), as in ENH-1 option 2.
+
+Money path note: this touches the safety package and the Operations route. It needs an Opus review, adversarial tests (a buyer, a publisher, an operator without the code, a replayed request, an expired approval), and must be done before the money-path freeze on Mon 2 Nov or agreed as an exception.
