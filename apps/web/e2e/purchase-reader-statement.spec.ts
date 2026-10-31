@@ -33,8 +33,9 @@ async function figures(page: Page): Promise<{ count: number; sales: number; net:
   await page.goto('/publisher/statement');
   const block = page.getByTestId('statement-block').filter({ hasText: 'USD' });
   if ((await block.count()) === 0) return { count, sales: 0, net: 0 };
-  const sales = minorOf(await block.locator('dt:text-is("Sales") + dd').innerText());
-  const net = minorOf(await block.getByTestId('statement-net').innerText());
+  // The sourced figures now sit in a closed <details> under the tiles, so read the text, not the rendered text.
+  const sales = minorOf((await block.locator('dt:text-is("Sales") + dd').textContent()) ?? '');
+  const net = minorOf((await block.getByTestId('statement-net').textContent()) ?? '');
   return { count, sales, net };
 }
 
