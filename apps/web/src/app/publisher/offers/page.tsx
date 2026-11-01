@@ -5,6 +5,7 @@ import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EmptyState } from '../../../ui/EmptyState';
 import { EnvLabel } from '../../../ui/EnvLabel';
+import { SectionNav } from '../../../ui/SectionNav';
 import { Chip, PageHeader } from '../../../ui/publisher/kit';
 import {
   COL_OPTIONS,
@@ -101,53 +102,66 @@ export default async function PublisherOffers({
               {FILTER_EMPTY_BODY}
             </EmptyState>
           ) : (
-            <ul className="pk-offers" aria-label={OFFERS_HEADING}>
-              {shown.map((o) => (
-                <li key={o.offer_id} className="pk-offer" data-testid="offer-row">
-                  <OfferCover title={o.article_title} />
-                  <div className="pk-offer-body">
-                    <div className="pk-offer-top">
-                      <h2 className="pk-offer-title">{o.article_title}</h2>
-                      <Chip tone={statusTone(o.status)}>{offerStatusText(o.status)}</Chip>
+            <>
+              {shown.length > 1 ? (
+                <SectionNav
+                  label="Jump to an offer"
+                  items={shown.map((o) => ({ id: `offer-${o.offer_id}`, label: o.article_title }))}
+                />
+              ) : null}
+              <ul className="pk-offers" aria-label={OFFERS_HEADING}>
+                {shown.map((o) => (
+                  <li
+                    key={o.offer_id}
+                    id={`offer-${o.offer_id}`}
+                    className="pk-offer"
+                    data-testid="offer-row"
+                  >
+                    <OfferCover title={o.article_title} />
+                    <div className="pk-offer-body">
+                      <div className="pk-offer-top">
+                        <h2 className="pk-offer-title">{o.article_title}</h2>
+                        <Chip tone={statusTone(o.status)}>{offerStatusText(o.status)}</Chip>
+                      </div>
+                      <p className="pk-offer-abstract muted" data-testid="offer-row-abstract">
+                        {abstractText(o.article_abstract)}
+                      </p>
+                      {o.options.length === 0 ? (
+                        <p className="pk-offer-facts">{NOT_OFFERED}</p>
+                      ) : (
+                        <ul className="pk-offer-prices" aria-label={COL_OPTIONS}>
+                          {o.options.map((p) => (
+                            <li key={p.option}>
+                              <Chip tone="info">
+                                {optionPriceText(p.option, p.price_minor, o.currency)}
+                              </Chip>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <p className="pk-offer-facts" data-testid="offer-row-facts">
+                        {listFactsLine({
+                          language: o.article_language,
+                          bytes: o.article_bytes,
+                          sha256: o.article_sha256,
+                        })}
+                      </p>
+                      <div className="pk-offer-foot">
+                        <Link
+                          className="btn"
+                          href={`/publisher/offers/${encodeURIComponent(o.offer_id)}`}
+                        >
+                          <span aria-hidden="true">
+                            {o.status === 'withdrawn' ? VIEW_LABEL : EDIT_LABEL}
+                          </span>
+                          <span className="visually-hidden">{editLinkText(o.article_title)}</span>
+                        </Link>
+                      </div>
                     </div>
-                    <p className="pk-offer-abstract muted" data-testid="offer-row-abstract">
-                      {abstractText(o.article_abstract)}
-                    </p>
-                    {o.options.length === 0 ? (
-                      <p className="pk-offer-facts">{NOT_OFFERED}</p>
-                    ) : (
-                      <ul className="pk-offer-prices" aria-label={COL_OPTIONS}>
-                        {o.options.map((p) => (
-                          <li key={p.option}>
-                            <Chip tone="info">
-                              {optionPriceText(p.option, p.price_minor, o.currency)}
-                            </Chip>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <p className="pk-offer-facts" data-testid="offer-row-facts">
-                      {listFactsLine({
-                        language: o.article_language,
-                        bytes: o.article_bytes,
-                        sha256: o.article_sha256,
-                      })}
-                    </p>
-                    <div className="pk-offer-foot">
-                      <Link
-                        className="btn"
-                        href={`/publisher/offers/${encodeURIComponent(o.offer_id)}`}
-                      >
-                        <span aria-hidden="true">
-                          {o.status === 'withdrawn' ? VIEW_LABEL : EDIT_LABEL}
-                        </span>
-                        <span className="visually-hidden">{editLinkText(o.article_title)}</span>
-                      </Link>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </>
       )}

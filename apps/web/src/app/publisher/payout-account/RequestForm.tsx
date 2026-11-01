@@ -59,7 +59,7 @@ export function RequestForm() {
   }
 
   return (
-    <section className="pk-section" aria-labelledby="payee-request-heading">
+    <section className="pk-section" id="payee-request" aria-labelledby="payee-request-heading">
       <h2 id="payee-request-heading">{REQUEST_HEADING}</h2>
       <div className="pk-panel">
         <p>{REQUEST_LEDE}</p>

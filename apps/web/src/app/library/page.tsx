@@ -9,6 +9,7 @@ import { OpenButton } from './OpenButton';
 import { Refresher } from '../../ui/Refresher';
 import { optionLabel } from '../../lib/format';
 import { CoverTile } from '../../ui/CoverTile';
+import { SectionNav } from '../../ui/SectionNav';
 
 export const metadata: Metadata = { title: 'My library' };
 
@@ -32,40 +33,53 @@ export default async function Library() {
           Articles you buy appear here with the days you have left.
         </EmptyState>
       ) : (
-        <ul className="grid-2 plain-list">
-          {items.map((i) => (
-            <li key={i.entitlement_id} className="card tile" data-testid="library-item">
-              <CoverTile publisher={i.publisher} title={i.title} tag={optionLabel(i.option)} />
-              <div className="tile-body">
-                <h2>
-                  <Link href={`/library/${encodeURIComponent(i.entitlement_id)}`}>{i.title}</Link>
-                </h2>
-                <p className="muted">
-                  {i.publisher}, {optionLabel(i.option)}
-                </p>
-                <p aria-live="polite" aria-atomic="true" data-testid="library-status">
-                  <strong>{i.status_text}</strong>
-                </p>
-                {i.refunded ? null : (
-                  <WindowMeter
-                    state={i.window.state}
-                    daysLeft={i.window.days_left}
-                    endsAt={i.window.ends_at}
-                    option={i.option}
-                  />
-                )}
-                {i.can_open ? (
-                  <div className="actions">
-                    <OpenButton
-                      entitlementId={i.entitlement_id}
-                      mode={i.option === 'keep_retrieve' ? 'download' : 'read'}
+        <>
+          {items.length > 1 ? (
+            <SectionNav
+              label="Jump to an item"
+              items={items.map((i) => ({ id: `library-${i.entitlement_id}`, label: i.title }))}
+            />
+          ) : null}
+          <ul className="grid-2 plain-list">
+            {items.map((i) => (
+              <li
+                key={i.entitlement_id}
+                id={`library-${i.entitlement_id}`}
+                className="card tile"
+                data-testid="library-item"
+              >
+                <CoverTile publisher={i.publisher} title={i.title} tag={optionLabel(i.option)} />
+                <div className="tile-body">
+                  <h2>
+                    <Link href={`/library/${encodeURIComponent(i.entitlement_id)}`}>{i.title}</Link>
+                  </h2>
+                  <p className="muted">
+                    {i.publisher}, {optionLabel(i.option)}
+                  </p>
+                  <p aria-live="polite" aria-atomic="true" data-testid="library-status">
+                    <strong>{i.status_text}</strong>
+                  </p>
+                  {i.refunded ? null : (
+                    <WindowMeter
+                      state={i.window.state}
+                      daysLeft={i.window.days_left}
+                      endsAt={i.window.ends_at}
+                      option={i.option}
                     />
-                  </div>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
+                  )}
+                  {i.can_open ? (
+                    <div className="actions">
+                      <OpenButton
+                        entitlementId={i.entitlement_id}
+                        mode={i.option === 'keep_retrieve' ? 'download' : 'read'}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </>
   );

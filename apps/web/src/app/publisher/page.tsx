@@ -6,6 +6,7 @@ import { app, salesTotals } from '../../server/access';
 import { currentActor } from '../../server/session';
 import { EmptyState } from '../../ui/EmptyState';
 import { EnvLabel } from '../../ui/EnvLabel';
+import { SectionNav } from '../../ui/SectionNav';
 import { Chip, Section, StatTile } from '../../ui/publisher/kit';
 import { HomeCard } from './HomeCard';
 import {
@@ -106,7 +107,16 @@ export default async function PublisherHome() {
           </p>
         </div>
       ) : null}
-      <ul className="pk-tiles" aria-label={TILES_LABEL} data-testid="publisher-tiles">
+      <SectionNav
+        label="On this page"
+        items={[
+          { id: 'figures', label: 'Figures' },
+          { id: 'account', label: 'Account' },
+          { id: 'next', label: 'Where to next' },
+          { id: 'since', label: 'Since your last visit' },
+        ]}
+      />
+      <ul className="pk-tiles" id="figures" aria-label={TILES_LABEL} data-testid="publisher-tiles">
         <li>
           <StatTile
             label={LABEL_OFFERS}
@@ -211,7 +221,12 @@ export default async function PublisherHome() {
           </li>
         </ul>
       </Section>
-      <section className="pk-section" aria-labelledby="since-heading" data-testid="publisher-since">
+      <section
+        className="pk-section"
+        id="since"
+        aria-labelledby="since-heading"
+        data-testid="publisher-since"
+      >
         <h2 id="since-heading">{SINCE_HEADING}</h2>
         {since === null || since.first_visit ? (
           <p className="pk-feed-note">{SINCE_FIRST}</p>
