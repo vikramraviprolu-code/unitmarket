@@ -6,6 +6,8 @@ import { currentActor } from '../../../server/session';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { Chip, PageHeader, StatTile } from '../../../ui/publisher/kit';
 import { StatusBanner } from '../../../ui/StatusBanner';
+import { SectionNav } from '../../../ui/SectionNav';
+import { OPS_PAYEE_SECTIONS } from '../../../lib/ops-copy';
 import { formatDateTime } from '../../../lib/format';
 import {
   OPS_COL_AGE,
@@ -59,6 +61,7 @@ export default async function PayeeRequests() {
         lede={OPS_LEDE}
         aside={<EnvLabel environment={environment} />}
       />
+      <SectionNav label="Sections of this page" items={OPS_PAYEE_SECTIONS} />
       {environment === 'sandbox' ? (
         <StatusBanner tone="info">
           <span data-testid="payee-owner-only">
@@ -66,16 +69,16 @@ export default async function PayeeRequests() {
           </span>
         </StatusBanner>
       ) : null}
-      <div className="pk-tiles">
+      <div className="pk-tiles" id="ops-payee-summary">
         <StatTile label={TILE_OPEN_REQUESTS} value={requests.length} />
         <StatTile label={TILE_OLDEST} value={oldest === null ? TILE_NONE : ageText(oldest)} />
       </div>
       {requests.length === 0 ? (
-        <p className="muted pk-section" data-testid="payee-queue-empty">
+        <p className="muted pk-section" id="ops-payee-queue" data-testid="payee-queue-empty">
           {OPS_EMPTY}
         </p>
       ) : (
-        <div className="pk-section pk-stack">
+        <div className="pk-section pk-stack" id="ops-payee-queue">
           {requests.map((q) => (
             <article
               key={q.request_id}

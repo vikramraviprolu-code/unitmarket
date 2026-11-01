@@ -59,7 +59,15 @@ import { migrate, openDatabase } from '@umsbx/db';
 import type { SqlDriver } from '@umsbx/db';
 import { cryptoIds, systemClock } from '@umsbx/runtime';
 import { createAuditSink, createLogger, redact } from '@umsbx/obs';
-import { createOutboundGate, createSwitchReader, readSafetyStatus, runStop } from '@umsbx/safety';
+import {
+  createOutboundGate,
+  createSwitchReader,
+  findActiveApproval,
+  readSafetyStatus,
+  resumeOutbound,
+  runStop,
+} from '@umsbx/safety';
+import type { ResumeCoreError } from '@umsbx/safety';
 import { createModelHttps, guard } from '@umsbx/transport';
 import type { Wire } from '@umsbx/transport';
 import {
@@ -524,6 +532,8 @@ export interface OpsSnapshot {
     changed_by: string;
     changed_at: string;
     reason: string;
+    /** The scope of the active approval row for the configured reference, or null when there is none (the Start hint). */
+    active_scope: string | null;
     budget: { remaining_today: number; max_calls_per_day: number; valid_until: string } | null;
   };
   /** The job loop: when it last finished a pass and how much recovery work is due. */
@@ -849,12 +859,31 @@ export interface Engine {
   evalsSummary(actor: Actor): Promise<EvalsSummary | null>;
   /**
    * The ops stop button (BU-2): paypal_outbound off, with a reason, by an operator session. It can
-   * only turn the switch off; turning it on is `pnpm safety:resume` at the owner's terminal.
+   * only turn the switch off.
    */
   stopOutbound(i: {
     actor: Actor;
     reason: string;
   }): Promise<Result<void, 'operator_required' | 'reason_required'>>;
+  /**
+   * The ops start button (WEB-OPS-START): paypal_outbound on, by an operator session that signed in WITH
+   * the authenticator code, only while an active approval row covers it. It runs the same check as
+   * `pnpm safety:resume` (`resumeOutbound`). It cannot insert an approval and cannot set the connect flag
+   * (UMS_PAYPAL_CONNECT is only read, to tell the page whether the flag is on).
+   */
+  startOutbound(i: { actor: Actor; reason: string; confirm_scope: string }): Promise<
+    Result<
+      {
+        outbound_on: true;
+        connect_flag: 'on' | 'off';
+        calls_left: number;
+        valid_until: string;
+      },
+      ResumeCoreError
+    >
+  >;
+  /** The stored paypal_outbound switch, read now (no cache), or null when it cannot be read. For an operator only. */
+  outboundSwitchOn(actor: Actor): Promise<boolean | null>;
   health(): Promise<{
     ok: boolean;
     environment: EnvironmentLabel;
@@ -2581,6 +2610,11 @@ function buildApp(config: Config, opts: AppOptions): App {
           changed_by: outboundSwitch?.changed_by ?? 'unknown',
           changed_at: outboundSwitch?.changed_at ?? '',
           reason: outboundSwitch?.reason ?? 'no switch row (counts as off)',
+          active_scope:
+            config.outbound_approval_ref === null
+              ? null
+              : ((await findActiveApproval(db, config.outbound_approval_ref, clock.now()))?.scope ??
+                null),
           budget:
             safety.budget === null
               ? null
@@ -2611,6 +2645,40 @@ function buildApp(config: Config, opts: AppOptions): App {
       });
       if (r.ok) return ok(undefined);
       return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+    },
+
+    async outboundSwitchOn(actor) {
+      if (actor.kind !== 'operator') return null;
+      try {
+        const r = await db.query<{ on: boolean }>(
+          `SELECT "on" FROM safety_switches WHERE name = 'paypal_outbound'`,
+        );
+        return r.rows[0]?.on === true;
+      } catch {
+        return null;
+      }
+    },
+
+    async startOutbound({ actor, reason, confirm_scope }) {
+      const r = await resumeOutbound({
+        db,
+        clock,
+        audit,
+        by: actor,
+        reason,
+        approval_ref: config.outbound_approval_ref,
+        scope: config.outbound_scope,
+        refuse_if_on: true,
+        confirm: (row) => confirm_scope.trim() === row.scope,
+      });
+      if (!r.ok) return err(r.error);
+      return ok({
+        outbound_on: true as const,
+        // Only read, to tell the page; the flag is a Cloud Run setting the owners change.
+        connect_flag: config.connect ? ('on' as const) : ('off' as const),
+        calls_left: r.value.calls_left,
+        valid_until: r.value.valid_until,
+      });
     },
 
     webhook: (i) =>

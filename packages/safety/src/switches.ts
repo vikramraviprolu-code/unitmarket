@@ -57,7 +57,12 @@ function actorLabel(a: Actor): string {
 // Changes a switch and writes the audit row in one transaction. Turning paypal_outbound on needs
 // the approval ref of the owner's written approval (architecture 7.4).
 export type SetSwitchError =
-  'reason_required' | 'approval_ref_required' | 'operator_required' | 'approval_not_active';
+  | 'reason_required'
+  | 'approval_ref_required'
+  | 'operator_required'
+  | 'approval_not_active'
+  | 'already_on'
+  | 'switch_changed';
 
 // Review 4 M10: only an operator changes a switch. Turning paypal_outbound ON also needs MFA and an
 // outbound_approvals row that is active (valid_until after now) for the given ref; the row is
@@ -66,7 +71,25 @@ export async function setSwitch(
   db: Database,
   audit: AuditSink,
   clock: Clock,
-  i: { name: SwitchName; on: boolean; by: Actor; reason: string; approval_ref: string | null },
+  i: {
+    name: SwitchName;
+    on: boolean;
+    by: Actor;
+    reason: string;
+    approval_ref: string | null;
+    /** A second audit row, written in the same transaction (the resume check records `safety.resume`). */
+    also_audit?: {
+      action: 'safety.resume';
+      target: string | null;
+      detail: Record<string, string | number | boolean | null>;
+    };
+    /**
+     * The resume check (WEB-OPS-START): inside the transaction, with the switch row locked, refuse when
+     * it is already on (`refuse_if_on`) or when it changed since `seen_changed_at` was read (a Stop or
+     * another Start committed in between).
+     */
+    resume_guard?: { refuse_if_on: boolean; seen_changed_at: string };
+  },
 ): Promise<Result<void, SetSwitchError>> {
   const reason = i.reason.trim();
   if (reason === '') return err('reason_required');
@@ -78,13 +101,24 @@ export async function setSwitch(
   }
   if (needsApproval && !i.by.mfa) return err('operator_required');
   const at = clock.now().toISOString();
-  const refused = await db.transaction(async (tx): Promise<boolean> => {
+  const refused = await db.transaction(async (tx): Promise<SetSwitchError | null> => {
     if (needsApproval) {
       const active = await tx.query(
         'SELECT 1 FROM outbound_approvals WHERE approval_ref = $1 AND valid_until > $2 FOR UPDATE',
         [ref, at],
       );
-      if (active.rows.length === 0) return true;
+      if (active.rows.length === 0) return 'approval_not_active';
+    }
+    if (i.resume_guard !== undefined) {
+      const cur = await tx.query<{ on: boolean; changed_at: Date | string }>(
+        'SELECT "on", changed_at FROM safety_switches WHERE name = $1 FOR UPDATE',
+        [i.name],
+      );
+      const row = cur.rows[0];
+      if (row === undefined) return 'switch_changed';
+      if (i.resume_guard.refuse_if_on && row.on === true) return 'already_on';
+      if (new Date(row.changed_at).toISOString() !== i.resume_guard.seen_changed_at)
+        return 'switch_changed';
     }
     await tx.query(
       `UPDATE safety_switches SET "on" = $2, changed_by = $3, changed_at = $4, reason = $5, updated_at = $4 WHERE name = $1`,
@@ -97,7 +131,15 @@ export async function setSwitch(
       reason,
       detail: { switch: i.name, on: i.on, approval_ref: ref },
     });
-    return false;
+    if (i.also_audit !== undefined)
+      await audit.record(tx, {
+        actor: i.by,
+        action: i.also_audit.action,
+        target: i.also_audit.target,
+        reason,
+        detail: i.also_audit.detail,
+      });
+    return null;
   });
-  return refused ? err('approval_not_active') : ok(undefined);
+  return refused === null ? ok(undefined) : err(refused);
 }
