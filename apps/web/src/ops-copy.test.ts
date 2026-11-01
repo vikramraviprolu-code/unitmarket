@@ -11,6 +11,8 @@ const REFUSALS = [
   'scope_not_confirmed',
   'already_on',
   'switch_locked',
+  'switch_changed',
+  'start_unknown',
   'reason_required',
   'operator_required',
 ] as const;
@@ -65,29 +67,42 @@ describe('ops-copy', () => {
 
 describe('killControlsView', () => {
   const v = copy.killControlsView;
-  it('switch On: Stop is the form and Start says it is already on', () => {
-    expect(v({ outboundOn: true, hasCode: true, activeScope: 'mvp_b_polling' })).toEqual({
-      start: 'already_on',
-      stop: 'form',
-    });
-    expect(v({ outboundOn: true, hasCode: false, activeScope: null })).toEqual({
-      start: 'already_on',
-      stop: 'form',
-    });
+  it('Stop is always the form: it is idempotent and needs no code', () => {
+    for (const outboundOn of [true, false])
+      for (const hasCode of [true, false])
+        for (const activeScope of ['mvp_b_polling', null])
+          expect(v({ outboundOn, hasCode, activeScope }).stop).toBe('form');
+  });
+  it('switch On: Start says it is already on', () => {
+    expect(v({ outboundOn: true, hasCode: true, activeScope: 'mvp_b_polling' }).start).toBe(
+      'already_on',
+    );
+    expect(v({ outboundOn: true, hasCode: false, activeScope: null }).start).toBe('already_on');
   });
   it('switch Off: Start is the form only with the code and an active approval', () => {
-    expect(v({ outboundOn: false, hasCode: true, activeScope: 'mvp_b_polling' })).toEqual({
-      start: 'form',
-      stop: 'already_off',
-    });
-    expect(v({ outboundOn: false, hasCode: false, activeScope: 'mvp_b_polling' })).toEqual({
-      start: 'needs_code',
-      stop: 'already_off',
-    });
-    expect(v({ outboundOn: false, hasCode: true, activeScope: null })).toEqual({
-      start: 'no_approval',
-      stop: 'already_off',
-    });
+    expect(v({ outboundOn: false, hasCode: true, activeScope: 'mvp_b_polling' }).start).toBe(
+      'form',
+    );
+    expect(v({ outboundOn: false, hasCode: false, activeScope: 'mvp_b_polling' }).start).toBe(
+      'needs_code',
+    );
+    expect(v({ outboundOn: false, hasCode: true, activeScope: null }).start).toBe('no_approval');
     expect(v({ outboundOn: false, hasCode: false, activeScope: null }).start).toBe('needs_code');
+  });
+});
+
+describe('what the screen says when the start is unsure', () => {
+  it('says the start may not have happened and to reload, for the lock and for the lost answer', () => {
+    for (const code of ['switch_locked', 'switch_changed', 'start_unknown']) {
+      const s = copy.startRefusalText(code);
+      expect(s, code).toMatch(/Reload the page/);
+    }
+    expect(copy.startRefusalText('switch_locked')).toMatch(/may not have happened/);
+    expect(copy.startRefusalText('start_unknown')).toMatch(/may not have happened/);
+  });
+  it('adds the switch state that was read back', () => {
+    expect(copy.switchNowText(true)).toBe('The switch reads On now.');
+    expect(copy.switchNowText(false)).toBe('The switch reads Off now.');
+    expect(copy.switchNowText(null)).toBe('The switch could not be read.');
   });
 });

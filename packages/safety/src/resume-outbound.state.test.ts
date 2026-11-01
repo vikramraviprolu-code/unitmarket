@@ -6,7 +6,9 @@ import { migrate, openDatabase } from '@umsbx/db';
 import { createAuditSink } from '@umsbx/obs';
 import { fakeClock, seededIds } from '@umsbx/runtime';
 import type { Actor, Database } from '@umsbx/contracts';
-import { resumeOutbound, runResume } from './index';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { resumeOutbound, runResume, setSwitch } from './index';
 
 const REF = 'DL-ops-start-1';
 const SCOPE = 'mvp_b_polling';
@@ -229,15 +231,91 @@ describe('resumeOutbound: the shared check', () => {
     expect(await t.count('safety.resume')).toBe(0);
   });
 
-  it('a switch the database will not change is refused as switch_locked, with no audit row left behind', async () => {
-    const t = await rig();
-    await t.db.exec(`
-      CREATE FUNCTION um_test_hold() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'held'; END $$ LANGUAGE plpgsql;
+  const HOLD = (code: string | null) => `
+      CREATE FUNCTION um_test_hold() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'held'${
+        code === null ? '' : ` USING ERRCODE = '${code}'`
+      }; END $$ LANGUAGE plpgsql;
       CREATE TRIGGER um_test_hold BEFORE UPDATE ON safety_switches FOR EACH ROW EXECUTE FUNCTION um_test_hold();
-    `);
+    `;
+
+  it('a switch row held by another transaction (SQLSTATE 55P03) is refused as switch_locked, with no audit row left behind', async () => {
+    const t = await rig();
+    await t.db.exec(HOLD('55P03'));
     expect(await resumeOutbound(t.base)).toEqual({ ok: false, error: 'switch_locked' });
     expect(await t.count('safety.resume')).toBe(0);
     expect(await t.count('switch.paypal_outbound.on')).toBe(0);
+  });
+
+  it('any other database error is not turned into switch_locked: it propagates, and nothing is left behind', async () => {
+    const t = await rig();
+    await t.db.exec(HOLD(null));
+    await expect(resumeOutbound(t.base)).rejects.toThrow();
+    expect(await t.count('safety.resume')).toBe(0);
+    expect(await t.count('switch.paypal_outbound.on')).toBe(0);
+    expect(await t.isOn()).toBe(false);
+  });
+
+  it('a Stop that commits between the read and the Start makes the Start refuse as switch_changed', async () => {
+    const t = await rig({ on: false });
+    const r = await resumeOutbound({
+      ...t.base,
+      confirm: async () => {
+        t.clock.set('2026-10-31T12:00:05Z');
+        const stop = await setSwitch(t.db, t.base.audit, t.clock, {
+          name: 'paypal_outbound',
+          on: false,
+          by: OPERATOR,
+          reason: 'another operator stops first',
+          approval_ref: null,
+        });
+        expect(stop.ok).toBe(true);
+        return true;
+      },
+    });
+    expect(r).toEqual({ ok: false, error: 'switch_changed' });
+    expect(await t.isOn()).toBe(false);
+    expect(await t.count('safety.resume')).toBe(0);
+    expect(await t.count('switch.paypal_outbound.on')).toBe(0);
+  });
+
+  it('another Start that commits first: refused as already_on with refuse_if_on, as switch_changed without it', async () => {
+    for (const [refuse, code] of [
+      [true, 'already_on'],
+      [false, 'switch_changed'],
+    ] as const) {
+      const t = await rig({ on: false });
+      const r = await resumeOutbound({
+        ...t.base,
+        ...(refuse ? { refuse_if_on: true } : {}),
+        confirm: async () => {
+          await t.db.query(
+            `UPDATE safety_switches SET "on" = true, changed_at = $1, changed_by = 'operator:other' WHERE name = 'paypal_outbound'`,
+            ['2026-10-31T12:00:05Z'],
+          );
+          return true;
+        },
+      });
+      expect(r, String(refuse)).toEqual({ ok: false, error: code });
+      expect(await t.count('safety.resume')).toBe(0);
+    }
+  });
+
+  it('an unchanged switch row does not trip switch_changed (the plain Start still works)', async () => {
+    const t = await rig({ on: false });
+    expect((await resumeOutbound({ ...t.base, refuse_if_on: true })).ok).toBe(true);
+  });
+
+  it('the extra audit row of setSwitch can only be safety.resume', async () => {
+    const t = await rig();
+    await setSwitch(t.db, t.base.audit, t.clock, {
+      name: 'paypal_outbound',
+      on: false,
+      by: OPERATOR,
+      reason: 'type check only',
+      approval_ref: null,
+      // @ts-expect-error the action is narrowed to 'safety.resume'
+      also_audit: { action: 'anything.else', target: null, detail: {} },
+    });
   });
 });
 
@@ -262,6 +340,16 @@ describe('runResume (the terminal command) uses the same check', () => {
     };
   };
 
+  it('lets a database error through unchanged, so the command prints the driver message', async () => {
+    const { t, d } = await cliBase();
+    await t.db.exec(`
+      CREATE FUNCTION um_test_hold() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'held by the test'; END $$ LANGUAGE plpgsql;
+      CREATE TRIGGER um_test_hold BEFORE UPDATE ON safety_switches FOR EACH ROW EXECUTE FUNCTION um_test_hold();
+    `);
+    await expect(runResume(d)).rejects.toThrow(/held by the test/);
+    expect(await t.isOn()).toBe(false);
+  });
+
   it('refuses when the calls for the day are used up', async () => {
     const { t, d } = await cliBase({ approval: { max_calls: 2 } });
     await t.spend(2);
@@ -276,4 +364,16 @@ describe('runResume (the terminal command) uses the same check', () => {
     expect(await t.count('safety.resume')).toBe(1);
     expect(await t.count('switch.paypal_outbound.on')).toBe(1);
   });
+});
+
+describe('the new refusals are written down for the owner', () => {
+  const root = join(import.meta.dirname, '..', '..', '..');
+  const codes = ['budget_used_up', 'switch_locked', 'switch_changed', 'already_on'];
+  it.each([['scripts/lib/safety-cli-main.mjs'], ['docs/owner/MVPC-OWNER-STEPS-GCP.md']])(
+    '%s names each refusal of safety:resume and Start PayPal',
+    (rel) => {
+      const text = readFileSync(join(root, rel), 'utf8');
+      for (const c of codes) expect(text, `${rel} must mention ${c}`).toContain(c);
+    },
+  );
 });

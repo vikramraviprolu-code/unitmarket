@@ -107,17 +107,40 @@ describe('start is refused', () => {
     expect(await rig.count('safety.resume')).toBe(0);
   });
 
-  it('when the database holds the switch off for another reason: 409 switch_locked, no audit row', async () => {
-    rig = await bootStartRig();
-    await rig.app.db.exec(`
-      CREATE FUNCTION um_test_hold() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'held'; END $$ LANGUAGE plpgsql;
+  const hold = (code: string | null) => `
+      CREATE FUNCTION um_test_hold() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'held'${
+        code === null ? '' : ` USING ERRCODE = '${code}'`
+      }; END $$ LANGUAGE plpgsql;
       CREATE TRIGGER um_test_hold BEFORE UPDATE ON safety_switches FOR EACH ROW EXECUTE FUNCTION um_test_hold();
-    `);
+    `;
+
+  it('when the switch row is held by another transaction: 409 switch_locked, the real state is read back, no audit row', async () => {
+    rig = await bootStartRig();
+    await rig.app.db.exec(hold('55P03'));
     const res = await rig.startAs(await rig.mfaOperator(), body());
     expect(res.status).toBe(409);
     expect(await errCode(res)).toBe('switch_locked');
+    const msg = ((await res.json()) as { error: { message: string } }).error.message;
+    expect(msg).toMatch(/may not have happened/);
+    expect(msg).toMatch(/[Rr]eload/);
+    expect(msg).toContain('The switch reads Off now.');
     expect(await rig.count('safety.resume')).toBe(0);
     expect(await rig.count('switch.paypal_outbound.on')).toBe(0);
+  });
+
+  it('an unexpected database error answers 500 start_unknown (never switch_locked), says the start may not have happened, and reads the switch back', async () => {
+    rig = await bootStartRig();
+    await rig.app.db.exec(hold(null));
+    const res = await rig.startAs(await rig.mfaOperator(), body());
+    expect(res.status).toBe(500);
+    expect(await errCode(res)).toBe('start_unknown');
+    const msg = ((await res.json()) as { error: { message: string } }).error.message;
+    expect(msg).toMatch(/may not have happened/);
+    expect(msg).toMatch(/[Rr]eload/);
+    expect(msg).toContain('The switch reads Off now.');
+    expect(msg).not.toMatch(/held|stack|Error:|\bat \w+ \(/);
+    expect(await rig.isOn()).toBe(false);
+    expect(await rig.count('safety.resume')).toBe(0);
   });
 
   it('when the switch is already on: 409 already_on and no second audit row', async () => {

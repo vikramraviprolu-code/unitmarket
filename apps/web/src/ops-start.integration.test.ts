@@ -31,42 +31,61 @@ describe('/ops Kill switch block (source)', () => {
     expect(page).toContain('<Section title="Kill switch" id="ops-kill">');
   });
 
-  it('both controls always render: each is a form or a one-sentence replacement', () => {
-    for (const id of [
-      'ops-start-form',
-      'ops-start-replaced',
-      'ops-stop-form',
-      'ops-stop-replaced',
-    ]) {
+  it('Stop always renders; Start is the form or a one-sentence replacement', () => {
+    for (const id of ['ops-start-form', 'ops-start-replaced', 'ops-stop-form']) {
       expect(kill, id).toContain(`data-testid="${id}"`);
     }
+    expect(kill).not.toContain('ops-stop-replaced');
+    expect(kill).not.toContain('OPS_STOP_ALREADY_OFF');
     // the words of the replacements come from the ops words file, not from the component
     for (const name of [
       'OPS_START_ALREADY_ON',
       'OPS_START_NEEDS_CODE',
       'OPS_START_NO_APPROVAL',
-      'OPS_STOP_ALREADY_OFF',
       'OPS_CONNECT_FLAG_OFF',
     ])
       expect(kill, name).toContain(name);
-    expect(kill).toContain('<StopButton />');
+    expect(kill).toContain('<StopButton');
     expect(kill).toContain('<StartButton');
   });
 
-  it('the Start fields are labelled, typed text, keyboard reachable, and the scope is only a hint', () => {
-    for (const id of ['start-reason', 'start-scope']) {
-      expect(start).toContain(`htmlFor="${id}"`);
-      expect(start).toContain(`id="${id}"`);
+  it('one aria-live region for the start result stays mounted outside the conditional', () => {
+    const live = kill.indexOf('data-testid="ops-start-result"');
+    expect(live).toBeGreaterThan(-1);
+    expect(kill.match(/data-testid="ops-start-result"/g)).toHaveLength(1);
+    expect(kill.slice(live - 80, live)).toContain('aria-live="polite"');
+    // it comes before the Start conditional, so it exists whichever control is shown
+    expect(live).toBeLessThan(kill.indexOf("view.start === 'form'"));
+  });
+
+  it('the local On state follows the server again after a refresh, and Stop refreshes too', () => {
+    expect(kill).toContain('useEffect');
+    expect(kill).toMatch(/useEffect\([\s\S]*\[outboundOn\]/);
+    expect(kill).toContain('onStopped');
+    expect(kill.match(/router\.refresh\(\)/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(read('StopButton.tsx')).toContain('onStopped');
+  });
+
+  it('Start and Stop are real forms with required fields, and their headings are h3 inside the Section', () => {
+    const stop = read('StopButton.tsx');
+    for (const [name, src] of [
+      ['StartButton', start],
+      ['StopButton', stop],
+    ] as const) {
+      expect(src, name).toContain('<form');
+      expect(src, name).toContain('onSubmit');
+      expect(src, name).toContain('preventDefault');
+      expect(src, name).toContain('type="submit"');
+      expect(src, name).toContain('required');
+      expect(src, name).toContain('aria-required="true"');
+      expect(src, name).not.toContain('<h2');
     }
-    expect(start).toContain('aria-describedby="start-scope-hint"');
-    expect(start).toContain('type="button"');
-    expect(start).toContain('{OPS_START_BUTTON}');
-    expect(start).not.toContain('tabIndex');
-    // the scope field starts empty: the active scope is a hint, never a prefilled value
-    expect(start).toContain("useState('')");
-    expect(start).not.toMatch(/useState\(activeScope\)/);
-    // the error text sits in an ErrorState
-    expect(start).toContain('<ErrorState title={OPS_START_ERROR_TITLE}>');
+    expect(start).toContain('<h3 id="start-heading">');
+    expect(stop).toContain('<h3 id="stop-heading">');
+    const css = readFileSync(join(OPS_DIR, 'pk-opshome.css'), 'utf8');
+    expect(css).toContain('.oh-start h3');
+    expect(css).toContain('.oh-stop h3');
+    expect(css).not.toContain('.oh-stop h2');
   });
 
   it('Start posts only a reason and the typed scope to /api/ops/start: no approval, no flag', () => {
