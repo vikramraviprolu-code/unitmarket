@@ -3,6 +3,8 @@
 // golden/legal-copy.golden.txt. Drafted for the owners to approve; not legal advice. No dash
 // characters and no italics (owner style rule). Dates are fixed strings, never computed.
 
+import { CONTACT_ADDRESS } from './account-copy';
+
 export const LEGAL_BANNER = 'Draft for owner approval. This is not legal advice.';
 export const LEGAL_SANDBOX_LINE =
   "This is a test build. No real money moves. Payments use PayPal's sandbox with test money, or, in a dry run, nothing contacts PayPal at all.";
@@ -131,6 +133,12 @@ export const PRIVACY_DOC: LegalDoc = {
         'Anyone can apply to publish on the Apply to publish page without signing in. We store the publisher name, the country, the note you write and a hashed network address that limits how many applications arrive. We do not keep your network address itself.',
         'The note is kept as a permanent audit record, so it cannot be changed or deleted, and the privacy export and deletion script does not cover it. Please do not put a phone number, a personal address, a password or payment details in it. An email address in the note is stored only in hashed form.',
         'No account is created by an application. The operator reviews it, and signing in for a publisher is set up separately by the owners.',
+      ],
+    },
+    {
+      heading: 'Buyer accounts',
+      paragraphs: [
+        `A buyer can make an account. We store the username, the display name and the country you give, and a hash of your password. We never store the password itself, and we do not ask for or keep an email address. Making an account also records that you accepted the Terms and this notice. When the operator deletes your data on request, your account and your sign in are removed, and the username can be used again. If you lose your password there is no reset link: the operator sets a new one on request, at ${CONTACT_ADDRESS}.`,
       ],
     },
     {

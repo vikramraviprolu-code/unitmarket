@@ -1,11 +1,19 @@
 import { app } from '../server/access';
+import { currentActor } from '../server/session';
 import { formatMinor, optionLabel } from '../lib/format';
 import { Hero } from '../ui/Hero';
 import { OfferTile } from '../ui/OfferTile';
+import { RoleDoors } from '../ui/RoleDoors';
+import './auth.css';
 
 export default async function Home() {
   const a = await app();
   const offers = await a.engine.listOffers();
+  const actor = await currentActor();
+  const kind =
+    actor?.kind === 'buyer' || actor?.kind === 'publisher' || actor?.kind === 'operator'
+      ? actor.kind
+      : null;
   return (
     <>
       <Hero>
@@ -23,6 +31,7 @@ export default async function Home() {
           </div>
         </form>
       </Hero>
+      <RoleDoors actorKind={kind} />
       {offers.length > 0 ? (
         <section aria-labelledby="shelf">
           <h2 id="shelf" className="shelf-title">

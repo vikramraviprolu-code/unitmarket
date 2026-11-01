@@ -1,0 +1,101 @@
+contact: unitmarket@raviprolu.com | consent version terms-v1
+doors title: Choose your door
+doors lede: UnitMarket has three kinds of visitor. Pick the one that sounds like you.
+door buyer: Buyer | I want to read | Find one article, see the price, pay once and read it for five days. | You need: a username and a password. No email.
+door buyer button: Go to the buyer page -> /buyer
+door buyer signed in: Go to your library -> /library
+door seller: Seller | I want to publish | Sell single articles to readers who want just one. The owners review every application. | You need: a publisher name, a country and a public website or profile.
+door seller button: Go to the seller page -> /seller
+door seller signed in: Go to your publisher pages -> /publisher
+door operator: Operator | I run the platform | Review applications, watch payments and stop PayPal calls. | You need: your passcode, your operator name and the code from your authenticator app.
+door operator button: Go to operator sign in -> /signin/operator
+door operator signed in: Go to operations -> /ops
+signed in here: You are signed in here.
+judges: Judges and testers sign in with a test persona. | Open the test sign in
+buyer: Buy articles one at a time | Make a free account once. Come back any day with the same username and password.
+buyer need: What you need
+buyer need item: A display name, 2 to 60 characters. This is how we greet you.
+buyer need item: A username, 3 to 30 characters: letters, digits, dot, dash or underscore. You use it to sign in.
+buyer need item: A password of 12 or more characters. A phrase of four words is a good one. You can paste it.
+buyer need item: Your country, as two capital letters, for example GB or US.
+buyer no email: We do not ask for an email address and we send you no email.
+buyer lost: If you lose your password | The operator resets it by hand. Write to unitmarket@raviprolu.com and give your username.
+buyer buttons: Create account | Sign in
+signup: Create your account | It takes one minute. No email is asked for or sent.
+signup fields: Display name | Username | Country (two capital letters, for example GB) | Password | Repeat password
+signup hints: How we greet you. 2 to 60 characters. No angle brackets. | 3 to 30 characters: letters, digits, dot, dash or underscore. Letters are saved in lower case.
+signup rules: A good password
+signup rule: At least 12 characters. Up to 128.
+signup rule: A phrase of four words is fine. Spaces count.
+signup rule: Not a common password, and not your username or your display name.
+signup rule: You can paste it from a password manager.
+signup show hide: Show password | Hide password
+signup accept: I accept the Terms and the Privacy notice. (opens in a new tab)
+signup honeypot: Leave this field empty
+signup buttons: Create account | Creating account
+signup have account: Already have an account? | Sign in
+signup client errors: Could not create the account | The two passwords are not the same. | Tick the box to accept the Terms and the Privacy notice.
+password reason too_short: The password is too short. Use at least 12 characters.
+password reason too_long: The password is too long. Use 128 characters or fewer.
+password reason common: That password is too common. Choose a phrase that is hard to guess.
+password reason contains_username: The password must not contain your username.
+password reason same_as_name: The password must not be your display name.
+password reason repetitive: That password repeats one character. Choose a phrase that is hard to guess.
+password reason same_as_current: Choose a password that is different from the current one.
+password reason other: That password cannot be used. Choose a longer phrase that is hard to guess.
+signup error taken: That username is taken.
+signup error invalid_input: Please check the form. The display name needs 2 to 60 characters, the username 3 to 30 letters, digits, dots, dashes or underscores, and the country two capital letters.
+signup error busy: We cannot create accounts right now. Please try again later.
+signup error rate_limited: Too many tries from this connection. Please try again later.
+signup error csrf: That request was refused. Reload the page and try again.
+signup error other: The account could not be created. Please try again.
+signup error weak_password: That password is too common. Choose a phrase that is hard to guess.
+buyer sign in: Buyer sign in | Use the username and password you made when you created your account.
+buyer sign in fields: Username | Password
+buyer sign in buttons: Sign in | Signing in
+buyer sign in links: Forgot your password? | Create an account
+buyer sign in errors: Could not sign in | That username or password did not work. | Too many tries. Wait a few minutes and try again.
+seller: Publish by the article | Sell single articles to readers who want just one.
+seller prepare: What to prepare
+seller prepare item: Your publisher name, 2 to 80 characters.
+seller prepare item: Your country, as two capital letters, for example GB.
+seller prepare item: A website or a public profile that shows who you are. It goes into the note on your application.
+seller prepare item: Later, a PayPal business account to receive payouts. You do not need it to apply.
+seller prepare item: A few minutes to read the Publisher terms.
+seller terms: Read the Publisher terms
+seller how: What happens next | Your application appears in Operations. The owners read each one and answer by hand. This demo sends no email, so keep your reference and use the status page. Signing in as a publisher is set up by the owners after they approve you.
+seller buttons: Apply to publish | Check an application | Sign in
+seller sign in: Publisher sign in | Choose your publisher and enter the publisher passcode. The owners set this up after they approve an application.
+seller sign in fields: Your publisher | No account yet? | Apply to publish
+seller sign in failed: That passcode did not work. Check it and try again.
+operator sign in: Operator sign in | Operators sign in with three things: the passcode, your operator name and the 6 digit code from your authenticator app.
+operator fields: Operator name | Operator passcode | Authenticator code
+operator code hint: The 6 digits from your authenticator app. Leave the name and code empty to look and stop PayPal calls only: refunds and switching anything on need the code.
+operator failed: That did not work. Check the passcode, your name and the current code, then try again.
+signin roles: Choose how you sign in
+signin role buyer: Buyer sign in -> /signin/buyer
+signin role seller: Seller sign in -> /signin/seller
+signin role operator: Operator sign in -> /signin/operator
+signin testers: Judges and testers
+account nav: Account
+account: Your account | Signed in as | Username | Country
+account persona: This sign in is a test persona. It has no password. Accounts are for buyers who create one.
+account password: Change your password
+account fields: Current password | New password | Repeat new password
+account buttons: Change password | Changing password
+account changed: Password changed. Your other devices were signed out.
+account error title: Could not change the password
+account error wrong_password: That current password did not work.
+account error csrf: That request was refused. Sign out, sign in again and try again.
+account error unauthenticated: That request was refused. Sign out, sign in again and try again.
+account error rate_limited: Too many tries. Wait a few minutes and try again.
+account error invalid_input: Please fill in all three fields.
+account error other: The password could not be changed. Please try again.
+account error weak_password: The password is too short. Use at least 12 characters.
+account all: Sign out everywhere | This signs you out on every device, including this one. | Sign out on all devices | Signing out | We could not sign you out. Please try again.
+help password: Lost your password? | This demo has no email, so there is no reset link.
+help password step: Write to unitmarket@raviprolu.com from any address. Give your username. Never send your password.
+help password step: The operator checks the request and sets a temporary password at the terminal.
+help password step: The operator sends the temporary password back to you.
+help password step: Sign in with it, then change it on the Account page.
+help password back: Back to buyer sign in

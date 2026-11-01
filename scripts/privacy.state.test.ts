@@ -9,11 +9,13 @@ import { checkInvariants } from '../domain/payments/src/index';
 import { migrate, openDatabase } from '../packages/db/src/index';
 import { createAuditSink } from '../packages/obs/src/index';
 import { fakeClock, seededIds } from '../packages/runtime/src/index';
+import { createAccount, verifyAccountLogin } from '../packages/security/src/accounts';
 import { pseudonymFor, runDelete, runExport } from './lib/privacy.mjs';
 
 const T = '2026-10-30T10:00:00Z';
 const LATER = '2026-10-30T12:00:00Z';
 const HASH = 'a'.repeat(64);
+const ACCOUNT_HASH = `scrypt:16384:8:1:00112233445566778899aabbccddeeff:${'b'.repeat(64)}`;
 const TTY = { isTTY: true, env: {} as Record<string, string | undefined> };
 
 // Personal values, written so that each can be searched for as plain text.
@@ -65,6 +67,15 @@ async function seedBuyer(
 ) {
   const B = `buy_${k}`;
   await ins(db, 'buyers', { id: B, display_name: o.name, auth_subject: o.subject, country: 'US' });
+  // ID-ACCOUNTS: the buyer made an account with a username and a password (the hash is a stand in).
+  await ins(db, 'buyer_accounts', {
+    buyer_id: B,
+    username: `acct.${k}`,
+    password_hash: ACCOUNT_HASH,
+    failed_attempts: 0,
+    locked_until: null,
+    password_changed_at: T,
+  });
   await ins(db, 'consents', {
     id: `con_${k}`,
     buyer_id: B,
@@ -444,6 +455,7 @@ describe('export', () => {
         'approvals',
         'audit_log',
         'briefs',
+        'buyer_accounts',
         'buyers',
         'consents',
         'entitlements',
@@ -535,9 +547,60 @@ describe('export', () => {
     expect(r).toEqual({ ok: false, error: 'unknown buyer' });
     await db.close();
   }, 60_000);
+
+  it('exports the account of the buyer (username, counts, times) and never the password hash', async () => {
+    const db = await seed();
+    const r = await runExport({ db, now: new Date(LATER), tty: TTY, buyer_id: 'buy_a' });
+    if (!r.ok) throw new Error('unreachable');
+    const rows = r.value.tables['buyer_accounts']!;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ buyer_id: 'buy_a', username: 'acct.a', failed_attempts: 0 });
+    expect(Object.keys(rows[0]!)).not.toContain('password_hash');
+    const text = JSON.stringify(r.value);
+    expect(text).not.toContain(ACCOUNT_HASH);
+    expect(text).not.toContain('scrypt:');
+    expect(text).not.toContain('acct.b');
+    await db.close();
+  }, 60_000);
 });
 
 describe('delete', () => {
+  it('removes the account: sign in fails afterwards, the username is free again, B keeps hers', async () => {
+    const db = await seed();
+    const deps = {
+      db,
+      clock: fakeClock(LATER),
+      ids: seededIds('acct-check'),
+      log: { log: () => undefined, child: () => ({}) },
+      audit: { record: async () => undefined },
+      session_secret: { reveal: () => 'privacy-test-secret-not-a-credential' },
+    } as never;
+    const before = await db.query(`SELECT 1 FROM buyer_accounts WHERE username = 'acct.a'`);
+    expect(before.rows).toHaveLength(1);
+    const { args } = opts(db);
+    expect((await runDelete(args)).ok).toBe(true);
+    expect((await db.query(`SELECT 1 FROM buyer_accounts WHERE buyer_id = 'buy_a'`)).rows).toEqual(
+      [],
+    );
+    expect(
+      (await db.query(`SELECT 1 FROM buyer_accounts WHERE buyer_id = 'buy_b'`)).rows,
+    ).toHaveLength(1);
+    // sign in with the old username can no longer succeed, whatever the password was
+    expect(
+      await verifyAccountLogin(deps, { username: 'acct.a', password: 'any password at all' }),
+    ).toEqual({ ok: false });
+    // and the name can be taken again
+    const again = await createAccount(deps, {
+      display_name: 'New Alice',
+      username: 'acct.a',
+      country: 'GB',
+      password: 'violet lamps hum softly',
+      consent_version: 'terms-v1',
+    });
+    expect(again.ok).toBe(true);
+    await db.close();
+  }, 60_000);
+
   it('pseudonymises the personal fields and leaves the money evidence byte for byte as it was', async () => {
     const db = await seed();
     expect(await failingInvariants(db)).toEqual([]);
@@ -552,7 +615,13 @@ describe('delete', () => {
 
     const after = await dump(db);
     // Only these four tables change: the buyer, the briefs, the sessions, and the audit log.
-    expect(changedTables(before, after)).toEqual(['audit_log', 'briefs', 'buyers', 'sessions']);
+    expect(changedTables(before, after)).toEqual([
+      'audit_log',
+      'briefs',
+      'buyer_accounts',
+      'buyers',
+      'sessions',
+    ]);
     // Every append-only and money table is byte equal.
     for (const tbl of [
       'ledger_entries',
@@ -593,8 +662,8 @@ describe('delete', () => {
     }
 
     // The text of A's name, subject and brief is in no row of any table the script changed.
-    for (const tbl of ['buyers', 'briefs', 'sessions', 'audit_log'])
-      for (const v of [A_NAME, A_SUBJECT, A_BRIEF, 'pond ecology'])
+    for (const tbl of ['buyers', 'briefs', 'sessions', 'audit_log', 'buyer_accounts'])
+      for (const v of [A_NAME, A_SUBJECT, A_BRIEF, 'pond ecology', 'acct.a'])
         expect(after[tbl], `${tbl} / ${v}`).not.toContain(v);
     // The receipt body holds no personal value of A, and its hash still matches its stored body.
     const rc = await db.query<{ body: unknown; sha256: string }>(
@@ -612,7 +681,7 @@ describe('delete', () => {
     // The operator saw which database object it touched, by id and counts, and no personal value.
     const shown = out.join('\n');
     expect(shown).toContain('buy_a');
-    for (const v of [A_NAME, A_SUBJECT, A_BRIEF]) expect(shown).not.toContain(v);
+    for (const v of [A_NAME, A_SUBJECT, A_BRIEF, 'acct.a']) expect(shown).not.toContain(v);
     await db.close();
   }, 60_000);
 
@@ -632,7 +701,12 @@ describe('delete', () => {
       reason: 'buyer request 2026-10-29',
     });
     const detail = a.rows[0]!['detail'] as Record<string, unknown>;
-    expect(detail).toMatchObject({ buyers: 1, briefs: 1, sessions_revoked: 1 });
+    expect(detail).toMatchObject({
+      buyers: 1,
+      briefs: 1,
+      sessions_revoked: 1,
+      accounts_deleted: 1,
+    });
     // Counts only. The audit sink adds one flag for the operator's second factor; it is not a personal value.
     for (const [k, v] of Object.entries(detail))
       if (k !== 'actor_mfa') expect(typeof v, k).toBe('number');
