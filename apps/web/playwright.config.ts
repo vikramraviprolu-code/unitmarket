@@ -52,6 +52,9 @@ export default defineConfig({
       // CO-6: the RFC 6238 test key (ASCII "12345678901234567890") for the operator "vikram". A public
       // test value, not a credential.
       UMS_OPERATOR_TOTP_KEYS: 'vikram:GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ',
+      // ID-ACCOUNTS: one trusted proxy, so a test chooses its client address with X-Forwarded-For (signup and
+      // the per address limits need a known address). A request that sends no such header has none, as before.
+      UMS_TRUSTED_PROXIES: '1',
       UMS_PUBLIC_ORIGIN: `http://localhost:${PORT}`,
       NODE_ENV: 'production',
     },

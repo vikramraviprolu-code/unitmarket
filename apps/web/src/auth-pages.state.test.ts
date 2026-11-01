@@ -34,7 +34,13 @@ const FORMS = [
 
 describe('files', () => {
   it('every page, form and style exists', () => {
-    for (const f of [...PAGES, ...FORMS, './app/auth.css', './ui/RoleDoors.tsx', './ui/PasswordField.tsx'])
+    for (const f of [
+      ...PAGES,
+      ...FORMS,
+      './app/auth.css',
+      './ui/RoleDoors.tsx',
+      './ui/PasswordField.tsx',
+    ])
       expect(existsSync(new URL(f, import.meta.url)), f).toBe(true);
   });
   it('every new page has a title, takes its words from the account copy and uses no inline style or raw html', () => {
@@ -68,7 +74,11 @@ describe('landing page', () => {
   });
   it('the door table has three entries and the sign in cards link to the three sign in pages', () => {
     expect(DOORS.map((d) => d.href)).toEqual(['/buyer', '/seller', '/signin/operator']);
-    expect(SIGNIN_ROLE_LINKS.map((l) => l.href)).toEqual(['/signin/buyer', '/signin/seller', '/signin/operator']);
+    expect(SIGNIN_ROLE_LINKS.map((l) => l.href)).toEqual([
+      '/signin/buyer',
+      '/signin/seller',
+      '/signin/operator',
+    ]);
   });
 });
 
@@ -85,7 +95,11 @@ describe('/signin keeps the persona form', () => {
   });
   it('the persona form file is untouched in the parts the end to end tests use', () => {
     const form = read('./app/signin/SignInForm.tsx');
-    for (const s of ['Who are you testing as?', "postJson<{ csrf_token: string }>('/api/session'", "window.location.assign(next)"])
+    for (const s of [
+      'Who are you testing as?',
+      "postJson<{ csrf_token: string }>('/api/session'",
+      'window.location.assign(next)',
+    ])
       expect(form).toContain(s);
   });
 });
@@ -97,7 +111,8 @@ describe('forms', () => {
     expect(`${c}${pw}`).toMatch(/autoComplete=\{?['"]new-password['"]/);
     expect(c.match(/new-password/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
     expect(c).toMatch(/autoComplete="username"/);
-    expect(pw).toMatch(/aria-pressed/);
+    expect(pw).toMatch(/aria-controls/);
+    expect(pw).not.toMatch(/aria-pressed/);
     expect(pw).toMatch(/type=\{shown \? 'text' : 'password'\}/);
     expect(c).toMatch(/type="checkbox"/);
     expect(c).toContain('/legal/terms');
@@ -108,7 +123,9 @@ describe('forms', () => {
     expect(c).toContain('safeNext');
     expect(`${c}${pw}`).not.toMatch(/onPaste|paste/i);
     expect(c).toMatch(/toLowerCase\(\)/);
-    expect(c).not.toMatch(/\.trim\(\)[^;]*password|password[^;]*\.trim\(\)/);
+    // the password is sent exactly as typed: no line trims it
+    for (const line of c.split('\n'))
+      expect(line, line).not.toMatch(/password.*\.trim\(\)|\.trim\(\).*password/i);
   });
   it('buyer sign in: current-password, show and hide, the one failure sentence, links to help and signup', () => {
     const f = code('./app/signin/buyer/BuyerSignInForm.tsx');
@@ -149,7 +166,9 @@ describe('forms', () => {
       const labels = c.match(/<label\b|<PasswordField\b/g)?.length ?? 0;
       expect(labels, f).toBeGreaterThanOrEqual(Math.min(inputs, 1));
     }
-    expect(read('./app/globals.css')).toMatch(/:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--focus\)/);
+    expect(read('./app/globals.css')).toMatch(
+      /:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--focus\)/,
+    );
   });
 });
 
@@ -177,13 +196,18 @@ describe('auth.css', () => {
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(css).not.toMatch(/\b(rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color-mix)\(/);
     expect(css).not.toMatch(/url\(|@import|data:/);
-    expect(css).not.toMatch(/\b(?:color|background|background-color|border|border-color|outline|box-shadow)\s*:[^;]*\b(?:red|blue|green|white|black|gray|grey|orange|yellow|teal|navy)\b/i);
+    expect(css).not.toMatch(
+      /\b(?:color|background|background-color|border|border-color|outline|box-shadow)\s*:[^;]*\b(?:red|blue|green|white|black|gray|grey|orange|yellow|teal|navy)\b/i,
+    );
   });
   it('every custom property it reads is declared by a skin or by itself', () => {
     const own = new Set([...css.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]!));
     const used = [...css.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]!);
     expect(used.length).toBeGreaterThan(20);
-    for (const u of used) expect(tokens.has(u) || own.has(u) || ['--space', '--font', '--mono'].includes(u), u).toBe(true);
+    for (const u of used)
+      expect(tokens.has(u) || own.has(u) || ['--space', '--font', '--mono'].includes(u), u).toBe(
+        true,
+      );
   });
   it('has large targets, a 400 px rule, no fixed width over 400 px and respects reduced motion', () => {
     expect(css).toMatch(/min-height:\s*(4[4-9]|[5-9]\d)px/);

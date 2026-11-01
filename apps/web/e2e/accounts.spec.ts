@@ -1,18 +1,23 @@
 // ID-ACCOUNTS end to end, in the browser against the built offline app: the landing page shows three doors;
 // a buyer creates an account, signs out, signs in again, changes the password, and the old password is
 // refused; the role pages and the sign in pages read well at 400 px in both looks. Synthetic values only.
-// The server runs with one trusted proxy (playwright.config.ts), so each context sets its own client address.
+// The server runs with one trusted proxy and a fresh in-memory database (playwright.config.ts), so the names
+// below are free on every run and each context sets its own client address.
 import { test, expect } from '@playwright/test';
 import type { Browser, Page } from '@playwright/test';
 
-const stamp = Date.now().toString(36).slice(-6);
-const octet = (Date.now() % 200) + 20;
-const USER = `e2e.reader.${stamp}`;
+const octet = 41;
+const USER = 'e2e.reader';
 const PW = 'violet lamps hum softly';
 const PW2 = 'seven quiet harbours now';
 
-async function fresh(browser: Browser, last = octet): Promise<{ page: Page; close: () => Promise<void> }> {
-  const ctx = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': `198.51.100.${String(last)}` } });
+async function fresh(
+  browser: Browser,
+  last = octet,
+): Promise<{ page: Page; close: () => Promise<void> }> {
+  const ctx = await browser.newContext({
+    extraHTTPHeaders: { 'x-forwarded-for': `198.51.100.${String(last)}` },
+  });
   return { page: await ctx.newPage(), close: () => ctx.close() };
 }
 async function ready(page: Page): Promise<void> {
@@ -23,22 +28,42 @@ test.describe('landing page', () => {
   test('shows the hero and three doors with one button each', async ({ browser }) => {
     const { page, close } = await fresh(browser);
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1, name: 'Buy just the article you need' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Buy just the article you need' }),
+    ).toBeVisible();
     const doors = page.getByRole('region', { name: 'Choose your door' });
-    await expect(doors.getByRole('heading', { level: 3 })).toHaveText(['Buyer', 'Seller', 'Operator']);
-    await expect(doors.getByRole('link')).toHaveCount(3);
-    await expect(doors.getByRole('link', { name: 'Go to the buyer page' })).toHaveAttribute('href', '/buyer');
-    await expect(doors.getByRole('link', { name: 'Go to the seller page' })).toHaveAttribute('href', '/seller');
-    await expect(doors.getByRole('link', { name: 'Go to operator sign in' })).toHaveAttribute('href', '/signin/operator');
+    await expect(doors.getByRole('heading', { level: 3 })).toHaveText([
+      'Buyer',
+      'Seller',
+      'Operator',
+    ]);
+    await expect(doors.locator('.role-door').getByRole('link')).toHaveCount(3);
+    await expect(doors.getByRole('link', { name: 'Go to the buyer page' })).toHaveAttribute(
+      'href',
+      '/buyer',
+    );
+    await expect(doors.getByRole('link', { name: 'Go to the seller page' })).toHaveAttribute(
+      'href',
+      '/seller',
+    );
+    await expect(doors.getByRole('link', { name: 'Go to operator sign in' })).toHaveAttribute(
+      'href',
+      '/signin/operator',
+    );
     await close();
   });
 
   test('works without a script and has no sideways scroll at 400 px', async ({ browser }) => {
-    const ctx = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 400, height: 800 } });
+    const ctx = await browser.newContext({
+      javaScriptEnabled: false,
+      viewport: { width: 400, height: 800 },
+    });
     const page = await ctx.newPage();
     await page.goto('/');
     await expect(page.getByRole('link', { name: 'Go to the buyer page' })).toBeVisible();
-    const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    const wide = await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    );
     expect(wide).toBe(false);
     await ctx.close();
   });
@@ -60,7 +85,9 @@ test.describe('landing page', () => {
 });
 
 test.describe('buyer account', () => {
-  test('create, sign out, sign in again, change the password, old password refused', async ({ browser }) => {
+  test('create, sign out, sign in again, change the password, old password refused', async ({
+    browser,
+  }) => {
     const { page, close } = await fresh(browser);
     await page.goto('/signup');
     await ready(page);
@@ -85,7 +112,9 @@ test.describe('buyer account', () => {
     await page.getByLabel('Username').fill(USER);
     await page.getByLabel('Password').fill('not the right password');
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByRole('alert')).toContainText('That username or password did not work.');
+    await expect(page.getByTestId('error-state')).toContainText(
+      'That username or password did not work.',
+    );
     await page.getByLabel('Password').fill(PW);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(header.getByRole('link', { name: 'Account' })).toBeVisible();
@@ -107,7 +136,9 @@ test.describe('buyer account', () => {
     await page.getByLabel('Username').fill(USER);
     await page.getByLabel('Password').fill(PW);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByRole('alert')).toContainText('That username or password did not work.');
+    await expect(page.getByTestId('error-state')).toContainText(
+      'That username or password did not work.',
+    );
     await page.getByLabel('Password').fill(PW2);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(header.getByRole('link', { name: 'Account' })).toBeVisible();
@@ -125,11 +156,11 @@ test.describe('buyer account', () => {
     await page.getByLabel('Repeat password').fill('password1234');
     await page.getByRole('checkbox', { name: /I accept the Terms/ }).check();
     await page.getByRole('button', { name: 'Create account' }).click();
-    await expect(page.getByRole('alert')).toContainText('too common');
+    await expect(page.getByTestId('error-state')).toContainText('too common');
     await page.getByLabel('Password', { exact: true }).fill(PW);
     await page.getByLabel('Repeat password').fill(PW);
     await page.getByRole('button', { name: 'Create account' }).click();
-    await expect(page.getByRole('alert')).toContainText('That username is taken.');
+    await expect(page.getByTestId('error-state')).toContainText('That username is taken.');
     await close();
   });
 
@@ -160,8 +191,13 @@ test.describe('role pages', () => {
     ['/signin', 'Sign in'],
   ];
   for (const skin of ['market', 'harbour'] as const) {
-    test(`read well at 400 px in ${skin}: one h1, no sideways scroll, keyboard focus is visible`, async ({ browser }) => {
-      const ctx = await browser.newContext({ viewport: { width: 400, height: 800 }, extraHTTPHeaders: { 'x-forwarded-for': '198.51.100.9' } });
+    test(`read well at 400 px in ${skin}: one h1, no sideways scroll, keyboard focus is visible`, async ({
+      browser,
+    }) => {
+      const ctx = await browser.newContext({
+        viewport: { width: 400, height: 800 },
+        extraHTTPHeaders: { 'x-forwarded-for': '198.51.100.9' },
+      });
       await ctx.addCookies([{ name: 'um_skin', value: skin, url: 'http://localhost:3100' }]);
       const page = await ctx.newPage();
       for (const [path, h1] of pages) {
@@ -169,24 +205,40 @@ test.describe('role pages', () => {
         await expect(page.locator('html')).toHaveAttribute('data-skin', skin);
         await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
         await expect(page.getByRole('heading', { level: 1, name: h1 })).toBeVisible();
-        expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), path).toBe(false);
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+          path,
+        ).toBe(false);
       }
       await page.goto('/buyer');
       await page.keyboard.press('Tab');
       await page.keyboard.press('Tab');
-      const outline = await page.evaluate(() => getComputedStyle(document.activeElement as Element).outlineStyle);
+      const outline = await page.evaluate(
+        () => getComputedStyle(document.activeElement as Element).outlineStyle,
+      );
       expect(outline).not.toBe('none');
       await ctx.close();
     });
   }
 
-  test('the seller page says what to prepare and that no email is sent; the operator page shows its hint', async ({ browser }) => {
+  test('the seller page says what to prepare and that no email is sent; the operator page shows its hint', async ({
+    browser,
+  }) => {
     const { page, close } = await fresh(browser);
     await page.goto('/seller');
     await expect(page.getByText('This demo sends no email')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Apply to publish' })).toHaveAttribute('href', '/apply');
-    await expect(page.getByRole('link', { name: 'Check an application' })).toHaveAttribute('href', '/apply/status');
-    await expect(page.getByRole('link', { name: 'Sign in' }).last()).toHaveAttribute('href', '/signin/seller');
+    await expect(page.getByRole('link', { name: 'Apply to publish' })).toHaveAttribute(
+      'href',
+      '/apply',
+    );
+    await expect(page.getByRole('link', { name: 'Check an application' })).toHaveAttribute(
+      'href',
+      '/apply/status',
+    );
+    await expect(page.getByRole('link', { name: 'Sign in' }).last()).toHaveAttribute(
+      'href',
+      '/signin/seller',
+    );
     await page.goto('/signin/operator');
     await expect(page.getByText(/Leave the name and code empty/)).toBeVisible();
     await page.goto('/help/password');
@@ -194,12 +246,17 @@ test.describe('role pages', () => {
     await close();
   });
 
-  test('the test persona sign in is still on /signin, under its own heading', async ({ browser }) => {
+  test('the test persona sign in is still on /signin, under its own heading', async ({
+    browser,
+  }) => {
     const { page, close } = await fresh(browser);
     await page.goto('/signin');
     await expect(page.getByRole('heading', { level: 2, name: 'Judges and testers' })).toBeVisible();
     await expect(page.getByLabel('Who are you testing as?')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Buyer sign in' })).toHaveAttribute('href', '/signin/buyer');
+    await expect(page.getByRole('link', { name: 'Buyer sign in' })).toHaveAttribute(
+      'href',
+      '/signin/buyer',
+    );
     await close();
   });
 });
