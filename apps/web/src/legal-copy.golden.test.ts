@@ -3,6 +3,7 @@
 // to it is a change to what people are told they agree to, so the owners read it (H).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { CONTACT_ADDRESS } from './lib/account-copy';
 import {
   LEGAL_BANNER,
   LEGAL_DOCS,
@@ -145,6 +146,25 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/permanent/i);
     expect(t).toMatch(/cannot be (changed or )?deleted/i);
     expect(t).toMatch(/no account is created/i);
+  });
+
+  it('privacy: buyer accounts say what is stored, that the password is only hashed, that deletion removes the account and who resets a lost password', () => {
+    const doc = LEGAL_DOCS.find((d) => d.slug === 'privacy')!;
+    const sec = doc.sections.find((s) => s.heading === 'Buyer accounts');
+    expect(sec).toBeDefined();
+    expect(sec!.paragraphs).toHaveLength(1);
+    const t = sec!.paragraphs.join(' ');
+    expect(t).toMatch(/username/i);
+    expect(t).toMatch(/display name/i);
+    expect(t).toMatch(/country/i);
+    expect(t).toMatch(/a hash of your password/i);
+    expect(t).toMatch(/never store the password itself/i);
+    expect(t).toMatch(/do not ask for or keep an email address/i);
+    expect(t).toMatch(/account and your sign in are removed/i);
+    expect(t).toMatch(/operator sets a new one/i);
+    expect(t).toContain('unitmarket@raviprolu.com');
+    // the account copy and the legal page give the same contact address
+    expect(t).toContain(CONTACT_ADDRESS);
   });
 
   it('refunds: decided per unit by an operator; full refund ends access; partial does not', () => {

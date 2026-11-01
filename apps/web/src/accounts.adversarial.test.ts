@@ -41,7 +41,7 @@ describe('username enumeration', () => {
   it('a wrong password, an unknown name and a locked account answer the same status, body and headers', async () => {
     const real = await newAccount(w);
     const locked = await newAccount(w);
-    for (let i = 0; i < 5; i++)
+    for (let i = 0; i < 20; i++)
       await login({ username: locked.username, password: 'wrong wrong wrong' });
     const answers = [
       await got(await login({ username: real.username, password: 'wrong wrong wrong' })),
@@ -84,6 +84,42 @@ describe('username enumeration', () => {
     const sixth = await got(await login({ username: a.username, password: a.password }, { ip }));
     expect(sixth.status).toBe(429);
     expect(sixth.cookie).toBeNull();
+  });
+
+  it('one address cannot lock an account: after 5 tries in 15 minutes it gets 429, the account stays open, and the owner signs in', async () => {
+    const a = await newAccount(w);
+    const ip = freshIp();
+    const statuses: number[] = [];
+    for (let i = 0; i < 40; i++)
+      statuses.push(
+        (await login({ username: a.username, password: `bad bad bad ${String(i)}` }, { ip }))
+          .status,
+      );
+    expect(statuses.slice(0, 5)).toEqual([401, 401, 401, 401, 401]);
+    expect(statuses.slice(5).every((c) => c === 429)).toBe(true);
+    const row = await q<{ failed_attempts: number | string; locked_until: unknown }>(
+      'SELECT failed_attempts, locked_until FROM buyer_accounts WHERE username = $1',
+      [a.username],
+    );
+    expect(Number(row[0]!.failed_attempts)).toBe(5);
+    expect(row[0]!.locked_until).toBeNull();
+    expect((await login({ username: a.username, password: a.password })).status).toBe(200);
+  });
+
+  it('one address trying many names meets the per address limit (30 in 15 minutes)', async () => {
+    const ip = freshIp();
+    const statuses: number[] = [];
+    for (let i = 0; i < 32; i++)
+      statuses.push(
+        (
+          await login(
+            { username: `spray.name.${String(i)}`, password: 'wrong wrong wrong' },
+            { ip },
+          )
+        ).status,
+      );
+    expect(statuses.slice(0, 30).every((c) => c === 401)).toBe(true);
+    expect(statuses.slice(30)).toEqual([429, 429]);
   });
 });
 

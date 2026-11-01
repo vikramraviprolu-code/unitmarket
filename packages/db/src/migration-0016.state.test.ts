@@ -66,6 +66,17 @@ describe('migration 0016', () => {
     expect(sql).not.toMatch(/\bnow\s*\(/i);
   });
 
+  it('says in its header that Supabase row level security for the table is a hard prerequisite before any Supabase use', () => {
+    const raw = readFileSync(
+      new URL('../migrations/common/0016_buyer_accounts.sql', import.meta.url),
+      'utf8',
+    );
+    const header = raw.split('CREATE TABLE')[0]!.replace(/\s+/g, ' ');
+    expect(header).toMatch(/hard prerequisite/i);
+    expect(header).toMatch(/row.level security/i);
+    expect(header).toMatch(/before any Supabase use/i);
+  });
+
   it('has the columns of the spec and no email column of any kind', async () => {
     const d = await fresh();
     const cols = await d.query<{ column_name: string; is_nullable: string }>(

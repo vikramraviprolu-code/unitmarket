@@ -54,7 +54,7 @@ describe('equal work for every answer', () => {
     calls.length = 0;
     await verifyAccountLogin(r.deps, { username, password: 'wrong wrong wrong' });
     const wrong = [...calls];
-    for (let i = 0; i < 4; i++)
+    for (let i = 0; i < 19; i++)
       await verifyAccountLogin(r.deps, { username, password: 'wrong wrong wrong' });
     calls.length = 0;
     await verifyAccountLogin(r.deps, { username, password: PW }); // locked now
@@ -114,7 +114,7 @@ describe('no password in any audit row or log line', () => {
     });
     if (!made.ok) throw new Error('setup');
     await verifyAccountLogin(r.deps, { username, password: canary });
-    for (let i = 0; i < 6; i++)
+    for (let i = 0; i < 21; i++)
       await verifyAccountLogin(r.deps, { username, password: `${canary}-wrong-${String(i)}` });
     r.clock.advance(61 * 60_000);
     await changePassword(r.deps, {

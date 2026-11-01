@@ -1,6 +1,6 @@
 // ID-ACCOUNTS: buyer accounts on the real schema (PGlite plus the common migrations, including 0016).
 // Signup writes a buyer, an account, two consents and one audit row; login costs the same for an unknown name
-// and a wrong password; five failures lock the account (15 minutes, doubling to one hour); a change of
+// and a wrong password; twenty failures in a row lock the account (15 minutes, doubling to one hour); a change of
 // password ends the other sessions; the operator reset ends all of them. Time is the injected clock.
 import { describe, expect, it } from 'vitest';
 import {
@@ -202,15 +202,15 @@ describe('verifyAccountLogin', () => {
     expect(failed[0]!.detail['username_hash']).not.toBe(failed[1]!.detail['username_hash']);
   });
 
-  it('locks the account after five failures for 15 minutes, and a locked account answers like a wrong password', async () => {
+  it('locks the account after twenty failures for 15 minutes, and a locked account answers like a wrong password', async () => {
     const r = await makeRig();
     const a = await open(r);
     expect([ACCOUNT_LOCK_THRESHOLD, ACCOUNT_LOCK_BASE_MS, ACCOUNT_LOCK_CAP_MS]).toEqual([
-      5,
+      20,
       15 * MIN,
       60 * MIN,
     ]);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < ACCOUNT_LOCK_THRESHOLD; i++) {
       expect(
         await verifyAccountLogin(r.deps, {
           username: a.username,
@@ -255,7 +255,7 @@ describe('verifyAccountLogin', () => {
       );
       return new Date(x[0]!.locked_until).getTime() - r.clock.now().getTime();
     };
-    for (let i = 0; i < 5; i++) await fail();
+    for (let i = 0; i < ACCOUNT_LOCK_THRESHOLD; i++) await fail();
     expect(await lockedFor()).toBe(15 * MIN);
     for (const expected of [30 * MIN, 60 * MIN, 60 * MIN]) {
       r.clock.advance((await lockedFor()) + 1);
@@ -264,18 +264,57 @@ describe('verifyAccountLogin', () => {
     }
   });
 
-  it('a right password before the fifth failure resets the count', async () => {
+  it('a right password before the twentieth failure resets the count', async () => {
     const r = await makeRig();
     const a = await open(r);
-    for (let i = 0; i < 4; i++)
+    for (let i = 0; i < ACCOUNT_LOCK_THRESHOLD - 1; i++)
       await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
     expect(
       (await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).ok,
     ).toBe(true);
-    for (let i = 0; i < 4; i++)
+    for (let i = 0; i < ACCOUNT_LOCK_THRESHOLD - 1; i++)
       await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
     expect(
       (await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).ok,
+    ).toBe(true);
+  });
+
+  it('does not lock below twenty failures: nineteen wrong answers leave the right password working', async () => {
+    const r = await makeRig();
+    const a = await open(r);
+    for (let i = 0; i < 19; i++)
+      await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
+    expect(r.audit.filter((e) => e.action === 'account.locked')).toHaveLength(0);
+    expect(
+      (await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).ok,
+    ).toBe(true);
+  });
+
+  it('forgets failures older than 24 hours: nineteen, a day, then one more is a first failure', async () => {
+    const r = await makeRig();
+    const a = await open(r);
+    const fail = () =>
+      verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
+    for (let i = 0; i < 19; i++) await fail();
+    r.clock.advance(24 * 60 * MIN - 1_000);
+    await fail(); // 23h59m after the last failure: still counted, the 20th, so it locks
+    expect(r.audit.filter((e) => e.action === 'account.locked')).toHaveLength(1);
+
+    const b = await open(r);
+    const failB = () =>
+      verifyAccountLogin(r.deps, { username: b.username, password: 'wrong wrong wrong' });
+    for (let i = 0; i < 19; i++) await failB();
+    r.clock.advance(24 * 60 * MIN + 1_000);
+    await failB(); // more than a day after the last failure: this is failure number one
+    expect(r.audit.filter((e) => e.action === 'account.locked')).toHaveLength(1);
+    const count = await rows<{ failed_attempts: number }>(
+      r,
+      'SELECT failed_attempts FROM buyer_accounts WHERE buyer_id = $1',
+      [b.buyer_id],
+    );
+    expect(Number(count[0]!.failed_attempts)).toBe(1);
+    expect(
+      (await verifyAccountLogin(r.deps, { username: b.username, password: PASSWORD })).ok,
     ).toBe(true);
   });
 
@@ -283,7 +322,7 @@ describe('verifyAccountLogin', () => {
     const r = await makeRig();
     const a = await open(r);
     const b = await open(r);
-    for (let i = 0; i < 5; i++)
+    for (let i = 0; i < ACCOUNT_LOCK_THRESHOLD; i++)
       await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
     expect(
       (await verifyAccountLogin(r.deps, { username: b.username, password: PASSWORD })).ok,
@@ -353,7 +392,7 @@ describe('changePassword', () => {
   it('counts wrong current passwords towards the lock, and answers no_account for a buyer with no account', async () => {
     const r = await makeRig();
     const a = await open(r);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < ACCOUNT_LOCK_THRESHOLD; i++) {
       await changePassword(r.deps, {
         buyer_id: a.buyer_id,
         current_password: 'wrong wrong wrong',
@@ -403,7 +442,7 @@ describe('resetPasswordForOperator', () => {
     const a = await open(r);
     const actor = { kind: 'buyer', buyer_id: a.buyer_id } as const;
     const s = await createSession(r.deps, actor);
-    for (let i = 0; i < 5; i++)
+    for (let i = 0; i < ACCOUNT_LOCK_THRESHOLD; i++)
       await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
     const before = r.audit.length;
     const res = await resetPasswordForOperator(r.deps, {
@@ -419,7 +458,8 @@ describe('resetPasswordForOperator', () => {
     const added = r.audit.slice(before).filter((e) => e.action.startsWith('account.password'));
     expect(added).toHaveLength(1);
     expect(added[0]).toMatchObject({
-      actor: { kind: 'operator', operator_id: 'opr_vikram' },
+      actor: { kind: 'operator', operator_id: 'opr_vikram', mfa: false },
+      detail: { by: 'operator', via: 'terminal' },
       target: a.buyer_id,
     });
     expect(JSON.stringify(added)).not.toContain(NEW_PASSWORD);

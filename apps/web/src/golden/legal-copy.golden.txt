@@ -41,6 +41,8 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/privacy | text: Anyone can apply to publish on the Apply to publish page without signing in. We store the publisher name, the country, the note you write and a hashed network address that limits how many applications arrive. We do not keep your network address itself.
 /legal/privacy | text: The note is kept as a permanent audit record, so it cannot be changed or deleted, and the privacy export and deletion script does not cover it. Please do not put a phone number, a personal address, a password or payment details in it. An email address in the note is stored only in hashed form.
 /legal/privacy | text: No account is created by an application. The operator reviews it, and signing in for a publisher is set up separately by the owners.
+/legal/privacy | heading: Buyer accounts
+/legal/privacy | text: A buyer can make an account. We store the username, the display name and the country you give, and a hash of your password. We never store the password itself, and we do not ask for or keep an email address. Making an account also records that you accepted the Terms and this notice. When the operator deletes your data on request, your account and your sign in are removed, and the username can be used again. If you lose your password there is no reset link: the operator sets a new one on request, at unitmarket@raviprolu.com.
 /legal/privacy | heading: What we do not do
 /legal/privacy | text: There is no advertising, no tracking scripts and no third-party fonts on this site. This site does not load scripts, fonts or images from other sites.
 /legal/privacy | heading: Contact

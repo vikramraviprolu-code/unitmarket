@@ -100,6 +100,38 @@ describe('password policy: block list and context', () => {
   });
 });
 
+describe('password policy: bytes', () => {
+  // Hangul written as separate letters (three jamo per syllable, 9 bytes) is 128 characters after NFKC and
+  // 1152 bytes raw. The check of a stored hash refuses more than 1024 bytes, so signup must refuse them too:
+  // no password may pass signup and then fail every sign in.
+  const jamo = (n: number): string =>
+    Array.from(
+      { length: n },
+      (_, i) =>
+        String.fromCodePoint(0x1100 + (i % 19)) +
+        String.fromCodePoint(0x1161 + (i % 21)) +
+        String.fromCodePoint(0x11a8 + (i % 27)),
+    ).join('');
+  it('refuses more than 1024 raw UTF-8 bytes, even when the NFKC length is within 128', () => {
+    expect(jamo(128).normalize('NFKC')).toHaveLength(128);
+    expect(Buffer.byteLength(jamo(128), 'utf8')).toBe(1152);
+    expect(ok(jamo(128))).toEqual({ ok: false, reason: 'too_long' });
+    expect(ok(jamo(114))).toEqual({ ok: false, reason: 'too_long' }); // 1026 bytes
+  });
+  it('allows exactly 1024 bytes and fewer', () => {
+    expect(Buffer.byteLength(jamo(113), 'utf8')).toBe(1017);
+    expect(ok(jamo(113))).toEqual({ ok: true });
+    expect(ok('\u{1f600}'.repeat(2) + jamo(112) + 'ab')).toEqual({ ok: true }); // 1018 bytes
+  });
+  it('every password the policy allows can be verified (the stored hash check takes it)', async () => {
+    const salt = '0123456789abcdef0123456789abcdef';
+    const pw = jamo(113);
+    expect(ok(pw)).toEqual({ ok: true });
+    const h = await hashPasscode(pw, salt);
+    expect(await verifyPasscode(h, pw)).toBe(true);
+  });
+});
+
 describe('username shape', () => {
   it('accepts 3 to 30 of lower case letters, digits, dot, dash and underscore', () => {
     for (const u of ['abc', 'a.b-c_d', 'x'.repeat(30), '007', 'jo.smith']) {

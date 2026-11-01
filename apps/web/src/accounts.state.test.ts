@@ -231,9 +231,9 @@ describe('POST /api/accounts/login', () => {
     expect(wrong.setCookie).toBe('');
   });
 
-  it('locks the account after five wrong passwords from different places and answers the right one like a wrong one', async () => {
+  it('locks the account after twenty wrong passwords from different places and answers the right one like a wrong one', async () => {
     const a = await newAccount(w);
-    for (let i = 0; i < 5; i++)
+    for (let i = 0; i < 20; i++)
       expect((await login(a.username, `wrong wrong ${String(i)}`, freshIp())).status).toBe(401);
     const locked = await got(await login(a.username, a.password, freshIp()));
     expect(locked.status).toBe(401);

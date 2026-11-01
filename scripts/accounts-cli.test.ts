@@ -6,6 +6,16 @@ import { describe, expect, it } from 'vitest';
 
 const read = (rel: string): string => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
 
+describe('pnpm accounts:reset-password: interrupt', () => {
+  const main = read('scripts/lib/accounts-cli-main.mjs');
+  it('handles Ctrl-C on the password prompt: closes the prompt, closes the database, exits 130', () => {
+    expect(main).toMatch(/rl\.on\('SIGINT'/);
+    expect(main).toMatch(/rl\.on\('close'/);
+    expect(main).toMatch(/db\.close\(\)/);
+    expect(main).toContain('130');
+  });
+});
+
 describe('pnpm accounts:reset-password', () => {
   it('is a package script that loads .env.local like safety:approve', () => {
     const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
