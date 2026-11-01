@@ -5,9 +5,15 @@ import { describe, expect, it } from 'vitest';
 import { createAccount, verifyAccountLogin } from './accounts';
 import { runResetPassword } from './accounts-cli';
 import { createSession, resolveSession } from './session';
-import { cookiePair, makeRig } from './test-support';
+import { cookiePair, makeRig as baseRig, seededIds } from './test-support';
 import type { TestRig } from './test-support';
 
+// One database per file, so every rig needs ids of its own.
+let rigs = 0;
+const makeRig = () => {
+  rigs += 1;
+  return baseRig({ ids: seededIds(`cli-${String(rigs)}`) });
+};
 const TTY = { isTTY: true, env: {} as Record<string, string | undefined> };
 const NEW = 'seven quiet harbours';
 let n = 0;
@@ -46,12 +52,20 @@ describe('runResetPassword', () => {
     const s = await createSession(r.deps, { kind: 'buyer', buyer_id });
     const io = scripted([NEW, NEW]);
     const before = r.audit.length;
-    const res = await runResetPassword({ deps: r.deps, tty: TTY, operator_id: 'opr_vikram', username, ...io });
+    const res = await runResetPassword({
+      deps: r.deps,
+      tty: TTY,
+      operator_id: 'opr_vikram',
+      username,
+      ...io,
+    });
     expect(res).toEqual({ ok: true, value: { revoked: 1 } });
     expect(io.asked).toHaveLength(2);
     expect(await resolveSession(r.deps, cookiePair(s.cookie))).toBeNull();
     expect((await verifyAccountLogin(r.deps, { username, password: NEW })).ok).toBe(true);
-    expect(r.audit.slice(before).filter((e) => e.action === 'account.password_changed')).toHaveLength(1);
+    expect(
+      r.audit.slice(before).filter((e) => e.action === 'account.password_changed'),
+    ).toHaveLength(1);
     expect(io.out.join('\n')).not.toContain(NEW);
   });
 
@@ -65,7 +79,13 @@ describe('runResetPassword', () => {
     ] as const) {
       const { r, username } = await world();
       const io = scripted([NEW, NEW]);
-      const res = await runResetPassword({ deps: r.deps, tty, operator_id: 'opr_v', username, ...io });
+      const res = await runResetPassword({
+        deps: r.deps,
+        tty,
+        operator_id: 'opr_v',
+        username,
+        ...io,
+      });
       expect(res).toEqual({ ok: false, error });
       expect(io.asked).toHaveLength(0);
       expect((await verifyAccountLogin(r.deps, { username, password: NEW })).ok).toBe(false);
@@ -75,12 +95,31 @@ describe('runResetPassword', () => {
   it('refuses two prompts that differ, a weak password, an unknown name and a missing operator; changes nothing', async () => {
     const { r, username } = await world();
     const run = (answers: string[], over: Record<string, string> = {}) =>
-      runResetPassword({ deps: r.deps, tty: TTY, operator_id: 'opr_v', username, ...scripted(answers), ...over });
+      runResetPassword({
+        deps: r.deps,
+        tty: TTY,
+        operator_id: 'opr_v',
+        username,
+        ...scripted(answers),
+        ...over,
+      });
     expect(await run([NEW, 'another quiet harbour'])).toEqual({ ok: false, error: 'mismatch' });
-    expect(await run(['tiny', 'tiny'])).toEqual({ ok: false, error: 'weak_password' });
-    expect(await run([NEW, NEW], { username: 'no.such.user' })).toEqual({ ok: false, error: 'unknown_account' });
-    expect(await run([NEW, NEW], { operator_id: '  ' })).toEqual({ ok: false, error: 'operator_required' });
-    expect((await verifyAccountLogin(r.deps, { username, password: 'violet lamps hum softly' })).ok).toBe(true);
+    expect(await run(['tiny', 'tiny'])).toEqual({
+      ok: false,
+      error: 'weak_password',
+      reason: 'too_short',
+    });
+    expect(await run([NEW, NEW], { username: 'no.such.user' })).toEqual({
+      ok: false,
+      error: 'unknown_account',
+    });
+    expect(await run([NEW, NEW], { operator_id: '  ' })).toEqual({
+      ok: false,
+      error: 'operator_required',
+    });
+    expect(
+      (await verifyAccountLogin(r.deps, { username, password: 'violet lamps hum softly' })).ok,
+    ).toBe(true);
     expect(r.audit.filter((e) => e.action === 'account.password_changed')).toHaveLength(0);
   });
 });

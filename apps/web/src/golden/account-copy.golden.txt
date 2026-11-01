@@ -10,6 +10,7 @@ door seller signed in: Go to your publisher pages -> /publisher
 door operator: Operator | I run the platform | Review applications, watch payments and stop PayPal calls. | You need: your passcode, your operator name and the code from your authenticator app.
 door operator button: Go to operator sign in -> /signin/operator
 door operator signed in: Go to operations -> /ops
+signed in here: You are signed in here.
 judges: Judges and testers sign in with a test persona. | Open the test sign in
 buyer: Buy articles one at a time | Make a free account once. Come back any day with the same username and password.
 buyer need: What you need
@@ -66,6 +67,7 @@ seller how: What happens next | Your application appears in Operations. The owne
 seller buttons: Apply to publish | Check an application | Sign in
 seller sign in: Publisher sign in | Choose your publisher and enter the publisher passcode. The owners set this up after they approve an application.
 seller sign in fields: Your publisher | No account yet? | Apply to publish
+seller sign in failed: That passcode did not work. Check it and try again.
 operator sign in: Operator sign in | Operators sign in with three things: the passcode, your operator name and the 6 digit code from your authenticator app.
 operator fields: Operator name | Operator passcode | Authenticator code
 operator code hint: The 6 digits from your authenticator app. Leave the name and code empty to look and stop PayPal calls only: refunds and switching anything on need the code.

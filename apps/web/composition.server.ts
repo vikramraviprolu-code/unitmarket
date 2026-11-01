@@ -203,10 +203,16 @@ import {
   resolveSession,
   revokeSession,
   clearSessionCookie,
+  changePassword as changeAccountPassword,
+  checkNewAccount,
+  createAccount,
+  revokeBuyerSessions,
   takeToken,
+  verifyAccountLogin,
   verifyPasscode,
 } from '@umsbx/security';
-import type { SecurityDeps } from '@umsbx/security';
+import type { PasswordRefusal, SecurityDeps } from '@umsbx/security';
+import { ACCOUNT_CONSENT_VERSION } from './src/lib/account-copy';
 import { DRYRUN_SCENARIOS, createDryRunModel, isScenarioId } from './src/server/dryrun-model';
 import { buildOutbound } from './src/server/outbound.server';
 import { createLearnRecorder, receiveWebhook, webhookAllowed } from './src/server/webhook';
@@ -632,6 +638,22 @@ export interface PublisherHome {
   settlement: Settlement;
 }
 
+/** ID-ACCOUNTS: what the account page shows about a buyer who signed up with a username and password. */
+export interface AccountView {
+  username: string;
+  display_name: string;
+  country: string;
+}
+
+/** ID-ACCOUNTS: the answer to a signup. A honeypot gets `ok` with no cookie, like a success, and stores nothing. */
+export type SignUpResult =
+  | { ok: true; csrf_token: string; cookie: string | null }
+  | {
+      ok: false;
+      code: 'invalid_input' | 'busy' | 'rate_limited' | 'taken' | 'weak_password';
+      reason?: PasswordRefusal;
+    };
+
 export interface Engine {
   personas(): readonly Persona[];
   /**
@@ -646,6 +668,45 @@ export interface Engine {
     code?: string | undefined;
   }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
   actorFromCookie(cookie: string | null): Promise<Actor | null>;
+  /**
+   * ID-ACCOUNTS: buyer accounts (a username and a password, no email). Every sign in and every signup makes
+   * a new session and ends `previous`, the session of the browser's own cookie, if there is one.
+   */
+  accounts: {
+    /**
+     * Signup. An unknown client address answers busy and spends nothing; 5 a hour per hashed address; a
+     * filled honeypot answers ok and stores nothing; a taken name answers `taken`.
+     */
+    signUp(i: {
+      display_name: string;
+      username: string;
+      country: string;
+      password: string;
+      trap: string;
+      ip_hash: string;
+      ip_known: boolean;
+      previous: { id: Id; actor: Actor } | null;
+    }): Promise<SignUpResult>;
+    /** Null for an unknown name, a wrong password and a locked account alike. */
+    signIn(i: {
+      username: string;
+      password: string;
+      previous: { id: Id; actor: Actor } | null;
+    }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
+    changePassword(i: {
+      actor: Actor;
+      session_id: Id | null;
+      current_password: string;
+      new_password: string;
+    }): Promise<
+      | { ok: true }
+      | { ok: false; code: 'no_account' | 'wrong_password' }
+      | { ok: false; code: 'weak_password'; reason: PasswordRefusal }
+    >;
+    /** Ends every session of the signed in account buyer (this one too). Null for a buyer with no account. */
+    signOutEverywhere(i: { actor: Actor }): Promise<{ cookie: string } | null>;
+    view(actor: Actor): Promise<AccountView | null>;
+  };
   /**
    * FIX-FLOW D1: sign out. Ends the one live session `session_id` of `actor` (never the actor's other
    * sessions) and returns the Set-Cookie value that clears the cookie. With no session it only clears.
@@ -983,6 +1044,14 @@ export const PACK_APPROVAL_WINDOW_MS = 3_600_000;
 
 /** PUB-APPLY: each well formed call to applyToPublish spends one token of the address's bucket. */
 export const APPLY_RATE = { name: 'apply', per: 'ip', limit: 5, window_ms: 3_600_000 } as const;
+
+/** ID-ACCOUNTS: each well formed signup spends one token of the address's bucket (5 an hour). */
+export const ACCOUNT_SIGNUP_RATE = {
+  name: 'account-signup',
+  per: 'ip',
+  limit: 5,
+  window_ms: 3_600_000,
+} as const;
 
 export const DOMAIN_CONFIG = (c: Config): DomainConfig => ({
   reconcile_window_ms: DAY_MS,
@@ -1719,6 +1788,82 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
 
     actorFromCookie: (cookie) => resolveSession(security, cookie),
+
+    // ID-ACCOUNTS. Routes call these; the rules live in @umsbx/security (accounts.ts).
+    accounts: {
+      async signUp(i) {
+        // No known address: every visitor would share one bucket. Refuse before anything is read or spent.
+        if (!i.ip_known) return { ok: false, code: 'busy' };
+        // Shape and password policy first: a refused submission spends nothing and stores nothing.
+        const username = i.username;
+        const checked = checkNewAccount(i);
+        if (!checked.ok)
+          return checked.code === 'weak_password'
+            ? { ok: false, code: 'weak_password', reason: checked.reason }
+            : { ok: false, code: 'invalid_input' };
+        const v = await takeToken({ db, clock }, ACCOUNT_SIGNUP_RATE, i.ip_hash);
+        if (!v.allowed) return { ok: false, code: 'rate_limited' };
+        if (i.trap.trim() !== '') {
+          // The honeypot: the shape of a success, no cookie, nothing stored.
+          return { ok: true, csrf_token: ids.nonce(), cookie: null };
+        }
+        const made = await createAccount(security, {
+          display_name: i.display_name,
+          username,
+          country: i.country,
+          password: i.password,
+          consent_version: ACCOUNT_CONSENT_VERSION,
+        });
+        if (!made.ok)
+          return made.code === 'weak_password'
+            ? { ok: false, code: 'weak_password', reason: made.reason }
+            : { ok: false, code: made.code };
+        const actor: Actor = { kind: 'buyer', buyer_id: made.buyer_id };
+        const s = await createSession(security, actor);
+        if (i.previous !== null) await revokeSession(security, i.previous);
+        return { ok: true, csrf_token: s.csrf_token, cookie: s.cookie };
+      },
+
+      async signIn({ username, password, previous }) {
+        const r = await verifyAccountLogin(security, { username, password });
+        if (!r.ok) return null;
+        const actor: Actor = { kind: 'buyer', buyer_id: r.buyer_id };
+        const s = await createSession(security, actor);
+        if (previous !== null) await revokeSession(security, previous);
+        return { actor, cookie: s.cookie, csrf_token: s.csrf_token };
+      },
+
+      async changePassword({ actor, session_id, current_password, new_password }) {
+        if (actor.kind !== 'buyer') return { ok: false, code: 'no_account' };
+        const r = await changeAccountPassword(security, {
+          buyer_id: actor.buyer_id,
+          current_password,
+          new_password,
+          keep_session_id: session_id,
+        });
+        return r.ok ? { ok: true } : r;
+      },
+
+      async signOutEverywhere({ actor }) {
+        if (actor.kind !== 'buyer') return null;
+        const own = await db.query('SELECT 1 FROM buyer_accounts WHERE buyer_id = $1', [
+          actor.buyer_id,
+        ]);
+        if (own.rows.length === 0) return null;
+        await revokeBuyerSessions(security, { buyer_id: actor.buyer_id, keep_session_id: null });
+        return { cookie: clearSessionCookie() };
+      },
+
+      async view(actor) {
+        if (actor.kind !== 'buyer') return null;
+        const r = await db.query<AccountView>(
+          `SELECT a.username, b.display_name, b.country FROM buyer_accounts a
+             JOIN buyers b ON b.id = a.buyer_id WHERE a.buyer_id = $1`,
+          [actor.buyer_id],
+        );
+        return r.rows[0] ?? null;
+      },
+    },
 
     async signOut({ actor, session_id }) {
       if (session_id !== null) await revokeSession(security, { id: session_id, actor });

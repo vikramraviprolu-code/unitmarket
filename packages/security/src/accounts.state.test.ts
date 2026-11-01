@@ -14,9 +14,15 @@ import {
   verifyAccountLogin,
 } from './accounts';
 import { createSession, resolveSession } from './session';
-import { cookiePair, makeRig } from './test-support';
+import { cookiePair, makeRig as baseRig, seededIds } from './test-support';
 import type { TestRig } from './test-support';
 
+// One database per file, so every rig needs ids of its own.
+let rigs = 0;
+const makeRig = () => {
+  rigs += 1;
+  return baseRig({ ids: seededIds(`accounts-${String(rigs)}`) });
+};
 const MIN = 60_000;
 const PASSWORD = 'violet lamps hum softly';
 const NEW_PASSWORD = 'seven quiet harbours';
@@ -63,7 +69,9 @@ describe('createAccount', () => {
     );
     expect(acct).toHaveLength(1);
     expect(acct[0]).toMatchObject({ username: a.username, failed_attempts: 0, locked_until: null });
-    expect(String(acct[0]!['password_hash'])).toMatch(/^scrypt:16384:8:1:[0-9a-f]{32,}:[0-9a-f]{64}$/);
+    expect(String(acct[0]!['password_hash'])).toMatch(
+      /^scrypt:16384:8:1:[0-9a-f]{32,}:[0-9a-f]{64}$/,
+    );
     expect(JSON.stringify(acct)).not.toContain(PASSWORD);
     const consents = await rows<{ kind: string; text_version: string; revoked_at: unknown }>(
       r,
@@ -76,7 +84,10 @@ describe('createAccount', () => {
     ]);
     const signups = r.audit.filter((e) => e.action === 'account.signup');
     expect(signups).toHaveLength(1);
-    expect(signups[0]).toMatchObject({ actor: { kind: 'buyer', buyer_id: a.buyer_id }, target: a.buyer_id });
+    expect(signups[0]).toMatchObject({
+      actor: { kind: 'buyer', buyer_id: a.buyer_id },
+      target: a.buyer_id,
+    });
     expect(JSON.stringify(r.audit)).not.toContain(PASSWORD);
   });
 
@@ -84,10 +95,15 @@ describe('createAccount', () => {
     const r = await makeRig();
     const a = await open(r);
     const before = await rows<{ c: string }>(r, 'SELECT count(*) AS c FROM buyers');
-    const again = await createAccount(r.deps, input({ username: a.username, display_name: 'Other' }));
+    const again = await createAccount(
+      r.deps,
+      input({ username: a.username, display_name: 'Other' }),
+    );
     expect(again).toEqual({ ok: false, code: 'taken' });
     expect(await rows(r, 'SELECT count(*) AS c FROM buyers')).toEqual(before);
-    expect(await rows(r, 'SELECT 1 FROM buyer_accounts WHERE username = $1', [a.username])).toHaveLength(1);
+    expect(
+      await rows(r, 'SELECT 1 FROM buyer_accounts WHERE username = $1', [a.username]),
+    ).toHaveLength(1);
   });
 
   it('refuses a weak password, a bad username and a bad country, and writes nothing', async () => {
@@ -124,8 +140,22 @@ describe('createAccount', () => {
   it('keeps the whole password, spaces included', async () => {
     const r = await makeRig();
     const a = await open(r, { password: '  two spaces either side  ' });
-    expect((await verifyAccountLogin(r.deps, { username: a.username, password: '  two spaces either side  ' })).ok).toBe(true);
-    expect((await verifyAccountLogin(r.deps, { username: a.username, password: 'two spaces either side' })).ok).toBe(false);
+    expect(
+      (
+        await verifyAccountLogin(r.deps, {
+          username: a.username,
+          password: '  two spaces either side  ',
+        })
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
+        await verifyAccountLogin(r.deps, {
+          username: a.username,
+          password: 'two spaces either side',
+        })
+      ).ok,
+    ).toBe(false);
   });
 });
 
@@ -143,8 +173,14 @@ describe('verifyAccountLogin', () => {
   it('answers a wrong password and an unknown name with the same value', async () => {
     const r = await makeRig();
     const a = await open(r);
-    const wrong = await verifyAccountLogin(r.deps, { username: a.username, password: 'not the one' });
-    const unknown = await verifyAccountLogin(r.deps, { username: 'nobody.here', password: PASSWORD });
+    const wrong = await verifyAccountLogin(r.deps, {
+      username: a.username,
+      password: 'not the one',
+    });
+    const unknown = await verifyAccountLogin(r.deps, {
+      username: 'nobody.here',
+      password: PASSWORD,
+    });
     expect(wrong).toEqual({ ok: false });
     expect(unknown).toEqual(wrong);
   });
@@ -169,15 +205,28 @@ describe('verifyAccountLogin', () => {
   it('locks the account after five failures for 15 minutes, and a locked account answers like a wrong password', async () => {
     const r = await makeRig();
     const a = await open(r);
-    expect([ACCOUNT_LOCK_THRESHOLD, ACCOUNT_LOCK_BASE_MS, ACCOUNT_LOCK_CAP_MS]).toEqual([5, 15 * MIN, 60 * MIN]);
+    expect([ACCOUNT_LOCK_THRESHOLD, ACCOUNT_LOCK_BASE_MS, ACCOUNT_LOCK_CAP_MS]).toEqual([
+      5,
+      15 * MIN,
+      60 * MIN,
+    ]);
     for (let i = 0; i < 5; i++) {
-      expect(await verifyAccountLogin(r.deps, { username: a.username, password: `wrong ${String(i)} phrase here` })).toEqual({ ok: false });
+      expect(
+        await verifyAccountLogin(r.deps, {
+          username: a.username,
+          password: `wrong ${String(i)} phrase here`,
+        }),
+      ).toEqual({ ok: false });
     }
     expect(r.audit.filter((e) => e.action === 'account.locked')).toHaveLength(1);
     // the right password is refused inside the window, with the answer of a wrong one
-    expect(await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).toEqual({ ok: false });
+    expect(await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).toEqual({
+      ok: false,
+    });
     r.clock.advance(14 * MIN + 59_000);
-    expect(await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).toEqual({ ok: false });
+    expect(await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).toEqual({
+      ok: false,
+    });
     // attempts inside the window do not extend it and do not add lock rows
     expect(r.audit.filter((e) => e.action === 'account.locked')).toHaveLength(1);
     r.clock.advance(1_000);
@@ -196,7 +245,8 @@ describe('verifyAccountLogin', () => {
   it('doubles the lock on each further failure, up to one hour', async () => {
     const r = await makeRig();
     const a = await open(r);
-    const fail = () => verifyAccountLogin(r.deps, { username: a.username, password: 'never the password' });
+    const fail = () =>
+      verifyAccountLogin(r.deps, { username: a.username, password: 'never the password' });
     const lockedFor = async (): Promise<number> => {
       const x = await rows<{ locked_until: Date | string }>(
         r,
@@ -217,18 +267,27 @@ describe('verifyAccountLogin', () => {
   it('a right password before the fifth failure resets the count', async () => {
     const r = await makeRig();
     const a = await open(r);
-    for (let i = 0; i < 4; i++) await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
-    expect((await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).ok).toBe(true);
-    for (let i = 0; i < 4; i++) await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
-    expect((await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).ok).toBe(true);
+    for (let i = 0; i < 4; i++)
+      await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
+    expect(
+      (await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).ok,
+    ).toBe(true);
+    for (let i = 0; i < 4; i++)
+      await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
+    expect(
+      (await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).ok,
+    ).toBe(true);
   });
 
   it('one account locking does not touch another', async () => {
     const r = await makeRig();
     const a = await open(r);
     const b = await open(r);
-    for (let i = 0; i < 5; i++) await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
-    expect((await verifyAccountLogin(r.deps, { username: b.username, password: PASSWORD })).ok).toBe(true);
+    for (let i = 0; i < 5; i++)
+      await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
+    expect(
+      (await verifyAccountLogin(r.deps, { username: b.username, password: PASSWORD })).ok,
+    ).toBe(true);
   });
 });
 
@@ -261,8 +320,12 @@ describe('changePassword', () => {
     expect(await resolveSession(r.deps, cookiePair(here.cookie))).toEqual(actor);
     expect(await resolveSession(r.deps, cookiePair(there.cookie))).toBeNull();
     expect(await resolveSession(r.deps, cookiePair(other.cookie))).not.toBeNull();
-    expect((await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).ok).toBe(false);
-    expect((await verifyAccountLogin(r.deps, { username: a.username, password: NEW_PASSWORD })).ok).toBe(true);
+    expect(
+      (await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).ok,
+    ).toBe(false);
+    expect(
+      (await verifyAccountLogin(r.deps, { username: a.username, password: NEW_PASSWORD })).ok,
+    ).toBe(true);
     const changed = r.audit.filter((e) => e.action === 'account.password_changed');
     expect(changed).toHaveLength(1);
     expect(JSON.stringify(r.audit)).not.toContain(NEW_PASSWORD);
@@ -282,7 +345,9 @@ describe('changePassword', () => {
       ok: false,
       code: 'weak_password',
     });
-    expect((await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).ok).toBe(true);
+    expect(
+      (await verifyAccountLogin(r.deps, { username: a.username, password: PASSWORD })).ok,
+    ).toBe(true);
   });
 
   it('counts wrong current passwords towards the lock, and answers no_account for a buyer with no account', async () => {
@@ -322,7 +387,9 @@ describe('revokeBuyerSessions', () => {
     const s1 = await createSession(r.deps, actor);
     const s2 = await createSession(r.deps, actor);
     const o = await createSession(r.deps, { kind: 'buyer', buyer_id: 'buy_rev_two' });
-    expect(await revokeBuyerSessions(r.deps, { buyer_id: actor.buyer_id, keep_session_id: null })).toBe(2);
+    expect(
+      await revokeBuyerSessions(r.deps, { buyer_id: actor.buyer_id, keep_session_id: null }),
+    ).toBe(2);
     expect(await resolveSession(r.deps, cookiePair(s1.cookie))).toBeNull();
     expect(await resolveSession(r.deps, cookiePair(s2.cookie))).toBeNull();
     expect(await resolveSession(r.deps, cookiePair(o.cookie))).not.toBeNull();
@@ -336,7 +403,8 @@ describe('resetPasswordForOperator', () => {
     const a = await open(r);
     const actor = { kind: 'buyer', buyer_id: a.buyer_id } as const;
     const s = await createSession(r.deps, actor);
-    for (let i = 0; i < 5; i++) await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
+    for (let i = 0; i < 5; i++)
+      await verifyAccountLogin(r.deps, { username: a.username, password: 'wrong wrong wrong' });
     const before = r.audit.length;
     const res = await resetPasswordForOperator(r.deps, {
       username: a.username,
@@ -345,10 +413,15 @@ describe('resetPasswordForOperator', () => {
     });
     expect(res).toEqual({ ok: true, revoked: 1 });
     expect(await resolveSession(r.deps, cookiePair(s.cookie))).toBeNull();
-    expect((await verifyAccountLogin(r.deps, { username: a.username, password: NEW_PASSWORD })).ok).toBe(true);
+    expect(
+      (await verifyAccountLogin(r.deps, { username: a.username, password: NEW_PASSWORD })).ok,
+    ).toBe(true);
     const added = r.audit.slice(before).filter((e) => e.action.startsWith('account.password'));
     expect(added).toHaveLength(1);
-    expect(added[0]).toMatchObject({ actor: { kind: 'operator', operator_id: 'opr_vikram' }, target: a.buyer_id });
+    expect(added[0]).toMatchObject({
+      actor: { kind: 'operator', operator_id: 'opr_vikram' },
+      target: a.buyer_id,
+    });
     expect(JSON.stringify(added)).not.toContain(NEW_PASSWORD);
   });
 
@@ -356,10 +429,18 @@ describe('resetPasswordForOperator', () => {
     const r = await makeRig();
     const a = await open(r);
     expect(
-      await resetPasswordForOperator(r.deps, { username: a.username, new_password: 'tiny', operator_id: 'opr_v' }),
+      await resetPasswordForOperator(r.deps, {
+        username: a.username,
+        new_password: 'tiny',
+        operator_id: 'opr_v',
+      }),
     ).toEqual({ ok: false, code: 'weak_password', reason: 'too_short' });
     expect(
-      await resetPasswordForOperator(r.deps, { username: 'no.such.user', new_password: NEW_PASSWORD, operator_id: 'opr_v' }),
+      await resetPasswordForOperator(r.deps, {
+        username: 'no.such.user',
+        new_password: NEW_PASSWORD,
+        operator_id: 'opr_v',
+      }),
     ).toEqual({ ok: false, code: 'unknown_account' });
   });
 });

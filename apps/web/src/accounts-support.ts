@@ -64,7 +64,12 @@ export const freshIp = (): string => {
   return `198.51.${String(100 + Math.floor(addr / 250))}.${String(addr % 250)}`;
 };
 
-export function post(handler: Handler, path: string, body: unknown, o: PostOpts = {}): Promise<Response> {
+export function post(
+  handler: Handler,
+  path: string,
+  body: unknown,
+  o: PostOpts = {},
+): Promise<Response> {
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     'x-forwarded-for': o.ip ?? freshIp(),
@@ -106,7 +111,10 @@ export async function got(res: Response): Promise<Got> {
     status: res.status,
     json,
     text,
-    cookie: setCookie.includes('=') && !/Max-Age=0/.test(setCookie) ? (setCookie.split(';')[0] ?? null) : null,
+    cookie:
+      setCookie.includes('=') && !/Max-Age=0/.test(setCookie)
+        ? (setCookie.split(';')[0] ?? null)
+        : null,
     setCookie,
     csrf: typeof json['csrf_token'] === 'string' ? json['csrf_token'] : null,
     retryAfter: res.headers.get('retry-after'),
@@ -141,11 +149,24 @@ export const signupBody = (o: Record<string, unknown> = {}): Record<string, unkn
 export async function newAccount(w: AccountsWorld, o: Record<string, unknown> = {}) {
   const body = signupBody(o);
   const g = await got(await post(w.signup.POST, '/api/accounts', body));
-  if (g.status !== 200 || g.cookie === null || g.csrf === null) throw new Error(`signup failed ${String(g.status)} ${g.text}`);
-  return { username: body['username'] as string, password: body['password'] as string, cookie: g.cookie, csrf: g.csrf };
+  if (g.status !== 200 || g.cookie === null || g.csrf === null)
+    throw new Error(`signup failed ${String(g.status)} ${g.text}`);
+  return {
+    username: body['username'] as string,
+    password: body['password'] as string,
+    cookie: g.cookie,
+    csrf: g.csrf,
+  };
 }
 
-export async function operatorCookie(app: App, mfa = true): Promise<{ cookie: string; csrf: string }> {
-  const s = await createSession(app.security, { kind: 'operator', operator_id: 'opr_vikram', mfa } as Actor);
+export async function operatorCookie(
+  app: App,
+  mfa = true,
+): Promise<{ cookie: string; csrf: string }> {
+  const s = await createSession(app.security, {
+    kind: 'operator',
+    operator_id: 'opr_vikram',
+    mfa,
+  } as Actor);
   return { cookie: s.cookie.split(';')[0] ?? '', csrf: s.csrf_token };
 }

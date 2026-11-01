@@ -36,7 +36,14 @@ const acct = (
     `INSERT INTO buyer_accounts
        (buyer_id, username, password_hash, failed_attempts, locked_until, password_changed_at, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, $6, $6, $6)`,
-    [buyer_id, username, over.hash === undefined ? HASH : over.hash, over.failed ?? 0, over.locked ?? null, T],
+    [
+      buyer_id,
+      username,
+      over.hash === undefined ? HASH : over.hash,
+      over.failed ?? 0,
+      over.locked ?? null,
+      T,
+    ],
   );
 
 describe('migration 0016', () => {
@@ -45,11 +52,16 @@ describe('migration 0016', () => {
     toClose.push(d);
     const first = await migrate(d, clock);
     expect(first).toContain('0016_buyer_accounts');
-    expect(first.indexOf('0016_buyer_accounts')).toBeGreaterThan(first.indexOf('0015_publisher_agreements'));
+    expect(first.indexOf('0016_buyer_accounts')).toBeGreaterThan(
+      first.indexOf('0015_publisher_agreements'),
+    );
     expect(await migrate(d, clock)).toEqual([]);
     const dir = new URL('../migrations/common/', import.meta.url);
     expect(readdirSync(dir).filter((n) => /^0016_.*(down|rollback)/i.test(n))).toEqual([]);
-    const sql = readFileSync(new URL('0016_buyer_accounts.sql', dir), 'utf8').replace(/--.*$/gm, '');
+    const sql = readFileSync(new URL('0016_buyer_accounts.sql', dir), 'utf8').replace(
+      /--.*$/gm,
+      '',
+    );
     expect(sql).not.toMatch(/\bDEFAULT\b/i);
     expect(sql).not.toMatch(/\bnow\s*\(/i);
   });
@@ -70,7 +82,9 @@ describe('migration 0016', () => {
       'updated_at',
       'username',
     ]);
-    expect(cols.rows.filter((c) => c.is_nullable === 'YES').map((c) => c.column_name)).toEqual(['locked_until']);
+    expect(cols.rows.filter((c) => c.is_nullable === 'YES').map((c) => c.column_name)).toEqual([
+      'locked_until',
+    ]);
   });
 
   it('stores one account per buyer, a unique username, and refuses a username of the wrong shape', async () => {
@@ -81,7 +95,16 @@ describe('migration 0016', () => {
     await acct(d, 'buy_a', 'alice.x');
     await expect(acct(d, 'buy_a', 'alice.y')).rejects.toThrow();
     await expect(acct(d, 'buy_b', 'alice.x')).rejects.toThrow();
-    for (const bad of ['ab', 'x'.repeat(31), 'Alice', 'a b', 'a@b.c', "o'neil", '', 'ü'.repeat(3)]) {
+    for (const bad of [
+      'ab',
+      'x'.repeat(31),
+      'Alice',
+      'a b',
+      'a@b.c',
+      "o'neil",
+      '',
+      'ü'.repeat(3),
+    ]) {
       await expect(acct(d, 'buy_c', bad), bad).rejects.toThrow();
     }
     await acct(d, 'buy_b', 'a'.repeat(30));
@@ -101,13 +124,20 @@ describe('migration 0016', () => {
     const d = await fresh();
     await buyer(d, 'buy_a');
     await acct(d, 'buy_a', 'alice.x');
-    await d.query("UPDATE buyer_accounts SET failed_attempts = 5, locked_until = $1 WHERE buyer_id = 'buy_a'", [T]);
-    expect((await d.query('SELECT failed_attempts FROM buyer_accounts')).rows).toEqual([{ failed_attempts: 5 }]);
+    await d.query(
+      "UPDATE buyer_accounts SET failed_attempts = 5, locked_until = $1 WHERE buyer_id = 'buy_a'",
+      [T],
+    );
+    expect((await d.query('SELECT failed_attempts FROM buyer_accounts')).rows).toEqual([
+      { failed_attempts: 5 },
+    ]);
   });
 
   it('leaves buyers alone: a persona buyer needs no account', async () => {
     const d = await fresh();
     await buyer(d, 'buy_persona');
-    expect(Number((await d.query<{ c: string }>('SELECT count(*) AS c FROM buyer_accounts')).rows[0]!.c)).toBe(0);
+    expect(
+      Number((await d.query<{ c: string }>('SELECT count(*) AS c FROM buyer_accounts')).rows[0]!.c),
+    ).toBe(0);
   });
 });

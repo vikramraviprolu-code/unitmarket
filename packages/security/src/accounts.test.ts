@@ -72,7 +72,9 @@ describe('password policy: block list and context', () => {
     for (const p of short) expect(ok(p).ok, p).toBe(false);
   });
   it('compares after NFKC: a full width copy of a common password is still common', () => {
-    const p = COMMON_PASSWORDS.find((x) => Array.from(x).length >= PASSWORD_MIN && /^[a-z0-9]+$/.test(x))!;
+    const p = COMMON_PASSWORDS.find(
+      (x) => Array.from(x).length >= PASSWORD_MIN && /^[a-z0-9]+$/.test(x),
+    )!;
     const wide = Array.from(p)
       .map((c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0))
       .join('');

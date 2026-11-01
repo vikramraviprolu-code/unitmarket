@@ -44,3 +44,28 @@ export type { OperatorSignIn, TotpVerdict } from './totp';
 export { securityHeaders } from './headers';
 export { DEFAULT_RATES, takeToken } from './rate';
 export { AUTH_RULES, checkEntry, formatInventory, parseRouteMeta, pathFromFile } from './inventory';
+export {
+  ACCOUNT_LOCK_BASE_MS,
+  ACCOUNT_LOCK_CAP_MS,
+  ACCOUNT_LOCK_THRESHOLD,
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  USERNAME_PATTERN,
+  changePassword,
+  checkNewAccount,
+  checkPasswordPolicy,
+  createAccount,
+  resetPasswordForOperator,
+  revokeBuyerSessions,
+  verifyAccountLogin,
+} from './accounts';
+export type {
+  ChangePasswordResult,
+  CreateAccountResult,
+  LoginResult,
+  PasswordRefusal,
+  PolicyVerdict,
+  ResetResult,
+} from './accounts';
+export { runResetPassword } from './accounts-cli';
+export type { ResetCliError, ResetCliResult } from './accounts-cli';
