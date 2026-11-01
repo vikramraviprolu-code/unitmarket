@@ -20,7 +20,6 @@ export const OPS_START_LEDE =
   'This turns the PayPal switch on. It works only while an active approval row covers it, and it cannot add one: the owner does that at their own terminal.';
 export const OPS_START_NEEDS_CODE = 'Sign in with your authenticator code to start PayPal.';
 export const OPS_START_ALREADY_ON = 'PayPal calls are already on, so there is nothing to start.';
-export const OPS_STOP_ALREADY_OFF = 'PayPal calls are already off, so there is nothing to stop.';
 export const OPS_START_NO_APPROVAL =
   'There is no active approval, so PayPal cannot be started from here. The owner adds one at their own terminal.';
 export const OPS_CONNECT_FLAG_OFF =
@@ -37,7 +36,8 @@ export const startDoneText = (calls_left: number): string =>
  */
 export interface KillControlsView {
   start: 'form' | 'already_on' | 'needs_code' | 'no_approval';
-  stop: 'form' | 'already_off';
+  /** Always the form: a stop is idempotent and needs no authenticator code, so it is never hidden. */
+  stop: 'form';
 }
 export function killControlsView(i: {
   outboundOn: boolean;
@@ -45,9 +45,9 @@ export function killControlsView(i: {
   activeScope: string | null;
 }): KillControlsView {
   if (i.outboundOn) return { start: 'already_on', stop: 'form' };
-  if (!i.hasCode) return { start: 'needs_code', stop: 'already_off' };
-  if (i.activeScope === null) return { start: 'no_approval', stop: 'already_off' };
-  return { start: 'form', stop: 'already_off' };
+  if (!i.hasCode) return { start: 'needs_code', stop: 'form' };
+  if (i.activeScope === null) return { start: 'no_approval', stop: 'form' };
+  return { start: 'form', stop: 'form' };
 }
 
 /** The sentence for each way the start route refuses. */
@@ -68,13 +68,25 @@ export function startRefusalText(code: string): string {
     case 'already_on':
       return 'PayPal calls are already on, so nothing was changed.';
     case 'switch_locked':
-      return 'The switch is held off by something else, so it was not turned on. Nothing was changed.';
+      return 'The switch could not be changed right now, so the start may not have happened. Reload the page to see the switch.';
+    case 'switch_changed':
+      return 'The switch was changed by someone else while you were starting it, so nothing was changed here. Reload the page to see the switch.';
+    case 'start_unknown':
+      return 'Something went wrong, so the start may not have happened. Reload the page to see the switch.';
     case 'reason_required':
       return 'Please say why you are starting PayPal calls.';
     default:
       return 'PayPal was not started. Nothing was changed.';
   }
 }
+
+/** The state of the switch read back after an unsure start, as one sentence. */
+export const switchNowText = (on: boolean | null): string =>
+  on === null
+    ? 'The switch could not be read.'
+    : on
+      ? 'The switch reads On now.'
+      : 'The switch reads Off now.';
 
 // ---- Section tabs ------------------------------------------------------------------------------
 // One list per operator page. Each id is the id of a section element on that page, in page order.

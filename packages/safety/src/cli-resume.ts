@@ -15,7 +15,8 @@ export type ResumeCoreError =
   | 'budget_used_up'
   | 'already_on'
   | 'scope_not_confirmed'
-  | 'switch_locked';
+  | 'switch_locked'
+  | 'switch_changed';
 
 export type ResumeError = 'not_a_tty' | 'ci_set' | 'ai_session' | ResumeCoreError;
 
@@ -31,12 +32,16 @@ const AI_MARKERS = [
 const CI_MARKERS = ['GITHUB_ACTIONS'] as const;
 const set = (v: string | undefined): boolean => v !== undefined && v !== '';
 
+const isLockNotAvailable = (e: unknown): boolean =>
+  typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '55P03';
+
 /**
  * The one check behind `pnpm safety:resume` and the Operations "Start PayPal" button (WEB-OPS-START).
  * Both call this; neither has a copy. In order: a reason, an operator with the second factor, an active
  * approval row for the configured reference and for the scope the app serves, calls left for the day,
  * (when asked) a switch that is still off, then `confirm` (the person typed the scope back), and only
- * then setSwitch, in one transaction with its own audit row and a `safety.resume` row. It never
+ * then setSwitch, in one transaction with its own audit row and a `safety.resume` row (the switch row is
+ * locked and re-read there: a Stop or another Start that committed since is `switch_changed`). It never
  * inserts an approval and never touches the connect flag.
  */
 export async function resumeOutbound(d: {
@@ -75,6 +80,7 @@ export async function resumeOutbound(d: {
   if (d.refuse_if_on === true && status.switches.some((x) => x.name === 'paypal_outbound' && x.on))
     return err('already_on');
   if (!(await d.confirm(row))) return err('scope_not_confirmed');
+  const seen = status.switches.find((x) => x.name === 'paypal_outbound');
   let r: Awaited<ReturnType<typeof setSwitch>>;
   try {
     r = await setSwitch(d.db, d.audit, d.clock, {
@@ -83,21 +89,39 @@ export async function resumeOutbound(d: {
       by: d.by,
       reason,
       approval_ref: row.approval_ref,
+      // The switch is read again inside the transaction, with its row locked (a Stop or another
+      // Start can commit between the read above and here).
+      resume_guard: {
+        refuse_if_on: d.refuse_if_on === true,
+        seen_changed_at: seen === undefined ? '' : seen.changed_at,
+      },
       also_audit: {
         action: 'safety.resume',
         target: row.approval_ref,
         detail: { approval_ref: row.approval_ref, scope: row.scope },
       },
     });
-  } catch {
-    // The database refused the change (the transaction rolled back): the switch is held off by
-    // something outside this check. Nothing was turned on and no audit row was left behind.
-    return err('switch_locked');
+  } catch (e) {
+    // Only a known lock condition is named: the switch row is held by another transaction (SQLSTATE
+    // 55P03, lock_not_available). The transaction rolled back, so nothing was turned on. Any other
+    // error is unexpected and goes up as it is (the web route answers a generic 500, the command
+    // prints the driver's scrubbed message).
+    if (isLockNotAvailable(e)) return err('switch_locked');
+    throw e;
   }
   // The row can expire between the read above and the transaction: setSwitch checks it again.
   if (!r.ok) {
-    if (r.error === 'approval_not_active') return err('no_active_approval');
-    return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+    switch (r.error) {
+      case 'approval_not_active':
+        return err('no_active_approval');
+      case 'already_on':
+      case 'switch_changed':
+      case 'operator_required':
+      case 'reason_required':
+        return err(r.error);
+      default:
+        return err('reason_required');
+    }
   }
   return ok({
     approval_ref: row.approval_ref,

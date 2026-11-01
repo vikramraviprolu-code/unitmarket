@@ -12,6 +12,12 @@
 //   resume  --operator <id> --reason <text> paypal_outbound on (BU-2, O-B6); terminal only, refuses in CI
 //                                           and AI sessions, needs an active approval row for the configured
 //                                           reference (UMS_OUTBOUND_APPROVAL_REF) and the scope typed back
+//                                           Refusals (the same check as the Start PayPal button on /ops, WEB-OPS-START):
+//                                           no_active_approval, scope_mismatch, budget_used_up (no calls left today),
+//                                           scope_not_confirmed, switch_locked (the switch row is held by another
+//                                           transaction), switch_changed (a stop or another start changed the switch
+//                                           after it was read) and, for the button only, already_on. Any other database
+//                                           error is printed as the driver's scrubbed message.
 //                                           The app must not hold the database (single-opener lock): on a laptop stop it, resume, restart; on the host start it in maintenance mode first (D-037, MVPC-OWNER-STEPS.md Step 6).
 // The operator id names who is acting; the person at a TTY is the second factor the CLIs rely on.
 import { createInterface } from 'node:readline/promises';

@@ -44,46 +44,53 @@ export function StartButton({
     }
     onStarted(r.data);
   }
+  const disabled = busy || reason.trim().length < 3 || scope.trim() === '';
   return (
     <section aria-labelledby="start-heading">
-      <h2 id="start-heading">{OPS_START_HEADING}</h2>
+      <h3 id="start-heading">{OPS_START_HEADING}</h3>
       <p className="oh-hint">{OPS_START_LEDE}</p>
-      <div className="field">
-        <label htmlFor="start-reason">{OPS_START_REASON_LABEL}</label>
-        <input
-          id="start-reason"
-          type="text"
-          maxLength={200}
-          autoComplete="off"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor="start-scope">{OPS_START_SCOPE_LABEL}</label>
-        <input
-          id="start-scope"
-          type="text"
-          maxLength={100}
-          autoComplete="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          aria-describedby="start-scope-hint"
-          value={scope}
-          onChange={(e) => setScope(e.target.value)}
-        />
-        <p className="oh-hint" id="start-scope-hint">
-          {OPS_START_SCOPE_HINT(activeScope)}
-        </p>
-      </div>
-      <button
-        type="button"
-        className="btn"
-        disabled={busy || reason.trim().length < 3 || scope.trim() === ''}
-        onClick={() => void start()}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!disabled) void start();
+        }}
       >
-        {OPS_START_BUTTON}
-      </button>
+        <div className="field">
+          <label htmlFor="start-reason">{OPS_START_REASON_LABEL}</label>
+          <input
+            id="start-reason"
+            type="text"
+            maxLength={200}
+            required
+            aria-required="true"
+            autoComplete="off"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="start-scope">{OPS_START_SCOPE_LABEL}</label>
+          <input
+            id="start-scope"
+            type="text"
+            maxLength={100}
+            required
+            aria-required="true"
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            aria-describedby="start-scope-hint"
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+          />
+          <p className="oh-hint" id="start-scope-hint">
+            {OPS_START_SCOPE_HINT(activeScope)}
+          </p>
+        </div>
+        <button type="submit" className="btn" disabled={disabled}>
+          {OPS_START_BUTTON}
+        </button>
+      </form>
       {error ? <ErrorState title={OPS_START_ERROR_TITLE}>{error}</ErrorState> : null}
     </section>
   );

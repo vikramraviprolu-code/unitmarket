@@ -821,6 +821,8 @@ export interface Engine {
       ResumeCoreError
     >
   >;
+  /** The stored paypal_outbound switch, read now (no cache), or null when it cannot be read. For an operator only. */
+  outboundSwitchOn(actor: Actor): Promise<boolean | null>;
   health(): Promise<{
     ok: boolean;
     environment: EnvironmentLabel;
@@ -2498,6 +2500,18 @@ function buildApp(config: Config, opts: AppOptions): App {
       });
       if (r.ok) return ok(undefined);
       return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+    },
+
+    async outboundSwitchOn(actor) {
+      if (actor.kind !== 'operator') return null;
+      try {
+        const r = await db.query<{ on: boolean }>(
+          `SELECT "on" FROM safety_switches WHERE name = 'paypal_outbound'`,
+        );
+        return r.rows[0]?.on === true;
+      } catch {
+        return null;
+      }
     },
 
     async startOutbound({ actor, reason, confirm_scope }) {

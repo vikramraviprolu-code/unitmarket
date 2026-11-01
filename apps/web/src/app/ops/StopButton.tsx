@@ -5,7 +5,7 @@ import { ErrorState } from '../../ui/ErrorState';
 
 // "Stop PayPal now" (BU-2). Turns the outbound switch off. Turning it back on is the Start control next
 // to it (an operator with the authenticator code, WEB-OPS-START) or `pnpm safety:resume` at the terminal.
-export function StopButton() {
+export function StopButton({ onStopped }: { onStopped?: () => void } = {}) {
   const [reason, setReason] = useState('');
   const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -19,28 +19,33 @@ export function StopButton() {
       return;
     }
     setState('done');
+    onStopped?.();
   }
   return (
     <section aria-labelledby="stop-heading">
-      <h2 id="stop-heading">Stop PayPal calls</h2>
-      <div className="field">
-        <label htmlFor="stop-reason">Why are you stopping PayPal calls?</label>
-        <input
-          id="stop-reason"
-          type="text"
-          maxLength={200}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-        />
-      </div>
-      <button
-        type="button"
-        className="btn"
-        disabled={state === 'busy' || reason.trim() === ''}
-        onClick={() => void stop()}
+      <h3 id="stop-heading">Stop PayPal calls</h3>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (state !== 'busy' && reason.trim() !== '') void stop();
+        }}
       >
-        Stop PayPal now
-      </button>
+        <div className="field">
+          <label htmlFor="stop-reason">Why are you stopping PayPal calls?</label>
+          <input
+            id="stop-reason"
+            type="text"
+            maxLength={200}
+            required
+            aria-required="true"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
+        <button type="submit" className="btn" disabled={state === 'busy' || reason.trim() === ''}>
+          Stop PayPal now
+        </button>
+      </form>
       <div aria-live="polite" data-testid="ops-stop-result">
         {state === 'done'
           ? 'PayPal calls are stopped (in force within 5 seconds). To turn them on again, use Start PayPal with your authenticator code, or the owner runs pnpm safety:resume at their terminal.'

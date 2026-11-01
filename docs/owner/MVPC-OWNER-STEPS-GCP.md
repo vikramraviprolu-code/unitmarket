@@ -228,6 +228,15 @@ connect=off db=postgres`.
 4. Insert the approval row and turn the switch on: run the commands of Step 6 items 4 and 5 of the Render
    file unchanged (`safety:approve ...`, then `safety:resume ...`; type the scope name when asked). Skip
    its items 1 to 3 and 7 (flag, restart, maintenance): there is no flag here.
+
+   `safety:resume` and the Start PayPal button on `/ops` (an operator signed in with the authenticator
+   code) run the same check. They refuse, and change nothing, with: `no_active_approval` (none, or ended),
+   `scope_mismatch`, `budget_used_up` (no calls left today under the approval), `scope_not_confirmed`,
+   `switch_locked` (the switch row is held by another transaction), `switch_changed` (a stop or another
+   start changed the switch after it was read) and, for the button only, `already_on`. After
+   `switch_locked`, `switch_changed` or an error the start may not have happened: reload `/ops` or run
+   `safety:status` to see the switch. The button never adds an approval and never sets the connection flag.
+
 5. Connection on (Step 8, items 1 and 2). Order: Step G (the proxy depth test) and Step 4 (the webhook
    registration, with its id stored and the tag redeployed, Step J) come first, then items 1 to 4 above.
    A redeploy resets the connection to `off`, so this item is repeated after Step J:

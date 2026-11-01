@@ -159,7 +159,7 @@
 .oh-stop {
   border-color: var(--bad);
 }
-.oh-stop h2 {
+.oh-stop h3 {
   margin: 0 0 10px;
   font-size: 1.15rem;
 }
@@ -179,7 +179,7 @@
 .oh-start {
   border-color: var(--good);
 }
-.oh-start h2 {
+.oh-start h3 {
   margin: 0 0 10px;
   font-size: 1.15rem;
 }
