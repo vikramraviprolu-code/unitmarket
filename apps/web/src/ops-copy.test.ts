@@ -62,3 +62,32 @@ describe('ops-copy', () => {
     }
   });
 });
+
+describe('killControlsView', () => {
+  const v = copy.killControlsView;
+  it('switch On: Stop is the form and Start says it is already on', () => {
+    expect(v({ outboundOn: true, hasCode: true, activeScope: 'mvp_b_polling' })).toEqual({
+      start: 'already_on',
+      stop: 'form',
+    });
+    expect(v({ outboundOn: true, hasCode: false, activeScope: null })).toEqual({
+      start: 'already_on',
+      stop: 'form',
+    });
+  });
+  it('switch Off: Start is the form only with the code and an active approval', () => {
+    expect(v({ outboundOn: false, hasCode: true, activeScope: 'mvp_b_polling' })).toEqual({
+      start: 'form',
+      stop: 'already_off',
+    });
+    expect(v({ outboundOn: false, hasCode: false, activeScope: 'mvp_b_polling' })).toEqual({
+      start: 'needs_code',
+      stop: 'already_off',
+    });
+    expect(v({ outboundOn: false, hasCode: true, activeScope: null })).toEqual({
+      start: 'no_approval',
+      stop: 'already_off',
+    });
+    expect(v({ outboundOn: false, hasCode: false, activeScope: null }).start).toBe('needs_code');
+  });
+});

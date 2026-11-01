@@ -175,6 +175,24 @@
   outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
+/* The start control and the one-sentence replacements (WEB-OPS-START): tokens only, like the stop panel. */
+.oh-start {
+  border-color: var(--good);
+}
+.oh-start h2 {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+}
+.oh-start .field {
+  margin-bottom: 12px;
+}
+.oh-start .btn:not([disabled]):not([aria-disabled='true']):focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+.oh-note p {
+  margin: 0;
+}
 .oh-refunds h2 {
   margin: 0 0 12px;
 }

@@ -31,7 +31,7 @@ describe('start is refused', () => {
     expect((await rig.startAs(null, body())).status).toBe(401);
     const { signIn } = await import('./support');
     const b = await signIn(rig.session.POST, 'buyer-a');
-    const p = await signIn(rig.session.POST, 'publisher-harbour');
+    const p = await rig.publisher();
     expect((await rig.startAs(b, body())).status).toBe(403);
     expect((await rig.startAs(p, body())).status).toBe(403);
     expect(await rig.isOn()).toBe(false);
@@ -159,7 +159,7 @@ describe('start succeeds', () => {
       target: REF,
       reason: 'tester sitting',
     });
-    expect(row.rows[0]?.detail).toEqual({ approval_ref: REF, scope: SCOPE });
+    expect(row.rows[0]?.detail).toEqual({ approval_ref: REF, scope: SCOPE, actor_mfa: true });
     // pressing Start never calls PayPal, whatever the flag says
     expect(rig.wire.calls).toHaveLength(0);
     const after = await rig.app.engine.opsSnapshot(who);

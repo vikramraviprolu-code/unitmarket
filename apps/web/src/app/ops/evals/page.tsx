@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EnvLabel } from '../../../ui/EnvLabel';
+import { SectionNav } from '../../../ui/SectionNav';
+import { OPS_EVALS_SECTIONS } from '../../../lib/ops-copy';
 import {
   CLAUDE_CELL_COUNTS_ONLY,
   CLAUDE_CELL_NOT_RUN,
@@ -46,7 +48,9 @@ export default async function Evals() {
         <Link href="/ops">{EVALS_BACK_LINK}</Link>
       </p>
 
-      <ul data-testid="evals-summary">
+      <SectionNav label="Sections of this page" items={OPS_EVALS_SECTIONS} />
+
+      <ul id="ops-evals-summary" data-testid="evals-summary">
         <li data-testid="evals-cases">
           {casesLine(s.baseline.total, s.listing_cases, s.brief_cases)}
         </li>
@@ -57,12 +61,12 @@ export default async function Evals() {
       {s.claude.state === 'not_run' ? <p className="muted">{CLAUDE_NOT_RUN_NOTE}</p> : null}
       <p className="muted">{MODEL_NOTE}</p>
 
-      <h2>{EVALS_WHAT_HEADING}</h2>
+      <h2 id="ops-evals-what">{EVALS_WHAT_HEADING}</h2>
       {EVALS_WHAT.map((p, i) => (
         <p key={i}>{p}</p>
       ))}
 
-      <h2>{EVALS_TABLE_HEADING}</h2>
+      <h2 id="ops-evals-table">{EVALS_TABLE_HEADING}</h2>
       <div className="table-scroll" role="region" aria-label={EVALS_TABLE_HEADING} tabIndex={0}>
         <table>
           <caption className="visually-hidden">{EVALS_TABLE_HEADING}</caption>

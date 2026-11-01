@@ -118,7 +118,7 @@ describe('resumeOutbound: the shared check', () => {
       target: REF,
       reason: 'tester sitting',
     });
-    expect(rows.rows[0]?.detail).toEqual({ approval_ref: REF, scope: SCOPE });
+    expect(rows.rows[0]?.detail).toEqual({ approval_ref: REF, scope: SCOPE, actor_mfa: true });
     // the switch change keeps its own row, as the CLI always wrote it
     expect(await t.count('switch.paypal_outbound.on')).toBe(1);
     // starting spends no call from the budget

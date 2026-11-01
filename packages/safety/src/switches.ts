@@ -66,7 +66,19 @@ export async function setSwitch(
   db: Database,
   audit: AuditSink,
   clock: Clock,
-  i: { name: SwitchName; on: boolean; by: Actor; reason: string; approval_ref: string | null },
+  i: {
+    name: SwitchName;
+    on: boolean;
+    by: Actor;
+    reason: string;
+    approval_ref: string | null;
+    /** A second audit row, written in the same transaction (the resume check records `safety.resume`). */
+    also_audit?: {
+      action: string;
+      target: string | null;
+      detail: Record<string, string | number | boolean | null>;
+    };
+  },
 ): Promise<Result<void, SetSwitchError>> {
   const reason = i.reason.trim();
   if (reason === '') return err('reason_required');
@@ -97,6 +109,14 @@ export async function setSwitch(
       reason,
       detail: { switch: i.name, on: i.on, approval_ref: ref },
     });
+    if (i.also_audit !== undefined)
+      await audit.record(tx, {
+        actor: i.by,
+        action: i.also_audit.action,
+        target: i.also_audit.target,
+        reason,
+        detail: i.also_audit.detail,
+      });
     return false;
   });
   return refused ? err('approval_not_active') : ok(undefined);

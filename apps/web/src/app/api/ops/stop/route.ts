@@ -4,9 +4,10 @@ import type { RouteMeta } from '@umsbx/security';
 import { app, securityDeps } from '../../../../server/access';
 
 // BU-2: the "Stop PayPal now" button. An operator session, a CSRF token and a reason; it turns the
-// paypal_outbound switch OFF and nothing else (it cannot turn anything on: that is `pnpm safety:resume`
-// at the owner's terminal). It sets fail_safe_without_mfa because stopping only reduces what the
-// system may do, and the demo operator has no second factor yet.
+// paypal_outbound switch OFF and nothing else (it cannot turn anything on: turning it on is
+// POST /api/ops/start, which needs the authenticator code, or `pnpm safety:resume` at the owner's
+// terminal). It sets fail_safe_without_mfa because stopping only reduces what the system may do, and
+// the demo operator has no second factor yet.
 export const routeMeta: RouteMeta = {
   path: '/api/ops/stop',
   method: 'POST',

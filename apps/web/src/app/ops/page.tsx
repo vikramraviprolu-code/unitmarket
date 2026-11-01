@@ -30,7 +30,9 @@ import {
   switchChip,
   switchView,
 } from '../../lib/ops-home-copy';
-import { StopButton } from './StopButton';
+import { SectionNav } from '../../ui/SectionNav';
+import { OPS_HOME_SECTIONS } from '../../lib/ops-copy';
+import { KillControls } from './KillControls';
 import { RefundPanel } from './RefundPanel';
 import '../tables.css';
 import '../publisher/pk-sales.css';
@@ -60,8 +62,9 @@ export default async function Ops() {
       <PageHeader
         title="Operations"
         aside={<EnvLabel environment={snap.environment} />}
-        lede="Read only, except the stop button and, with the authenticator code, refunds. Everything else is changed with the operator command line."
+        lede="Read only, except the start and stop buttons and, with the authenticator code, refunds. Everything else is changed with the operator command line."
       />
+      <SectionNav label="Sections of this page" items={OPS_HOME_SECTIONS} />
       <ul className="pk-cards">
         <li>
           <ActionCard href="/ops/evals" title={EVALS_OPS_LINK}>
@@ -138,9 +141,12 @@ export default async function Ops() {
               </dd>
             </dl>
           </div>
-          <div className="pk-panel oh-stop">
-            <StopButton />
-          </div>
+          <KillControls
+            outboundOn={snap.kill_switch.outbound_on}
+            hasCode={actor.mfa === true}
+            activeScope={snap.kill_switch.active_scope}
+            flagOff={snap.gate.mode === 'sandbox' && !snap.gate.connect}
+          />
         </div>
       </Section>
 
@@ -164,7 +170,7 @@ export default async function Ops() {
         </div>
       </Section>
 
-      <div className="pk-section oh-refunds">
+      <div className="pk-section oh-refunds" id="ops-refunds">
         {snap.refunds === null ? (
           <section aria-labelledby="refunds-heading">
             <h2 id="refunds-heading">Refunds</h2>

@@ -2,7 +2,7 @@
 // can be counted), one approval row in the in-memory database, and operator sessions with and without
 // the authenticator code. The TOTP key is the RFC 6238 test key, not a credential. Nothing reaches a network.
 import { createHmac } from 'node:crypto';
-import type { Wire, WireRequest } from '@umsbx/transport';
+import { hashPasscode } from '@umsbx/security';
 import { createApp, installApp } from '../composition.server';
 import type { App } from '../composition.server';
 import { PASSCODE, call, signIn, testEnv } from './support';
@@ -11,6 +11,10 @@ import type { Session } from './support';
 export const REF = 'DL-ops-start-1';
 export const SCOPE = 'mvp_b_polling';
 export const NOW = Date.parse('2026-10-31T12:00:00.000Z');
+type Wire = NonNullable<NonNullable<Parameters<typeof createApp>[1]>['test_wire']>;
+type WireRequest = Parameters<Wire['request']>[0];
+
+export const PUBLISHER_PASSCODE = 'publisher passcode for tests only';
 export const TOTP_KEY = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
@@ -33,6 +37,8 @@ export interface StartRig {
   session: typeof import('./app/api/session/route');
   /** An operator signed in WITH the authenticator code (mfa true). */
   mfaOperator(): Promise<Session>;
+  /** A publisher session (persona publisher-harbour-ledger). */
+  publisher(): Promise<Session>;
   /** An operator signed in without a code (mfa false). */
   plainOperator(): Promise<Session>;
   startAs(
@@ -72,6 +78,10 @@ export async function bootStartRig(
     PAYPAL_CLIENT_ID: ['placeholder', 'client', 'id'].join('-'),
     PAYPAL_CLIENT_SECRET: ['placeholder', 'client', 'secret'].join('-'),
     UMS_OPERATOR_TOTP_KEYS: `vikram:${TOTP_KEY}`,
+    UMS_PUBLISHER_PASSCODE_HASH: await hashPasscode(
+      PUBLISHER_PASSCODE,
+      'ffeeddccbbaa99887766554433221100',
+    ),
   });
   const app = createApp(env, { switch_cache_ms: 0, test_wire: wire });
   installApp(app);
@@ -93,7 +103,7 @@ export async function bootStartRig(
           persona: 'operator',
           passcode: PASSCODE,
           operator: 'vikram',
-          code: totp(Date.now()),
+          code: totp(NOW),
         },
       });
       if (res.status !== 200) throw new Error(`operator sign in with code answered ${res.status}`);
@@ -102,6 +112,11 @@ export async function bootStartRig(
         cookie: (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '',
         csrf: body.csrf_token,
       };
+    },
+    async publisher() {
+      const s = await signIn(session.POST, 'publisher-harbour-ledger', PUBLISHER_PASSCODE);
+      if (s === null) throw new Error('publisher sign in failed');
+      return s;
     },
     async plainOperator() {
       const s = await signIn(session.POST, 'operator');

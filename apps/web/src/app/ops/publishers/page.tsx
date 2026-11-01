@@ -6,6 +6,8 @@ import { currentActor } from '../../../server/session';
 import { EnvLabel, envText } from '../../../ui/EnvLabel';
 import { Chip, PageHeader, StatTile } from '../../../ui/publisher/kit';
 import { StatusBanner } from '../../../ui/StatusBanner';
+import { SectionNav } from '../../../ui/SectionNav';
+import { OPS_PUBLISHERS_SECTIONS } from '../../../lib/ops-copy';
 import { formatMinor } from '../../../lib/format';
 import {
   APPLIED_HINT,
@@ -152,13 +154,19 @@ export default async function OpsPublishers() {
           </>
         }
       />
-      <div className="pk-tiles" data-testid="publisher-tiles">
+      <SectionNav label="Sections of this page" items={OPS_PUBLISHERS_SECTIONS} />
+      <div className="pk-tiles" id="ops-pub-summary" data-testid="publisher-tiles">
         <StatTile label={TILE_ACTIVE} value={tiles.active} />
         <StatTile label={TILE_APPLICANTS} value={tiles.applicantsWaiting} />
         <StatTile label={TILE_SUSPENDED} value={tiles.suspended} />
         <StatTile label={TILE_OFFERS} value={tiles.offersOnSale} />
       </div>
-      <section className="pk-section" aria-labelledby="applicants-heading" data-testid="applicants">
+      <section
+        className="pk-section"
+        id="ops-pub-applicants"
+        aria-labelledby="applicants-heading"
+        data-testid="applicants"
+      >
         <h2 id="applicants-heading">{APPLICANTS_HEADING}</h2>
         <p>{APPLICANTS_LEDE}</p>
         <p className="muted" data-testid="applicants-no-login">
@@ -220,11 +228,11 @@ export default async function OpsPublishers() {
         </div>
       </section>
       {publishers.length === 0 ? (
-        <p className="muted" data-testid="publishers-empty">
+        <p className="muted" id="ops-pub-list" data-testid="publishers-empty">
           {PUBLISHERS_EMPTY}
         </p>
       ) : (
-        <div className="pk-section pk-stack">
+        <div className="pk-section pk-stack" id="ops-pub-list">
           {publishers.map((p) => {
             const payee = {
               last4: p.payee_last4,
