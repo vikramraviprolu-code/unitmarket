@@ -2,10 +2,10 @@
 
 Requests from the owners that are not defects. Each row says who asked, when, what was asked, and what is known. Nothing here is scheduled until an owner says so.
 
-| Id    | Date       | Asked by | Request                                                                                                                                                                       | State                                      |
-| ----- | ---------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| ENH-1 | 2026-10-31 | Sakthi   | Make starting the PayPal sandbox gateway simpler, so that testers can be started without a developer. The owner does not call the current steps a defect, but an enhancement. | Open. See notes.                           |
-| ENH-2 | 2026-10-31 | Sakthi   | Add a Start button next to the existing Stop button on the Operations page, for the next round of changes.                                                                    | Open. Taken for the next round. See notes. |
+| Id    | Date       | Asked by | Request                                                                                                                                                                       | State                                                      |
+| ----- | ---------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| ENH-1 | 2026-10-31 | Sakthi   | Make starting the PayPal sandbox gateway simpler, so that testers can be started without a developer. The owner does not call the current steps a defect, but an enhancement. | Open. See notes.                                           |
+| ENH-2 | 2026-10-31 | Sakthi   | Add a Start button next to the existing Stop button on the Operations page, for the next round of changes.                                                                    | Built 2026-11-01 (option 1, D-070). Needs the next deploy. |
 
 ## ENH-1 notes
 

@@ -189,3 +189,55 @@ gcloud run services update unitmarket-sandbox --region=europe-west3 --project=un
 ```
 
 To stop at any time: the "Stop PayPal now" button on Operations, or the same flag command with `UMS_PAYPAL_CONNECT=off`. The approval ends on 2026-11-03 at 12:00 UTC.
+
+## Third deploy: tag `gcp-pub-3` (landing page, buyer accounts, Start button, tabs, both skins)
+
+Commit to deploy: the coordinator gives you the exact hash in the chat message that sends you here. Put it in `COMMIT` below. This deploy adds **one database migration (0016, the buyer accounts table)**. It applies by itself at first start and only adds a table, so nothing existing changes. The backup check in step 2 is therefore not optional. Do not deploy while anyone is testing the hosted app. A deploy leaves the PayPal connection off, as always.
+
+Step 1. Tag it (laptop with the repository, or Cloud Shell if your account can push tags):
+
+```
+COMMIT=PUT-THE-HASH-FROM-THE-CHAT-HERE
+git fetch origin
+git checkout "$COMMIT"
+git status
+git tag gcp-pub-3
+git push origin gcp-pub-3
+```
+
+Expected: `git status` says nothing to commit. If `git tag` says the tag exists, stop and tell the coordinator.
+
+Step 2. Backup check, then deploy (Cloud Shell, in the repository folder):
+
+```
+PROJECT_ID=unitmarket-sbx-vr1
+REGION=europe-west3
+gcloud sql backups list --instance=unitmarket-sbx-pg --project="$PROJECT_ID"
+git fetch --tags
+git checkout gcp-pub-3
+bash infra/gcp/deploy.sh "$PROJECT_ID" "$REGION" gcp-pub-3
+```
+
+Expected: a successful backup less than a day old, and the output ends with `deployed unitmarket-sandbox from tag gcp-pub-3`. Keep using `https://unitmarket-sandbox-626887286871.europe-west3.run.app`.
+
+Step 3. Checks in the browser (Chrome), in this order:
+
+1. Open the address. A landing page shows three doors: Buyer, Seller, Operator. Use the Appearance switch in the header: both skins (Bright Market and Deep Harbour) change the page at once.
+2. Buyer door, then Create account. Make a test buyer such as `test.buyer1` with a password of 12 or more characters (a few ordinary words is fine). Expected: you land on your account page. Sign out, then sign in again with the same name and password.
+3. Seller door. It explains that sellers apply and the owners handle applications by hand. The Apply link still works (use "Test Applicant (fake)" as before, then reject it in Operations, Publishers).
+4. Operator door. Sign in with name, passcode and current authenticator code. Open Operations. Section tabs run across the top. Beside "Stop PayPal now" there is a Start PayPal box. With the switch off and the Cloud Run flag off, Start must say what is missing and must not start anything.
+5. Persona sign-in (for judges) still works from the buyer page.
+
+Step 4. Proxy depth check (needed before anyone is told about the sign-up link): run `docs/design/hosting.md` step 5 against the hosted address (the exact `curl` commands are in `docs/owner/MVPC-OWNER-STEPS.md` Step 3). It uses the made-up persona `buyer-b`, so no real secret is typed. If any result differs from the document, do not share the sign-up link and tell the coordinator.
+
+Step 5. Starting PayPal with the new button (after a deploy the connection is off). Approval D-062 must still be active (ends 2026-11-03 12:00 UTC). In Cloud Shell turn the Cloud Run flag on:
+
+```
+gcloud run services update unitmarket-sandbox --region=europe-west3 --project=unitmarket-sbx-vr1 --update-env-vars=UMS_PAYPAL_CONNECT=on
+```
+
+Then, as operator, open Operations and use Start PayPal: type the reason, the scope name `mvp_c_refunds` and the current authenticator code. Expected: the switch card reads On with the calls left. The approval row itself is still inserted only at the owner's own terminal (see the section above). To stop: the "Stop PayPal now" button, or the same flag command with `UMS_PAYPAL_CONNECT=off`.
+
+If a buyer forgets a password: an operator at their own terminal (same database setup as the PayPal start section above) runs `corepack pnpm accounts:reset-password --username THE-NAME --operator vikram`, which asks for the new password twice (nothing is shown on screen). Nothing is ever sent by email.
+
+Paste back: the deploy output's last two lines and what you saw in checks 1 to 5 and Step 4. Never paste a passcode or password.
