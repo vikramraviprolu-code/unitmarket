@@ -12,9 +12,19 @@ import type { SecurityDeps } from './route';
 
 export const PASSWORD_MIN = 12;
 export const PASSWORD_MAX = 128;
+/** The stored hash check refuses a longer attempt, so signup must too (or no one could sign in). */
+export const PASSWORD_MAX_BYTES = 1024;
 /** Lower case letters, digits, dot, dash and underscore, 3 to 30. The database CHECK says the same. */
 export const USERNAME_PATTERN = /^[a-z0-9._-]{3,30}$/;
-export const ACCOUNT_LOCK_THRESHOLD = 5;
+/**
+ * Consecutive failures before the account itself is locked. High on purpose (NIST 800-63B allows up to 100):
+ * the real throttle is the limiter per address and name (5 in 15 minutes) and per address (30 in 15 minutes),
+ * so a stranger at one address cannot keep a known name locked. Failures older than a day are forgotten.
+ * Residual risk: a distributed attacker with many addresses can still reach the threshold and lock a name.
+ */
+export const ACCOUNT_LOCK_THRESHOLD = 20;
+/** A failure count older than this is forgotten (measured from the last failure). */
+export const ACCOUNT_FAILURE_MEMORY_MS = 24 * 60 * 60_000;
 export const ACCOUNT_LOCK_BASE_MS = 15 * 60_000;
 export const ACCOUNT_LOCK_CAP_MS = 60 * 60_000;
 
@@ -49,7 +59,8 @@ export function checkPasswordPolicy(
   const p = password.normalize('NFKC');
   const chars = Array.from(p);
   if (chars.length < PASSWORD_MIN) return { ok: false, reason: 'too_short' };
-  if (chars.length > PASSWORD_MAX) return { ok: false, reason: 'too_long' };
+  if (chars.length > PASSWORD_MAX || Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_BYTES)
+    return { ok: false, reason: 'too_long' };
   const lower = p.toLowerCase();
   if (COMMON.has(lower)) return { ok: false, reason: 'common' };
   if (new Set(chars).size === 1) return { ok: false, reason: 'repetitive' };
@@ -186,6 +197,7 @@ interface AccountRow {
   password_hash: string;
   failed_attempts: number | string;
   locked_until: unknown;
+  updated_at: unknown;
 }
 
 const isLocked = (row: AccountRow, now: number): boolean =>
@@ -208,7 +220,7 @@ async function lockRow(
   value: string,
 ): Promise<AccountRow | undefined> {
   const res = await tx.query<AccountRow>(
-    `SELECT a.buyer_id, a.username, b.display_name, a.password_hash, a.failed_attempts, a.locked_until
+    `SELECT a.buyer_id, a.username, b.display_name, a.password_hash, a.failed_attempts, a.locked_until, a.updated_at
        FROM buyer_accounts a JOIN buyers b ON b.id = a.buyer_id
       WHERE a.${where} = $1 FOR UPDATE OF a`,
     [value],
@@ -224,7 +236,10 @@ async function recordFailure(
   via: 'login' | 'password_change',
   now: number,
 ): Promise<void> {
-  const failed = Number(row.failed_attempts) + 1;
+  // A count whose last failure is more than a day old is forgotten. Only a failure writes a count above zero
+  // and every such write sets updated_at, so updated_at is the time of the last failure.
+  const stale = now - ms(row.updated_at) > ACCOUNT_FAILURE_MEMORY_MS;
+  const failed = (stale ? 0 : Number(row.failed_attempts)) + 1;
   const lock = lockFor(failed);
   const at = new Date(now).toISOString();
   await tx.query(
@@ -435,11 +450,12 @@ export async function resetPasswordForOperator(
     );
     const revoked = await revokeIn(tx, row.buyer_id, null, at);
     await deps.audit.record(tx, {
-      actor: { kind: 'operator', operator_id: i.operator_id, mfa: true },
+      // The person at the terminal is the second factor, not an authenticator code: mfa is false here.
+      actor: { kind: 'operator', operator_id: i.operator_id, mfa: false },
       action: 'account.password_changed',
       target: row.buyer_id,
       reason: 'operator reset',
-      detail: { by: 'operator', sessions_revoked: revoked },
+      detail: { by: 'operator', via: 'terminal', sessions_revoked: revoked },
     });
     return { ok: true, revoked };
   });

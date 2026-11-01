@@ -45,10 +45,12 @@ export { securityHeaders } from './headers';
 export { DEFAULT_RATES, takeToken } from './rate';
 export { AUTH_RULES, checkEntry, formatInventory, parseRouteMeta, pathFromFile } from './inventory';
 export {
+  ACCOUNT_FAILURE_MEMORY_MS,
   ACCOUNT_LOCK_BASE_MS,
   ACCOUNT_LOCK_CAP_MS,
   ACCOUNT_LOCK_THRESHOLD,
   PASSWORD_MAX,
+  PASSWORD_MAX_BYTES,
   PASSWORD_MIN,
   USERNAME_PATTERN,
   changePassword,

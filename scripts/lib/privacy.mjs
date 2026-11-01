@@ -54,6 +54,9 @@ const COLS = {
     'id, unit_id, capture_id, amount_minor, currency, reason, requested_by, state, refund_id, created_at',
   provider_orders:
     'id, order_id, provider_order_id, route, status, state, position, po_ref, publisher_id, first_approved_at, created_at',
+  // ID-ACCOUNTS: the account is the buyer's own (username, counts, times); the password hash is never exported.
+  buyer_accounts:
+    'buyer_id, username, failed_attempts, locked_until, password_changed_at, created_at, updated_at',
   operations:
     'id, order_id, unit_id, provider_order_ref, kind, state, attempt, failure_reason, created_at',
 };
@@ -66,6 +69,7 @@ const OWNED_CASES = '(SELECT id FROM recovery_cases WHERE buyer_id = $1)';
 // Every query filters by the buyer id, directly or through the buyer's own orders, entitlements or cases.
 const EXPORT_TABLES = [
   ['buyers', 'id = $1'],
+  ['buyer_accounts', 'buyer_id = $1'],
   ['consents', 'buyer_id = $1'],
   ['identity_links', 'buyer_id = $1'],
   ['sessions', "actor_kind = 'buyer' AND actor_id = $1"],
@@ -151,12 +155,18 @@ export async function runDelete(d) {
         WHERE actor_kind = 'buyer' AND actor_id = $1 AND revoked_at IS NULL RETURNING id`,
       [d.buyer_id, at],
     );
+    // ID-ACCOUNTS: the account (username and password hash) is deleted, so sign in ends and the username is free.
+    const accounts = await tx.query(
+      'DELETE FROM buyer_accounts WHERE buyer_id = $1 RETURNING buyer_id',
+      [d.buyer_id],
+    );
     const c = {
       buyers: buyers.rows.length,
       briefs: briefs.rows.length,
       sessions_revoked: sessions.rows.length,
+      accounts_deleted: accounts.rows.length,
     };
-    if (c.buyers + c.briefs + c.sessions_revoked > 0)
+    if (c.buyers + c.briefs + c.sessions_revoked + c.accounts_deleted > 0)
       await d.audit.record(tx, {
         actor: { kind: 'operator', operator_id: d.operator_id, mfa: true },
         action: 'privacy.delete',

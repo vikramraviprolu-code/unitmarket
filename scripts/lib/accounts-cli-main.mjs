@@ -64,9 +64,23 @@ function askSecret(prompt) {
       },
     });
     const rl = createInterface({ input: process.stdin, output: out, terminal: true });
+    let answered = false;
+    // Ctrl-C (or the terminal closing) before an answer: close the prompt, close the database, exit 130.
+    rl.on('SIGINT', () => rl.close());
+    rl.on('close', () => {
+      if (answered) return;
+      muted = false;
+      process.stdout.write('\n');
+      process.stderr.write('accounts: interrupted, nothing changed\n');
+      db.close().then(
+        () => process.exit(130),
+        () => process.exit(130),
+      );
+    });
     process.stdout.write(prompt);
     muted = true;
     rl.question('', (answer) => {
+      answered = true;
       muted = false;
       process.stdout.write('\n');
       rl.close();

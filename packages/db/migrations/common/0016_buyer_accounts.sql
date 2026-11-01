@@ -8,6 +8,9 @@
 -- buyer. The username is lower case, 3 to 30 of letters, digits, dot, dash and underscore, and unique. No
 -- email address is stored anywhere. password_hash is the scrypt string of the passcode code (never the
 -- password). failed_attempts counts consecutive failures; locked_until is set while the account is locked.
+-- HARD PREREQUISITE: Supabase row level security for buyer_accounts (and the grants that keep the browser roles
+-- off it) must exist before any Supabase use; until then this table is reachable only by the server's own
+-- connection, and the hash must never be exposed through a browser facing role.
 -- No defaults: the writer states every value. Unlike the append-only tables this one is updated in place,
 -- because the lock state and the hash change.
 CREATE TABLE buyer_accounts (
