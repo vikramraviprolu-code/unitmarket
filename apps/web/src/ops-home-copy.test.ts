@@ -28,6 +28,33 @@ describe('switch chips', () => {
       text: 'On: PayPal calls allowed',
     });
   });
+  // WEB-POLISH-2: three states of the kill switch badge. On with the flag on keeps the old words; Off keeps
+  // the old words whatever the flag says; On with the flag off must not say "allowed".
+  it('says plainly that no PayPal call goes out when the switch is On and the connection flag is Off', () => {
+    const chip = switchChip('paypal_outbound', true, true);
+    expect(chip).toEqual({ tone: 'warn', text: 'On, flag off: no PayPal calls go out' });
+    expect(chip.text).not.toMatch(/allowed/);
+  });
+  it('keeps today words when the switch is On and the flag is On (or the flag is not in question)', () => {
+    expect(switchChip('paypal_outbound', true, false)).toEqual({
+      tone: 'warn',
+      text: 'On: PayPal calls allowed',
+    });
+  });
+  it('keeps today words when the switch is Off, flag on or off', () => {
+    for (const flagOff of [false, true])
+      expect(switchChip('paypal_outbound', false, flagOff)).toEqual({
+        tone: 'good',
+        text: 'Off: no PayPal calls',
+      });
+  });
+  it('the flag changes only paypal_outbound, and switchView passes it on', () => {
+    expect(switchChip('checkout_enabled', true, true)).toEqual({ tone: 'good', text: 'On' });
+    expect(switchView('paypal_outbound', true, true).chip.text).toBe(
+      'On, flag off: no PayPal calls go out',
+    );
+    expect(switchView('paypal_outbound', true).chip.text).toBe('On: PayPal calls allowed');
+  });
   it('treats On as good and Off as a warning for every other switch', () => {
     for (const name of ['checkout_enabled', 'refunds_enabled', 'unlock_enabled', 'ai_enabled']) {
       expect(switchChip(name, true)).toEqual({ tone: 'good', text: 'On' });

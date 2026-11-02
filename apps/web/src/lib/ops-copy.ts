@@ -25,10 +25,15 @@ export const OPS_START_NO_APPROVAL =
 export const OPS_CONNECT_FLAG_OFF =
   'The connection flag is off. No PayPal call goes out until the owners turn it on in Cloud Run.';
 export const OPS_START_DONE = 'PayPal calls are on (in force within 5 seconds).';
+// WEB-POLISH-2: the switch is on but the Cloud Run connection flag is off (Start never touches the flag, D-070).
+export const OPS_START_DONE_FLAG_OFF =
+  'The switch is on, but the connection flag is off, so no PayPal call goes out.';
+export const OPS_STOP_DONE =
+  'PayPal calls are stopped (in force within 5 seconds). To turn them on again, use Start PayPal while signed in with your authenticator code, or the owner runs pnpm safety:resume at their terminal.';
 export const OPS_START_ERROR_TITLE = 'Could not start';
 
-export const startDoneText = (calls_left: number): string =>
-  `${OPS_START_DONE} ${String(calls_left)} ${calls_left === 1 ? 'call is' : 'calls are'} left today.`;
+export const startDoneText = (calls_left: number, flagOff = false): string =>
+  `${flagOff ? OPS_START_DONE_FLAG_OFF : OPS_START_DONE} ${String(calls_left)} ${calls_left === 1 ? 'call is' : 'calls are'} left today.`;
 
 /**
  * Which control the Kill switch block shows. Both always render: the one that does not apply is replaced

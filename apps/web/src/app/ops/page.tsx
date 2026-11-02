@@ -53,7 +53,9 @@ export default async function Ops() {
   const a = await app();
   // One single-use Idempotency-Key per refund form, made on the server (CO-8).
   const refundKeys = snap.refunds === null ? [] : snap.refunds.units.map(() => a.engine.newKey());
-  const killChip = switchChip('paypal_outbound', snap.kill_switch.outbound_on);
+  // Sandbox mode with the Cloud Run connection flag off: the switch can be On and still no call goes out.
+  const flagOff = snap.gate.mode === 'sandbox' && !snap.gate.connect;
+  const killChip = switchChip('paypal_outbound', snap.kill_switch.outbound_on, flagOff);
   const invariants = invariantsSummary(snap.invariants);
   const statusTiles = orderTiles(snap.orders);
   const stateTiles = operationTiles(snap.operations);
@@ -87,7 +89,7 @@ export default async function Ops() {
         <p className="oh-lede">{OPS_HOME_SWITCHES_LEDE}</p>
         <ul className="oh-grid" aria-label="Safety switches">
           {Object.entries(snap.switches).map(([name, on]) => {
-            const v = switchView(name, on);
+            const v = switchView(name, on, flagOff);
             return (
               <li key={name}>
                 <div className="pk-panel oh-switch" data-testid={`ops-switch-${name}`}>
@@ -145,7 +147,7 @@ export default async function Ops() {
             outboundOn={snap.kill_switch.outbound_on}
             hasCode={actor.mfa === true}
             activeScope={snap.kill_switch.active_scope}
-            flagOff={snap.gate.mode === 'sandbox' && !snap.gate.connect}
+            flagOff={flagOff}
           />
         </div>
       </Section>

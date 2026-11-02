@@ -26,6 +26,9 @@ function lines(): string[] {
       `switch ${n} on: ${copy.switchChip(n, true).tone} ${copy.switchChip(n, true).text} | off: ${copy.switchChip(n, false).tone} ${copy.switchChip(n, false).text}`,
     );
   }
+  out.push(
+    `switch paypal_outbound on, flag off: ${copy.switchChip('paypal_outbound', true, true).tone} ${copy.switchChip('paypal_outbound', true, true).text}`,
+  );
   out.push(`kill state label: ${copy.OPS_HOME_KILL_STATE_LABEL}`);
   out.push(`orders list heading: ${copy.OPS_HOME_ORDERS_LIST_HEADING}`);
   out.push(`orders notes: ${copy.ordersNote(1, 'paid')} | ${copy.ordersNote(3, 'awaiting_buyer')}`);

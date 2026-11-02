@@ -58,7 +58,7 @@ export function KillControls({
   return (
     <>
       <div aria-live="polite" data-testid="ops-start-result">
-        {started === null || !on ? null : startDoneText(started.calls_left)}
+        {started === null || !on ? null : startDoneText(started.calls_left, showFlagLine)}
       </div>
       {view.start === 'form' && activeScope !== null ? (
         <div className="pk-panel oh-start" data-testid="ops-start-form">

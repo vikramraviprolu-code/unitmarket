@@ -49,6 +49,16 @@ describe('/ops Kill switch block (source)', () => {
     expect(kill).toContain('<StartButton');
   });
 
+  it('WEB-POLISH-2: the flag state reaches the badges and the start sentence, and Stop uses the shared words', () => {
+    expect(page).toContain("switchChip('paypal_outbound', snap.kill_switch.outbound_on, flagOff)");
+    expect(page).toContain('switchView(name, on, flagOff)');
+    expect(page).toContain("const flagOff = snap.gate.mode === 'sandbox' && !snap.gate.connect;");
+    expect(page).toContain('flagOff={flagOff}');
+    expect(kill).toContain('startDoneText(started.calls_left, showFlagLine)');
+    expect(read('StopButton.tsx')).toContain('OPS_STOP_DONE');
+    expect(read('StopButton.tsx')).not.toContain('with your authenticator code');
+  });
+
   it('one aria-live region for the start result stays mounted outside the conditional', () => {
     const live = kill.indexOf('data-testid="ops-start-result"');
     expect(live).toBeGreaterThan(-1);

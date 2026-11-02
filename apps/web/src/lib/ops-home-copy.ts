@@ -57,19 +57,24 @@ export interface SwitchView {
   chip: ChipView;
 }
 
-/** For paypal_outbound the safe state is Off, so Off is calm and On asks for attention. */
-export function switchChip(name: string, on: boolean): ChipView {
+/**
+ * For paypal_outbound the safe state is Off, so Off is calm and On asks for attention. When the switch is On
+ * but the Cloud Run connection flag is Off, no call goes out, and the words say so (WEB-POLISH-2).
+ */
+export function switchChip(name: string, on: boolean, flagOff = false): ChipView {
   if (name === 'paypal_outbound') {
     return on
-      ? { tone: 'warn', text: 'On: PayPal calls allowed' }
+      ? flagOff
+        ? { tone: 'warn', text: 'On, flag off: no PayPal calls go out' }
+        : { tone: 'warn', text: 'On: PayPal calls allowed' }
       : { tone: 'good', text: 'Off: no PayPal calls' };
   }
   return on ? { tone: 'good', text: 'On' } : { tone: 'warn', text: 'Off' };
 }
 
-export function switchView(name: string, on: boolean): SwitchView {
+export function switchView(name: string, on: boolean, flagOff = false): SwitchView {
   const words = SWITCH_WORDS[name] ?? { label: name, hint: '' };
-  return { name, label: words.label, hint: words.hint, chip: switchChip(name, on) };
+  return { name, label: words.label, hint: words.hint, chip: switchChip(name, on, flagOff) };
 }
 
 /** 'awaiting_buyer' becomes 'Awaiting buyer'. */
