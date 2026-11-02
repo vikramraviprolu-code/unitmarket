@@ -89,6 +89,10 @@ const DOCS_BARE = new RegExp(
   'gi',
 );
 const isSandboxHost = (h: string) => h === SANDBOX_HOST || h.endsWith(SANDBOX_SUFFIX);
+// A sandbox API host (api or api-m). Links to it are stored as paths, as in the older fixtures, so the
+// one constant module stays the only file that names the API host (check-no-live-host).
+const isSandboxApiHost = (h: string) =>
+  h.endsWith(SANDBOX_SUFFIX) && /^(?:.*\.)?api(?:-m)?$/.test(h.slice(0, -SANDBOX_SUFFIX.length));
 
 // A live PayPal API host or the bare apex anywhere in a string refuses the input.
 const LIVE_API_LABELS =
@@ -269,7 +273,8 @@ function scrubUrl(raw: string, st: Tally): string {
   if (url.hash.length > 1) st.add('url fragment', 1);
   if (keep.length > 0)
     query = `?${keep.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')}`;
-  const base = relative ? '' : `${url.protocol}//${url.host}`;
+  const base =
+    relative || isSandboxApiHost(url.hostname.toLowerCase()) ? '' : `${url.protocol}//${url.host}`;
   return `${base}${segs.join('/')}${query}${trail}`;
 }
 

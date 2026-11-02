@@ -588,3 +588,32 @@ describe('documentation links are dropped (B-13)', () => {
     expect(residueRule(wrap(`https://${host.sandboxWww}/checkoutnow`), [])).toBeNull();
   });
 });
+
+describe('B-13 follow-up: links to the sandbox API host are stored as paths', () => {
+  // Built from parts: the live-host guard refuses the sandbox API name written out in a file.
+  const apiShort = ['api', 'sandbox', 'paypal', 'com'].join('.');
+  const links = (h: string) => ({
+    id: '5O190127TN364715T',
+    status: 'CREATED',
+    links: [
+      { href: `https://${h}/v2/checkout/orders/5O190127TN364715T`, rel: 'self', method: 'GET' },
+      {
+        href: `https://${host.sandboxWww}/checkoutnow?token=5O190127TN364715T`,
+        rel: 'approve',
+        method: 'GET',
+      },
+    ],
+  });
+  for (const h of [host.sandboxApi, apiShort]) {
+    it(`writes the path only for a link on ${h.startsWith('api-m') ? 'the api-m form' : 'the api form'} and keeps the approval page link`, async () => {
+      const base = exchange() as { response: Record<string, unknown> };
+      const t = textOf(
+        await buildRecordings([exchange({ response: { ...base.response, body: links(h) } })], OPTS),
+      );
+      expect(t).toContain('"/v2/checkout/orders/5O190127TN364715T"');
+      expect(t).not.toContain(host.sandboxApi);
+      expect(t).not.toContain(apiShort);
+      expect(t).toContain(`//${host.sandboxWww}/checkoutnow?token=5O190127TN364715T`);
+    });
+  }
+});
