@@ -1,0 +1,99 @@
+{
+  "meta": {
+    "source": "sandbox-recording",
+    "scenario": "create_replay",
+    "operation": "create_order",
+    "step": 1,
+    "recorded_at": "2026-10-26T00:00:00Z",
+    "origin": "sandbox-recording: MVP-B real sandbox conformance run, owner laptop, 2026-10-26",
+    "redactions": [
+      "recorder: key and pattern redaction applied; headers allow-listed",
+      "ids: 4 order/capture/refund id(s) replaced by synthetic ids (flag)",
+      "foreign url: 7 value(s) replaced",
+      "key address: 14 value(s) replaced",
+      "key email: 46 value(s) replaced",
+      "key payer id: 14 value(s) replaced",
+      "key person name: 14 value(s) replaced",
+      "request header authorization: 35 value(s) replaced",
+      "request header value rejected: 4 value(s) replaced",
+      "url query value: 24 value(s) replaced"
+    ]
+  },
+  "request": {
+    "method": "POST",
+    "path_template": "/v2/checkout/orders",
+    "headers": {
+      "accept": "application/json",
+      "content-type": "application/json",
+      "prefer": "return=representation",
+      "paypal-request-id": "umsC-SBXMVP5FXUY1",
+      "authorization": "[redacted]"
+    },
+    "body": {
+      "intent": "CAPTURE",
+      "purchase_units": [
+        {
+          "reference_id": "unit-1",
+          "custom_id": "ord_SBXMVP5FXUY1",
+          "invoice_id": "ord_SBXMVP5FXUY1",
+          "amount": {
+            "currency_code": "USD",
+            "value": "1.00"
+          }
+        }
+      ],
+      "payment_source": {
+        "paypal": {
+          "experience_context": {
+            "return_url": "[redacted-url]",
+            "cancel_url": "[redacted-url]",
+            "user_action": "PAY_NOW",
+            "shipping_preference": "NO_SHIPPING"
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "paypal-debug-id": "f423534b72528",
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "SBXPAYEEECHOORD00001",
+      "intent": "CAPTURE",
+      "status": "PAYER_ACTION_REQUIRED",
+      "payment_source": {
+        "paypal": {}
+      },
+      "purchase_units": [
+        {
+          "reference_id": "unit-1",
+          "amount": {
+            "currency_code": "USD",
+            "value": "1.00"
+          },
+          "payee": {
+            "email_address": "[redacted]",
+            "merchant_id": "OWNMERCHANT01"
+          },
+          "custom_id": "ord_SBXMVP5FXUY1",
+          "invoice_id": "ord_SBXMVP5FXUY1"
+        }
+      ],
+      "links": [
+        {
+          "href": "/v2/checkout/orders/SBXPAYEEECHOORD00001",
+          "rel": "self",
+          "method": "GET"
+        },
+        {
+          "href": "https://www.sandbox.paypal.com/checkoutnow<redacted>",
+          "rel": "payer-action",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+}

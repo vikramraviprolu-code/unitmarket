@@ -1,0 +1,93 @@
+{
+  "meta": {
+    "source": "sandbox-recording",
+    "scenario": "approve_capture_replay",
+    "operation": "get_order",
+    "step": 12,
+    "recorded_at": "2026-10-26T00:00:00Z",
+    "origin": "sandbox-recording: MVP-B real sandbox conformance run, owner laptop, 2026-10-26",
+    "redactions": [
+      "recorder: key and pattern redaction applied; headers allow-listed",
+      "ids: 4 order/capture/refund id(s) replaced by synthetic ids (flag)",
+      "foreign url: 7 value(s) replaced",
+      "key address: 14 value(s) replaced",
+      "key email: 46 value(s) replaced",
+      "key payer id: 14 value(s) replaced",
+      "key person name: 14 value(s) replaced",
+      "request header authorization: 35 value(s) replaced",
+      "request header value rejected: 4 value(s) replaced",
+      "url query value: 24 value(s) replaced"
+    ],
+    "expected_id": "SBXPAYEEECHOORD00001"
+  },
+  "request": {
+    "method": "GET",
+    "path_template": "/v2/checkout/orders/{id}",
+    "headers": {
+      "accept": "application/json",
+      "authorization": "[redacted]"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "paypal-debug-id": "f9831830fb42f",
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "SBXPAYEEECHOORD00001",
+      "intent": "CAPTURE",
+      "status": "APPROVED",
+      "payment_source": {
+        "paypal": {
+          "email_address": "[redacted]",
+          "account_id": "[redacted]",
+          "account_status": "VERIFIED",
+          "name": "[redacted]",
+          "address": "[redacted]"
+        }
+      },
+      "purchase_units": [
+        {
+          "reference_id": "unit-1",
+          "amount": {
+            "currency_code": "USD",
+            "value": "1.00",
+            "breakdown": {}
+          },
+          "payee": {
+            "email_address": "[redacted]",
+            "merchant_id": "OWNMERCHANT01"
+          },
+          "custom_id": "ord_SBXMVP5FXUY1",
+          "invoice_id": "ord_SBXMVP5FXUY1"
+        }
+      ],
+      "payer": {
+        "name": "[redacted]",
+        "email_address": "[redacted]",
+        "payer_id": "[redacted]",
+        "address": "[redacted]"
+      },
+      "create_time": "2026-10-26T11:04:20Z",
+      "links": [
+        {
+          "href": "/v2/checkout/orders/SBXPAYEEECHOORD00001",
+          "rel": "self",
+          "method": "GET"
+        },
+        {
+          "href": "/v2/checkout/orders/SBXPAYEEECHOORD00001",
+          "rel": "update",
+          "method": "PATCH"
+        },
+        {
+          "href": "/v2/checkout/orders/SBXPAYEEECHOORD00001/capture",
+          "rel": "capture",
+          "method": "POST"
+        }
+      ]
+    }
+  }
+}
