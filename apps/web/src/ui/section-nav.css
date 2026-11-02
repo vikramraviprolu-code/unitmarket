@@ -1,8 +1,11 @@
-/* SectionNav: tokens only, so it follows Bright Market and Deep Harbour. Targets are at least 44px. The tabs
-   stick directly under the sticky site header (--header-h, globals.css); scroll-padding-top clears both bars,
-   so a jumped-to heading is never hidden behind either of them. */
+/* SectionNav: tokens only, so it follows Bright Market and Deep Harbour. Targets are at least 44px. WEB-POLISH-4:
+   the pills wrap onto as many rows as they need, so every tab is visible at once and nothing scrolls sideways.
+   The bar is not sticky: no width exists at which every page's tab set fits one row (the column is capped at
+   880px and Operations alone needs about 1000px; legal pages and the per-item lists need more), and a sticky
+   bar of two or three rows would cover the page. Only the sticky site header (--header-h, globals.css; 0 on a
+   phone) is left to clear, so scroll-padding-top is that height plus one gutter. */
 html {
-  scroll-padding-top: calc(var(--header-h) + 72px);
+  scroll-padding-top: calc(var(--header-h) + var(--space));
 }
 @media (prefers-reduced-motion: no-preference) {
   html {
@@ -10,31 +13,27 @@ html {
   }
 }
 .section-nav {
-  position: sticky;
-  top: var(--header-h);
-  z-index: 5;
   margin: 0 0 var(--space);
   padding: 8px 0;
   background: var(--bg);
   border-bottom: 1px solid var(--card-border);
-  overflow-x: auto;
 }
 .section-nav ul {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
-  white-space: nowrap;
 }
 .section-nav li {
   flex: none;
+  max-width: 100%;
 }
 .section-nav a {
   display: inline-block;
   box-sizing: border-box;
-  max-width: 32ch;
+  max-width: min(32ch, 100%);
   height: 44px;
   padding: 0 16px;
   overflow: hidden;

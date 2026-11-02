@@ -98,9 +98,21 @@ describe('the header is sticky and the section tabs sit directly under it', () =
   it('never hides or scrolls a header link sideways', () => {
     expect(stripComments(g)).not.toMatch(/\.site-header nav\s*\{[^}]*overflow-x:\s*auto/);
   });
-  it('.section-nav sticks at --header-h and scroll-padding-top clears both bars', () => {
-    expect(body(nav, '.section-nav')).toMatch(/top:\s*var\(--header-h\)/);
-    expect(body(nav, 'html')).toMatch(/scroll-padding-top:\s*calc\(var\(--header-h\)/);
+  // WEB-POLISH-4 replaces the old pin ("sticks at --header-h and scroll-padding-top clears both bars"): the tab
+  // bar now wraps onto as many rows as it needs, never scrolls sideways, and is not sticky (no width exists at
+  // which every page's tab set fits one row), so only the sticky site header has to be cleared.
+  it('.section-nav wraps, never scrolls sideways and is not sticky', () => {
+    const c = stripComments(nav);
+    expect(body(nav, '.section-nav ul')).toMatch(/flex-wrap:\s*wrap/);
+    expect(body(nav, '.section-nav ul')).not.toMatch(/nowrap/);
+    expect(body(nav, '.section-nav')).not.toMatch(/overflow-x|overflow:\s*(auto|scroll)/);
+    expect(c).not.toMatch(/position:\s*sticky/);
+    expect(c).not.toMatch(/top:\s*var\(--header-h\)/);
+  });
+  it('scroll-padding-top clears the sticky site header from --header-h, with no fixed bar height', () => {
+    expect(body(nav, 'html')).toMatch(
+      /scroll-padding-top:\s*calc\(var\(--header-h\)\s*\+\s*var\(--space\)\)/,
+    );
   });
 });
 
