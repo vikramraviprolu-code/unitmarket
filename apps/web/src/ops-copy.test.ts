@@ -106,3 +106,28 @@ describe('what the screen says when the start is unsure', () => {
     expect(copy.switchNowText(null)).toBe('The switch could not be read.');
   });
 });
+
+// WEB-POLISH-2: the sentence under the kill switch badge after a start, and the words after a stop.
+describe('what the screen says after a start or a stop', () => {
+  it('switch On and flag On: today words', () => {
+    expect(copy.startDoneText(120, false)).toBe(
+      'PayPal calls are on (in force within 5 seconds). 120 calls are left today.',
+    );
+    expect(copy.startDoneText(120)).toBe(copy.startDoneText(120, false));
+    expect(copy.startDoneText(1, false)).toMatch(/1 call is left today\.$/);
+  });
+  it('switch On and flag Off: says the switch is on, the flag is off and no PayPal call goes out', () => {
+    const s = copy.startDoneText(120, true);
+    expect(s).toBe(
+      'The switch is on, but the connection flag is off, so no PayPal call goes out. 120 calls are left today.',
+    );
+    expect(s).not.toMatch(/PayPal calls are on|in force/);
+  });
+  it('the Stop result names Start PayPal while signed in with the code, and the owner command', () => {
+    expect(copy.OPS_STOP_DONE).toBe(
+      'PayPal calls are stopped (in force within 5 seconds). To turn them on again, use Start PayPal while signed in with your authenticator code, or the owner runs pnpm safety:resume at their terminal.',
+    );
+    // Start has a reason and a typed scope, and no code field: the code is carried by the sign-in.
+    expect(copy.OPS_STOP_DONE).not.toMatch(/Start PayPal with your authenticator code/);
+  });
+});

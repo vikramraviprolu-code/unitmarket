@@ -4,13 +4,19 @@
   --space: 16px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  /* The sticky header has one fixed height, so the section tabs can stick directly under it: one row on a
-     wide screen, two rows (brand and switch, then links) on a phone. */
-  --header-h: 64px;
+  /* The sticky header is exactly this tall, so the section tabs can stick directly under it. Three width bands
+     (WEB-POLISH-1): one row from 1200px, two rows (brand, label and switch, then the links) from 560px, and
+     under 560px the header scrolls away with the page, so the value is 0. */
+  --header-h: 104px;
 }
-@media (max-width: 600px) {
+@media (min-width: 1200px) {
   :root {
-    --header-h: 104px;
+    --header-h: 64px;
+  }
+}
+@media (max-width: 559px) {
+  :root {
+    --header-h: 0px;
   }
 }
 /* Two skins, each one fixed palette (SKIN-A, decisions 38 to 41). The server writes data-skin on <html> from
@@ -182,7 +188,8 @@ main:focus {
   top: 8px;
 }
 /* The header stays on screen while a long page scrolls, and the section tabs stick directly under it
-   (--header-h). One fixed height, so nothing overlaps and scroll-padding-top can clear both bars. */
+   (--header-h). The band is never shorter than --header-h and only grows with its content, so nothing overlaps
+   and scroll-padding-top can clear both bars. */
 .site-header {
   position: sticky;
   top: 0;
@@ -215,9 +222,15 @@ main,
   display: flex;
   align-items: center;
   gap: 0 16px;
-  height: var(--header-h);
+  min-height: var(--header-h);
   padding-top: 0;
   padding-bottom: 0;
+}
+/* One row needs about 1030px (brand, five links, switch, label), more than the 880px page column. */
+@media (min-width: 1200px) {
+  .site-header .inner {
+    max-width: 1120px;
+  }
 }
 /* The Appearance switch in the header: two buttons, one per skin, the chosen one filled. Both skins are one
    click away on every page. Colours are the header tokens, so it reads in Bright Market and in Deep Harbour. */
@@ -253,13 +266,15 @@ main,
   border-radius: var(--radius-btn);
   outline-offset: -4px;
 }
-/* Narrow screens, two rows: the brand, the environment label and the switch share the first row, the links
-   take the second and scroll sideways if they do not fit. The switch keeps its 44px targets with short words. */
-@media (max-width: 600px) {
+/* Under 1200px, two rows: the brand, the environment label and the switch (48px with its border) share the
+   first row, the links (44px) take the second: 4 + 48 + 4 + 44 + 4 = 104px, the value of --header-h. Every link keeps its own line and its 44px target, and nothing scrolls sideways. */
+@media (max-width: 1199px) {
   .site-header .inner {
     flex-wrap: wrap;
-    align-content: space-evenly;
-    gap: 0 10px;
+    align-content: center;
+    gap: 4px 10px;
+    padding-top: 4px;
+    padding-bottom: 4px;
   }
   .site-header .spacer {
     display: none;
@@ -276,21 +291,30 @@ main,
   .site-header nav {
     order: 3;
     flex: 1 1 100%;
-    overflow-x: auto;
-  }
-  .site-header nav ul {
-    flex-wrap: nowrap;
-    white-space: nowrap;
   }
   .site-header nav a {
     padding: 0 10px;
   }
+}
+/* Phones and narrow windows: short skin names so the switch keeps its 44px targets. */
+@media (max-width: 600px) {
   .skin-switch button {
     padding: 0 10px;
     font-size: 0.85rem;
   }
   .skin-switch .skin-w {
     display: none;
+  }
+}
+/* Under 560px the header is not sticky (it would take a third of a phone screen) and the links wrap onto as
+   many lines as they need; a link is never hidden or scrolled. */
+@media (max-width: 559px) {
+  .site-header {
+    position: relative;
+  }
+  .site-header .inner {
+    padding-top: 8px;
+    padding-bottom: 8px;
   }
 }
 .brand,
@@ -305,6 +329,7 @@ main,
 nav ul {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px 8px;
   list-style: none;
   margin: 0;
@@ -319,6 +344,15 @@ nav a {
 }
 .site-header nav a:hover {
   background: var(--header-hover);
+}
+/* One line per link, and the Sign out pill on the same centre line as the links beside it. */
+.site-header nav ul {
+  white-space: nowrap;
+}
+.site-header nav li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
 }
 .spacer {
   flex: 1;

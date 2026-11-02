@@ -12,6 +12,7 @@ switch ai_enabled: AI help | Off turns the model features off.
 switch ai_enabled on: good On | off: warn Off
 switch webhook_enabled: PayPal notices | Off answers incoming PayPal notices with a request to retry.
 switch webhook_enabled on: good On | off: warn Off
+switch paypal_outbound on, flag off: warn On, flag off: no PayPal calls go out
 kill state label: Outbound PayPal calls
 orders list heading: Latest orders
 orders notes: 1 order paid | 3 orders awaiting buyer

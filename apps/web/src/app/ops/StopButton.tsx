@@ -1,10 +1,11 @@
 'use client';
 import { useState } from 'react';
 import { postJson } from '../../lib/client-api';
+import { OPS_STOP_DONE } from '../../lib/ops-copy';
 import { ErrorState } from '../../ui/ErrorState';
 
 // "Stop PayPal now" (BU-2). Turns the outbound switch off. Turning it back on is the Start control next
-// to it (an operator with the authenticator code, WEB-OPS-START) or `pnpm safety:resume` at the terminal.
+// to it (an operator signed in with the authenticator code, WEB-OPS-START) or `pnpm safety:resume` at the terminal.
 export function StopButton({ onStopped }: { onStopped?: () => void } = {}) {
   const [reason, setReason] = useState('');
   const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
@@ -47,9 +48,7 @@ export function StopButton({ onStopped }: { onStopped?: () => void } = {}) {
         </button>
       </form>
       <div aria-live="polite" data-testid="ops-stop-result">
-        {state === 'done'
-          ? 'PayPal calls are stopped (in force within 5 seconds). To turn them on again, use Start PayPal with your authenticator code, or the owner runs pnpm safety:resume at their terminal.'
-          : null}
+        {state === 'done' ? OPS_STOP_DONE : null}
       </div>
       {error ? <ErrorState title="Could not stop">{error}</ErrorState> : null}
     </section>

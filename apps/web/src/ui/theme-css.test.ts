@@ -73,13 +73,30 @@ describe('no literal colour outside the token blocks', () => {
 describe('the header is sticky and the section tabs sit directly under it', () => {
   const g = readFileSync(join(srcDir, 'app/globals.css'), 'utf8');
   const nav = readFileSync(join(srcDir, 'ui/section-nav.css'), 'utf8');
-  it('declares --header-h (desktop and phone) and a sticky .site-header of that height', () => {
-    expect(rules(g).filter(([s, b]) => s === ':root' && b.includes('--header-h')).length).toBe(2);
+  it('declares --header-h (one row, two rows, phone) and a sticky .site-header at least that tall', () => {
+    expect(rules(g).filter(([s, b]) => s === ':root' && b.includes('--header-h')).length).toBe(3);
     const h = body(g, '.site-header');
     expect(h).toMatch(/position:\s*sticky/);
     expect(h).toMatch(/top:\s*0/);
     expect(h).toMatch(/z-index:\s*\d+/);
-    expect(body(g, '.site-header .inner')).toMatch(/height:\s*var\(--header-h\)/);
+    expect(body(g, '.site-header .inner')).toMatch(/(^|[\s;])min-height:\s*var\(--header-h\)/);
+    expect(body(g, '.site-header .inner')).not.toMatch(/(^|[\s;])height:\s*var\(--header-h\)/);
+  });
+  // WEB-POLISH-1: the one-row content needs about 1030px and .inner is capped, so one row only from 1200px; two
+  // rows from 560 to 1199px; under 560px the header scrolls away (--header-h is 0) and links wrap, never hide.
+  it('lays the header out in three width bands (1200 and up, 560 to 1199, under 560)', () => {
+    const c = stripComments(g);
+    expect(c).toMatch(/@media \(max-width: 1199px\)/);
+    expect(c).toMatch(/@media \(max-width: 559px\)/);
+    expect(c).toMatch(/@media \(min-width: 1200px\)/);
+    expect(c).not.toMatch(/@media \(max-width: 600px\)\s*\{\s*:root/);
+    expect(c).toMatch(/--header-h:\s*0px/);
+    const phone = c.slice(c.indexOf('@media (max-width: 559px)'));
+    expect(phone).toMatch(/position:\s*relative/);
+    expect(body(g, '.site-header nav ul')).toMatch(/white-space:\s*nowrap|flex-wrap/);
+  });
+  it('never hides or scrolls a header link sideways', () => {
+    expect(stripComments(g)).not.toMatch(/\.site-header nav\s*\{[^}]*overflow-x:\s*auto/);
   });
   it('.section-nav sticks at --header-h and scroll-padding-top clears both bars', () => {
     expect(body(nav, '.section-nav')).toMatch(/top:\s*var\(--header-h\)/);
