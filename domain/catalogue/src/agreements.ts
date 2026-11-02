@@ -3,6 +3,7 @@
 // boot seed is the only writer. There is no click-through and no publisher write; the functions here read
 // the rows (a publisher its own, the operator with the second factor all). An applicant has no row.
 import type { Actor, Clock, Database, Ids } from '@umsbx/contracts';
+import { takeSeedLock } from './seed-lock';
 
 export interface Agreement {
   publisher_id: string;
@@ -51,6 +52,8 @@ export async function seedAgreements(
   if (input.publisher_slugs.length === 0) return 0;
   const now = clock.now().toISOString();
   return db.transaction(async (tx) => {
+    // SEED-RACE: see seed-lock.ts.
+    await takeSeedLock(tx);
     const todo = await tx.query<{ id: string }>(
       `SELECT p.id FROM publishers p
         WHERE p.slug = ANY ($1::text[]) AND p.status <> 'applied'

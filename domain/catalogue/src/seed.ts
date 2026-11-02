@@ -13,6 +13,7 @@ import {
 } from '@umsbx/contracts';
 import type { Clock, Database, Ids, Offer, SqlExecutor } from '@umsbx/contracts';
 import { offerIdFor } from './read';
+import { takeSeedLock } from './seed-lock';
 
 type Rec = Record<string, unknown>;
 const fail = (what: string): never => {
@@ -140,9 +141,8 @@ export async function seedCatalogue(
   }
 
   return db.transaction(async (tx) => {
-    // SEED-RACE: two boots on one empty database must not both insert. The second waits here until the
-    // first has committed, then finds its rows below. Released at the end of the transaction.
-    await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', ['ums.seed.catalogue']);
+    // SEED-RACE: two boots on one empty database must not both insert; see seed-lock.ts.
+    await takeSeedLock(tx);
     const counts = { publishers: 0, articles: 0, offers: 0 };
     for (const c of seed.corridors) {
       await tx.query(
