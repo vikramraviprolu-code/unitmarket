@@ -241,3 +241,42 @@ Then, as operator, open Operations and use Start PayPal: type the reason, the sc
 If a buyer forgets a password: an operator at their own terminal (same database setup as the PayPal start section above) runs `corepack pnpm accounts:reset-password --username THE-NAME --operator vikram`, which asks for the new password twice (nothing is shown on screen). Nothing is ever sent by email.
 
 Paste back: the deploy output's last two lines and what you saw in checks 1 to 5 and Step 4. Never paste a passcode or password.
+
+## Fourth deploy: tag `gcp-pub-4` (header layout fix, clearer Operations wording)
+
+Same steps as the third deploy, with the new tag. It adds **no database migration**, so nothing in the database changes. The deploy still leaves PayPal off. Do not deploy while anyone is testing.
+
+Commit to deploy: the coordinator gives you the exact hash in the chat message that sends you here.
+
+Step 1 (laptop with the repository):
+
+```
+COMMIT=PUT-THE-HASH-FROM-THE-CHAT-HERE
+git fetch origin
+git checkout "$COMMIT"
+git status
+git tag gcp-pub-4
+git push origin gcp-pub-4
+```
+
+Step 2 (Cloud Shell, inside the `unitmarket-sandbox` folder):
+
+```
+PROJECT_ID=unitmarket-sbx-vr1
+REGION=europe-west3
+gcloud sql backups list --instance=unitmarket-sbx-pg --project="$PROJECT_ID"
+git fetch --tags
+git checkout gcp-pub-4
+git log --oneline -1
+bash infra/gcp/deploy.sh "$PROJECT_ID" "$REGION" gcp-pub-4
+```
+
+Expected: a successful backup less than a day old, `git log` shows the commit from the chat, and the output ends with `deployed unitmarket-sandbox from tag gcp-pub-4`. Keep using `https://unitmarket-sandbox-626887286871.europe-west3.run.app`.
+
+Checks in the browser:
+
+1. Sign in as a buyer. The header shows one clean row of links on a wide window, two clean rows on a medium window, and a readable stack on a phone. Try both skins.
+2. Operations: with the switch Off the badge reads "Off: no PayPal calls". Do not press Start unless you mean to start PayPal. If the switch is On while the Cloud Run flag is off, the badge reads "On, flag off: no PayPal calls go out".
+3. The sign-in and buyer accounts you made on the third deploy still work.
+
+Paste back: the last two lines of the deploy output and what you saw. Never paste a passcode or password.
