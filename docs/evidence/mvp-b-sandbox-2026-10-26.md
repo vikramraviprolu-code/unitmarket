@@ -1,6 +1,6 @@
 # MVP-B evidence: the real PayPal sandbox, one publisher (24 to 26 Oct 2026)
 
-Status: MVP-B is closed except B-13 (fixtures from the real recordings, a reviewed pull request by Sakthi).
+Status: MVP-B is closed. B-13 (fixtures from the real recordings) was closed on 2026-11-02, see D-074.
 Source: the owner's own terminal and browser runs, the app log lines the owner pasted, and the conformance
 `summary.md`. The run folder `calls.json` stays on the owner's machine (it was checked: no secret; it needs
 `record:fixtures --synthetic-ids` before it is shared). No order id, merchant id, token or debug id is written
@@ -26,7 +26,7 @@ Build under test: main with the polling fixes BU-8 and BU-9 (`89a8b0d` on 26 Oct
 | B-10 | Fit cards honest                                                    | Cards show only what the data supports                                                                                                                 | Offline tests (visual dashboard not built)                                                                                                                              | Offline suite                       |
 | B-11 | Both entry paths reach the same approval                            | Same approval                                                                                                                                          | Offline tests                                                                                                                                                           | Offline suite                       |
 | B-12 | Injection set                                                       | No prompt injection changes a price or a payee                                                                                                         | Offline tests                                                                                                                                                           | Offline suite                       |
-| B-13 | Real recordings become fixtures                                     | Reviewed pull request                                                                                                                                  | OPEN: Sakthi, `pnpm record:fixtures --synthetic-ids`                                                                                                                    |                                     |
+| B-13 | Real recordings become fixtures                                     | Reviewed pull request                                                                                                                                  | DONE 2026-11-02: 35 fixtures from the 2026-10-26 run (D-074)                                                                                                            |                                     |
 
 Also passed: the payee echo gate (D-028 option c, D-036): PayPal echoes the owner's own merchant id.
 
