@@ -9,9 +9,17 @@
      under 560px the header scrolls away with the page, so the value is 0. */
   --header-h: 104px;
 }
+/* One page width for the header content, the page and the footer (WEB-POLISH-3), so their left and right edges
+   are the same at every width. The one-row header needs about 1030px (brand, five links, switch, label), more
+   than the 880px column, so from 1200px all three are 1120px. Text blocks and forms keep their own narrower
+   caps (.auth-wrap, .lede, .reader), so a wider column does not make a line of text longer. */
+:root {
+  --page-max: 880px;
+}
 @media (min-width: 1200px) {
   :root {
     --header-h: 64px;
+    --page-max: 1120px;
   }
 }
 @media (max-width: 559px) {
@@ -207,7 +215,7 @@ main:focus {
 .site-header .inner,
 main,
 .site-footer {
-  max-width: 880px;
+  max-width: var(--page-max);
   margin: 0 auto;
   padding: 0 var(--space);
 }
@@ -225,12 +233,6 @@ main,
   min-height: var(--header-h);
   padding-top: 0;
   padding-bottom: 0;
-}
-/* One row needs about 1030px (brand, five links, switch, label), more than the 880px page column. */
-@media (min-width: 1200px) {
-  .site-header .inner {
-    max-width: 1120px;
-  }
 }
 /* The Appearance switch in the header: two buttons, one per skin, the chosen one filled. Both skins are one
    click away on every page. Colours are the header tokens, so it reads in Bright Market and in Deep Harbour. */
