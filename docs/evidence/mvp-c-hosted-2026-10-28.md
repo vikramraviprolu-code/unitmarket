@@ -41,6 +41,7 @@ and the Postgres race runs of lane PG-2 (80 rounds, D-045).
 ## Open items after closure
 
 - C-10 passed on the documented condition (restore within 30 minutes, 10 min 6 s). Comparing row counts and ledger sums of a restored copy with the live database, and starting the app against a copy, were not done.
+- C-10 data comparison, run 2 Nov 2026 (D-076): a clone of the live instance made at that moment (the point-in-time value came out empty on a Mac, so this was not a past-time restore; the 28 Oct drill above is the point-in-time proof) took 22:59:04 to 23:06:41 UTC (about 8 minutes). Row counts of all 43 public tables were identical in the clone and the live database. Still not done: ledger sums against PayPal read-backs, and starting the app against a copy. The clone was deleted afterwards.
 - C-13 proves the checks and policies exist and pass. The alert e-mail itself was not provoked (it would need the app stopped).
 - The webhook lines for the 22:56 and 22:59 UTC refunds were not read.
 - `UMS_OWN_MERCHANT_ID` must be set as a secret (setup.sh again, then set-secret.sh) before the next deploy; a deploy switches the PayPal connection off.
