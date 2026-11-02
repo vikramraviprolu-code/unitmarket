@@ -195,9 +195,9 @@ main:focus {
 .skip:focus {
   top: 8px;
 }
-/* The header stays on screen while a long page scrolls, and the section tabs stick directly under it
-   (--header-h). The band is never shorter than --header-h and only grows with its content, so nothing overlaps
-   and scroll-padding-top can clear both bars. */
+/* The header stays on screen while a long page scrolls. The section tabs are not sticky (WEB-POLISH-4). The band
+   is never shorter than --header-h and only grows with its content, so nothing overlaps and scroll-padding-top
+   (section-nav.css) clears the header. */
 .site-header {
   position: sticky;
   top: 0;
