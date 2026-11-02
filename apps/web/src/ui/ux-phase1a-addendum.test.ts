@@ -165,12 +165,26 @@ describe('stylesheet: the new rules do not leak into the page frame (review F1)'
   });
   it('the frame selector list still sets max-width, margin and padding', () => {
     const frame = rules.find(
-      (r) => /(^|,)\s*main\s*(,|$)/.test(r.sel) && /max-width:\s*880px/.test(r.body),
+      (r) => /(^|,)\s*main\s*(,|$)/.test(r.sel) && /max-width:\s*var\(--page-max\)/.test(r.body),
     );
     expect(frame).toBeDefined();
     expect(frame!.sel.replace(/\s+/g, ' ')).toBe('.site-header .inner, main, .site-footer');
     expect(frame!.body).toMatch(/margin:\s*0 auto/);
     expect(frame!.body).toMatch(/padding:\s*0 var\(--space\)/);
+  });
+  // WEB-POLISH-3: one width token for the header content, the page and the footer (880px, 1120px from 1200px).
+  it('--page-max is 880px, and 1120px from 1200px, and nothing else caps the frame', () => {
+    const c = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(c).toMatch(/:root\s*\{\s*--page-max:\s*880px;\s*\}/);
+    expect(c).toMatch(/@media \(min-width: 1200px\)\s*\{\s*:root\s*\{[^}]*--page-max:\s*1120px;/);
+    const capped = rules.filter(
+      (r) =>
+        /(^|,)\s*(main|\.site-footer|\.site-header \.inner)\s*(,|$)/.test(r.sel) &&
+        /max-width/.test(r.body),
+    );
+    expect(capped.map((r) => r.sel.replace(/\s+/g, ' '))).toEqual([
+      '.site-header .inner, main, .site-footer',
+    ]);
   });
 });
 

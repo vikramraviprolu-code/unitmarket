@@ -221,7 +221,6 @@
 
 /* ---- Forms ---- */
 .auth-form {
-  max-width: 560px;
   padding: 18px 20px 22px;
   background: var(--surface);
   border: 1px solid var(--card-border);
