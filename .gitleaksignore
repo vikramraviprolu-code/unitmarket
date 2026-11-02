@@ -14,3 +14,19 @@ dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-
 dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-key:77
 dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-key:78
 dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-key:79
+
+# Findings of the full-history scan on 2026-11-03 (D-078): test material only, read line by line at each
+# commit. Exact fingerprints, so a real secret added to these files later is still caught.
+#  - TOTP_KEY decodes to the digits 1234567890..., a made-up authenticator key for a test.
+#  - UMS_SESSION_SECRET, UMS_APPROVAL_SECRET and UMS_LINK_SECRET in two test files: the owner compared their
+#    SHA-256 with the hosted Secret Manager values (no match); not the real secrets.
+#  - key_hex in the WordPress signed-link test vectors: ASCII text such as "umbb-test..." and a regular byte run.
+3695c9e4fbd073f9e2c61d09f05c3fc8c5af9b5e:apps/web/src/ops-start-support.ts:generic-api-key:14
+5ad91a774f9e99712c782872aae87d938319690e:packages/config/src/feed-hosts.test.ts:generic-api-key:12
+5ad91a774f9e99712c782872aae87d938319690e:packages/config/src/feed-hosts.test.ts:generic-api-key:13
+5ad91a774f9e99712c782872aae87d938319690e:packages/config/src/feed-hosts.test.ts:generic-api-key:14
+17662ccfeb76b4c61f19ea9b46c30259507be2df:integrations/wordpress/test-vectors/signed-link-vectors.json:generic-api-key:18
+17662ccfeb76b4c61f19ea9b46c30259507be2df:integrations/wordpress/test-vectors/signed-link-vectors.json:generic-api-key:62
+3fe19035e2f2b50e68e3a2172e4fc8f0e3aaecf6:packages/config/src/env-file-guard.test.ts:generic-api-key:212
+3fe19035e2f2b50e68e3a2172e4fc8f0e3aaecf6:packages/config/src/env-file-guard.test.ts:generic-api-key:213
+3fe19035e2f2b50e68e3a2172e4fc8f0e3aaecf6:packages/config/src/env-file-guard.test.ts:generic-api-key:214
