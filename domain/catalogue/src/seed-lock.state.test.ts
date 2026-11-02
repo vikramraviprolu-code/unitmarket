@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { Database, SqlExecutor } from '@umsbx/contracts';
-import { seedCatalogue } from './index';
+import { seedAgreements, seedCatalogue } from './index';
 import { fakeClock, seededIds, T0, testDb } from './support';
 
 const seedJson = JSON.parse(
@@ -38,6 +38,35 @@ describe('seedCatalogue takes a transaction lock first', () => {
     expect(counts.publishers).toBeGreaterThan(0);
     expect(counts.articles).toBeGreaterThan(0);
     expect(counts.offers).toBeGreaterThan(0);
+    await db.close();
+  });
+
+  it('seedAgreements also takes the lock before it reads or writes', async () => {
+    const db = await testDb();
+    await seedCatalogue(db, fakeClock(T0), seededIds('seed-lock-a'), seedJson);
+    const seen: string[] = [];
+    const real = db.transaction.bind(db);
+    const spied = Object.create(db, {
+      transaction: {
+        value: (fn: (tx: SqlExecutor) => Promise<unknown>) =>
+          real((tx: SqlExecutor) =>
+            fn({
+              ...tx,
+              query: (sql: string, params?: unknown[]) => {
+                seen.push(sql);
+                return tx.query(sql, params);
+              },
+            } as SqlExecutor),
+          ),
+      },
+    }) as Database;
+    const slugs = (seedJson as { publishers: { slug: string }[] }).publishers.map((p) => p.slug);
+    await seedAgreements(spied, fakeClock(T0), seededIds('seed-lock-b'), {
+      terms_version: 'terms-1',
+      accepted_by_label: 'seed test',
+      publisher_slugs: slugs,
+    });
+    expect(seen[0]).toMatch(/pg_advisory_xact_lock/);
     await db.close();
   });
 });
