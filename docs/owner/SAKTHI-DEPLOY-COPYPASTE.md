@@ -280,3 +280,47 @@ Checks in the browser:
 3. The sign-in and buyer accounts you made on the third deploy still work.
 
 Paste back: the last two lines of the deploy output and what you saw. Never paste a passcode or password.
+
+## Fifth deploy: tag `gcp-pub-5` (page edges line up, equal card widths, Operations tabs wrap)
+
+Same steps as the fourth deploy, with the new tag. It adds **no database migration**. The deploy still leaves PayPal off. Do not deploy while anyone is testing.
+
+Commit to deploy: the coordinator gives you the exact hash in the chat message that sends you here.
+
+Step 1 (laptop with the repository):
+
+```
+COMMIT=PUT-THE-HASH-FROM-THE-CHAT-HERE
+git fetch origin
+git checkout "$COMMIT"
+git status
+git tag gcp-pub-5
+git push origin gcp-pub-5
+```
+
+Step 2 (Cloud Shell, inside the `unitmarket-sandbox` folder):
+
+```
+PROJECT_ID=unitmarket-sbx-vr1
+REGION=europe-west3
+gcloud config set account unitmarket@raviprolu.com
+gcloud config set project "$PROJECT_ID"
+gcloud sql backups list --instance=unitmarket-sbx-pg --project="$PROJECT_ID"
+git fetch --tags
+git checkout gcp-pub-5
+git log --oneline -1
+bash infra/gcp/deploy.sh "$PROJECT_ID" "$REGION" gcp-pub-5
+```
+
+The two `gcloud config set` lines fix the "no active account selected" error some Cloud Shell sessions show. If the deploy still stops on that error, run them and run the deploy line again: it keeps the built image.
+
+Expected: a successful backup less than a day old, `git log` shows the commit from the chat, and the output ends with `deployed unitmarket-sandbox from tag gcp-pub-5`. Keep using `https://unitmarket-sandbox-626887286871.europe-west3.run.app`.
+
+Checks in the browser (try both skins):
+
+1. On a wide window the "UnitMarket" name in the header starts at the same left edge as the page content and the footer. The right end of the header lines up with the page too.
+2. Account page (signed in as a buyer account): the heading card, the password card and the sign-out card are the same width and start at the same left edge. The sign-up and sign-in pages look the same way.
+3. Operations: the section tabs wrap onto more rows when the window is narrow. There is no sideways scrolling. Every tab is visible. The bar scrolls away with the page (it is no longer stuck under the header).
+4. Operations still reads "Off: no PayPal calls" with the switch Off.
+
+Paste back: the last two lines of the deploy output and what you saw. Never paste a passcode or password.
