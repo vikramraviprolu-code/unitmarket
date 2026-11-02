@@ -48,10 +48,10 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input, log }) =>
       fields: { err_name: e instanceof Error ? e.name : 'unknown' },
     });
     const on = await engine.outboundSwitchOn(actor);
-    // HttpResult has no 500 member (a thrown error becomes the generic 500 in withRoute); this answer
-    // keeps the same envelope but names what the person must do, so it is typed through the 503 shape.
+    // A thrown error becomes the generic 500 in withRoute; this typed 500 keeps the same envelope but
+    // names what the person must do.
     return {
-      status: 500 as unknown as 503,
+      status: 500,
       code: 'start_unknown',
       message: `${startRefusalText('start_unknown')} ${switchNowText(on)}`,
     };

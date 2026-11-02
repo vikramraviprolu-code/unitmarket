@@ -113,7 +113,7 @@ export type HttpResult<O> =
   | { status: 200 | 201 | 202; body: O; headers?: Record<string, string> }
   | { status: 303; location: string }
   | {
-      status: 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429 | 503;
+      status: 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429 | 500 | 503;
       code: string;
       message: string;
     };
