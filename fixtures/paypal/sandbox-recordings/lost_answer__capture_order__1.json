@@ -1,0 +1,137 @@
+{
+  "meta": {
+    "source": "sandbox-recording",
+    "scenario": "lost_answer",
+    "operation": "capture_order",
+    "step": 1,
+    "recorded_at": "2026-10-26T00:00:00Z",
+    "origin": "sandbox-recording: MVP-B real sandbox conformance run, owner laptop, 2026-10-26",
+    "redactions": [
+      "recorder: key and pattern redaction applied; headers allow-listed",
+      "ids: 4 order/capture/refund id(s) replaced by synthetic ids (flag)",
+      "foreign url: 7 value(s) replaced",
+      "key address: 14 value(s) replaced",
+      "key email: 46 value(s) replaced",
+      "key payer id: 14 value(s) replaced",
+      "key person name: 14 value(s) replaced",
+      "request header authorization: 35 value(s) replaced",
+      "request header value rejected: 4 value(s) replaced",
+      "url query value: 24 value(s) replaced"
+    ],
+    "expected_id": "SBXLOSTANSWERORD00001"
+  },
+  "request": {
+    "method": "POST",
+    "path_template": "/v2/checkout/orders/{id}/capture",
+    "headers": {
+      "accept": "application/json",
+      "content-type": "application/json",
+      "prefer": "return=representation",
+      "authorization": "[redacted]"
+    },
+    "body": {}
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "paypal-debug-id": "f208611c0d4de",
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "SBXLOSTANSWERORD00001",
+      "intent": "CAPTURE",
+      "status": "COMPLETED",
+      "payment_source": {
+        "paypal": {
+          "email_address": "[redacted]",
+          "account_id": "[redacted]",
+          "account_status": "VERIFIED",
+          "name": "[redacted]",
+          "address": "[redacted]"
+        }
+      },
+      "purchase_units": [
+        {
+          "reference_id": "unit-1",
+          "amount": {
+            "currency_code": "USD",
+            "value": "1.00"
+          },
+          "payee": {
+            "email_address": "[redacted]",
+            "merchant_id": "OWNMERCHANT01"
+          },
+          "custom_id": "ord_SBXMVP5JYH92",
+          "invoice_id": "ord_SBXMVP5JYH92",
+          "payments": {
+            "captures": [
+              {
+                "id": "SBXLOSTANSWERCAP00001",
+                "status": "COMPLETED",
+                "amount": {
+                  "currency_code": "USD",
+                  "value": "1.00"
+                },
+                "final_capture": true,
+                "seller_protection": {
+                  "status": "ELIGIBLE",
+                  "dispute_categories": ["ITEM_NOT_RECEIVED", "UNAUTHORIZED_TRANSACTION"]
+                },
+                "seller_receivable_breakdown": {
+                  "gross_amount": {
+                    "currency_code": "USD",
+                    "value": "1.00"
+                  },
+                  "paypal_fee": {
+                    "currency_code": "USD",
+                    "value": "0.32"
+                  },
+                  "net_amount": {
+                    "currency_code": "USD",
+                    "value": "0.68"
+                  }
+                },
+                "invoice_id": "ord_SBXMVP5JYH92",
+                "custom_id": "ord_SBXMVP5JYH92",
+                "links": [
+                  {
+                    "href": "/v2/payments/captures/SBXLOSTANSWERCAP00001",
+                    "rel": "self",
+                    "method": "GET"
+                  },
+                  {
+                    "href": "/v2/payments/captures/SBXLOSTANSWERCAP00001/refund",
+                    "rel": "refund",
+                    "method": "POST"
+                  },
+                  {
+                    "href": "/v2/checkout/orders/SBXLOSTANSWERORD00001",
+                    "rel": "up",
+                    "method": "GET"
+                  }
+                ],
+                "create_time": "2026-10-26T11:09:52Z",
+                "update_time": "2026-10-26T11:09:52Z"
+              }
+            ]
+          }
+        }
+      ],
+      "payer": {
+        "name": "[redacted]",
+        "email_address": "[redacted]",
+        "payer_id": "[redacted]",
+        "address": "[redacted]"
+      },
+      "create_time": "2026-10-26T11:07:27Z",
+      "update_time": "2026-10-26T11:09:52Z",
+      "links": [
+        {
+          "href": "/v2/checkout/orders/SBXLOSTANSWERORD00001",
+          "rel": "self",
+          "method": "GET"
+        }
+      ]
+    }
+  }
+}

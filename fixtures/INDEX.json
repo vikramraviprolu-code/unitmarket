@@ -82,6 +82,181 @@
       "source": "docs-example"
     },
     {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__capture_order__1.json",
+      "sha256": "99e69c70aaad98c839af4b86d4f5adf3b972c51e76dceef302bf6dbb2045fb1c",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__capture_order__2.json",
+      "sha256": "57211979f1d45a4ade94c6468067617b3e86f1264bab1c98a09c9c69294ad223",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__1.json",
+      "sha256": "e4adbd27a3abcdd507fc7f6e4b602cc3ce16cba02f62d68c2dc44c299c3e83c7",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__10.json",
+      "sha256": "37bfeaa23e477dab04410da65ad46aa1621fb4a2684d955cd527d1925bc61947",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__11.json",
+      "sha256": "c054dd6eadc6acb4faa3068750a72be6011c9511cf5d4178ff4c67c563771e85",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__12.json",
+      "sha256": "1fc69b68f8957637de48ddf6f6f745036ddb3687ebcdc2c017ad65b1c82ea47c",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__2.json",
+      "sha256": "20bb39edacb5bc1e53548140f63a94ed63209e06cd4403a702b1be579004c9a2",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__3.json",
+      "sha256": "7f7519d8358ae05ee71c6d6944e2d37a1373514f7c14f44ca4e69cb0b17a44f8",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__4.json",
+      "sha256": "4cb49c071170b2017fa0a39faf09a06ad07439fe53137157be704af534eb2728",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__5.json",
+      "sha256": "66cb6c651f9c3dfa16abd25ffd2f368c3ee943de6c2fc11329fcba87f40a7d7b",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__6.json",
+      "sha256": "29cd2f6218ba3d8c465d9682cf94e35f649428d4ea955c2f6b354074217ac703",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__7.json",
+      "sha256": "a42bfa087a0b0c11e3948f27d7e914bc1a13bbc141529c547c953fdfb33226d2",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__8.json",
+      "sha256": "01e7fa18113cf8a7183c8069ffb3ecbacb6f0618de96bee72b6271cc45b98cc0",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/approve_capture_replay__get_order__9.json",
+      "sha256": "217899037649dc58e23a0512d968ff8734e7de6bfdc5180b0e36852b3a2a71f6",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/capture_before_approval__capture_order__1.json",
+      "sha256": "a47e9e5686a163490a81244521b4666dfcd3566892e4d2d22ca35aeca7ec9953",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/create_replay__create_order__1.json",
+      "sha256": "c1050214f9a78cbad7b006f2f0b9537bbf0576d32d72d222bfa30121dac15b7d",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__capture_order__1.json",
+      "sha256": "d507c2d4f32c70cbb08b1a8516032451ddf2c996b4c620b8905a98e49fe6c419",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__create_order__1.json",
+      "sha256": "58216b3371335ec3681a9d68b6d122c7da7d8219928c124c12d94b1e72f6df6f",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__get_order__1.json",
+      "sha256": "d83e2969e39e91013d9a14bfb2c37e65cb02cf4571909ec59eb0f0af2aec1095",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__get_order__10.json",
+      "sha256": "281b2b950c2352f6824c60db8e441a4799d71b6e6cc86bf6da63e3dcd1e8aa29",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__get_order__11.json",
+      "sha256": "282fdd893f02008566ceab9b7ab105ed76ac706cfc4f8cd7abc87dedafada53c",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__get_order__2.json",
+      "sha256": "fba3cceb743e8e5b78e92f05a5d88eea0c4a581d64c40a2f3b17948a5e9a9a68",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__get_order__3.json",
+      "sha256": "d548a7c221044951221fc9c1254389a36cd750dbcf6c55c60a3e9ec46bd15a74",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__get_order__4.json",
+      "sha256": "05f8a577a7104e288755d5912fa83d53fc9ec1f63dc49e849e91816a654fdcaa",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__get_order__5.json",
+      "sha256": "fb0f1e4c3429fb679c48e27e59d65ef3f24dd2bda9d5e795f8dd7d1f63f85c5a",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__get_order__6.json",
+      "sha256": "0c9cf5e33e31453d58e51340796af4e5da40aa3235ea71d2adb7168e4b94f571",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__get_order__7.json",
+      "sha256": "a3b43b6f7d154d8bd493dbc975541cc6304519a80c6f58bae9cb00593b24ef08",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__get_order__8.json",
+      "sha256": "bdb7a62056dc2c4cc3e4eae0c6c4bac6d050120136c9b605f6d8b6510d4499f7",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__get_order__9.json",
+      "sha256": "32f5355369c43457305ea89917c8770c1f0b69e956bbc71367d81b16cd442bbf",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/lost_answer__oauth_token__1.json",
+      "sha256": "8973c673e566a76ad3333beb36e4f882c1acf4e122b6d3238d7db1dbf71c6f1a",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/payee_echo__create_order__1.json",
+      "sha256": "813a8c3de3c5b1e077c56a1fc1f46f026eda078d94fc258412331e3d0483a223",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/payee_echo__get_order__1.json",
+      "sha256": "0e95ce03903a54142d8ae4a0d2f59866000461a7bc6595085a7075e4c4979047",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/payee_echo__oauth_token__1.json",
+      "sha256": "5fabe494cfd1fd02ce5fc167dbbba17767cf903d50c28778cfac30425fec332e",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/read_backs__get_capture__1.json",
+      "sha256": "c9aa58b533194a564cfcaef8ee02b4b55ee259ed76a37dca80b2cf9fd1473f62",
+      "source": "sandbox-recording"
+    },
+    {
+      "path": "paypal/sandbox-recordings/read_backs__get_order__1.json",
+      "sha256": "73e04a80e1bc9e787eca8c7e0ce8be469320f53e9279113ddf1f0b20b96c64af",
+      "source": "sandbox-recording"
+    },
+    {
       "path": "paypal/synthetic/capture_202__capture_order__1.json",
       "sha256": "9af85ab40f460dd61a015686e173cac0527ca5b80b99401fc10be7942d7f85c4",
       "source": "synthetic"

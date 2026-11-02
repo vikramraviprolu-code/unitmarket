@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "source": "sandbox-recording",
+    "scenario": "lost_answer",
+    "operation": "oauth_token",
+    "step": 1,
+    "recorded_at": "2026-10-26T00:00:00Z",
+    "origin": "sandbox-recording: MVP-B real sandbox conformance run, owner laptop, 2026-10-26",
+    "redactions": [
+      "recorder: key and pattern redaction applied; headers allow-listed",
+      "ids: 4 order/capture/refund id(s) replaced by synthetic ids (flag)",
+      "foreign url: 7 value(s) replaced",
+      "key address: 14 value(s) replaced",
+      "key email: 46 value(s) replaced",
+      "key payer id: 14 value(s) replaced",
+      "key person name: 14 value(s) replaced",
+      "request header authorization: 35 value(s) replaced",
+      "request header value rejected: 4 value(s) replaced",
+      "url query value: 24 value(s) replaced"
+    ]
+  },
+  "request": {
+    "method": "POST",
+    "path_template": "/v1/oauth2/token",
+    "headers": {
+      "content-type": "application/x-www-form-urlencoded",
+      "accept": "application/json",
+      "authorization": "[redacted]"
+    },
+    "body": "[redacted]"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "paypal-debug-id": "f9209448a691a",
+      "content-type": "application/json"
+    },
+    "body": "[redacted]"
+  }
+}
