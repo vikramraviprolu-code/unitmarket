@@ -12,12 +12,13 @@ Goal, three small changes, nothing else:
 3. The corridor `gb-gbp` is switched on in the database by a separate owner step, not by code or migration, and recorded in the decision log. A UK buyer (account country GB) then sees the pounds offers through the existing discovery, which already follows enabled corridors.
 
 Inputs: `packages/transport/src/sandbox.ts`, `apps/web/composition.server.ts`.
-Outputs: those two files; `packages/transport/src/sandbox.binding.test.ts` (two edited tests, stated in the commit, because they pinned "USD only"); a new test `apps/web/src/offers-corridor.state.test.ts`.
+Outputs: those two files; `packages/transport/src/sandbox.binding.test.ts` (two edited tests, stated in the commit, because they pinned "USD only"); new tests `apps/web/src/offers-corridor.state.test.ts` and `apps/web/src/uk-purchase.state.test.ts` (a UK buyer buys the Northfield article in dry run: quote, approval, order, payment and ledger all in GBP, £1.50).
 
 Acceptance tests:
 
 - `corepack pnpm exec vitest run packages/transport/src/sandbox.binding.test.ts`: GBP create_order and GBP refund are sent under `mvp_c_refunds`; GBP is still blocked under `mvp_b_polling`; EUR, JPY and XAU are blocked under both; the allow-list pin names `mvp_c_refunds: ['USD','GBP']`.
 - `corepack pnpm exec vitest run apps/web/src/offers-corridor.state.test.ts`: the Northfield (GBP) offers are not listed while `gb-gbp` is disabled and are listed after it is enabled; the USD offers are listed in both cases.
+- `corepack pnpm exec vitest run apps/web/src/uk-purchase.state.test.ts`: the whole dry-run purchase stays in GBP.
 - `corepack pnpm exec vitest run tests/mvp-b` and `corepack pnpm test:contract` pass (they hold the other scope tests).
 - `corepack pnpm lint`, `typecheck`, `format:check`, `check:isolation`, `check:no-live-host` pass.
 
