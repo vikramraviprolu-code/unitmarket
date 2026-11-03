@@ -92,6 +92,7 @@ import type { CaseResult } from '@umsbx/model';
 import {
   SEED_DATA,
   SEED_SUPPLEMENT_COMPOSITE,
+  SEED_SUPPLEMENT_DE,
   NEW_OFFER_TERMS,
   applyDemoPrices,
   createOffer,
@@ -283,6 +284,11 @@ export interface AppOptions {
     payees?: boolean;
     demo_prices?: boolean;
     agreements?: boolean;
+    /**
+     * MC2-L2: the German corridor block (de-eur, off, and one fictional German publisher). Outside
+     * NODE_ENV=test it always runs; in tests it is off unless `de_corridor: true`, so older counts hold.
+     */
+    de_corridor?: boolean;
   };
   /**
    * AI-A (tests): a ModelWire standing in for the Claude egress. Used only when UMS_AI_ADAPTER=claude and a
@@ -1115,6 +1121,9 @@ export const DOMAIN_CONFIG = (c: Config): DomainConfig => ({
 // ---------------------------------------------------------------------------------------------
 const FIRST_PAYEE_SLUG = MVPB_PUBLISHER_SLUG;
 const SECOND_PAYEE_SLUG = 'quayside-gazette';
+// MC2-L2 (D-084 item 6): the fictional German publisher is paid into the same owner account, by the same rule
+// as Quayside: only set where it holds no id, never overwritten, flagged payee_shared, one audit row.
+const THIRD_PAYEE_SLUG = 'rheinwerft-kurier';
 
 export async function seedSandboxPayees(
   d: { db: Database; clock: Clock; audit: AuditSink; log: Logger },
@@ -1129,12 +1138,13 @@ export async function seedSandboxPayees(
         paypal_merchant_id: string | null;
         payee_shared: boolean;
       }>(
-        'SELECT id, slug, paypal_merchant_id, payee_shared FROM publishers WHERE slug = $1 OR slug = $2',
-        [FIRST_PAYEE_SLUG, SECOND_PAYEE_SLUG],
+        'SELECT id, slug, paypal_merchant_id, payee_shared FROM publishers WHERE slug = $1 OR slug = $2 OR slug = $3',
+        [FIRST_PAYEE_SLUG, SECOND_PAYEE_SLUG, THIRD_PAYEE_SLUG],
       )
     ).rows;
     const first = rows.find((r) => r.slug === FIRST_PAYEE_SLUG);
     const second = rows.find((r) => r.slug === SECOND_PAYEE_SLUG);
+    const third = rows.find((r) => r.slug === THIRD_PAYEE_SLUG);
     if (first === undefined || second === undefined) return false;
     if (first.paypal_merchant_id !== null && first.paypal_merchant_id !== own_merchant_id)
       return true;
@@ -1165,6 +1175,22 @@ export async function seedSandboxPayees(
         target: second.id,
         reason: 'D-041: both publishers are paid into the owner account',
         detail: { slug: second.slug, merchant_last4: last4 },
+      });
+    }
+    // The German publisher comes last, so the guard sees the owner id flagged on Harbour and Quayside
+    // before a third row takes it. It is absent on a database that has not run the MC2-L2 block yet.
+    if (third !== undefined && third.paypal_merchant_id === null) {
+      await tx.query(
+        `UPDATE publishers SET paypal_merchant_id = $3, payee_verified_at = $1, payee_shared = true, updated_at = $1
+          WHERE id = $2 AND paypal_merchant_id IS NULL`,
+        [now, third.id, own_merchant_id],
+      );
+      await d.audit.record(tx, {
+        actor: { kind: 'system' },
+        action: 'seed.payee_set',
+        target: third.id,
+        reason: 'D-041: all demo publishers are paid into the owner account',
+        detail: { slug: third.slug, merchant_last4: last4 },
       });
     }
     return false;
@@ -1326,6 +1352,12 @@ function buildApp(config: Config, opts: AppOptions): App {
     // never sets a merchant id, a verification time or the payee_shared flag.
     if (opts.test_seed?.supplement !== false)
       await seedSupplement(d, clock, ids, SEED_SUPPLEMENT_COMPOSITE);
+    // MC2-L2 (D-084 item 6): the German euro corridor (switched off) and one fictional German publisher.
+    // Every boot, after the composite block and its own lock, so it reaches a disk that holds the older
+    // seed. Rows are looked up first and the corridor insert is DO NOTHING: a second run adds nothing and
+    // never changes the corridor switch. No merchant id is set here; the payee step below does that.
+    if (config.node_env !== 'test' || opts.test_seed?.de_corridor === true)
+      await seedSupplement(d, clock, ids, SEED_SUPPLEMENT_DE);
     // AGREE-1: the seeded, read only publisher terms record for the demo publishers (method seeded_demo).
     // Every boot; a publisher that already has a record is left alone, so a second run adds nothing and a
     // later terms version shows as changed, not re-accepted.

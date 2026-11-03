@@ -289,3 +289,108 @@ export const SEED_SUPPLEMENT_COMPOSITE = {
     superseded_by: null,
   })),
 } as const;
+
+// MC2-L2 (D-084 item 6): the German euro corridor and one fictional German publisher with three EUR offers.
+// The corridor ships DISABLED; the owner switches it on by a later step. Applied on every boot after the
+// composite block by seedSupplement, so it reaches a database that already holds the older seed (the base
+// seed runs only on an empty database). Corridors are inserted with ON CONFLICT DO NOTHING, so a switch an
+// operator made is never undone. buyer_countries ['*'] is a documentation value: buyer country is data, not
+// a gate (D-084 item 3). Names and texts are fictional and written by the SBX team; no real brand, no URL.
+export const SEED_SUPPLEMENT_DE = {
+  meta: {
+    source: 'synthetic',
+    note: 'MC2-L2: the disabled de-eur corridor, one fictional German publisher and three team-written German articles with EUR offers. Applied after the base seed by seedSupplement.',
+  },
+  corridors: [
+    {
+      id: 'de-eur',
+      currency: 'EUR',
+      minor_units: 2,
+      buyer_countries: ['*'],
+      payee_countries: ['DE'],
+      domestic_supported: true,
+      min_charge_minor: null,
+      enabled: false,
+    },
+  ],
+  publishers: [
+    { slug: 'rheinwerft-kurier', display_name: 'Rheinwerft Kurier (fictional)', country: 'DE' },
+  ],
+  articles: [
+    {
+      key: 'schleusenzeiten',
+      publisher_slug: 'rheinwerft-kurier',
+      title: 'Wie eine Schleuse den Tag eines Binnenschiffers taktet',
+      abstract:
+        'Ein kurzer Blick auf Wartezeiten, Schleusenkammern und Pausen auf einer erfundenen Flussstrecke.',
+      language: 'de',
+      topics: ['binnenschifffahrt', 'verkehr'],
+      published_at: '2025-12-29T09:00:00.000Z',
+      text: 'Eine Schleuse hebt ein Schiff in zwanzig Minuten um vier Meter. Die Wartezeit davor ist selten kürzer.\n\nWer die Kammerzeiten kennt, legt die Pause vor die Schleuse und nicht dahinter.\n',
+      rights_note:
+        'Written by the SBX team for the sandbox. Personal use only; no redistribution; AI use on review.',
+    },
+    {
+      key: 'marktplatz-uhr',
+      publisher_slug: 'rheinwerft-kurier',
+      title: 'Die Uhr am Marktplatz, die nie richtig ging',
+      abstract:
+        'Eine erfundene Kleinstadt streitet seit Jahrzehnten über eine Turmuhr, die jeden Tag eine andere Zeit zeigt.',
+      language: 'de',
+      topics: ['lokales', 'geschichte'],
+      published_at: '2026-01-05T09:00:00.000Z',
+      text: 'Die Uhr geht vier Minuten vor, im Winter sieben. Der Stadtrat hat sie dreimal reparieren lassen.\n\nDie Marktleute stellen ihre Stände nach ihr auf. Wer pünktlich sein will, fragt zuerst den Bäcker.\n',
+      rights_note:
+        'Written by the SBX team for the sandbox. Personal use only; no redistribution; AI use on review.',
+    },
+    {
+      key: 'fahrradfaehre',
+      publisher_slug: 'rheinwerft-kurier',
+      title: 'Eine Fahrradfähre im Winterfahrplan',
+      abstract:
+        'Warum eine kleine Fähre für Radfahrer im Winter seltener fährt und was die Stammgäste davon halten.',
+      language: 'de',
+      topics: ['verkehr', 'freizeit'],
+      published_at: '2026-01-12T09:00:00.000Z',
+      text: 'Im Sommer fährt die Fähre jede Viertelstunde, im Winter jede Stunde. Das Wasser ist niedrig und die Anleger sind glatt.\n\nDie Stammgäste kommen trotzdem. Sie planen den Heimweg nach dem Fahrplan an der Kaimauer.\n',
+      rights_note:
+        'Written by the SBX team for the sandbox. Personal use only; no redistribution; AI use on review.',
+    },
+  ],
+  offers: [
+    {
+      code: 'schleusenzeiten',
+      article_key: 'schleusenzeiten',
+      status: 'authorised',
+      currency: 'EUR',
+      options: BOTH(150, 120),
+      affordability: FIXED,
+      authorised: true,
+    },
+    {
+      code: 'marktplatz-uhr',
+      article_key: 'marktplatz-uhr',
+      status: 'authorised',
+      currency: 'EUR',
+      options: BOTH(100, 100),
+      affordability: FIXED,
+      authorised: true,
+    },
+    {
+      code: 'fahrradfaehre',
+      article_key: 'fahrradfaehre',
+      status: 'authorised',
+      currency: 'EUR',
+      options: BOTH(200, 180),
+      affordability: FIXED,
+      authorised: true,
+    },
+  ].map((o) => ({
+    ...o,
+    terms_version: 'terms-1',
+    rights: RIGHTS,
+    valid_from: T0,
+    valid_until: null,
+    superseded_by: null,
+  })),
+} as const;
