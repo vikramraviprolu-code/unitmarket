@@ -324,3 +324,55 @@ Checks in the browser (try both skins):
 4. Operations still reads "Off: no PayPal calls" with the switch Off.
 
 Paste back: the last two lines of the deploy output and what you saw. Never paste a passcode or password.
+
+## Sixth deploy: tag `gcp-pub-6` (the hosted scope may move pounds, offer list follows corridors, seed lock)
+
+Same steps as the fifth deploy, with the new tag. It adds **no database migration**. It carries four changes: the sealed transport allows `GBP` as well as `USD` for the hosted scope (EUR, JPY and XAU stay refused); the public offer list follows the enabled corridors; the boot seed takes a lock so two simultaneous starts cannot both seed (D-077); the Start route's 500 answer is typed (no behaviour change). The deploy still leaves PayPal off, and the pounds corridor is still switched off in the database, so buyers see no change until the owner step below. Do not deploy while anyone is testing.
+
+Commit to deploy: the coordinator gives you the exact hash in the chat message that sends you here.
+
+Step 1 (laptop with the repository):
+
+```
+COMMIT=PUT-THE-HASH-FROM-THE-CHAT-HERE
+git fetch origin
+git checkout "$COMMIT"
+git status
+git tag gcp-pub-6
+git push origin gcp-pub-6
+```
+
+Step 2 (Cloud Shell, inside the `unitmarket-sandbox` folder):
+
+```
+PROJECT_ID=unitmarket-sbx-vr1
+REGION=europe-west3
+gcloud config set account unitmarket@raviprolu.com
+gcloud config set project "$PROJECT_ID"
+gcloud sql backups list --instance=unitmarket-sbx-pg --project="$PROJECT_ID"
+git fetch --tags
+git checkout gcp-pub-6
+git log --oneline -1
+bash infra/gcp/deploy.sh "$PROJECT_ID" "$REGION" gcp-pub-6
+```
+
+Expected: a successful backup less than a day old, `git log` shows the commit from the chat, and the output ends with `deployed unitmarket-sandbox from tag gcp-pub-6`.
+
+Check in the browser: sign in, open Find articles and Operations. Everything looks as on `gcp-pub-5`, and Operations reads "Off: no PayPal calls". The app boots with no error.
+
+### The real UK purchase (owner steps, after the deploy, one sitting)
+
+1. Vikram checks in the PayPal sandbox dashboard that the owner's business account can receive pounds (GBP). Stop here if it cannot.
+2. Vikram switches the pounds corridor on, at his own terminal through the Auth Proxy, as for the Northfield statement:
+
+   ```
+   psql "$LIVE" -c "update corridors set enabled = true where id = 'gb-gbp'"
+   ```
+
+   It prints `UPDATE 1`. To undo it: the same statement with `enabled = false`.
+
+3. A UK buyer: on the sign-up page create a throwaway buyer account and give the country `GB`.
+4. A new approval row for the sitting, written first in `docs/decision-log.md`: follow "Starting the PayPal sandbox gateway" above with a new reference of Vikram's choosing in place of `D-062`. The secret `UMS_OUTBOUND_APPROVAL_REF` must hold the same reference before the flag is set (the MATCH check in that section).
+5. Start on Operations, set the flag on, and as the UK buyer buy the Northfield article "An allotment diary for a cold March" (£1.50). On the PayPal page check the amount, pay, and look for the article in the library. Then press Stop and set the flag off.
+
+Paste back: the deploy output, the `UPDATE 1`, and a screenshot of the PayPal page and the library. Never paste a passcode or password.
