@@ -6,6 +6,7 @@ import {
   BUYER_A,
   BUYER_B,
   CONSENT,
+  OFFER_OPTIONS,
   addProposal,
   addQuote,
   makeHarness,
@@ -26,6 +27,44 @@ function code<T, E extends { code: string }>(r: Result<T, E>): string {
   return r.error.code;
 }
 const quote = { kind: 'quote', quote_id: 'quo_1' } as const;
+const BUYER_DE = { kind: 'buyer', buyer_id: 'buy_DE' } as const;
+const SEEDED = '2026-10-01T00:00:00Z';
+
+async function addGermanBuyer(db: Harness['db']): Promise<void> {
+  await db.query(
+    'INSERT INTO buyers (id, display_name, auth_subject, country, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$5)',
+    ['buy_DE', 'D', 'sub-de', 'DE', SEEDED],
+  );
+}
+
+// A GB publisher with one GBP offer, and the gb-gbp corridor (buyer_countries [GB], payee [GB]).
+async function addGbpOffer(db: Harness['db'], enabled: boolean): Promise<void> {
+  await db.query(
+    `INSERT INTO corridors (id, currency, minor_units, buyer_countries, payee_countries, domestic_supported, min_charge_minor, enabled, created_at, updated_at)
+     VALUES ('gb-gbp','GBP',2,ARRAY['GB'],ARRAY['GB'],true,NULL,$1,$2,$2)`,
+    [enabled, SEEDED],
+  );
+  await db.query(
+    `INSERT INTO publishers (id, slug, display_name, country, paypal_merchant_id, payee_verified_at, created_at, updated_at)
+     VALUES ('pub_gb','pgb','Publisher gb','GB','MERCHGB',$1,$1,$1)`,
+    [SEEDED],
+  );
+  await db.query(
+    `INSERT INTO articles (id, publisher_id, title, abstract, language, topics, published_at, sha256, content_key, bytes, mime, created_at, updated_at)
+     VALUES ('art_gb','pub_gb','Title gb','abstract','en',ARRAY['x'],$1,$2,'key-art_gb',10,'text/plain',$1,$1)`,
+    [SEEDED, '67'.repeat(32)],
+  );
+  await db.query(
+    `INSERT INTO offers (id, version, publisher_id, article_id, status, currency, options, affordability, terms_version, rights, valid_from, valid_until, superseded_by, created_at, updated_at)
+     VALUES ('ofr_gbp','1','pub_gb','art_gb','authorised','GBP',$1,$2,'terms-1',$3,$4,NULL,NULL,$4,$4)`,
+    [
+      JSON.stringify(OFFER_OPTIONS),
+      JSON.stringify({ renegotiation_allowed: false, floor_minor: null }),
+      JSON.stringify({ scope: 'personal_use', ai_scope: 'review', redistribution: false }),
+      SEEDED,
+    ],
+  );
+}
 
 describe('requestApproval freezes the offer', () => {
   it('snapshot freezes offer id and version, terms, payee, amount, currency, option, policy, rights, reader, rule and pricing versions', async () => {
@@ -399,9 +438,84 @@ describe('requestApproval refusals', () => {
       }).then(code);
     expect(await go('quo_off')).toBe('corridor_unsupported');
     expect(await go('quo_cur')).toBe('corridor_unsupported');
+  });
+
+  // MC2-L1 (D-084 3): the buyer's country is data, not a gate. This replaces the old assertion that a
+  // corridor whose buyer_countries lacked the buyer's country gave corridor_unsupported.
+  it('buyer country is not a gate: a corridor that lists other buyer countries still approves', async () => {
+    h = await makeHarness();
     await h.db.query(`UPDATE corridors SET buyer_countries = ARRAY['GB'] WHERE id = 'us-usd'`);
     await addQuote(h.db, { id: 'quo_1', offer_id: 'ofr_1' });
-    expect(await go('quo_1')).toBe('corridor_unsupported');
+    const g = value(
+      await requestApproval(h.deps, { actor: BUYER_A, selection: quote, consent: CONSENT }),
+    );
+    expect(g.snapshot.corridor_id).toBe('us-usd');
+  });
+
+  it('a buyer from DE gets an approval for a USD offer in us-usd (buyer_countries is [US])', async () => {
+    h = await makeHarness();
+    await addGermanBuyer(h.db);
+    expect(
+      (
+        await h.db.query<{ b: string[] }>(
+          `SELECT buyer_countries AS b FROM corridors WHERE id = 'us-usd'`,
+        )
+      ).rows[0]!.b,
+    ).toEqual(['US']);
+    await addQuote(h.db, { id: 'quo_de', offer_id: 'ofr_1', buyer_id: 'buy_DE' });
+    const g = value(
+      await requestApproval(h.deps, {
+        actor: BUYER_DE,
+        selection: { kind: 'quote', quote_id: 'quo_de' },
+        consent: CONSENT,
+      }),
+    );
+    expect(g.snapshot.currency).toBe('USD');
+    expect(g.snapshot.corridor_id).toBe('us-usd');
+    expect(g.snapshot.reader).toEqual({ buyer_id: 'buy_DE' });
+    expect(g.snapshot.total_minor).toBe(400);
+  });
+
+  it('a buyer from DE gets an approval for a GBP offer in an enabled gb-gbp corridor', async () => {
+    h = await makeHarness();
+    await addGermanBuyer(h.db);
+    await addGbpOffer(h.db, true);
+    await addQuote(h.db, {
+      id: 'quo_gbp',
+      offer_id: 'ofr_gbp',
+      buyer_id: 'buy_DE',
+      currency: 'GBP',
+      corridor_id: 'gb-gbp',
+    });
+    const g = value(
+      await requestApproval(h.deps, {
+        actor: BUYER_DE,
+        selection: { kind: 'quote', quote_id: 'quo_gbp' },
+        consent: CONSENT,
+      }),
+    );
+    expect(g.snapshot.currency).toBe('GBP');
+    expect(g.snapshot.corridor_id).toBe('gb-gbp');
+    expect(g.snapshot.items[0]!.payee_merchant_id).toBe('MERCHGB');
+  });
+
+  it('a disabled gb-gbp corridor still gives corridor_unsupported to a DE buyer', async () => {
+    h = await makeHarness();
+    await addGermanBuyer(h.db);
+    await addGbpOffer(h.db, false);
+    await addQuote(h.db, {
+      id: 'quo_gbp',
+      offer_id: 'ofr_gbp',
+      buyer_id: 'buy_DE',
+      currency: 'GBP',
+      corridor_id: 'gb-gbp',
+    });
+    const r = await requestApproval(h.deps, {
+      actor: BUYER_DE,
+      selection: { kind: 'quote', quote_id: 'quo_gbp' },
+      consent: CONSENT,
+    });
+    expect(code(r)).toBe('corridor_unsupported');
   });
 
   it('a failed request writes no approval and no audit row', async () => {

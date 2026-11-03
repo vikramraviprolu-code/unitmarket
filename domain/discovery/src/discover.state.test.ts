@@ -371,3 +371,76 @@ describe('discover', () => {
     ]);
   });
 });
+
+// MC2-L1 (D-084 3): the buyer's country is data, not a gate. Candidates come from every enabled
+// corridor; only the ceiling's currency narrows them.
+describe('discover: buyer country is not a gate', () => {
+  const NO_CEILING = 'climate adaptation for cities, read online, English';
+  async function candidateIds(
+    local: { db: TestDb },
+    country: string,
+    text: string,
+  ): Promise<string[]> {
+    const rec = recordingModel(createScriptedModel());
+    const d2 = depsWith(local.db, rec.model);
+    const actor: Actor = {
+      kind: 'buyer',
+      buyer_id: await addBuyer(local.db, { country }),
+    };
+    const b = await parseNeed(d2, { actor, text });
+    if (!b.ok) throw new Error('parse');
+    await discover(d2, { actor, brief_id: b.value.brief_id });
+    const compose = rec.requests.find((r) => r.purpose === 'pack_compose');
+    if (!compose) return [];
+    return (compose.input as { candidates: { offer_id: string }[] }).candidates.map(
+      (c) => c.offer_id,
+    );
+  }
+
+  it('a DE buyer is offered every enabled corridor: USD offers, and GBP offers once gb-gbp is on', async () => {
+    const local = await seededDb();
+    try {
+      const usdOnly = await candidateIds(local, 'DE', NO_CEILING);
+      expect(usdOnly).toContain('ofr_harbour-ledger_c1');
+      expect(usdOnly.some((id) => id.startsWith('ofr_northfield-quarterly_'))).toBe(false);
+      await local.db.query(`UPDATE corridors SET enabled = true WHERE id = 'gb-gbp'`);
+      const both = await candidateIds(local, 'DE', NO_CEILING);
+      expect(both).toContain('ofr_harbour-ledger_c1');
+      expect(both).toContain('ofr_northfield-quarterly_allotment-diary');
+      // the same set a US buyer sees: country changes nothing
+      expect(await candidateIds(local, 'US', NO_CEILING)).toEqual(both);
+    } finally {
+      await local.db.close();
+    }
+  });
+
+  it('a DE buyer with a USD ceiling gets a proposal in USD and no GBP candidate (ceiling currency rule)', async () => {
+    const local = await seededDb();
+    try {
+      await local.db.query(`UPDATE corridors SET enabled = true WHERE id = 'gb-gbp'`);
+      const ids = await candidateIds(local, 'DE', CLIMATE_BRIEF);
+      expect(ids.length).toBeGreaterThan(0);
+      expect(ids.some((id) => id.startsWith('ofr_northfield-quarterly_'))).toBe(false);
+      const actor: Actor = { kind: 'buyer', buyer_id: await addBuyer(local.db, { country: 'DE' }) };
+      const d2 = depsWith(local.db, createScriptedModel());
+      const b = await parseNeed(d2, { actor, text: CLIMATE_BRIEF });
+      if (!b.ok) throw new Error('parse');
+      const r = await discover(d2, { actor, brief_id: b.value.brief_id });
+      if (!r.ok) throw new Error('discover');
+      const p = asProposal(r.value);
+      for (const it of p.items) expect(it.quote.price.currency).toBe('USD');
+    } finally {
+      await local.db.close();
+    }
+  });
+
+  it('a disabled corridor contributes no candidate for any buyer country', async () => {
+    const local = await seededDb();
+    try {
+      const ids = await candidateIds(local, 'GB', NO_CEILING);
+      expect(ids.some((id) => id.startsWith('ofr_northfield-quarterly_'))).toBe(false);
+    } finally {
+      await local.db.close();
+    }
+  });
+});

@@ -34,6 +34,9 @@ const quote = (v: Quote | NoMatch): Quote => {
   if (v.kind !== 'quote') throw new Error(`expected quote, got ${v.reason}`);
   return v;
 };
+const noMatchErr = (): never => {
+  throw new Error('unexpected error result');
+};
 const noMatch = (v: Quote | NoMatch): NoMatch => {
   if (v.kind !== 'no_match') throw new Error('expected no_match');
   return v;
@@ -279,10 +282,58 @@ describe('no-match reasons and decision order', () => {
     expect(r.ok && r.value).toEqual({ kind: 'no_match', reason: 'corridor_unsupported' });
   });
 
-  it('a buyer from outside every corridor of the publisher is corridor_unsupported', async () => {
+  // MC2-L1 (D-084 3): replaces "a buyer from outside every corridor of the publisher is
+  // corridor_unsupported". The buyer's country is data, not a gate; the corridor follows the offer.
+  it('a buyer from DE is quoted a USD offer in us-usd (buyer_countries is [US])', async () => {
     const actor = await buyer('DE');
     const r = await startFromOffer(deps, { offer: by('tide-tables'), actor, source: 'direct' });
-    expect(r.ok && r.value).toEqual({ kind: 'no_match', reason: 'corridor_unsupported' });
+    const q = quote(r.ok ? r.value : noMatchErr());
+    expect(q.corridor_id).toBe('us-usd');
+    expect(q.price.currency).toBe('USD');
+    const row = await db.query<{ buyer_countries: string[] }>(
+      `SELECT buyer_countries FROM corridors WHERE id = 'us-usd'`,
+    );
+    expect(row.rows[0]!.buyer_countries).toEqual(['US']);
+  });
+
+  it('a buyer from DE is quoted a GBP offer once gb-gbp is enabled, and refused while it is off', async () => {
+    const actor = await buyer('DE');
+    const go = () =>
+      startFromOffer(deps, {
+        offer: by('allotment-diary', 'northfield-quarterly'),
+        actor,
+        source: 'direct',
+      });
+    const off = await go();
+    expect(off.ok && off.value).toEqual({ kind: 'no_match', reason: 'corridor_unsupported' });
+    await db.query(`UPDATE corridors SET enabled = true WHERE id = 'gb-gbp'`);
+    try {
+      const on = await go();
+      const q = quote(on.ok ? on.value : noMatchErr());
+      expect(q.corridor_id).toBe('gb-gbp');
+      expect(q.price.currency).toBe('GBP');
+    } finally {
+      await db.query(`UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'`);
+    }
+  });
+
+  it('an offer whose currency has no corridor for its publisher country is corridor_unsupported', async () => {
+    await db.query(
+      `UPDATE offers SET currency = 'EUR' WHERE id = 'ofr_harbour-ledger_harbour-fees'`,
+    );
+    try {
+      const actor = await buyer('DE');
+      const r = await startFromOffer(deps, {
+        offer: by('harbour-fees'),
+        actor,
+        source: 'direct',
+      });
+      expect(r.ok && r.value).toEqual({ kind: 'no_match', reason: 'corridor_unsupported' });
+    } finally {
+      await db.query(
+        `UPDATE offers SET currency = 'USD' WHERE id = 'ofr_harbour-ledger_harbour-fees'`,
+      );
+    }
   });
 
   it('never substitutes: a no-match carries only kind and reason', async () => {
