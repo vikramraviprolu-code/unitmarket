@@ -203,7 +203,21 @@ describe('SEAL2 LOW: currency allow-list per scope and no payee in MVP-B', () =>
     expect((await t.send(create())).kind).toBe('response');
     expect(wire.requests).toHaveLength(1);
   });
-  it('mvp_c_refunds is USD only too: a EUR create_order and a EUR refund are blocked', async () => {
+  it('mvp_c_refunds moves USD and GBP (MC-GBP): a GBP create_order and a GBP refund are sent', async () => {
+    const { t, wire } = await build({ scope: 'mvp_c_refunds' });
+    expect((await t.send(create({ body: body('5.00', 'GBP'), amount_minor: 500 }))).kind).toBe(
+      'response',
+    );
+    expect(
+      (
+        await t.send(
+          refund({ body: JSON.stringify({ amount: { currency_code: 'GBP', value: '5.00' } }) }),
+        )
+      ).kind,
+    ).toBe('response');
+    expect(wire.requests).toHaveLength(2);
+  });
+  it('mvp_c_refunds still blocks EUR, JPY and XAU: a EUR create_order and a EUR refund are blocked', async () => {
     await blocked('mvp_c_refunds', create({ body: body('5.00', 'EUR') }), 'currency_not_allowed');
     await blocked(
       'mvp_c_refunds',
@@ -212,7 +226,7 @@ describe('SEAL2 LOW: currency allow-list per scope and no payee in MVP-B', () =>
     );
   });
   it('the allow-list covers exactly the two scopes', () => {
-    expect(SCOPE_CURRENCIES).toEqual({ mvp_b_polling: ['USD'], mvp_c_refunds: ['USD'] });
+    expect(SCOPE_CURRENCIES).toEqual({ mvp_b_polling: ['USD'], mvp_c_refunds: ['USD', 'GBP'] });
     expect(Object.keys(SCOPE_CURRENCIES).sort()).toEqual(Object.keys(SCOPE_OPERATIONS).sort());
   });
   const withPayee = (payee: unknown) =>
