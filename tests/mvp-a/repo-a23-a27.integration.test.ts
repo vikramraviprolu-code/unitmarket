@@ -70,17 +70,21 @@ describe('A-23 fixtures_map', () => {
   });
 
   it('every fixture parses against the fixture schema and carries a source label and an origin', () => {
-    const labels = new Map<string, number>();
     for (const { f, text } of parsed) {
       const fx = FixtureFileSchema.safeParse(JSON.parse(text));
       expect(fx.success, `${rel(f)} does not parse`).toBe(true);
       if (!fx.success) continue;
       expect(['docs-example', 'synthetic', 'sandbox-recording']).toContain(fx.data.meta.source);
       expect(fx.data.meta.origin.length).toBeGreaterThan(0);
-      labels.set(fx.data.meta.source, (labels.get(fx.data.meta.source) ?? 0) + 1);
+      // B-13 (D-074) added real recordings, so the MVP-A rule "no sandbox recording" is replaced by the
+      // rule that matters: the label sandbox-recording belongs to the sandbox-recordings folder and to
+      // nothing else, and every file in that folder carries it.
+      const inRecordings = rel(f).split('/').includes('sandbox-recordings');
+      expect(
+        fx.data.meta.source === 'sandbox-recording',
+        `${rel(f)}: the sandbox-recording label and the sandbox-recordings folder go together`,
+      ).toBe(inRecordings);
     }
-    // MVP-A has no sandbox recording; nothing may claim to be one.
-    expect(labels.get('sandbox-recording') ?? 0).toBe(0);
   });
 
   it('every fixture maps through the adapter to a valid port result', async () => {
