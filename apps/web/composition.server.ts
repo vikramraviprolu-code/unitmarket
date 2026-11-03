@@ -2012,10 +2012,18 @@ function buildApp(config: Config, opts: AppOptions): App {
           WHERE o.status = 'authorised' AND o.superseded_by IS NULL AND p.status = 'active'
           ORDER BY o.id`,
       );
+      // MC-GBP: an offer is listed when its currency has an enabled corridor (with the seed that is USD only).
+      const enabled = new Set(
+        (
+          await db.query<{ currency: string }>(
+            'SELECT DISTINCT currency FROM corridors WHERE enabled',
+          )
+        ).rows.map((c) => c.currency),
+      );
       const out: OfferPage[] = [];
       for (const r of rows.rows) {
         const v = await getOffer(db, { offer_id: r.id });
-        if (v !== null && v.offer.currency === 'USD') out.push(await offerPageOf(v));
+        if (v !== null && enabled.has(v.offer.currency)) out.push(await offerPageOf(v));
       }
       return out;
     },
