@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withRoute } from '@umsbx/security';
 import type { RouteMeta } from '@umsbx/security';
 import { app, securityDeps } from '../../../server/access';
+import { buyerDisplay, refreshRatesOnce } from '../../../server/buyer-display';
 
 export const routeMeta: RouteMeta = {
   path: '/api/discover',
@@ -18,8 +19,15 @@ export const routeMeta: RouteMeta = {
 
 const Input = z.object({ need: z.string().min(1).max(2000) }).strict();
 
+// One body type for every 200 answer: a proposal (with display lines on converted items) or no match.
+const reply = (body: object) => ({ status: 200 as const, body });
+
 export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
-  const d = await (await app()).engine.discover({ actor, text: input.need });
+  const a = await app();
+  // MC2-L5: one bounded refresh for the request. The ceiling compare inside discover and the display below
+  // both read the stored rate; neither refreshes again.
+  await refreshRatesOnce(a.engine);
+  const d = await a.engine.discover({ actor, text: input.need });
   if (d.ai_off)
     return {
       status: 503,
@@ -36,5 +44,15 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
           message: 'We could not read that need. Try fewer words.',
         };
   if (!r.ok) return { status: 404, code: 'not_found', message: 'That need was not found.' };
-  return { status: 200, body: r.value };
+  if (r.value.kind !== 'proposal') return reply(r.value);
+  // The quotes stay the seller's. Each item that is shown in another currency gets its display lines.
+  const display = await buyerDisplay(a.engine, actor, {
+    currencies: r.value.items.map((it) => it.quote.price.currency),
+    refresh: false,
+  });
+  const items = r.value.items.map((it) => {
+    const view = display.view(it.quote.price);
+    return view.binding === null ? it : { ...it, display: view };
+  });
+  return reply({ ...r.value, items });
 })(securityDeps);

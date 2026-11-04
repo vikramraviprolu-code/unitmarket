@@ -4,7 +4,8 @@ import { app } from '../../server/access';
 import { currentActor } from '../../server/session';
 import { DiscoverForm } from './DiscoverForm';
 import { StatusBanner } from '../../ui/StatusBanner';
-import { formatMinor } from '../../lib/format';
+import { buyerDisplay } from '../../server/buyer-display';
+import { fromLead } from '../../lib/buyer-price';
 import { browseEntries } from '../../lib/buyer-copy';
 import { discoverForNonBuyer } from '../../lib/nav';
 
@@ -37,6 +38,9 @@ export default async function Discover({
   if (!ai) {
     // READINESS: ai_enabled off means catalogue-only. No agent, no model.
     const offers = await a.engine.listOffers();
+    const display = await buyerDisplay(a.engine, actor, {
+      currencies: offers.map((o) => o.currency),
+    });
     return (
       <>
         <h1>Find articles</h1>
@@ -44,20 +48,30 @@ export default async function Discover({
           You can still browse the catalogue and open any article.
         </StatusBanner>
         <ul>
-          {offers.map((o) => (
-            <li key={o.offer_id}>
-              <Link href={`/o/${o.publisher_slug}/${o.offer_code}`}>{o.title}</Link>{' '}
-              <span className="muted">
-                from {formatMinor(Math.min(...o.options.map((x) => x.price_minor)), o.currency)}
-              </span>
-            </li>
-          ))}
+          {offers.map((o) => {
+            const price = display.view({
+              currency: o.currency,
+              minor: Math.min(...o.options.map((x) => x.price_minor)),
+            });
+            return (
+              <li key={o.offer_id}>
+                <Link href={`/o/${o.publisher_slug}/${o.offer_code}`}>{o.title}</Link>{' '}
+                <span className="muted">{fromLead(price)}</span>
+                {price.binding !== null ? <span className="muted"> {price.binding}</span> : null}
+              </li>
+            );
+          })}
         </ul>
       </>
     );
   }
   const offers = await a.engine.listOffers();
-  const browse = browseEntries(offers);
+  // MC2-L5: the browse list shows each price in the buyer's currency (about, with the rate date) beside the
+  // binding seller amount.
+  const display = await buyerDisplay(a.engine, actor, {
+    currencies: offers.map((o) => o.currency),
+  });
+  const browse = browseEntries(offers, display.view);
   const rights = offers.map((o) => o.rights);
   return (
     <>

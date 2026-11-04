@@ -17,6 +17,7 @@ import {
   discoverNoMatchView,
 } from '../../lib/buyer-copy';
 import type { BrowseEntry } from '../../lib/buyer-copy';
+import type { PriceView } from '../../lib/buyer-price';
 import { TermsConsent } from '../../ui/TermsConsent';
 
 type Item = {
@@ -24,6 +25,10 @@ type Item = {
   fit: FitCardData;
   title: string;
   publisher: string;
+  /** MC2-L5: present only when the price is shown in another currency. The quote above is the seller's. */
+  display?: PriceView;
+  /** MC2-L5: present when the agent compared the ceiling on the converted price. */
+  ceiling_check?: { ceiling: Money; price: Money };
 };
 type Result =
   | { kind: 'proposal'; proposal_id: string; items: Item[] }
@@ -211,6 +216,9 @@ export function DiscoverForm({
                   <li key={b.offer_id}>
                     <a href={b.href}>{b.title}</a>, {b.publisher}{' '}
                     <span className="muted">{b.price_text}</span>
+                    {b.binding_text !== null ? (
+                      <span className="muted binding-line"> {b.binding_text}</span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -249,6 +257,8 @@ export function DiscoverForm({
                     title={it.title}
                     publisher={it.publisher}
                     price={it.quote.price}
+                    {...(it.display !== undefined ? { display: it.display } : {})}
+                    {...(it.ceiling_check !== undefined ? { ceilingCheck: it.ceiling_check } : {})}
                     option={it.quote.option}
                     onChoose={() => void choose(it, result.proposal_id)}
                   />

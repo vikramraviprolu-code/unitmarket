@@ -3,6 +3,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import type { OfferPage } from '../../../../lib/view-types';
 import { OPTION_HELP, OPTION_LABEL, formatMinor } from '../../../../lib/format';
+import { priceView } from '../../../../lib/buyer-price';
+import type { PriceView } from '../../../../lib/buyer-price';
 import { postJson, remember } from '../../../../lib/client-api';
 import { StatusBanner } from '../../../../ui/StatusBanner';
 import { ErrorState } from '../../../../ui/ErrorState';
@@ -20,6 +22,8 @@ type Quote = {
   option: 'keep_retrieve' | 'online_read';
   price: { currency: string; minor: number };
   expires_at: string;
+  /** MC2-L5: present only when the price is shown in another currency. `price` is the seller's. */
+  display?: PriceView;
 };
 type NoMatch = { kind: 'no_match'; reason: string; order_ref?: string };
 
@@ -30,7 +34,16 @@ function toMinor(text: string): number | null | 'bad' {
   return Math.round(Number(t) * 100);
 }
 
-export function OfferFlow({ offer, signedIn }: { offer: OfferPage; signedIn: boolean }) {
+export function OfferFlow({
+  offer,
+  signedIn,
+  prices = {},
+}: {
+  offer: OfferPage;
+  signedIn: boolean;
+  /** MC2-L5: the option prices as the buyer is shown them, by option; absent means the seller's amount. */
+  prices?: Record<string, PriceView>;
+}) {
   const [option, setOption] = useState(offer.options[0]?.option ?? 'online_read');
   const [ceiling, setCeiling] = useState('');
   const [proposal, setProposal] = useState('');
@@ -133,7 +146,18 @@ export function OfferFlow({ offer, signedIn }: { offer: OfferPage; signedIn: boo
               />
               <span>
                 <strong>{OPTION_LABEL[o.option]}</strong>:{' '}
-                {formatMinor(o.price_minor, offer.currency)}
+                {
+                  (
+                    prices[o.option] ??
+                    priceView({ currency: offer.currency, minor: o.price_minor }, null)
+                  ).lead
+                }
+                {prices[o.option]?.binding != null ? (
+                  <>
+                    <br />
+                    <span className="muted binding-line">{prices[o.option]!.binding}</span>
+                  </>
+                ) : null}
                 <br />
                 <span className="muted">{OPTION_HELP[o.option]}</span>
               </span>
@@ -197,10 +221,15 @@ export function OfferFlow({ offer, signedIn }: { offer: OfferPage; signedIn: boo
             <h2 id="your-price">Your price</h2>
             <p>
               <strong className="price" data-testid="quote-price">
-                {formatMinor(result.price.minor, result.price.currency)}
+                {(result.display ?? priceView(result.price, null)).lead}
               </strong>{' '}
               for {OPTION_LABEL[result.option].toLowerCase()}, from {offer.publisher}.
             </p>
+            {result.display?.binding != null ? (
+              <p className="muted binding-line" data-testid="quote-binding">
+                {result.display.binding}
+              </p>
+            ) : null}
             <p className="muted">{OPTION_HELP[result.option]}</p>
             <TermsConsent
               id="offer-terms"

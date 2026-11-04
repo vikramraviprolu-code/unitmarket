@@ -211,7 +211,8 @@ describe('/api/quotes and /api/discover carry the display lines', () => {
 });
 
 describe('buyerDisplay with stand-in ports: old, missing and failing rates never block or throw', () => {
-  const fx = (over: Partial<ReturnType<typeof ports>['fx']> = {}) => ({ ...ports().fx, ...over });
+  const fx = (over: { refreshIfStale?: unknown; getRates?: unknown } = {}) =>
+    ({ ...ports().fx, ...over }) as ReturnType<typeof ports>['fx'];
   function ports() {
     const real = w.app.engine.fx;
     return {
@@ -274,27 +275,36 @@ describe('buyerDisplay with stand-in ports: old, missing and failing rates never
         throw new Error('sync boom');
       }),
     ]) {
-      const d = await buyerDisplay(
-        engine(fx({ refreshIfStale: refreshIfStale as never })),
-        buyerA,
-        {
-          currencies: ['USD'],
-        },
-      );
+      const d = await buyerDisplay(engine(fx({ refreshIfStale })), buyerA, {
+        currencies: ['USD'],
+      });
       expect(d.view(USD(120)).lead).toBe('about €1.00');
     }
   });
 
   it('a refresh that never answers is cut at the deadline, and the page still renders', async () => {
     const hang = vi.fn(() => new Promise<never>(() => undefined));
-    const t0 = performance.now();
-    const d = await buyerDisplay(engine(fx({ refreshIfStale: hang as never })), buyerA, {
-      currencies: ['USD'],
-      deadline_ms: 40,
-    });
-    expect(performance.now() - t0).toBeLessThan(2000);
-    expect(hang).toHaveBeenCalledTimes(1);
-    expect(d.view(USD(120)).lead).toBe('about €1.00');
+    vi.useFakeTimers();
+    try {
+      let done = false;
+      const pending = buyerDisplay(engine(fx({ refreshIfStale: hang })), buyerA, {
+        currencies: ['USD'],
+        deadline_ms: FX_DEADLINE_MS,
+      }).then((d) => {
+        done = true;
+        return d;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(FX_DEADLINE_MS - 1);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const d = await pending;
+      expect(done).toBe(true);
+      expect(hang).toHaveBeenCalledTimes(1);
+      expect(d.view(USD(120)).lead).toBe('about €1.00');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('the default deadline is the 3 second transport deadline', () => {

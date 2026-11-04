@@ -1,14 +1,24 @@
 'use client';
 import { useState } from 'react';
 import { postJson, recall, remember } from '../../../lib/client-api';
-import { optionLabel, formatMinor, formatDateTime } from '../../../lib/format';
+import { optionLabel, formatDateTime } from '../../../lib/format';
+import type { ApprovePrices } from '../../../lib/buyer-price';
 import type { ApprovalView } from '../../../lib/view-types';
 import { Countdown } from '../../../ui/Countdown';
 import { ErrorState } from '../../../ui/ErrorState';
 import { StatusBanner } from '../../../ui/StatusBanner';
 import { packNotice } from '../../../lib/composite-copy';
 
-export function ApproveClient({ view, idemKey }: { view: ApprovalView; idemKey: string }) {
+export function ApproveClient({
+  view,
+  idemKey,
+  prices,
+}: {
+  view: ApprovalView;
+  idemKey: string;
+  /** MC2-L5: every figure as the buyer is shown it. The approval (`view`) is the seller's amount. */
+  prices: ApprovePrices;
+}) {
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [renewing, setRenewing] = useState(false);
@@ -87,14 +97,24 @@ export function ApproveClient({ view, idemKey }: { view: ApprovalView; idemKey: 
                     <li key={it.article_id}>
                       <strong>{it.title}</strong>
                       <br />
-                      {optionLabel(it.option)}: {formatMinor(it.amount_minor, view.currency)}
+                      {optionLabel(it.option)}: {prices.items[it.article_id]?.lead}
+                      {prices.items[it.article_id]?.binding != null ? (
+                        <>
+                          <br />
+                          <span className="muted binding-line">
+                            {prices.items[it.article_id]!.binding}
+                          </span>
+                        </>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
                 <p>
-                  Subtotal for {b.publisher}:{' '}
-                  <strong>{formatMinor(b.subtotal_minor, view.currency)}</strong>
+                  Subtotal for {b.publisher}: <strong>{prices.blocks[b.publisher]?.lead}</strong>
                 </p>
+                {prices.blocks[b.publisher]?.binding != null ? (
+                  <p className="muted binding-line">{prices.blocks[b.publisher]!.binding}</p>
+                ) : null}
               </div>
             ))}
           </>
@@ -104,7 +124,15 @@ export function ApproveClient({ view, idemKey }: { view: ApprovalView; idemKey: 
               <li key={it.article_id}>
                 <strong>{it.title}</strong>, {it.publisher}
                 <br />
-                {optionLabel(it.option)}: {formatMinor(it.amount_minor, view.currency)}
+                {optionLabel(it.option)}: {prices.items[it.article_id]?.lead}
+                {prices.items[it.article_id]?.binding != null ? (
+                  <>
+                    <br />
+                    <span className="muted binding-line">
+                      {prices.items[it.article_id]!.binding}
+                    </span>
+                  </>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -112,9 +140,14 @@ export function ApproveClient({ view, idemKey }: { view: ApprovalView; idemKey: 
         <p>
           Total:{' '}
           <strong className="price" data-testid="approve-total">
-            {formatMinor(view.total_minor, view.currency)}
+            {prices.total.lead}
           </strong>
         </p>
+        {prices.total.binding !== null ? (
+          <p className="muted binding-line" data-testid="approve-binding">
+            {prices.total.binding}
+          </p>
+        ) : null}
         <p className="muted">
           This price and these terms are frozen until {formatDateTime(view.expires_at)}. Personal
           use only; 5 days of access starting when payment is confirmed.

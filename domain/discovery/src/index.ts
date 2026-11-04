@@ -4,4 +4,4 @@ export const PACKAGE_NAME = '@umsbx/discovery' as const;
 export { parseNeed, MAX_BRIEF_CHARS } from './brief';
 export type { ParseNeedError } from './brief';
 export { discover, MAX_ITEMS } from './discover';
-export type { DiscoveryResult, DiscoverError } from './discover';
+export type { CeilingCheck, ConvertFn, DiscoveryResult, DiscoverError } from './discover';

@@ -143,7 +143,7 @@ describe('tampering with the displayed figure in a request changes nothing', () 
         headers: { 'idempotency-key': `k-${Object.keys(extra)[0]!}` },
         body: { approval_id: approval.approval_id, token: approval.token, ...extra },
       });
-      expect(r.status, JSON.stringify(extra)).toBe(400);
+      expect(r.status, JSON.stringify(extra)).toBe(422);
     }
     expect(await count('SELECT count(*) AS c FROM orders')).toBe(before);
     // the honest request still works, and the order is the seller's
@@ -180,7 +180,7 @@ describe('tampering with the displayed figure in a request changes nothing', () 
         session: b.session,
         body: { ...base, ...extra },
       });
-      expect(r.status, JSON.stringify(extra)).toBe(400);
+      expect(r.status, JSON.stringify(extra)).toBe(422);
     }
     const { quote } = await approvalFor(b);
     const before = await count('SELECT count(*) AS c FROM approvals');
@@ -195,7 +195,7 @@ describe('tampering with the displayed figure in a request changes nothing', () 
         display_currency: 'EUR',
       },
     });
-    expect(r.status).toBe(400);
+    expect(r.status).toBe(422);
     expect(await count('SELECT count(*) AS c FROM approvals')).toBe(before);
   });
 

@@ -1,6 +1,8 @@
 'use client';
 import type { AccessOption, FitCard as FitCardData, FitDimension, Money } from '@umsbx/contracts';
-import { formatMinor, optionLabel } from '../lib/format';
+import { optionLabel } from '../lib/format';
+import { ceilingLine, priceView } from '../lib/buyer-price';
+import type { PriceView } from '../lib/buyer-price';
 import { CoverTile } from './CoverTile';
 import { WHY_THIS_FIT, accessDaysLine, priceLine, splitFitRows } from '../lib/buyer-copy';
 
@@ -48,6 +50,8 @@ export function FitCard({
   title,
   publisher,
   price,
+  display,
+  ceilingCheck,
   option,
   onChoose,
 }: {
@@ -55,10 +59,15 @@ export function FitCard({
   title: string;
   publisher: string;
   price: Money;
+  /** MC2-L5: the lines for a price shown in another currency; without it the seller's amount is shown. */
+  display?: PriceView;
+  /** MC2-L5: the ceiling and the converted price the agent compared, when it converted. */
+  ceilingCheck?: { ceiling: Money; price: Money };
   option: AccessOption;
   onChoose: () => void;
 }) {
-  const priceText = formatMinor(price.minor, price.currency);
+  const shown = display ?? priceView(price, null);
+  const priceText = shown.lead;
   const { assessed, notAssessed } = splitFitRows(card.dimensions);
   return (
     <article className="fit-card" data-testid="fit-card" aria-label={`${title}, ${publisher}`}>
@@ -74,6 +83,12 @@ export function FitCard({
             <strong className="price">{priceText}</strong>
             <span className="muted">{priceLine(priceText, option).slice(priceText.length)}</span>
           </p>
+          {shown.binding !== null ? <p className="muted binding-line">{shown.binding}</p> : null}
+          {ceilingCheck !== undefined ? (
+            <p className="muted ceiling-line">
+              {ceilingLine(ceilingCheck.ceiling, ceilingCheck.price)}
+            </p>
+          ) : null}
           <p className="muted access-days">{accessDaysLine(option)}</p>
         </header>
         {assessed.length > 0 ? (

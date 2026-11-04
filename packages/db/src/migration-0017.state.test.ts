@@ -225,7 +225,8 @@ describe('migration 0017', () => {
           )
         ).rows.map((r) => r.tablename);
       const t0 = await tables();
-      expect(await migrate(d, clock)).toEqual(['0017_fx_rates']);
+      // Later migrations (0018 from MC2-L5) follow it; only the first one applied is 0017.
+      expect((await migrate(d, clock))[0]).toBe('0017_fx_rates');
       expect((await tables()).filter((t) => !t0.includes(t))).toEqual(['fx_rates']);
       expect((await d.query('SELECT id FROM buyers')).rows).toEqual([{ id: 'buy_x' }]);
       expect(

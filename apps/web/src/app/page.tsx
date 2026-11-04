@@ -1,6 +1,7 @@
 import { app } from '../server/access';
 import { currentActor } from '../server/session';
-import { formatMinor, optionLabel } from '../lib/format';
+import { optionLabel } from '../lib/format';
+import { buyerDisplay } from '../server/buyer-display';
 import { Hero } from '../ui/Hero';
 import { OfferTile } from '../ui/OfferTile';
 import { RoleDoors } from '../ui/RoleDoors';
@@ -10,6 +11,11 @@ export default async function Home() {
   const a = await app();
   const offers = await a.engine.listOffers();
   const actor = await currentActor();
+  // MC2-L5: a signed-in buyer sees each price in their own currency (about, with the rate date) beside the
+  // binding seller amount; everyone else sees the seller's currency.
+  const display = await buyerDisplay(a.engine, actor, {
+    currencies: offers.slice(0, 6).map((o) => o.currency),
+  });
   const kind =
     actor?.kind === 'buyer' || actor?.kind === 'publisher' || actor?.kind === 'operator'
       ? actor.kind
@@ -41,13 +47,18 @@ export default async function Home() {
           <ul className="shelf">
             {offers.slice(0, 6).map((o) => {
               const cheapest = [...o.options].sort((x, y) => x.price_minor - y.price_minor)[0];
+              const price = display.view({
+                currency: o.currency,
+                minor: cheapest?.price_minor ?? 0,
+              });
               return (
                 <OfferTile
                   key={o.offer_id}
                   href={`/o/${o.publisher_slug}/${o.offer_code}`}
                   title={o.title}
                   publisher={o.publisher}
-                  priceText={formatMinor(cheapest?.price_minor ?? 0, o.currency)}
+                  priceText={price.lead}
+                  bindingText={price.binding}
                   tag={cheapest ? optionLabel(cheapest.option) : ''}
                 />
               );
