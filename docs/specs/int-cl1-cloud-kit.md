@@ -1,4 +1,4 @@
-# INT-CL1: cloud kit, phase 1, round 3 (round 2 fixes R2-1 to R2-4)
+# INT-CL1: cloud kit, phase 1, round 3 (passed 12 of 12, with build notes N1 to N4)
 
 Task: One command each for cloud doctor, status, up, down, restart, deploy and logs; a revision on the public status route; guard rules that allow exactly this and nothing more.
 Package: `infra/gcp`, `scripts/check-hosting-gcp.mjs`, `packages/config`, `apps/web` (status route). Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
@@ -55,7 +55,7 @@ The shape is the one agreed in cloud plan 3.1 and used by CTL.2, with one field 
 ```
 
 - `state` is one of `up`, `down`, `starting`, `stopping`, `error` and `absent`; `paypal_gateway.state` is `on` or `off`, the Cloud Run flag only.
-- `job_loop` mirrors `web`, because the loop runs inside the app. `offline_judge` is `absent`, because that service is gone.
+- `job_loop` mirrors `web`, because the loop runs inside the app. `offline_judge` reports the real state from describing `unitmarket-offline` (`deploy-offline.sh` still exists), and is `absent` only when that service does not exist; it is never hard-coded (N1).
 - `approval_ref_set` replaces the plan's `approval_ref_matches`. It is true when the secret has an enabled version (names only, as `deploy.sh` `has_secret_value` does), and no secret value is read.
 - Exit 1 when any service is `down` or `error`.
 
@@ -129,6 +129,10 @@ Mutation: `pnpm mutation --require-targets --targets scripts/check-hosting-gcp.m
 ## Safety
 
 The gate runs `pnpm check:hosting-gcp`, `pnpm check:no-live-host`, `pnpm check:secrets-names`, `pnpm check:routes` and `pnpm check:openapi`. Offline proof: the fake `gcloud` exits 97 on any unexpected call, and the suite opens no socket.
+
+## Build notes (scorer round 3)
+
+N2: regenerate `docs/api/openapi-v1.json` with `pnpm openapi:emit`. N3: O5 is the only existing test this lane may edit, and the gate checks this. N4: the PR attaches the commit 1 red output, the mutation result (at least 80 percent), the planted-defect results and the `ci` output.
 
 ## Do not
 
