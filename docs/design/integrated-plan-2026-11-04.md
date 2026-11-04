@@ -1,6 +1,6 @@
 # Integrated plan: traceability, persona screens, search, alerts and cloud ops
 
-Owner: Vikram. Written 4 Nov 2026, 23:30 UTC, by the lead architect thread (Opus 5.5). Proposal only: no product code has changed and nothing called PayPal. This is the one document to read for the next build. It replaces the separate build plans of five threads (persona dashboards, drill-down audit, transaction search and GenAI, cloud start and stop, and this thread's traceability design). Its status table (section 6) is updated as each lane merges.
+Owner: Vikram. Written 4 Nov 2026, 23:30 UTC, by the lead architect thread (Opus 5.5). **Approved by Vikram 4 Nov 2026, 23:23 UTC: V1 to V9 as written.** Every lane in this plan runs offline (dry-run transport); the narrow sandbox lift of the PayPal rule does not change any lane. This is the one document to read for the next build. It replaces the separate build plans of five threads (persona dashboards, drill-down audit, transaction search and GenAI, cloud start and stop, and this thread's traceability design). Its status table (section 6) is updated as each lane merges.
 
 Sources read: `unitmarket-sandbox` at `4b9af11` (migrations 0001 to 0021, `packages/obs/src/audit.ts`, `packages/security/src/route.ts`, `packages/db/src/export-sql.ts`, `domain/payments/src/alerts.ts`); `/mnt/project-files/operator-ux/recommendation.md` and its three HTML pages; `/mnt/project-files/ux-audit/ux-audit-report.md`; `/mnt/project-files/search-and-genai/transaction-search-and-genai.md`; `/mnt/project-files/cloud-ops/cloud-start-stop-plan.md`; `/mnt/project-files/api-design/mvp1-build-plan.md`.
 
@@ -415,10 +415,10 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 
 | Lane | Wave | Items | Points | Must | Should | Builder | Status |
 |---|---|---|---|---|---|---|---|
-| TR0 Journal | 0 | 6 | 20 | 20 | | Sonnet 5.5 high | Spec written, waiting for V1 |
-| SR0 Search base | 0 | 5 | 12 | 12 | | Sonnet 5.5 high | Spec written, waiting for V5 |
-| UI0 Shell | 0 | 7 | 12 | 12 | | Sonnet 5.5 medium | Spec written, waiting for V2 |
-| CL1 Cloud kit | 0 | 11 | 21 | 21 | | Sonnet 5.5 high | Spec written, waiting for V4 |
+| TR0 Journal | 0 | 6 | 20 | 20 | | Sonnet 5.5 high | Approved; spec scoring |
+| SR0 Search base | 0 | 5 | 12 | 12 | | Sonnet 5.5 high | Approved; spec scoring |
+| UI0 Shell | 0 | 7 | 12 | 12 | | Sonnet 5.5 medium | Approved; spec scoring |
+| CL1 Cloud kit | 0 | 11 | 21 | 21 | | Sonnet 5.5 high | Approved; spec scoring |
 | TR1 Timeline | 1 | 6 | 14 | 14 | | Sonnet 5.5 high | Spec written |
 | AL Alerts and cases | 1 | 8 | 18 | 18 | | Sonnet 5.5 high | Spec written |
 | SR1 Search APIs | 1 | 7 | 17 | 17 | | Sonnet 5.5 high | Spec written |
@@ -428,7 +428,7 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 | CTL | 2 | 7 | 20 | 16 | 4 | Sonnet 5.5 high | Spec written |
 | BUY | 2 | 10 | 23 | 11 | 12 | Sonnet 5.5 high | Spec written |
 | SEL | 2 | 9 | 18 | 6 | 12 | Sonnet 5.5 medium | Spec written |
-| GA | 2 | 5 | 10 | | 10 | Sonnet 5.5 high | Spec written, live model needs V8 |
+| GA | 2 | 5 | 10 | | 10 | Sonnet 5.5 high | Spec written; scripted model (V8) |
 | E2E | 3 | 2 | 4 | 4 | | Sonnet 5.5 high | Spec written |
 | **Total** | | **100** | **222** | **172** | **50** | | |
 
@@ -466,7 +466,7 @@ Rules that matter more this time:
 | Journey | Each persona journey (operator J1 to J6, buyer B1 to B6, seller S1 to S5) | Playwright e2e on the offline app |
 | End-to-end and offline proof | The integrated story, zero network | E2E.1 and E2E.2 |
 
-## 9. Decisions for Vikram
+## 9. Decisions for Vikram (all approved as recommended, 4 Nov 23:23 UTC)
 
 Each becomes a decision-log row at merge (next free id, from D-094).
 
