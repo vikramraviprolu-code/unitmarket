@@ -1,0 +1,23 @@
+# MC2-L5 golden (D-084 item 4, D-085, autonomy ledger A1): the words a buyer sees for a converted price and for the display currency setting.
+# One shared formatter. D-051: plain words, no italics, no dashes.
+converted lead: about £1.28
+converted binding, dated rate: Binding: €1.50 (rate of 3 Nov 2026)
+converted binding, sample rate: Binding: €1.50 (sample rate of 3 Nov 2026)
+converted lead in a list: from about £1.28
+not converted, same currency: $1.50
+not converted, no usable rate: €1.50
+ceiling line: Against your ceiling of €1.50: about €1.47.
+account, heading: Price display
+account, lede: Prices can be shown in your own currency as an estimate. You always pay the amount marked Binding, in the seller's currency.
+account, label: Show prices in
+account, option, DE: Automatic, euros
+account, option, US: Automatic, US dollars
+account, option, GB: Automatic, British pounds
+account, option, other country: Automatic, the seller's currency
+account, option USD: US dollars (USD)
+account, option EUR: Euros (EUR)
+account, option GBP: British pounds (GBP)
+account, save: Save
+account, saving: Saving
+account, saved: Saved.
+account, failed: We could not save that. Please try again.
