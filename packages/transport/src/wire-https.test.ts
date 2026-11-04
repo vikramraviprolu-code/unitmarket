@@ -486,9 +486,12 @@ describe('the production network call lives in exactly one file', () => {
 
   // AI-A (D-067): the Claude egress is the one other file that imports node:https, named here so a
   // third file cannot join without a test change that a reviewer sees. It carries no PayPal call.
-  it('only the production Wire file and the Claude egress file import node:https in non-test package code', () => {
+  // MC2-L4 (D-085): the ECB exchange-rate fetch is the third, named the same way. It is not a payment API
+  // and carries no PayPal call either.
+  it('only the production Wire file, the Claude egress file and the ECB rate fetch import node:https in non-test package code', () => {
     const hits = prod.filter((f) => /from\s+['"](?:node:)?https['"]/.test(code(f)));
     expect(hits.map(rel).sort()).toEqual([
+      'packages/transport/src/fx-ecb.ts',
       'packages/transport/src/model-https.ts',
       `packages/transport/src/${MODULE}.ts`,
     ]);

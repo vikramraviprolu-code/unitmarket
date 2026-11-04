@@ -106,6 +106,7 @@ const DOMAIN = [
   'catalogue',
   'library',
   'publisher-console',
+  'fx',
 ];
 const INFRA = [
   'config',

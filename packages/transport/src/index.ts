@@ -49,3 +49,13 @@ export {
   MODEL_PATH,
   createModelHttps,
 } from './model-https';
+// MC2-L4 (D-085): the one egress to the ECB euro reference rates. The factory, the result types and the
+// limits only; the parser, the error class and the exchange helper stay internal.
+export {
+  ECB_API,
+  ECB_DEADLINE_MS,
+  ECB_MAX_RESPONSE_BYTES,
+  ECB_PATH,
+  createEcbFetch,
+} from './fx-ecb';
+export type { EcbErrorKind, EcbFetchResult, EcbRates } from './fx-ecb';

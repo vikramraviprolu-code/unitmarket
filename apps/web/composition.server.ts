@@ -68,7 +68,7 @@ import {
   runStop,
 } from '@umsbx/safety';
 import type { ResumeCoreError } from '@umsbx/safety';
-import { createModelHttps, guard } from '@umsbx/transport';
+import { createEcbFetch, createModelHttps, guard } from '@umsbx/transport';
 import type { Wire } from '@umsbx/transport';
 import {
   EXPECTED_CERT_PINS,
@@ -139,6 +139,12 @@ import type {
 } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
 import { discover as discoverOffers, parseNeed } from '@umsbx/discovery';
+import {
+  convert as fxConvert,
+  getRates as fxGetRates,
+  refreshIfStale as fxRefreshIfStale,
+} from '@umsbx/fx';
+import type { ConvertResult, FetchedRates, FxCurrency, FxRates, RefreshResult } from '@umsbx/fx';
 import { requestApproval } from '@umsbx/approval';
 import type { Selection } from '@umsbx/approval';
 import { createPgContentStore, issueLink, planServe } from '@umsbx/delivery';
@@ -300,6 +306,11 @@ export interface AppOptions {
    * key is set; no socket is opened and no real key is needed. Refused unless NODE_ENV=test.
    */
   test_model_wire?: ModelWire;
+  /**
+   * MC2-L4 (tests): the exchange-rate fetch, standing in for the ECB egress. No socket is opened. Refused
+   * unless NODE_ENV=test.
+   */
+  test_fx_fetch?: () => Promise<FetchedRates>;
   /**
    * AI-B (tests): the path of the stored Claude evaluation result, instead of the committed
    * packages/model/test-data/claude-eval-result.json. Refused unless NODE_ENV is test.
@@ -694,6 +705,25 @@ export type SignUpResult =
 
 export interface Engine {
   personas(): readonly Persona[];
+  /**
+   * MC2-L4 (D-084 items 4, 5 and 8, D-085): exchange rates. The engine only; no screen shows them yet.
+   * Every figure is approximate and carries the ECB rate date. `refreshIfStale` fetches at most once per
+   * 6 hours, never throws, and keeps the stored rate on any failure. In offline mode and in tests the
+   * fetch is a fake that never touches the network.
+   */
+  fx: {
+    /** The latest stored EUR to USD and EUR to GBP rates with their ECB date and age; null if none. */
+    getRates(): Promise<FxRates | null>;
+    refreshIfStale(): Promise<RefreshResult>;
+    /** Pure. `at` defaults to now. Null when there is no usable rate (none, or over 7 days old). */
+    convert(i: {
+      minor: number;
+      from: FxCurrency;
+      to: FxCurrency;
+      rates: FxRates | null;
+      at?: Date;
+    }): ConvertResult | null;
+  };
   /**
    * The passcode is checked first. For the operator persona, `operator` and `code` are the name and the
    * authenticator code (CO-6): a right pair gives `opr_<name>` with mfa; no keys configured, or no code,
@@ -1332,6 +1362,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       throw new Error('boot refused: test_model_wire outside NODE_ENV=test');
     if (opts.test_claude_eval_file !== undefined)
       throw new Error('boot refused: test_claude_eval_file outside NODE_ENV=test');
+    if (opts.test_fx_fetch !== undefined)
+      throw new Error('boot refused: test_fx_fetch outside NODE_ENV=test');
   }
   const environment = envLabel(config);
   const clock: Clock = systemClock();
@@ -1846,8 +1878,23 @@ function buildApp(config: Config, opts: AppOptions): App {
 
   const buyerOf = (a: Actor): Id | null => (a.kind === 'buyer' ? a.buyer_id : null);
 
+  // MC2-L4 (D-085): the one place the ECB egress is chosen. Only a sandbox-mode server outside NODE_ENV=test
+  // builds the real fetch (packages/transport, one fixed host, GET only); offline mode and tests get a fake
+  // that answers `offline` and opens nothing.
+  const fetchFx: () => Promise<FetchedRates> =
+    opts.test_fx_fetch ??
+    (config.mode === 'sandbox' && config.node_env !== 'test'
+      ? createEcbFetch()
+      : async () => ({ ok: false, kind: 'offline' }));
+
   const engine: Engine = {
     personas: () => PERSONAS,
+
+    fx: {
+      getRates: () => fxGetRates(db, clock).catch(() => null),
+      refreshIfStale: () => fxRefreshIfStale({ db, clock, fetchRates: fetchFx }),
+      convert: (i) => fxConvert({ ...i, at: i.at ?? clock.now() }),
+    },
 
     async signIn({ persona, passcode, operator, code }) {
       if (config.passcode_hash === null) return null;

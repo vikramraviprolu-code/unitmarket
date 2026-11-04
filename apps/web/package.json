@@ -25,6 +25,7 @@
     "@umsbx/discovery": "workspace:*",
     "@umsbx/entitlements": "workspace:*",
     "@umsbx/fit": "workspace:*",
+    "@umsbx/fx": "workspace:*",
     "@umsbx/jobs": "workspace:*",
     "@umsbx/ledger": "workspace:*",
     "@umsbx/library": "workspace:*",

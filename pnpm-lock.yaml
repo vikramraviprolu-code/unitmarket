@@ -74,6 +74,9 @@ importers:
       '@umsbx/fit':
         specifier: workspace:*
         version: link:../../domain/fit
+      '@umsbx/fx':
+        specifier: workspace:*
+        version: link:../../domain/fx
       '@umsbx/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs
@@ -249,6 +252,19 @@ importers:
       '@umsbx/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+
+  domain/fx:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/ledger:
     dependencies:

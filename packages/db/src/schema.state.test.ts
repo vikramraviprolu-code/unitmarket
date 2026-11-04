@@ -267,7 +267,9 @@ describe('migrations', () => {
        WHERE table_schema = 'public' AND table_name <> 'schema_migrations' GROUP BY table_name`,
     );
     expect(t.rows.length).toBeGreaterThanOrEqual(35);
-    for (const r of t.rows) {
+    // MC2-L4: fx_rates is the one exception, by its spec (docs/specs/mc2-l4-fx-rates.md): an append-only table
+    // keyed (date, quote) whose own stamp is fetched_at; it has no created_at or updated_at.
+    for (const r of t.rows.filter((x) => x.table_name !== 'fx_rates')) {
       expect(r.cols, r.table_name).toContain('created_at');
       expect(r.cols, r.table_name).toContain('updated_at');
     }
