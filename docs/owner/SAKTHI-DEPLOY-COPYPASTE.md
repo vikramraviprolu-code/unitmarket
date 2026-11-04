@@ -512,7 +512,7 @@ corepack pnpm safety:approve --operator vikram --ref D-090 --scope mvp_c_refunds
 corepack pnpm safety:resume --operator vikram --reason "tester sitting D-090"
 ```
 
-Write the printed `END` time down: it goes into the decision log as D-091 with the insertion time.
+Write the printed `END` time down: it goes into the decision log as D-092 with the insertion time.
 
 Step 5: restore and close, always:
 
