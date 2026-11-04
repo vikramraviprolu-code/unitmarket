@@ -1,0 +1,15 @@
+{
+  "name": "@umsbx/mvp1-api-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MVP 1 API end-to-end proof (API-W2): an agent with a $5.00 cap buys through /api/v1, offline. Tests only.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@umsbx/contracts": "workspace:*",
+    "@umsbx/security": "workspace:*",
+    "server-only": "0.0.1"
+  }
+}

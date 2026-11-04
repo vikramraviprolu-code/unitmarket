@@ -1163,6 +1163,8 @@ describe('named exemptions (D-015)', () => {
         'tests/mvp-c/c-offline.adversarial.test.ts -> sbx/no-package-escape',
         // CO-Gb: the C-offline canary helper imports the network modules to show what the interception sees.
         'tests/mvp-c/c-net-probe.ts -> no-restricted-imports',
+        // API-W2: the MVP 1 end-to-end proof drives the web routes by relative path, like the DP-6 twins.
+        'tests/mvp1-api/**/*.ts -> sbx/no-package-escape',
         // DP-6: the MVP-D offline twins drive the web routes by relative path, like CO-G.
         'tests/mvp-d/**/*.ts -> sbx/no-package-escape',
         // PG-2: the real-Postgres race and wiring tests drive the web composition and the C rig by relative path.
