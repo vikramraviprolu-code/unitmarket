@@ -74,6 +74,9 @@ importers:
       '@umsbx/fit':
         specifier: workspace:*
         version: link:../../domain/fit
+      '@umsbx/fx':
+        specifier: workspace:*
+        version: link:../../domain/fx
       '@umsbx/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs

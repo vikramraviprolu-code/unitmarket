@@ -106,9 +106,14 @@ export async function exportSql(db: SqlExecutor, options: ExportOptions): Promis
 
 // Rows the migrations seed. A fresh database holds only these, all stamped with the epoch; the
 // import replaces them with the exported rows.
-const SEED_TABLES = ['corridors', 'access_policies', 'safety_switches'] as const;
+const SEED_TABLES = ['corridors', 'access_policies', 'safety_switches', 'fx_rates'] as const;
 const SEED_EPOCH = '1970-01-01T00:00:00Z';
 const SEED_DELETE_GUARD = 'safety_switches_no_delete';
+// MC2-L4: fx_rates has no created_at; its migration rows are the ones marked source = 'seed', so any other row
+// means the database is not fresh. The table is append-only, so its delete guard is lifted for the seed
+// delete alone, like the safety switch guard.
+const NOT_SEED_ROW: Record<string, string> = { fx_rates: "source <> 'seed'" };
+const FX_DELETE_GUARD = 'fx_rates_append_only';
 
 // One export statement is exactly: PREFIX(table) + the doubled-quote JSON literal + SUFFIX. It is
 // checked with a fixed prefix and suffix and one linear scan for a lone quote, never with a pattern
@@ -186,7 +191,7 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
       const seeded = (SEED_TABLES as readonly string[]).includes(t);
       const r = await tx.query<{ n: number }>(
         seeded
-          ? `SELECT count(*)::int AS n FROM ${quote(t)} WHERE created_at <> '${SEED_EPOCH}'`
+          ? `SELECT count(*)::int AS n FROM ${quote(t)} WHERE ${NOT_SEED_ROW[t] ?? `created_at <> '${SEED_EPOCH}'`}`
           : `SELECT count(*)::int AS n FROM ${quote(t)}`,
       );
       if (r.rows[0]!.n > 0) {
@@ -203,6 +208,7 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
     // rows. Every INSERT guard (ledger bounds, order currency and approval checks) stays on, so the
     // import re-checks what it loads; foreign keys, checks and unique indexes stay enforced too.
     await tx.exec(`ALTER TABLE safety_switches DISABLE TRIGGER ${quote(SEED_DELETE_GUARD)}`);
+    await tx.exec(`ALTER TABLE fx_rates DISABLE TRIGGER ${quote(FX_DELETE_GUARD)}`);
     for (const t of [...order].reverse()) {
       if ((SEED_TABLES as readonly string[]).includes(t)) await tx.exec(`DELETE FROM ${quote(t)}`);
     }
@@ -224,6 +230,7 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
       );
     }
     await tx.exec(`ALTER TABLE safety_switches ENABLE TRIGGER ${quote(SEED_DELETE_GUARD)}`);
+    await tx.exec(`ALTER TABLE fx_rates ENABLE TRIGGER ${quote(FX_DELETE_GUARD)}`);
     const broken = await checkInvariants(tx);
     if (broken.length > 0) {
       throw new Error(`import refused: the loaded data breaks an invariant: ${broken.join('; ')}`);

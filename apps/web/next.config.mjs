@@ -20,6 +20,7 @@ const config = {
     '@umsbx/discovery',
     '@umsbx/entitlements',
     '@umsbx/fit',
+    '@umsbx/fx',
     '@umsbx/ledger',
     '@umsbx/model',
     '@umsbx/obs',

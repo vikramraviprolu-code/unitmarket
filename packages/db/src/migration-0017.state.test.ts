@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Database } from '@umsbx/contracts';
+import { exportSql, importSql } from './export-sql';
 import { applyMigrations, MIGRATIONS_ROOT, migrate, openDatabase } from './index';
 
 const T = '2026-11-04T10:00:00Z';
@@ -166,6 +167,21 @@ describe('migration 0017', () => {
         (await d.query<{ c: string | number }>('SELECT count(*) AS c FROM fx_rates')).rows[0]!.c,
       ),
     ).toBe(2);
+  });
+
+  it('survives a logical export and import: the seed rows are replaced, ECB rows come across, the guard is back on', async () => {
+    const src = await fresh();
+    await row(src, { quote: 'USD' });
+    await row(src, { quote: 'GBP', rate: '0.88' });
+    const dst = await fresh();
+    const counts = await importSql(dst, await exportSql(src, { utc: T }));
+    expect(counts['fx_rates']).toBe(4);
+    const all = (d: Db) =>
+      d.query(`SELECT to_jsonb(x)::text AS r FROM fx_rates x ORDER BY 1`).then((r) => r.rows);
+    expect(await all(dst)).toEqual(await all(src));
+    await expect(dst.query('DELETE FROM fx_rates')).rejects.toThrow(/append-only/);
+    // A database that already holds an ECB row is not fresh: the import refuses it.
+    await expect(importSql(src, await exportSql(src, { utc: T }))).rejects.toThrow(/not empty/);
   });
 
   it('applies on a database that already holds data from 0001 to 0016 and changes nothing else', async () => {
