@@ -178,6 +178,11 @@ export async function requestApproval(
       if (nowMs >= Date.parse(iso(q.expires_at))) return approvalError('quote_expired');
     }
 
+    // The buyer must exist: an anonymous quote passes the ownership check above, and a missing buyer row
+    // would otherwise reach the INSERT and fail on the foreign key as a thrown error, not a typed refusal.
+    const bx = await tx.query('SELECT 1 FROM buyers WHERE id = $1', [buyer.buyer_id]);
+    if (bx.rows.length === 0) return approvalError('not_owner');
+
     // 2. One currency, one corridor.
     const first = quotes[0];
     if (first === undefined) return approvalError('unknown_selection');

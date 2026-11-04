@@ -21,7 +21,7 @@ export async function corridorFor(
   const { rows } = await db.query(
     `SELECT ${COLUMNS} FROM corridors
       WHERE currency = $1 AND $2 = ANY (payee_countries)
-        AND ($3::text IS NULL OR $3 = ANY (buyer_countries))
+        AND ($3::text IS NULL OR '*' = ANY (buyer_countries) OR $3 = ANY (buyer_countries))
       ORDER BY enabled DESC, id
       LIMIT 1`,
     [i.currency, i.payee_country, i.buyer_country],

@@ -1180,18 +1180,20 @@ export async function seedSandboxPayees(
     // The German publisher comes last, so the guard sees the owner id flagged on Harbour and Quayside
     // before a third row takes it. It is absent on a database that has not run the MC2-L2 block yet.
     if (third !== undefined && third.paypal_merchant_id === null) {
-      await tx.query(
+      const set3 = await tx.query(
         `UPDATE publishers SET paypal_merchant_id = $3, payee_verified_at = $1, payee_shared = true, updated_at = $1
-          WHERE id = $2 AND paypal_merchant_id IS NULL`,
+          WHERE id = $2 AND paypal_merchant_id IS NULL RETURNING id`,
         [now, third.id, own_merchant_id],
       );
-      await d.audit.record(tx, {
-        actor: { kind: 'system' },
-        action: 'seed.payee_set',
-        target: third.id,
-        reason: 'D-041: all demo publishers are paid into the owner account',
-        detail: { slug: third.slug, merchant_last4: last4 },
-      });
+      // Audit only a write that happened: two racing boots must not both record it.
+      if (set3.rows.length === 1)
+        await d.audit.record(tx, {
+          actor: { kind: 'system' },
+          action: 'seed.payee_set',
+          target: third.id,
+          reason: 'D-041: all demo publishers are paid into the owner account',
+          detail: { slug: third.slug, merchant_last4: last4 },
+        });
     }
     return false;
   });

@@ -173,7 +173,8 @@ describe('M4: amount_minor must equal the amount in the body for money-moving po
   });
 });
 
-// FIX-MVPB-SEAL2 LOW: each scope has a currency allow-list (D-023 USD first, D-084 USD, EUR and GBP) and the MVP-B scope
+// FIX-MVPB-SEAL2 LOW: each scope has a currency allow-list (D-023 USD first, D-084 USD, EUR and GBP)
+// and the MVP-B scope
 // never pays a merchant other than the account that owns the order (no purchase_units[].payee).
 describe('SEAL2 LOW: currency allow-list per scope and no payee in MVP-B', () => {
   const blocked = async (scope: string, r: OutboundRequest, reason: string) => {

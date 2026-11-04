@@ -141,6 +141,11 @@ describe('catalogue reads', () => {
     expect(
       await corridorFor(db, { currency: 'USD', payee_country: 'US', buyer_country: 'DE' }),
     ).toBeNull();
+    // a corridor whose buyer_countries is ['*'] (de-eur) matches any buyer country
+    await db.query(`UPDATE corridors SET buyer_countries = ARRAY['*'] WHERE id = 'gb-gbp'`);
+    expect(
+      (await corridorFor(db, { currency: 'GBP', payee_country: 'GB', buyer_country: 'JP' }))?.id,
+    ).toBe('gb-gbp');
     const gb = await corridorFor(db, { currency: 'GBP', payee_country: 'GB', buyer_country: null });
     expect(gb?.id).toBe('gb-gbp');
     expect(gb?.enabled).toBe(false);

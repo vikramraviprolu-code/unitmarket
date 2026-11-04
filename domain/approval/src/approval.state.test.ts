@@ -452,6 +452,19 @@ describe('requestApproval refusals', () => {
     expect(g.snapshot.corridor_id).toBe('us-usd');
   });
 
+  // Review fix (MC2-L1): an anonymous quote passes the ownership check, so a buyer id with no buyers row
+  // must be refused with a typed code, not reach the INSERT and fail on the foreign key.
+  it('a buyer id that does not exist is refused as not_owner, not a thrown error', async () => {
+    h = await makeHarness();
+    await addQuote(h.db, { id: 'quo_anon', offer_id: 'ofr_1', buyer_id: null });
+    const r = await requestApproval(h.deps, {
+      actor: { kind: 'buyer', buyer_id: 'buy_GONE' },
+      selection: { kind: 'quote', quote_id: 'quo_anon' },
+      consent: CONSENT,
+    });
+    expect(code(r)).toBe('not_owner');
+  });
+
   it('a buyer from DE gets an approval for a USD offer in us-usd (buyer_countries is [US])', async () => {
     h = await makeHarness();
     await addGermanBuyer(h.db);
