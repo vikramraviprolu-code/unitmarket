@@ -1,4 +1,4 @@
-# INT-SR0: search foundation, round 2
+# INT-SR0: search foundation, round 2 (passed 11 of 12, with fixes R2-1 and R2-2)
 
 Task: One transaction filter contract with role rules, plus the indexes and the read view it runs on.
 Package: `packages/contracts` (`txn-query.ts`), `packages/db` (migration), new `domain/txn-search` (`@umsbx/txn-search`). Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
@@ -55,7 +55,7 @@ There is one row per `order_units` row. The view is created `WITH (security_invo
 | `created_at`, `captured_verified_at` | `orders.created_at`, `order_units.captured_verified_at` |
 | `currency`, `amount_minor`, `order_total_minor`, `refunded_minor`, `environment` | from `orders` and `order_units` |
 | `publisher_id`, `seller_name`, `seller_slug` | `publishers` |
-| `provider_order_id` | `provider_orders` on `(order_id, publisher_id)` |
+| `provider_order_id` | `provider_orders` on `provider_orders.id = order_units.provider_order_ref` (a single-route order has `publisher_id` NULL there, so the join never uses it) |
 | `capture_id` | `order_units.capture_id` |
 | `buyer_id`, `buyer_display_name` | `orders.buyer_id`, `buyers.display_name` (left out of the seller projection) |
 | `titles` | `array_agg(articles.title ORDER BY articles.title)` over `entitlements` for the unit |
@@ -78,12 +78,11 @@ CREATE INDEX order_units_problem  ON order_units (updated_at DESC) WHERE status 
 CREATE INDEX refund_requests_unit ON refund_requests (unit_id, created_at DESC, id DESC);
 CREATE INDEX recovery_cases_order ON recovery_cases (order_id, created_at DESC, id DESC);
 CREATE INDEX ledger_entries_unit  ON ledger_entries (unit_id);
-CREATE INDEX entitlements_unit    ON entitlements (unit_id);
 CREATE INDEX entitlements_buyer   ON entitlements (buyer_id, created_at DESC);
 CREATE INDEX alerts_order         ON alerts (order_id);
 ```
 
-Not added, because they exist already: `order_units (order_id)` (`UNIQUE (order_id, reference_id)`, 0004:140), `provider_orders (order_id)` (`UNIQUE (order_id, position)`, 0011:53) and the mandate link (`mandate_reservations_order_idx`, 0021:52). `sort=amount` and `sort=status` have no index. They are always bounded by F1 (operator default 30 days) and are not in the plan test.
+Not added, because they exist already: `order_units (order_id)` (`UNIQUE (order_id, reference_id)`, 0004:140), `entitlements (unit_id)` (`UNIQUE (unit_id, article_id)`, 0005:17), `provider_orders (order_id)` (`UNIQUE (order_id, position)`, 0011:53) and the mandate link (`mandate_reservations_order_idx`, 0021:52). `sort=amount` and `sort=status` have no index. They are always bounded by F1 (operator default 30 days) and are not in the plan test.
 
 ## Outputs (only these files)
 
@@ -108,7 +107,7 @@ There is no db index-file change (`migrate.ts:11` reads the directory). If code 
 | SR0.1 | `packages/contracts/src/txn-query.golden.test.ts` | `pnpm vitest run packages/contracts/src/txn-query.golden.test.ts` | 40 URL cases parse as expected, bad values dropped; the `STATUS_GROUPS` table and `statusGroupOf` precedence match the table above, including pending at 59 and 61 minutes with an injected `now` |
 | SR0.1 | `domain/txn-search/src/cursor.test.ts` | `pnpm vitest run domain/txn-search/src/cursor.test.ts` | Round trip for `newest`, `amount` and `status`; malformed, tampered, other-sort and `h`-mismatch cursors each throw `bad_cursor`; the decoded cursor has only `v, s, k, id, h` |
 | SR0.2 | `domain/txn-search/src/scope.adversarial.test.ts` | `pnpm vitest run domain/txn-search/src/scope.adversarial.test.ts` | Every row of the role table holds, for each principal kind in `principal.ts`: buyer `buyer=other` gives 400; seller `buyer=`, `seller=other`, `seller=self` and `agent_key` give 400; buyer or seller `environment=bogus` and `flags=bogus` give 400 (raw-key check); an operator key's `buyer=<name>` matches nothing; a buyer's foreign `agent_key` gives zero rows; seller rows have no buyer column; `q` of `\`, `%`, `_` and `' OR 1=1 --` returns only literal matches |
-| SR0.3, SR0.4 | `packages/db/src/migration-00NN.state.test.ts`, `domain/txn-search/src/view.state.test.ts` | `pnpm vitest run packages/db/src/migration-00NN.state.test.ts domain/txn-search/src/view.state.test.ts` | The 11 indexes exist and no duplicate was added; `txn_rows` has one row per unit; a unit with two articles has two titles; the latest refund and case win by `(created_at, id)`; `alert_count`, `channel` and `agent_key_id` are right for a seeded agent buy; `security_invoker` is set |
+| SR0.3, SR0.4 | `packages/db/src/migration-00NN.state.test.ts`, `domain/txn-search/src/view.state.test.ts` | `pnpm vitest run packages/db/src/migration-00NN.state.test.ts domain/txn-search/src/view.state.test.ts` | The 10 indexes exist and no duplicate was added; `txn_rows` has one row per unit; `provider_order_id` is filled for a single-route order and for each line of a split order, and `ref=<provider id>` finds both; a unit with two articles has two titles; the latest refund and case win by `(created_at, id)`; `alert_count`, `channel` and `agent_key_id` are right for a seeded agent buy; `security_invoker` is set |
 | SR0.5 | `domain/txn-search/src/pg.plan.integration.test.ts` | `UMS_TEST_PG_BIN=$(pg_config --bindir) pnpm vitest run domain/txn-search/src/pg.plan.integration.test.ts` | **A skip is a fail.** The seed inserts 100,000 lines with `generate_series` inside an approved `seed` trace context, with corridor, currency and approval rows inserted first so the 0004 guards pass; then `ANALYZE`. For the buyer newest page, seller newest page, operator 30-day page and operator Needs attention page, `EXPLAIN` shows `Index Scan`, `Index Only Scan` or `Bitmap Index Scan` on `orders_buyer_time`, `order_units_pub_time`, `orders_time`, and `orders_attention` or `order_units_problem`. p95 is under 50 ms (5 warm-ups, then 50 runs per shape); the output shows the run counts |
 
 Mutation: `pnpm mutation --require-targets --targets domain/txn-search/src/scope.ts,domain/txn-search/src/cursor.ts --test-cmd "pnpm vitest run domain/txn-search packages/contracts/src/txn-query.golden.test.ts" --threshold 80`.
