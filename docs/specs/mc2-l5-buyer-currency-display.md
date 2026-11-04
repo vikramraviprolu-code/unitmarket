@@ -15,6 +15,8 @@ Rules:
 - Calling the fx engine: use `engine.fx.refreshIfStale` at most once per request that renders a price, never blocking longer than the 3 s transport deadline, never throwing into the page.
 - Offer pages, discover, approve, buyer home, library lists use the same display helper; order status and receipts show the settled seller-currency amount only.
 
+Seed rate wording (autonomy ledger A1): `ConvertResult.source` is `'ecb'`, `'seed'` or `null`. For `'seed'` the line reads "sample rate of <date>" instead of "rate of <date>"; the ECB is never named. Add a golden line for it. L4 is merged: use `engine.fx` as it is (`getRates`, `refreshIfStale`, `convert`; `getRates` returns null on a database error).
+
 Acceptance tests: tests first, red then green.
 
 - DE buyer sees a USD offer as about € with the rate date and the USD amount beside it; GB buyer sees EUR offer as about £; US buyer sees a USD offer with no conversion line.
