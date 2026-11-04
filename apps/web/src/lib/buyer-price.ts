@@ -74,10 +74,22 @@ export function priceView(price: Money, converted: ConvertedFigure | null): Pric
 /** The lead of a list line: "from about £1.28", or "from $0.40" when nothing was converted. */
 export const fromLead = (v: PriceView): string => `from ${v.lead}`;
 
-/** The proposal line for an agent ceiling that was compared on the converted price. */
-export function ceilingLine(ceiling: Money, price: Money): string {
-  return `Against your ceiling of ${formatMinor(ceiling.minor, ceiling.currency)}: about ${formatMinor(price.minor, price.currency)}.`;
+/**
+ * The proposal line for an agent ceiling that was compared on the converted price. A placeholder (seed) rate
+ * is said to be one, in the words of the binding line (A1); the bank is never named.
+ */
+export function ceilingLine(
+  ceiling: Money,
+  price: Money,
+  source: 'ecb' | 'seed' | null = null,
+): string {
+  const tail = source === 'seed' ? ' (sample rate)' : '';
+  return `Against your ceiling of ${formatMinor(ceiling.minor, ceiling.currency)}: about ${formatMinor(price.minor, price.currency)}${tail}.`;
 }
+
+/** Said when a search found nothing because some prices could not be compared with the ceiling. */
+export const NO_RATE_NOTE =
+  "We could not compare some prices with your ceiling because no current exchange rate is available. Try a ceiling in the seller's currency.";
 
 /** The prices of one option list, by option. */
 export function optionPrices(

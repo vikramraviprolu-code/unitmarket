@@ -101,3 +101,18 @@ export async function buyerDisplay(
     return NOTHING;
   }
 }
+
+/**
+ * Where the stored rate came from, for wording a figure ('seed' is a placeholder), or null when there is no
+ * rate or the read fails. Never throws.
+ */
+export async function currentRateSource(
+  engine: Pick<DisplayEngine, 'fx'>,
+): Promise<'ecb' | 'seed' | null> {
+  try {
+    const rates = await engine.fx.getRates();
+    return rates === null ? null : rates.source === 'seed' ? 'seed' : 'ecb';
+  } catch {
+    return null;
+  }
+}

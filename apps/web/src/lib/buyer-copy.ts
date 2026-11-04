@@ -2,7 +2,7 @@
 // unit tests can pin it (the unit runner does not compile .tsx). Wording rules: D-051.
 import type { FitDimension, Rights } from '@umsbx/contracts';
 import { OPTION_LABEL } from './format';
-import { fromLead, priceView } from './buyer-price';
+import { NO_RATE_NOTE, fromLead, priceView } from './buyer-price';
 import type { PriceView } from './buyer-price';
 import type { OfferPage } from './view-types';
 import { LINE_TEXT } from './composite-copy';
@@ -146,9 +146,14 @@ export interface DiscoverNoMatchView {
   open_order: { heading: string; body: string; href: string } | null;
   /** Whether to also say "nothing in the catalogue fits" (false when the notice is the whole story). */
   nothing_fits: boolean;
+  /** MC2-L5: said when some prices could not be compared with the ceiling for want of a rate; else null. */
+  no_rate: string | null;
 }
 
-export function discoverNoMatchView(reasons: readonly string[]): DiscoverNoMatchView {
+export function discoverNoMatchView(
+  reasons: readonly string[],
+  rateMissing = false,
+): DiscoverNoMatchView {
   const owned = reasons.includes('already_owned');
   const unpaid = reasons.includes('unpaid_order');
   const held = owned || unpaid;
@@ -167,5 +172,6 @@ export function discoverNoMatchView(reasons: readonly string[]): DiscoverNoMatch
   return {
     open_order,
     nothing_fits: !held || reasons.some((r) => r !== 'already_owned' && r !== 'unpaid_order'),
+    no_rate: rateMissing ? NO_RATE_NOTE : null,
   };
 }

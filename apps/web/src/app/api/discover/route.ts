@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { withRoute } from '@umsbx/security';
 import type { RouteMeta } from '@umsbx/security';
 import { app, securityDeps } from '../../../server/access';
-import { buyerDisplay, refreshRatesOnce } from '../../../server/buyer-display';
+import { buyerDisplay, currentRateSource, refreshRatesOnce } from '../../../server/buyer-display';
+import { ceilingLine } from '../../../lib/buyer-price';
 
 export const routeMeta: RouteMeta = {
   path: '/api/discover',
@@ -50,9 +51,19 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
     currencies: r.value.items.map((it) => it.quote.price.currency),
     refresh: false,
   });
+  // A ceiling compared on a converted price is shown with both amounts; a sample rate is said to be one.
+  const source = r.value.items.some((it) => it.ceiling_check !== undefined)
+    ? await currentRateSource(a.engine)
+    : null;
   const items = r.value.items.map((it) => {
     const view = display.view(it.quote.price);
-    return view.binding === null ? it : { ...it, display: view };
+    const shown = view.binding === null ? it : { ...it, display: view };
+    return it.ceiling_check === undefined
+      ? shown
+      : {
+          ...shown,
+          ceiling_line: ceilingLine(it.ceiling_check.ceiling, it.ceiling_check.price, source),
+        };
   });
   return reply({ ...r.value, items });
 })(securityDeps);

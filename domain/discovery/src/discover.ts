@@ -52,15 +52,40 @@ export type DiscoveryResult =
         ceiling_check?: CeilingCheck;
       }[];
     }
-  | { kind: 'no_match'; reasons: NoMatch['reason'][] };
+  | {
+      kind: 'no_match';
+      reasons: NoMatch['reason'][];
+      /**
+       * MC2-L5: set (true) only when an offer in another currency than the ceiling could not be compared
+       * because no usable rate was available. The buyer is told; nothing is proposed on a guess.
+       */
+      rate_missing?: true;
+    };
 // One code for a missing brief and for someone else's brief, so the answer reveals nothing (L1).
 // 'unknown_brief' and 'not_owner' stay in the type for older callers and are no longer returned.
 export type DiscoverError = { code: 'not_found' | 'unknown_brief' | 'not_owner' };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === 'object' && !Array.isArray(v);
-const noMatch = (reasons: NoMatch['reason'][] = []): Result<DiscoveryResult, DiscoverError> =>
-  ok({ kind: 'no_match', reasons });
+const noMatch = (
+  reasons: NoMatch['reason'][] = [],
+  rateMissing = false,
+): Result<DiscoveryResult, DiscoverError> =>
+  ok({ kind: 'no_match', reasons, ...(rateMissing ? { rate_missing: true as const } : {}) });
+
+// A convert function that throws is the same as one with no usable rate: never an exception into the buyer's
+// search.
+const safeConvert = (convert: ConvertFn | undefined): ConvertFn | undefined =>
+  convert === undefined
+    ? undefined
+    : (c) => {
+        try {
+          const m = convert(c);
+          return typeof m === 'number' && Number.isSafeInteger(m) ? m : null;
+        } catch {
+          return null;
+        }
+      };
 const iso = (v: unknown): string => new Date(v as string | number | Date).toISOString();
 
 async function loadBrief(d: AgentDeps, id: Id): Promise<Brief | null> {
@@ -89,28 +114,35 @@ async function candidatesFor(
   d: AgentDeps,
   brief: Brief,
   convert: ConvertFn | undefined,
-): Promise<OfferView[]> {
+): Promise<{ views: OfferView[]; no_rate: boolean }> {
   const buyer = await d.db.query<{ country: string }>('SELECT country FROM buyers WHERE id = $1', [
     brief.buyer_id,
   ]);
-  if (!buyer.rows[0]) return [];
+  if (!buyer.rows[0]) return { views: [], no_rate: false };
   const corridors = await d.db.query<{ id: string; currency: string }>(
     'SELECT id, currency FROM corridors WHERE enabled ORDER BY id',
   );
   const byId = new Map<string, OfferView>();
+  let noRate = false;
   for (const c of corridors.rows) {
     if (
       brief.ceiling !== null &&
       brief.ceiling.currency !== c.currency &&
       !canConvert(convert, c.currency, brief.ceiling.currency)
-    )
+    ) {
+      // Left out for want of a rate: the buyer is told when this leaves them with nothing, but only if the
+      // corridor actually has an offer.
+      if ((await listAuthorisedOffers(d.db, { corridor_id: c.id, limit: 1 })).length > 0)
+        noRate = true;
       continue;
+    }
     const views = await listAuthorisedOffers(d.db, { corridor_id: c.id, limit: MAX_CANDIDATES });
     for (const v of views) byId.set(v.offer.id, v);
   }
-  return [...byId.values()]
+  const views = [...byId.values()]
     .sort((a, b) => (a.offer.id < b.offer.id ? -1 : a.offer.id > b.offer.id ? 1 : 0))
     .slice(0, MAX_CANDIDATES);
+  return { views, no_rate: noRate };
 }
 
 const canConvert = (convert: ConvertFn | undefined, from: string, to: string): boolean =>
@@ -126,8 +158,10 @@ export async function discover(
     return err({ code: 'not_found' });
   }
 
-  const views = await candidatesFor(d, brief, i.convert);
-  if (views.length === 0) return noMatch();
+  const convert = safeConvert(i.convert);
+  const { views, no_rate } = await candidatesFor(d, brief, convert);
+  let rateMissing = no_rate;
+  if (views.length === 0) return noMatch([], rateMissing);
   const byOffer = new Map(views.map((v) => [v.offer.id, v]));
   const candidateIds = new Set(byOffer.keys());
 
@@ -196,12 +230,16 @@ export async function discover(
     }
     let check: CeilingCheck | null = null;
     if (cross && brief.ceiling !== null) {
-      const minor = i.convert?.({
+      const minor = convert?.({
         minor: r.value.price.minor,
         from: view.offer.currency,
         to: brief.ceiling.currency,
       });
-      if (minor === undefined || minor === null) continue;
+      if (minor === undefined || minor === null) {
+        // No usable rate for this price: it is not proposed, and the buyer is told why if nothing is left.
+        rateMissing = true;
+        continue;
+      }
       if (minor > brief.ceiling.minor) {
         if (!reasons.includes('above_ceiling')) reasons.push('above_ceiling');
         continue;
@@ -213,7 +251,7 @@ export async function discover(
     }
     quoted.push({ quote: r.value, view, check });
   }
-  if (quoted.length === 0) return noMatch(reasons);
+  if (quoted.length === 0) return noMatch(reasons, rateMissing);
 
   const now = d.clock.now();
   const ranked = rankFit(

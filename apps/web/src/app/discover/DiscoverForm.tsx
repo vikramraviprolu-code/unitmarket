@@ -27,12 +27,12 @@ type Item = {
   publisher: string;
   /** MC2-L5: present only when the price is shown in another currency. The quote above is the seller's. */
   display?: PriceView;
-  /** MC2-L5: present when the agent compared the ceiling on the converted price. */
-  ceiling_check?: { ceiling: Money; price: Money };
+  /** MC2-L5: present when the agent compared the ceiling on the converted price (worded by the server). */
+  ceiling_line?: string;
 };
 type Result =
   | { kind: 'proposal'; proposal_id: string; items: Item[] }
-  | { kind: 'no_match'; reasons?: string[] };
+  | { kind: 'no_match'; reasons?: string[]; rate_missing?: boolean };
 
 // Gate 12 D12: the pack error sits next to the Buy button, so it is not far above it on a narrow screen.
 const NO_TICK = 'Please accept the terms of purchase before buying.';
@@ -142,7 +142,10 @@ export function DiscoverForm({
     setPicked((p) => (p.includes(offerId) ? p.filter((x) => x !== offerId) : [...p, offerId]));
   }
 
-  const noMatch = discoverNoMatchView(result?.kind === 'no_match' ? (result.reasons ?? []) : []);
+  const noMatch = discoverNoMatchView(
+    result?.kind === 'no_match' ? (result.reasons ?? []) : [],
+    result?.kind === 'no_match' && result.rate_missing === true,
+  );
   return (
     <>
       <Hero>
@@ -188,6 +191,11 @@ export function DiscoverForm({
             {noMatch.open_order !== null ? (
               <StatusBanner tone="info">
                 {noMatch.open_order.body} <a href={noMatch.open_order.href}>{OPEN_ORDER_LINK}</a>
+              </StatusBanner>
+            ) : null}
+            {noMatch.no_rate !== null ? (
+              <StatusBanner tone="info" title="No current exchange rate">
+                <span data-testid="discover-no-rate">{noMatch.no_rate}</span>
               </StatusBanner>
             ) : null}
             {noMatch.nothing_fits ? (
@@ -258,7 +266,7 @@ export function DiscoverForm({
                     publisher={it.publisher}
                     price={it.quote.price}
                     {...(it.display !== undefined ? { display: it.display } : {})}
-                    {...(it.ceiling_check !== undefined ? { ceilingCheck: it.ceiling_check } : {})}
+                    {...(it.ceiling_line !== undefined ? { ceilingLine: it.ceiling_line } : {})}
                     option={it.quote.option}
                     onChoose={() => void choose(it, result.proposal_id)}
                   />

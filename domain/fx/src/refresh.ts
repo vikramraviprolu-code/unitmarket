@@ -13,7 +13,7 @@ export type RefreshResult =
   | { status: 'refreshed'; date: string }
   | {
       status: 'kept';
-      reason: 'older_date' | 'same_date' | 'rejected_move' | 'recent_attempt';
+      reason: 'older_date' | 'same_date' | 'rejected_move' | 'recent_attempt' | 'in_flight';
       date: string | null;
     }
   | { status: 'failed'; kind: string };
@@ -40,12 +40,13 @@ const moved = (next: bigint, old: bigint): boolean => {
 
 /**
  * Fetches new rates only when the newest stored fetch is over 6 hours old, once, under an advisory lock, so
- * concurrent callers make one request and the rest find the rows it wrote. Never throws. The old rate
+ * concurrent callers make one request; a caller that does not get the lock returns at once with the stored
+ * rates (status kept, reason in_flight) and neither waits nor fetches. Never throws. The old rate
  * stays on any failure. A rate that moves more than 10% from the stored one, a date older than the newest
  * stored date, and a fetch answer of the wrong shape are not stored.
  *
  * The lock is transaction scoped (it works on PGlite and Postgres alike) and the fetch runs inside the
- * transaction, at most 3 seconds. The advisory lock is taken before the staleness is read again.
+ * transaction, at most 3 seconds. The lock is tried before the staleness is read again.
  */
 export async function refreshIfStale(deps: {
   db: Database;
@@ -76,9 +77,16 @@ async function locked(
   tx: SqlExecutor,
   deps: { db: Database; clock: Clock; fetchRates: () => Promise<FetchedRates> },
 ): Promise<RefreshResult> {
-  await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [LOCK_KEY]);
-  // Another caller may have stored a rate while this one waited for the lock.
+  // The "try" form: a caller that finds a fetch already in flight does not wait for it (a wait would hold a
+  // pool connection past the 3 second page deadline). It answers at once with what is stored.
+  const lock = await tx.query<{ got: boolean }>(
+    'SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS got',
+    [LOCK_KEY],
+  );
   const cur = await readLatest(tx);
+  if (lock.rows[0]?.got !== true)
+    return { status: 'kept', reason: 'in_flight', date: cur?.date ?? null };
+  // Another caller may have stored a rate between the first read and the lock.
   if (cur !== null && isFresh(cur, deps.clock)) return fresh(cur, deps.clock);
   const now = deps.clock.now().getTime();
   const before = lastAttempt.get(deps.db);
