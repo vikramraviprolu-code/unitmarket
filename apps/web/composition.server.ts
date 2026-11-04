@@ -2470,7 +2470,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         });
         // MC2-L6: a pending item held for the seller to accept says so; the kind stays `pending`.
         const line =
-          kind === 'pending'
+          kind === 'pending' && e.unit_status === 'pending'
             ? (pendingItemLine(pendingReasonKind(e.status_reason)) ?? LINE_TEXT[kind])
             : LINE_TEXT[kind];
         return { ...base, publisher: e.publisher ?? 'Publisher', kind, line };

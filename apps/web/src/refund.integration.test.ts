@@ -245,7 +245,7 @@ describe('a partial refund of a keep item', () => {
 
 // MC2-L6 (D-083): the manual-action reason is worded as awaiting the seller, not as a generic pending.
 const AWAITING =
-  'Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment, or PayPal returns it to you.';
+  'Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment. If they do not, PayPal returns the money to you.';
 
 describe('pending states from stored data', () => {
   it('pending at PayPal and confirming payment come from the stored order, with no refund copy', async () => {

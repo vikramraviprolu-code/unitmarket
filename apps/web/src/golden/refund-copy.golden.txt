@@ -6,9 +6,9 @@ library, online item refunded: Refunded: access has ended
 library, keep item refunded: Refunded: links have stopped. The copy you downloaded cannot be recalled.
 library, partially refunded: Partially refunded: your access continues
 library, partially refunded, note: Part of this order was refunded as a price adjustment. Access to every item in the order continues.
-library, payment pending: Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment, or PayPal returns it to you.
+library, payment pending: Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment. If they do not, PayPal returns the money to you.
 library, confirming payment: Confirming payment
-order page, payment pending: Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment, or PayPal returns it to you.
+order page, payment pending: Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment. If they do not, PayPal returns the money to you.
 order page, confirming payment: Confirming payment
 operator, mfa_required: 403 mfa_required: Sign in again with your authenticator code. Refunds need the second factor.
 operator, refunds_off: 503 refunds_paused: Refunds paused. Nothing was refunded. Ask the owner to turn refunds on again.

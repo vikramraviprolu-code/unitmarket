@@ -1,6 +1,6 @@
 # MC2-L6 golden (D-083): the words people are told about a payment PayPal holds for the seller to accept. Hand reviewed.
 label: Awaiting seller acceptance
-buyer, order page and library: Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment, or PayPal returns it to you.
+buyer, order page and library: Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment. If they do not, PayPal returns the money to you.
 buyer, other pending reason: Payment pending at PayPal
 buyer, pack item line: Awaiting seller acceptance. Not unlocked yet
 seller, heading: Payments waiting at PayPal

@@ -125,7 +125,7 @@ describe('the real payments engine behind the facade', () => {
     const order = await payWith(offer, 'pending_receiving_pref');
     const view = await app.engine.orderView({ order_ref: order.order_ref, actor });
     expect(view?.buyer_message).toBe(
-      'Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment, or PayPal returns it to you.',
+      'Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment. If they do not, PayPal returns the money to you.',
     );
     expect(view?.items.every((i) => i.access !== 'available')).toBe(true);
   });

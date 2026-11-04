@@ -12,7 +12,7 @@ export const AWAITING_SELLER_LABEL = 'Awaiting seller acceptance';
 const GENERIC_PENDING = 'Payment pending at PayPal';
 
 /** The buyer's words on the order page and in the library. Access stays locked until the capture completes. */
-export const AWAITING_SELLER_BUYER_TEXT = `${AWAITING_SELLER_LABEL}. You have not lost money. Access unlocks when the seller accepts the payment, or PayPal returns it to you.`;
+export const AWAITING_SELLER_BUYER_TEXT = `${AWAITING_SELLER_LABEL}. You have not lost money. Access unlocks when the seller accepts the payment. If they do not, PayPal returns the money to you.`;
 
 /** One item of a pack, beside the lock. */
 export const AWAITING_SELLER_LINE = `${AWAITING_SELLER_LABEL}. Not unlocked yet`;
