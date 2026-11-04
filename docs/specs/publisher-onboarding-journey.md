@@ -47,7 +47,7 @@ to the e2e suite when the screens exist. Nothing calls PayPal or the open web in
 | A6  | Where files are stored      | The existing content table, with hard size caps. A bucket is the later design for thousands of photos; v1 caps the batch (100 items, 2 MB each).                                                                                     |
 | A7  | Payout timing               | A sale's payout is due when its access window ends and no open refund exists. One payout per publisher and currency per run.                                                                                                         |
 | A8  | Real PayPal                 | No real sandbox payout or order runs without the owner's explicit "approve" and an approval row inserted at his own terminal. Offline first.                                                                                         |
-| A9  | Migrations                  | P1 uses 0020, M1 uses 0021. I1 uses none unless it needs one, then 0022. Coordinator assigns.                                                                                                                                        |
+| A9  | Migrations                  | P1 uses 0020, M1 uses 0021, I1 uses 0022. Coordinator assigns; any other number is a stop and report.                                                                                                                                |
 
 ## Acceptance (the whole journey)
 
