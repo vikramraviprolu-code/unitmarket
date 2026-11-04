@@ -13,7 +13,7 @@ export interface UnitSeed {
   publisher: 'pub_1' | 'pub_2';
   status?: string;
   amount_minor?: number;
-  currency?: 'USD' | 'EUR';
+  currency?: 'USD' | 'EUR' | 'GBP';
   environment?: 'dryrun' | 'sandbox';
   paypal_fee_minor?: number | null;
   captured?: boolean;
@@ -53,6 +53,16 @@ export async function makeWorld(): Promise<World> {
   await insert('corridors', {
     id: 'eu-eur',
     currency: 'EUR',
+    minor_units: 2,
+    buyer_countries: ['US'],
+    payee_countries: ['US'],
+    domestic_supported: true,
+    min_charge_minor: null,
+    enabled: true,
+  });
+  await insert('corridors', {
+    id: 'gb-gbp',
+    currency: 'GBP',
     minor_units: 2,
     buyer_countries: ['US'],
     payee_countries: ['US'],
@@ -117,7 +127,7 @@ export async function makeWorld(): Promise<World> {
         expected: '{}',
         status: 'paid',
         mismatch: false,
-        corridor_id: currency === 'EUR' ? 'eu-eur' : 'us-usd',
+        corridor_id: currency === 'EUR' ? 'eu-eur' : currency === 'GBP' ? 'gb-gbp' : 'us-usd',
         currency,
         total_minor: amount,
         environment,
