@@ -11,3 +11,4 @@ apps/web/next-env.d.ts
 .claude-flow
 .swarm
 ruvector.db
+docs/api/openapi-v1.json

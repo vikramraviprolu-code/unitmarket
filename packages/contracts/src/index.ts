@@ -20,3 +20,6 @@ export * from './recovery';
 export * from './fit';
 export * from './config';
 export * from './deps';
+// API-W0 (principals, v1 contracts).
+export * from './principal';
+export * from './v1';

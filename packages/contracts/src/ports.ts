@@ -6,6 +6,7 @@ import { ActorSchema } from './actor';
 import type { Actor } from './actor';
 import type { Id } from './primitives';
 import { IdSchema, Sha256HexSchema } from './primitives';
+import type { EventType } from './v1';
 
 // ---------- Database ----------
 // Inside transaction(fn) use only tx. Never call a provider or any other I/O port inside fn.
@@ -49,6 +50,9 @@ export const IdPrefixSchema = z.enum([
   'whk',
   'aud',
   'oap',
+  // API-W0: API keys and outbox events.
+  'key',
+  'evt',
 ]);
 export type IdPrefix = z.infer<typeof IdPrefixSchema>;
 export interface Ids {
@@ -56,6 +60,30 @@ export interface Ids {
   next(prefix: IdPrefix): Id;
   /** 32 hex chars, 128 bits */
   nonce(): string;
+}
+
+// ---------- Secret source (API-W0) ----------
+/**
+ * Random bytes for secrets that must not come from the seeded Rng (API keys). The real source draws from
+ * node:crypto in packages/runtime; tests inject a fixed one. `len` is a whole number from 1 to 1024.
+ */
+export interface SecretSource {
+  bytes(len: number): Uint8Array;
+}
+
+// ---------- Event outbox (API-W0) ----------
+/** One event to append: a type from the v1 contract and the payload of that type. */
+export interface OutboxEvent {
+  type: EventType;
+  payload: unknown;
+}
+/**
+ * Appends an event to event_outbox INSIDE the caller's transaction, so it commits or rolls back with the
+ * change it describes. The payload is checked against the schema of its type first; a payload that does
+ * not match throws and nothing is written. Delivery to subscribers is not part of this port.
+ */
+export interface EventOutbox {
+  append(tx: SqlExecutor, event: OutboxEvent): Promise<Id>;
 }
 
 // ---------- Secret ----------

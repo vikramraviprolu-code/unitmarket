@@ -110,6 +110,27 @@ const EXPECTED_EXPORTS: string[] = [
   'FitCardSchema',
   'BriefSchema',
   'DomainConfigSchema',
+  // API-W0 (F1, F2): principals, scopes, /api/v1 contracts, events, OpenAPI
+  'SCOPES',
+  'ScopeSchema',
+  'KEY_KINDS',
+  'KeyKindSchema',
+  'OwnerActorSchema',
+  'PrincipalSchema',
+  'toActor',
+  'OWNER_SCOPE_MATRIX',
+  'scopesAllowedFor',
+  'ErrorEnvelopeSchema',
+  'pageOf',
+  'ApiKeyIssueRequestSchema',
+  'ApiKeyViewSchema',
+  'ApiKeyIssuedSchema',
+  'EVENT_TYPES',
+  'EventTypeSchema',
+  'EVENT_PAYLOAD_SCHEMAS',
+  'EventEnvelopeSchema',
+  'V1_ROUTES',
+  'buildOpenApiV1',
 ];
 
 type Def = {

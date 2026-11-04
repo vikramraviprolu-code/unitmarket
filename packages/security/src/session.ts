@@ -44,6 +44,9 @@ function actorParts(actor: Actor): { kind: 'buyer' | 'publisher' | 'operator'; i
       return { kind: 'operator', id: actor.operator_id };
     case 'system':
       throw new Error('the system actor has no session');
+    default:
+      // API-W0: a principal (agent, api_client) or any made-up kind never holds a session.
+      throw new Error('only buyer, publisher and operator hold a session');
   }
 }
 

@@ -71,3 +71,17 @@ export type {
 } from './accounts';
 export { runResetPassword } from './accounts-cli';
 export type { ResetCliError, ResetCliResult } from './accounts-cli';
+export {
+  KEY_TOKEN_PATTERN,
+  bearerToken,
+  formatKeyToken,
+  hasScopes,
+  hashKeySecret,
+  issueKey,
+  listKeys,
+  parseKeyToken,
+  revokeKey,
+  verifyKey,
+} from './apikey';
+export type { ApiKeyDeps, IssueError, IssueInput, IssuedKey, VerifiedKey } from './apikey';
+export { keyScope } from './idempotency';

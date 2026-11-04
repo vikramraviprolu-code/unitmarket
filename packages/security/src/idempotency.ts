@@ -44,6 +44,11 @@ export function scopeOf(actor: Actor, key: string): IdemScope | null {
   }
 }
 
+/** API-W0. A bearer key's reservation is scoped to the key id, so no two keys share a stored answer. */
+export function keyScope(key_id: string, key: string): IdemScope {
+  return { actor_kind: 'key', actor_id: key_id, key };
+}
+
 // Review 4 M8: `extra` carries the real request path and the merged route params, so the same key
 // on /orders/A and /orders/B is a different request, not a replay.
 export const requestHash = (route: string, method: string, rawBody: string, extra = ''): string =>

@@ -66,7 +66,8 @@ function astProblems(file, source) {
     for (const d of st.declarationList.declarations) {
       // BU-2 review nit: routeMeta is a plain object literal with plain keys. A computed key or a
       // spread could carry fail_safe_without_mfa (or any field) past the text check above.
-      if (ts.isIdentifier(d.name) && d.name.text === 'routeMeta') out.push(...metaProblems(d));
+      if (ts.isIdentifier(d.name) && /^routeMeta(?:GET|POST|PATCH|DELETE)?$/.test(d.name.text))
+        out.push(...metaProblems(d));
       if (!ts.isIdentifier(d.name) || !VERBS.has(d.name.text)) continue;
       // The deps binding `withRoute(routeMeta, ...)(securityDeps)` is the one call allowed around it.
       let init = d.initializer === undefined ? undefined : peel(d.initializer);
@@ -97,7 +98,8 @@ function astProblems(file, source) {
         init.expression.text === 'withRoute' &&
         init.arguments.length >= 1 &&
         ts.isIdentifier(init.arguments[0]) &&
-        init.arguments[0].text === 'routeMeta';
+        (init.arguments[0].text === 'routeMeta' ||
+          init.arguments[0].text === `routeMeta${d.name.text}`);
       if (!ok)
         out.push(
           `handler ${d.name.text} must be exactly withRoute(routeMeta, ...), nothing around it`,

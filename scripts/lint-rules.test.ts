@@ -1238,7 +1238,10 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
   const SAFETY = join(REPO_ROOT, 'packages', 'safety');
 
   beforeAll(() => {
-    const base = join(REPO_ROOT, 'scripts', '__fixtures__');
+    // .sbx-local is ignored by git and skipped by every guard walk, so check-isolation never sees this
+    // fixture appear or vanish while another test file runs it.
+    const base = join(REPO_ROOT, 'scripts', '.sbx-local');
+    mkdirSync(base, { recursive: true });
     fx = mkdtempSync(join(base, 'seal5-'));
     fxRel = relative(REPO_ROOT, fx);
     writeFileSync(
@@ -1357,9 +1360,16 @@ describe('SEAL5: aliases and bundler globs cannot reach the sealed names', () =>
       const walk = (dir: string) => {
         for (const name of readdirSync(dir)) {
           if (
-            ['node_modules', '.git', '.next', 'dist', '.data', '.pglite', '__fixtures__'].includes(
-              name,
-            )
+            [
+              'node_modules',
+              '.git',
+              '.next',
+              'dist',
+              '.data',
+              '.pglite',
+              '__fixtures__',
+              '.sbx-local',
+            ].includes(name)
           )
             continue;
           const p = join(dir, name);

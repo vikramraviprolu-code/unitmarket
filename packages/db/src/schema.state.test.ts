@@ -269,9 +269,12 @@ describe('migrations', () => {
     expect(t.rows.length).toBeGreaterThanOrEqual(35);
     // MC2-L4: fx_rates is the one exception, by its spec (docs/specs/mc2-l4-fx-rates.md): an append-only table
     // keyed (date, quote) whose own stamp is fetched_at; it has no created_at or updated_at.
+    // API-W0 (migration 0019, spec F1 and F3): api_keys is stamped by revoked_at and last_used_at and
+    // event_outbox is append-only with occurred_at; the spec fixes their columns, so neither has updated_at.
+    const NO_UPDATED_AT = new Set(['api_keys', 'event_outbox']);
     for (const r of t.rows.filter((x) => x.table_name !== 'fx_rates')) {
-      expect(r.cols, r.table_name).toContain('created_at');
-      expect(r.cols, r.table_name).toContain('updated_at');
+      expect(r.cols, r.table_name).toContain(NO_UPDATED_AT.has(r.table_name) ? 'id' : 'created_at');
+      if (!NO_UPDATED_AT.has(r.table_name)) expect(r.cols, r.table_name).toContain('updated_at');
     }
     const defaults = await db.query(
       `SELECT table_name, column_name FROM information_schema.columns

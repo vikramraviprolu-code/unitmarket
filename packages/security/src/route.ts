@@ -15,10 +15,13 @@ import type {
   Id,
   Ids,
   Logger,
+  Principal,
   Result,
+  Scope,
   Secret,
 } from '@umsbx/contracts';
-import { err, ok } from '@umsbx/contracts';
+import { SCOPES, err, ok, toActor } from '@umsbx/contracts';
+import { bearerToken, hasScopes, verifyKey } from './apikey';
 import { csrfTokenMatches, originMatches, sha256Hex } from './csrf';
 import { GENERIC_MESSAGE, errorBody, fieldNames, supportCode } from './errors';
 import { securityHeaders } from './headers';
@@ -27,22 +30,33 @@ import {
   abandonIdempotent,
   beginIdempotent,
   completeIdempotent,
+  keyScope,
   requestHash,
   scopeOf,
   type IdemScope,
   type StoredResponse,
 } from './idempotency';
 import { resetBucket, takeToken, type RateRule } from './rate';
-import { resolveSessionRecord, type SessionRecord } from './session';
+import { SESSION_COOKIE, resolveSessionRecord, type SessionRecord } from './session';
 
 export type { RateRule } from './rate';
 
-export type AuthRule = 'public' | 'buyer' | 'publisher' | 'operator' | 'webhook';
+/**
+ * `owner` (API-W0): a session of any owner kind (buyer, publisher or operator), for the routes that manage
+ * a person's own API keys. `apikey` (API-W0): a bearer key, only under /api/v1/, with the scopes it names.
+ */
+export type AuthRule =
+  'public' | 'buyer' | 'publisher' | 'operator' | 'webhook' | 'owner' | 'apikey';
 
 export interface RouteMeta {
   path: string;
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   auth: AuthRule;
+  /**
+   * API-W0. For `apikey` routes only: the scopes a key must hold, all of them. Non-empty, from the closed
+   * scope list. Any other auth rule must not set it.
+   */
+  scopes?: readonly Scope[] | undefined;
   csrf: boolean;
   rate: RateRule | null;
   /**
@@ -79,6 +93,8 @@ export interface RouteMeta {
 
 export interface RouteContext<I> {
   actor: Actor;
+  /** API-W0. The principal behind a bearer key (agent or api_client), or null on a session or public route. */
+  principal: Principal | null;
   input: I;
   /** The id of the live session behind this request, or null (a public route with no session). */
   session_id: string | null;
@@ -110,7 +126,16 @@ export interface SecurityDeps {
 }
 
 export type HttpResult<O> =
-  | { status: 200 | 201 | 202; body: O; headers?: Record<string, string> }
+  | {
+      status: 200 | 201 | 202;
+      body: O;
+      headers?: Record<string, string>;
+      /**
+       * API-W0. When set, this is what the idempotency record stores and a replay returns, instead of
+       * `body`. A key-issue answer sets it to the view without the token, so a replay never holds a secret.
+       */
+      replay_body?: unknown;
+    }
   | { status: 303; location: string }
   | {
       status: 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429 | 500 | 503;
@@ -135,6 +160,8 @@ export function notFoundUnlessOwner<T extends { buyer_id: Id }>(
   return err('not_found');
 }
 
+const V1_PREFIX = '/api/v1/';
+const BEARER_REFUSAL = 'A valid API key is required.';
 const PATH_SHAPE = /^\/[A-Za-z0-9._~\-/[\]]*$/;
 
 function validateMeta(meta: RouteMeta): void {
@@ -159,12 +186,33 @@ function validateMeta(meta: RouteMeta): void {
       !RAW_BODY_ROUTES.includes(meta.path))
   )
     bad('raw is for the public webhook route only (POST, webhook auth, no csrf, an ip limiter)');
-  if (meta.method === 'POST' && meta.auth !== 'webhook' && !meta.csrf) bad('POST needs csrf');
+  // API-W0: every state change on a session route needs csrf (POST, PATCH and DELETE); a bearer route has
+  // no cookie, so csrf does not apply to it.
+  if (meta.method !== 'GET' && meta.auth !== 'webhook' && meta.auth !== 'apikey' && !meta.csrf)
+    bad('a state change needs csrf');
   if (
     meta.idempotent &&
-    (meta.method !== 'POST' || meta.auth === 'public' || meta.auth === 'webhook')
+    (meta.method === 'GET' || meta.auth === 'public' || meta.auth === 'webhook')
   )
-    bad('idempotent needs a POST with a session');
+    bad('idempotent needs a state change with a session or a key');
+  const v1 = meta.path.startsWith(V1_PREFIX);
+  if (v1 && meta.method !== 'GET' && !meta.idempotent)
+    bad('a state change under /api/v1 needs idempotent: true');
+  if (meta.scopes !== undefined && meta.auth !== 'apikey') bad('scopes are for apikey routes only');
+  if (meta.auth === 'apikey') {
+    if (!v1) bad('an apikey route lives under /api/v1/');
+    if (meta.csrf) bad('an apikey route has no csrf');
+    if (
+      meta.scopes === undefined ||
+      meta.scopes.length === 0 ||
+      !meta.scopes.every((sc) => (SCOPES as readonly string[]).includes(sc))
+    )
+      bad('an apikey route needs one or more known scopes');
+    if (meta.rate === null || meta.rate.per !== 'actor')
+      bad('an apikey route needs a rate rule per actor (the key id)');
+    if (meta.idempotent !== (meta.method !== 'GET'))
+      bad('an apikey route is idempotent exactly when it is not a GET');
+  }
   if (meta.rate !== null && !(meta.rate.limit >= 1 && meta.rate.window_ms >= 1)) bad('rate');
   if (
     meta.rate_ip !== undefined &&
@@ -274,281 +322,375 @@ export function withRoute<I, O>(
   const raw = meta.raw === true;
   const webhook = meta.auth === 'webhook';
 
-  return (deps) => async (req, call) => {
-    const req_id = deps.ids.nonce();
-    const log = deps.log.child({ req_id, route: meta.path });
-    const headers = new Headers({
-      ...securityHeaders(deps.ids.nonce()),
-      'cache-control': 'no-store',
-      'x-request-id': req_id,
-    });
-    const fail = (
-      status: number,
-      code: string,
-      message: string,
-      fields?: string[],
-      extra?: Record<string, string>,
-    ): Response => {
-      for (const [k, v] of Object.entries(extra ?? {})) headers.set(k, v);
-      // CO-3: a raw (webhook) route never says why; the code and message stay in the handler.
-      return json(status, raw ? {} : errorBody(code, message, req_id, fields), headers);
-    };
-
-    // CO-7b: maintenance mode. First, before anything is read or looked up.
-    if (deps.maintenance === true && !MAINTENANCE_ROUTES.includes(meta.path))
-      return json(
-        503,
-        errorBody('maintenance', 'The service is down for maintenance.', req_id),
-        headers,
-      );
-
-    let idem: IdemScope | null = null;
-    try {
-      if (req.method !== meta.method)
-        return raw
-          ? fail(405, 'method_not_allowed', 'Method not allowed.', undefined, {
-              allow: meta.method,
-            })
-          : fail(404, 'not_found', 'Not found.');
-
-      const ip_hash = createHmac('sha256', deps.session_secret.reveal())
-        .update(`ip:${clientIp(req, deps, call)}`)
-        .digest('hex')
-        .slice(0, 32);
-      const tooMany = (retry_ms: number): Response =>
-        fail(429, 'rate_limited', 'Too many requests. Try again later.', undefined, {
-          'retry-after': String(Math.max(1, Math.ceil(retry_ms / 1000))),
-        });
-
-      // A webhook route: an address that has used up its refused-delivery tokens is turned away
-      // before the body is read and before any signature work (review M2). A valid delivery
-      // spends nothing; every refusal spends one (charge below).
-      if (webhook && meta.rate !== null) {
-        const v = await takeToken(deps, meta.rate, ip_hash, 'peek');
-        if (!v.allowed) return tooMany(v.retry_after_ms);
-      }
-      const charge = async (): Promise<Response | null> => {
-        if (!webhook || meta.rate === null) return null;
-        const v = await takeToken(deps, meta.rate, ip_hash);
-        return v.allowed ? null : tooMany(v.retry_after_ms);
-      };
-      const refuse = async (
+  return (deps) => {
+    const run = async (
+      req: Request,
+      call: RouteCallContext | undefined,
+      via: ViaKey,
+    ): Promise<Response> => {
+      const req_id = deps.ids.nonce();
+      const log = deps.log.child({ req_id, route: meta.path });
+      const headers = new Headers({
+        ...securityHeaders(deps.ids.nonce()),
+        'cache-control': 'no-store',
+        'x-request-id': req_id,
+      });
+      const fail = (
         status: number,
         code: string,
         message: string,
         fields?: string[],
-      ): Promise<Response> => (await charge()) ?? fail(status, code, message, fields);
+        extra?: Record<string, string>,
+      ): Response => {
+        for (const [k, v] of Object.entries(extra ?? {})) headers.set(k, v);
+        // CO-3: a raw (webhook) route never says why; the code and message stay in the handler.
+        return json(status, raw ? {} : errorBody(code, message, req_id, fields), headers);
+      };
 
-      const declared = Number(req.headers.get('content-length') ?? '0');
-      if (Number.isFinite(declared) && declared > meta.max_body_bytes)
-        return refuse(413, 'too_large', 'The request is too large.');
+      // CO-7b: maintenance mode. First, before anything is read or looked up.
+      if (deps.maintenance === true && !MAINTENANCE_ROUTES.includes(meta.path))
+        return json(
+          503,
+          errorBody('maintenance', 'The service is down for maintenance.', req_id),
+          headers,
+        );
 
-      let targetSubject: string | null = null;
-      let sharedBucketRetryMs: number | null = null;
+      let idem: IdemScope | null = null;
+      try {
+        if (req.method !== meta.method)
+          return raw
+            ? fail(405, 'method_not_allowed', 'Method not allowed.', undefined, {
+                allow: meta.method,
+              })
+            : fail(404, 'not_found', 'Not found.');
 
-      if (meta.rate?.per === 'ip' && meta.auth !== 'webhook' && meta.rate_target === undefined) {
-        const v = await takeToken(deps, meta.rate, ip_hash);
-        if (!v.allowed) return tooMany(v.retry_after_ms);
-      }
-
-      // Session and authentication rule.
-      let record: SessionRecord | null = null;
-      let actor: Actor = { kind: 'system' };
-      if (meta.auth !== 'webhook') {
-        // CO-7b: the one route left in maintenance mode never looks a session up (the database is closed).
-        record =
-          deps.maintenance === true
-            ? null
-            : await resolveSessionRecord(deps, req.headers.get('cookie'));
-        if (meta.auth !== 'public') {
-          if (record === null) return fail(401, 'unauthenticated', 'Sign in first.');
-          if (record.actor.kind !== meta.auth)
-            return fail(403, 'forbidden', 'This account cannot do that.');
-          if (
-            record.actor.kind === 'operator' &&
-            !record.actor.mfa &&
-            meta.method !== 'GET' &&
-            meta.fail_safe_without_mfa !== true
-          )
-            return fail(403, 'mfa_required', 'Operator changes need a second factor.');
-        }
-        if (record !== null) actor = record.actor;
-      }
-
-      if (meta.rate_ip !== undefined && clientIp(req, deps, call) !== 'no-address') {
-        const v = await takeToken(deps, meta.rate_ip, ip_hash);
-        if (!v.allowed) return tooMany(v.retry_after_ms);
-      }
-
-      if (meta.rate?.per === 'actor') {
-        const subject = actorSubject(actor) ?? ip_hash;
-        const v = await takeToken(deps, meta.rate, subject);
-        if (!v.allowed) return tooMany(v.retry_after_ms);
-      }
-
-      // CSRF for state-changing routes.
-      if (meta.csrf && meta.method === 'POST') {
-        if (!originMatches(req.headers.get('origin'), deps.public_origin))
-          return fail(403, 'csrf', 'The request was refused.');
-        if (meta.auth !== 'public' && meta.auth !== 'webhook') {
-          if (
-            record === null ||
-            !csrfTokenMatches(req.headers.get('x-csrf-token'), record.csrf_token_hash)
-          )
-            return fail(403, 'csrf', 'The request was refused.');
-        }
-      }
-
-      // Input.
-      let input: unknown;
-      let rawBody = '';
-      if (meta.method === 'POST') {
-        const body = await readBody(req, meta.max_body_bytes, raw);
-        if (body === 'too_large') return refuse(413, 'too_large', 'The request is too large.');
-        if (body === 'bad_encoding')
-          return refuse(400, 'bad_request', 'The request could not be read.');
-        rawBody = body;
-        if (raw) {
-          // CO-3: nothing is parsed here. The handler verifies the signature over these bytes first.
-          const picked: Record<string, string> = {};
-          req.headers.forEach((v, k) => {
-            if (k.startsWith(RAW_HEADER_PREFIX)) picked[k] = v;
+        const ip_hash = createHmac('sha256', deps.session_secret.reveal())
+          .update(`ip:${clientIp(req, deps, call)}`)
+          .digest('hex')
+          .slice(0, 32);
+        const tooMany = (retry_ms: number): Response =>
+          fail(429, 'rate_limited', 'Too many requests. Try again later.', undefined, {
+            'retry-after': String(Math.max(1, Math.ceil(retry_ms / 1000))),
           });
-          input = { raw_body: body, headers: picked };
-        } else if (body.trim() === '') input = {};
-        else {
-          try {
-            input = JSON.parse(body);
-          } catch {
-            return refuse(400, 'bad_request', 'The request body is not valid JSON.');
+
+        // A webhook route: an address that has used up its refused-delivery tokens is turned away
+        // before the body is read and before any signature work (review M2). A valid delivery
+        // spends nothing; every refusal spends one (charge below).
+        if (webhook && meta.rate !== null) {
+          const v = await takeToken(deps, meta.rate, ip_hash, 'peek');
+          if (!v.allowed) return tooMany(v.retry_after_ms);
+        }
+        const charge = async (): Promise<Response | null> => {
+          if (!webhook || meta.rate === null) return null;
+          const v = await takeToken(deps, meta.rate, ip_hash);
+          return v.allowed ? null : tooMany(v.retry_after_ms);
+        };
+        const refuse = async (
+          status: number,
+          code: string,
+          message: string,
+          fields?: string[],
+        ): Promise<Response> => (await charge()) ?? fail(status, code, message, fields);
+
+        const v1 = meta.path.startsWith(V1_PREFIX);
+        const declared = Number(req.headers.get('content-length') ?? '0');
+        if (Number.isFinite(declared) && declared > meta.max_body_bytes)
+          return refuse(413, 'too_large', 'The request is too large.');
+
+        let targetSubject: string | null = null;
+        let sharedBucketRetryMs: number | null = null;
+
+        if (meta.rate?.per === 'ip' && meta.auth !== 'webhook' && meta.rate_target === undefined) {
+          const v = await takeToken(deps, meta.rate, ip_hash);
+          if (!v.allowed) return tooMany(v.retry_after_ms);
+        }
+
+        // Session and authentication rule.
+        let record: SessionRecord | null = null;
+        let actor: Actor = { kind: 'system' };
+        let principal: Principal | null = null;
+        let held: readonly Scope[] = [];
+        if (meta.auth === 'apikey') {
+          // API-W0. A bearer key and nothing else: the header is parsed strictly, no session cookie may
+          // sit next to it, and every failure (malformed, unknown, wrong secret, revoked) is one answer.
+          const cookie = req.headers.get('cookie');
+          const token = bearerToken(req.headers.get('authorization'));
+          if (token === null || (cookie !== null && cookie.includes(SESSION_COOKIE)))
+            return fail(401, 'unauthenticated', BEARER_REFUSAL);
+          const verified = await verifyKey(deps, token);
+          if (!verified.ok) return fail(401, 'unauthenticated', BEARER_REFUSAL);
+          principal = verified.value.principal;
+          held = verified.value.scopes;
+          actor = toActor(principal);
+          via.principal = principal;
+          via.actor = actor;
+          // A key is never a second factor: every MFA-gated operator change refuses an operator key.
+          if (actor.kind === 'operator' && meta.method !== 'GET')
+            return fail(403, 'mfa_required', 'Operator changes need a second factor.');
+        } else if (
+          meta.auth !== 'webhook' &&
+          meta.path.startsWith(V1_PREFIX) &&
+          req.headers.get('authorization') !== null
+        ) {
+          // A session route under /api/v1 never mixes in a bearer header.
+          return fail(401, 'unauthenticated', 'Sign in first.');
+        } else if (meta.auth !== 'webhook') {
+          // CO-7b: the one route left in maintenance mode never looks a session up (the database is closed).
+          record =
+            deps.maintenance === true
+              ? null
+              : await resolveSessionRecord(deps, req.headers.get('cookie'));
+          if (meta.auth !== 'public') {
+            if (record === null) return fail(401, 'unauthenticated', 'Sign in first.');
+            if (meta.auth !== 'owner' && record.actor.kind !== meta.auth)
+              return fail(403, 'forbidden', 'This account cannot do that.');
+            if (
+              record.actor.kind === 'operator' &&
+              !record.actor.mfa &&
+              meta.method !== 'GET' &&
+              meta.fail_safe_without_mfa !== true
+            )
+              return fail(403, 'mfa_required', 'Operator changes need a second factor.');
+          }
+          if (record !== null) actor = record.actor;
+        }
+
+        if (meta.rate_ip !== undefined && clientIp(req, deps, call) !== 'no-address') {
+          const v = await takeToken(deps, meta.rate_ip, ip_hash);
+          if (!v.allowed) return tooMany(v.retry_after_ms);
+        }
+
+        if (meta.rate?.per === 'actor') {
+          // A key has its own bucket (its id), so two keys of one owner never share a limit.
+          const subject = principal !== null ? principal.key_id : (actorSubject(actor) ?? ip_hash);
+          const v = await takeToken(deps, meta.rate, subject);
+          if (!v.allowed) return tooMany(v.retry_after_ms);
+        }
+
+        // API-W0. The key must hold every scope the route names; the matrix already cut the key's scopes.
+        if (meta.auth === 'apikey' && !hasScopes(held, meta.scopes ?? []))
+          return fail(403, 'forbidden', 'This key cannot do that.');
+
+        // CSRF for state-changing routes.
+        if (meta.csrf && meta.method !== 'GET') {
+          if (!originMatches(req.headers.get('origin'), deps.public_origin))
+            return fail(403, 'csrf', 'The request was refused.');
+          if (meta.auth !== 'public' && meta.auth !== 'webhook') {
+            if (
+              record === null ||
+              !csrfTokenMatches(req.headers.get('x-csrf-token'), record.csrf_token_hash)
+            )
+              return fail(403, 'csrf', 'The request was refused.');
           }
         }
-      } else {
-        input = Object.fromEntries(new URL(req.url).searchParams);
-      }
-      let paramsText = '';
-      if (call?.params !== undefined && !raw) {
-        const params = await call.params;
-        paramsText = JSON.stringify(Object.entries(params).sort(([a], [b]) => (a < b ? -1 : 1)));
-        if (typeof input === 'object' && input !== null && !Array.isArray(input))
-          input = { ...(input as Record<string, unknown>), ...params };
-      }
-      const parsed = parser.safeParse(input);
-      if (!parsed.success)
-        return refuse(
-          422,
-          'invalid_input',
-          'The request did not match the expected shape.',
-          fieldNames(parsed.error.issues),
-        );
 
-      if (meta.rate?.per === 'ip' && meta.auth !== 'webhook' && meta.rate_target !== undefined) {
-        const target = (input as Record<string, unknown> | null)?.[meta.rate_target];
-        targetSubject = `${ip_hash}:${sha256Hex(String(target ?? '')).slice(0, 32)}`;
-        const v = await takeToken(deps, meta.rate, targetSubject);
-        if (!v.allowed) {
-          // M3: with no client address the bucket is shared by every client, so an exhausted bucket
-          // proves nothing about this caller. The handler still runs; a wrong answer is throttled
-          // (429), a right one signs in. With an address the lockout is strict.
-          if (clientIp(req, deps, call) !== 'no-address') return tooMany(v.retry_after_ms);
-          sharedBucketRetryMs = v.retry_after_ms;
-        }
-      }
-
-      // Idempotency.
-      if (meta.idempotent) {
-        const key = req.headers.get('idempotency-key');
-        if (key === null || !IDEMPOTENCY_KEY.test(key))
-          return fail(
-            422,
-            'idempotency_key',
-            'An Idempotency-Key header of 8 to 128 safe characters is required.',
-          );
-        const scope = scopeOf(actor, key);
-        if (scope === null) return fail(401, 'unauthenticated', 'Sign in first.');
-        const start = await beginIdempotent(
-          deps,
-          scope,
-          meta.path,
-          requestHash(
-            meta.path,
-            meta.method,
-            rawBody,
-            `${new URL(req.url).pathname}|${paramsText}`,
-          ),
-        );
-        if (start.kind === 'key_reused')
-          return fail(
-            422,
-            'idempotency_key_reused',
-            'That Idempotency-Key was used with a different request.',
-          );
-        if (start.kind === 'in_progress')
-          return fail(409, 'in_progress', 'The first request is still running.');
-        if (start.kind === 'replay') return render(start.response, headers, deps, true);
-        idem = scope;
-      }
-
-      const result = await handler({
-        actor,
-        input: parsed.data,
-        session_id: record?.id ?? null,
-        req_id,
-        ip_hash,
-        ip_known: clientIp(req, deps, call) !== 'no-address',
-        log,
-      });
-
-      // M3: a failure against a spent shared bucket is throttled; a success resets that bucket
-      // (only this target's, for the same client key).
-      if (targetSubject !== null && meta.rate !== null) {
-        if ('code' in result) {
-          if (sharedBucketRetryMs !== null) {
-            if (idem !== null) await abandonIdempotent(deps, idem);
-            idem = null;
-            return tooMany(sharedBucketRetryMs);
+        // Input.
+        let input: unknown;
+        let rawBody = '';
+        if (meta.method === 'POST' || meta.method === 'PATCH') {
+          const body = await readBody(req, meta.max_body_bytes, raw);
+          if (body === 'too_large') return refuse(413, 'too_large', 'The request is too large.');
+          if (body === 'bad_encoding')
+            return refuse(400, 'bad_request', 'The request could not be read.');
+          rawBody = body;
+          if (raw) {
+            // CO-3: nothing is parsed here. The handler verifies the signature over these bytes first.
+            const picked: Record<string, string> = {};
+            req.headers.forEach((v, k) => {
+              if (k.startsWith(RAW_HEADER_PREFIX)) picked[k] = v;
+            });
+            input = { raw_body: body, headers: picked };
+          } else if (body.trim() === '') input = {};
+          else {
+            try {
+              input = JSON.parse(body);
+            } catch {
+              return refuse(400, 'bad_request', 'The request body is not valid JSON.');
+            }
           }
         } else {
-          await resetBucket(deps, meta.rate, targetSubject);
+          input = Object.fromEntries(new URL(req.url).searchParams);
         }
-      }
+        let paramsText = '';
+        if (call?.params !== undefined && !raw) {
+          const params = await call.params;
+          paramsText = JSON.stringify(Object.entries(params).sort(([a], [b]) => (a < b ? -1 : 1)));
+          if (typeof input === 'object' && input !== null && !Array.isArray(input))
+            input = { ...(input as Record<string, unknown>), ...params };
+        }
+        const parsed = parser.safeParse(input);
+        if (!parsed.success)
+          return refuse(
+            422,
+            'invalid_input',
+            'The request did not match the expected shape.',
+            fieldNames(parsed.error.issues),
+          );
 
-      // Webhook limiter counts every refused answer (400, 401, 403, 503 and the rest, with no
-      // opt-out); a valid webhook is never limited.
-      if (webhook && 'code' in result) {
-        const limited = await charge();
-        if (limited !== null) return limited;
-      }
+        if (meta.rate?.per === 'ip' && meta.auth !== 'webhook' && meta.rate_target !== undefined) {
+          const target = (input as Record<string, unknown> | null)?.[meta.rate_target];
+          targetSubject = `${ip_hash}:${sha256Hex(String(target ?? '')).slice(0, 32)}`;
+          const v = await takeToken(deps, meta.rate, targetSubject);
+          if (!v.allowed) {
+            // M3: with no client address the bucket is shared by every client, so an exhausted bucket
+            // proves nothing about this caller. The handler still runs; a wrong answer is throttled
+            // (429), a right one signs in. With an address the lockout is strict.
+            if (clientIp(req, deps, call) !== 'no-address') return tooMany(v.retry_after_ms);
+            sharedBucketRetryMs = v.retry_after_ms;
+          }
+        }
 
-      if ('code' in result) {
-        if (idem !== null) await abandonIdempotent(deps, idem);
-        idem = null;
-        return fail(result.status, result.code, result.message);
+        // Idempotency.
+        if (meta.idempotent) {
+          const key = req.headers.get('idempotency-key');
+          if (key === null || !IDEMPOTENCY_KEY.test(key))
+            return fail(
+              v1 ? 400 : 422,
+              'idempotency_key',
+              'An Idempotency-Key header of 8 to 128 safe characters is required.',
+            );
+          const scope = principal !== null ? keyScope(principal.key_id, key) : scopeOf(actor, key);
+          if (scope === null) return fail(401, 'unauthenticated', 'Sign in first.');
+          const start = await beginIdempotent(
+            deps,
+            scope,
+            meta.path,
+            requestHash(
+              meta.path,
+              meta.method,
+              rawBody,
+              `${new URL(req.url).pathname}|${paramsText}`,
+            ),
+          );
+          if (start.kind === 'key_reused')
+            return fail(
+              v1 ? 409 : 422,
+              'idempotency_key_reused',
+              'That Idempotency-Key was used with a different request.',
+            );
+          if (start.kind === 'in_progress')
+            return fail(409, 'in_progress', 'The first request is still running.');
+          if (start.kind === 'replay') return render(start.response, headers, deps, true);
+          idem = scope;
+        }
+
+        const result = await handler({
+          actor,
+          principal,
+          input: parsed.data,
+          session_id: record?.id ?? null,
+          req_id,
+          ip_hash,
+          ip_known: clientIp(req, deps, call) !== 'no-address',
+          log,
+        });
+
+        // M3: a failure against a spent shared bucket is throttled; a success resets that bucket
+        // (only this target's, for the same client key).
+        if (targetSubject !== null && meta.rate !== null) {
+          if ('code' in result) {
+            if (sharedBucketRetryMs !== null) {
+              if (idem !== null) await abandonIdempotent(deps, idem);
+              idem = null;
+              return tooMany(sharedBucketRetryMs);
+            }
+          } else {
+            await resetBucket(deps, meta.rate, targetSubject);
+          }
+        }
+
+        // Webhook limiter counts every refused answer (400, 401, 403, 503 and the rest, with no
+        // opt-out); a valid webhook is never limited.
+        if (webhook && 'code' in result) {
+          const limited = await charge();
+          if (limited !== null) return limited;
+        }
+
+        if ('code' in result) {
+          if (idem !== null) await abandonIdempotent(deps, idem);
+          idem = null;
+          return fail(result.status, result.code, result.message);
+        }
+        const stored = toStored(result);
+        const res = render(
+          stored,
+          headers,
+          deps,
+          false,
+          'headers' in result ? result.headers : undefined,
+        );
+        if (idem !== null) {
+          await completeIdempotent(deps, idem, toReplay(result, stored));
+          idem = null;
+        }
+        return res;
+      } catch (e) {
+        // M3: a throw keeps the reservation. Side effects may have happened; a retry gets 409 until
+        // the pending row passes IDEMPOTENCY_PENDING_TTL_MS and is reclaimed.
+        log.log({
+          msg: 'route_error',
+          level: 'error',
+          fields: { err_name: e instanceof Error ? e.name : 'unknown' },
+        });
+        return json(500, raw ? {} : errorBody('internal', GENERIC_MESSAGE, req_id), headers);
       }
-      const stored = toStored(result);
-      const res = render(
-        stored,
-        headers,
-        deps,
-        false,
-        'headers' in result ? result.headers : undefined,
-      );
-      if (idem !== null) {
-        await completeIdempotent(deps, idem, stored);
-        idem = null;
-      }
+    };
+    return async (req, call) => {
+      const via: ViaKey = { principal: null, actor: null };
+      const res = await run(req, call, via);
+      if (via.principal !== null && via.actor !== null)
+        await auditRequest(deps, meta, via.principal, via.actor, res.status);
       return res;
-    } catch (e) {
-      // M3: a throw keeps the reservation. Side effects may have happened; a retry gets 409 until
-      // the pending row passes IDEMPOTENCY_PENDING_TTL_MS and is reclaimed.
-      log.log({
-        msg: 'route_error',
-        level: 'error',
-        fields: { err_name: e instanceof Error ? e.name : 'unknown' },
-      });
-      return json(500, raw ? {} : errorBody('internal', GENERIC_MESSAGE, req_id), headers);
-    }
+    };
   };
+}
+
+/** Set by the wrapper once a bearer key is verified; read after the answer to write the audit row. */
+interface ViaKey {
+  principal: Principal | null;
+  actor: Actor | null;
+}
+
+// API-W0. The wrapper writes its own audit row for an authenticated bearer request (domain code is not
+// touched). A failing audit sink is logged and never changes the answer.
+async function auditRequest(
+  deps: SecurityDeps,
+  meta: RouteMeta,
+  principal: Principal,
+  actor: Actor,
+  status: number,
+): Promise<void> {
+  try {
+    await deps.db.transaction((tx) =>
+      deps.audit.record(tx, {
+        actor,
+        action: 'api.request',
+        target: null,
+        reason: null,
+        detail: {
+          via_kind: principal.kind,
+          via_key_id: principal.key_id,
+          route: meta.path,
+          method: meta.method,
+          status,
+        },
+      }),
+    );
+  } catch (e) {
+    deps.log.log({
+      msg: 'audit_error',
+      level: 'error',
+      fields: { route: meta.path, err_name: e instanceof Error ? e.name : 'unknown' },
+    });
+  }
+}
+
+function toReplay<O>(
+  r: Extract<HttpResult<O>, { status: 200 | 201 | 202 | 303 }>,
+  stored: StoredResponse,
+): StoredResponse {
+  if (r.status === 303 || r.replay_body === undefined) return stored;
+  return { status: r.status, body: r.replay_body };
 }
 
 function actorSubject(actor: Actor): string | null {

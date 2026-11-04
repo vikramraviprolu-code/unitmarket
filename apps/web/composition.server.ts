@@ -23,6 +23,7 @@ import type {
   Brief,
   CaseView,
   Clock,
+  EventOutbox,
   ContentStore,
   CoreDeps,
   Database,
@@ -57,7 +58,7 @@ export { BOOT_REFUSAL_EXIT_CODE };
 import type { Config } from '@umsbx/config';
 import { migrate, openDatabase } from '@umsbx/db';
 import type { SqlDriver } from '@umsbx/db';
-import { cryptoIds, systemClock } from '@umsbx/runtime';
+import { cryptoIds, cryptoSecretSource, systemClock } from '@umsbx/runtime';
 import { createAuditSink, createLogger, redact } from '@umsbx/obs';
 import {
   createOutboundGate,
@@ -231,6 +232,15 @@ import {
   verifyAccountLogin,
   verifyPasscode,
 } from '@umsbx/security';
+import type { ApiKeyDeps } from '@umsbx/security';
+import type { AgentFacade, BuyerFacade, OpsFacade, SellerFacade } from './src/api-v1/facades';
+import {
+  createAgentFacade,
+  createBuyerFacade,
+  createOpsFacade,
+  createSellerFacade,
+} from './src/api-v1/facades';
+import { createEventOutbox } from './src/api-v1/outbox';
 import type { PasswordRefusal, SecurityDeps } from '@umsbx/security';
 import { ACCOUNT_CONSENT_VERSION } from './src/lib/account-copy';
 import { DRYRUN_SCENARIOS, createDryRunModel, isScenarioId } from './src/server/dryrun-model';
@@ -3314,6 +3324,47 @@ export const securityDeps: SecurityDeps = {
     return getApp().security.trusted_proxies ?? 0;
   },
 };
+
+// ---------- /api/v1 (API-W0) ----------
+/** The facades of /api/v1, one per stakeholder, and the event outbox. Wired once per app. */
+export interface ApiV1 {
+  buyer: BuyerFacade;
+  seller: SellerFacade;
+  ops: OpsFacade;
+  agent: AgentFacade;
+  events: EventOutbox;
+}
+const apiV1Cache = new WeakMap<App, ApiV1>();
+export function createApiV1(a: App): ApiV1 {
+  const cached = apiV1Cache.get(a);
+  if (cached !== undefined) return cached;
+  const buyer = createBuyerFacade(a.engine);
+  const made: ApiV1 = {
+    buyer,
+    seller: createSellerFacade(a.engine),
+    ops: createOpsFacade(a.engine),
+    agent: createAgentFacade(buyer),
+    events: createEventOutbox({ ids: a.security.ids, clock: a.security.clock }),
+  };
+  apiV1Cache.set(a, made);
+  return made;
+}
+
+/** What the key service needs: the database, the clock, the ids, real secret bytes and the audit sink. */
+const keyDepsCache = new WeakMap<App, ApiKeyDeps>();
+export function apiKeyDeps(a: App): ApiKeyDeps {
+  const cached = keyDepsCache.get(a);
+  if (cached !== undefined) return cached;
+  const made: ApiKeyDeps = {
+    db: a.db,
+    clock: a.security.clock,
+    ids: a.security.ids,
+    secrets: cryptoSecretSource(),
+    audit: a.security.audit,
+  };
+  keyDepsCache.set(a, made);
+  return made;
+}
 
 /**
  * CO-7b: is the app in maintenance mode? Read by the page middleware. The middleware may be the first

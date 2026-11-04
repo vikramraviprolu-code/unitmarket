@@ -28,10 +28,15 @@ type Handler = (
   ctx?: { params: Promise<Record<string, string>> },
 ) => Promise<Response>;
 interface Mod {
-  routeMeta: { path: string; method: 'GET' | 'POST' };
+  routeMeta: { path: string; method: 'GET' | 'POST' | 'DELETE' };
   GET?: Handler;
   POST?: Handler;
+  DELETE?: Handler;
 }
+// A route file with several verbs exports routeMetaGET, routeMetaPOST, ... instead of routeMeta (API-W0).
+type RawMod = Mod & { routeMetaGET?: Mod['routeMeta']; routeMetaPOST?: Mod['routeMeta'] };
+const VERBS = ['GET', 'POST', 'DELETE'] as const;
+const BODY_VERBS: readonly string[] = ['POST', 'DELETE'];
 
 function routeFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir).sort()) {
@@ -59,6 +64,8 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/briefs/route.ts': () => import('./app/api/briefs/route'),
   'api/cases/route.ts': () => import('./app/api/cases/route'),
   'api/discover/route.ts': () => import('./app/api/discover/route'),
+  'api/v1/api-keys/[id]/route.ts': () => import('./app/api/v1/api-keys/[id]/route'),
+  'api/v1/api-keys/route.ts': () => import('./app/api/v1/api-keys/route'),
   'api/library/[id]/link/route.ts': () => import('./app/api/library/[id]/link/route'),
   'api/library/route.ts': () => import('./app/api/library/route'),
   'api/ops/start/route.ts': () => import('./app/api/ops/start/route'),
@@ -90,7 +97,14 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'healthz/route.ts': () => import('./app/healthz/route'),
 };
 const load = async (): Promise<Mod[]> =>
-  Promise.all(FILES.map(async (f) => (await IMPORTERS[f]?.()) as Mod));
+  Promise.all(
+    FILES.map(async (f) => {
+      const m = (await IMPORTERS[f]?.()) as RawMod;
+      return m.routeMeta === undefined
+        ? { ...m, routeMeta: (m.routeMetaPOST ?? m.routeMetaGET) as Mod['routeMeta'] }
+        : m;
+    }),
+  );
 const paramsOf = (path: string): Record<string, string> =>
   Object.fromEntries([...path.matchAll(/\[(\w+)\]/g)].map((m) => [m[1] as string, 'x1']));
 const urlOf = (path: string): string => `${ORIGIN}${path.replace(/\[(\w+)\]/g, 'x1')}`;
@@ -105,24 +119,24 @@ const snapshot = (flag: string) => ({
 async function hitAll(mods: Mod[], sessions: Array<Session | null>): Promise<Response[]> {
   const out: Response[] = [];
   for (const m of mods) {
-    for (const verb of ['GET', 'POST'] as const) {
+    for (const verb of VERBS) {
       const h = m[verb];
       if (h === undefined) continue;
       for (const s of sessions) {
-        for (const body of verb === 'POST'
+        for (const body of BODY_VERBS.includes(verb)
           ? ['{}', 'not json', '{"persona":"operator"}']
           : [null]) {
           const headers: Record<string, string> = {
             'x-forwarded-for': '203.0.113.7',
             'paypal-transmission-id': 'x',
           };
-          if (verb === 'POST') {
+          if (BODY_VERBS.includes(verb)) {
             headers['origin'] = ORIGIN;
             headers['content-type'] = 'application/json';
           }
           if (s !== null) {
             headers['cookie'] = s.cookie;
-            if (verb === 'POST') headers['x-csrf-token'] = s.csrf;
+            if (BODY_VERBS.includes(verb)) headers['x-csrf-token'] = s.csrf;
           } else headers['cookie'] = 'ums_session=garbage';
           out.push(
             await h(new Request(urlOf(m.routeMeta.path), { method: verb, headers, body }), {
@@ -177,7 +191,7 @@ describe('maintenance mode: every route', () => {
     const fake: Session = { cookie: 'ums_session=ses_00000000000000000000000000.x', csrf: 'x' };
     let health = 0;
     for (const m of mods) {
-      for (const verb of ['GET', 'POST'] as const) {
+      for (const verb of VERBS) {
         const h = m[verb];
         if (h === undefined) continue;
         const res = await hitOne(m, verb, h, fake);
@@ -204,9 +218,14 @@ describe('maintenance mode: every route', () => {
   });
 });
 
-async function hitOne(m: Mod, verb: 'GET' | 'POST', h: Handler, s: Session): Promise<Response> {
+async function hitOne(
+  m: Mod,
+  verb: (typeof VERBS)[number],
+  h: Handler,
+  s: Session,
+): Promise<Response> {
   const headers: Record<string, string> = { cookie: s.cookie };
-  if (verb === 'POST') {
+  if (BODY_VERBS.includes(verb)) {
     headers['origin'] = ORIGIN;
     headers['content-type'] = 'application/json';
     headers['x-csrf-token'] = s.csrf;
@@ -215,7 +234,7 @@ async function hitOne(m: Mod, verb: 'GET' | 'POST', h: Handler, s: Session): Pro
     new Request(urlOf(m.routeMeta.path), {
       method: verb,
       headers,
-      body: verb === 'POST' ? '{}' : null,
+      body: BODY_VERBS.includes(verb) ? '{}' : null,
     }),
     { params: Promise.resolve(paramsOf(m.routeMeta.path)) },
   );

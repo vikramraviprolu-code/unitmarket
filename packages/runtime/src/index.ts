@@ -5,3 +5,4 @@ export { systemClock } from './system-clock';
 export { cryptoIds } from './crypto-ids';
 export { fakeClock } from './fake-clock';
 export { seededIds } from './seeded-ids';
+export { cryptoSecretSource, fixedSecretSource } from './secret-source';

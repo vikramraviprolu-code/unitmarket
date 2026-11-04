@@ -1,7 +1,14 @@
 // The one door from pages and route handlers to the engine (architecture 2.3 Z1). Re-exports the
 // lazy accessors of the composition root; marks the module server-only for the bundler.
 import 'server-only';
-export { BOOT_REFUSAL_EXIT_CODE, app, securityDeps } from '../../composition.server';
+export {
+  BOOT_REFUSAL_EXIT_CODE,
+  apiKeyDeps,
+  app,
+  createApiV1,
+  securityDeps,
+} from '../../composition.server';
+export type { ApiV1 } from '../../composition.server';
 export type {
   App,
   ApprovalView,
