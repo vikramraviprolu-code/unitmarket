@@ -1,0 +1,44 @@
+heading: Totals by currency
+lede: Sales, refunds and exposure as booked, one row for each currency. Exposure is money paid and not refunded, plus money held.
+columns: Sales | Refunds | Exposure
+booked caption: As booked
+view caption: Reporting view
+empty: No sales, refunds or held payments yet.
+how: Each currency total is converted on its own and rounded to the nearest cent, halves away from zero. The converted parts are then added.
+missing: No exchange rate from the last 7 days is stored, so only the figures in each currency are shown.
+statements: Seller statements and exports stay in the original currency. Nothing here is written to the ledger.
+-- real rate --
+environment: dryrun
+booked USD: $10.01 | $0.03 | $10.00
+booked EUR: €0.05 | €0.00 | €0.07
+booked GBP: £0.03 | £0.01 | £0.05
+rate: Reporting view: about, at the rate of 2026-11-03.
+reporting In USD: about $10.23 | about $0.07 | about $10.34
+reporting In EUR: about €5.12 | about €0.04 | about €5.17
+reporting In GBP: about £2.56 | about £0.02 | about £2.59
+how: Each currency total is converted on its own and rounded to the nearest cent, halves away from zero. The converted parts are then added.
+empty: null
+statements: Seller statements and exports stay in the original currency. Nothing here is written to the ledger.
+-- sample rate --
+environment: dryrun
+booked USD: $10.01 | $0.03 | $10.00
+booked EUR: €0.05 | €0.00 | €0.07
+booked GBP: £0.03 | £0.01 | £0.05
+rate: Reporting view: about, at the sample rate of 2026-11-03.
+reporting In USD: about $10.23 | about $0.07 | about $10.34
+reporting In EUR: about €5.12 | about €0.04 | about €5.17
+reporting In GBP: about £2.56 | about £0.02 | about £2.59
+how: Each currency total is converted on its own and rounded to the nearest cent, halves away from zero. The converted parts are then added.
+empty: null
+statements: Seller statements and exports stay in the original currency. Nothing here is written to the ledger.
+-- no usable rate --
+environment: dryrun
+booked USD: $10.01 | $0.03 | $10.00
+booked EUR: €0.05 | €0.00 | €0.07
+booked GBP: £0.03 | £0.01 | £0.05
+missing: No exchange rate from the last 7 days is stored, so only the figures in each currency are shown.
+empty: null
+statements: Seller statements and exports stay in the original currency. Nothing here is written to the ledger.
+-- empty database --
+empty: No sales, refunds or held payments yet.
+statements: Seller statements and exports stay in the original currency. Nothing here is written to the ledger.

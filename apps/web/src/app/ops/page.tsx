@@ -31,9 +31,15 @@ import {
   switchView,
 } from '../../lib/ops-home-copy';
 import { SectionNav } from '../../ui/SectionNav';
+import {
+  OPS_REPORTING_HEADING,
+  OPS_REPORTING_LEDE,
+  opsReportingView,
+} from '../../lib/ops-reporting-view';
 import { OPS_HOME_SECTIONS } from '../../lib/ops-copy';
 import { KillControls } from './KillControls';
 import { RefundPanel } from './RefundPanel';
+import { ReportingTotals } from './ReportingTotals';
 import '../tables.css';
 import '../publisher/pk-sales.css';
 import { TableScroll } from '../publisher/pk-sales-parts';
@@ -59,6 +65,11 @@ export default async function Ops() {
   const invariants = invariantsSummary(snap.invariants);
   const statusTiles = orderTiles(snap.orders);
   const stateTiles = operationTiles(snap.operations);
+  // MC2-L7: the reporting view converts only through the engine, at the latest stored rate.
+  const reporting = opsReportingView(snap.totals, {
+    convert: a.engine.fx.convert,
+    rates: await a.engine.fx.getRates(),
+  });
   return (
     <>
       <PageHeader
@@ -236,6 +247,11 @@ export default async function Ops() {
             </TableScroll>
           </>
         )}
+      </Section>
+
+      <Section title={OPS_REPORTING_HEADING} id="ops-totals">
+        <p className="oh-lede">{OPS_REPORTING_LEDE}</p>
+        <ReportingTotals view={reporting} />
       </Section>
 
       <Section title="Operations by state" id="ops-states">

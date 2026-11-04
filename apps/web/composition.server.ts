@@ -184,6 +184,7 @@ import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
 import {
   countsSince,
+  opsTotalsFor,
   payeeSettlement,
   publisherExposure,
   refundsFor,
@@ -193,6 +194,7 @@ import {
   statementFor,
 } from '@umsbx/publisher-console';
 import type {
+  OpsTotalsRow,
   PublisherExposure,
   PublisherStatement,
   RefundRow,
@@ -570,6 +572,11 @@ export interface OpsSnapshot {
    * the page shows the form only to such sessions, and the route refuses the others anyway.
    */
   refunds: RefundOverview | null;
+  /**
+   * MC2-L7 (D-084 item 5): booked sales, refunds and exposure per stored environment and currency, summed
+   * over all publishers. Read only, never converted here; the page converts through `engine.fx`.
+   */
+  totals: OpsTotalsRow[];
 }
 
 const SWITCHES: SwitchName[] = [
@@ -2853,6 +2860,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         // P9: only a session with the second factor is shown the refund form.
         refunds:
           actor.mfa === true ? await loadRefundOverview(db, sw['refunds_enabled'] === true) : null,
+        totals: (await opsTotalsFor(db, actor)) ?? [],
       };
     },
 
