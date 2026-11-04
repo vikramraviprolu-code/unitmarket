@@ -88,7 +88,6 @@ interface CorridorRow {
   id: string;
   currency: string;
   minor_units: number;
-  buyer_countries: string[];
   payee_countries: string[];
   min_charge_minor: number | null;
   enabled: boolean;
@@ -187,7 +186,7 @@ export async function requestApproval(
       return approvalError('corridor_unsupported');
     }
     const cr = await tx.query<CorridorRow>(
-      `SELECT id, currency, minor_units, buyer_countries, payee_countries, min_charge_minor, enabled
+      `SELECT id, currency, minor_units, payee_countries, min_charge_minor, enabled
          FROM corridors WHERE id = $1`,
       [first.corridor_id],
     );
@@ -198,13 +197,6 @@ export async function requestApproval(
       corridor.currency !== first.currency ||
       minorUnitsFor(corridor.currency) !== corridor.minor_units
     ) {
-      return approvalError('corridor_unsupported');
-    }
-    const bc = await tx.query<{ country: string }>('SELECT country FROM buyers WHERE id = $1', [
-      buyer.buyer_id,
-    ]);
-    const buyerCountry = bc.rows[0]?.country;
-    if (buyerCountry === undefined || !corridor.buyer_countries.includes(buyerCountry)) {
       return approvalError('corridor_unsupported');
     }
 

@@ -59,16 +59,16 @@ async function loadBrief(d: AgentDeps, id: Id): Promise<Brief | null> {
   });
 }
 
-// Candidates: authorised current offers in every enabled corridor open to this buyer's country (and
-// matching the ceiling's currency when there is one). The newest list is capped for the model.
+// Candidates: authorised current offers in every enabled corridor (and matching the ceiling's currency
+// when there is one). The buyer's country is data, not a gate (D-084 3). The newest list is capped for
+// the model.
 async function candidatesFor(d: AgentDeps, brief: Brief): Promise<OfferView[]> {
   const buyer = await d.db.query<{ country: string }>('SELECT country FROM buyers WHERE id = $1', [
     brief.buyer_id,
   ]);
   if (!buyer.rows[0]) return [];
   const corridors = await d.db.query<{ id: string; currency: string }>(
-    'SELECT id, currency FROM corridors WHERE enabled AND $1 = ANY (buyer_countries) ORDER BY id',
-    [buyer.rows[0].country],
+    'SELECT id, currency FROM corridors WHERE enabled ORDER BY id',
   );
   const byId = new Map<string, OfferView>();
   for (const c of corridors.rows) {

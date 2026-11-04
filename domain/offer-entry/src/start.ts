@@ -143,11 +143,12 @@ export async function startFromOffer(
   ]);
   if (pub.rows[0]?.status !== 'active') return ok(noMatch('not_authorised'));
 
-  // 4. corridor: exists, enabled, and the domestic-only rule holds
+  // 4. corridor: exists, enabled, and the domestic-only rule holds. The corridor follows the offer's
+  // currency and the publisher's country; the buyer's country is data, not a gate (D-084 3).
   const corridor = await corridorFor(d.db, {
     currency: offer.currency,
     payee_country: publisher.country,
-    buyer_country: buyerCountry,
+    buyer_country: null,
   });
   if (
     !corridor ||
