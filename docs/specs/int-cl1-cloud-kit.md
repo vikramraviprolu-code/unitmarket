@@ -1,4 +1,4 @@
-# INT-CL1: cloud kit, phase 1, round 2
+# INT-CL1: cloud kit, phase 1, round 3 (round 2 fixes R2-1 to R2-4)
 
 Task: One command each for cloud doctor, status, up, down, restart, deploy and logs; a revision on the public status route; guard rules that allow exactly this and nothing more.
 Package: `infra/gcp`, `scripts/check-hosting-gcp.mjs`, `packages/config`, `apps/web` (status route). Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
@@ -23,7 +23,7 @@ Items: cloud plan items 1 to 11, 21 points. Decision V4, plus a decision-log row
 `deploy`:
 - It needs a backup at most 24 hours old, unless `--accept-old-backup` is given.
 - It refuses a dirty tree.
-- It never creates or moves a git tag.
+- It never creates or moves a git tag, and never fetches or checks out. HEAD must already be exactly at `<tag>` (`git describe --exact-match --tags HEAD`), or it exits 2.
 
 `doctor` prints the two `gcloud config set` lines for the owner to paste, and never runs them.
 
@@ -42,7 +42,22 @@ There is no new `/api/health`. `GET /api/v1/status` (public, in OpenAPI) answers
 
 ## `status --json` shape (F4)
 
-The shape is pinned in `scripts/__fixtures__/cloud-status.json`, which CTL.2 reads too: `{at, project, region, services: [{name, kind, state, detail}] (five: run, sql, scheduler, secrets, monitoring), flag_connect: "off"|"on"|"unknown", approval_ref_set: boolean, revision, last_backup_at}`. `state` is one of `up`, `stopped`, `down`, `unknown`. `approval_ref_set` is true when the secret has an enabled version (names only, as `deploy.sh` `has_secret_value` does). No secret value is read. Exit 1 when any part is `down`.
+The shape is the one agreed in cloud plan 3.1 and used by CTL.2, with one field changed (R2-4). It is pinned in `scripts/__fixtures__/cloud-status.json`, which CTL.2 reads too:
+
+```json
+{"checked_at": "...", "project": "...", "services": [
+  {"name": "web", "state": "up", "revision": "...", "url": "...", "last_changed_at": "...", "last_error": null},
+  {"name": "job_loop", "state": "up", "runs_in": "web", "last_changed_at": "...", "last_error": null},
+  {"name": "database", "state": "up", "tier": "...", "newest_backup_at": "...", "last_changed_at": "...", "last_error": null},
+  {"name": "offline_judge", "state": "absent", "last_error": null},
+  {"name": "paypal_gateway", "state": "off", "flag": "off", "approval_ref_set": true, "last_changed_at": "..."}
+]}
+```
+
+- `state` is one of `up`, `down`, `starting`, `stopping`, `error` and `absent`; `paypal_gateway.state` is `on` or `off`, the Cloud Run flag only.
+- `job_loop` mirrors `web`, because the loop runs inside the app. `offline_judge` is `absent`, because that service is gone.
+- `approval_ref_set` replaces the plan's `approval_ref_matches`. It is true when the secret has an enabled version (names only, as `deploy.sh` `has_secret_value` does), and no secret value is read.
+- Exit 1 when any service is `down` or `error`.
 
 ## Guard changes (F1, F2, F3), each with a red fixture
 
@@ -70,12 +85,15 @@ New:
 
 Changed:
 - `scripts/check-hosting-gcp.mjs`, `scripts/check-hosting-gcp.test.ts`
-- `packages/config/src/load.ts` (+ its schema: `revision`)
+- `packages/config/src/load.ts` and `packages/config/src/schema.ts` (`revision` from `K_REVISION`; `K_REVISION` added to `ENV_NAMES`, R2-3)
+- `.env.example` (`K_REVISION=` name only; `ENV_NAMES` must equal it exactly, `schema.ts:85`)
+- `packages/contracts/src/v1.ts` (`StatusSchema` at line 560 is `.strict()`: add `revision: string | null` and `db: 'up' | 'closed'`; the summary at line 992 becomes "the /healthz body plus revision and db", R2-1)
+- `apps/web/src/app/api/v1/ops.contract.test.ts` (case O5, lines 143 to 151, becomes "the /healthz body plus `revision` and `db`, still with no switch, outbound or lock field"; the assertion is moved, not weakened, R2-2)
 - `apps/web/composition.server.ts` (`health()` returns `revision`)
 - `apps/web/src/api-v1/ops.ts` (`status` body), `docs/api/openapi-v1.json`
 - `package.json` (`cloud:doctor`, `cloud:status`, `cloud:up`, `cloud:down`, `cloud:restart`, `cloud:deploy`, `cloud:logs`, and nothing else)
 - `docs/owner/SAKTHI-DEPLOY-COPYPASTE.md` (body becomes a pointer to the runbook)
-- `docs/decision-log.md`. The row amends D-049 under V4: a stopped state (min 0, ingress `internal`, SQL `NEVER`) is allowed; the running state stays min 1, max 1, no throttling; only `lib/cloud-lib.sh` may set either.
+- `docs/decision-log.md`. The row takes the next free id at merge and amends D-049 under V4: a stopped state (min 0, ingress `internal`, SQL `NEVER`) is allowed; the running state stays min 1, max 1, no throttling; only `lib/cloud-lib.sh` may set either.
 
 `deploy.sh`, `deploy-offline.sh`, `setup.sh` and `monitoring.sh` are not changed. A golden test pins their literal names to `stack.env` (F12). `stack.env` holds no project id on a `--project` line.
 
