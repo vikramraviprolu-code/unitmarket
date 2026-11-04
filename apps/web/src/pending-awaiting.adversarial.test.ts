@@ -48,7 +48,7 @@ const HOSTILE: Array<[string, string | null]> = [
   ['10k of markup', '<b>'.repeat(3_400)],
   ['known reason with a suffix', `${KNOWN}<script>x</script>`],
   ['known reason in lower case', KNOWN.toLowerCase()],
-  ['control characters', 'A\u0000B‮C\r\nD'],
+  ['control characters', 'A‮B​C\r\nD\t'],
   ['an object key name', '__proto__'],
   ['null', null],
   ['empty', ''],
@@ -89,7 +89,8 @@ describe('a hostile stored pending reason is never rendered', () => {
       expect(body).not.toContain('ZZZZZZZZ');
       expect(body).not.toContain('__proto__');
       expect(body).not.toContain('onerror');
-      expect(body).not.toContain('\\u202e');
+      expect(body).not.toContain('\u202e');
+      expect(body).not.toContain('\u200b');
       expect(body).not.toContain(KNOWN);
       expect(body).not.toContain(KNOWN.toLowerCase());
       expect(body.length).toBeLessThan(20_000);

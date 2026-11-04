@@ -33,6 +33,12 @@ import { DownloadCsv } from '../DownloadCsv';
 import { Details, EnvChip, TableScroll } from '../pk-sales-parts';
 import { HOW_MADE_SUMMARY, totalsTiles, unitStatusTone } from '../../../lib/publisher-sales-view';
 import {
+  PENDING_COLUMNS,
+  PENDING_HEADING,
+  PENDING_LEDE,
+  pendingSellerView,
+} from '../../../lib/pending-copy';
+import {
   EXPORT_NOTE,
   EXPORT_SALES_HREF,
   EXPORT_SALES_LABEL,
@@ -60,6 +66,8 @@ export default async function PublisherSales() {
   const statement = await a.engine.publisherStatement(actor);
   if (statement === null) redirect('/signin?next=/publisher/sales');
   const totals = salesTotals(statement.blocks);
+  // MC2-L6 (D-083): the units PayPal holds pending, with the closed label, and the seller's two choices.
+  const pending = pendingSellerView((await a.engine.publisherPending(actor)) ?? []);
   const { counted: rows, notCounted } = splitSales(all);
   const mismatchCount = rows.filter((r) => r.status === 'mismatch').length;
   // The label follows the stored environment of the rows; with no rows, the app's.
@@ -93,6 +101,7 @@ export default async function PublisherSales() {
         label="On this page"
         items={[
           ...(totals.length > 0 ? [{ id: 'totals', label: 'Totals' }] : []),
+          ...(pending.rows.length > 0 ? [{ id: 'pending', label: 'Pending' }] : []),
           ...(rows.length > 0 ? [{ id: 'sales-list', label: 'Sales' }] : []),
           { id: 'refunds', label: 'Refunds' },
         ]}
@@ -125,6 +134,73 @@ export default async function PublisherSales() {
               </div>
             ))}
           </div>
+        </Section>
+      ) : null}
+      {pending.rows.length > 0 ? (
+        <Section title={PENDING_HEADING} id="pending">
+          <p className="pk-lede">{PENDING_LEDE}</p>
+          <ul data-testid="pending-groups">
+            {pending.groups.map((g) => (
+              <li key={`${g.currency}-${g.environment}`}>
+                <strong>{g.currency}</strong> <EnvChip environment={g.environment} /> {g.text}
+              </li>
+            ))}
+          </ul>
+          <TableScroll label={PENDING_HEADING}>
+            <table className="pk-table" data-testid="pending-table">
+              <caption className="visually-hidden">{PENDING_HEADING}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{PENDING_COLUMNS.date}</th>
+                  <th scope="col">{PENDING_COLUMNS.order}</th>
+                  <th scope="col" className="pk-num">
+                    {PENDING_COLUMNS.amount}
+                  </th>
+                  <th scope="col">{PENDING_COLUMNS.reason}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pending.rows.map((r, i) => (
+                  <tr key={`${r.order_ref6}-${String(i)}`}>
+                    <td className="pk-nowrap" data-label={PENDING_COLUMNS.date}>
+                      {formatDateTime(r.at)}
+                    </td>
+                    <td className="mono pk-nowrap" data-label={PENDING_COLUMNS.order}>
+                      {r.order_ref6}
+                    </td>
+                    <td className="pk-num" data-label={PENDING_COLUMNS.amount}>
+                      {formatMinor(r.amount_minor, r.currency)}
+                    </td>
+                    <td data-label={PENDING_COLUMNS.reason}>
+                      <Chip tone="info">{r.label}</Chip>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+          {pending.panel === null ? null : (
+            <div
+              className="pk-notice"
+              role="region"
+              aria-labelledby="pending-panel-h"
+              data-testid="pending-panel"
+            >
+              <h3 id="pending-panel-h">{pending.panel.heading}</h3>
+              <p>{pending.panel.intro}</p>
+              <ul>
+                {pending.panel.choices.map((c) => (
+                  <li key={c.id} data-testid={`pending-choice-${c.id}`}>
+                    <strong>{c.title}.</strong> {c.body}{' '}
+                    {c.href === null || c.link_text === null ? null : (
+                      <Link href={c.href}>{c.link_text}</Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p>{pending.panel.closing}</p>
+            </div>
+          )}
         </Section>
       ) : null}
       {rows.length === 0 ? (

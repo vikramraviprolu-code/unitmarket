@@ -12,10 +12,6 @@ import type { Awaiting, World } from './support';
 
 type Read = Extract<OrderRead, { kind: 'order' }>;
 let w: World;
-afterEach(async () => {
-  expect(w.paypal.violations).toEqual([]);
-  await w.close();
-});
 
 const fixture = JSON.parse(
   readFileSync(
@@ -65,6 +61,13 @@ describe('a capture pending for seller acceptance', () => {
   it('the recorded fixture carries the reason the mapping knows', () => {
     expect(fixture.response.body.status).toBe('PENDING');
     expect(pendingReasonKind(REASON)).toBe('awaiting_seller_acceptance');
+  });
+});
+
+describe('the later COMPLETED capture', () => {
+  afterEach(async () => {
+    expect(w.paypal.violations).toEqual([]);
+    await w.close();
   });
 
   it('ends pending and locked with the reason stored, then unlocks on the later COMPLETED capture', async () => {

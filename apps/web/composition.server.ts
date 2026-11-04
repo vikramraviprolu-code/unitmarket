@@ -169,6 +169,9 @@ import {
   cancelRefundRequest,
   executeRefund,
   requestRefund,
+  SELLER_ACCEPTANCE_REASON,
+  pendingReasonKind,
+  pendingReasonLabel,
 } from '@umsbx/payments';
 import { health as jobsHealth, LEADER_LOCK_KEY, startLoop } from '@umsbx/jobs';
 import type { CallBudget } from '@umsbx/jobs';
@@ -235,6 +238,8 @@ import { toBuyerReceipt } from './src/lib/receipt-view';
 import type { ArticleFacts, BuyerReceipt } from './src/lib/receipt-view';
 import { LINE_TEXT, lineKind, packBanner, windowMinutes } from './src/lib/composite-copy';
 import { NOT_PAID_YET } from './src/lib/buyer-copy';
+import { pendingBuyerText, pendingItemLine } from './src/lib/pending-copy';
+import type { PendingKind, PendingUnitRow } from './src/lib/pending-copy';
 import { offerOnSale } from './src/lib/offer-flow-view';
 import { publisherSlugOf } from './src/lib/publisher-copy';
 import type { PublisherStatus } from './src/lib/publisher-copy';
@@ -568,15 +573,32 @@ const SWITCHES: SwitchName[] = [
 const DAY_MS = 86_400_000;
 const iso = (v: unknown): string => new Date(v as string | number | Date).toISOString();
 
+/** MC2-L6 (D-083): the operator's count of units PayPal holds for a seller to accept. */
+export interface AwaitingExposure {
+  publisher_id: Id;
+  currency: string;
+  environment: EnvironmentLabel;
+  count: number;
+  minor: number;
+}
+
 export function orderMessage(
   status: string,
   unit_statuses: string[],
   po_states: readonly string[] = [],
+  pending_kinds: readonly PendingKind[] = [],
 ): string {
   // A hold always wins (H1): a frozen PayPal order holds the order whether or not a capture was sent.
   if (unit_statuses.includes('mismatch') || status === 'frozen' || po_states.includes('frozen'))
     return 'Your order is on hold while we check it. You have not been charged twice. We opened a case and will write to you.';
-  if (unit_statuses.includes('pending')) return 'Payment pending at PayPal';
+  // MC2-L6 (D-083): a capture PayPal holds for the seller to accept is worded as that; any other pending
+  // reason keeps the generic words. The kind is a closed value; the stored reason is never shown.
+  if (unit_statuses.includes('pending'))
+    return pendingBuyerText(
+      pending_kinds.includes('awaiting_seller_acceptance')
+        ? 'awaiting_seller_acceptance'
+        : 'payment_pending',
+    );
   switch (status) {
     case 'paid':
     case 'paid_partial':
@@ -746,6 +768,12 @@ export interface Engine {
    * actor kind.
    */
   publisherSales(actor: Actor): Promise<SaleRow[] | null>;
+  /**
+   * MC2-L6 (D-083): the units of the publisher behind this session that PayPal holds pending, newest
+   * first, each with one of the closed labels (never the stored reason). Read only; every query filters
+   * by `actor.publisher_id`. No buyer identity. Null for any other actor kind.
+   */
+  publisherPending(actor: Actor): Promise<PendingUnitRow[] | null>;
   /**
    * PUB-C (S5): the statement of the publisher behind this session, one block per currency and stored
    * environment, summed from its ledger rows with the ledger package. Null for any other actor kind.
@@ -999,10 +1027,16 @@ export interface Engine {
    * Suspending takes the publisher's offers off sale and ends its open quotes; paid orders are untouched.
    */
   opsPublishers: {
-    list(
-      actor: Actor,
-    ): Promise<
-      Result<{ publishers: PublisherExposure[]; environment: EnvironmentLabel }, StatusError>
+    list(actor: Actor): Promise<
+      Result<
+        {
+          publishers: PublisherExposure[];
+          environment: EnvironmentLabel;
+          /** MC2-L6: units held for the seller to accept, per publisher, currency and stored environment. */
+          awaiting: AwaitingExposure[];
+        },
+        StatusError
+      >
     >;
     setStatus(i: {
       actor: Actor;
@@ -1730,11 +1764,12 @@ function buildApp(config: Config, opts: AppOptions): App {
           order_id: string | null;
           order_ref: string | null;
           unit_status: string | null;
+          status_reason: string | null;
           order_status: string | null;
           po_state: string | null;
         }>(
           `SELECT e.id, e.money_state, u.order_id, o.order_ref, u.status AS unit_status,
-                  o.status AS order_status, p.state AS po_state
+                  u.status_reason, o.status AS order_status, p.state AS po_state
              FROM entitlements e
              LEFT JOIN order_units u ON u.id = e.unit_id
              LEFT JOIN orders o ON o.id = u.order_id
@@ -1762,6 +1797,17 @@ function buildApp(config: Config, opts: AppOptions): App {
         order_status: fact?.order_status ?? null,
         po_state: fact?.po_state ?? null,
       };
+      // MC2-L6 (D-083): a payment PayPal holds for the seller to accept. The library read model words every
+      // pending unit alike; this replaces only that line, and only for the closed kind.
+      const heldKind: PendingKind =
+        fact?.unit_status === 'pending' ? pendingReasonKind(fact.status_reason) : 'payment_pending';
+      const baseText = buyerStatusText({
+        base: v.status_text,
+        ...refundFacts,
+        ...orderFacts,
+        window_state: v.window.state,
+        option: v.option,
+      });
       const days =
         running && ends !== null
           ? Math.max(0, Math.ceil((Date.parse(ends) - clock.now().getTime()) / DAY_MS))
@@ -1780,13 +1826,11 @@ function buildApp(config: Config, opts: AppOptions): App {
           ends_at: ends,
           days_left: days,
         },
-        status_text: buyerStatusText({
-          base: v.status_text,
-          ...refundFacts,
-          ...orderFacts,
-          window_state: v.window.state,
-          option: v.option,
-        }),
+        status_text:
+          heldKind === 'awaiting_seller_acceptance' &&
+          baseText === pendingBuyerText('payment_pending')
+            ? pendingBuyerText(heldKind)
+            : baseText,
         refund_note: buyerRefundNote(refundFacts),
         refunded: isFullyRefunded(refundFacts),
         can_open: v.can_open,
@@ -1989,6 +2033,35 @@ function buildApp(config: Config, opts: AppOptions): App {
     async publisherSales(actor) {
       if (actor.kind !== 'publisher') return null;
       return salesFor(db, actor);
+    },
+    // MC2-L6 (D-083): pending units with a closed label. The stored reason is mapped here and goes no further.
+    async publisherPending(actor) {
+      if (actor.kind !== 'publisher') return null;
+      const r = await db.query<{
+        order_ref: string;
+        currency: string;
+        environment: EnvironmentLabel;
+        amount_minor: string | number;
+        status_reason: string | null;
+        at: string;
+      }>(
+        `SELECT o.order_ref, o.currency, o.environment, u.amount_minor, u.status_reason,
+                to_char(COALESCE(u.captured_verified_at, u.created_at) AT TIME ZONE 'UTC',
+                        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at
+           FROM order_units u JOIN orders o ON o.id = u.order_id
+          WHERE u.publisher_id = $1 AND u.status = 'pending'
+          ORDER BY COALESCE(u.captured_verified_at, u.created_at) DESC, u.id DESC`,
+        [actor.publisher_id],
+      );
+      return r.rows.map((u) => ({
+        at: u.at,
+        order_ref6: u.order_ref.slice(-6),
+        amount_minor: Number(u.amount_minor),
+        currency: u.currency,
+        environment: u.environment,
+        kind: pendingReasonKind(u.status_reason),
+        label: pendingReasonLabel(u.status_reason),
+      }));
     },
     async publisherStatement(actor) {
       if (actor.kind !== 'publisher') return null;
@@ -2290,24 +2363,27 @@ function buildApp(config: Config, opts: AppOptions): App {
       if (o === undefined) return null;
       const units = await db.query<{
         status: string;
+        status_reason: string | null;
         amount_minor: string | number;
         refunded_minor: string | number;
-      }>('SELECT status, amount_minor, refunded_minor FROM order_units WHERE order_id = $1', [
-        o.id,
-      ]);
+      }>(
+        'SELECT status, status_reason, amount_minor, refunded_minor FROM order_units WHERE order_id = $1',
+        [o.id],
+      );
       const ents = await db.query<{
         article_id: string;
         title: string;
         access_state: string;
         publisher: string | null;
         unit_status: string;
+        status_reason: string | null;
         po_state: string | null;
         verified: boolean;
         amount_minor: string | number;
         refunded_minor: string | number;
       }>(
         `SELECT e.article_id, a.title, e.access_state, pub.display_name AS publisher,
-                u.status AS unit_status, p.state AS po_state,
+                u.status AS unit_status, u.status_reason, p.state AS po_state,
                 (u.captured_verified_at IS NOT NULL) AS verified, u.amount_minor, u.refunded_minor
            FROM entitlements e
            JOIN order_units u ON u.id = e.unit_id JOIN articles a ON a.id = e.article_id
@@ -2338,10 +2414,18 @@ function buildApp(config: Config, opts: AppOptions): App {
           po_state: e.po_state,
           unit_status: e.unit_status,
         });
-        return { ...base, publisher: e.publisher ?? 'Publisher', kind, line: LINE_TEXT[kind] };
+        // MC2-L6: a pending item held for the seller to accept says so; the kind stays `pending`.
+        const line =
+          kind === 'pending'
+            ? (pendingItemLine(pendingReasonKind(e.status_reason)) ?? LINE_TEXT[kind])
+            : LINE_TEXT[kind];
+        return { ...base, publisher: e.publisher ?? 'Publisher', kind, line };
       });
       const unitStatuses = units.rows.map((u) => u.status);
-      let message = orderMessage(o.status, unitStatuses, poStates);
+      const pendingKinds = units.rows
+        .filter((u) => u.status === 'pending')
+        .map((u) => pendingReasonKind(u.status_reason));
+      let message = orderMessage(o.status, unitStatuses, poStates, pendingKinds);
       if (pack) {
         const held = message.includes('on hold');
         const banner = packBanner(
@@ -2862,7 +2946,29 @@ function buildApp(config: Config, opts: AppOptions): App {
           environment,
         });
         if (publishers === null) return { ok: false, error: { code: 'not_operator' } };
-        return { ok: true, value: { publishers, environment } };
+        const held = await db.query<{
+          publisher_id: Id;
+          currency: string;
+          environment: EnvironmentLabel;
+          n: string | number;
+          total: string | number;
+        }>(
+          `SELECT u.publisher_id, o.currency, o.environment, count(*) AS n,
+                  COALESCE(sum(u.amount_minor), 0) AS total
+             FROM order_units u JOIN orders o ON o.id = u.order_id
+            WHERE u.status = 'pending' AND u.status_reason = $1
+            GROUP BY u.publisher_id, o.currency, o.environment
+            ORDER BY u.publisher_id, o.currency, o.environment`,
+          [SELLER_ACCEPTANCE_REASON],
+        );
+        const awaiting: AwaitingExposure[] = held.rows.map((h) => ({
+          publisher_id: h.publisher_id,
+          currency: h.currency,
+          environment: h.environment,
+          count: Number(h.n),
+          minor: Number(h.total),
+        }));
+        return { ok: true, value: { publishers, environment, awaiting } };
       },
       setStatus: (i) =>
         setPublisherStatus(offerDeps, i.actor, {
