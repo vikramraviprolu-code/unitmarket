@@ -225,7 +225,7 @@ export function DiscoverForm({
                     <a href={b.href}>{b.title}</a>, {b.publisher}{' '}
                     <span className="muted">{b.price_text}</span>
                     {b.binding_text !== null ? (
-                      <span className="muted binding-line"> {b.binding_text}</span>
+                      <span className="muted binding-line"> · {b.binding_text}</span>
                     ) : null}
                   </li>
                 ))}

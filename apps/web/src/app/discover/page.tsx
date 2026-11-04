@@ -57,7 +57,7 @@ export default async function Discover({
               <li key={o.offer_id}>
                 <Link href={`/o/${o.publisher_slug}/${o.offer_code}`}>{o.title}</Link>{' '}
                 <span className="muted">{fromLead(price)}</span>
-                {price.binding !== null ? <span className="muted"> {price.binding}</span> : null}
+                {price.binding !== null ? <span className="muted"> · {price.binding}</span> : null}
               </li>
             );
           })}
