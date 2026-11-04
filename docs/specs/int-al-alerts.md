@@ -1,4 +1,4 @@
-# INT-AL: alerts you can act on, and cases, round 2
+# INT-AL: alerts you can act on, and cases, round 2 (passed 10 of 12, with fixes R2-1 to R2-5)
 
 Task: Give every alert a severity, a sentence, a fix link and a state with history; add needs-you, two new signals, the case queue and case actions.
 Package: new `domain/alerts` (`@umsbx/alerts`), `domain/payments` (raise path only), `domain/recovery` (read model and operator actor), `apps/web` routes, `packages/jobs` (sweep step). Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
@@ -51,6 +51,7 @@ The v1 reads carry no buyer or publisher identity and no PayPal ids (the SR1 rul
 | every other kind | manual only |
 
 **New signals (AL.5, F2, F15).** The sweep `signals` runs in the same job step and calls `raiseAlert`. `raiseAlert` changes in two ways: `order_id` becomes `Id | null`, and a conflict on `alerts_one_per_kind` whose latest event is `resolved` or `auto_resolved` appends `reopened` by `system`. This is the only change to raising logic.
+- Signals skip entities that are already finished, so the signal and auto-resolve sweeps never flap (R2-1). That means mandates with `revoked_at` or `exhausted_at` set or `expires_at` past, and disabled subscriptions.
 - `mandate_near_cap`: raised when `spent_minor * 10 >= max_total_minor * 9`, or `used_count * 10 >= max_count * 9`, integer arithmetic. A count cap of 3 fires at 3, and a cap of 10 fires at 9. The reason is `cap90_<mandate_id>`.
 - `webhook_failing`: raised when the last 3 `webhook_deliveries` rows of one subscription, by `(created_at, id)`, are all `failed` or `dead`. The reason is `webhook_failing_<subscription_id>_<id of the first of those 3>`, so a new failure run after a recovery raises a new alert.
 - `domain/mandates` and `packages/jobs/src/deliver.ts` are not touched.
@@ -59,14 +60,14 @@ The v1 reads carry no buyer or publisher identity and no PayPal ids (the SR1 rul
 
 **Needs-you (AL.6, F12).** `{kind, sentence, href, count}` rows for:
 - open alerts by severity
-- applicants waiting (`publishers.status = 'applied'`)
+- applicants waiting (`publishers.status = 'applied'` with no `publisher_applicant_decisions` row; a rejected applicant keeps `applied`, R2-3)
 - payee checks waiting (`payee_change_requests` with no `payee_decisions` row)
 - caps near the limit (open `mandate_near_cap`)
 
 Each `href` comes from `OPS_PAGES`, a typed list of page paths in `packages/contracts/src/ops-pages.ts` that UI0 also uses. The test checks that each href is in that list, and that each listed path has a `page.tsx` or a UI0 redirect.
 
 **Cases (AL.7, AL.8, F9, F10).**
-- The queue is ordered by `sla_due_at`, with a filter by state. The detail carries `state`, `kind`, `sla_due_at`, `credit_ms`, linked alerts (through `recovery_actions.detail.alert_id`), a `buyer_message_present` flag (never the text; v1 has no buyer free text) and the allowed actions.
+- The queue is ordered by `sla_due_at`, with a filter by state. The detail carries `state`, `kind`, `sla_due_at`, `credit_ms`, linked alerts (through `recovery_actions.detail.alert_id`), and the allowed actions. `recovery_cases.buyer_message` is the system's message to the buyer (`messages.ts`), not buyer input (R2-2). The v1 answer carries `buyer_message_present` only; the OPS-A composition read returns the text.
 - Actions are exactly `diagnose`, `restore`, `credit`, `close_not_charged`, `offer_refund` and `close_no_fault`, mapped to `domain/recovery` `diagnose()` and `resolve()` (`rules.ts` `ResolveAction`). `offer_refund` calls the existing refund path. An operator `diagnose` records the operator as actor (a new optional `actor` argument; today it writes `system`, `cases.ts:439`).
 - An action not allowed in the case's state answers 409 `wrong_state`.
 
@@ -97,15 +98,15 @@ If UI0.7 has not merged, the builder stops and reports.
 |---|---|---|---|
 | AL.1 | `domain/alerts/src/read.state.test.ts` | `pnpm vitest run domain/alerts/src/read.state.test.ts` | 25 seeded alerts over two pages (25 at `limit=20`: 20 then 5), each page with `total` 25; the filters narrow, with true totals; each row has order ref, unit, money at risk per catalogue, case id where one exists |
 | AL.2 | `domain/alerts/src/catalogue.golden.test.ts` | `pnpm vitest run domain/alerts/src/catalogue.golden.test.ts` | All 12 kinds, 2 new kinds and 5 `BLOCKED_BY` values mapped; a fake kind or reason prefix fails |
-| AL.3 | `domain/alerts/src/state.adversarial.test.ts` | `pnpm vitest run domain/alerts/src/state.adversarial.test.ts` | Each write without MFA gives 403; buyer and seller sessions and any bearer key give 401 or 403; a missing CSRF token gives 403; a double resolve is a no-op; the journal shows the operator, channel `web` and reason code; an email in a note appears nowhere in `alert_events` or `trace_events` |
+| AL.3 | `domain/alerts/src/state.adversarial.test.ts` (domain rules), `apps/web/src/ops-alerts-state.adversarial.test.ts` (route MFA, CSRF and bearer checks, R2-4) | `pnpm vitest run domain/alerts/src/state.adversarial.test.ts apps/web/src/ops-alerts-state.adversarial.test.ts` | Each write without MFA gives 403; buyer and seller sessions and any bearer key give 401 or 403; a missing CSRF token gives 403; a double resolve is a no-op; the journal shows the operator, channel `web` and reason code; an email in a note appears nowhere in `alert_events` or `trace_events` |
 | AL.4 | `domain/alerts/src/autoresolve.state.test.ts`, `domain/alerts/src/autoresolve.adversarial.test.ts` | `pnpm vitest run domain/alerts/src/autoresolve.state.test.ts domain/alerts/src/autoresolve.adversarial.test.ts` | Each table row resolves once, as `system`/`job`; a still-unresolved condition does not resolve; a `cannot_book_` alert on a `completed` request is **not** auto-resolved; `refund_outcome_unknown_<rq>` without its ledger row is not resolved |
-| AL.5 | `domain/alerts/src/signals.state.test.ts` | `pnpm vitest run domain/alerts/src/signals.state.test.ts` | Two mandates at 90 percent raise two alerts; caps of 3 and 10 purchases fire at 3 and 9; 3 failed deliveries raise once; recovery then 3 new failures raise a new alert; a resolved `cap90_` alert whose condition returns is reopened by `system` |
+| AL.5 | `domain/alerts/src/signals.state.test.ts` | `pnpm vitest run domain/alerts/src/signals.state.test.ts` | Two mandates at 90 percent raise two alerts; caps of 3 and 10 purchases fire at 3 and 9; 3 failed deliveries raise once; recovery then 3 new failures raise a new alert; a resolved `cap90_` alert whose condition returns is reopened by `system`; two sweep passes over an exhausted, revoked or expired mandate and a disabled subscription write no new event |
 | AL.6 | `apps/web/src/v1-needs-you.contract.test.ts` | `pnpm vitest run apps/web/src/v1-needs-you.contract.test.ts` | Shape matches `v1-alerts.ts`; counts match the seed for each source; every href is in `OPS_PAGES`, and each path has a page or a redirect |
-| AL.7 | `domain/recovery/src/cases-api.state.test.ts` | `pnpm vitest run domain/recovery/src/cases-api.state.test.ts` | The queue is ordered by `sla_due_at` and filters by state; the detail has the fields above and the allowed actions; no buyer message text in the answer |
-| AL.8 | `apps/web/src/ops-cases-actions.adversarial.test.ts`, `packages/db/src/pg.case-refund-race.integration.test.ts` | `pnpm vitest run apps/web/src/ops-cases-actions.adversarial.test.ts`, then `UMS_TEST_PG_BIN=$(pg_config --bindir) pnpm vitest run packages/db/src/pg.case-refund-race.integration.test.ts` | Refund from a case needs MFA and an idempotency key; a replay returns the stored answer; buyer and seller sessions and bearer keys are refused; missing CSRF gives 403; an action on a closed or `refund_pending` case gives 409 `wrong_state`; each action is journaled with the operator actor; the ledger guard still holds. The race file: two concurrent `offer_refund` calls on one case make exactly one refund request, 20 runs; **a skip is a fail** |
+| AL.7 | `domain/recovery/src/cases-api.state.test.ts` | `pnpm vitest run domain/recovery/src/cases-api.state.test.ts` | The queue is ordered by `sla_due_at` and filters by state; the detail has the fields above and the allowed actions; the v1 answer has no message text, and the composition read has it |
+| AL.8 | `apps/web/src/ops-cases-actions.adversarial.test.ts`, `tests/mvp-c-pg/case-refund-race.integration.test.ts` (PG-2 exception, R2-5) | `pnpm vitest run apps/web/src/ops-cases-actions.adversarial.test.ts`, then `UMS_TEST_PG_BIN=$(pg_config --bindir) pnpm vitest run tests/mvp-c-pg/case-refund-race.integration.test.ts` | Refund from a case needs MFA and an idempotency key; a replay returns the stored answer; buyer and seller sessions and bearer keys are refused; missing CSRF gives 403; an action on a closed or `refund_pending` case gives 409 `wrong_state`; each action is journaled with the operator actor; the ledger guard still holds. The race file: two concurrent `offer_refund` calls on one case make exactly one refund request, 20 runs; **a skip is a fail** |
 | Gate | | `pnpm trace:verify` after the seed and the AL suites | Exit 0; INV-T2 empty, including the sweep and signal rows |
 
-Mutation: `pnpm mutation --require-targets --targets domain/alerts/src/state.ts,domain/alerts/src/autoresolve.ts,domain/alerts/src/signals.ts,domain/recovery/src/cases.ts --test-cmd "pnpm vitest run domain/alerts domain/recovery apps/web/src/ops-cases-actions.adversarial.test.ts" --threshold 80`.
+Mutation: `pnpm mutation --require-targets --targets domain/alerts/src/state.ts,domain/alerts/src/autoresolve.ts,domain/alerts/src/signals.ts,domain/recovery/src/cases.ts --test-cmd "pnpm vitest run domain/alerts domain/recovery apps/web/src/ops-cases-actions.adversarial.test.ts apps/web/src/ops-alerts-state.adversarial.test.ts" --threshold 80`.
 
 ## Safety
 
@@ -113,6 +114,6 @@ No PayPal call, no change to `packages/transport`, `packages/paypal` or `endpoin
 
 ## Do not
 
-Change raising logic beyond the two kinds, nullable `order_id` and reopen-on-conflict; add money logic; touch `domain/mandates` or `packages/jobs/src/deliver.ts`; store note text or buyer messages; add a write under `/api/v1/ops`.
+Change raising logic beyond the two kinds, nullable `order_id` and reopen-on-conflict; add money logic; touch `domain/mandates` or `packages/jobs/src/deliver.ts`; store note text; add a write under `/api/v1/ops`.
 
 Branch: `feat/int-al-alerts`. Commit: `feat(alerts): alert catalogue, state, signals, needs-you and case API (INT-AL)`.
