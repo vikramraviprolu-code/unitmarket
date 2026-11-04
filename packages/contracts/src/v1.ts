@@ -3,9 +3,21 @@
 // from. Lanes A, B and C add their request and response schemas and their routes here (additive).
 import { z } from 'zod';
 import type { ZodType } from 'zod';
-import { IdSchema, IsoUtcSchema, MinorUnitsSchema, MoneySchema } from './primitives';
+import { AccessOptionSchema, RightsSchema } from './catalogue';
+import { BriefSchema, FitCardSchema } from './fit';
+import { SwitchNameSchema } from './ports';
+import {
+  CurrencyCodeSchema,
+  EnvironmentLabelSchema,
+  IdSchema,
+  IsoUtcSchema,
+  MinorUnitsSchema,
+  MoneySchema,
+} from './primitives';
 import { KeyKindSchema, SCOPES, ScopeSchema } from './principal';
 import type { Scope } from './principal';
+import { NoMatchReasonSchema, QuoteSchema } from './quote';
+import { CaseViewSchema } from './recovery';
 
 // ---------- error envelope and pagination ----------
 /** The existing error body, `{ error: { code, message, support_code, fields? } }` (packages/security errors.ts). */
@@ -174,14 +186,395 @@ export const EventEnvelopeSchema = z.discriminatedUnion('type', [
 ]);
 export type EventEnvelope = z.infer<typeof EventEnvelopeSchema>;
 
+// ---------- API-A: buyer, seller and operator endpoints ----------
+// Every body below is the body of the matching existing route or Engine function (same fields, same
+// meaning); the v1 routes add no business logic. Request bodies are strict, and so are the answers.
+const PathId = z.string().min(1).max(200);
+const Limit = z.coerce.number().int().min(1).max(50);
+const CursorText = z.string().min(1).max(500);
+
+/** The offer a buyer sees. Never the renegotiation floor: that stays the seller's. */
+export const OfferSummarySchema = z
+  .object({
+    offer_id: IdSchema,
+    title: z.string(),
+    abstract: z.string(),
+    publisher: z.string(),
+    publisher_slug: z.string(),
+    offer_code: z.string(),
+    language: z.string(),
+    bytes: MinorUnitsSchema,
+    currency: CurrencyCodeSchema,
+    options: z.array(
+      z.object({ option: AccessOptionSchema, price_minor: MinorUnitsSchema }).strict(),
+    ),
+    min_price_minor: MinorUnitsSchema,
+    renegotiation_allowed: z.boolean(),
+    rights: RightsSchema,
+  })
+  .strict();
+export type OfferSummary = z.infer<typeof OfferSummarySchema>;
+
+/** `max_price` is the highest lowest-option price, in minor units of the offer currency. */
+export const CatalogueSearchQuerySchema = z
+  .object({
+    q: z.string().max(200).optional(),
+    publisher: z.string().min(1).max(64).optional(),
+    max_price: z.coerce.number().int().min(0).max(100_000_000).optional(),
+    limit: Limit.optional(),
+    cursor: CursorText.optional(),
+  })
+  .strict();
+export const CatalogueSearchResponseSchema = pageOf(OfferSummarySchema);
+
+export const OfferIdParamSchema = z.object({ id: PathId }).strict();
+
+export const BriefCreateRequestSchema = z.object({ need: z.string().min(1).max(2000) }).strict();
+export const BriefIdParamSchema = z.object({ id: PathId }).strict();
+
+const CeilingCheckSchema = z.object({ ceiling: MoneySchema, price: MoneySchema }).strict();
+export const DiscoverResponseSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('proposal'),
+      proposal_id: IdSchema,
+      items: z.array(
+        z
+          .object({
+            quote: QuoteSchema,
+            fit: FitCardSchema,
+            title: z.string(),
+            publisher: z.string(),
+            ceiling_check: CeilingCheckSchema.optional(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('no_match'),
+      reasons: z.array(NoMatchReasonSchema),
+      rate_missing: z.literal(true).optional(),
+    })
+    .strict(),
+]);
+
+export const QuoteRequestSchema = z
+  .object({
+    publisher: z.string().min(1).max(64),
+    offer: z.string().min(1).max(64),
+    option: AccessOptionSchema.optional(),
+    ceiling_minor: MinorUnitsSchema.optional(),
+    proposed_minor: MinorUnitsSchema.optional(),
+  })
+  .strict();
+export const QuoteResponseSchema = z.discriminatedUnion('kind', [
+  QuoteSchema,
+  z
+    .object({
+      kind: z.literal('no_match'),
+      reason: NoMatchReasonSchema,
+      order_ref: IdSchema.optional(),
+    })
+    .strict(),
+]);
+
+export const ApprovalRequestSchema = z
+  .object({
+    quote_id: z.string().min(1).max(200).optional(),
+    proposal_id: z.string().min(1).max(200).optional(),
+    offer_ids: z.array(z.string().min(1).max(200)).min(1).max(5).optional(),
+    consent: z.object({ terms: z.boolean(), identity_share: z.boolean() }).strict(),
+  })
+  .strict();
+/** The token is in the body, never in a cookie. It is shown here and used once, by POST /orders. */
+export const ApprovalIssuedSchema = z
+  .object({
+    approval_id: IdSchema,
+    token: z.string().min(20).max(400),
+    expires_at: IsoUtcSchema,
+    total_minor: MinorUnitsSchema,
+    currency: CurrencyCodeSchema,
+    environment: EnvironmentLabelSchema,
+    content_hash: z.string().min(1).max(200),
+  })
+  .strict();
+
+export const OrderPlaceRequestSchema = z
+  .object({ approval_id: z.string().min(1).max(200), token: z.string().min(20).max(400) })
+  .strict();
+export const OrderPlacedSchema = z
+  .object({ order_id: IdSchema, order_ref: IdSchema, status: z.string().min(1).max(40) })
+  .strict();
+
+export const OrderListQuerySchema = z
+  .object({ limit: Limit.optional(), cursor: CursorText.optional() })
+  .strict();
+export const OrderSummarySchema = z
+  .object({
+    order_ref: IdSchema,
+    status: z.string().min(1).max(40),
+    environment: EnvironmentLabelSchema,
+    currency: CurrencyCodeSchema,
+    total_minor: MinorUnitsSchema,
+    created_at: IsoUtcSchema,
+  })
+  .strict();
+export const OrderListSchema = pageOf(OrderSummarySchema);
+
+export const OrderRefParamSchema = z.object({ ref: PathId }).strict();
+export const OrderViewSchema = z
+  .object({
+    order_id: IdSchema,
+    order_ref: IdSchema,
+    status: z.string(),
+    buyer_message: z.string(),
+    items: z.array(
+      z
+        .object({
+          article_id: IdSchema,
+          title: z.string(),
+          access: z.string(),
+          publisher: z.string().optional(),
+          kind: z.string().optional(),
+          line: z.string().optional(),
+        })
+        .strict(),
+    ),
+    environment: EnvironmentLabelSchema,
+    open_case: z
+      .object({ case_id: IdSchema, state: z.string(), buyer_message: z.string() })
+      .strict()
+      .nullable(),
+    refund_line: z.string().nullable(),
+  })
+  .strict();
+export const OrderCancelledSchema = z
+  .object({ order_ref: IdSchema, status: z.literal('abandoned'), already: z.boolean() })
+  .strict();
+
+export const LibraryEntrySchema = z
+  .object({
+    entitlement_id: IdSchema,
+    article_id: IdSchema,
+    title: z.string(),
+    publisher: z.string(),
+    option: z.string(),
+    access: z.string(),
+    money: z.string(),
+    window: z
+      .object({
+        state: z.string(),
+        started_at: IsoUtcSchema.nullable(),
+        ends_at: IsoUtcSchema.nullable(),
+        days_left: z.number().int().nullable(),
+      })
+      .strict(),
+    status_text: z.string(),
+    refund_note: z.string().nullable(),
+    refunded: z.boolean(),
+    can_open: z.boolean(),
+    order_id: IdSchema.nullable(),
+    order_ref: IdSchema.nullable(),
+    receipt_versions: z.array(z.number().int()),
+    open_case: CaseViewSchema.nullable(),
+    environment: EnvironmentLabelSchema,
+  })
+  .strict();
+export const LibraryListSchema = pageOf(LibraryEntrySchema);
+export const EntitlementIdParamSchema = z.object({ id: PathId }).strict();
+export const LinkIssuedSchema = z
+  .object({ url: z.string().min(1).max(500), expires_at: IsoUtcSchema })
+  .strict();
+
+// ----- seller -----
+const OfferPriceSchema = z.object({ option: AccessOptionSchema, price_minor: z.number() }).strict();
+export const SellerOfferSchema = z
+  .object({
+    offer_id: IdSchema,
+    version: z.string(),
+    status: z.enum(['draft', 'authorised', 'withdrawn']),
+    currency: CurrencyCodeSchema,
+    article_id: IdSchema,
+    article_title: z.string(),
+    article_abstract: z.string(),
+    article_language: z.string(),
+    article_bytes: MinorUnitsSchema,
+    article_sha256: z.string(),
+    options: z.array(
+      z.object({ option: AccessOptionSchema, price_minor: MinorUnitsSchema }).strict(),
+    ),
+    valid_until: IsoUtcSchema.nullable(),
+    created_at: IsoUtcSchema,
+  })
+  .strict();
+export const SellerOfferListSchema = z
+  .object({
+    items: z.array(SellerOfferSchema),
+    next_cursor: z.null(),
+    environment: EnvironmentLabelSchema,
+    offer_max_minor: MinorUnitsSchema,
+  })
+  .strict();
+export const SellerOfferCreateRequestSchema = z
+  .object({
+    article_id: z.string().min(1).max(200),
+    options: z.array(OfferPriceSchema).min(1).max(2),
+    attestation: z.literal(true),
+  })
+  .strict();
+export const SellerOfferReviseRequestSchema = z
+  .object({
+    expected_version: z.string().min(1).max(20),
+    options: z.array(OfferPriceSchema).min(1).max(2),
+    attestation: z.literal(true),
+  })
+  .strict();
+/** DELETE has no body: the version and the reason travel in the query string. */
+export const SellerOfferWithdrawQuerySchema = z
+  .object({
+    expected_version: z.string().min(1).max(20),
+    reason: z.string().trim().min(3).max(200),
+  })
+  .strict();
+export const SellerOfferIdParamSchema = z.object({ id: PathId }).strict();
+export const SellerOfferResultSchema = z
+  .object({ offer_id: IdSchema, version: z.string().min(1).max(20) })
+  .strict();
+export const SaleRowSchema = z
+  .object({
+    at: IsoUtcSchema,
+    order_ref6: z.string(),
+    items: z.array(z.object({ title: z.string(), option: AccessOptionSchema }).strict()),
+    amount_minor: MinorUnitsSchema,
+    currency: CurrencyCodeSchema,
+    paypal_fee_minor: MinorUnitsSchema.nullable(),
+    status: z.enum([
+      'expected',
+      'captured_verified',
+      'pending',
+      'declined',
+      'mismatch',
+      'partially_refunded',
+      'refunded',
+      'reversal_suspected',
+      'reversed',
+    ]),
+    status_text: z.string(),
+    environment: EnvironmentLabelSchema,
+  })
+  .strict();
+export const SellerSalesSchema = z
+  .object({ items: z.array(SaleRowSchema), next_cursor: z.null() })
+  .strict();
+
+// ----- operator (reads only) -----
+const OpsOperationCountSchema = z.object({ state: z.string(), count: MinorUnitsSchema }).strict();
+const OpsAlertSchema = z.object({ kind: z.string(), created_at: IsoUtcSchema }).strict();
+export const OpsOverviewSchema = z
+  .object({
+    environment: EnvironmentLabelSchema,
+    orders: z.array(
+      z
+        .object({
+          order_ref: IdSchema,
+          status: z.string(),
+          total_minor: MinorUnitsSchema,
+          currency: CurrencyCodeSchema,
+        })
+        .strict(),
+    ),
+    operations: z.array(OpsOperationCountSchema),
+    alerts: z.array(OpsAlertSchema),
+    invariants: z.array(z.object({ id: z.string(), ok: z.boolean(), detail: z.string() }).strict()),
+    jobs: z.object({ last_pass_at: IsoUtcSchema.nullable(), due: MinorUnitsSchema }).strict(),
+  })
+  .strict();
+export const OpsReconcilerSchema = z
+  .object({
+    last_pass_at: IsoUtcSchema.nullable(),
+    due: MinorUnitsSchema,
+    operations: z.array(OpsOperationCountSchema),
+    alerts: z.array(OpsAlertSchema),
+  })
+  .strict();
+export const OpsOrderRefParamSchema = z.object({ ref: PathId }).strict();
+export const OpsOrderDetailSchema = z
+  .object({
+    order_ref: IdSchema,
+    status: z.string(),
+    environment: EnvironmentLabelSchema,
+    currency: CurrencyCodeSchema,
+    total_minor: MinorUnitsSchema,
+    mismatch: z.boolean(),
+    created_at: IsoUtcSchema,
+    updated_at: IsoUtcSchema,
+    units: z.array(
+      z
+        .object({
+          status: z.string(),
+          amount_minor: MinorUnitsSchema,
+          refunded_minor: MinorUnitsSchema,
+        })
+        .strict(),
+    ),
+    provider_orders: z.array(
+      z.object({ position: z.number().int().nullable(), state: z.string().nullable() }).strict(),
+    ),
+    operations: z.array(
+      z.object({ kind: z.string(), state: z.string(), attempt: MinorUnitsSchema }).strict(),
+    ),
+  })
+  .strict();
+/** Read only. Booleans and words: no scope name, no reference, no credential, no way to change a switch. */
+export const OpsSwitchesSchema = z
+  .object({
+    environment: EnvironmentLabelSchema,
+    switches: z.record(SwitchNameSchema, z.boolean()),
+    kill_switch: z.object({ outbound_on: z.boolean(), changed_at: z.string() }).strict(),
+    gate: z
+      .object({
+        mode: z.string(),
+        connect: z.boolean(),
+        approval_ref_set: z.boolean(),
+        /** The five locks, or null when the app runs on the dry-run transport (no lock block). */
+        locks: z
+          .object({
+            l1_mode_sandbox: z.boolean(),
+            l2_connect_on: z.boolean(),
+            l3_approval_active: z.boolean(),
+            l4_switch_on: z.boolean(),
+            l5_credentials_and_wire_ok: z.boolean(),
+          })
+          .strict()
+          .nullable(),
+        open: z.boolean().nullable(),
+        blocked_by: z.string().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+/** The same body as /healthz. */
+export const StatusSchema = z
+  .object({
+    ok: z.literal(true),
+    environment: EnvironmentLabelSchema,
+    maintenance: z.literal(true).optional(),
+  })
+  .strict();
+
 // ---------- route registry and the OpenAPI document ----------
 export interface RouteDoc {
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   /** OpenAPI style: `/api/v1/api-keys/{id}`. */
   path: string;
   summary: string;
-  /** `session` = a signed-in owner (cookie, CSRF); `apikey` = a bearer key with the listed scopes. */
-  auth: 'session' | 'apikey';
+  /**
+   * `session` = a signed-in owner (cookie, CSRF); `apikey` = a bearer key with the listed scopes;
+   * `public` = no credentials (API-A: the status route).
+   */
+  auth: 'session' | 'apikey' | 'public';
   scopes: readonly Scope[];
   /** Where the input is read from: the JSON body, the query string, or nowhere. Path params are separate. */
   input: { in: 'body' | 'query' | 'none'; schema?: ZodType };
@@ -222,6 +615,236 @@ export const V1_ROUTES: readonly RouteDoc[] = [
     success: { status: 200, schema: ApiKeyViewSchema },
     errors: [400, 404],
   },
+  // ----- API-A: buyer (a key owned by a buyer) -----
+  {
+    method: 'GET',
+    path: '/api/v1/catalogue/search',
+    summary:
+      'Search the authorised catalogue by words (title and abstract), cheapest first among equals. Filters: publisher, max_price (minor units). Pages with cursor.',
+    auth: 'apikey',
+    scopes: ['catalogue:read'],
+    input: { in: 'query', schema: CatalogueSearchQuerySchema },
+    success: { status: 200, schema: CatalogueSearchResponseSchema },
+    errors: [400, 422],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/offers/{id}',
+    summary: 'One authorised offer: article facts, options with prices, and the rights it carries.',
+    auth: 'apikey',
+    scopes: ['catalogue:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: OfferSummarySchema },
+    errors: [404],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/briefs',
+    summary: 'Turn a free-text need into a stored brief. 503 ai_off while the AI switch is off.',
+    auth: 'apikey',
+    scopes: ['catalogue:read'],
+    input: { in: 'body', schema: BriefCreateRequestSchema },
+    success: { status: 200, schema: BriefSchema },
+    errors: [400, 409, 422],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/briefs/{id}/discover',
+    summary: 'Find offers for a stored brief of yours: a proposal with fit cards, or no match.',
+    auth: 'apikey',
+    scopes: ['catalogue:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: DiscoverResponseSchema },
+    errors: [400, 404, 409, 422],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/quotes',
+    summary: 'Quote one offer: the price for an access option, valid for a short time.',
+    auth: 'apikey',
+    scopes: ['orders:write'],
+    input: { in: 'body', schema: QuoteRequestSchema },
+    success: { status: 200, schema: QuoteResponseSchema },
+    errors: [400, 404, 409, 422],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/approvals',
+    summary:
+      'Approve a quote or a proposal with your consent. The approval token is in the answer body and is used once by POST /api/v1/orders.',
+    auth: 'apikey',
+    scopes: ['orders:write'],
+    input: { in: 'body', schema: ApprovalRequestSchema },
+    success: { status: 201, schema: ApprovalIssuedSchema },
+    errors: [400, 404, 409, 422],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/orders',
+    summary:
+      'Place the order for an approval. One Idempotency-Key places one order, however often it is sent.',
+    auth: 'apikey',
+    scopes: ['orders:write'],
+    input: { in: 'body', schema: OrderPlaceRequestSchema },
+    success: { status: 201, schema: OrderPlacedSchema },
+    errors: [400, 404, 409, 422],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/orders',
+    summary: 'Your orders, newest first. Pages with cursor.',
+    auth: 'apikey',
+    scopes: ['orders:read'],
+    input: { in: 'query', schema: OrderListQuerySchema },
+    success: { status: 200, schema: OrderListSchema },
+    errors: [400, 422],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/orders/{ref}',
+    summary: 'One of your orders. Another buyer order and a missing one answer the same 404.',
+    auth: 'apikey',
+    scopes: ['orders:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: OrderViewSchema },
+    errors: [404],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/orders/{ref}/cancel',
+    summary: 'Cancel one of your orders that is still unpaid and has no approved payment.',
+    auth: 'apikey',
+    scopes: ['orders:write'],
+    input: { in: 'none' },
+    success: { status: 200, schema: OrderCancelledSchema },
+    errors: [404, 409],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/library',
+    summary: 'What you own: one entry per item with its access window and state.',
+    auth: 'apikey',
+    scopes: ['library:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: LibraryListSchema },
+    errors: [],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/library/{id}/link',
+    summary: 'A short-lived content link for one item you own.',
+    auth: 'apikey',
+    scopes: ['library:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: LinkIssuedSchema },
+    errors: [404],
+  },
+  // ----- API-A: seller (a key owned by a publisher; the publisher is always the key owner) -----
+  {
+    method: 'GET',
+    path: '/api/v1/seller/offers',
+    summary: 'Your offers, with the price cap.',
+    auth: 'apikey',
+    scopes: ['catalogue:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: SellerOfferListSchema },
+    errors: [404],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/seller/offers',
+    summary: 'Put one of your articles on sale: version 1 of a new offer.',
+    auth: 'apikey',
+    scopes: ['offers:write'],
+    input: { in: 'body', schema: SellerOfferCreateRequestSchema },
+    success: { status: 201, schema: SellerOfferResultSchema },
+    errors: [400, 404, 409, 422],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/seller/offers/{id}',
+    summary: 'Revise the prices of your offer. Writes a new version; nothing is changed in place.',
+    auth: 'apikey',
+    scopes: ['offers:write'],
+    input: { in: 'body', schema: SellerOfferReviseRequestSchema },
+    success: { status: 200, schema: SellerOfferResultSchema },
+    errors: [400, 404, 409, 422],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/seller/offers/{id}',
+    summary:
+      'Take your offer off sale. Writes a withdrawn version; buyers who already approved keep what they saw.',
+    auth: 'apikey',
+    scopes: ['offers:write'],
+    input: { in: 'query', schema: SellerOfferWithdrawQuerySchema },
+    success: { status: 200, schema: SellerOfferResultSchema },
+    errors: [400, 404, 409, 422],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/seller/sales',
+    summary: 'Your sales, newest first. No buyer identity.',
+    auth: 'apikey',
+    scopes: ['sales:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: SellerSalesSchema },
+    errors: [404],
+  },
+  // ----- API-A: operator (reads only; no key ever changes a switch, starts or stops anything) -----
+  {
+    method: 'GET',
+    path: '/api/v1/ops/overview',
+    summary: 'Environment, latest orders, operation counts, alerts, invariants and job state.',
+    auth: 'apikey',
+    scopes: ['ops:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: OpsOverviewSchema },
+    errors: [404],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/ops/reconciler',
+    summary:
+      'The job loop: when it last finished a pass, what is due, operation counts and alerts.',
+    auth: 'apikey',
+    scopes: ['ops:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: OpsReconcilerSchema },
+    errors: [404],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/ops/orders/{ref}',
+    summary:
+      'One order as an operator sees it: units, payment orders and operations. No identities.',
+    auth: 'apikey',
+    scopes: ['ops:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: OpsOrderDetailSchema },
+    errors: [404],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/ops/switches',
+    summary:
+      'The state of every switch and of the payment locks, read only. Stop, start and switch changes are never available to a key.',
+    auth: 'apikey',
+    scopes: ['ops:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: OpsSwitchesSchema },
+    errors: [404],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/status',
+    summary: 'Is the service up, and in which environment. Public; the same body as /healthz.',
+    auth: 'public',
+    scopes: [],
+    input: { in: 'none' },
+    success: { status: 200, schema: StatusSchema },
+    errors: [],
+  },
 ];
 
 const jsonSchema = (schema: ZodType): Record<string, unknown> => {
@@ -244,6 +867,33 @@ const errorResponse = (status: number): Record<string, unknown> => ({
   description: ERROR_TEXT[status] ?? 'Error.',
   content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
 });
+
+/**
+ * API-A (O6). The existing payment provider webhook, listed as the inbound webhook. It is not a v1 route
+ * (nothing here adds, moves or wraps it) and a client never calls it; it is listed so a reader of this file
+ * knows which URL the provider posts to. OpenAPI 3.1 keeps inbound calls under `webhooks`, apart from `paths`.
+ */
+export const INBOUND_WEBHOOK_PATH = '/api/webhooks/paypal' as const;
+const INBOUND_WEBHOOKS: Record<string, unknown> = {
+  'payment-provider-events': {
+    post: {
+      summary: 'Inbound payment provider webhook (existing route, unchanged)',
+      description: `Served at POST ${INBOUND_WEBHOOK_PATH}. The payment provider calls it, never an API client. The route checks the provider signature over the raw body before it reads anything, answers with an empty JSON body, and is limited per address.`,
+      'x-route': INBOUND_WEBHOOK_PATH,
+      security: [],
+      requestBody: {
+        required: true,
+        content: { 'application/json': { schema: { type: 'object' } } },
+      },
+      responses: {
+        '200': { description: 'Accepted.' },
+        '400': { description: 'The body could not be read.' },
+        '401': { description: 'The signature did not verify.' },
+        '429': { description: 'Too many requests from this address.' },
+      },
+    },
+  },
+};
 
 /** The OpenAPI 3.1 document for the registered routes. Deterministic: same input, same bytes. */
 export function buildOpenApiV1(): Record<string, unknown> {
@@ -282,7 +932,10 @@ export function buildOpenApiV1(): Record<string, unknown> {
     for (const s of [...statuses].sort((a, b) => a - b)) responses[String(s)] = errorResponse(s);
     const op: Record<string, unknown> = {
       summary: r.summary,
-      security: [r.auth === 'apikey' ? { bearerKey: [...r.scopes] } : { sessionCookie: [] }],
+      security:
+        r.auth === 'public'
+          ? []
+          : [r.auth === 'apikey' ? { bearerKey: [...r.scopes] } : { sessionCookie: [] }],
       parameters,
       responses,
     };
@@ -307,6 +960,7 @@ export function buildOpenApiV1(): Record<string, unknown> {
         'Version 1 of the public API. Runs offline in MVP 1: no payment provider is called by these routes.',
     },
     paths,
+    webhooks: INBOUND_WEBHOOKS,
     components: {
       securitySchemes: {
         bearerKey: {

@@ -55,6 +55,8 @@ import {
   readMaintenanceFlag,
 } from '@umsbx/config';
 export { BOOT_REFUSAL_EXIT_CODE };
+// API-A (A0): the catalogue text search, re-exported for the v1 handlers (they reach domain code only here).
+export { searchOffers } from '@umsbx/catalogue';
 import type { Config } from '@umsbx/config';
 import { migrate, openDatabase } from '@umsbx/db';
 import type { SqlDriver } from '@umsbx/db';

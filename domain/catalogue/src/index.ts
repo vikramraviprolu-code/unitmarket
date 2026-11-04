@@ -2,6 +2,7 @@
 // pricing rule, no universal floor, no substitution. PUB-B adds the publisher's offer writes (new versions only).
 export const PACKAGE_NAME = '@umsbx/catalogue' as const;
 export { getOffer, listAuthorisedOffers, offerIdFor } from './read';
+export { needWords, searchOffers, type SearchCandidate, type SearchQuery } from './search';
 export type { OfferView } from './read';
 export { getCorridor, corridorFor } from './corridors';
 export { seedCatalogue, seedSupplement } from './seed';

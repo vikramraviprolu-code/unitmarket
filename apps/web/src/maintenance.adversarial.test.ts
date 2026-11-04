@@ -28,15 +28,21 @@ type Handler = (
   ctx?: { params: Promise<Record<string, string>> },
 ) => Promise<Response>;
 interface Mod {
-  routeMeta: { path: string; method: 'GET' | 'POST' | 'DELETE' };
+  routeMeta: { path: string; method: 'GET' | 'POST' | 'PATCH' | 'DELETE' };
   GET?: Handler;
   POST?: Handler;
+  PATCH?: Handler;
   DELETE?: Handler;
 }
 // A route file with several verbs exports routeMetaGET, routeMetaPOST, ... instead of routeMeta (API-W0).
-type RawMod = Mod & { routeMetaGET?: Mod['routeMeta']; routeMetaPOST?: Mod['routeMeta'] };
-const VERBS = ['GET', 'POST', 'DELETE'] as const;
-const BODY_VERBS: readonly string[] = ['POST', 'DELETE'];
+type RawMod = Mod & {
+  routeMetaGET?: Mod['routeMeta'];
+  routeMetaPOST?: Mod['routeMeta'];
+  routeMetaPATCH?: Mod['routeMeta'];
+  routeMetaDELETE?: Mod['routeMeta'];
+};
+const VERBS = ['GET', 'POST', 'PATCH', 'DELETE'] as const;
+const BODY_VERBS: readonly string[] = ['POST', 'PATCH', 'DELETE'];
 
 function routeFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir).sort()) {
@@ -92,6 +98,25 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/publisher/payee-requests/route.ts': () => import('./app/api/publisher/payee-requests/route'),
   'api/session/route.ts': () => import('./app/api/session/route'),
   'api/session/signout/route.ts': () => import('./app/api/session/signout/route'),
+  'api/v1/approvals/route.ts': () => import('./app/api/v1/approvals/route'),
+  'api/v1/briefs/[id]/discover/route.ts': () => import('./app/api/v1/briefs/[id]/discover/route'),
+  'api/v1/briefs/route.ts': () => import('./app/api/v1/briefs/route'),
+  'api/v1/catalogue/search/route.ts': () => import('./app/api/v1/catalogue/search/route'),
+  'api/v1/library/[id]/link/route.ts': () => import('./app/api/v1/library/[id]/link/route'),
+  'api/v1/library/route.ts': () => import('./app/api/v1/library/route'),
+  'api/v1/offers/[id]/route.ts': () => import('./app/api/v1/offers/[id]/route'),
+  'api/v1/ops/orders/[ref]/route.ts': () => import('./app/api/v1/ops/orders/[ref]/route'),
+  'api/v1/ops/overview/route.ts': () => import('./app/api/v1/ops/overview/route'),
+  'api/v1/ops/reconciler/route.ts': () => import('./app/api/v1/ops/reconciler/route'),
+  'api/v1/ops/switches/route.ts': () => import('./app/api/v1/ops/switches/route'),
+  'api/v1/orders/[ref]/cancel/route.ts': () => import('./app/api/v1/orders/[ref]/cancel/route'),
+  'api/v1/orders/[ref]/route.ts': () => import('./app/api/v1/orders/[ref]/route'),
+  'api/v1/orders/route.ts': () => import('./app/api/v1/orders/route'),
+  'api/v1/quotes/route.ts': () => import('./app/api/v1/quotes/route'),
+  'api/v1/seller/offers/[id]/route.ts': () => import('./app/api/v1/seller/offers/[id]/route'),
+  'api/v1/seller/offers/route.ts': () => import('./app/api/v1/seller/offers/route'),
+  'api/v1/seller/sales/route.ts': () => import('./app/api/v1/seller/sales/route'),
+  'api/v1/status/route.ts': () => import('./app/api/v1/status/route'),
   'api/webhooks/paypal/route.ts': () => import('./app/api/webhooks/paypal/route'),
   'c/[token]/route.ts': () => import('./app/c/[token]/route'),
   'healthz/route.ts': () => import('./app/healthz/route'),
@@ -101,7 +126,13 @@ const load = async (): Promise<Mod[]> =>
     FILES.map(async (f) => {
       const m = (await IMPORTERS[f]?.()) as RawMod;
       return m.routeMeta === undefined
-        ? { ...m, routeMeta: (m.routeMetaPOST ?? m.routeMetaGET) as Mod['routeMeta'] }
+        ? {
+            ...m,
+            routeMeta: (m.routeMetaPOST ??
+              m.routeMetaGET ??
+              m.routeMetaPATCH ??
+              m.routeMetaDELETE) as Mod['routeMeta'],
+          }
         : m;
     }),
   );
