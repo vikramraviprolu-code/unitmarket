@@ -1,4 +1,5 @@
 import type { Clock, Database, SqlExecutor } from '@umsbx/contracts';
+import { FX_MAX_RATE_AGE_DAYS } from './convert';
 import { isIsoDate, parseRate } from './decimal';
 import { readLatest } from './rates';
 import type { Stored } from './rates';
@@ -106,10 +107,20 @@ async function locked(
   if (r['ok'] !== true || !isIsoDate(date) || usd === null || gbp === null)
     return { status: 'failed', kind: 'invalid' };
 
+  // A date after tomorrow (UTC) cannot be a real ECB date: it would make every later real date look older.
+  if (date > new Date(deps.clock.now().getTime() + 86_400_000).toISOString().slice(0, 10))
+    return { status: 'failed', kind: 'invalid' };
+
   if (cur !== null) {
     if (date < cur.date) return { status: 'kept', reason: 'older_date', date: cur.date };
     if (date === cur.date) return { status: 'kept', reason: 'same_date', date: cur.date };
-    if (moved(usd, cur.usd) || moved(gbp, cur.gbp))
+    // The 10% guard compares like with like. A placeholder seed row, or a stored rate more than 7 days
+    // old (the point where convert gives up on it), would otherwise lock real rates out for good.
+    const staleBase =
+      cur.source === 'seed' ||
+      (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${cur.date}T00:00:00Z`)) / 86_400_000 >
+        FX_MAX_RATE_AGE_DAYS;
+    if (!staleBase && (moved(usd, cur.usd) || moved(gbp, cur.gbp)))
       return { status: 'kept', reason: 'rejected_move', date: cur.date };
   }
   const at = deps.clock.now().toISOString();

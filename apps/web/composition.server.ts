@@ -1845,7 +1845,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     personas: () => PERSONAS,
 
     fx: {
-      getRates: () => fxGetRates(db, clock),
+      getRates: () => fxGetRates(db, clock).catch(() => null),
       refreshIfStale: () => fxRefreshIfStale({ db, clock, fetchRates: fetchFx }),
       convert: (i) => fxConvert({ ...i, at: i.at ?? clock.now() }),
     },

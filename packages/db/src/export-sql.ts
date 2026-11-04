@@ -212,6 +212,8 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
     for (const t of [...order].reverse()) {
       if ((SEED_TABLES as readonly string[]).includes(t)) await tx.exec(`DELETE FROM ${quote(t)}`);
     }
+    // The fx_rates delete guard is back on as soon as its seed rows are gone, before anything is loaded.
+    await tx.exec(`ALTER TABLE fx_rates ENABLE TRIGGER ${quote(FX_DELETE_GUARD)}`);
     for (const s of parsed.statements) {
       await tx.query(
         `INSERT INTO ${quote(s.table)} OVERRIDING SYSTEM VALUE SELECT * FROM jsonb_populate_recordset(NULL::${quote(s.table)}, $1::jsonb)`,
@@ -230,7 +232,6 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
       );
     }
     await tx.exec(`ALTER TABLE safety_switches ENABLE TRIGGER ${quote(SEED_DELETE_GUARD)}`);
-    await tx.exec(`ALTER TABLE fx_rates ENABLE TRIGGER ${quote(FX_DELETE_GUARD)}`);
     const broken = await checkInvariants(tx);
     if (broken.length > 0) {
       throw new Error(`import refused: the loaded data breaks an invariant: ${broken.join('; ')}`);

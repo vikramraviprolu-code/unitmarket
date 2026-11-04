@@ -9,9 +9,13 @@ import { testEnv } from './support';
 vi.mock('server-only', () => ({}));
 
 let calls = 0;
-const answer = { ok: true as const, date: '2099-01-01', usd: '1.2000', gbp: '0.8800' };
+// The real clock drives the app and a fetched date after tomorrow is refused, so the test date is today (UTC),
+// read from the database (no Date.now or new Date() here).
+let TODAY = '';
+let answer = { ok: true as const, date: '', usd: '1.2000', gbp: '0.8800' };
 let withFake: App;
 let offline: App;
+let broken: App;
 beforeAll(async () => {
   withFake = createApp(await testEnv(), {
     switch_cache_ms: 0,
@@ -21,12 +25,21 @@ beforeAll(async () => {
     },
   });
   await withFake.ready();
+  TODAY = (
+    await withFake.db.query<{ d: string }>(
+      "SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS d",
+    )
+  ).rows[0]!.d;
+  answer = { ...answer, date: TODAY };
   offline = createApp(await testEnv(), { switch_cache_ms: 0 });
   await offline.ready();
+  broken = createApp(await testEnv(), { switch_cache_ms: 0 });
+  await broken.ready();
 });
 afterAll(async () => {
   await withFake.close();
   await offline.close();
+  await broken.close();
 });
 
 describe('engine.fx', () => {
@@ -49,11 +62,11 @@ describe('engine.fx', () => {
   it('a test fetch is called once, its date is stored, and the next call is fresh', async () => {
     expect(await withFake.engine.fx.refreshIfStale()).toEqual({
       status: 'refreshed',
-      date: '2099-01-01',
+      date: TODAY,
     });
     expect(calls).toBe(1);
     expect(await withFake.engine.fx.getRates()).toMatchObject({
-      date: '2099-01-01',
+      date: TODAY,
       eur_usd: '1.2',
       eur_gbp: '0.88',
       source: 'ecb',
@@ -70,15 +83,33 @@ describe('engine.fx', () => {
         from: 'EUR',
         to: 'USD',
         rates,
-        at: new Date('2099-01-02T00:00:00Z'),
+        at: new Date(`${TODAY}T12:00:00Z`),
       }),
-    ).toEqual({ minor: 1200, rate_date: '2099-01-01', rate: 1.2, approx: true });
-    // A rate dated in 2099 is not "older than 7 days" at the real now, so the default `at` works too.
+    ).toEqual({ minor: 1200, rate_date: TODAY, rate: 1.2, approx: true, source: 'ecb' });
+    // The default `at` is the clock now.
     expect(withFake.engine.fx.convert({ minor: 1000, from: 'EUR', to: 'USD', rates })!.minor).toBe(
       1200,
     );
     expect(
       withFake.engine.fx.convert({ minor: 1000, from: 'GBP', to: 'GBP', rates: null })!.approx,
     ).toBe(false);
+  });
+
+  it('convert on the seed rates says source seed', async () => {
+    const rates = await offline.engine.fx.getRates();
+    expect(
+      offline.engine.fx.convert({
+        minor: 1000,
+        from: 'EUR',
+        to: 'USD',
+        rates,
+        at: new Date('2026-11-05T00:00:00Z'),
+      }),
+    ).toEqual({ minor: 1150, rate_date: '2026-11-03', rate: 1.15, approx: true, source: 'seed' });
+  });
+
+  it('getRates answers null, and does not throw, when the database query fails', async () => {
+    await broken.db.exec('DROP TABLE fx_rates');
+    await expect(broken.engine.fx.getRates()).resolves.toBeNull();
   });
 });

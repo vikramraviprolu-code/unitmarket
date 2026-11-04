@@ -12,6 +12,8 @@ export interface ConvertResult {
   rate: number;
   /** True for a converted figure ("about"); false for the identity. */
   approx: boolean;
+  /** Where the rate came from: 'ecb' or 'seed' (a placeholder shipped with the build); null for the identity. */
+  source: 'ecb' | 'seed' | null;
 }
 
 /** A rate dated at most this many days before `at` is usable (D-085). */
@@ -40,7 +42,8 @@ export function convert(i: {
 }): ConvertResult | null {
   if (!isCurrency(i.from) || !isCurrency(i.to)) return null;
   if (typeof i.minor !== 'number' || !Number.isSafeInteger(i.minor)) return null;
-  if (i.from === i.to) return { minor: i.minor, rate_date: null, rate: 1, approx: false };
+  if (i.from === i.to)
+    return { minor: i.minor, rate_date: null, rate: 1, approx: false, source: null };
   const rates = i.rates;
   if (rates === null || typeof rates !== 'object' || !isIsoDate(rates.date)) return null;
   const atMs = i.at instanceof Date ? i.at.getTime() : Number.NaN;
@@ -64,5 +67,6 @@ export function convert(i: {
     rate_date: rates.date,
     rate: Number(rTo) / Number(rFrom),
     approx: true,
+    source: rates.source === 'seed' ? 'seed' : 'ecb',
   };
 }

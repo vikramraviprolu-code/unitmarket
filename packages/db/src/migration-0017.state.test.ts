@@ -184,6 +184,26 @@ describe('migration 0017', () => {
     await expect(importSql(src, await exportSql(src, { utc: T }))).rejects.toThrow(/not empty/);
   });
 
+  it('a failed import leaves the fx_rates delete guard enabled and the seed rows in place', async () => {
+    const src = await fresh();
+    const lines = (await exportSql(src, { utc: T })).split('\n');
+    const fxLine = lines.find((l) => l.startsWith('INSERT INTO "fx_rates"'))!;
+    // The same table twice: the second load meets the primary key and the whole import rolls back.
+    const bad = [...lines, fxLine].join('\n');
+    const dst = await fresh();
+    await expect(importSql(dst, bad)).rejects.toThrow();
+    const trig = await dst.query<{ tgenabled: string }>(
+      `SELECT tgenabled FROM pg_trigger WHERE tgname = 'fx_rates_append_only'`,
+    );
+    expect(trig.rows).toEqual([{ tgenabled: 'O' }]);
+    await expect(dst.query('DELETE FROM fx_rates')).rejects.toThrow(/append-only/);
+    expect(
+      Number(
+        (await dst.query<{ c: string | number }>('SELECT count(*) AS c FROM fx_rates')).rows[0]!.c,
+      ),
+    ).toBe(2);
+  });
+
   it('applies on a database that already holds data from 0001 to 0016 and changes nothing else', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ums-mig-'));
     try {

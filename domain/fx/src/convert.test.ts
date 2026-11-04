@@ -22,6 +22,7 @@ describe('convert', () => {
       rate_date: '2026-11-03',
       rate: 1.15,
       approx: true,
+      source: 'ecb',
     });
   });
   it('1000 USD minor to EUR divides by the EUR/USD rate (869.565 rounds to 870)', () => {
@@ -55,9 +56,28 @@ describe('convert', () => {
         rate_date: null,
         rate: 1,
         approx: false,
+        source: null,
       });
       expect(convert({ minor: 1234, from: c, to: c, rates: null, at: AT })!.minor).toBe(1234);
     }
+  });
+  it('says where the rate came from: seed for the seed rates, ecb for an ecb row, null for the identity', () => {
+    expect(
+      convert({ minor: 1000, from: 'EUR', to: 'USD', rates: rates({ source: 'seed' }), at: AT })!
+        .source,
+    ).toBe('seed');
+    expect(
+      convert({ minor: 1000, from: 'GBP', to: 'USD', rates: rates({ source: 'seed' }), at: AT })!
+        .source,
+    ).toBe('seed');
+    expect(
+      convert({ minor: 1000, from: 'EUR', to: 'USD', rates: rates({ source: 'ecb' }), at: AT })!
+        .source,
+    ).toBe('ecb');
+    expect(
+      convert({ minor: 1000, from: 'USD', to: 'USD', rates: rates({ source: 'seed' }), at: AT })!
+        .source,
+    ).toBeNull();
   });
   it('rounds half away from zero to the nearest minor unit (table of six)', () => {
     const half = rates({ eur_usd: '1.5' });

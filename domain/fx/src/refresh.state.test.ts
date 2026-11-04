@@ -151,51 +151,108 @@ describe('failure keeps the old rate', () => {
   });
 });
 
+/**
+ * A world whose newest stored rates are an 'ecb' row (not the seed): the 10% guard compares against real
+ * rates only. The base row carries the seed's numbers, so the old percentages still apply.
+ */
+async function ecbWorld(startIso: string, baseDate: string): Promise<FxWorld> {
+  const w2 = await fxWorld(startIso);
+  worlds.push(w2);
+  const fetched = `${baseDate}T01:00:00Z`;
+  for (const [quote, rate] of [
+    ['USD', String(SEED.usd)],
+    ['GBP', String(SEED.gbp)],
+  ] as const)
+    await w2.db.query(
+      `INSERT INTO fx_rates (date, base, quote, rate, source, fetched_at) VALUES ($1, 'EUR', $2, $3, 'ecb', $4)`,
+      [baseDate, quote, rate, fetched],
+    );
+  return w2;
+}
+const refreshOn = (w2: FxWorld, fetched: FetchedRates) =>
+  refreshIfStale({ db: w2.db, clock: w2.clock, fetchRates: async () => fetched });
+const count = async (w2: FxWorld): Promise<number> =>
+  Number(
+    (await w2.db.query<{ c: string | number }>('SELECT count(*) AS c FROM fx_rates')).rows[0]!.c,
+  );
+
 describe('the guards', () => {
   const stored = () => ({ usd: SEED.usd, gbp: SEED.gbp });
   const scaled = (x: number, f: number): string => (x * f).toFixed(4);
+  const START = '2026-11-04T09:00:00Z'; // 8 h after the ecb base row below: stale
 
-  it('a rate that moves 11% from the stored one is rejected and the stored one is kept', async () => {
+  it('a rate that moves 11% from the stored ecb one is rejected and the stored one is kept', async () => {
     for (const f of [1.11, 0.89]) {
-      const w2 = await fxWorld('2026-11-04T09:00:00Z');
-      worlds.push(w2);
-      const r = await refreshIfStale({
-        db: w2.db,
-        clock: w2.clock,
-        fetchRates: async () => ok('2026-11-04', scaled(stored().usd, f), '0.87'),
-      });
+      const w2 = await ecbWorld(START, '2026-11-04');
+      const r = await refreshOn(w2, ok('2026-11-05', scaled(stored().usd, f), '0.87'));
       expect(r, String(f)).toMatchObject({ status: 'kept', reason: 'rejected_move' });
-      expect((await getRates(w2.db, w2.clock))!.date).toBe(SEED.date);
-      expect((await w2.db.query('SELECT 1 FROM fx_rates')).rows).toHaveLength(2);
+      expect((await getRates(w2.db, w2.clock))!.date).toBe('2026-11-04');
+      expect(await count(w2)).toBe(4);
     }
   });
   it('the GBP move is checked too, and one bad quote rejects the pair', async () => {
-    const r = await run(async () => ok('2026-11-04', '1.16', scaled(stored().gbp, 1.11)));
+    const w2 = await ecbWorld(START, '2026-11-04');
+    const r = await refreshOn(w2, ok('2026-11-05', '1.16', scaled(stored().gbp, 1.11)));
     expect(r).toMatchObject({ status: 'kept', reason: 'rejected_move' });
-    expect(await rowCount()).toBe(2);
+    expect(await count(w2)).toBe(4);
   });
   it('9% is accepted, and exactly 10% is accepted (only more than 10% is rejected)', async () => {
-    const r9 = await run(async () =>
-      ok('2026-11-04', scaled(stored().usd, 1.09), scaled(stored().gbp, 0.91)),
+    const w1 = await ecbWorld(START, '2026-11-04');
+    const r9 = await refreshOn(
+      w1,
+      ok('2026-11-05', scaled(stored().usd, 1.09), scaled(stored().gbp, 0.91)),
     );
     expect(r9.status).toBe('refreshed');
-    const w2 = await fxWorld('2026-11-04T09:00:00Z');
-    worlds.push(w2);
-    const r10 = await refreshIfStale({
-      db: w2.db,
-      clock: w2.clock,
-      fetchRates: async () => ok('2026-11-04', '1.265', '0.957'),
-    });
-    expect(r10.status).toBe('refreshed');
+    const w2 = await ecbWorld(START, '2026-11-04');
+    expect((await refreshOn(w2, ok('2026-11-05', '1.265', '0.957'))).status).toBe('refreshed');
   });
-  it('the move is measured against the newest stored date, not the seed', async () => {
-    // +9.6% on the seed, accepted; then +8.7% on that, accepted although it is +19% on the seed.
+  it('the move is measured against the newest stored ecb date', async () => {
+    // The first fetch has the seed as its base and is not guarded; then +8.7% is accepted although it is
+    // +19% on the seed, and +11% on that is rejected.
     expect((await run(async () => ok('2026-11-04', '1.2600', '0.9000'))).status).toBe('refreshed');
-    w.clock.advance(7 * 3600_000);
+    w.clock.advance(24 * 3600_000);
     expect((await run(async () => ok('2026-11-05', '1.3700', '0.9000'))).status).toBe('refreshed');
-    w.clock.advance(7 * 3600_000);
+    w.clock.advance(24 * 3600_000);
     const r = await run(async () => ok('2026-11-06', '1.5200', '0.9000')); // +11% on 1.37
     expect(r).toMatchObject({ status: 'kept', reason: 'rejected_move' });
+  });
+  it('a stored seed row does not guard: +30% on the seed is accepted and stored as ecb', async () => {
+    const r = await run(async () => ok('2026-11-04', scaled(SEED.usd, 1.3), scaled(SEED.gbp, 1.3)));
+    expect(r).toEqual({ status: 'refreshed', date: '2026-11-04' });
+    expect(await getRates(w.db, w.clock)).toMatchObject({ source: 'ecb', eur_usd: '1.495' });
+  });
+  it('an ecb base within 7 days still rejects +11%, even 7 days apart', async () => {
+    const w2 = await ecbWorld('2026-11-14T09:00:00Z', '2026-11-04');
+    const r = await refreshOn(w2, ok('2026-11-11', scaled(SEED.usd, 1.11), '0.87'));
+    expect(r).toMatchObject({ status: 'kept', reason: 'rejected_move' });
+    expect(await count(w2)).toBe(4);
+  });
+  it('an ecb base more than 7 days old accepts +30% (8 days apart); 7 days apart does not', async () => {
+    const w7 = await ecbWorld('2026-11-14T09:00:00Z', '2026-11-04');
+    expect(
+      await refreshOn(w7, ok('2026-11-11', scaled(SEED.usd, 1.3), scaled(SEED.gbp, 1.3))),
+    ).toMatchObject({ status: 'kept', reason: 'rejected_move' });
+    const w8 = await ecbWorld('2026-11-14T09:00:00Z', '2026-11-04');
+    expect(
+      await refreshOn(w8, ok('2026-11-12', scaled(SEED.usd, 1.3), scaled(SEED.gbp, 1.3))),
+    ).toEqual({ status: 'refreshed', date: '2026-11-12' });
+    expect(await count(w8)).toBe(6);
+  });
+  it('a fetched date after clock day + 1 is invalid and nothing is stored', async () => {
+    for (const date of ['2099-01-01', '2026-11-06']) {
+      // clock day is 2026-11-04, so 2026-11-06 is clock + 2 days
+      const w2 = await fxWorld(START);
+      worlds.push(w2);
+      expect(await refreshOn(w2, ok(date, '1.16', '0.87')), date).toEqual({
+        status: 'failed',
+        kind: 'invalid',
+      });
+      expect(await count(w2)).toBe(2);
+    }
+    const w3 = await fxWorld(START);
+    worlds.push(w3);
+    // tomorrow (UTC) is allowed: the ECB date can be ahead of a clock in an earlier time zone
+    expect((await refreshOn(w3, ok('2026-11-05', '1.16', '0.87'))).status).toBe('refreshed');
   });
   it('a date older than the newest stored date is rejected and nothing is stored', async () => {
     const r = await run(async () => ok('2026-11-02', '1.15', '0.87'));
