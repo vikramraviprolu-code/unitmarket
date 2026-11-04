@@ -1,4 +1,4 @@
-# INT-TR1: timeline, activity log, evidence pack and seals, round 2
+# INT-TR1: timeline, activity log, evidence pack and seals, round 2 (passed 11 of 12, with fixes R2-1 to R2-5)
 
 Task: Turn the journal into one timeline per order or unit for each persona, an operator activity log, an evidence pack and a daily seal.
 Package: new `domain/trace` (`@umsbx/trace`), `apps/web` routes, `packages/jobs` (seal step). Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
@@ -33,7 +33,7 @@ This follows the v1 rule from SR1: an operator key gets no buyer or publisher id
 - Full (session with MFA): adds actor ids, provider ids, `req_id`, `ip_hash` prefix of 8, `ua_family`, `api_key_id` and `mfa`.
 - The redaction lives in one function, `operatorView(entries, {mfa})` in `domain/trace/src/views.ts`. GA.4 uses the identity-free shape (N3).
 
-**Activity log.** Newest first, keyset on `(occurred_at, chain_key, seq)` descending, 50 per page, max 200. Filters: `actor_kind`, `actor_id`, `channel`, `event_type` prefix, `chain_key`, `from`, `to`. The cursor is base64url `{v:'a1', k:[occurred_at, chain_key, seq], h}`, where `h` is a sha256 over the canonical filter set plus the principal id. A malformed cursor, an unknown tag, or an `h` from another filter or principal gives 400 `bad_cursor`; reusing your own cursor is normal paging (N1). At seed size no new index is needed; an index on `trace_events (occurred_at DESC, chain_key, seq)` goes to the later list (N2).
+**Activity log.** Newest first, keyset on `(occurred_at, chain_key, seq)` descending, 50 per page, max 200. Filters: `actor_kind`, `actor_id`, `channel`, `event_type` prefix, `chain_key`, `from`, `to`. The cursor is base64url `{v:'a1', k:[occurred_at, chain_key, seq], h}`, where `h` is a sha256 over the canonical filter set plus the principal id. The route handler in `apps/web` computes `h` (domain code may not hash), and `domain/trace/src/activity.ts` takes it as an opaque string. A malformed cursor, an unknown tag, or an `h` from another filter or principal gives 400 `bad_cursor`; reusing your own cursor is normal paging (N1). At seed size no new index is needed; an index on `trace_events (occurred_at DESC, chain_key, seq)` goes to the later list (N2).
 
 **Evidence pack (F5).** `{unit_id, order_ref, events[], chain: {key, from_seq, to_seq}, seal?: {day, root_hash, prev_root_hash, head}, verify_steps[]}`.
 - Each event carries its `canon` text (from TR0's `trace_canon`) and `row_hash`, so a checker recomputes `sha256(canon)` and the `prev_hash` links without Postgres. No hashing happens in TypeScript in domain code.
@@ -42,7 +42,7 @@ This follows the v1 rule from SR1: an operator key gets no buyer or publisher id
 - `buyer_id` appears only as the opaque id inside `canon`, never as a name, email, IP or User-Agent.
 - The `.html` page renders the same events and steps, as a printable page.
 
-**Seal (F1).** TR0 owns the formula and the table: `trace_seal(day, at)` with a unique `day`, heads ordered by `chain_key`, and the root over `prev_root_hash | day | heads`. TR1 adds one job step, `sealPreviousDay`. On the first pass at or after 00:05 UTC it calls `trace_seal(<previous UTC day>, deps.clock.now())` inside the job-pass trace context (actor `system`, channel `job`, job `seal`). A second pass the same day is a no-op. A seal covers rows by head, not by `occurred_at`, so a late row lands in the next seal and is never reported as tamper. The verify route calls TR0's `trace_verify()`.
+**Seal (F1).** TR0 owns the formula and the table: `trace_seal(day, at)` with a unique `day`, heads ordered by `chain_key`, and the root over `prev_root_hash | day | heads`. TR1 adds one job step, `sealPreviousDay`. On the first pass at or after 00:05 UTC it calls `trace_seal(<previous UTC day>, deps.clock.now())` inside the job-pass trace context (actor `system`, channel `job`, job `seal`). A second pass the same day is a no-op. A seal covers rows by head, not by `occurred_at`, so a late row lands in the next seal and is never reported as tamper. The verify route calls TR0's `trace_verify()`. Screens and the evidence pack label a seal "sealed through <at>", since it covers rows by head, not by calendar day.
 
 ## Outputs (only these files)
 
@@ -55,9 +55,9 @@ New:
 Changed:
 - `eslint.config.mjs` (add `'trace'` to `DOMAIN`)
 - `apps/web/package.json`, `packages/jobs/package.json` (workspace dependency `@umsbx/trace`), `pnpm-lock.yaml`
-- `packages/contracts/src/index.ts` (export `v1-trace`), `packages/contracts/src/v1.ts` (3 v1 entries)
+- `packages/contracts/src/index.ts` (export `v1-trace`), `packages/contracts/src/v1.ts` (4 v1 entries: three timelines and `ops/trace/verify`)
 - `packages/jobs/src/loop.ts` (seal step)
-- `apps/web/src/composition/ops-controls.ts` (UI0.7 module, merged in W0) for the operator reads, and `apps/web/src/composition/buyer.ts` and `seller.ts` for the persona reads. If UI0.7 has not merged when TR1 starts, the builder stops and reports.
+- `apps/web/src/composition/ops-controls.ts` (UI0.7 module, merged in W0) for the operator reads, and `apps/web/src/composition/buyer.ts` and `seller.ts` for the persona reads. If UI0.7 has not merged when TR1 starts, or its folder differs, the builder stops and reports.
 - `docs/api/openapi-v1.json` (via `pnpm openapi:emit`); `pnpm check:routes` must pass.
 
 ## Acceptance tests (commit 1: tests only, run red)

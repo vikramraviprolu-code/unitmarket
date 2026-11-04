@@ -277,8 +277,8 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 | TR1.1 | `domain/trace`: timeline assembler for an order or unit; plain-word catalogue for every event type; golden fails on an unmapped type | M | 2 | M |
 | TR1.2 | Role views and their attacks: buyer own orders only; seller own units only, no buyer identity and no context; operator everything; cross-tenant, cursor tamper and enumeration tests | L | 4 | M |
 | TR1.3 | Endpoints: `GET /api/v1/orders/{ref}/timeline`, `GET /api/v1/seller/sales/{unit}/timeline`, `GET /api/v1/ops/orders/{ref}/timeline` | M | 2 | M |
-| TR1.4 | Operator Activity log: `GET /api/v1/ops/activity` filtered by actor, channel, event type, chain, date; keyset paging | M | 2 | M |
-| TR1.5 | Evidence pack for a unit: JSON with source rows and chain proof, plus a printable page | M | 2 | M |
+| TR1.4 | Operator Activity log: `GET /api/ops/activity` (operator session; identity only with MFA) filtered by actor, channel, event type, chain, date; keyset paging | M | 2 | M |
+| TR1.5 | Evidence pack for a unit: JSON with source rows and chain proof, plus a printable page (`/api/ops/units/[id]/evidence`, operator session with MFA) | M | 2 | M |
 | TR1.6 | Daily seal in the job loop; `GET /api/v1/ops/trace/verify` | M | 2 | M |
 
 **AL. Alerts you can act on, and cases (18 points, M, Sonnet high).** Spec `int-al-alerts.md`. Needs TR0 (alert events are journaled).
