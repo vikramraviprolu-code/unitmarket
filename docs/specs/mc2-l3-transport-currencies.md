@@ -9,8 +9,9 @@ refused. Nothing else changes: the gate, the amount binding, payee rules (`PAYEE
 A refund keeps the currency of the capture it refunds.
 
 Acceptance tests (tests first, commit 1 red):
+
 - create_order and refund bodies in EUR and in GBP are sent under both scopes; USD unchanged.
 - JPY, XAU, INR and a lowercase `eur` are still refused before any send, in both scopes.
 - The pin test now reads `{ mvp_b_polling: ['USD','EUR','GBP'], mvp_c_refunds: ['USD','EUR','GBP'] }`.
 - `pnpm check:no-live-host`, `pnpm lint && pnpm typecheck && pnpm test` pass; show the output.
-Do not: touch endpoints, the sandbox host, locks, approvals, other packages; run any sandbox call.
+  Do not: touch endpoints, the sandbox host, locks, approvals, other packages; run any sandbox call.

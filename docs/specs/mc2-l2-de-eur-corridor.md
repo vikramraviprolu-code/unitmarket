@@ -15,6 +15,7 @@ Inputs: `seed-data.ts`, `seed.ts`, `seed-lock.ts` (keep the advisory lock), migr
 Do not: enable the corridor, touch the transport, contracts, other packages, real names or real content, any credential.
 
 Acceptance tests (tests first, commit 1 red):
+
 - After seed, `de-eur` exists, `enabled` is false; the German publisher and its EUR offers exist and are authorised and current.
 - With `de-eur` enabled in a test, a US buyer can be quoted and approved the EUR offer (needs MC2-L1; if L1 is not merged, mark that test skipped with a reference and say so).
 - Seeding twice, and seeding over the previous seed, leaves counts unchanged and loses nothing; the race test in `seed-lock.state.test.ts` still passes.

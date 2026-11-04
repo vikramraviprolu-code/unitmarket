@@ -15,6 +15,7 @@ Inputs: the three files above, `domain/catalogue/src/corridors.ts`. Outputs: tho
 apps/web, contracts, or add a dependency.
 
 Acceptance tests (tests first: commit 1 holds only tests and is run red, then implement to green):
+
 - New state test: a buyer with country DE gets a quote, an approval and an order for a USD offer in an enabled `us-usd` corridor whose `buyer_countries` is `['US']`; same for a GBP offer with `gb-gbp` enabled.
 - A disabled corridor still returns `corridor_unsupported`; an offer whose currency has no corridor still returns it.
 - Discovery for a DE buyer returns offers from every enabled corridor (ceiling currency rule unchanged).

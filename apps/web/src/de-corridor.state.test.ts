@@ -173,11 +173,9 @@ describe('boot seeding of the German corridor (MC2-L2)', () => {
   });
 });
 
-describe('a US buyer and the German EUR offer (needs MC2-L1)', () => {
-  // The buyer-country gate (discovery, offer entry, approval) is removed by MC2-L1
-  // (docs/specs/mc2-l1-buyer-country-gate.md), which is built in parallel and not merged here. Until it
-  // is, a US buyer fails the corridor's buyer_countries check, so this test is skipped. Unskip it when L1 merges.
-  it.skip('with de-eur enabled, a US buyer is quoted and can be approved the EUR offer (MC2-L1)', async () => {
+describe('a US buyer and the German EUR offer', () => {
+  // MC2-L1 removed the buyer-country gate (docs/specs/mc2-l1-buyer-country-gate.md): a US buyer may buy a German offer.
+  it('with de-eur enabled, a US buyer is quoted and can be approved the EUR offer (MC2-L1)', async () => {
     const app = await bootPackApp({}, { test_seed: { de_corridor: true } });
     try {
       await app.db.query(`UPDATE corridors SET enabled = true WHERE id = 'de-eur'`);
@@ -194,7 +192,10 @@ describe('a US buyer and the German EUR offer (needs MC2-L1)', () => {
         option: 'online_read',
       });
       if (!q.ok || q.value.kind !== 'quote') throw new Error(`no quote: ${JSON.stringify(q)}`);
-      expect(q.value).toMatchObject({ currency: 'EUR' });
+      expect(q.value).toMatchObject({
+        corridor_id: 'de-eur',
+        price: { currency: 'EUR', minor: 120 },
+      });
       const g = await app.engine.requestApproval({
         actor,
         selection: { kind: 'quote', quote_id: q.value.quote_id },

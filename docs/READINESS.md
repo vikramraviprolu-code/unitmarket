@@ -195,7 +195,7 @@ Closes the second Opus review of main 1768403. Still offline: no network, no cre
 - **M1 spike go.** The Decision cell must be exactly the marker; rows containing not/revoked/withdrawn/superseded/template/example/e.g. are refused, as are duplicate ids, rows in a fence, HTML comment or indented block, windows longer than 14 days or not covering today, and a decision log that is not `git show HEAD:docs/decision-log.md` (local git, `decision_log_unverified`). A real run also refuses `CLAUDECODE` and `CLAUDE_CODE_REMOTE` (`ai_environment`).
 - **M2 body.** A money body with a repeated JSON key is refused; the bytes sent are `JSON.stringify` of the checked value.
 - **M3 overrides.** `--loader`, `--experimental-loader`, `--use-system-ca`, `--use-openssl-ca`, `--openssl-config`, `--openssl-shared-config`, `NODE_USE_SYSTEM_CA`, `OPENSSL_CONF`, `SSL_CERT_FILE`, `SSL_CERT_DIR` join the list, and both Wires recheck environment and Node flags before every request.
-- **Low.** `mvp_b_polling` and `mvp_c_refunds` move USD only (`SCOPE_CURRENCIES`); `purchase_units[].payee` is refused in `mvp_b_polling`; `sealed-callers.test.ts` scans every JS/TS extension and root files; `.jsx` is linted.
+- **Low.** `mvp_b_polling` and `mvp_c_refunds` move USD, EUR and GBP only (`SCOPE_CURRENCIES`, MC2-L3 / D-084); JPY and XAU stay refused; `purchase_units[].payee` is refused in `mvp_b_polling`; `sealed-callers.test.ts` scans every JS/TS extension and root files; `.jsx` is linted.
 - **Still red on purpose:** the two A-26 tests described above; unchanged.
 
 ## MVP-B seal, third pass (FIX-MVPB-SEAL3, branch fix/mvpb-seal2)
