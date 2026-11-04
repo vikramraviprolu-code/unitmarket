@@ -419,14 +419,14 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 
 | Lane | Wave | Items | Points | Must | Should | Builder | Status |
 |---|---|---|---|---|---|---|---|
-| TR0 Journal | 0 | 6 | 20 | 20 | | Sonnet 5.5 high | Approved; spec scoring |
-| SR0 Search base | 0 | 5 | 12 | 12 | | Sonnet 5.5 high | Approved; spec scoring |
-| UI0 Shell | 0 | 7 | 12 | 12 | | Sonnet 5.5 medium | Approved; spec scoring |
-| CL1 Cloud kit | 0 | 11 | 21 | 21 | | Sonnet 5.5 high | Approved; spec scoring |
-| SIM-U2 Headline (SIM) | 0 | 1 | 1 | 1 | | Sonnet 5.5 medium | Approved; spec scoring |
-| TR1 Timeline | 1 | 6 | 14 | 14 | | Sonnet 5.5 high | Spec written |
-| AL Alerts and cases | 1 | 8 | 18 | 18 | | Sonnet 5.5 high | Spec written |
-| SR1 Search APIs | 1 | 7 | 17 | 17 | | Sonnet 5.5 high | Spec written |
+| TR0 Journal | 0 | 6 | 20 | 20 | | Sonnet 5.5 high | Spec passed 11/12 (round 2); building |
+| SR0 Search base | 0 | 5 | 12 | 12 | | Sonnet 5.5 high | Spec passed 11/12; build stacks on TR0 |
+| UI0 Shell | 0 | 7 | 12 | 12 | | Sonnet 5.5 medium | Spec passed 11/12; building |
+| CL1 Cloud kit | 0 | 11 | 21 | 21 | | Sonnet 5.5 high | Round 1 4/12; round 2 sent for scoring |
+| SIM-U2 Headline (SIM) | 0 | 1 | 1 | 1 | | Sonnet 5.5 medium | Spec passed 12/12; building |
+| TR1 Timeline | 1 | 6 | 14 | 14 | | Sonnet 5.5 high | Spec passed 11/12; waits on TR0, UI0 |
+| AL Alerts and cases | 1 | 8 | 18 | 18 | | Sonnet 5.5 high | Spec passed 10/12; waits on TR0, UI0 |
+| SR1 Search APIs | 1 | 7 | 17 | 17 | | Sonnet 5.5 high | Spec passed 11/12; stacks on SR0 |
 | OPS-A | 2 | 7 | 12 | 12 | | Sonnet 5.5 medium | Spec written |
 | OPS-B | 2 | 5 | 9 | 9 | | Sonnet 5.5 medium | Spec written |
 | OPS-C | 2 | 5 | 12 | | 12 | Sonnet 5.5 high | Spec written |
