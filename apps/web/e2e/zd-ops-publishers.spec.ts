@@ -169,7 +169,8 @@ test.describe('operator publishers page (PUB-D)', () => {
     await o.getByRole('link', { name: 'Publishers' }).first().click();
     await expect(o).toHaveURL(/\/ops\/publishers$/);
     await expect(o.getByRole('heading', { level: 1, name: /Publishers/ })).toBeVisible();
-    await expect(o.getByTestId('publisher-row')).toHaveCount(3);
+    // Four publishers since MC2-L2 seeded the German seller Rheinwerft Kurier (the test followed the seed).
+    await expect(o.getByTestId('publisher-row')).toHaveCount(4);
     const northfield = o.getByTestId('publisher-row').filter({ hasText: NORTHFIELD });
     await expect(northfield.getByTestId('publisher-row-status')).toHaveText('Active');
     await expect(northfield).toContainText('Account on file ending NT01. Marked as checked.');
