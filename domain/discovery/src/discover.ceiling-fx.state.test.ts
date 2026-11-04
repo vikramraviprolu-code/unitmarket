@@ -104,17 +104,50 @@ describe('discover: ceiling on the converted price', () => {
     expect(item.ceiling_check!.price.minor).toBe(150);
   });
 
-  it('with no convert function only offers in the ceiling currency count: no match', async () => {
+  it('with no convert function only offers in the ceiling currency count: no match, and it says the rate is missing', async () => {
     const { result, rec } = await run(undefined);
-    expect(result.kind).toBe('no_match');
+    expect(result).toEqual({ kind: 'no_match', reasons: [], rate_missing: true });
     // the USD article was never even a candidate
     expect(rec.requests.find((r) => r.purpose === 'pack_compose')).toBeUndefined();
   });
 
-  it('with a convert function that has no usable rate (stale or missing) the answer is the same: no match', async () => {
+  it('with a convert function that has no usable rate (stale or missing) the answer is the same', async () => {
     const { result, rec } = await run(() => null);
-    expect(result.kind).toBe('no_match');
+    expect(result).toEqual({ kind: 'no_match', reasons: [], rate_missing: true });
     expect(rec.requests.find((r) => r.purpose === 'pack_compose')).toBeUndefined();
+  });
+
+  // F1: a pick that cannot be converted when its price is known is never proposed and never silent.
+  it('a pick whose price cannot be converted is dropped with rate_missing (the probe passed, the price did not)', async () => {
+    const { result } = await run((i) => (i.minor === 100 ? 100 : null));
+    expect(result).toEqual({ kind: 'no_match', reasons: [], rate_missing: true });
+  });
+
+  it('a convert function that throws never throws out of discovery: no match, rate_missing', async () => {
+    const boom = () => {
+      throw new Error('rate table unreadable');
+    };
+    const { result } = await run(boom);
+    expect(result).toEqual({ kind: 'no_match', reasons: [], rate_missing: true });
+    const later = await run((i) => {
+      if (i.minor === 100) return 100;
+      throw new Error('boom');
+    });
+    expect(later.result).toEqual({ kind: 'no_match', reasons: [], rate_missing: true });
+  });
+
+  it('an honest above-ceiling answer carries no rate_missing, and neither does a same-currency one', async () => {
+    const { result } = await run(usdPerEur(1.0323));
+    expect(result).toEqual({ kind: 'no_match', reasons: ['above_ceiling'] });
+    expect('rate_missing' in result).toBe(false);
+    const rec = recordingModel(createScriptedModel());
+    const deps = depsWith(db, rec.model);
+    const actor: Actor = { kind: 'buyer', buyer_id: await addBuyer(db, { country: 'DE' }) };
+    const b = await parseNeed(deps, { actor, text: 'zebrafish fins, under $1.00, read online' });
+    if (!b.ok) throw new Error('parse');
+    const r = await discover(deps, { actor, brief_id: b.value.brief_id, convert: usdPerEur(1.09) });
+    if (!r.ok) throw new Error('discover');
+    expect('rate_missing' in r.value).toBe(false);
   });
 
   it('the stored quote keeps the offer currency and the seller amount', async () => {

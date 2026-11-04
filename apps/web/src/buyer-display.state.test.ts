@@ -8,7 +8,7 @@ import type { Actor } from '@umsbx/contracts';
 import { call } from './support';
 import { RATES, bootDisplayWorld, longDate } from './buyer-display-support';
 import type { DisplayWorld } from './buyer-display-support';
-import { FX_DEADLINE_MS, buyerDisplay } from './server/buyer-display';
+import { FX_DEADLINE_MS, buyerDisplay, currentRateSource } from './server/buyer-display';
 import { approvePrices, optionPrices } from './lib/buyer-price';
 import { browseEntries } from './lib/buyer-copy';
 
@@ -207,6 +207,66 @@ describe('/api/quotes and /api/discover carry the display lines', () => {
       body: { need: 'tide tables, read online' },
     });
     expect(w.fetchCalls() - before).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('a ceiling compared on the converted price shows both amounts (F2)', () => {
+  it('the discover answer has ceiling_check and a ceiling_line in the ceiling currency', async () => {
+    const discover = await import('./app/api/discover/route');
+    const de = await w.buyer('DE');
+    const res = await call(discover.POST, {
+      url: '/api/discover',
+      method: 'POST',
+      session: de.session,
+      body: { need: 'tide tables, under €0.35, read online' },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      kind: string;
+      items?: {
+        quote: { offer_id: string; price: { currency: string; minor: number } };
+        ceiling_check?: unknown;
+        ceiling_line?: string;
+      }[];
+    };
+    const tide = body.items!.find((i) => i.quote.offer_id === 'ofr_harbour-ledger_tide-tables')!;
+    expect(tide.quote.price).toEqual({ currency: 'USD', minor: 40 });
+    expect(tide.ceiling_check).toEqual({
+      ceiling: { currency: 'EUR', minor: 35 },
+      price: { currency: 'EUR', minor: 33 },
+    });
+    expect(tide.ceiling_line).toBe('Against your ceiling of €0.35: about €0.33.');
+  });
+
+  it('a buyer from France, who is shown no conversion, still gets the ceiling line', async () => {
+    const discover = await import('./app/api/discover/route');
+    const fr = await w.buyer('FR');
+    const res = await call(discover.POST, {
+      url: '/api/discover',
+      method: 'POST',
+      session: fr.session,
+      body: { need: 'tide tables, under €0.35, read online' },
+    });
+    const body = (await res.json()) as { items?: { ceiling_line?: string; display?: unknown }[] };
+    expect(
+      body.items!.some((i) => i.ceiling_line === 'Against your ceiling of €0.35: about €0.33.'),
+    ).toBe(true);
+    for (const i of body.items!) expect('display' in i).toBe(false);
+  });
+
+  it('currentRateSource names the stored rate source, and is null with no rate or a failing read', async () => {
+    const eng = (getRates: () => Promise<unknown>) =>
+      ({ fx: { getRates } }) as unknown as Parameters<typeof currentRateSource>[0];
+    expect(await currentRateSource(eng(async () => ({ source: 'seed' })))).toBe('seed');
+    expect(await currentRateSource(eng(async () => ({ source: 'ecb' })))).toBe('ecb');
+    expect(await currentRateSource(eng(async () => null))).toBeNull();
+    expect(
+      await currentRateSource(
+        eng(async () => {
+          throw new Error('db');
+        }),
+      ),
+    ).toBeNull();
   });
 });
 

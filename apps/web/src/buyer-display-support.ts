@@ -23,6 +23,7 @@ export interface DisplayWorld {
 let n = 0;
 export async function bootDisplayWorld(
   fetch: 'rates' | 'offline' = 'rates',
+  rates: { usd: string; gbp: string } = RATES,
 ): Promise<DisplayWorld> {
   let calls = 0;
   let today = '';
@@ -33,7 +34,7 @@ export async function bootDisplayWorld(
       ? {
           test_fx_fetch: async () => {
             calls++;
-            return { ok: true as const, date: today, usd: RATES.usd, gbp: RATES.gbp };
+            return { ok: true as const, date: today, usd: rates.usd, gbp: rates.gbp };
           },
         }
       : {}),

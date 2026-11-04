@@ -28,6 +28,8 @@ function lines(): string[] {
     `not converted, same currency: ${copy.priceView({ currency: 'USD', minor: 150 }, null).lead}`,
     `not converted, no usable rate: ${copy.priceView({ currency: 'EUR', minor: 150 }, null).lead}`,
     `ceiling line: ${copy.ceilingLine({ currency: 'EUR', minor: 150 }, { currency: 'EUR', minor: 147 })}`,
+    `ceiling line, sample rate: ${copy.ceilingLine({ currency: 'EUR', minor: 150 }, { currency: 'EUR', minor: 147 }, 'seed')}`,
+    `no rate, ceiling: ${copy.NO_RATE_NOTE}`,
     `account, heading: ${copy.DISPLAY_CURRENCY_TITLE}`,
     `account, lede: ${copy.DISPLAY_CURRENCY_LEDE}`,
     `account, label: ${copy.DISPLAY_CURRENCY_LABEL}`,

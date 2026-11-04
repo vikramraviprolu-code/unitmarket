@@ -2,6 +2,7 @@
 // price formatter, pure. The exact words are pinned again by buyer-price-copy.golden.test.ts.
 import { describe, expect, it } from 'vitest';
 import {
+  NO_RATE_NOTE,
   approvePrices,
   ceilingLine,
   currencyForCountry,
@@ -93,6 +94,31 @@ describe('ceilingLine', () => {
   it('shows the ceiling and the converted price in the ceiling currency, as an estimate', () => {
     expect(ceilingLine({ currency: 'EUR', minor: 150 }, { currency: 'EUR', minor: 147 })).toBe(
       'Against your ceiling of €1.50: about €1.47.',
+    );
+  });
+});
+
+describe('ceilingLine and a sample rate (F2)', () => {
+  const c = { currency: 'EUR', minor: 150 };
+  const p = { currency: 'EUR', minor: 147 };
+  it('a seed rate says so, in the style of the binding line, and never names the bank', () => {
+    expect(ceilingLine(c, p, 'seed')).toBe(
+      'Against your ceiling of €1.50: about €1.47 (sample rate).',
+    );
+    expect(ceilingLine(c, p, 'seed')).not.toMatch(/ECB|bank/i);
+  });
+  it('a dated rate, or no source given, reads as before', () => {
+    const plain = 'Against your ceiling of €1.50: about €1.47.';
+    expect(ceilingLine(c, p, 'ecb')).toBe(plain);
+    expect(ceilingLine(c, p, null)).toBe(plain);
+    expect(ceilingLine(c, p)).toBe(plain);
+  });
+});
+
+describe('the no-rate note (F1)', () => {
+  it('is plain words and says what to do', () => {
+    expect(NO_RATE_NOTE).toBe(
+      "We could not compare some prices with your ceiling because no current exchange rate is available. Try a ceiling in the seller's currency.",
     );
   });
 });

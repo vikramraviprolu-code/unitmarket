@@ -7,6 +7,8 @@ converted lead in a list: from about £1.28
 not converted, same currency: $1.50
 not converted, no usable rate: €1.50
 ceiling line: Against your ceiling of €1.50: about €1.47.
+ceiling line, sample rate: Against your ceiling of €1.50: about €1.47 (sample rate).
+no rate, ceiling: We could not compare some prices with your ceiling because no current exchange rate is available. Try a ceiling in the seller's currency.
 account, heading: Price display
 account, lede: Prices can be shown in your own currency as an estimate. You always pay the amount marked Binding, in the seller's currency.
 account, label: Show prices in
