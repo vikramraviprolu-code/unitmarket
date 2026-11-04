@@ -174,10 +174,10 @@ test.describe('payments journeys (real engine over the dry-run model, no PayPal)
     await expect(page.getByRole('link', { name: 'Open my library' })).toHaveCount(0);
   });
 
-  test('pending scenario shows Payment pending at PayPal (A-16)', async ({ browser }) => {
+  test('pending scenario shows Awaiting seller acceptance (A-16, MC2-L6)', async ({ browser }) => {
     const page = await buyerPage(browser);
     await payWithScenario(page, { offer: 'harbour-fees', scenario: 'pending_receiving_pref' });
-    await expect(page.getByTestId('order-live')).toContainText('Payment pending at PayPal');
+    await expect(page.getByTestId('order-live')).toContainText('Awaiting seller acceptance');
     await expect(page.getByRole('link', { name: 'Open my library' })).toHaveCount(0);
   });
 

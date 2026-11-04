@@ -120,11 +120,13 @@ describe('the real payments engine behind the facade', () => {
     expect(view?.items.every((i) => i.access !== 'available')).toBe(true);
   });
 
-  it('pending at PayPal says so and does not unlock (A-16)', async () => {
+  it('pending for the seller to accept says so and does not unlock (A-16, MC2-L6)', async () => {
     const offer = (await offers())[2] ?? (await offers())[0]!;
     const order = await payWith(offer, 'pending_receiving_pref');
     const view = await app.engine.orderView({ order_ref: order.order_ref, actor });
-    expect(view?.buyer_message).toBe('Payment pending at PayPal');
+    expect(view?.buyer_message).toBe(
+      'Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment, or PayPal returns it to you.',
+    );
     expect(view?.items.every((i) => i.access !== 'available')).toBe(true);
   });
 

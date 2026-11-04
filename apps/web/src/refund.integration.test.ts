@@ -243,6 +243,10 @@ describe('a partial refund of a keep item', () => {
   });
 });
 
+// MC2-L6 (D-083): the manual-action reason is worded as awaiting the seller, not as a generic pending.
+const AWAITING =
+  'Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment, or PayPal returns it to you.';
+
 describe('pending states from stored data', () => {
   it('pending at PayPal and confirming payment come from the stored order, with no refund copy', async () => {
     const pending = await buy(w, {
@@ -258,13 +262,13 @@ describe('pending states from stored data', () => {
     });
     const view = async (u: { order_ref: string }, actor: typeof w.actorA) =>
       (await w.app.engine.orderView({ order_ref: u.order_ref, actor }))!;
-    expect((await view(pending, w.actorA)).buyer_message).toBe('Payment pending at PayPal');
+    expect((await view(pending, w.actorA)).buyer_message).toBe(AWAITING);
     expect((await view(confirming, w.actorB)).buyer_message).toBe('Confirming payment');
     expect((await view(pending, w.actorA)).refund_line).toBeNull();
     const mine = await libraryOf(w.A);
     const theirs = await libraryOf(w.B);
     expect(mine.find((i) => i.entitlement_id === pending.entitlement_id)?.status_text).toBe(
-      'Payment pending at PayPal',
+      AWAITING,
     );
     expect(theirs.find((i) => i.entitlement_id === confirming.entitlement_id)?.status_text).toBe(
       'Confirming payment',
