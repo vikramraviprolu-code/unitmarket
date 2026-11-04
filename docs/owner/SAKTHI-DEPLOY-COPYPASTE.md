@@ -462,3 +462,73 @@ corepack pnpm safety:approve --operator vikram --ref D-082 --scope mvp_c_refunds
 ```
 
 The sitting itself: a buyer account with country `GB` buys the Northfield article "An allotment diary for a cold March" (£1.50); a buyer account with country `DE` buys one Rheinwerft Kurier article (€1.50 to €2.00). The buyer sees the price in the seller's currency as the binding amount. If PayPal holds the capture as pending, the screens read "Awaiting seller acceptance" (the receiving preference on the Business account decides this; it is the case D-083 plans for). Then press Stop and set the flag off, as above.
+
+## Starting the PayPal sandbox gateway under D-090 (owner's own terminal only)
+
+The approval basis is D-090: scope `mvp_c_refunds`, the five operations, USD, EUR and GBP, 500 minor units an order, 40 calls, four hours from the insertion, no refunds, no named payee. Run this only at the owner's own terminal, never in Cloud Shell or an AI session, and never paste a passcode, secret or order number into a chat. A deploy always leaves the connection off, so do this after the deploy you want to test on.
+
+Step 1 (Cloud Shell): make the app look for the new reference. The flag step below starts a new revision that reads it.
+
+```
+gcloud config set project unitmarket-sbx-vr1
+printf 'D-090' | gcloud secrets versions add UMS_OUTBOUND_APPROVAL_REF --data-file=- --project=unitmarket-sbx-vr1
+```
+
+Step 2, window 1 on the owner's terminal (leave open):
+
+```
+cloud-sql-proxy --port 5433 unitmarket-sbx-vr1:europe-west3:unitmarket-sbx-pg
+```
+
+Step 3, window 2, in the repository folder. The environment guard refuses a terminal that holds `DATABASE_URL` or `UMS_DB` and differs from `.env.local`, so the file is changed for a few minutes and restored afterwards:
+
+```
+git fetch --tags
+git checkout gcp-pub-9
+RAW="$(gcloud secrets versions access latest --secret=DATABASE_URL --project=unitmarket-sbx-vr1)"
+export DATABASE_URL="$(printf '%s' "$RAW" | sed 's#@/\([^?]*\)?host=[^ ]*#@127.0.0.1:5433/\1#')"
+unset RAW
+cp .env.local .env.local.bak
+grep -v -E '^(UMS_DB|UMS_PGLITE_DIR|DATABASE_URL|UMS_PAYPAL_CONNECT|UMS_OUTBOUND_APPROVAL_REF)=' .env.local.bak > .env.local
+printf 'UMS_DB=postgres\nDATABASE_URL=%s\nUMS_OUTBOUND_APPROVAL_REF=D-090\n' "$DATABASE_URL" >> .env.local
+unset DATABASE_URL UMS_DB
+grep -E '^(UMS_MODE|UMS_OUTBOUND_SCOPE)=' .env.local
+corepack pnpm safety:status
+```
+
+Expected: `UMS_MODE=sandbox`, `UMS_OUTBOUND_SCOPE=mvp_c_refunds`, and `mode=sandbox connect=off db=postgres`. Before the approval the status says no active approval. Check that the live app looks for the same reference (it prints only MATCH or DIFFERENT):
+
+```
+[ "$(gcloud secrets versions access latest --secret=UMS_OUTBOUND_APPROVAL_REF --project=unitmarket-sbx-vr1)" = "D-090" ] && echo MATCH || echo DIFFERENT
+```
+
+Step 4: insert the approval and turn the switch on. Each asks you to type `mvp_c_refunds`. The end time is four hours from now (Mac):
+
+```
+END=$(date -u -v+4H +%Y-%m-%dT%H:%M:%SZ); echo "$END"
+corepack pnpm safety:approve --operator vikram --ref D-090 --scope mvp_c_refunds \
+  --ops oauth_token,create_order,get_order,capture_order,get_capture \
+  --max-amount 500 --max-calls 40 --valid-until "$END" --approved-by vikram
+corepack pnpm safety:resume --operator vikram --reason "tester sitting D-090"
+```
+
+Write the printed `END` time down: it goes into the decision log as D-091 with the insertion time.
+
+Step 5: restore and close, always:
+
+```
+mv .env.local.bak .env.local
+unset DATABASE_URL UMS_DB
+```
+
+Then press Ctrl+C in the proxy window.
+
+Step 6 (Cloud Shell): set the flag, wait for the new revision, and check Operations (switch On, calls left, "Approval reference set: yes", L3 yes):
+
+```
+gcloud run services update unitmarket-sandbox --region=europe-west3 --project=unitmarket-sbx-vr1 --update-env-vars=UMS_PAYPAL_CONNECT=on
+```
+
+To stop at any time: the "Stop PayPal now" button on Operations, or the same flag command with `UMS_PAYPAL_CONNECT=off`. The approval ends four hours after the insertion.
+
+Pounds and euros: those offers appear only after the corridors are switched on with the two SQL statements in the seventh deploy section, and only after the PayPal dashboard checks. Dollar purchases need neither.
