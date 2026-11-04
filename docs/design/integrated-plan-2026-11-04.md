@@ -10,7 +10,7 @@ Sources read: `unitmarket-sandbox` at `4b9af11` (migrations 0001 to 0021, `packa
 2. **We do not rewrite the app as event-sourced.** The state tables stay the source of truth for decisions, and the journal records every change to them. That gives the audit benefits of event sourcing (full history, state at any past moment, who and where) without touching the 109 transaction sites and about 90 update statements that 9,246 tests already prove.
 3. **Tamper evidence in three layers:** the existing append-only triggers stop accidental edits; a hash chain per order detects any edit, delete or reorder, even by someone who switches the triggers off; a daily seal fixes the state of every chain at midnight. `pnpm trace:verify` and an Operations tile check all three.
 4. **All five threads' screens use the journal.** Every alert, list row, case, sale and receipt links to one timeline page. Buyers see their own orders, sellers see their sales without the buyer's identity, operators see everything, including where each action came from.
-5. **Size: 15 lanes, 100 items, 222 points.** A "must" cut of **172 points** fits before 12 Nov at the MVP 1 pace (80 points in about 18 hours, so roughly 40 hours of pipelined work), leaving two days for the video. That is aggressive; section 10 gives the order in which to drop work if the pace slips. A "should" cut adds 50 points if the pace holds. 65 points move after the deadline.
+5. **Size: 16 lanes, 101 items, 223 points.** A "must" cut of **173 points** fits before 12 Nov at the MVP 1 pace (80 points in about 18 hours, so roughly 40 hours of pipelined work), leaving two days for the video. That is aggressive; section 10 gives the order in which to drop work if the pace slips. A "should" cut adds 50 points if the pace holds. 69 points move after the deadline, into the backlog.
 6. **Nine decisions are needed from you before building starts** (section 9). The first one, approving the journal design, unblocks Wave 0.
 
 ```mermaid
@@ -264,6 +264,8 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 | UI0.6 | Shared timeline component (renders TR1 entries; works on fixtures until TR1 lands) | M | 2 | M |
 | UI0.7 | One composition module per tab, so Wave 2 lanes do not all edit `composition.server.ts` | S | 1 | M |
 
+**SIM-U2. Trades-to-money-movements headline (1 point, M, Sonnet medium, SIM).** Spec `int-sim-u2.md`. UPI recommendation 2, approved by Vikram 4 Nov (decision 52): one line on `/sim/market`, "10,000 trades became N money movements (T top-ups and P payout items)", from counts the harness already returns. Simulation repo only; runs in parallel with everything.
+
 **CL1. Cloud kit, phase 1 (21 points, M, Sonnet high).** Spec `int-cl1-cloud-kit.md`. Cloud plan items 1 to 11: `stack.env` and shared library, `doctor`, `status --json`, `up`, `down` (PayPal flag off first, never deletes, L), `restart`, `deploy <tag>`, `logs`, public `/api/health`, offline tests with a fake `gcloud` and `check:hosting-gcp` rules (L), one-page runbook. Agents never run `gcloud` for real (D-049).
 
 ### Wave 1
@@ -408,6 +410,8 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 | GenAI features 3 to 5 (cap from words, problem report, listing draft) and their evals | 6 | 12 | After features 1 and 2 prove themselves |
 | Seal copied to a locked Cloud Storage bucket | 1 | 2 | New cloud resource |
 | Retention pruning for `trace_context` (13 months) and monthly journal partitions | 1 | 2 | Nothing expires before 15 Jan 2027 |
+| UPI 4: escrow-style hold until delivery (SIM; check the harness first) | 1 | 2 | Backlog by decision 52 |
+| UPI 5: platform settlement guarantee reserve (SIM) | 1 | 2 | Backlog by decision 52 |
 | `pg_trgm` typo-tolerant search | 1 | 2 | Extension, PORT-1 |
 | Buyer self-serve refund (UX-23), notification inbox (UX-29), buy again (UX-31) | 3 | 7 | MVP 3 with disputes and compliance |
 
@@ -419,6 +423,7 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 | SR0 Search base | 0 | 5 | 12 | 12 | | Sonnet 5.5 high | Approved; spec scoring |
 | UI0 Shell | 0 | 7 | 12 | 12 | | Sonnet 5.5 medium | Approved; spec scoring |
 | CL1 Cloud kit | 0 | 11 | 21 | 21 | | Sonnet 5.5 high | Approved; spec scoring |
+| SIM-U2 Headline (SIM) | 0 | 1 | 1 | 1 | | Sonnet 5.5 medium | Approved; spec scoring |
 | TR1 Timeline | 1 | 6 | 14 | 14 | | Sonnet 5.5 high | Spec written |
 | AL Alerts and cases | 1 | 8 | 18 | 18 | | Sonnet 5.5 high | Spec written |
 | SR1 Search APIs | 1 | 7 | 17 | 17 | | Sonnet 5.5 high | Spec written |
@@ -430,9 +435,9 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 | SEL | 2 | 9 | 18 | 6 | 12 | Sonnet 5.5 medium | Spec written |
 | GA | 2 | 5 | 10 | | 10 | Sonnet 5.5 high | Spec written; scripted model (V8) |
 | E2E | 3 | 2 | 4 | 4 | | Sonnet 5.5 high | Spec written |
-| **Total** | | **100** | **222** | **172** | **50** | | |
+| **Total** | | **101** | **223** | **173** | **50** | | |
 
-Later work (section 5): 29 items, 65 points.
+Later work (section 5): 31 items, 69 points. Every later row also goes into the post-12-Nov backlog.
 
 ## 7. How each lane runs (the loop, unchanged from MVP 1)
 
@@ -480,7 +485,7 @@ Each becomes a decision-log row at merge (next free id, from D-094).
 | V6 | Operators may view the seller and payee queues without the authenticator code; every action still needs it | Yes. Small trade-off: a session without the code sees payee details it cannot see today |
 | V7 | Buyers may create API keys and spending caps on screen (key shown once; cap confirmed as a sentence in money and count) | Yes |
 | V8 | Switch the live model on for GenAI features 1 and 2 (Haiku 5.5, $2 a day cap), or keep the scripted model for the demo | Build on the scripted model now; decide on the live key after GA's evals |
-| V9 | Scope: must cut 172 points before 12 Nov, should cut 50 if the pace holds, the rest later | Yes |
+| V9 | Scope: must cut 173 points before 12 Nov, should cut 50 if the pace holds, the rest later | Yes |
 
 ## 10. What could go wrong
 
