@@ -266,7 +266,7 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 
 **SIM-U2. Trades-to-money-movements headline (1 point, M, Sonnet medium, SIM).** Spec `int-sim-u2.md`. UPI recommendation 2, approved by Vikram 4 Nov (decision 52): one line on `/sim/market`, "10,000 trades became N money movements (T top-ups and P payout items)", from counts the harness already returns. Simulation repo only; runs in parallel with everything.
 
-**CL1. Cloud kit, phase 1 (21 points, M, Sonnet high).** Spec `int-cl1-cloud-kit.md`. Cloud plan items 1 to 11: `stack.env` and shared library, `doctor`, `status --json`, `up`, `down` (PayPal flag off first, never deletes, L), `restart`, `deploy <tag>`, `logs`, public `/api/health`, offline tests with a fake `gcloud` and `check:hosting-gcp` rules (L), one-page runbook. Agents never run `gcloud` for real (D-049).
+**CL1. Cloud kit, phase 1 (21 points, M, Sonnet high).** Spec `int-cl1-cloud-kit.md`. Cloud plan items 1 to 11: `stack.env` and shared library, `doctor`, `status --json`, `up`, `down` (PayPal flag off first, never deletes, L), `restart`, `deploy <tag>`, `logs`, `/api/v1/status` gains `revision` and `db`, offline tests with a fake `gcloud` and `check:hosting-gcp` rules (L), one-page runbook. Agents never run `gcloud` for real (D-049).
 
 ### Wave 1
 
@@ -336,7 +336,7 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 |---|---|---|---|---|
 | OPS-C.1 | Buyer page: orders, library, refunds, caps, keys | M | 2 | S |
 | OPS-C.2 | Seller page: offers, sales, payee, agreement | M | 2 | S |
-| OPS-C.3 | Agents and API: caps, reservations, agent purchases, keys, webhooks and deliveries, with pause and revoke (MFA) | L | 4 | S |
+| OPS-C.3 | Agents and API: caps, reservations, agent purchases, keys, webhooks and deliveries, with operator revoke (MFA); no pause state (0021) | L | 4 | S |
 | OPS-C.4 | Money tab: problems, reconciler, totals that open into a ledger list, exchange rates | M | 2 | S |
 | OPS-C.5 | Money-flow strip on Home | M | 2 | S |
 
@@ -345,7 +345,7 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 | Id | Item | Size | Pts | Cut |
 |---|---|---|---|---|
 | CTL.1 | PayPal gateway panel: five locks with plain reasons, existing Start and Stop, owner commands shown, never creates approvals or sets the connect flag | M | 2 | M |
-| CTL.2 | Services panel: status from `cloud status --json` and `/api/health`, the command to copy, Cloud Shell link, link to Google's audit log; action area ready for phase 2 | L | 4 | M |
+| CTL.2 | Services panel: status from a pasted `cloud status --json` and `/api/v1/status`, the command to copy, Cloud Shell link, link to Google's audit log | L | 4 | M |
 | CTL.3 | Feature switches on screen: off in one click, on with authenticator code and reason, journaled (needs decision V3) | L | 4 | S |
 | CTL.4 | API exposure registry: one row per API group (catalogue, orders, library, mandates, webhooks, seller, ops, MCP, and each MCP tool), seeded on, journaled | M | 2 | M |
 | CTL.5 | Enforcement in `withRoute` for bearer routes and in MCP `tools/list` and `tools/call`; a disabled group answers 403 `api_disabled`; 5 s cache like the switch reader | L | 4 | M |
@@ -356,7 +356,7 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 
 | Id | Item | Size | Pts | Cut |
 |---|---|---|---|---|
-| BUY.1 | Agents: caps list; new cap in money and count with a confirm sentence; pause and revoke; agent purchases list (UX-05) | L | 4 | M |
+| BUY.1 | Agents: caps list; new cap in money and count with a confirm sentence; revoke (no pause state; session routes, D-093 amendment); agent purchases list (UX-05) | L | 4 | M |
 | BUY.2 | Cap line on the agent hand-off page (UX-05) | S | 1 | M |
 | BUY.3 | Order page: buyer timeline, case card with steps and due time, report a problem; frozen help page passes the order (UX-04, UX-12) | M | 2 | M |
 | BUY.4 | Spending: purchases list with the filter bar and CSV (UX-10) | M | 2 | M |
