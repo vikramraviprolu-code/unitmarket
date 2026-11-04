@@ -376,3 +376,89 @@ Check in the browser: sign in, open Find articles and Operations. Everything loo
 5. Start on Operations, set the flag on, and as the UK buyer buy the Northfield article "An allotment diary for a cold March" (£1.50). On the PayPal page check the amount, pay, and look for the article in the library. Then press Stop and set the flag off.
 
 Paste back: the deploy output, the `UPDATE 1`, and a screenshot of the PayPal page and the library. Never paste a passcode or password.
+
+## Seventh deploy: tag `gcp-pub-7` (USD, EUR and GBP everywhere, prices in the buyer's currency, exchange rates, awaiting seller acceptance, reporting totals)
+
+Same steps as the sixth deploy, with the new tag. It adds **two database migrations**, so check the backup first:
+
+- `0017_fx_rates`: the exchange rate table (append only, one sample row dated 2026-11-03).
+- `0018_buyer_display_currency`: one optional column on buyers for the "Show prices in" setting.
+
+What the deploy carries (decisions D-083 to D-087, plan `docs/specs/multi-currency-v2.md`):
+
+- USD, EUR and GBP work for every offer and every approval. A buyer from any country may buy any enabled offer.
+- Buyers see prices in their own currency as an estimate ("about", with the rate date), with the binding price in the seller's currency beside it. The setting is on the account page. If no usable rate exists, the seller's currency shows alone and nothing is blocked.
+- The app fetches the daily rates from the European Central Bank on demand (at most once per six hours, 3 second limit). No firewall or allow-list step is needed: this project has no Cloud Run egress firewall. If a VPC egress firewall is ever added, `www.ecb.europa.eu` must be allowed. Until the first real fetch the pages say "sample rate of 3 Nov 2026" for seven days, then show the seller's currency alone.
+- A payment that PayPal holds as pending shows "Awaiting seller acceptance", with two seller choices (wait, or list an offer in another currency). Nothing is converted for the seller.
+- Operations has a new section "Totals by currency" (sales, refunds and exposure per currency, and a reporting view in USD, EUR and GBP).
+- A German euro corridor (`de-eur`) and a fictional German seller (Rheinwerft Kurier) with three articles are seeded, switched off.
+- The deploy still leaves PayPal off. Do not deploy while anyone is testing.
+
+Commit to deploy: the coordinator gives you the exact hash in the chat message that sends you here.
+
+Step 1 (laptop with the repository):
+
+```
+COMMIT=PUT-THE-HASH-FROM-THE-CHAT-HERE
+git fetch origin
+git checkout "$COMMIT"
+git status
+git tag gcp-pub-7
+git push origin gcp-pub-7
+```
+
+Step 2 (Cloud Shell, inside the `unitmarket-sandbox` folder):
+
+```
+PROJECT_ID=unitmarket-sbx-vr1
+REGION=europe-west3
+gcloud config set account unitmarket@raviprolu.com
+gcloud config set project "$PROJECT_ID"
+gcloud sql backups list --instance=unitmarket-sbx-pg --project="$PROJECT_ID"
+git fetch --tags
+git checkout gcp-pub-7
+git log --oneline -1
+bash infra/gcp/deploy.sh "$PROJECT_ID" "$REGION" gcp-pub-7
+```
+
+Expected: a successful backup less than a day old, `git log` shows the commit from the chat, and the output ends with `deployed unitmarket-sandbox from tag gcp-pub-7`.
+
+Check in the browser, in this order:
+
+1. Home page and Find articles load. Prices look as on `gcp-pub-6` for a US buyer on US dollar offers.
+2. Account page: a "Price display" block with a "Show prices in" choice. Pick "Euros (EUR)", save, open an article: the price reads "about €…" with a "Binding: $…" line and a rate date or "sample rate of 3 Nov 2026". Put the choice back to automatic.
+3. Operations: switch reads "Off: no PayPal calls"; the new section "Totals by currency" shows rows or "No sales, refunds or held payments yet."; nothing else changed.
+4. The app boots with no error in the Cloud Run logs.
+
+Paste back: the deploy output and a screenshot of the article page with the "Binding" line. Never paste a passcode or password.
+
+### Optional owner step: switch the pounds and euro corridors on (one statement each, at the owner's terminal through the Auth Proxy)
+
+Only after the dashboard checks below. Both are off by default; offers in that currency then show in Find articles. No money moves until a purchase is made with PayPal on.
+
+```
+psql "$LIVE" -c "update corridors set enabled = true where id = 'gb-gbp'"
+psql "$LIVE" -c "update corridors set enabled = true where id = 'de-eur'"
+```
+
+Each prints `UPDATE 1`. To undo: the same statement with `enabled = false`.
+
+Dashboard checks first (Vikram, PayPal sandbox dashboard, Business account): its country, which currencies it can hold, whether it can receive GBP and EUR, its receiving preference (a setting that makes PayPal hold a payment in an unlisted currency as pending), and where past USD payments landed. Stop if it cannot receive the currency.
+
+### Proposed approval for a GBP and EUR sitting (NOT inserted, not approved)
+
+This is a proposal for Vikram to read. Nothing here has been run. A real sandbox purchase in pounds or euros needs Vikram's explicit "approve" at his own terminal, the decision row below written first in `docs/decision-log.md`, and then the approval row inserted by him with `safety:approve`.
+
+Decision row text to propose (reference `D-082`; the cap has no currency, so it means the same figure in any allowed currency, D-086):
+
+> D-082. Owner approval basis for the multi-currency sandbox sitting. Scope `mvp_c_refunds`, operations `oauth_token`, `create_order`, `get_order`, `capture_order`, `get_capture`, for orders in GBP and EUR (and USD) only, 500 minor units per PayPal order (£5.00, €5.00 or $5.00), 40 calls, valid for four hours from the insertion (write the exact UTC end time into the row), no refunds, no named payee, hosted app only, no overlap with another sitting. Approved by `vikram`.
+
+Command to run at Vikram's terminal, after the "Starting the PayPal sandbox gateway" steps above with `D-082` as the reference (replace `END-UTC` with the end time written in the row):
+
+```
+corepack pnpm safety:approve --operator vikram --ref D-082 --scope mvp_c_refunds \
+  --ops oauth_token,create_order,get_order,capture_order,get_capture \
+  --max-amount 500 --max-calls 40 --valid-until END-UTC --approved-by vikram
+```
+
+The sitting itself: a buyer account with country `GB` buys the Northfield article "An allotment diary for a cold March" (£1.50); a buyer account with country `DE` buys one Rheinwerft Kurier article (€1.50 to €2.00). The buyer sees the price in the seller's currency as the binding amount. If PayPal holds the capture as pending, the screens read "Awaiting seller acceptance" (the receiving preference on the Business account decides this; it is the case D-083 plans for). Then press Stop and set the flag off, as above.
