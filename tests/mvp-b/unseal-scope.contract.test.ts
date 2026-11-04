@@ -32,10 +32,10 @@ describe('under mvp_b_polling', () => {
     expect(await r.reservations()).toBe(0);
   });
 
-  it('a EUR body, a payee and a body over 64 KB are blocked before the gate: no Wire call, no budget used', async () => {
+  it('an XAU body, a payee and a body over 64 KB are blocked before the gate: no Wire call, no budget used', async () => {
     const r = await open();
     const cases: [string, ReturnType<typeof req.createOrder>, string][] = [
-      ['EUR', req.createOrder({ currency: 'EUR' }), 'currency_not_allowed'],
+      ['XAU', req.createOrder({ currency: 'XAU' }), 'currency_not_allowed'],
       ['payee', req.createOrder({ payee: true }), 'payee_not_allowed'],
       ['over 64 KB', req.createOrder({ pad: 70 * 1024 }), 'shape'],
     ];
@@ -111,12 +111,12 @@ describe('under mvp_c_refunds', () => {
     expect((await r.outbound.status()).scope).toBe('mvp_c_refunds');
   });
 
-  it('still refuses a EUR body', async () => {
+  it('still refuses an XAU body (EUR, GBP and USD are allowed since MC2-L3)', async () => {
     const r = await open({
       scope: 'mvp_c_refunds',
       approval: { ops: ['oauth_token', 'create_order'] },
     });
-    expect(await r.outbound.transport.send(req.createOrder({ currency: 'EUR' }))).toEqual({
+    expect(await r.outbound.transport.send(req.createOrder({ currency: 'XAU' }))).toEqual({
       kind: 'blocked',
       by: 'egress',
     });

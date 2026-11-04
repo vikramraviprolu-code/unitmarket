@@ -103,14 +103,14 @@ export const SCOPE_OPERATIONS: Readonly<Record<string, readonly PayPalOperation[
 };
 
 /**
- * The currencies each approval scope may move (FIX-MVPB-SEAL2 LOW; D-023 picked USD first; MC-GBP adds GBP
- * to the hosted scope on the owner's decision of 2026-11-03, docs/specs/multi-currency-gbp.md). The
- * outbound gate sees only a minor-unit figure, so the transport checks the currency of the body it
+ * The currencies each approval scope may move (FIX-MVPB-SEAL2 LOW; D-023 picked USD first; MC-GBP added GBP
+ * to the hosted scope; MC2-L3 / D-084 (1) allows USD, EUR and GBP in every scope, docs/specs/mc2-l3-transport-currencies.md).
+ * The outbound gate sees only a minor-unit figure, so the transport checks the currency of the body it
  * binds. JPY (no minor unit) and XAU (not a fiat unit) are refused whatever the approval row says.
  */
 export const SCOPE_CURRENCIES: Readonly<Record<string, readonly string[]>> = {
-  mvp_b_polling: ['USD'],
-  mvp_c_refunds: ['USD', 'GBP'],
+  mvp_b_polling: ['USD', 'EUR', 'GBP'],
+  mvp_c_refunds: ['USD', 'EUR', 'GBP'],
 };
 /** Scopes whose create_order may name a `purchase_units[].payee`. MVP-B pays the owning account only. */
 const PAYEE_SCOPES: ReadonlySet<string> = new Set(['mvp_c_refunds']);

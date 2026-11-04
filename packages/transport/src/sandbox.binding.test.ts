@@ -173,7 +173,7 @@ describe('M4: amount_minor must equal the amount in the body for money-moving po
   });
 });
 
-// FIX-MVPB-SEAL2 LOW: each scope has a currency allow-list (D-023: USD first) and the MVP-B scope
+// FIX-MVPB-SEAL2 LOW: each scope has a currency allow-list (D-023 USD first, D-084 USD, EUR and GBP) and the MVP-B scope
 // never pays a merchant other than the account that owns the order (no purchase_units[].payee).
 describe('SEAL2 LOW: currency allow-list per scope and no payee in MVP-B', () => {
   const blocked = async (scope: string, r: OutboundRequest, reason: string) => {
@@ -183,50 +183,53 @@ describe('SEAL2 LOW: currency allow-list per scope and no payee in MVP-B', () =>
     expect(gate.checks).toHaveLength(0);
     expect(log.events.at(-1)?.fields['reason']).toBe(reason);
   };
-  it.each([
-    ['JPY', '500', 500],
-    ['XAU', '5.00', 500],
-    ['EUR', '5.00', 500],
-    ['GBP', '5.00', 500],
-  ])(
-    'mvp_b_polling blocks a create_order in %s even when the amount is bound',
-    async (c, v, minor) => {
-      await blocked(
-        'mvp_b_polling',
-        create({ body: body(v, c), amount_minor: minor }),
-        'currency_not_allowed',
-      );
+  const SCOPES = ['mvp_b_polling', 'mvp_c_refunds'] as const;
+  const refundIn = (currency: string) =>
+    refund({ body: JSON.stringify({ amount: { currency_code: currency, value: '5.00' } }) });
+  // MC2-L3 (D-084 (1)): USD, EUR and GBP move in every scope; anything else stays refused.
+  it.each(SCOPES.flatMap((s) => ['USD', 'EUR', 'GBP'].map((c) => [s, c] as const)))(
+    '%s sends a %s create_order',
+    async (scope, currency) => {
+      const { t, wire } = await build({ scope });
+      expect((await t.send(create({ body: body('5.00', currency) }))).kind).toBe('response');
+      expect(wire.requests).toHaveLength(1);
     },
   );
-  it('mvp_b_polling sends a USD create_order', async () => {
-    const { t, wire } = await build();
-    expect((await t.send(create())).kind).toBe('response');
-    expect(wire.requests).toHaveLength(1);
-  });
-  it('mvp_c_refunds moves USD and GBP (MC-GBP): a GBP create_order and a GBP refund are sent', async () => {
-    const { t, wire } = await build({ scope: 'mvp_c_refunds' });
-    expect((await t.send(create({ body: body('5.00', 'GBP'), amount_minor: 500 }))).kind).toBe(
-      'response',
-    );
-    expect(
-      (
-        await t.send(
-          refund({ body: JSON.stringify({ amount: { currency_code: 'GBP', value: '5.00' } }) }),
-        )
-      ).kind,
-    ).toBe('response');
-    expect(wire.requests).toHaveLength(2);
-  });
-  it('mvp_c_refunds still blocks EUR, JPY and XAU: a EUR create_order and a EUR refund are blocked', async () => {
-    await blocked('mvp_c_refunds', create({ body: body('5.00', 'EUR') }), 'currency_not_allowed');
+  it.each(['USD', 'EUR', 'GBP'])(
+    'mvp_c_refunds sends a %s refund (a refund keeps the currency of its capture)',
+    async (currency) => {
+      const { t, wire } = await build({ scope: 'mvp_c_refunds' });
+      expect((await t.send(refundIn(currency))).kind).toBe('response');
+      expect(wire.requests).toHaveLength(1);
+    },
+  );
+  // Codes outside the list are refused as `currency_not_allowed`; a lowercase code is not a currency
+  // code at all, so the amount binding refuses it first (`amount_unbound`). Either way nothing is sent.
+  const REFUSED = [
+    ['JPY', '500', 'currency_not_allowed'],
+    ['XAU', '5.00', 'currency_not_allowed'],
+    ['INR', '5.00', 'currency_not_allowed'],
+    ['eur', '5.00', 'amount_unbound'],
+    ['gbp', '5.00', 'amount_unbound'],
+  ] as const;
+  it.each(SCOPES.flatMap((s) => REFUSED.map(([c, v, why]) => [s, c, v, why] as const)))(
+    '%s refuses a %s create_order even when the amount is bound',
+    async (scope, c, v, why) => {
+      await blocked(scope, create({ body: body(v, c), amount_minor: 500 }), why);
+    },
+  );
+  it.each(REFUSED)('mvp_c_refunds refuses a %s refund before any send', async (c, v, why) => {
     await blocked(
       'mvp_c_refunds',
-      refund({ body: JSON.stringify({ amount: { currency_code: 'EUR', value: '5.00' } }) }),
-      'currency_not_allowed',
+      refund({ body: JSON.stringify({ amount: { currency_code: c, value: v } }) }),
+      why,
     );
   });
   it('the allow-list covers exactly the two scopes', () => {
-    expect(SCOPE_CURRENCIES).toEqual({ mvp_b_polling: ['USD'], mvp_c_refunds: ['USD', 'GBP'] });
+    expect(SCOPE_CURRENCIES).toEqual({
+      mvp_b_polling: ['USD', 'EUR', 'GBP'],
+      mvp_c_refunds: ['USD', 'EUR', 'GBP'],
+    });
     expect(Object.keys(SCOPE_CURRENCIES).sort()).toEqual(Object.keys(SCOPE_OPERATIONS).sort());
   });
   const withPayee = (payee: unknown) =>
