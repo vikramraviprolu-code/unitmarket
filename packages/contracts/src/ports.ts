@@ -53,6 +53,9 @@ export const IdPrefixSchema = z.enum([
   // API-W0: API keys and outbox events.
   'key',
   'evt',
+  // API-B: agent spending caps and their reservations.
+  'man',
+  'rsv',
   // API-C: webhook subscriptions, webhook deliveries, reconciler passes.
   'wsb',
   'wdl',
@@ -216,6 +219,8 @@ export const SwitchNameSchema = z.enum([
   'unlock_enabled',
   'ai_enabled',
   'webhook_enabled',
+  // API-B: off until a buyer-side operator turns it on (MFA); nothing an agent does buys while it is off.
+  'agent_buy_enabled',
 ]);
 export type SwitchName = z.infer<typeof SwitchNameSchema>;
 export interface SwitchReader {

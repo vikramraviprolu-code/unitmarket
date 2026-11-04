@@ -23,3 +23,5 @@ export * from './deps';
 // API-W0 (principals, v1 contracts).
 export * from './principal';
 export * from './v1';
+// API-B (agent spending caps).
+export * from './mandates';

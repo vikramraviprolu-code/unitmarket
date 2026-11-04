@@ -57,6 +57,7 @@ const FILES = routeFiles(APP_DIR);
 // Static specifiers (the lint rule bans computed imports). The test below fails when this list and the
 // route files on disk differ, so a new route cannot escape the walk.
 const IMPORTERS: Record<string, () => Promise<unknown>> = {
+  '.well-known/mcp/route.ts': () => import('./app/.well-known/mcp/route'),
   'api/accounts/display-currency/route.ts': () =>
     import('./app/api/accounts/display-currency/route'),
   'api/accounts/login/route.ts': () => import('./app/api/accounts/login/route'),
@@ -72,6 +73,9 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/discover/route.ts': () => import('./app/api/discover/route'),
   'api/v1/api-keys/[id]/route.ts': () => import('./app/api/v1/api-keys/[id]/route'),
   'api/v1/api-keys/route.ts': () => import('./app/api/v1/api-keys/route'),
+  'api/v1/mandates/[id]/route.ts': () => import('./app/api/v1/mandates/[id]/route'),
+  'api/v1/mandates/route.ts': () => import('./app/api/v1/mandates/route'),
+  'api/v1/mcp/route.ts': () => import('./app/api/v1/mcp/route'),
   'api/v1/webhook-subscriptions/[id]/deliveries/route.ts': () =>
     import('./app/api/v1/webhook-subscriptions/[id]/deliveries/route'),
   'api/v1/webhook-subscriptions/[id]/route.ts': () =>
@@ -79,6 +83,7 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/v1/webhook-subscriptions/route.ts': () => import('./app/api/v1/webhook-subscriptions/route'),
   'api/library/[id]/link/route.ts': () => import('./app/api/library/[id]/link/route'),
   'api/library/route.ts': () => import('./app/api/library/route'),
+  'api/ops/agent-buy/route.ts': () => import('./app/api/ops/agent-buy/route'),
   'api/ops/start/route.ts': () => import('./app/api/ops/start/route'),
   'api/ops/stop/route.ts': () => import('./app/api/ops/stop/route'),
   'api/orders/[ref]/cancel/route.ts': () => import('./app/api/orders/[ref]/cancel/route'),

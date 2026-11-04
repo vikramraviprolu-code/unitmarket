@@ -29,6 +29,7 @@
     "@umsbx/jobs": "workspace:*",
     "@umsbx/ledger": "workspace:*",
     "@umsbx/library": "workspace:*",
+    "@umsbx/mandates": "workspace:*",
     "@umsbx/model": "workspace:*",
     "@umsbx/obs": "workspace:*",
     "@umsbx/offer-entry": "workspace:*",

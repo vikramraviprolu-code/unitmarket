@@ -50,7 +50,7 @@ export interface V1Rig extends TestRig {
 
 export async function makeV1Rig(): Promise<V1Rig> {
   const rig = await makeRig();
-  await rig.db.exec('TRUNCATE api_keys');
+  await rig.db.exec('TRUNCATE api_keys CASCADE');
   for (const id of ['buy_w0a', 'buy_w0b']) {
     await rig.db.query(
       `INSERT INTO buyers (id, display_name, auth_subject, country, created_at, updated_at)

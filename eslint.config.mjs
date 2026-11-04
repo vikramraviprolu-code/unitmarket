@@ -107,6 +107,7 @@ const DOMAIN = [
   'library',
   'publisher-console',
   'fx',
+  'mandates',
 ];
 const INFRA = [
   'config',

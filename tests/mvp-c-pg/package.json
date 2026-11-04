@@ -18,6 +18,7 @@
     "@umsbx/entitlements": "workspace:*",
     "@umsbx/ledger": "workspace:*",
     "@umsbx/library": "workspace:*",
+    "@umsbx/mandates": "workspace:*",
     "@umsbx/obs": "workspace:*",
     "@umsbx/offer-entry": "workspace:*",
     "@umsbx/payments": "workspace:*",

@@ -43,6 +43,8 @@ const CONTROL_ROUTES: Record<string, () => Promise<Record<string, Handler>>> = {
 };
 // The other operator POSTs the guard covers: they need a session with a second factor, and a key has none.
 const MFA_ROUTES: Record<string, () => Promise<Record<string, Handler>>> = {
+  '/api/ops/agent-buy': () =>
+    import('../ops/agent-buy/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/payee-decisions': () =>
     import('../ops/payee-decisions/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/publishers/status': () =>

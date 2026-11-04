@@ -241,6 +241,7 @@ describe('migrations', () => {
       'SELECT name, "on" FROM safety_switches ORDER BY name',
     );
     expect(sw.rows.map((r) => r.name)).toEqual([
+      'agent_buy_enabled',
       'ai_enabled',
       'checkout_enabled',
       'paypal_outbound',
@@ -271,7 +272,9 @@ describe('migrations', () => {
     // keyed (date, quote) whose own stamp is fetched_at; it has no created_at or updated_at.
     // API-W0 (migration 0019, spec F1 and F3): api_keys is stamped by revoked_at and last_used_at and
     // event_outbox is append-only with occurred_at; the spec fixes their columns, so neither has updated_at.
-    const NO_UPDATED_AT = new Set(['api_keys', 'event_outbox']);
+    // API-B (migration 0021): a mandate reservation is stamped by created_at and settled_at, and its row changes
+    // only when it settles; the spec fixes its columns, so it has no updated_at either.
+    const NO_UPDATED_AT = new Set(['api_keys', 'event_outbox', 'mandate_reservations']);
     for (const r of t.rows.filter((x) => x.table_name !== 'fx_rates')) {
       expect(r.cols, r.table_name).toContain(NO_UPDATED_AT.has(r.table_name) ? 'id' : 'created_at');
       if (!NO_UPDATED_AT.has(r.table_name)) expect(r.cols, r.table_name).toContain('updated_at');

@@ -69,6 +69,7 @@ import {
   readSafetyStatus,
   resumeOutbound,
   runStop,
+  setSwitch,
 } from '@umsbx/safety';
 import type { ResumeCoreError } from '@umsbx/safety';
 import { createEcbFetch, createModelHttps, guard } from '@umsbx/transport';
@@ -149,6 +150,22 @@ import {
 } from '@umsbx/fx';
 import type { ConvertResult, FetchedRates, FxCurrency, FxRates, RefreshResult } from '@umsbx/fx';
 import { requestApproval } from '@umsbx/approval';
+import {
+  attachOrder as attachMandateOrder,
+  checkBudget as checkMandateBudget,
+  createMandate,
+  getMandate,
+  release as releaseMandate,
+  reserve as reserveMandate,
+  revokeMandate,
+} from '@umsbx/mandates';
+import type {
+  BudgetResult,
+  CreateError,
+  CreateMandateInput,
+  MandateDeps,
+  MandateView,
+} from '@umsbx/mandates';
 import type { Selection } from '@umsbx/approval';
 import { createPgContentStore, issueLink, planServe } from '@umsbx/delivery';
 import type { ServePlan } from '@umsbx/delivery';
@@ -182,6 +199,7 @@ import {
   pendingReasonKind,
   pendingReasonLabel,
 } from '@umsbx/payments';
+import type { OrderHold } from '@umsbx/payments';
 import {
   health as jobsHealth,
   LEADER_LOCK_KEY,
@@ -378,7 +396,9 @@ export type PlaceError =
   | { code: 'order_open'; http: 409 }
   | { code: 'already_owned'; http: 409 }
   | { code: 'payee_unavailable'; http: 409 }
-  | { code: 'checkout_off'; http: 503 };
+  | { code: 'checkout_off'; http: 503 }
+  // API-B: an agent purchase its mandate did not take; `reason` is the mandate's own code.
+  | { code: 'mandate_refused'; reason: string; http: 409 };
 export type CheckoutError = {
   code: 'not_found' | 'wrong_state' | 'create_failed' | 'payments_paused';
 };
@@ -424,6 +444,8 @@ export interface PaymentsFacade {
     approval_id: Id;
     token: string;
     actor: Actor;
+    /** API-B: an agent purchase. The order books this mandate in its own transaction or is not placed. */
+    mandate?: { mandate_id: Id; agent_key_id: Id };
   }): Promise<Result<{ order_id: Id; order_ref: Id; status: string }, PlaceError>>;
   beginCheckout(i: {
     order_id: Id;
@@ -611,6 +633,7 @@ const SWITCHES: SwitchName[] = [
   'unlock_enabled',
   'ai_enabled',
   'webhook_enabled',
+  'agent_buy_enabled',
 ];
 
 const DAY_MS = 86_400_000;
@@ -891,6 +914,17 @@ export interface Engine {
   listOffers(): Promise<OfferPage[]>;
   quote: typeof startFromOffer extends (d: never, i: infer I) => infer R ? (i: I) => R : never;
   aiEnabled(): Promise<boolean>;
+  /** API-B: the agent_buy_enabled switch, read now. Off until an operator with the second factor turns it on. */
+  agentBuyEnabled(): Promise<boolean>;
+  /**
+   * API-B: the operator's agent_buy_enabled switch. Turning it on needs the second factor; turning it off
+   * needs only an operator (a stop can never be blocked by a missing code). A reason is always needed.
+   */
+  setAgentBuy(i: {
+    actor: Actor;
+    on: boolean;
+    reason: string;
+  }): Promise<Result<void, 'operator_required' | 'mfa_required' | 'reason_required'>>;
   parseNeed(i: { actor: Actor; text: string }): ReturnType<typeof parseNeed>;
   discover(i: { actor: Actor; text: string }): Promise<
     | { ai_off: true }
@@ -903,6 +937,8 @@ export interface Engine {
     actor: Actor;
     selection: Selection;
     consent: { terms: boolean; identity_share: boolean };
+    /** API-B: the mandate an agent buys under; frozen into the snapshot. */
+    mandate_id?: Id;
   }): ReturnType<typeof requestApproval>;
   approvalView(i: { approval_id: Id; actor: Actor }): Promise<ApprovalView | null>;
   payments: PaymentsFacade;
@@ -1731,6 +1767,13 @@ function buildApp(config: Config, opts: AppOptions): App {
   });
   const agent: AgentDeps = { ...core, model };
   const paymentsDeps: PaymentsDeps = { ...core, paypal, content };
+  // API-B: what the mandate store needs. The outbox is the one of /api/v1: an event commits with its change.
+  const mandateDeps: MandateDeps = {
+    clock,
+    ids,
+    outbox: createEventOutbox({ ids, clock }),
+    audit,
+  };
   // The loop's deps carry the cadence (the domain config); test_domain changes it in tests only.
   const loopDeps: PaymentsDeps = {
     ...paymentsDeps,
@@ -2298,6 +2341,23 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     aiEnabled: () => switches.isOn('ai_enabled'),
 
+    agentBuyEnabled: () => switches.isOn('agent_buy_enabled'),
+
+    async setAgentBuy({ actor, on, reason }) {
+      if (actor.kind !== 'operator') return err('operator_required');
+      // Turning agent buying ON needs the second factor; turning it OFF never does.
+      if (on && !actor.mfa) return err('mfa_required');
+      const r = await setSwitch(db, audit, clock, {
+        name: 'agent_buy_enabled',
+        on,
+        by: actor,
+        reason,
+        approval_ref: null,
+      });
+      if (r.ok) return ok(undefined);
+      return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+    },
+
     async parseNeed(i) {
       return parseNeed(agent, i);
     },
@@ -2410,7 +2470,37 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     payments: {
       async placeOrder(i) {
-        const r = await placePaymentsOrder(paymentsDeps, i);
+        const { mandate, ...plain } = i;
+        const buyer_id = plain.actor.kind === 'buyer' ? plain.actor.buyer_id : '';
+        // API-B: an agent purchase books its mandate in the order's own transaction (see OrderHold).
+        const hold: OrderHold | undefined =
+          mandate === undefined
+            ? undefined
+            : {
+                mandate_id: mandate.mandate_id,
+                async reserve(tx, x) {
+                  const held = await reserveMandate(tx, mandateDeps, {
+                    mandate_id: mandate.mandate_id,
+                    buyer_id,
+                    agent_key_id: mandate.agent_key_id,
+                    amount_minor: x.amount_minor,
+                    currency: x.currency,
+                  });
+                  return held.ok
+                    ? { ok: true, reservation_id: held.value.reservation_id }
+                    : { ok: false, reason: held.error };
+                },
+                async attach(tx, reservation_id, order_id) {
+                  await attachMandateOrder(tx, reservation_id, order_id);
+                },
+                async release(tx, reservation_id) {
+                  await releaseMandate(tx, mandateDeps, reservation_id);
+                },
+              };
+        const r = await placePaymentsOrder(paymentsDeps, {
+          ...plain,
+          ...(hold === undefined ? {} : { hold }),
+        });
         if (r.ok) return ok(r.value);
         const e = r.error;
         return err(e.code === 'approval' ? { code: 'approval', http: e.error.http } : e);
@@ -2922,8 +3012,18 @@ function buildApp(config: Config, opts: AppOptions): App {
         by: actor,
         reason,
       });
-      if (r.ok) return ok(undefined);
-      return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+      if (!r.ok)
+        return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+      // API-B: the stop button is the one control that works without the second factor, so it also turns
+      // agent buying off. It only ever makes the system do less; turning agent buying on stays MFA-only.
+      await setSwitch(db, audit, clock, {
+        name: 'agent_buy_enabled',
+        on: false,
+        by: actor,
+        reason,
+        approval_ref: null,
+      });
+      return ok(undefined);
     },
 
     async outboundSwitchOn(actor) {
@@ -3378,20 +3478,49 @@ export interface ApiV1 {
   ops: OpsFacade;
   agent: AgentFacade;
   events: EventOutbox;
+  /** API-B: agent spending caps. Every method names the buyer; another buyer's mandate is "not found". */
+  mandates: MandateService;
+  /** API-B: the claim a buy_unit call makes with its idempotency key, so a retry buys once. */
+  claims: PurchaseClaims;
   /** API-C: the webhook subscription service behind /api/v1/webhook-subscriptions. */
   webhooks: EventsService;
+}
+
+export interface MandateService {
+  create(i: CreateMandateInput): Promise<Result<MandateView, CreateError>>;
+  get(buyer_id: Id, id: Id): Promise<MandateView | null>;
+  revoke(buyer_id: Id, id: Id): Promise<Result<MandateView, 'not_found'>>;
+  /** What the agent key has left (a paid or ended order settles first), or the words to ask its buyer with. */
+  budget(i: { buyer_id: Id; agent_key_id: Id }): Promise<BudgetResult>;
+}
+
+export type ClaimStart =
+  | { kind: 'new' }
+  | { kind: 'done'; result: unknown }
+  | { kind: 'in_progress' }
+  | { kind: 'reused' };
+
+export interface PurchaseClaims {
+  /** `fingerprint` is the canonical text of the arguments (without the key); only its hash is stored. */
+  begin(i: { agent_key_id: Id; idempotency_key: string; fingerprint: string }): Promise<ClaimStart>;
+  finish(i: { agent_key_id: Id; idempotency_key: string; result: unknown }): Promise<void>;
+  /** Drops a claim that did not buy anything, so the same key may be tried again. */
+  abandon(i: { agent_key_id: Id; idempotency_key: string }): Promise<void>;
 }
 const apiV1Cache = new WeakMap<App, ApiV1>();
 export function createApiV1(a: App): ApiV1 {
   const cached = apiV1Cache.get(a);
   if (cached !== undefined) return cached;
   const buyer = createBuyerFacade(a.engine);
+  const events = createEventOutbox({ ids: a.security.ids, clock: a.security.clock });
   const made: ApiV1 = {
     buyer,
     seller: createSellerFacade(a.engine),
     ops: createOpsFacade(a.engine),
     agent: createAgentFacade(buyer),
-    events: createEventOutbox({ ids: a.security.ids, clock: a.security.clock }),
+    events,
+    mandates: createMandateService(a, events),
+    claims: createPurchaseClaims(a),
     webhooks: createEventsService({
       db: a.db,
       clock: a.security.clock,
@@ -3401,6 +3530,69 @@ export function createApiV1(a: App): ApiV1 {
   };
   apiV1Cache.set(a, made);
   return made;
+}
+
+function createMandateService(a: App, events: EventOutbox): MandateService {
+  const deps: MandateDeps = {
+    clock: a.security.clock,
+    ids: a.security.ids,
+    outbox: events,
+    audit: a.security.audit,
+  };
+  return {
+    create: (i) => createMandate(a.db, deps, i),
+    get: (buyer_id, id) => getMandate(a.db, buyer_id, id),
+    revoke: (buyer_id, id) => revokeMandate(a.db, deps, { buyer_id, id }),
+    budget: (i) => checkMandateBudget(a.db, deps, i),
+  };
+}
+
+function createPurchaseClaims(a: App): PurchaseClaims {
+  const sha = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
+  return {
+    async begin({ agent_key_id, idempotency_key, fingerprint }) {
+      const at = a.security.clock.now().toISOString();
+      const hash = sha(fingerprint);
+      const made = await a.db.query(
+        `INSERT INTO agent_purchases (agent_key_id, idempotency_key, request_hash, state, result, created_at, updated_at)
+         VALUES ($1, $2, $3, 'pending', NULL, $4, $4)
+         ON CONFLICT (agent_key_id, idempotency_key) DO NOTHING RETURNING idempotency_key`,
+        [agent_key_id, idempotency_key, hash, at],
+      );
+      if (made.rows.length === 1) return { kind: 'new' };
+      const r = await a.db.query<{ request_hash: string; state: string; result: unknown }>(
+        'SELECT request_hash, state, result FROM agent_purchases WHERE agent_key_id = $1 AND idempotency_key = $2',
+        [agent_key_id, idempotency_key],
+      );
+      const row = r.rows[0];
+      if (row === undefined) return { kind: 'in_progress' };
+      if (row.request_hash !== hash) return { kind: 'reused' };
+      if (row.state === 'done') {
+        const result =
+          typeof row.result === 'string' ? (JSON.parse(row.result) as unknown) : row.result;
+        return { kind: 'done', result };
+      }
+      return { kind: 'in_progress' };
+    },
+    async finish({ agent_key_id, idempotency_key, result }) {
+      await a.db.query(
+        `UPDATE agent_purchases SET state = 'done', result = $3::jsonb, updated_at = $4
+          WHERE agent_key_id = $1 AND idempotency_key = $2`,
+        [
+          agent_key_id,
+          idempotency_key,
+          JSON.stringify(result),
+          a.security.clock.now().toISOString(),
+        ],
+      );
+    },
+    async abandon({ agent_key_id, idempotency_key }) {
+      await a.db.query(
+        `DELETE FROM agent_purchases WHERE agent_key_id = $1 AND idempotency_key = $2 AND state = 'pending'`,
+        [agent_key_id, idempotency_key],
+      );
+    },
+  };
 }
 
 /** What the key service needs: the database, the clock, the ids, real secret bytes and the audit sink. */

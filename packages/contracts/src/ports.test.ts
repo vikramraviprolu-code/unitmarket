@@ -12,13 +12,14 @@ import {
 } from './ports';
 
 describe('ports schemas', () => {
-  it('IdPrefix lists the 31 prefixes (26 plus key and evt, API-W0, plus wsb, wdl and pas, API-C)', () => {
-    expect(IdPrefixSchema.options).toHaveLength(31);
+  it('IdPrefix lists the 33 prefixes (26 plus key and evt, API-W0, wsb, wdl and pas, API-C, man and rsv, API-B)', () => {
+    expect(IdPrefixSchema.options).toHaveLength(33);
     expect(IdPrefixSchema.safeParse('ord').success).toBe(true);
     expect(IdPrefixSchema.safeParse('xyz').success).toBe(false);
   });
-  it('SwitchName has the six switches', () => {
+  it('SwitchName has the seven switches (agent_buy_enabled from API-B)', () => {
     expect([...SwitchNameSchema.options].sort()).toEqual([
+      'agent_buy_enabled',
       'ai_enabled',
       'checkout_enabled',
       'paypal_outbound',

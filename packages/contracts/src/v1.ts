@@ -18,6 +18,7 @@ import { KeyKindSchema, SCOPES, ScopeSchema } from './principal';
 import type { Scope } from './principal';
 import { NoMatchReasonSchema, QuoteSchema } from './quote';
 import { CaseViewSchema } from './recovery';
+import { AGENT_ROUTES } from './v1-agent';
 
 // ---------- error envelope and pagination ----------
 /** The existing error body, `{ error: { code, message, support_code, fields? } }` (packages/security errors.ts). */
@@ -1039,6 +1040,7 @@ export const V1_ROUTES: readonly RouteDoc[] = [
     success: { status: 200, schema: pageOf(WebhookDeliveryViewSchema) },
     errors: [404],
   },
+  ...AGENT_ROUTES,
 ];
 
 const jsonSchema = (schema: ZodType): Record<string, unknown> => {

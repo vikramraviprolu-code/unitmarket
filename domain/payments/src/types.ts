@@ -1,5 +1,12 @@
 // Types of lane 05a (payments core, part 1). Contract types come from @umsbx/contracts.
-import type { AccessState, EnvironmentLabel, Id, OrderStatus, WindowState } from '@umsbx/contracts';
+import type {
+  AccessState,
+  EnvironmentLabel,
+  Id,
+  OrderStatus,
+  SqlExecutor,
+  WindowState,
+} from '@umsbx/contracts';
 import type { VerifyError } from '@umsbx/approval';
 import type { ProviderOrderState } from './composite';
 
@@ -8,7 +15,24 @@ export type PlaceError =
   | { code: 'order_open'; http: 409 }
   | { code: 'already_owned'; http: 409 }
   | { code: 'payee_unavailable'; http: 409 }
-  | { code: 'checkout_off'; http: 503 };
+  | { code: 'checkout_off'; http: 503 }
+  // API-B: an agent purchase the mandate did not take (cap, expiry, currency, ...). Nothing was written.
+  | { code: 'mandate_refused'; reason: string; http: 409 };
+
+/**
+ * API-B: books an agent purchase against its mandate inside the order transaction. `reserve` runs after the
+ * approval is verified and before it is used; if the order is refused after that, `release` gives the room back
+ * in the same transaction. `attach` ties the reservation to the order once it exists.
+ */
+export interface OrderHold {
+  mandate_id: string;
+  reserve(
+    tx: SqlExecutor,
+    i: { amount_minor: number; currency: string },
+  ): Promise<{ ok: true; reservation_id: string } | { ok: false; reason: string }>;
+  attach(tx: SqlExecutor, reservation_id: string, order_id: string): Promise<void>;
+  release(tx: SqlExecutor, reservation_id: string): Promise<void>;
+}
 
 export interface OrderView {
   order_id: Id;

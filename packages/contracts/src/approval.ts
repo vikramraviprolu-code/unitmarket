@@ -66,6 +66,8 @@ export const ApprovalSnapshotSchema = z
     // Only a snapshot with exactly two publishers carries it, and it is inside the content hash. A
     // one-publisher snapshot has no `settlement` key at all, so its hash is what it always was.
     settlement: SnapshotSettlementSchema.optional(),
+    // API-B: set only when the order is bought by an agent inside a buyer's mandate. Inside the content hash.
+    mandate_id: IdSchema.optional(),
   })
   .strict()
   .superRefine((snapshot, ctx) => {

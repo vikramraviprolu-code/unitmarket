@@ -15,7 +15,7 @@ import type {
 } from '@umsbx/contracts';
 import { poRefFor } from './composite';
 import { requestIdFor } from './keys';
-import type { PlaceError } from './types';
+import type { OrderHold, PlaceError } from './types';
 import { addMs } from './store';
 
 // Orders that no longer block a new order for the same buyer and content (the unique partial index
@@ -36,7 +36,7 @@ const HELD =
 
 export async function placeOrder(
   d: PaymentsDeps,
-  i: { approval_id: Id; token: string; actor: Actor },
+  i: { approval_id: Id; token: string; actor: Actor; hold?: OrderHold },
 ): Promise<Result<{ order_id: Id; order_ref: Id; status: OrderStatus }, PlaceError>> {
   // The switch is read before the transaction: the port may use the database itself.
   if (!(await d.switches.isOn('checkout_enabled'))) {
@@ -100,8 +100,28 @@ export async function placeOrder(
             return err({ code: 'payee_unavailable', http: 409 });
           }
         }
+        // API-B: an agent purchase books its mandate here, before the approval is used. A snapshot that names
+        // a mandate can only be placed with that mandate's hold, and a hold only for the mandate it names.
+        const named = snapshot.mandate_id;
+        if (named !== undefined && (i.hold === undefined || i.hold.mandate_id !== named)) {
+          return err({ code: 'mandate_refused', reason: 'mandate_mismatch', http: 409 });
+        }
+        if (named === undefined && i.hold !== undefined) {
+          return err({ code: 'mandate_refused', reason: 'mandate_mismatch', http: 409 });
+        }
+        let reservation_id: string | null = null;
+        if (i.hold !== undefined) {
+          const held = await i.hold.reserve(tx, {
+            amount_minor: snapshot.total_minor,
+            currency: snapshot.currency,
+          });
+          if (!held.ok) return err({ code: 'mandate_refused', reason: held.reason, http: 409 });
+          reservation_id = held.reservation_id;
+        }
         const used = await markUsed(tx, d, { approval_id: i.approval_id });
         if (!used.ok) {
+          if (i.hold !== undefined && reservation_id !== null)
+            await i.hold.release(tx, reservation_id);
           return err({ code: 'approval', error: { code: 'already_used', http: 409 } });
         }
 
@@ -222,6 +242,9 @@ export async function placeOrder(
               row.id,
             ],
           );
+        }
+        if (i.hold !== undefined && reservation_id !== null) {
+          await i.hold.attach(tx, reservation_id, order_id);
         }
         await d.audit.record(tx, {
           actor: i.actor,

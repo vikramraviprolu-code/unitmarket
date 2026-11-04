@@ -22,7 +22,14 @@ export type { MatchInput } from './match';
 export { applyReadback, readApplyGates, ensureReadbackOp } from './apply';
 export { raiseAlert } from './alerts';
 export type { AlertKind } from './alerts';
-export type { ApplyGates, ApplyReport, OrderView, PlaceError, ReadinessEvidence } from './types';
+export type {
+  ApplyGates,
+  ApplyReport,
+  OrderHold,
+  OrderView,
+  PlaceError,
+  ReadinessEvidence,
+} from './types';
 export { reconcileOrder } from './reconcile';
 export { nextDueAt, nextPollAt, runDue } from './due';
 export { recoverOnStartup } from './recover';

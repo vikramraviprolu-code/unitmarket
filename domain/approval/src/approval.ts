@@ -143,6 +143,8 @@ export async function requestApproval(
     actor: Actor;
     selection: Selection;
     consent: { terms: boolean; identity_share: boolean };
+    /** API-B: the mandate an agent buys under. Frozen into the snapshot (inside the hash); none for a person. */
+    mandate_id?: Id;
   },
 ): Promise<Result<ApprovalGranted, ApprovalError>> {
   const actor = i.actor;
@@ -324,6 +326,8 @@ export async function requestApproval(
       ...(publishers.length >= 2
         ? { settlement: { route: 'per_publisher', payments: publishers.length } }
         : {}),
+      // API-B: only an agent purchase carries a mandate; a person's snapshot and hash are what they were.
+      ...(i.mandate_id !== undefined ? { mandate_id: i.mandate_id } : {}),
     });
     // A duplicate article (two offers for one article) is the one way a built snapshot can fail.
     if (!parsed.success) return approvalError('unknown_selection');

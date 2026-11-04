@@ -234,6 +234,9 @@ describe('migration 0017', () => {
             ![
               'api_keys',
               'event_outbox',
+              'mandates',
+              'mandate_reservations',
+              'agent_purchases',
               'webhook_subscriptions',
               'webhook_fanout',
               'webhook_deliveries',

@@ -95,6 +95,8 @@ export interface RouteContext<I> {
   actor: Actor;
   /** API-W0. The principal behind a bearer key (agent or api_client), or null on a session or public route. */
   principal: Principal | null;
+  /** API-B. The effective scopes of the bearer key (empty on a session or public route). */
+  scopes: readonly Scope[];
   input: I;
   /** The id of the live session behind this request, or null (a public route with no session). */
   session_id: string | null;
@@ -577,6 +579,7 @@ export function withRoute<I, O>(
         const result = await handler({
           actor,
           principal,
+          scopes: held,
           input: parsed.data,
           session_id: record?.id ?? null,
           req_id,

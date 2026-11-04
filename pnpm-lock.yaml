@@ -86,6 +86,9 @@ importers:
       '@umsbx/library':
         specifier: workspace:*
         version: link:../../domain/library
+      '@umsbx/mandates':
+        specifier: workspace:*
+        version: link:../../domain/mandates
       '@umsbx/model':
         specifier: workspace:*
         version: link:../../packages/model
@@ -297,6 +300,19 @@ importers:
       '@umsbx/recovery':
         specifier: workspace:*
         version: link:../recovery
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+
+  domain/mandates:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@umsbx/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -817,6 +833,9 @@ importers:
       '@umsbx/library':
         specifier: workspace:*
         version: link:../../domain/library
+      '@umsbx/mandates':
+        specifier: workspace:*
+        version: link:../../domain/mandates
       '@umsbx/obs':
         specifier: workspace:*
         version: link:../../packages/obs

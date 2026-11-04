@@ -232,7 +232,7 @@ describe('discovery and the ai_enabled switch', () => {
 });
 
 describe('operator view', () => {
-  it('ops snapshot lists the six switches and the environment label', async () => {
+  it('ops snapshot lists the seven switches and the environment label', async () => {
     const snap = await app.engine.opsSnapshot({
       kind: 'operator',
       operator_id: 'opr_demo',
@@ -240,6 +240,7 @@ describe('operator view', () => {
     });
     expect(snap).not.toBeNull();
     expect(Object.keys(snap!.switches).sort()).toEqual([
+      'agent_buy_enabled',
       'ai_enabled',
       'checkout_enabled',
       'paypal_outbound',

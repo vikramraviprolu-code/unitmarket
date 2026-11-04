@@ -131,6 +131,10 @@ const EXPECTED_EXPORTS: string[] = [
   'EventEnvelopeSchema',
   'V1_ROUTES',
   'buildOpenApiV1',
+  // API-B (agent spending caps)
+  'MandateCreateRequestSchema',
+  'MandateViewSchema',
+  'BudgetStatusSchema',
   // API-A: buyer, seller and operator endpoints
   'OfferSummarySchema',
   'CatalogueSearchQuerySchema',
