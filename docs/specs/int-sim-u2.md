@@ -1,4 +1,4 @@
-# INT-SIM-U2: headline "trades became money movements" on /sim/market (SIM), round 2
+# INT-SIM-U2: headline "trades became money movements" on /sim/market (SIM), round 2 (passed 12 of 12)
 
 Task: One headline line on the simulation market dashboard: "10,000 trades became N money movements (T top-ups and P payout items)."
 Package: `apps/web/sim-ui/market` in `AIC_Hackathon_UnitMarket` (simulation repo only). Builder: Sonnet 5.5 medium. Reviewer: Opus 5.5 gate.
@@ -43,7 +43,7 @@ Branch `feat/sim-market-headline`, PR title prefix `[SIM]`.
 | Test | Command | Expected |
 |---|---|---|
 | `apps/web/sim-ui/market/headline.test.ts` | `corepack pnpm vitest run apps/web/sim-ui/market/headline.test.ts` | Each row of the table above, exact string or `null` |
-| `apps/web/app/sim/market/market.integration.test.tsx` | `corepack pnpm vitest run apps/web/app/sim/market/market.integration.test.tsx` | With a run of trades greater than 0, `movements-headline` holds the function's string; with 0 trades it is absent |
+| `apps/web/app/sim/market/market.integration.test.tsx` | `corepack pnpm vitest run apps/web/app/sim/market/market.integration.test.tsx` | The default render has 0 trades, so the test steps the market first. With a run of trades greater than 0, `movements-headline` holds the function's string; with 0 trades it is absent |
 | Regression | `corepack pnpm test:module ui-sim` | Green |
 | `corepack pnpm lint && corepack pnpm typecheck` | | Green; import rules 4, 5 and 10 hold (no simulation import in product screens) |
 

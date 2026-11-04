@@ -1,4 +1,4 @@
-# INT-UI0: console shell and shared UI, round 2
+# INT-UI0: console shell and shared UI, round 2 (passed 11 of 12, with builder notes)
 
 Task: One shell for operator, buyer and seller, with today's operator blocks placed under tabs, and the shared pieces every later screen uses.
 Package: `apps/web` (pages, `src/ui`, `src/lib`, `src/composition`), plus one additive const in `packages/contracts`. Builder: Sonnet 5.5 medium. Reviewer: Opus 5.5 gate.
@@ -35,7 +35,7 @@ The server never sees a `#fragment`, so there are no redirects. `/ops` becomes O
 | `/ops#ops-switches` | `/ops/controls#ops-switches` | stub on Home |
 | `/ops#ops-gate-section` | `/ops/controls#ops-gate-section` | stub on Home |
 | `/ops#ops-refunds`, `#ops-orders`, `#ops-totals`, `#ops-states`, `#ops-invariants` | `/ops/money#<same id>` | stub on Home |
-| `/ops#ops-shared-payee` | `/ops/sellers#ops-shared-payee` | stub on Home |
+| `/ops#ops-shared-payee` | `/ops/sellers#ops-shared-payee` | stub on Home. Today this is a `data-testid` on a conditional `<p>` (`app/ops/page.tsx:167`), so the builder adds the `id` on Sellers, and the Home stub always renders |
 | `/ops/publishers`, `/ops/payee-requests` | same URL, under the Sellers tab | section tab |
 | `/ops/evals` | same URL, under the Controls tab | section tab |
 | `/publisher/*`, `/library`, `/account`, `/discover`, `/buyer` | same URLs | tabs only |
@@ -64,8 +64,8 @@ Changed:
 - `src/app/ops/page.tsx` (Home plus stubs); `src/app/layout.tsx` (shell)
 - `src/lib/nav.ts`, `src/lib/publisher-copy.ts` (`PUBLISHER_NAV_LABEL` = "Seller"; UI0 owns this rename in nav and tabs; SEL renames page copy)
 - `composition.server.ts` (re-exports only)
-- `packages/contracts/src/payments.ts` (additive `REFUND_REQUEST_STATES` const)
-- tests that assert old places, moved to the new URL and never weakened: `e2e/zb-section-tabs.spec.ts`, `e2e/site-shell.spec.ts`, `e2e/header-layout.spec.ts`, `e2e/publisher-pages.spec.ts`, `e2e/zd-ops-publishers.spec.ts`, `src/ops-home-copy.test.ts`, `src/ops-home-copy.golden.test.ts`, and any copy golden holding "Publisher" as a nav label (the PR lists each one with a one-line reason)
+- `packages/contracts/src/payments.ts` (additive `REFUND_REQUEST_STATES` const: `requested`, `sent`, `unknown`, `pending`, `unresolved`, `completed`, `failed`, `cancelled`, the values `domain/payments/src/refunds.ts` writes (lines 75, 78, 284, 342, 527, 586, 711); there is no DB CHECK, so the PR cites these lines)
+- tests that assert old places, moved to the new URL and never weakened: `e2e/zb-section-tabs.spec.ts`, `e2e/site-shell.spec.ts`, `e2e/header-layout.spec.ts`, `e2e/publisher-pages.spec.ts`, `e2e/zd-ops-publishers.spec.ts`, `src/ops-home-copy.test.ts`, `src/ops-home-copy.golden.test.ts`, `src/publisher-copy.golden.test.ts` and `src/publisher-shell.state.test.ts` (the "Publisher" nav label)
 
 ## Acceptance tests (commit 1: tests only, run red)
 
