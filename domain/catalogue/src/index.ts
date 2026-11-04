@@ -5,7 +5,7 @@ export { getOffer, listAuthorisedOffers, offerIdFor } from './read';
 export type { OfferView } from './read';
 export { getCorridor, corridorFor } from './corridors';
 export { seedCatalogue, seedSupplement } from './seed';
-export { SEED_DATA, SEED_SUPPLEMENT_COMPOSITE } from './seed-data';
+export { SEED_DATA, SEED_SUPPLEMENT_COMPOSITE, SEED_SUPPLEMENT_DE } from './seed-data';
 export {
   MERCHANT_ID_PATTERN,
   decidePayeeRequest,
