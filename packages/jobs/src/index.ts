@@ -4,3 +4,5 @@ export { startLoop, DEFAULT_LEADER_RETRY_MS, LEADER_LOCK_KEY } from './loop';
 export type { LeaderElection, LeaderLease } from './loop';
 export { health } from './health';
 export type { CallBudget, CallBudgetSnapshot } from './budget';
+export { runDeliveryPass, RETRY_DELAYS_MS, MAX_ATTEMPTS, LEASE_MS } from './deliver';
+export type { DeliverDeps, DeliverCounts } from './deliver';

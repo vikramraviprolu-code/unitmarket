@@ -454,6 +454,9 @@ importers:
         specifier: workspace:*
         version: link:../../domain/payments
     devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../db
       '@umsbx/runtime':
         specifier: workspace:*
         version: link:../runtime

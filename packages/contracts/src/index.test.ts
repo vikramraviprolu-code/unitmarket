@@ -171,6 +171,16 @@ const EXPECTED_EXPORTS: string[] = [
   'OpsSwitchesSchema',
   'StatusSchema',
   'INBOUND_WEBHOOK_PATH',
+  // API-C (E1, E2): webhook subscriptions and deliveries
+  'WEBHOOK_OWNER_EVENTS',
+  'WEBHOOK_DELIVERY_STATUSES',
+  'isAllowedWebhookUrl',
+  'WebhookUrlSchema',
+  'WebhookSubscriptionCreateSchema',
+  'WebhookSubscriptionViewSchema',
+  'WebhookSubscriptionCreatedSchema',
+  'WebhookDeliveryViewSchema',
+  'eventAudience',
 ];
 
 type Def = {

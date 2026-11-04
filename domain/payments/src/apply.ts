@@ -471,6 +471,19 @@ async function verify(
     ref_entry_id: null,
   });
   const sale_id = sale.ok ? sale.value.id : sale.error.existing_entry_id;
+  if (sale.ok && d.outbox !== undefined) {
+    // API-C: a new sale entry means a new sale; a replay finds the old entry and writes no event.
+    await d.outbox.append(tx, {
+      type: 'sale.recorded',
+      payload: {
+        order_id: order.id,
+        unit_id: unit.id,
+        publisher_id: unit.publisher_id,
+        gross: money,
+        recorded_at: at,
+      },
+    });
+  }
   if (cap.paypal_fee_minor !== null) {
     await appendLedgerEntry(tx, d, {
       unit_id: unit.id,

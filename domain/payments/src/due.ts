@@ -404,9 +404,40 @@ export async function runDue(
   // A pack whose first capture was sent always finishes: money work, so it also runs when the polling
   // allowance is spent. Each PayPal order picked costs one item of the budget.
   budget = await continuePacks(d, budget, out);
-  if (moneyOnly) return out;
+  if (moneyOnly) return announcePass(d, out);
   budget = await sweepAbandoned(d, budget, out);
   await rereadPaid(d, budget, out);
+  return announcePass(d, out);
+}
+
+/**
+ * API-C: a pass that took at least one item writes settlement.completed in its own transaction: how many
+ * items it checked and how many it settled (the rest are still unknown). An idle pass, and a pass with
+ * the outbound switch off (which returns before this), write nothing. The work is already committed, so a
+ * failure to write the event is logged and does not undo or fail the pass.
+ */
+async function announcePass(d: PaymentsDeps, out: Counts): Promise<Counts> {
+  const outbox = d.outbox;
+  if (outbox === undefined || out.processed <= 0) return out;
+  try {
+    await d.db.transaction(async (tx) => {
+      await outbox.append(tx, {
+        type: 'settlement.completed',
+        payload: {
+          pass_id: d.ids.next('pas'),
+          checked: out.processed,
+          fixed: out.processed - out.still_unknown,
+          completed_at: nowIso(d),
+        },
+      });
+    });
+  } catch (e) {
+    d.log.log({
+      msg: 'payments.due.event_failed',
+      level: 'error',
+      fields: { error: e instanceof Error ? e.message : 'unknown' },
+    });
+  }
   return out;
 }
 

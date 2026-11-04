@@ -83,6 +83,7 @@ interface UnitFacts {
   id: Id;
   order_id: Id;
   order_ref: Id;
+  publisher_id: Id;
   currency: string;
   status: string;
   capture_id: string | null;
@@ -100,7 +101,7 @@ async function loadUnitFacts(
   if (!IdSchema.safeParse(unit_id).success) return null;
   const r = (
     await tx.query<Record<string, unknown>>(
-      `SELECT u.id, u.order_id, o.order_ref, o.currency, u.status, u.capture_id, u.amount_minor,
+      `SELECT u.id, u.order_id, o.order_ref, u.publisher_id, o.currency, u.status, u.capture_id, u.amount_minor,
               u.refunded_minor, (u.captured_verified_at IS NOT NULL) AS verified, u.provider_order_ref
          FROM order_units u JOIN orders o ON o.id = u.order_id WHERE u.id = $1${
            lock ? ' FOR UPDATE OF u' : ''
@@ -113,6 +114,7 @@ async function loadUnitFacts(
     id: r['id'] as string,
     order_id: r['order_id'] as string,
     order_ref: r['order_ref'] as string,
+    publisher_id: r['publisher_id'] as string,
     currency: r['currency'] as string,
     status: r['status'] as string,
     capture_id: (r['capture_id'] as string | null) ?? null,
@@ -1018,6 +1020,20 @@ async function bookEntry(
     'UPDATE order_units SET refunded_minor = $2, status = $3, updated_at = $4 WHERE id = $1',
     [unit.id, total, full ? 'refunded' : 'partially_refunded', d.clock.now().toISOString()],
   );
+  if (d.outbox !== undefined) {
+    // API-C: once per booked refund, partial or full. A replay returned above and writes nothing.
+    await d.outbox.append(tx, {
+      type: 'refund.completed',
+      payload: {
+        refund_id,
+        order_id: unit.order_id,
+        unit_id: unit.id,
+        publisher_id: unit.publisher_id,
+        amount,
+        completed_at: d.clock.now().toISOString(),
+      },
+    });
+  }
   return { result: 'booked', full };
 }
 

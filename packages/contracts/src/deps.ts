@@ -5,6 +5,7 @@ import type {
   AuditSink,
   Clock,
   Database,
+  EventOutbox,
   Ids,
   Logger,
   ModelPort,
@@ -22,6 +23,11 @@ export interface CoreDeps {
   switches: SwitchReader;
   config: DomainConfig;
   environment: EnvironmentLabel;
+  /**
+   * API-C: where domain state changes append their events, inside the same transaction. Optional so a
+   * rig without webhooks still builds; composition always sets it.
+   */
+  outbox?: EventOutbox;
 }
 export interface PaymentsDeps extends CoreDeps {
   paypal: PayPalPort;

@@ -53,6 +53,10 @@ export const IdPrefixSchema = z.enum([
   // API-W0: API keys and outbox events.
   'key',
   'evt',
+  // API-C: webhook subscriptions, webhook deliveries, reconciler passes.
+  'wsb',
+  'wdl',
+  'pas',
 ]);
 export type IdPrefix = z.infer<typeof IdPrefixSchema>;
 export interface Ids {
@@ -84,6 +88,24 @@ export interface OutboxEvent {
  */
 export interface EventOutbox {
   append(tx: SqlExecutor, event: OutboxEvent): Promise<Id>;
+}
+
+// ---------- Webhook sender (API-C) ----------
+/** One signed POST to a subscriber: the url, the headers (signature included) and the exact body bytes as text. */
+export interface WebhookRequest {
+  url: string;
+  headers: Record<string, string>;
+  body: string;
+}
+/** Why a send failed. A code only: the receiver's answer is never kept. */
+export type WebhookSendError = 'timeout' | 'connection' | 'http_4xx' | 'http_5xx';
+export type WebhookOutcome = { ok: true } | { ok: false; error: WebhookSendError };
+/**
+ * Sends one webhook. MVP 1 has one implementation, an in-process sink that records the request and opens
+ * no socket. A real HTTP sender comes later through packages/transport; it is not built now.
+ */
+export interface WebhookSender {
+  send(request: WebhookRequest): Promise<WebhookOutcome>;
 }
 
 // ---------- Secret ----------

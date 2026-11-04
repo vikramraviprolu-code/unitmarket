@@ -72,6 +72,11 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/discover/route.ts': () => import('./app/api/discover/route'),
   'api/v1/api-keys/[id]/route.ts': () => import('./app/api/v1/api-keys/[id]/route'),
   'api/v1/api-keys/route.ts': () => import('./app/api/v1/api-keys/route'),
+  'api/v1/webhook-subscriptions/[id]/deliveries/route.ts': () =>
+    import('./app/api/v1/webhook-subscriptions/[id]/deliveries/route'),
+  'api/v1/webhook-subscriptions/[id]/route.ts': () =>
+    import('./app/api/v1/webhook-subscriptions/[id]/route'),
+  'api/v1/webhook-subscriptions/route.ts': () => import('./app/api/v1/webhook-subscriptions/route'),
   'api/library/[id]/link/route.ts': () => import('./app/api/library/[id]/link/route'),
   'api/library/route.ts': () => import('./app/api/library/route'),
   'api/ops/start/route.ts': () => import('./app/api/ops/start/route'),

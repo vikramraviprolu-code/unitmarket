@@ -85,6 +85,12 @@ export function startLoop(
     leader?: LeaderElection;
     /** Wait between two elections of a process that is not the leader (default 3 s). */
     leader_retry_ms?: number;
+    /**
+     * API-C: one webhook delivery pass, called after the windows are swept in its own try/catch. It
+     * talks to subscribers, not to PayPal, so it also runs while the outbound switch is off. A throw is
+     * logged as jobs.loop.deliver_failed and does not fail the pass.
+     */
+    deliver?: () => Promise<unknown>;
   },
 ): { stop(): Promise<void> } {
   let stopped = false;
@@ -236,6 +242,13 @@ export function startLoop(
           }
         }
         await d.sweepWindows({ max_items: o.max_items });
+        if (o.deliver !== undefined) {
+          try {
+            await o.deliver();
+          } catch (e) {
+            fail('jobs.loop.deliver_failed', e);
+          }
+        }
         recordPass(d, d.clock.now().toISOString());
         // With the allowance spent, overdue polling work must not wake the loop every 100 ms: the
         // pass only does money work, which is looked for at the slow rhythm.

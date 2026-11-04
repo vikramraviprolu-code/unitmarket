@@ -202,7 +202,7 @@ export async function poFacts(tx: SqlExecutor, order_id: Id): Promise<(PoFacts &
  */
 export async function refreshOrder(
   tx: SqlExecutor,
-  d: Pick<CoreDeps, 'clock' | 'ids'>,
+  d: Pick<CoreDeps, 'clock' | 'ids' | 'outbox'>,
   order_id: Id,
 ): Promise<{ status: OrderStatus; before: OrderStatus; derived: Derived }> {
   const order = await loadOrder(tx, order_id);
@@ -225,6 +225,18 @@ export async function refreshOrder(
       unit_id: null,
       reason: 'partial',
       detail: { not_charged: derived.not_charged },
+    });
+  }
+  if (derived.status === 'paid' && order.status !== 'paid' && d.outbox !== undefined) {
+    // API-C: the order has just become paid. Same transaction as the status change.
+    await d.outbox.append(tx, {
+      type: 'order.paid',
+      payload: {
+        order_id,
+        buyer_id: order.buyer_id,
+        total: { currency: order.currency, minor: order.total_minor },
+        paid_at: d.clock.now().toISOString(),
+      },
     });
   }
   return { status: derived.status, before: order.status, derived };

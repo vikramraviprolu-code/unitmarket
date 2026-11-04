@@ -79,6 +79,8 @@ export async function createPendingEntitlements(
 }
 
 interface HeadRow {
+  buyer_id: Id;
+  unit_id: Id;
   money_state: MoneyState;
   access_state: AccessState;
   licence_state: LicenceState | null;
@@ -100,7 +102,7 @@ export async function applyMoneyEvent(
   // moved the row first: read again and decide again (the second reading may be a no-op or a refusal).
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const found = await tx.query<HeadRow>(
-      'SELECT money_state, access_state, licence_state FROM entitlements WHERE id = $1',
+      'SELECT buyer_id, unit_id, money_state, access_state, licence_state FROM entitlements WHERE id = $1',
       [i.entitlement_id],
     );
     const row = found.rows[0];
@@ -134,6 +136,23 @@ export async function applyMoneyEvent(
         await revokeWindow(tx, d, {
           entitlement_id: i.entitlement_id,
           reason: i.event === 'refund_verified' ? 'refund' : 'reversal',
+        });
+      }
+      if (i.event === 'capture_verified' && d.outbox !== undefined) {
+        // API-C: the buyer now holds the entitlement. Same transaction as the change, so it commits with it.
+        const unit = await tx.query<{ order_id: string }>(
+          'SELECT order_id FROM order_units WHERE id = $1',
+          [row.unit_id],
+        );
+        await d.outbox.append(tx, {
+          type: 'entitlement.granted',
+          payload: {
+            entitlement_id: i.entitlement_id,
+            order_id: unit.rows[0]?.order_id,
+            buyer_id: row.buyer_id,
+            unit_id: row.unit_id,
+            granted_at: now,
+          },
         });
       }
       return ok({ changed: true, money: after.money, access: after.access });

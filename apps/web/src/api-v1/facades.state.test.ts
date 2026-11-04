@@ -46,8 +46,16 @@ const clientOf = (owner: Actor): Principal => {
 };
 
 describe('the facades are wired once from the app', () => {
-  it('createApiV1 returns the five facades, and the same object for the same app', () => {
-    expect(Object.keys(api).sort()).toEqual(['agent', 'buyer', 'events', 'ops', 'seller']);
+  it('createApiV1 returns the four facades, the outbox and the webhook service, and the same object for the same app', () => {
+    // API-C adds `webhooks` (the subscription service behind /api/v1/webhook-subscriptions).
+    expect(Object.keys(api).sort()).toEqual([
+      'agent',
+      'buyer',
+      'events',
+      'ops',
+      'seller',
+      'webhooks',
+    ]);
     expect(createApiV1(app)).toBe(api);
   });
 });

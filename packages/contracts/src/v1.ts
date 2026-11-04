@@ -563,6 +563,156 @@ export const StatusSchema = z
     maintenance: z.literal(true).optional(),
   })
   .strict();
+// ---------- webhooks (API-C) ----------
+/** Which events each owner kind may subscribe to. The database repeats this as a CHECK. */
+export const WEBHOOK_OWNER_EVENTS: Record<
+  'buyer' | 'publisher' | 'operator',
+  readonly EventType[]
+> = {
+  buyer: ['order.paid', 'entitlement.granted', 'refund.completed', 'mandate.exhausted'],
+  publisher: ['sale.recorded', 'refund.completed'],
+  operator: ['settlement.completed'],
+};
+
+const MAX_WEBHOOK_URL = 2048;
+const HOST_LABEL = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const IPV4 = /^\d+\.\d+\.\d+\.\d+$/;
+
+/** Any whitespace, C0 or C1 control character, or DEL. Such a character would split a header or a log line. */
+function hasControlOrSpace(text: string): boolean {
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f) || /\s/.test(ch)) return true;
+  }
+  return false;
+}
+
+/**
+ * May this URL be stored as a webhook target? https only, a real DNS name (no IP literal in any
+ * spelling, no localhost, no single-label host), no credentials in it, at most 2048 characters. Checked
+ * now so that no unsafe target waits for a future HTTP sender. Never throws.
+ */
+export function isAllowedWebhookUrl(raw: unknown): boolean {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_WEBHOOK_URL) return false;
+  if (hasControlOrSpace(raw)) return false;
+  if (!/^https:\/\//i.test(raw)) return false;
+  const authority = raw.slice('https://'.length).split(/[/?#]/, 1)[0] ?? '';
+  if (authority === '' || authority.includes('@')) return false;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return false;
+  const host = url.hostname.replace(/\.$/, '');
+  if (host === '' || host.startsWith('[') || IPV4.test(host)) return false;
+  if (host === 'localhost' || host.endsWith('.localhost')) return false;
+  const labels = host.split('.');
+  if (labels.length < 2) return false;
+  return labels.every((l) => HOST_LABEL.test(l));
+}
+
+export const WebhookUrlSchema = z
+  .string()
+  .max(MAX_WEBHOOK_URL)
+  .refine(isAllowedWebhookUrl, { message: 'must be an https URL with a public host name' });
+
+export const WebhookSubscriptionCreateSchema = z
+  .object({
+    url: WebhookUrlSchema,
+    event_types: z
+      .array(EventTypeSchema)
+      .min(1)
+      .max(EVENT_TYPES.length)
+      .refine((t) => new Set(t).size === t.length, { message: 'event_types must be distinct' }),
+  })
+  .strict();
+export type WebhookSubscriptionCreate = z.infer<typeof WebhookSubscriptionCreateSchema>;
+
+/** What a list shows about a subscription. Never the signing secret. */
+export const WebhookSubscriptionViewSchema = z
+  .object({
+    id: IdSchema,
+    url: z.string().max(MAX_WEBHOOK_URL),
+    event_types: z.array(EventTypeSchema).min(1),
+    created_at: IsoUtcSchema,
+    disabled_at: IsoUtcSchema.nullable(),
+  })
+  .strict();
+export type WebhookSubscriptionView = z.infer<typeof WebhookSubscriptionViewSchema>;
+
+/** The answer to a create: the view plus the signing secret, shown this once. */
+export const WebhookSubscriptionCreatedSchema = WebhookSubscriptionViewSchema.extend({
+  signing_secret: z.string().regex(/^whsec_[0-9a-f]{64}$/),
+}).strict();
+export type WebhookSubscriptionCreated = z.infer<typeof WebhookSubscriptionCreatedSchema>;
+
+export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed', 'dead'] as const;
+export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
+
+/** A delivery as shown: the codes of the spec, never a url, a body, a secret or the receiver's words. */
+export const WebhookDeliveryViewSchema = z
+  .object({
+    id: IdSchema,
+    event_id: IdSchema,
+    event_type: EventTypeSchema,
+    attempt: z.number().int().nonnegative(),
+    status: z.enum(WEBHOOK_DELIVERY_STATUSES),
+    next_at: IsoUtcSchema.nullable(),
+    last_error: z
+      .enum([
+        'timeout',
+        'connection',
+        'http_4xx',
+        'http_5xx',
+        'sender_error',
+        'subscription_disabled',
+      ])
+      .nullable(),
+    created_at: IsoUtcSchema,
+    updated_at: IsoUtcSchema,
+  })
+  .strict();
+export type WebhookDeliveryView = z.infer<typeof WebhookDeliveryViewSchema>;
+
+/** Who an event is about: the owner ids a subscription is matched against. */
+export interface EventAudience {
+  buyer_id: string | null;
+  publisher_id: string | null;
+  order_id: string | null;
+  /** True when operators receive it (the event is about the platform, not one buyer or seller). */
+  operators: boolean;
+}
+const NOBODY: EventAudience = {
+  buyer_id: null,
+  publisher_id: null,
+  order_id: null,
+  operators: false,
+};
+
+/**
+ * Reads the audience out of the payload of the given type. A payload that is not the payload of the type
+ * has no audience. refund.completed names no buyer: the delivery pass looks the buyer up through the order.
+ */
+export function eventAudience(type: EventType, payload: unknown): EventAudience {
+  const parsed = EVENT_PAYLOAD_SCHEMAS[type].safeParse(payload);
+  if (!parsed.success) return { ...NOBODY };
+  const p = parsed.data as Record<string, unknown>;
+  const str = (k: string): string | null => (typeof p[k] === 'string' ? p[k] : null);
+  switch (type) {
+    case 'order.paid':
+    case 'entitlement.granted':
+      return { ...NOBODY, buyer_id: str('buyer_id'), order_id: str('order_id') };
+    case 'sale.recorded':
+    case 'refund.completed':
+      return { ...NOBODY, publisher_id: str('publisher_id'), order_id: str('order_id') };
+    case 'mandate.exhausted':
+      return { ...NOBODY, buyer_id: str('buyer_id') };
+    case 'settlement.completed':
+      return { ...NOBODY, operators: true };
+  }
+}
 
 // ---------- route registry and the OpenAPI document ----------
 export interface RouteDoc {
@@ -844,6 +994,50 @@ export const V1_ROUTES: readonly RouteDoc[] = [
     input: { in: 'none' },
     success: { status: 200, schema: StatusSchema },
     errors: [],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/webhook-subscriptions',
+    summary:
+      'Subscribe a URL to events your owner kind may receive. The signing secret is in this answer only; a repeat with the same Idempotency-Key returns the subscription without it.',
+    auth: 'apikey',
+    scopes: ['events:read'],
+    input: { in: 'body', schema: WebhookSubscriptionCreateSchema },
+    success: { status: 201, schema: WebhookSubscriptionCreatedSchema },
+    errors: [400, 409, 422],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/webhook-subscriptions',
+    summary:
+      'List your newest 100 webhook subscriptions, newest first. Never shows a signing secret.',
+    auth: 'apikey',
+    scopes: ['events:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: pageOf(WebhookSubscriptionViewSchema) },
+    errors: [],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/webhook-subscriptions/{id}',
+    summary:
+      'Disable one of your webhook subscriptions. It receives nothing more and its deliveries stay readable. Another owner subscription answers 404.',
+    auth: 'apikey',
+    scopes: ['events:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: WebhookSubscriptionViewSchema },
+    errors: [400, 404],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/webhook-subscriptions/{id}/deliveries',
+    summary:
+      'The newest 100 deliveries of one of your subscriptions: attempt, status, next try and an error code. Never the receiver answer.',
+    auth: 'apikey',
+    scopes: ['events:read'],
+    input: { in: 'none' },
+    success: { status: 200, schema: pageOf(WebhookDeliveryViewSchema) },
+    errors: [404],
   },
 ];
 

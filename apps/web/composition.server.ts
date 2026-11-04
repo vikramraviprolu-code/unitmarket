@@ -182,7 +182,13 @@ import {
   pendingReasonKind,
   pendingReasonLabel,
 } from '@umsbx/payments';
-import { health as jobsHealth, LEADER_LOCK_KEY, startLoop } from '@umsbx/jobs';
+import {
+  health as jobsHealth,
+  LEADER_LOCK_KEY,
+  runDeliveryPass,
+  startLoop,
+  type DeliverCounts,
+} from '@umsbx/jobs';
 import type { CallBudget } from '@umsbx/jobs';
 import { getLibrary } from '@umsbx/library';
 import {
@@ -243,6 +249,13 @@ import {
   createSellerFacade,
 } from './src/api-v1/facades';
 import { createEventOutbox } from './src/api-v1/outbox';
+import {
+  createEventsService,
+  createInProcessSink,
+  type EventsService,
+  type InProcessSink,
+} from './src/api-v1/events';
+import { signatureHeader } from './src/api-v1/signature';
 import type { PasswordRefusal, SecurityDeps } from '@umsbx/security';
 import { ACCOUNT_CONSENT_VERSION } from './src/lib/account-copy';
 import { DRYRUN_SCENARIOS, createDryRunModel, isScenarioId } from './src/server/dryrun-model';
@@ -693,6 +706,10 @@ export interface App {
    * UMS_AI_ADAPTER=claude, a key is set and the app is not in maintenance.
    */
   readonly model_id: string;
+  /** API-C: where MVP 1 webhook deliveries go. It records each request and opens no socket. */
+  readonly webhook_sink: InProcessSink;
+  /** API-C: one webhook delivery pass (the job loop calls it each pass; tests call it directly). */
+  deliverWebhooks(o: { max_items: number }): Promise<DeliverCounts>;
   close(): Promise<void>;
 }
 
@@ -1669,6 +1686,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       pack_approval_window_ms: opts.test_domain?.pack_approval_window_ms ?? PACK_APPROVAL_WINDOW_MS,
     },
     environment,
+    // API-C: domain state changes append their events to the outbox in their own transaction.
+    outbox: createEventOutbox({ ids, clock }),
   };
   // PUB-B: what the offer writes need; the price cap is the configured one (UMS_OFFER_MAX_MINOR).
   const offerDeps = { db, clock, ids, audit, offer_max_minor: config.offer_max_minor };
@@ -1752,6 +1771,22 @@ function buildApp(config: Config, opts: AppOptions): App {
     await applyAutomaticRules(core, x);
     return swept;
   };
+
+  // API-C: webhook delivery. MVP 1 sends nothing over the network: the sender is an in-process sink that
+  // records each request. A real HTTP sender comes later through packages/transport.
+  const webhook_sink = createInProcessSink();
+  const deliverWebhooks = (o: { max_items: number }): Promise<DeliverCounts> =>
+    runDeliveryPass(
+      {
+        db,
+        clock,
+        ids,
+        log,
+        sender: webhook_sink,
+        sign: (secret, t, body) => signatureHeader(secret, t, body),
+      },
+      o,
+    );
 
   let loop: { stop(): Promise<void> } | null = null;
 
@@ -3202,6 +3237,13 @@ function buildApp(config: Config, opts: AppOptions): App {
     security,
     outbound,
     model_id: model.model_id,
+    webhook_sink,
+    deliverWebhooks: async (o) => {
+      // CO-7b: no database in maintenance mode, so nothing to deliver.
+      if (maintenance) return { fanned_out: 0, attempted: 0, delivered: 0, failed: 0, dead: 0 };
+      await open();
+      return deliverWebhooks(o);
+    },
     startJobs: async () => {
       // CO-7b: no recovery pass, no loop, no database. Nothing to stop.
       if (maintenance) return { stop: async () => undefined };
@@ -3228,6 +3270,7 @@ function buildApp(config: Config, opts: AppOptions): App {
             max_sleep_ms: config.node_env === 'test' ? 200 : 5_000,
             max_items: 100,
             recover_on_start: led,
+            deliver: () => deliverWebhooks({ max_items: 100 }),
             ...(led
               ? {
                   leader: { tryAcquire: () => lockOf(LEADER_LOCK_KEY) },
@@ -3335,6 +3378,8 @@ export interface ApiV1 {
   ops: OpsFacade;
   agent: AgentFacade;
   events: EventOutbox;
+  /** API-C: the webhook subscription service behind /api/v1/webhook-subscriptions. */
+  webhooks: EventsService;
 }
 const apiV1Cache = new WeakMap<App, ApiV1>();
 export function createApiV1(a: App): ApiV1 {
@@ -3347,6 +3392,12 @@ export function createApiV1(a: App): ApiV1 {
     ops: createOpsFacade(a.engine),
     agent: createAgentFacade(buyer),
     events: createEventOutbox({ ids: a.security.ids, clock: a.security.clock }),
+    webhooks: createEventsService({
+      db: a.db,
+      clock: a.security.clock,
+      ids: a.security.ids,
+      secrets: cryptoSecretSource(),
+    }),
   };
   apiV1Cache.set(a, made);
   return made;
