@@ -9,6 +9,13 @@ export { cancelOrder } from './cancel';
 export type { CancelError, CancelOk } from './cancel';
 export { onBuyerReturn, loadOrderView } from './return';
 export { matchReadback } from './match';
+export {
+  PENDING_REASON_LABEL,
+  SELLER_ACCEPTANCE_REASON,
+  pendingReasonKind,
+  pendingReasonLabel,
+} from './pending-reason';
+export type { PendingReasonKind } from './pending-reason';
 export { deriveOrderStatus, expectedFor, poRefFor } from './composite';
 export type { Derived, PoFacts, ProviderOrderState } from './composite';
 export type { MatchInput } from './match';

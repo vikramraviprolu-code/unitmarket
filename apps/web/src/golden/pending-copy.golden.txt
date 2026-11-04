@@ -1,0 +1,15 @@
+# MC2-L6 golden (D-083): the words people are told about a payment PayPal holds for the seller to accept. Hand reviewed.
+label: Awaiting seller acceptance
+buyer, order page and library: Awaiting seller acceptance. You have not lost money. Access unlocks when the seller accepts the payment, or PayPal returns it to you.
+buyer, other pending reason: Payment pending at PayPal
+buyer, pack item line: Awaiting seller acceptance. Not unlocked yet
+seller, heading: Payments waiting at PayPal
+seller, lede: These payments are pending at PayPal. They are not counted in your totals until PayPal completes them.
+seller, columns: Date | Order | Amount | Why it is pending
+seller, group: 1 payment, $5.00
+seller, panel heading: Payments awaiting your acceptance
+seller, panel intro: PayPal is holding these payments because your PayPal account is set to accept them by hand. The buyer has not lost money. UnitMarket cannot change this PayPal setting for you.
+seller, choice wait: Wait. Open your PayPal account and accept the pending payment. The sale then completes and the buyer gets access. If the payment is not accepted, PayPal returns it to the buyer.
+seller, choice other currency: List an offer in another currency. List a new offer in a currency your PayPal account accepts. Payments already pending stay as they are. [Start a new offer]
+seller, panel closing: UnitMarket does not convert money for you and does nothing until you choose.
+operator, exposure line: Awaiting seller acceptance

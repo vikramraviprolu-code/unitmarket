@@ -9,6 +9,7 @@ import { StatusBanner } from '../../../ui/StatusBanner';
 import { SectionNav } from '../../../ui/SectionNav';
 import { OPS_PUBLISHERS_SECTIONS } from '../../../lib/ops-copy';
 import { formatMinor } from '../../../lib/format';
+import { COL_AWAITING } from '../../../lib/pending-copy';
 import {
   APPLIED_HINT,
   COL_CAPTURED,
@@ -124,7 +125,7 @@ export default async function OpsPublishers() {
     if (r.error.code === 'mfa_required') return <MfaNeeded />;
     redirect('/signin?next=/ops/publishers');
   }
-  const { environment } = r.value;
+  const { environment, awaiting } = r.value;
   const publishers = r.value.publishers.filter((p) => p.status !== 'applied');
   const ap = await (await app()).engine.opsApplicants.list(actor);
   if (!ap.ok) {
@@ -301,6 +302,23 @@ export default async function OpsPublishers() {
                             ? NONE_CELL
                             : countAmountText(b.held_count, formatMinor(b.held_minor, b.currency))}
                         </dd>
+                        {/* MC2-L6 (D-083): of the held units, those PayPal keeps for the seller to accept. */}
+                        {(() => {
+                          const a = awaiting.find(
+                            (x) =>
+                              x.publisher_id === p.publisher_id &&
+                              x.currency === b.currency &&
+                              x.environment === b.environment,
+                          );
+                          return a === undefined ? null : (
+                            <>
+                              <dt>{COL_AWAITING}</dt>
+                              <dd data-testid="exposure-awaiting">
+                                {countAmountText(a.count, formatMinor(a.minor, b.currency))}
+                              </dd>
+                            </>
+                          );
+                        })()}
                       </dl>
                     </div>
                   ))
