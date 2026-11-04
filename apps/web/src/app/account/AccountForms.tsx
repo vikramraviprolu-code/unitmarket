@@ -19,12 +19,37 @@ import {
   SIGNUP_PASSWORD_RULES,
   accountPasswordErrorText,
 } from '../../lib/account-copy';
+import {
+  DISPLAY_CURRENCIES,
+  DISPLAY_CURRENCY_FAILED,
+  DISPLAY_CURRENCY_LABEL,
+  DISPLAY_CURRENCY_LEDE,
+  DISPLAY_CURRENCY_OPTION,
+  DISPLAY_CURRENCY_SAVE,
+  DISPLAY_CURRENCY_SAVED,
+  DISPLAY_CURRENCY_SAVING,
+  DISPLAY_CURRENCY_TITLE,
+  autoOptionLabel,
+  isDisplayCurrency,
+} from '../../lib/buyer-price';
 import { ErrorState } from '../../ui/ErrorState';
 import { PasswordField, ShowPasswordButton } from '../../ui/PasswordField';
 
 // ID-ACCOUNTS: change the password, and sign out on all devices. Both post to the account routes, which take
 // the account from the session. The passwords are sent exactly as typed.
-export function AccountForms() {
+export function AccountForms({
+  displayCurrency,
+}: {
+  displayCurrency: { country: string; chosen: string | null };
+}) {
+  // MC2-L5: which currency prices are shown in as an estimate. 'auto' is no choice: derived from the country.
+  const [shownIn, setShownIn] = useState<string>(
+    isDisplayCurrency(displayCurrency.chosen) ? displayCurrency.chosen : 'auto',
+  );
+  const [dcBusy, setDcBusy] = useState(false);
+  const [dcSaved, setDcSaved] = useState(false);
+  const [dcFailed, setDcFailed] = useState(false);
+
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [repeat, setRepeat] = useState('');
@@ -61,6 +86,17 @@ export function AccountForms() {
     setNext('');
     setRepeat('');
     setDone(true);
+  }
+
+  async function saveDisplay(e: React.FormEvent) {
+    e.preventDefault();
+    setDcBusy(true);
+    setDcSaved(false);
+    setDcFailed(false);
+    const r = await postJson('/api/accounts/display-currency', { currency: shownIn });
+    setDcBusy(false);
+    if (r.ok) setDcSaved(true);
+    else setDcFailed(true);
   }
 
   async function everywhere() {
@@ -131,6 +167,41 @@ export function AccountForms() {
           >
             {busy ? ACCOUNT_CHANGE_BUSY : ACCOUNT_CHANGE}
           </button>
+        </p>
+      </form>
+      <form
+        className="auth-card"
+        onSubmit={saveDisplay}
+        aria-labelledby="ac-display-title"
+        data-testid="account-display-form"
+      >
+        <h2 id="ac-display-title">{DISPLAY_CURRENCY_TITLE}</h2>
+        <p>{DISPLAY_CURRENCY_LEDE}</p>
+        <p>
+          <label htmlFor="ac-display">{DISPLAY_CURRENCY_LABEL}</label>
+          <select
+            id="ac-display"
+            value={shownIn}
+            onChange={(e) => {
+              setShownIn(e.target.value);
+              setDcSaved(false);
+            }}
+          >
+            <option value="auto">{autoOptionLabel(displayCurrency.country)}</option>
+            {DISPLAY_CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {DISPLAY_CURRENCY_OPTION[c]}
+              </option>
+            ))}
+          </select>
+        </p>
+        <p>
+          <button className="btn" type="submit" disabled={dcBusy}>
+            {dcBusy ? DISPLAY_CURRENCY_SAVING : DISPLAY_CURRENCY_SAVE}
+          </button>
+        </p>
+        <p role="status" className="muted" data-testid="account-display-status">
+          {dcSaved ? DISPLAY_CURRENCY_SAVED : dcFailed ? DISPLAY_CURRENCY_FAILED : ''}
         </p>
       </form>
       <section className="auth-card" aria-labelledby="ac-all-title">

@@ -732,6 +732,15 @@ export interface Engine {
     }): ConvertResult | null;
   };
   /**
+   * MC2-L5 (D-084 item 4): the buyer's display currency. `get` is the buyer's country and the currency chosen
+   * in the account (null until chosen); the screens derive the rest. `set` stores a choice, or null for
+   * "automatic". A display preference only: no order, approval, quote or ledger entry reads it.
+   */
+  displayCurrency: {
+    get(actor: Actor): Promise<{ country: string; chosen: string | null } | null>;
+    set(i: { actor: Actor; currency: 'USD' | 'EUR' | 'GBP' | null }): Promise<boolean>;
+  };
+  /**
    * The passcode is checked first. For the operator persona, `operator` and `code` are the name and the
    * authenticator code (CO-6): a right pair gives `opr_<name>` with mfa; no keys configured, or no code,
    * gives the unverified operator without mfa; a wrong code gives null, like a wrong passcode.
@@ -1903,6 +1912,28 @@ function buildApp(config: Config, opts: AppOptions): App {
       convert: (i) => fxConvert({ ...i, at: i.at ?? clock.now() }),
     },
 
+    displayCurrency: {
+      async get(actor) {
+        const buyer = buyerOf(actor);
+        if (buyer === null) return null;
+        const r = await db.query<{ country: string; display_currency: string | null }>(
+          'SELECT country, display_currency FROM buyers WHERE id = $1',
+          [buyer],
+        );
+        const row = r.rows[0];
+        return row === undefined ? null : { country: row.country, chosen: row.display_currency };
+      },
+      async set({ actor, currency }) {
+        const buyer = buyerOf(actor);
+        if (buyer === null) return false;
+        const r = await db.query(
+          'UPDATE buyers SET display_currency = $2, updated_at = $3 WHERE id = $1 RETURNING id',
+          [buyer, currency, clock.now().toISOString()],
+        );
+        return r.rows.length === 1;
+      },
+    },
+
     async signIn({ persona, passcode, operator, code }) {
       if (config.passcode_hash === null) return null;
       // PUB-A1: a publisher persona verifies against the publisher hash only; every other persona against
@@ -2229,7 +2260,27 @@ function buildApp(config: Config, opts: AppOptions): App {
       if (!(await switches.isOn('ai_enabled'))) return { ai_off: true };
       const brief = await parseNeed(agent, { actor, text });
       if (!brief.ok) return { ai_off: false, result: { parse_error: brief.error.code } };
-      const r = await discoverOffers(agent, { actor, brief_id: (brief.value as Brief).brief_id });
+      // MC2-L5: a ceiling in another currency than an offer is compared on the converted price at the stored
+      // rate. No usable rate (none stored, a read that failed, or one over 7 days old) means no convert
+      // function, and discovery compares only offers in the ceiling's own currency, as before.
+      const rates = await fxGetRates(db, clock).catch(() => null);
+      const convert =
+        rates === null
+          ? undefined
+          : (c: { minor: number; from: string; to: string }): number | null => {
+              const isFx = (x: string): x is FxCurrency =>
+                x === 'USD' || x === 'EUR' || x === 'GBP';
+              if (!isFx(c.from) || !isFx(c.to)) return null;
+              return (
+                fxConvert({ minor: c.minor, from: c.from, to: c.to, rates, at: clock.now() })
+                  ?.minor ?? null
+              );
+            };
+      const r = await discoverOffers(agent, {
+        actor,
+        brief_id: (brief.value as Brief).brief_id,
+        ...(convert !== undefined ? { convert } : {}),
+      });
       return { ai_off: false, result: r };
     },
 

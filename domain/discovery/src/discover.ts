@@ -9,6 +9,7 @@ import type {
   Brief,
   FitCard,
   Id,
+  Money,
   NoMatch,
   Quote,
   Result,
@@ -24,21 +25,67 @@ import { computeFit, rankFit } from '@umsbx/fit';
 export const MAX_ITEMS = 5;
 const MAX_CANDIDATES = 50;
 
+/**
+ * MC2-L5: converts minor units between currencies at the stored rate, or answers null when there is no usable
+ * rate. Injected, so discovery never reads the rate table. The caller rounds half away from zero.
+ */
+export type ConvertFn = (i: { minor: number; from: string; to: string }) => number | null;
+
+/**
+ * A ceiling compared on the converted price (D-084 item 4): the buyer's ceiling and the offer price converted
+ * into the ceiling's currency. The quote itself stays in the offer's currency; this is only what was compared.
+ */
+export interface CeilingCheck {
+  ceiling: Money;
+  price: Money;
+}
+
 export type DiscoveryResult =
   | {
       kind: 'proposal';
       proposal_id: Id;
-      items: { quote: Quote; fit: FitCard; title: string; publisher: string }[];
+      items: {
+        quote: Quote;
+        fit: FitCard;
+        title: string;
+        publisher: string;
+        ceiling_check?: CeilingCheck;
+      }[];
     }
-  | { kind: 'no_match'; reasons: NoMatch['reason'][] };
+  | {
+      kind: 'no_match';
+      reasons: NoMatch['reason'][];
+      /**
+       * MC2-L5: set (true) only when an offer in another currency than the ceiling could not be compared
+       * because no usable rate was available. The buyer is told; nothing is proposed on a guess.
+       */
+      rate_missing?: true;
+    };
 // One code for a missing brief and for someone else's brief, so the answer reveals nothing (L1).
 // 'unknown_brief' and 'not_owner' stay in the type for older callers and are no longer returned.
 export type DiscoverError = { code: 'not_found' | 'unknown_brief' | 'not_owner' };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === 'object' && !Array.isArray(v);
-const noMatch = (reasons: NoMatch['reason'][] = []): Result<DiscoveryResult, DiscoverError> =>
-  ok({ kind: 'no_match', reasons });
+const noMatch = (
+  reasons: NoMatch['reason'][] = [],
+  rateMissing = false,
+): Result<DiscoveryResult, DiscoverError> =>
+  ok({ kind: 'no_match', reasons, ...(rateMissing ? { rate_missing: true as const } : {}) });
+
+// A convert function that throws is the same as one with no usable rate: never an exception into the buyer's
+// search.
+const safeConvert = (convert: ConvertFn | undefined): ConvertFn | undefined =>
+  convert === undefined
+    ? undefined
+    : (c) => {
+        try {
+          const m = convert(c);
+          return typeof m === 'number' && Number.isSafeInteger(m) ? m : null;
+        } catch {
+          return null;
+        }
+      };
 const iso = (v: unknown): string => new Date(v as string | number | Date).toISOString();
 
 async function loadBrief(d: AgentDeps, id: Id): Promise<Brief | null> {
@@ -59,31 +106,51 @@ async function loadBrief(d: AgentDeps, id: Id): Promise<Brief | null> {
   });
 }
 
-// Candidates: authorised current offers in every enabled corridor (and matching the ceiling's currency
-// when there is one). The buyer's country is data, not a gate (D-084 3). The newest list is capped for
-// the model.
-async function candidatesFor(d: AgentDeps, brief: Brief): Promise<OfferView[]> {
+// Candidates: authorised current offers in every enabled corridor. The buyer's country is data, not a gate
+// (D-084 3). With a ceiling, a corridor whose currency differs from the ceiling's counts only when the stored
+// rate can convert it (D-084 4); with no usable rate only the ceiling's own currency counts, as before. The
+// newest list is capped for the model.
+async function candidatesFor(
+  d: AgentDeps,
+  brief: Brief,
+  convert: ConvertFn | undefined,
+): Promise<{ views: OfferView[]; no_rate: boolean }> {
   const buyer = await d.db.query<{ country: string }>('SELECT country FROM buyers WHERE id = $1', [
     brief.buyer_id,
   ]);
-  if (!buyer.rows[0]) return [];
+  if (!buyer.rows[0]) return { views: [], no_rate: false };
   const corridors = await d.db.query<{ id: string; currency: string }>(
     'SELECT id, currency FROM corridors WHERE enabled ORDER BY id',
   );
   const byId = new Map<string, OfferView>();
+  let noRate = false;
   for (const c of corridors.rows) {
-    if (brief.ceiling !== null && brief.ceiling.currency !== c.currency) continue;
+    if (
+      brief.ceiling !== null &&
+      brief.ceiling.currency !== c.currency &&
+      !canConvert(convert, c.currency, brief.ceiling.currency)
+    ) {
+      // Left out for want of a rate: the buyer is told when this leaves them with nothing, but only if the
+      // corridor actually has an offer.
+      if ((await listAuthorisedOffers(d.db, { corridor_id: c.id, limit: 1 })).length > 0)
+        noRate = true;
+      continue;
+    }
     const views = await listAuthorisedOffers(d.db, { corridor_id: c.id, limit: MAX_CANDIDATES });
     for (const v of views) byId.set(v.offer.id, v);
   }
-  return [...byId.values()]
+  const views = [...byId.values()]
     .sort((a, b) => (a.offer.id < b.offer.id ? -1 : a.offer.id > b.offer.id ? 1 : 0))
     .slice(0, MAX_CANDIDATES);
+  return { views, no_rate: noRate };
 }
+
+const canConvert = (convert: ConvertFn | undefined, from: string, to: string): boolean =>
+  convert !== undefined && convert({ minor: 100, from, to }) !== null;
 
 export async function discover(
   d: AgentDeps,
-  i: { actor: Actor; brief_id: Id },
+  i: { actor: Actor; brief_id: Id; convert?: ConvertFn },
 ): Promise<Result<DiscoveryResult, DiscoverError>> {
   const brief = await loadBrief(d, i.brief_id);
   if (!brief) return err({ code: 'not_found' });
@@ -91,8 +158,10 @@ export async function discover(
     return err({ code: 'not_found' });
   }
 
-  const views = await candidatesFor(d, brief);
-  if (views.length === 0) return noMatch();
+  const convert = safeConvert(i.convert);
+  const { views, no_rate } = await candidatesFor(d, brief, convert);
+  let rateMissing = no_rate;
+  if (views.length === 0) return noMatch([], rateMissing);
   const byOffer = new Map(views.map((v) => [v.offer.id, v]));
   const candidateIds = new Set(byOffer.keys());
 
@@ -139,41 +208,84 @@ export async function discover(
 
   // Every pick goes through the same entry as a direct link, so a quote or a no-match reason is
   // exactly what the direct path would give. The model's tool calls are never executed.
-  const quoted: { quote: Quote; view: OfferView }[] = [];
+  // MC2-L5: a ceiling in the offer's own currency is checked by the entry, as before. A ceiling in another
+  // currency is checked here on the offer price converted into the ceiling currency (half away from zero,
+  // inclusive); the quote stays in the offer's currency and nothing stored is converted.
+  const quoted: { quote: Quote; view: OfferView; check: CeilingCheck | null }[] = [];
   const reasons: NoMatch['reason'][] = [];
   for (const pick of safe.value.picks) {
     const view = byOffer.get(pick.offer_id)!;
+    const cross = brief.ceiling !== null && view.offer.currency !== brief.ceiling.currency;
     const r = await startFromOffer(d, {
       offer: { offer_id: pick.offer_id },
       actor: i.actor,
       source: 'discovery',
-      ...(brief.ceiling !== null ? { ceiling_minor: brief.ceiling.minor } : {}),
+      ...(brief.ceiling !== null && !cross ? { ceiling_minor: brief.ceiling.minor } : {}),
       ...(brief.option !== null ? { option: brief.option } : {}),
     });
     if (!r.ok) continue;
-    if (r.value.kind === 'quote') quoted.push({ quote: r.value, view });
-    else if (!reasons.includes(r.value.reason)) reasons.push(r.value.reason);
+    if (r.value.kind !== 'quote') {
+      if (!reasons.includes(r.value.reason)) reasons.push(r.value.reason);
+      continue;
+    }
+    let check: CeilingCheck | null = null;
+    if (cross && brief.ceiling !== null) {
+      const minor = convert?.({
+        minor: r.value.price.minor,
+        from: view.offer.currency,
+        to: brief.ceiling.currency,
+      });
+      if (minor === undefined || minor === null) {
+        // No usable rate for this price: it is not proposed, and the buyer is told why if nothing is left.
+        rateMissing = true;
+        continue;
+      }
+      if (minor > brief.ceiling.minor) {
+        if (!reasons.includes('above_ceiling')) reasons.push('above_ceiling');
+        continue;
+      }
+      check = {
+        ceiling: { currency: brief.ceiling.currency, minor: brief.ceiling.minor },
+        price: { currency: brief.ceiling.currency, minor },
+      };
+    }
+    quoted.push({ quote: r.value, view, check });
   }
-  if (quoted.length === 0) return noMatch(reasons);
+  if (quoted.length === 0) return noMatch(reasons, rateMissing);
 
   const now = d.clock.now();
   const ranked = rankFit(
-    quoted.map(({ quote, view }) => ({
-      quote,
-      view,
-      price_minor: quote.price.minor,
-      fit: computeFit(
-        brief,
-        { offer: view.offer, article: view.article, price_minor: quote.price.minor },
-        now,
-      ),
-    })),
+    quoted.map(({ quote, view, check }) => {
+      // A converted item is judged in the ceiling's currency, so the budget row compares like with like;
+      // its evidence says "about" because the price was converted.
+      const offer = check === null ? view.offer : { ...view.offer, currency: check.price.currency };
+      const price_minor = check === null ? quote.price.minor : check.price.minor;
+      const fit = computeFit(brief, { offer, article: view.article, price_minor }, now);
+      return {
+        quote,
+        view,
+        check,
+        price_minor,
+        fit:
+          check === null
+            ? fit
+            : {
+                ...fit,
+                dimensions: fit.dimensions.map((x) =>
+                  x.key === 'budget' && x.level !== null
+                    ? { ...x, evidence: `about ${x.evidence}` }
+                    : x,
+                ),
+              },
+      };
+    }),
   );
   const items = ranked.map((r) => ({
     quote: r.quote,
     fit: r.fit,
     title: r.view.article.title,
     publisher: r.view.publisher.display_name,
+    ...(r.check !== null ? { ceiling_check: r.check } : {}),
   }));
 
   const proposal_id = d.ids.next('prp');

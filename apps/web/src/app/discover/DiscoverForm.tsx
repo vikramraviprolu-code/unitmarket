@@ -17,6 +17,7 @@ import {
   discoverNoMatchView,
 } from '../../lib/buyer-copy';
 import type { BrowseEntry } from '../../lib/buyer-copy';
+import type { PriceView } from '../../lib/buyer-price';
 import { TermsConsent } from '../../ui/TermsConsent';
 
 type Item = {
@@ -24,10 +25,14 @@ type Item = {
   fit: FitCardData;
   title: string;
   publisher: string;
+  /** MC2-L5: present only when the price is shown in another currency. The quote above is the seller's. */
+  display?: PriceView;
+  /** MC2-L5: present when the agent compared the ceiling on the converted price (worded by the server). */
+  ceiling_line?: string;
 };
 type Result =
   | { kind: 'proposal'; proposal_id: string; items: Item[] }
-  | { kind: 'no_match'; reasons?: string[] };
+  | { kind: 'no_match'; reasons?: string[]; rate_missing?: boolean };
 
 // Gate 12 D12: the pack error sits next to the Buy button, so it is not far above it on a narrow screen.
 const NO_TICK = 'Please accept the terms of purchase before buying.';
@@ -137,7 +142,10 @@ export function DiscoverForm({
     setPicked((p) => (p.includes(offerId) ? p.filter((x) => x !== offerId) : [...p, offerId]));
   }
 
-  const noMatch = discoverNoMatchView(result?.kind === 'no_match' ? (result.reasons ?? []) : []);
+  const noMatch = discoverNoMatchView(
+    result?.kind === 'no_match' ? (result.reasons ?? []) : [],
+    result?.kind === 'no_match' && result.rate_missing === true,
+  );
   return (
     <>
       <Hero>
@@ -185,6 +193,11 @@ export function DiscoverForm({
                 {noMatch.open_order.body} <a href={noMatch.open_order.href}>{OPEN_ORDER_LINK}</a>
               </StatusBanner>
             ) : null}
+            {noMatch.no_rate !== null ? (
+              <StatusBanner tone="info" title="No current exchange rate">
+                <span data-testid="discover-no-rate">{noMatch.no_rate}</span>
+              </StatusBanner>
+            ) : null}
             {noMatch.nothing_fits ? (
               <StatusBanner tone="warn">
                 Nothing in the catalogue fits that need and ceiling. We do not stretch the match.
@@ -211,6 +224,9 @@ export function DiscoverForm({
                   <li key={b.offer_id}>
                     <a href={b.href}>{b.title}</a>, {b.publisher}{' '}
                     <span className="muted">{b.price_text}</span>
+                    {b.binding_text !== null ? (
+                      <span className="muted binding-line"> {b.binding_text}</span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -249,6 +265,8 @@ export function DiscoverForm({
                     title={it.title}
                     publisher={it.publisher}
                     price={it.quote.price}
+                    {...(it.display !== undefined ? { display: it.display } : {})}
+                    {...(it.ceiling_line !== undefined ? { ceilingLine: it.ceiling_line } : {})}
                     option={it.quote.option}
                     onChoose={() => void choose(it, result.proposal_id)}
                   />

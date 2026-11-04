@@ -266,3 +266,70 @@ describe('the guards', () => {
     expect((await getRates(w.db, w.clock))!.eur_usd).toBe('1.15');
   });
 });
+
+// MC2-L5 follow-up F3: a caller that finds a fetch already in flight must not wait on the advisory lock
+// (that would hold a pool connection past the 3 second page deadline). It takes the lock with the "try"
+// form and, when it is not obtained, returns at once with the stored rates: no fetch, no wait.
+// PGlite has one connection, so real contention cannot happen here; the lock is stood in for by a database
+// wrapper whose try-lock answers "not obtained", exactly what Postgres answers while another transaction
+// holds it. The wrapper also fails the test if a blocking lock call is made.
+describe('a fetch already in flight', () => {
+  function contended(db: FxWorld['db']): { db: FxWorld['db']; lockSql: string[] } {
+    const lockSql: string[] = [];
+    const wrapped = {
+      ...db,
+      dialect: db.dialect,
+      query: db.query.bind(db),
+      exec: db.exec.bind(db),
+      transaction: <T>(
+        fn: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<T>,
+      ) =>
+        db.transaction((tx) =>
+          fn({
+            exec: tx.exec.bind(tx),
+            query: ((sql: string, params?: unknown[]) => {
+              if (/advisory/.test(sql)) {
+                lockSql.push(sql);
+                if (/pg_try_advisory_xact_lock/.test(sql))
+                  return Promise.resolve({ rows: [{ got: false }] });
+                return Promise.reject(new Error('a blocking advisory lock was requested'));
+              }
+              return tx.query(sql, params);
+            }) as typeof tx.query,
+          }),
+        ),
+    } as unknown as FxWorld['db'];
+    return { db: wrapped, lockSql };
+  }
+
+  it('returns at once with the stored rates, makes no fetch and stores nothing', async () => {
+    const { db, lockSql } = contended(w.db);
+    const fetchRates = vi.fn(async () => NEW);
+    const r = await refreshIfStale({ db, clock: w.clock, fetchRates });
+    expect(r).toEqual({ status: 'kept', reason: 'in_flight', date: SEED.date });
+    expect(fetchRates).not.toHaveBeenCalled();
+    expect(await rowCount()).toBe(2);
+    expect((await getRates(w.db, w.clock))!.eur_usd).toBe('1.15');
+    expect(lockSql).toHaveLength(1);
+    expect(lockSql[0]).toMatch(/pg_try_advisory_xact_lock/);
+  });
+
+  it('a later call, when the lock is free, still fetches once', async () => {
+    const fetchRates = vi.fn(async () => NEW);
+    expect(
+      (await refreshIfStale({ db: contended(w.db).db, clock: w.clock, fetchRates })).status,
+    ).toBe('kept');
+    expect(await run(fetchRates)).toEqual({ status: 'refreshed', date: '2026-11-04' });
+    expect(fetchRates).toHaveBeenCalledTimes(1);
+  });
+
+  it('the source never uses the blocking form of the lock', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('./refresh.ts', import.meta.url), 'utf8').replace(
+      /\/\/.*$/gm,
+      '',
+    );
+    expect(src).toMatch(/pg_try_advisory_xact_lock/);
+    expect(src).not.toMatch(/pg_advisory_xact_lock/);
+  });
+});

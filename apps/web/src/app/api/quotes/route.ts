@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withRoute } from '@umsbx/security';
 import type { RouteMeta } from '@umsbx/security';
 import { app, securityDeps } from '../../../server/access';
+import { buyerDisplay } from '../../../server/buyer-display';
 
 export const routeMeta: RouteMeta = {
   path: '/api/quotes',
@@ -24,6 +25,9 @@ const Input = z
   })
   .strict();
 
+// One body type for every 200 answer: the quote, a no-match, or a quote with its display lines.
+const reply = (body: object) => ({ status: 200 as const, body });
+
 export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
   const a = await app();
   const r = await a.engine.quote({
@@ -42,11 +46,22 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
         offer: input.offer,
         actor,
       });
-      return { status: 200, body: order_ref === null ? r.value : { ...r.value, order_ref } };
+      return reply(order_ref === null ? r.value : { ...r.value, order_ref });
     }
-    return { status: 200, body: r.value };
+    // MC2-L5: a quote in another currency than the buyer's gets the display lines. The quote itself is the
+    // seller's and is not touched; a buyer who sees no conversion gets no extra field.
+    if (r.value.kind === 'quote') {
+      const d = await buyerDisplay(a.engine, actor, { currencies: [r.value.price.currency] });
+      const display = d.view(r.value.price);
+      return reply(display.binding === null ? r.value : { ...r.value, display });
+    }
+    return reply(r.value);
   }
   return r.error.code === 'unknown_offer'
     ? { status: 404, code: 'not_found', message: 'That offer does not exist.' }
-    : { status: 422, code: 'invalid_input', message: 'Check the amount and option and try again.' };
+    : {
+        status: 422,
+        code: 'invalid_input',
+        message: 'Check the amount and option and try again.',
+      };
 })(securityDeps);

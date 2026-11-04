@@ -19,7 +19,10 @@ export const metadata: Metadata = { title: ACCOUNT_TITLE };
 export default async function AccountPage() {
   const actor = await currentActor();
   if (actor?.kind !== 'buyer') redirect('/signin/buyer?next=/account');
-  const view = await (await app()).engine.accounts.view(actor);
+  const a = await app();
+  const view = await a.engine.accounts.view(actor);
+  // MC2-L5: the display currency setting; the buyer's own row.
+  const display = await a.engine.displayCurrency.get(actor);
   return (
     <div className="auth-wrap" data-testid="account-page">
       <header className="auth-head">
@@ -35,7 +38,14 @@ export default async function AccountPage() {
           </p>
         )}
       </header>
-      {view === null ? null : <AccountForms />}
+      {view === null ? null : (
+        <AccountForms
+          displayCurrency={{
+            country: display?.country ?? view.country,
+            chosen: display?.chosen ?? null,
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,9 @@
 // Buyer-facing wording for the search, results and library screens. Pure; kept out of the .tsx files so
 // unit tests can pin it (the unit runner does not compile .tsx). Wording rules: D-051.
 import type { FitDimension, Rights } from '@umsbx/contracts';
-import { OPTION_LABEL, formatMinor } from './format';
+import { OPTION_LABEL } from './format';
+import { NO_RATE_NOTE, fromLead, priceView } from './buyer-price';
+import type { PriceView } from './buyer-price';
 import type { OfferPage } from './view-types';
 import { LINE_TEXT } from './composite-copy';
 
@@ -44,19 +46,28 @@ export interface BrowseEntry {
   publisher: string;
   href: string;
   price_text: string;
+  /** MC2-L5: the binding seller amount beside a converted price; null when nothing was converted. */
+  binding_text: string | null;
 }
 
-export function browseEntries(offers: readonly OfferPage[]): BrowseEntry[] {
-  return offers.map((o) => ({
-    offer_id: o.offer_id,
-    title: o.title,
-    publisher: o.publisher,
-    href: `/o/${o.publisher_slug}/${o.offer_code}`,
-    price_text:
-      o.options.length === 0
-        ? ''
-        : `from ${formatMinor(Math.min(...o.options.map((x) => x.price_minor)), o.currency)}`,
-  }));
+// MC2-L5: `view` is the buyer's display (server/buyer-display.ts); without it the seller's currency is shown.
+export function browseEntries(
+  offers: readonly OfferPage[],
+  view: (price: { currency: string; minor: number }) => PriceView = (m) => priceView(m, null),
+): BrowseEntry[] {
+  return offers.map((o) => {
+    const cheapest =
+      o.options.length === 0 ? null : Math.min(...o.options.map((x) => x.price_minor));
+    const price = cheapest === null ? null : view({ currency: o.currency, minor: cheapest });
+    return {
+      offer_id: o.offer_id,
+      title: o.title,
+      publisher: o.publisher,
+      href: `/o/${o.publisher_slug}/${o.offer_code}`,
+      price_text: price === null ? '' : fromLead(price),
+      binding_text: price === null ? null : price.binding,
+    };
+  });
 }
 
 // U1: one statement of the end of the access window, by what the buyer bought.
@@ -135,9 +146,14 @@ export interface DiscoverNoMatchView {
   open_order: { heading: string; body: string; href: string } | null;
   /** Whether to also say "nothing in the catalogue fits" (false when the notice is the whole story). */
   nothing_fits: boolean;
+  /** MC2-L5: said when some prices could not be compared with the ceiling for want of a rate; else null. */
+  no_rate: string | null;
 }
 
-export function discoverNoMatchView(reasons: readonly string[]): DiscoverNoMatchView {
+export function discoverNoMatchView(
+  reasons: readonly string[],
+  rateMissing = false,
+): DiscoverNoMatchView {
   const owned = reasons.includes('already_owned');
   const unpaid = reasons.includes('unpaid_order');
   const held = owned || unpaid;
@@ -156,5 +172,6 @@ export function discoverNoMatchView(reasons: readonly string[]): DiscoverNoMatch
   return {
     open_order,
     nothing_fits: !held || reasons.some((r) => r !== 'already_owned' && r !== 'unpaid_order'),
+    no_rate: rateMissing ? NO_RATE_NOTE : null,
   };
 }

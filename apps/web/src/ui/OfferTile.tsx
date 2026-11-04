@@ -8,12 +8,15 @@ export function OfferTile({
   title,
   publisher,
   priceText,
+  bindingText = null,
   tag,
 }: {
   href: string;
   title: string;
   publisher: string;
   priceText: string;
+  /** The binding seller amount beside a converted price; null when nothing was converted. */
+  bindingText?: string | null;
   tag: string;
 }) {
   return (
@@ -28,6 +31,7 @@ export function OfferTile({
           <span className="muted">from </span>
           <strong className="price">{priceText}</strong>
         </p>
+        {bindingText !== null ? <p className="muted binding-line">{bindingText}</p> : null}
       </div>
     </li>
   );
