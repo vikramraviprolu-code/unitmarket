@@ -285,3 +285,17 @@ Not ready for the real sitting until:
 ## Boot refuses a terminal that overrides .env.local (F8, D-059, branch feat/config-env-file-guard)
 
 `loadConfigFromProcess()` now refuses to boot (`env_overrides_file`, exit 78) when a `.env.local` exists in the current folder and, for any of `UMS_MODE`, `UMS_PAYPAL_CONNECT`, `UMS_DB`, `UMS_PGLITE_DIR`, `DATABASE_URL`, `UMS_OUTBOUND_APPROVAL_REF`, `UMS_OUTBOUND_SCOPE`, `UMS_OWN_MERCHANT_ID` and `UMS_PUBLIC_ORIGIN`, the process holds a value that differs from the file or that the file does not define. Node's `--env-file-if-exists` and Next never replace a value the process already holds, so such a terminal used to win silently. The refusal names the variable, never a value, and says to run `env -u NAME` or fix the file. A process that holds no value for a name, and a folder with no `.env.local` (the hosted app), pass. Every other name, the secrets included, is never compared. The check runs in offline mode too. The web app, the safety tool and the conformance runner all load through this function.
+
+## MC-V2 multi-currency (lanes L1 to L8, decisions D-083 to D-087)
+
+State on 2026-11-04. Built and merged to main offline; nothing deployed, PayPal off, no approval row, no real GBP or EUR order.
+
+- **L1 to L3 (wave 1):** buyer-country gate removed; `de-eur` corridor and a fictional German seller seeded, disabled; sealed transport allows USD, EUR and GBP in `mvp_b_polling` and `mvp_c_refunds`. Opus review: no blocker (D-086).
+- **L4:** exchange rate engine (`@umsbx/fx`, migration 0017, ECB daily feed on demand, 6 hour staleness, 3 second limit, 7 day usability, 10 percent move guard). Opus review: fixes applied.
+- **L5:** buyer sees prices in own currency with the binding seller amount beside it; agent ceiling compared on the converted price; account setting (migration 0018). Opus review: no blocker; follow-up fixes in progress or merged (see git log).
+- **L6:** Awaiting seller acceptance state and seller choices. Opus review: no blocker; wording fix applied (ledger A17).
+- **L7:** Operations "Totals by currency" with a USD, EUR and GBP reporting view. Read and verified by the coordinator; the section has no tab yet, and the ops page does not refresh rates on load.
+- **L8:** seventh-deploy guide and the proposed GBP and EUR approval text in `docs/owner/SAKTHI-DEPLOY-COPYPASTE.md`; ledger `docs/specs/mc2-autonomy-ledger.md`.
+- **Demo prices (`domain/catalogue/src/demo-prices.ts`):** the clamp applies to USD seed offers only, on purpose (PayPal's fixed fee). The German euro seed prices (EUR 1.00 to 2.00) already sit in that range.
+
+Not ready for a real GBP or EUR sitting until the owner has: checked the Business account (country, currencies it can hold, receiving preference, where past USD payments landed); said "approve"; written the decision row first; and inserted the approval at his own terminal. Not done: deploy, enabling `gb-gbp` and `de-eur`, Playwright e2e on the merged main (not run: disk and load), Visual Guide update.
