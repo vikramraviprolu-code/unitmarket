@@ -1,27 +1,52 @@
-# INT-SR1: search APIs
+# INT-SR1: search APIs (round 2)
 
-Task: Put `TxnQuery` on the buyer, seller and operator lists, add operator transactions and quick-find, CSV of a filter, and library paging.
-Package: `apps/web` routes and the tab composition modules, `domain/txn-search`. Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
-Items: SR1.1 to SR1.7, 17 points. Needs SR0. Source: search proposal T2.1 to T2.6, T5.1, section 5.
+Task: Put `TxnQuery` on the buyer, seller and operator lists; add operator transactions and quick-find; CSV of a filter; library paging and filters.
+Package: `apps/web` (api-v1 handlers, routes, engine read methods), `domain/txn-search`, `packages/contracts` (`v1.ts`, `txn-query.ts`), read models in `domain/publisher-console` and `domain/library`. Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
+Items: SR1.1 to SR1.7, 17 points, all "must". Needs SR0 merged. Source: search proposal T2.1 to T2.6, T5.1, section 5. Round 2 answers scorecard `sr1-scorecard.md` findings 1 to 11.
 
 ## Goal
 
-`GET /api/v1/orders` and `GET /api/v1/seller/sales` accept `TxnQuery` (old calls answer as before) with real keyset paging; `GET /api/v1/ops/transactions` serves operators with four saved views (Needs attention, Refunds today, Agent purchases, Sandbox only); `GET /api/v1/ops/find?q=` classifies the input (exact reference, then `@` email, then a case-insensitive name or title match) and returns results grouped by type; every list exports the current filter as CSV up to 5,000 rows; `GET /api/v1/library` pages and filters.
+When done: (SR1.1) `GET /api/v1/orders` accepts `TxnQuery`; (SR1.2) `GET /api/v1/seller/sales` accepts `TxnQuery` with keyset paging; (SR1.3) operators list transactions with four saved views through an identity-free key route and an identity-bearing session route; (SR1.4) operators quick-find from the web session; (SR1.5) buyer orders, seller sales and operator transactions export the current filter as CSV text in a JSON answer, at most 5,000 rows; (SR1.6) `GET /api/v1/library` takes paging and filters; (SR1.7) the attacks below fail.
 
-## Outputs
+## Rules
 
-New routes `apps/web/src/app/api/v1/ops/transactions/route.ts`, `.../ops/find/route.ts`, `.../orders/export.csv/route.ts`, `.../seller/sales/export.csv/route.ts`, `.../ops/transactions/export.csv/route.ts`; `domain/txn-search/src/{find,csv,views}.ts`; contracts additions in `txn-query.ts`. Changed: the existing orders, seller sales and library route handlers; OpenAPI; route inventory.
+- **Operator identity (finding 1).** The v1 rule stands: an operator key (`mfa: false`) gets no buyer or publisher identity and no PayPal id. `GET /api/v1/ops/transactions` (scope `ops:read`) answers order refs, amounts, states, flags and opaque ids only; F7 and F8 accept opaque ids only. The session route `GET /api/ops/transactions` (`auth: 'operator'`) adds buyer display name, seller name and provider ids **only when the session has MFA**; without MFA it gives the key route's answer. Quick-find is session only: `GET /api/ops/find`, rate 30 per minute per actor. The buyer group appears only with MFA. No email exists to search (buyers store none, migration 0016).
+- **Default answers (finding 2).** A call with no query parameters returns what it returns today: all rows, up to 5,000, `next_cursor: null`. Any filter, `limit` or `cursor` switches to keyset paging (default 25, max 100). The buyer's existing `o1` cursors still decode and page as before.
+- **Query encoding (finding 5).** Array fields are comma lists (`status=paid,refunded`), as in SR0's golden cases. Route input schemas take the raw string map; `parseTxnQuery` drops unknown keys and bad values, so value errors never answer 422. Typed 400s: `field_not_allowed` (from `scopeQuery`), `bad_cursor`.
+- **Cursors (finding 6).** A cursor carries a hash of the canonical query without the cursor plus the principal id. A cursor reused with another filter or another principal answers 400 `bad_cursor`.
+- **Saved views (finding 7).** Literal `TxnQuery` values in `domain/txn-search/src/views.ts`: Needs attention (F4 attention, which includes pending older than 1 hour), Refunds today (F5 partial or full, F1 = the UTC day of the injected Clock), Agent purchases (F11 agent), Sandbox only (F12 sandbox). No `Date.now()` (rule S6).
+- **Quick-find (finding 8).** One `UNION` query over the unique columns: `order_ref`, short ref (last 6), `provider_order_id`, `capture_id`, `refund_id`, receipt id. All exact hits are returned, so a 17-character id that matches two columns shows both. Then a name match, reusing SR0's `%` and `_` escaping and its 100-character limit. Groups: Orders, Sellers, Offers, Keys, and Buyers (MFA only), top 5 each.
+- **CSV (findings 3, 9).** Follow PUB-E1: `GET .../export` returns JSON `{ filename, csv, truncated }`; there is no `text/csv` and no change to `packages/security`. Cells go through `csvCell` from `domain/publisher-console/src/csv.ts`, which covers `= + - @`, tab and CR. Seller CSV has no buyer column. Library has no CSV.
+- **Library (finding 11).** Filters F1 (purchased date), F8 (seller), F9 (item text) and access state (available, ended, revoked).
+
+## Outputs (only these files)
+
+New: routes `apps/web/src/app/api/v1/ops/transactions/route.ts`, `apps/web/src/app/api/ops/transactions/route.ts`, `apps/web/src/app/api/ops/find/route.ts`, `apps/web/src/app/api/v1/orders/export/route.ts`, `apps/web/src/app/api/v1/seller/sales/export/route.ts`, `apps/web/src/app/api/ops/transactions/export/route.ts`; `domain/txn-search/src/{find,views,page}.ts`; `domain/txn-search/fixtures/views-seed.ts`; tests below.
+Changed: `packages/contracts/src/v1.ts` (5 new entries; `seller/sales`, `library` and `orders` change input from none to the query map), `packages/contracts/src/txn-query.ts` (response row types); `apps/web/src/api-v1/buyer.ts` (`listOrders`, `listLibrary`), `seller.ts` (`listSales`), `ops.ts` (new `transactions`); the engine read methods `publisherSales` and `library` (`apps/web/composition.server.ts:868, 969`, or `apps/web/src/composition/seller.ts` and `buyer.ts` once UI0.7 has merged); `domain/publisher-console` and `domain/library` read models (add an optional `TxnQuery` argument); `apps/web/src/api-v1/facades.ts` only if MCP shares a changed method; OpenAPI output and route inventory.
 
 ## Acceptance tests (commit 1: tests only, run red)
 
 | Item | Test file | Command | Expected |
 |---|---|---|---|
-| SR1.1, SR1.2, SR1.6 | `apps/web/src/v1-search-lists.contract.test.ts` | `pnpm test:contract -- v1-search-lists` | Old calls byte-identical; filters narrow; `next_cursor` pages through 120 seeded sales in 5 pages |
-| SR1.3 | `apps/web/src/v1-ops-transactions.state.test.ts` | `pnpm test:state -- ops-transactions` | Four saved views return the expected seeded orders; `ops:read` required |
-| SR1.4 | `domain/txn-search/src/find.test.ts` | `pnpm test -- txn-search/find` | Order ref, short ref, provider id, capture id, refund id, email and name each land in the right group |
-| SR1.5 | `apps/web/src/v1-export.state.test.ts` | `pnpm test:state -- v1-export` | CSV matches the filtered list; cap 5,000; seller CSV has no buyer column |
-| SR1.7 | `apps/web/src/v1-search.adversarial.test.ts` | `pnpm test:adversarial -- v1-search` | Cross-tenant leak, injection in `q`, tampered cursor, operator field with a buyer key, CSV formula injection (`=`, `+`, `-`, `@` prefixes escaped) all refused or neutralised |
+| SR1.1, SR1.2 | `apps/web/src/v1-search-lists.contract.test.ts` | `pnpm test:contract -- v1-search-lists` | No-parameter calls equal today's answers (snapshot); `status=paid,refunded` narrows; 120 seeded sales page as 25, 25, 25, 25, 20; an `o1` cursor from main still pages |
+| SR1.3 | `apps/web/src/ops-transactions.state.test.ts` | `pnpm test:state -- ops-transactions` | `views-seed` gives Needs attention 4, Refunds today 2, Agent purchases 5, Sandbox only 3; key answer has no name or provider id (deep scan); session with MFA has them, without MFA does not |
+| SR1.4 | `domain/txn-search/src/find.test.ts` | `pnpm test -- txn-search/find` | Order ref, short ref, provider id, capture id, refund id, receipt id each land in Orders; an id matching two columns returns both; a name lands in Sellers or Offers; Buyers only with MFA |
+| SR1.5 | `apps/web/src/v1-export.state.test.ts` | `pnpm test:state -- v1-export` | CSV rows equal the filtered list; `truncated` true above 5,000; seller CSV has no buyer column |
+| SR1.6 | `apps/web/src/v1-library.contract.test.ts` | `pnpm test:contract -- v1-library` | Each of the four filters narrows; no-parameter call unchanged |
+| SR1.7 | `apps/web/src/v1-search.adversarial.test.ts` | `pnpm test:adversarial -- v1-search` | Buyer, seller and agent keys get 403 on `/api/v1/ops/transactions`; buyer and seller sessions get 403 on `/api/ops/transactions`, `/api/ops/find` and the ops export; a cursor reused with another filter or principal gets 400 `bad_cursor`; cross-tenant reads fail on each list **and** each export; a seller sending `agent_key` gets 400 `field_not_allowed`; injection in `q` returns no extra rows; `= + - @`, tab and CR cells come out neutralised; find answers 429 after 30 calls a minute; a canary `q` value appears in no log line |
 
-Mutation: transactions route handler and `find.ts` at least 80 percent.
+Gate also runs `pnpm trace:verify` (exit 0) and the unattributed-row invariant after the seed (zero rows). Mutation: `pnpm mutation --target apps/web/src/api-v1/ops.ts --target domain/txn-search/src/find.ts --target domain/txn-search/src/page.ts --test-cmd "pnpm vitest run domain/txn-search apps/web/src/v1-search.adversarial.test.ts apps/web/src/ops-transactions.state.test.ts"`, at least 80 percent each.
+
+## Safety
+
+This lane is read-only and has no write path. It imports nothing from `packages/paypal` or `packages/transport`. The gate runs `check:no-live-host`, `check:secrets-names` and the offline proof. `q` must never be logged. The route logger already drops query strings; the canary test proves it.
+
+## Do not
+
+Edit SR0's migration or view, or files owned by other lanes (TR0, TR1, AL, UI0 components). Do not add `pg_trgm` or any extension, a dependency, a money-table change, or a `text/csv` path in `packages/security`. Do not add identity to any `/api/v1/ops/*` answer.
+
+## Evidence
+
+Red run of commit 1; green `corepack pnpm run ci`; `trace:verify` output; mutation report; key and session answers for one order side by side (sanitised).
 
 Branch: `feat/int-sr1-search-apis`. Commit: `feat(web): TxnQuery on lists, ops transactions, quick-find and CSV (INT-SR1)`.
