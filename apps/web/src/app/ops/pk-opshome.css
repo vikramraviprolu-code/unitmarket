@@ -208,3 +208,60 @@
     text-align: left;
   }
 }
+
+/* The totals tables (MC2-L7): fixed columns so the booked rows and the reporting view line up, numbers and
+   their headings right aligned, and a quiet heading row for each group. */
+.oh-totals {
+  table-layout: fixed;
+  width: 100%;
+}
+.oh-totals .oh-totals-c0 {
+  width: 22%;
+}
+.oh-totals .oh-totals-c {
+  width: 26%;
+}
+.oh-totals thead th.pk-num {
+  text-align: right;
+}
+.oh-totals .oh-totals-sub th {
+  text-align: left;
+  padding-top: 14px;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.oh-totals tbody th[scope='row'] {
+  border-bottom: 1px solid var(--line-soft);
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+}
+@media (max-width: 600px) {
+  .oh-totals,
+  .oh-totals colgroup {
+    table-layout: auto;
+  }
+  .oh-totals tbody th[scope='row'] {
+    display: block;
+    padding: 4px 0;
+    border: 0;
+    font-weight: 700;
+  }
+  .oh-totals tr.oh-totals-sub {
+    padding: 0;
+    margin: 12px 0 4px;
+    background: none;
+    border: 0;
+    box-shadow: none;
+  }
+  .oh-totals .oh-totals-sub th {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  .oh-totals colgroup {
+    display: none;
+  }
+}
