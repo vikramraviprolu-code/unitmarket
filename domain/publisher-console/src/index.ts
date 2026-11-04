@@ -26,6 +26,8 @@ export type { BlockFacts, Settlement, SettlementFacts, SettlementMode } from './
 export { salesTotals } from './totals';
 export type { SalesTotal } from './totals';
 export { publisherExposure } from './exposure';
+export { opsTotalsFor } from './ops-totals';
+export type { OpsTotalsRow } from './ops-totals';
 export type {
   ExposureBlock,
   ExposureContext,

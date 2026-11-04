@@ -40,8 +40,8 @@ export interface PublisherExposure {
   by_currency: ExposureBlock[];
 }
 
-const CAPTURED = "('captured_verified', 'partially_refunded')";
-const HELD = "('pending', 'reversal_suspected', 'mismatch')";
+export const CAPTURED = "('captured_verified', 'partially_refunded')";
+export const HELD = "('pending', 'reversal_suspected', 'mismatch')";
 // The open states of a refund request (domain/payments keeps the same list).
 const OPEN_REFUND = "('requested', 'sent', 'unknown', 'pending', 'unresolved')";
 
