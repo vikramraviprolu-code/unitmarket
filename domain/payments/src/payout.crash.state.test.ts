@@ -7,6 +7,7 @@ import { executeRefund, requestRefund, runPayoutPass } from './index';
 import { OPERATOR, makeWorld, paid } from './ops/support';
 import type { OpsWorld } from './ops/support';
 import {
+  atEnd,
   itemsOf,
   ledgerKinds,
   pastWindow,
@@ -265,5 +266,112 @@ describe('the payee', () => {
     expect(await pass(port, w.restart())).toMatchObject({ sent: 0, refused: 1 });
     expect(port.calls).toHaveLength(1);
     expect((await payoutRows(w)).map((p) => p.state)).toEqual(['sending']);
+  });
+});
+
+describe('a refund while the payout is in flight, then the payout fails (review B1)', () => {
+  const sources = () =>
+    w.rows<{ payout_id: string }>(
+      'SELECT payout_id FROM payout_adjustment_sources ORDER BY payout_id',
+    );
+
+  it('refund during sending, a rejected resend, 24 hours, cancel: the unit is paid again exactly 300, once', async () => {
+    w = await makeWorld();
+    const a = await paid(w);
+    const unit = await unitIdOf(w, a.order_id);
+    await pastWindow(w);
+    const port = spyPort(w, 'throw_before_execute');
+    expect(await pass(port)).toMatchObject({ created: 1, errored: 1 });
+    const p1 = (await payoutRows(w))[0]!;
+    expect(p1.state).toBe('sending');
+    await refund(w.deps, unit, 100); // payable_reversal 100 AND a payout_adjustment of 100, booked against p1
+    expect(await sources()).toEqual([{ payout_id: p1.id }]);
+    port.mode = 'reject';
+    expect(await pass(port, w.restart())).toMatchObject({ failed: 1, sent: 0 });
+    expect((await payoutRows(w)).map((p) => p.state)).toEqual(['failed']);
+    port.mode = 'accept';
+    w.tick(PAYOUT_RETRY_AFTER_MS);
+    expect(await pass(port)).toMatchObject({ expired: 1, created: 1, sent: 1, netted: 0 });
+    const rows = await payoutRows(w);
+    expect(rows.map((p) => [p.state, p.amount_minor])).toEqual([
+      ['cancelled', 400],
+      ['sent', 300],
+    ]);
+    // nothing is netted twice: no settlement was made, and running again changes nothing
+    expect(await w.rows('SELECT 1 FROM adjustment_settlements')).toEqual([]);
+    expect(await pass(port)).toMatchObject({ created: 0, sent: 0, expired: 0 });
+    expect(port.executed.map((x) => x.amount.minor)).toEqual([300]);
+  });
+
+  it('a refund after the payout was sent is linked to it and is netted from the next payout', async () => {
+    w = await makeWorld();
+    const a = await paid(w);
+    const unit = await unitIdOf(w, a.order_id);
+    await pastWindow(w);
+    await pass(spyPort(w));
+    const p1 = (await payoutRows(w))[0]!;
+    await refund(w.deps, unit, 100);
+    expect(await sources()).toEqual([{ payout_id: p1.id }]);
+  });
+
+  it('an adjustment booked while its payout is still sending is not netted until that payout has gone out', async () => {
+    w = await makeWorld();
+    const a = await paid(w, { offers: ['ofr_1'] });
+    const unitA = await unitIdOf(w, a.order_id);
+    w.tick(30 * 60_000);
+    const c = await paid(w, { buyer_id: 'buy_B', offers: ['ofr_2'] });
+    const port = spyPort(w, 'throw_before_execute');
+    await atEnd(w, unitA, 1000);
+    await pass(port); // p1 (unit A) is sending
+    await refund(w.deps, unitA, 100); // adjustment of 100 against p1, which is not settled yet
+    await atEnd(w, await unitIdOf(w, c.order_id), 1000);
+    port.mode = 'blocked';
+    await pass(port);
+    // p2 pays unit C in full (400, not 300): the adjustment waits for p1
+    expect((await payoutRows(w)).map((p) => [p.state, p.amount_minor])).toEqual([
+      ['sending', 400], // created before the refund: the amount that was committed
+      ['sending', 400],
+    ]);
+    expect(await w.rows('SELECT 1 FROM adjustment_settlements')).toEqual([]);
+  });
+});
+
+describe('a payout refused at send tells an operator (review M1)', () => {
+  it('raises one payout_failed alert for each payout and reason, and not again on the next pass', async () => {
+    w = await makeWorld();
+    const a = await paid(w);
+    const unit = await unitIdOf(w, a.order_id);
+    await pastWindow(w);
+    await pass(null);
+    const p = (await payoutRows(w))[0]!;
+    const port = spyPort(w);
+    const alerts = () =>
+      w.rows<{ unit_id: string; detail: { reason: string } }>(
+        "SELECT unit_id, detail FROM alerts WHERE kind = 'payout_failed' ORDER BY detail ->> 'reason'",
+      );
+    const steps: [string, string][] = [
+      ["UPDATE publishers SET payee_shared = true WHERE id = 'pub_1'", 'shared'],
+      [
+        "UPDATE publishers SET payee_shared = false, status = 'suspended' WHERE id = 'pub_1'",
+        'inactive',
+      ],
+      [
+        "UPDATE publishers SET status = 'active', paypal_merchant_id = 'MERCHNEW' WHERE id = 'pub_1'",
+        'payee_changed',
+      ],
+      ["UPDATE publishers SET paypal_merchant_id = NULL WHERE id = 'pub_1'", 'no_payee'],
+    ];
+    for (const [i, [sql, code]] of steps.entries()) {
+      await w.rows(sql);
+      expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 });
+      expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 }); // again: no second alert
+      expect(await alerts()).toHaveLength(i + 1);
+      expect((await alerts()).map((x) => x.detail.reason)).toContain(
+        `payout_refused_${p.id}_${code}`,
+      );
+    }
+    expect((await alerts()).every((x) => x.unit_id === unit)).toBe(true);
+    expect(port.calls).toHaveLength(0);
+    expect((await payoutRows(w)).map((x) => x.state)).toEqual(['due']);
   });
 });

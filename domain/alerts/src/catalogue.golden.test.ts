@@ -91,6 +91,11 @@ describe('alert catalogue (AL.2)', () => {
     // a sale above the largest payout is the same kind with its own cause
     const big = describeAlert('payout_failed', 'unit_too_large_unt_1', {})!;
     expect(big.cause).not.toBe(f.cause);
+    // review M1: a payout we did not send because the publisher cannot be paid now has its own cause
+    const refused = describeAlert('payout_failed', 'payout_refused_pay_1_shared', {})!;
+    expect(refused.cause).not.toBe(f.cause);
+    expect(refused.cause).not.toBe(big.cause);
+    expect(refused.fix).toEqual({ route: '/ops/money', anchor: 'ops-payouts' });
     expect(describeAlert('payout_adjustment', 'made_up_reason', {})).toBeNull();
     expect(describeAlert('payout_failed', 'made_up_reason', {})).toBeNull();
   });

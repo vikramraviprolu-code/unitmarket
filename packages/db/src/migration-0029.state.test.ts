@@ -666,6 +666,7 @@ describe('schema shape', () => {
       'payouts',
       'payout_items',
       'adjustment_settlements',
+      'payout_adjustment_sources',
     ];
     const cols = await d.query<{
       table_name: string;
@@ -682,5 +683,139 @@ describe('schema shape', () => {
       expect(names, t).toContain('updated_at');
     }
     expect(cols.rows.filter((c) => c.column_default !== null)).toEqual([]);
+  });
+});
+
+describe('payout_adjustment_sources (review B1): which payout a refund was booked against', () => {
+  it('has the entry as its key and a payout it must belong to, and is append only', async () => {
+    const d = await fresh();
+    await due(d, 'pay_src1');
+    await ins(d, 'payout_adjustment_sources', {
+      adjustment_entry_id: 'led_s1',
+      payout_id: 'pay_src1',
+    });
+    await expect(
+      ins(d, 'payout_adjustment_sources', { adjustment_entry_id: 'led_s1', payout_id: 'pay_src1' }),
+    ).rejects.toThrow(); // one source per adjustment
+    await expect(
+      ins(d, 'payout_adjustment_sources', { adjustment_entry_id: 'led_s2', payout_id: 'pay_none' }),
+    ).rejects.toThrow(); // the payout exists
+    await expect(
+      d.query("UPDATE payout_adjustment_sources SET payout_id = 'pay_src1'"),
+    ).rejects.toThrow();
+    await expect(d.query('DELETE FROM payout_adjustment_sources')).rejects.toThrow();
+    await expect(d.query('TRUNCATE payout_adjustment_sources')).rejects.toThrow();
+  });
+  it('has no foreign key to the ledger', async () => {
+    const d = await fresh();
+    const toLedger = await d.query(
+      `SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.confrelid
+        WHERE t.relname = 'ledger_entries' AND c.conrelid = 'payout_adjustment_sources'::regclass`,
+    );
+    expect(toLedger.rows).toEqual([]);
+  });
+});
+
+describe('restore mode (review B2)', () => {
+  const RESTORE = `SELECT set_config('ums.trace', '{"mode":"restore"}', true)`;
+  it('lets a payout be loaded in any state, and only then', async () => {
+    const d = await fresh();
+    const u = await unit(d, 400);
+    const row = (state: string) => ({
+      id: `pay_r_${state}`,
+      publisher_id: 'pub_m',
+      currency: 'USD',
+      amount_minor: 360,
+      state,
+      environment: 'dryrun',
+      idempotency_key: `umsP-pay_r_${state}`,
+      payee_merchant_id: 'MERCHM',
+      provider_ref: 'R',
+      failure_reason: state === 'failed' ? 'x' : null,
+      sending_at: T,
+      failed_at: state === 'failed' ? T : null,
+    });
+    await expect(
+      d.transaction(async (tx) => {
+        await ins(tx as unknown as Db, 'payouts', row('sent'));
+        await ins(tx as unknown as Db, 'payout_items', {
+          payout_id: 'pay_r_sent',
+          order_unit_id: u.unit_id,
+          seller_minor: 360,
+          live: true,
+        });
+      }),
+    ).rejects.toThrow();
+    for (const state of ['sent', 'confirmed', 'failed', 'cancelled']) {
+      const v = await unit(d, 400);
+      await d.transaction(async (tx) => {
+        await tx.query(RESTORE);
+        await ins(tx as unknown as Db, 'payouts', row(state));
+        await ins(tx as unknown as Db, 'payout_items', {
+          payout_id: `pay_r_${state}`,
+          order_unit_id: v.unit_id,
+          seller_minor: 360,
+          live: state !== 'cancelled',
+        });
+      });
+    }
+  });
+  it('the amount of a cancelled payout still equals its items minus its settlements after they were released', async () => {
+    const d = await fresh();
+    const u = await unit(d, 400);
+    await d.transaction(async (tx) => {
+      await tx.query(RESTORE);
+      await ins(tx as unknown as Db, 'payouts', {
+        id: 'pay_r_c',
+        publisher_id: 'pub_m',
+        currency: 'USD',
+        amount_minor: 300,
+        state: 'cancelled',
+        environment: 'dryrun',
+        idempotency_key: 'umsP-pay_r_c',
+        payee_merchant_id: 'MERCHM',
+      });
+      await ins(tx as unknown as Db, 'payout_items', {
+        payout_id: 'pay_r_c',
+        order_unit_id: u.unit_id,
+        seller_minor: 360,
+        live: false,
+      });
+      await ins(tx as unknown as Db, 'adjustment_settlements', {
+        payout_id: 'pay_r_c',
+        adjustment_entry_id: 'led_r',
+        amount_minor: 60,
+        live: false,
+      });
+    });
+    // a wrong amount is still refused at commit
+    const v = await unit(d, 400);
+    await expect(
+      d.transaction(async (tx) => {
+        await tx.query(RESTORE);
+        await ins(tx as unknown as Db, 'payouts', {
+          id: 'pay_r_bad',
+          publisher_id: 'pub_m',
+          currency: 'USD',
+          amount_minor: 360,
+          state: 'cancelled',
+          environment: 'dryrun',
+          idempotency_key: 'umsP-pay_r_bad',
+          payee_merchant_id: 'MERCHM',
+        });
+        await ins(tx as unknown as Db, 'payout_items', {
+          payout_id: 'pay_r_bad',
+          order_unit_id: v.unit_id,
+          seller_minor: 360,
+          live: false,
+        });
+        await ins(tx as unknown as Db, 'adjustment_settlements', {
+          payout_id: 'pay_r_bad',
+          adjustment_entry_id: 'led_r2',
+          amount_minor: 60,
+          live: false,
+        });
+      }),
+    ).rejects.toThrow();
   });
 });

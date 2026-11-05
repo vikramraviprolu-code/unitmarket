@@ -29,7 +29,7 @@ async function sold(
   publisher: 'pub_1' | 'pub_2',
   seller: number,
   fee: number,
-  over: { currency?: 'USD' | 'EUR'; environment?: 'dryrun' | 'sandbox' } = {},
+  over: { currency?: 'USD' | 'EUR' | 'GBP'; environment?: 'dryrun' | 'sandbox' } = {},
 ): Promise<Sold> {
   k += 1;
   const u = await w.unit({
@@ -247,6 +247,34 @@ describe('the money block of the statement', () => {
       paid_out_minor: 100,
       adjustment_minor: 0,
       net_minor: 0,
+    });
+  });
+
+  it('counts an open adjustment only when the payout it was booked against went out (review B1)', async () => {
+    const o = { currency: 'GBP', environment: 'dryrun' } as const;
+    const A = await sold('pub_1', 100, 10, o);
+    const X = await sold('pub_1', 40, 4, o);
+    const Y = await sold('pub_1', 30, 3, o);
+    await sold('pub_1', 200, 20, o); // B: earned, in no payout
+    await payout('pay_g_sent', 'pub_1', [{ u: A, minor: 100 }], 'sent', { currency: 'GBP' });
+    await payout('pay_g_fail', 'pub_1', [{ u: X, minor: 40 }], 'failed', { currency: 'GBP' });
+    await payout('pay_g_send', 'pub_1', [{ u: Y, minor: 30 }], 'sending', { currency: 'GBP' });
+    for (const [u, id, minor, source] of [
+      [A, 'rf_ga', 100, 'pay_g_sent'],
+      [X, 'rf_gx', 40, 'pay_g_fail'],
+      [Y, 'rf_gy', 30, 'pay_g_send'],
+    ] as const) {
+      await w.ledger(u.unit_id, u.capture_id, 'payout_adjustment', minor, { refund_id: id });
+      await w.insert('payout_adjustment_sources', {
+        adjustment_entry_id: `led_${u.unit_id}_payout_adjustment_${id}`,
+        payout_id: source,
+      });
+    }
+    // only the adjustment of the payout that went out is open; the failed one is void (its unit is paid again from the
+    // reduced ledger) and the one still sending is not settled yet. Unpaid payable: X 40 and B 200 (Y is in a payout in flight).
+    expect(await money(P1, 'GBP', 'dryrun')).toMatchObject({
+      adjustment_minor: 100,
+      net_minor: 140,
     });
   });
 
