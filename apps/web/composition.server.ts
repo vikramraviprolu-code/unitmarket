@@ -69,6 +69,7 @@ import {
   createLogger,
   currentTraceContext,
   redact,
+  withTraceContext,
 } from '@umsbx/obs';
 import {
   createOutboundGate,
@@ -193,12 +194,41 @@ import {
 } from '@umsbx/receipts';
 import { sweepWindows } from '@umsbx/access-clock';
 import {
+  acknowledgeAlert,
+  getAlert,
+  listAlerts,
+  needsYou,
+  reopenAlert,
+  resolveAlert,
+  sweepAlerts,
+} from '@umsbx/alerts';
+import type {
+  AlertDetail,
+  AlertList,
+  AlertQuery,
+  AlertStateView,
+  NeedsYouRow,
+  ResolveReasonCode,
+  StateError,
+} from '@umsbx/alerts';
+import {
   applyAutomaticRules,
+  diagnose as diagnoseCase,
+  getCaseDetail,
+  listCases,
   listCasesForBuyer,
   openCase as openRecoveryCase,
   resolve as resolveRecoveryCase,
 } from '@umsbx/recovery';
-import type { ResolveAction, ResolveDeps } from '@umsbx/recovery';
+import type {
+  CaseAction,
+  CaseDetail,
+  CaseError,
+  CaseQueue,
+  CaseQueueState,
+  ResolveAction,
+  ResolveDeps,
+} from '@umsbx/recovery';
 import {
   beginCheckout as beginPaymentsCheckout,
   cancelOrder as cancelPaymentsOrder,
@@ -275,11 +305,14 @@ export {
   principalKey,
   queryHash,
   quickFind,
+  scopeQuery,
   seedViewsWorld,
   sellerLine,
   txnCsv,
 } from '@umsbx/txn-search';
 export type { FindResult } from '@umsbx/txn-search';
+// INT-OPS-B: the in-process journal verifier of TR0, for the Invariants tile (read only).
+export { formatTraceFinding, verifyTrace } from '@umsbx/db';
 export { filterLibrary, isPlainLibraryQuery, parseLibraryQuery } from '@umsbx/library';
 export type { LibraryFacts, LibraryQuery } from '@umsbx/library';
 import {
@@ -872,6 +905,11 @@ export interface Engine {
   }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
   actorFromCookie(cookie: string | null): Promise<Actor | null>;
   /**
+   * INT-TC1: runs `fn` under a journal context for a page render that writes (a page is not a route, so
+   * withRoute opens no context for it). The context is the signed-in actor's, channel web, nothing else known.
+   */
+  asPageActor<T>(actor: Actor, fn: () => Promise<T>): Promise<T>;
+  /**
    * ID-ACCOUNTS: buyer accounts (a username and a password, no email). Every sign in and every signup makes
    * a new session and ends `previous`, the session of the browser's own cookie, if there is one.
    */
@@ -1297,6 +1335,41 @@ export interface Engine {
     action: ResolveAction;
     reason: string;
   }): ReturnType<typeof resolveRecoveryCase>;
+  /** INT-AL AL.1, AL.6, AL.7: the operator reads (no identity, no message text). The v1 routes use these. */
+  opsReads: {
+    alerts(q: AlertQuery): Promise<AlertList>;
+    alert(id: string): Promise<AlertDetail | null>;
+    needsYou(): Promise<NeedsYouRow[]>;
+    cases(q: {
+      state?: CaseQueueState | undefined;
+      limit?: number | undefined;
+      cursor?: string | undefined;
+    }): Promise<CaseQueue>;
+    case(id: string): Promise<CaseDetail | null>;
+  };
+  /** INT-AL AL.8: an operator acknowledges, resolves or reopens one alert. The journal records the actor. */
+  opsAlerts: {
+    acknowledge(i: { actor: Actor; alert_id: string }): Promise<Result<AlertStateView, StateError>>;
+    resolve(i: {
+      actor: Actor;
+      alert_id: string;
+      reason_code: ResolveReasonCode;
+      note?: string;
+    }): Promise<Result<AlertStateView, StateError>>;
+    reopen(i: { actor: Actor; alert_id: string }): Promise<Result<AlertStateView, StateError>>;
+  };
+  /** INT-AL AL.8: an operator acts on one case. The answer is the case as the queue shows it, after the action. */
+  opsCases: {
+    act(i: {
+      actor: Actor;
+      case_id: Id;
+      action: CaseAction;
+      reason: string;
+      credit_ms?: number;
+    }): Promise<Result<CaseDetail, CaseError>>;
+    /** The case with the text of the message to the buyer (the operator page only; never the v1 read). */
+    detail(actor: Actor, case_id: Id): Promise<CaseDetail | null>;
+  };
 }
 
 /** Sandbox polling cadence (ASM-52): a paid order is re-read every 6 h; at most 2 provider calls a second. */
@@ -1921,6 +1994,16 @@ function buildApp(config: Config, opts: AppOptions): App {
   const sweepAll = async (x: { max_items: number }): Promise<{ ended: number }> => {
     const swept = await sweepWindows(core, x);
     await applyAutomaticRules(core, x);
+    // INT-AL: raise the two signals, then resolve what has cleared. A failure here never stops the pass.
+    try {
+      await sweepAlerts(core);
+    } catch (e) {
+      log.log({
+        msg: 'alerts.sweep_failed',
+        level: 'error',
+        fields: { error: e instanceof Error ? e.message : 'unknown' },
+      });
+    }
     return swept;
   };
 
@@ -2179,6 +2262,33 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
 
     actorFromCookie: (cookie) => resolveSession(security, cookie),
+    asPageActor: (actor, fn) =>
+      withTraceContext(
+        {
+          id: `ctx_page_${ids.nonce()}`,
+          at: clock.now().toISOString(),
+          channel: 'web',
+          actor_kind: actor.kind,
+          actor_id:
+            actor.kind === 'buyer'
+              ? actor.buyer_id
+              : actor.kind === 'publisher'
+                ? actor.publisher_id
+                : actor.kind === 'operator'
+                  ? actor.operator_id
+                  : null,
+          on_behalf_of: null,
+          mandate_id: null,
+          mfa: actor.kind === 'operator' ? actor.mfa : false,
+          req_id: null,
+          ip_hash: null,
+          ua_family: null,
+          api_key_id: null,
+          job: null,
+          tool: null,
+        },
+        fn,
+      ),
 
     // ID-ACCOUNTS. Routes call these; the rules live in @umsbx/security (accounts.ts).
     accounts: {
@@ -3059,9 +3169,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       const ops = await db.query<{ state: string; c: string | number }>(
         'SELECT state, count(*) AS c FROM operations GROUP BY state ORDER BY state',
       );
-      const alerts = await db.query<{ kind: string; created_at: unknown }>(
-        'SELECT kind, created_at FROM alerts ORDER BY created_at DESC, id LIMIT 20',
-      );
+      // INT-AL: the open alerts, newest first, from the same read the alert list uses.
+      const alerts = await listAlerts(db, { state: 'open', limit: 20 });
       const safety = await readSafetyStatus(db, clock.now(), config.outbound_approval_ref);
       const outboundSwitch = safety.switches.find((x) => x.name === 'paypal_outbound');
       const jobs = await jobsHealth(core);
@@ -3087,7 +3196,7 @@ function buildApp(config: Config, opts: AppOptions): App {
           currency: o.currency,
         })),
         operations: ops.rows.map((o) => ({ state: o.state, count: Number(o.c) })),
-        alerts: alerts.rows.map((a) => ({ kind: a.kind, created_at: iso(a.created_at) })),
+        alerts: alerts.items.map((a) => ({ kind: a.kind, created_at: a.created_at })),
         invariants: (await checkInvariants(db)).map((v) => ({
           id: v.id,
           ok: v.ok,
@@ -3427,6 +3536,52 @@ function buildApp(config: Config, opts: AppOptions): App {
         by: i.actor,
         reason: i.reason,
       }),
+
+    opsReads: {
+      alerts: (q) => listAlerts(db, q),
+      alert: (id) => getAlert(db, id),
+      needsYou: () => needsYou(db),
+      cases: (q) => listCases(db, q),
+      case: (id) => getCaseDetail(db, id),
+    },
+
+    opsAlerts: {
+      acknowledge: (i) => acknowledgeAlert(core, { alert_id: i.alert_id }),
+      resolve: (i) =>
+        resolveAlert(core, {
+          alert_id: i.alert_id,
+          reason_code: i.reason_code,
+          ...(i.note === undefined ? {} : { note: i.note }),
+        }),
+      reopen: (i) => reopenAlert(core, { alert_id: i.alert_id }),
+    },
+
+    opsCases: {
+      async act(i) {
+        if (i.actor.kind !== 'operator') return err({ code: 'not_operator' });
+        const found = await getCaseDetail(db, i.case_id);
+        if (found === null) return err({ code: 'not_found' });
+        if (i.action === 'diagnose') {
+          if (found.allowed_actions.length === 0) return err({ code: 'wrong_state' });
+          await diagnoseCase(core, { case_id: i.case_id, actor: i.actor });
+        } else {
+          const r = await resolveRecoveryCase(recoveryDeps, {
+            case_id: i.case_id,
+            action: i.action,
+            ...(i.credit_ms === undefined ? {} : { credit_ms: i.credit_ms }),
+            by: i.actor,
+            reason: i.reason,
+          });
+          if (!r.ok) return r;
+        }
+        const after = await getCaseDetail(db, i.case_id);
+        return after === null ? err({ code: 'not_found' }) : ok(after);
+      },
+      async detail(actor, case_id) {
+        if (actor.kind !== 'operator') return null;
+        return getCaseDetail(db, case_id, { with_message: true });
+      },
+    },
 
     async health() {
       // CO-7b: the health check stays green so the host does not restart-loop, and says why.

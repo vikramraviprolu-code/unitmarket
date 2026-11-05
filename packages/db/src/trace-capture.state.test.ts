@@ -380,6 +380,12 @@ describe('reset and column changes', () => {
       expect(
         (await d.query<{ n: number }>('SELECT count(*)::int AS n FROM trace_tracked')).rows[0]!.n,
       ).toBe(TRACKED_TABLES.length);
+      // Every lane's rows are back, 0023's and each later seed function's (alert_events is 0025's own).
+      expect(
+        (
+          await d.query<{ t: string }>('SELECT table_name AS t FROM trace_tracked ORDER BY 1')
+        ).rows.map((r) => r.t),
+      ).toEqual(TRACKED_TABLES.map((t) => t.table).sort());
       await as(d, ctx()).query(
         `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_r2', 'k', '{"reason":"r2"}', '${T}', '${T}')`,
       );

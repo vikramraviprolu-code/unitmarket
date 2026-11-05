@@ -13,11 +13,14 @@ Several lanes planned the same id (TR0 and PR #6 both said D-094; CL1, SR0 and B
 | D-096 | Business rules (PR #8)                 | Refund window 7 days (0 to 30 configurable), D-089 10% fee confirmed, and others | PR open, gate running   |
 | D-097 | TR0                                    | V1, the trace journal                                                            | building                |
 | D-098 | SR0                                    | V5, transaction search base                                                      | waiting on TR0          |
-| D-099 | BUY                                    | V7, buyer may create and revoke a cap from a session (amends D-093)              | waiting                 |
+| D-099 | GCP deployer (owner, commit 925b545)   | Claude deploys only with the `claude-deployer` service account; no SSH           | recorded                |
 | D-100 | GA                                     | Decision 5: live Claude for `txn_query` and `explain_order`, $2 per day cap      | waiting                 |
-| D-101 | next free (CTL, AL or any other lane)  | taken in merge order from here on                                                | open                    |
+| D-101 | BUY                                    | V7, buyer may create and revoke a cap from a session (amends D-093)              | waiting                 |
+| D-102 | next free (CTL, AL or any other lane)  | taken in merge order from here on                                                | open                    |
 
-Specs updated: `int-tr0-journal.md` (D-097), `int-sr0-search-base.md` (D-098), `int-buy.md` (D-099), `int-ga.md` (D-100).
+Specs updated: `int-tr0-journal.md` (D-097), `int-sr0-search-base.md` (D-098), `int-buy.md` (D-101, was D-099), `int-ga.md` (D-100).
+
+Id clash, 5 Nov 10:45Z (OPS-B gate FU3). The owner's GCP deployer row landed in the log as D-099, which this table had reserved for BUY. A recorded row is never renumbered, so D-099 stays the deployer row and BUY moves to D-101. The next free id is D-102. Before a lane writes a decision row, its gate reads both this table and the highest id in `docs/decision-log.md`. If the two disagree, the log wins and this table is corrected in the same PR.
 
 ## 2. Migration registry
 
@@ -110,12 +113,15 @@ Critical path: TR0 then TR1 then OPS-A, and SR0 then SR1 then OPS-B then BUY and
 | 0    | TR0, UI0, CL1 (PR #10); PRs #6 to #9 gates | now                      | 5 Nov           |
 | 1    | SR0 (stacked on TR0), TR1, AL  | TR0 PR up (SR0); TR0 and UI0 merged | 5 to 6 Nov      |
 | 2    | SR1, OPS-A, CTL                | SR0; TR1 and AL; CL1, UI0, TR0, AL | 6 Nov           |
+| 2b   | TC1 (trace context store)      | now (main 1192493)                 | 5 Nov           |
 | 3    | OPS-B, OPS-C                   | SR1, TR1; OPS-A, SR1               | 6 to 7 Nov      |
 | 4    | BUY, SEL                       | OPS-B.1 merged                     | 7 to 8 Nov      |
 | 5    | GA, E2E                        | all must lanes merged              | 8 Nov           |
 | -    | Sitting (Vikram)               | PR #6 merged, E2E green offline    | 9 or 10 Nov     |
 
 **Cut line if late.** The sitting needs only the money path and its traceability: TR0, TR1, UI0, SR0, SR1, OPS-A, AL, CTL, CL1 and E2E's must journeys. OPS-C, GA, BUY.6 to BUY.10 and SEL's "should" items move after the sitting without blocking it. A lane that misses its wave by more than half a day is cut to its "must" items first.
+
+**TC1 (added 5 Nov 10:45Z, OPS-B gate FU1).** INV-T2 is not empty after the e2e journeys: 223 unattributed rows on main. The cause is a trace context store split across bundle copies of `@umsbx/obs` under `next start` (spec `int-tc1-trace-context.md`). TC1 is a new small lane in `packages/obs`, because the bug belongs to the TR0 platform and no building lane owns that package. It starts now and merges before the CTL and OPS-A gates. Until it merges, a lane's C5 integrity gate compares with main: the lane adds no new unattributed row, and the count on main is recorded in the scorecard. From TC1's merge on, the gate is zero unattributed rows after the seed and the journeys, as written.
 
 **Before the sitting.** All INT lanes stay offline. The sitting itself is Vikram's: he runs `pnpm safety:approve` under D-094; no agent sets `UMS_PAYPAL_CONNECT` or inserts an approval.
 

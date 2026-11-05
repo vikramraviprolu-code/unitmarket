@@ -116,15 +116,28 @@ describe('section tabs under Sellers and Controls (spec: old URLs keep working)'
       false,
     ]);
   });
-  it('Controls lists Switches and gate, and Evals', () => {
+  it('Controls lists Switches and gate, Evals, and (INT-OPS-B) Activity and Invariants', () => {
     expect(subTabsFor('operator', '/ops/evals')).toEqual([
       { label: 'Switches and gate', href: '/ops/controls', current: false },
       { label: 'Evals', href: '/ops/evals', current: true },
+      { label: 'Activity', href: '/ops/controls/activity', current: false },
+      { label: 'Invariants', href: '/ops/controls/invariants', current: false },
+    ]);
+    expect(subTabsFor('operator', '/ops/controls/activity')?.map((s) => s.current)).toEqual([
+      false,
+      false,
+      true,
+      false,
+    ]);
+  });
+  it('Money lists Overview and (INT-OPS-B) Transactions', () => {
+    expect(subTabsFor('operator', '/ops/money/transactions')).toEqual([
+      { label: 'Overview', href: '/ops/money', current: false },
+      { label: 'Transactions', href: '/ops/money/transactions', current: true },
     ]);
   });
   it('other tabs have none', () => {
     expect(subTabsFor('operator', '/ops')).toBeNull();
-    expect(subTabsFor('operator', '/ops/money')).toBeNull();
     expect(subTabsFor('seller', '/publisher/offers')).toBeNull();
   });
 });

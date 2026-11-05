@@ -131,6 +131,40 @@ describe('a buyer web request', () => {
   });
 });
 
+// INT-TC1: a page is not a route, so withRoute opens no context for it. The return page and the reader write
+// through engine.asPageActor, which opens the signed-in actor's context.
+describe('a page render that writes', () => {
+  let app: App;
+  beforeAll(async () => {
+    app = await bootPackApp();
+  }, 120_000);
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('journals a write made inside asPageActor as the buyer on the web channel, and leaves none unattributed', async () => {
+    const who = await buyer(app, 'a');
+    if (who.kind !== 'buyer') throw new Error('expected a buyer');
+    await app.engine.asPageActor(who, () =>
+      app.db.query(
+        `INSERT INTO audit_log (id, actor_kind, actor_id, action, target, reason, detail, created_at, updated_at)
+         VALUES ('aud_tc1_page', 'buyer', $1, 'tc1.page', NULL, NULL, '{}'::jsonb, $2, $2)`,
+        [who.buyer_id, '2026-11-05T10:00:00.000Z'],
+      ),
+    );
+    const rows = await events(app, "source_table = 'audit_log' AND source_id = 'aud_tc1_page'");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      actor_kind: 'buyer',
+      actor_id: who.buyer_id,
+      channel: 'web',
+      on_behalf_of: null,
+    });
+    expect((await contextOf(app, rows[0]!.ctx_id)).req_id).toBeNull();
+    expect(await unattributed(app)).toEqual([]);
+  });
+});
+
 describe('an agent buy over MCP', () => {
   let app: App;
   beforeAll(async () => {
