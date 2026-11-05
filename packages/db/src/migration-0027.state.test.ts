@@ -1,10 +1,15 @@
 // BR-2: migration 0027 (rule_settings). One append-only table with CHECKs, one index, and a place in the
 // transaction journal (capture trigger plus a trace_tracked row). Forward-only. Tolerates later migrations:
 // it never checks an exact list.
-import { readdirSync, readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { TRACKED_TABLES } from '@umsbx/contracts';
 import type { Database } from '@umsbx/contracts';
+import { MIGRATIONS_ROOT, applyMigrations } from './migrate';
 import { migrate, openDatabase } from './index';
+import { resetDatabase } from './reset';
 
 const T = '2026-11-05T10:00:00Z';
 const clock = { now: () => new Date(T) };
@@ -177,5 +182,86 @@ describe('migration 0027', () => {
     expect(e.rows).toHaveLength(1);
     expect(JSON.stringify(e.rows[0]!.body)).not.toContain('CANARY-RULE-REASON');
     expect(String(e.rows[0]!.body.hashed['reason']![1])).toMatch(/^[a-f0-9]{64}$/);
+  });
+});
+
+const trackedNames = async (d: Db): Promise<string[]> =>
+  (
+    await d.query<{ table_name: string }>(
+      'SELECT table_name FROM trace_tracked ORDER BY table_name',
+    )
+  ).rows.map((r) => r.table_name);
+
+describe('the reseed wrapper', () => {
+  it('after a reset (TRUNCATE fires the reseed) trace_tracked holds every tracked table, rule_settings included', async () => {
+    const d = await fresh();
+    await resetDatabase(d);
+    const names = await trackedNames(d);
+    expect(names).toHaveLength(TRACKED_TABLES.length);
+    expect(names).toContain('rule_settings');
+    expect(names).toEqual(TRACKED_TABLES.map((t) => t.table).sort());
+  });
+
+  it('leaves 0023’s seed function, reseed function and trigger alone and adds only names with its own number', async () => {
+    const d = await fresh();
+    const f = await d.query<{ proname: string }>(
+      "SELECT proname FROM pg_proc WHERE proname LIKE 'trace_tracked_%' ORDER BY proname",
+    );
+    const names = f.rows.map((r) => r.proname);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'trace_tracked_seed',
+        'trace_tracked_reseed',
+        'trace_tracked_seed_0027',
+        'trace_tracked_reseed_0027',
+      ]),
+    );
+    expect(names.some((n) => /trace_tracked_seed_0023|before/.test(n))).toBe(false);
+    const sql = readFileSync(
+      new URL('../migrations/common/0027_rule_settings.sql', import.meta.url),
+      'utf8',
+    ).replace(/--.*$/gm, '');
+    expect(sql).not.toMatch(
+      /ALTER FUNCTION|DROP FUNCTION|CREATE OR REPLACE FUNCTION trace_tracked_(seed|reseed)\(/i,
+    );
+  });
+
+  it('another lane that follows the same convention, numbered before 0027, applies cleanly and both survive a reset', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'umsbx-wrap-'));
+    try {
+      for (const f of readdirSync(join(MIGRATIONS_ROOT, 'common')))
+        cpSync(join(MIGRATIONS_ROOT, 'common', f), join(dir, f));
+      writeFileSync(
+        join(dir, '0025_zz_probe_lane.sql'),
+        `CREATE TABLE probe_lane (id ums_id PRIMARY KEY, created_at timestamptz NOT NULL);
+CREATE FUNCTION trace_tracked_seed_0025() RETURNS void LANGUAGE sql AS $fn$
+  INSERT INTO trace_tracked (table_name, columns, hashed_columns, digest_columns, time_column, chain_expr) VALUES
+    ('probe_lane', ARRAY['id'], ARRAY[]::text[], ARRAY[]::text[], 'created_at', 'plat')
+  ;
+$fn$;
+CREATE FUNCTION trace_tracked_reseed_0025() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN PERFORM trace_tracked_seed_0025(); RETURN NULL; END;
+$fn$;
+CREATE TRIGGER trace_tracked_reseed_0025 AFTER TRUNCATE ON trace_tracked
+  FOR EACH STATEMENT EXECUTE FUNCTION trace_tracked_reseed_0025();
+SELECT trace_tracked_seed_0025();
+`,
+      );
+      const d = await openDatabase({ kind: 'pglite-memory' });
+      toClose.push(d);
+      const applied = await applyMigrations(d, clock, dir);
+      expect(applied).toContain('0025_zz_probe_lane');
+      expect(applied).toContain('0027_rule_settings');
+      expect(await trackedNames(d)).toEqual(
+        expect.arrayContaining(['probe_lane', 'rule_settings']),
+      );
+      expect(await trackedNames(d)).toHaveLength(TRACKED_TABLES.length + 1);
+      await resetDatabase(d);
+      const after = await trackedNames(d);
+      expect(after).toHaveLength(TRACKED_TABLES.length + 1);
+      expect(after).toEqual(expect.arrayContaining(['probe_lane', 'rule_settings']));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

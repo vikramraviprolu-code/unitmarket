@@ -32,26 +32,28 @@ CREATE TRIGGER rule_settings_no_truncate BEFORE TRUNCATE ON rule_settings
   FOR EACH STATEMENT EXECUTE FUNCTION ums_deny_truncate();
 
 -- ------------------------------------------------------------------------------------------------
--- The journal (TR0, D-097). rule_settings joins trace_tracked: its own function holds the lane's row, and the
--- seed function that a reset runs again is wrapped so that it keeps the rows of every earlier migration and
--- adds this one. (A later lane wraps the same way; the order of the lanes does not matter.) The capture
--- trigger is attached the same way 0023 attaches it.
+-- The journal (TR0, D-097). rule_settings joins trace_tracked by the seed convention of the consolidation
+-- (section 2, "Adding a tracked table in a later migration"): 0023 keeps trace_tracked_seed(),
+-- trace_tracked_reseed() and its trigger untouched; this migration adds only names that carry its own number.
+-- Postgres fires AFTER TRUNCATE triggers in name order, so a reset refills 0023's rows first and then this
+-- one's. The capture trigger is attached the same way 0023 attaches it.
 
-CREATE FUNCTION trace_tracked_seed_br2() RETURNS void LANGUAGE sql AS $fn$
+CREATE FUNCTION trace_tracked_seed_0027() RETURNS void LANGUAGE sql AS $fn$
   INSERT INTO trace_tracked (table_name, columns, hashed_columns, digest_columns, time_column, chain_expr) VALUES
     ('rule_settings', ARRAY['rule_key', 'scope_kind', 'scope_id', 'value', 'effective_from', 'effective_until', 'set_by'], ARRAY['reason'], ARRAY['id', 'rule_key', 'scope_kind', 'scope_id', 'value', 'effective_from', 'effective_until', 'set_by', 'reason', 'approved_by', 'created_at'], 'created_at', 'plat')
   ;
 $fn$;
 
-ALTER FUNCTION trace_tracked_seed() RENAME TO trace_tracked_seed_0023;
-CREATE FUNCTION trace_tracked_seed() RETURNS void LANGUAGE plpgsql AS $fn$
+CREATE FUNCTION trace_tracked_reseed_0027() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
-  PERFORM trace_tracked_seed_0023();
-  PERFORM trace_tracked_seed_br2();
+  PERFORM trace_tracked_seed_0027();
+  RETURN NULL;
 END;
 $fn$;
+CREATE TRIGGER trace_tracked_reseed_0027 AFTER TRUNCATE ON trace_tracked
+  FOR EACH STATEMENT EXECUTE FUNCTION trace_tracked_reseed_0027();
 
-SELECT trace_tracked_seed_br2();
+SELECT trace_tracked_seed_0027();
 
 CREATE TRIGGER trace_capture_rule_settings AFTER INSERT OR UPDATE ON rule_settings
   FOR EACH ROW EXECUTE FUNCTION trace_capture();
