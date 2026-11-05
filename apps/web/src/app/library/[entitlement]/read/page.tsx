@@ -37,13 +37,15 @@ export default async function Reader({ params }: { params: Promise<{ entitlement
   if (actor?.kind !== 'buyer')
     redirect(`/signin?next=${encodeURIComponent(`/library/${entitlement}/read`)}`);
   const session_id = await currentSessionId(actor);
-  const view = await (
-    await app()
-  ).engine.readerView({
-    entitlement_id: entitlement,
-    actor,
-    ...(session_id !== undefined ? { session_id } : {}),
-  });
+  const { engine } = await app();
+  // INT-TC1: opening the reader writes (a delivery link and an access event), so it runs in the buyer's context.
+  const view = await engine.asPageActor(actor, () =>
+    engine.readerView({
+      entitlement_id: entitlement,
+      actor,
+      ...(session_id !== undefined ? { session_id } : {}),
+    }),
+  );
   const back = (
     <p>
       <Link className="btn" href={`/library/${encodeURIComponent(entitlement)}`}>

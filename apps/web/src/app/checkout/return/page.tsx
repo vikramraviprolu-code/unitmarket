@@ -58,17 +58,20 @@ async function finishReturn(ref: string, sc: string | undefined, po: string | un
   // `po` names which PayPal order of a pack this pretend approval is for (1..9). A pack keeps each
   // PayPal order's own scenario, so the return then carries none.
   const position = po !== undefined && /^[1-9]$/.test(po) ? Number(po) : undefined;
-  if (scenario !== null)
-    await a.engine.dryRunApprove({
+  // INT-TC1: this page writes (the return is the trigger), so it opens the buyer's journal context itself.
+  const r = await a.engine.asPageActor(actor, async () => {
+    if (scenario !== null)
+      await a.engine.dryRunApprove({
+        order_ref: ref,
+        actor,
+        scenario,
+        ...(position === undefined ? {} : { position }),
+      });
+    return a.engine.payments.onBuyerReturn({
       order_ref: ref,
       actor,
-      scenario,
-      ...(position === undefined ? {} : { position }),
+      scenario: position === undefined ? scenario : null,
     });
-  const r = await a.engine.payments.onBuyerReturn({
-    order_ref: ref,
-    actor,
-    scenario: position === undefined ? scenario : null,
   });
   if (r.ok && r.value.next !== null) {
     // OQ-5: one PayPal order of the pack is still waiting for the buyer. No automatic redirect: the

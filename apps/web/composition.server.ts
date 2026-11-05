@@ -69,6 +69,7 @@ import {
   createLogger,
   currentTraceContext,
   redact,
+  withTraceContext,
 } from '@umsbx/obs';
 import {
   createOutboundGate,
@@ -931,6 +932,11 @@ export interface Engine {
     code?: string | undefined;
   }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
   actorFromCookie(cookie: string | null): Promise<Actor | null>;
+  /**
+   * INT-TC1: runs `fn` under a journal context for a page render that writes (a page is not a route, so
+   * withRoute opens no context for it). The context is the signed-in actor's, channel web, nothing else known.
+   */
+  asPageActor<T>(actor: Actor, fn: () => Promise<T>): Promise<T>;
   /**
    * ID-ACCOUNTS: buyer accounts (a username and a password, no email). Every sign in and every signup makes
    * a new session and ends `previous`, the session of the browser's own cookie, if there is one.
@@ -2355,6 +2361,33 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
 
     actorFromCookie: (cookie) => resolveSession(security, cookie),
+    asPageActor: (actor, fn) =>
+      withTraceContext(
+        {
+          id: `ctx_page_${ids.nonce()}`,
+          at: clock.now().toISOString(),
+          channel: 'web',
+          actor_kind: actor.kind,
+          actor_id:
+            actor.kind === 'buyer'
+              ? actor.buyer_id
+              : actor.kind === 'publisher'
+                ? actor.publisher_id
+                : actor.kind === 'operator'
+                  ? actor.operator_id
+                  : null,
+          on_behalf_of: null,
+          mandate_id: null,
+          mfa: actor.kind === 'operator' ? actor.mfa : false,
+          req_id: null,
+          ip_hash: null,
+          ua_family: null,
+          api_key_id: null,
+          job: null,
+          tool: null,
+        },
+        fn,
+      ),
 
     // ID-ACCOUNTS. Routes call these; the rules live in @umsbx/security (accounts.ts).
     accounts: {
