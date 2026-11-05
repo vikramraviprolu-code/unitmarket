@@ -317,7 +317,13 @@ test.describe('refusals', () => {
     await buyer.setViewportSize({ width: 1280, height: 800 });
     await buyer.goto('/buyer');
     const nav = tabsNav(buyer, 'Buyer');
-    await expect(nav.getByRole('link')).toHaveText(['Home', 'Find', 'Library', 'Spending', 'Agents']);
+    await expect(nav.getByRole('link')).toHaveText([
+      'Home',
+      'Find',
+      'Library',
+      'Spending',
+      'Agents',
+    ]);
     await expect(
       buyer.getByRole('navigation', { name: 'Operator pages', exact: true }),
     ).toHaveCount(0);
