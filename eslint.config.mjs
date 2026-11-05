@@ -112,6 +112,7 @@ const DOMAIN = [
   'txn-search',
   'rules',
   'trace',
+  'assist',
 ];
 const INFRA = [
   'config',
@@ -1198,6 +1199,8 @@ const packageEntries = [
     const s4 = ['discovery', 'fit'].includes(name);
     // S4/9.10 (lane 14b CR-1): only discovery calls the model port implementation.
     const modelOk = name === 'discovery' ? ['model'] : [];
+    // INT-GA (F1): assist's tests and evals run on the scripted model; its production code never imports it.
+    const harnessModelOk = name === 'assist' ? ['model'] : modelOk;
     const prodExtra = [
       pat(except(INFRA, ['testkit', ...modelOk]), S1_MSG),
       pat(FRAMEWORK, S1_MSG),
@@ -1205,7 +1208,7 @@ const packageEntries = [
       ...(s4 ? [pat(AGENT_FORBIDDEN, S4_MSG)] : []),
     ];
     const harnessExtra = (nodeAllowed) => [
-      pat(except(INFRA, ['testkit', 'db', 'runtime', ...modelOk]), S1_MSG),
+      pat(except(INFRA, ['testkit', 'db', 'runtime', ...harnessModelOk]), S1_MSG),
       pat(FRAMEWORK, S1_MSG),
       pat(nodeAllowed ? DRIVERS.filter((d) => d !== 'node:*') : DRIVERS, S1_MSG),
       ...(s4

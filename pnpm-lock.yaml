@@ -53,6 +53,9 @@ importers:
       '@umsbx/approval':
         specifier: workspace:*
         version: link:../../domain/approval
+      '@umsbx/assist':
+        specifier: workspace:*
+        version: link:../../domain/assist
       '@umsbx/catalogue':
         specifier: workspace:*
         version: link:../../domain/catalogue
@@ -207,6 +210,19 @@ importers:
       '@umsbx/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+
+  domain/assist:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/alerts':
+        specifier: workspace:*
+        version: link:../alerts
+      '@umsbx/model':
+        specifier: workspace:*
+        version: link:../../packages/model
 
   domain/catalogue:
     dependencies:
