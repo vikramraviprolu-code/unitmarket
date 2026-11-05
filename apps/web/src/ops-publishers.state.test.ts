@@ -78,13 +78,16 @@ describe('the publishers list', () => {
       ok: false,
       error: { code: 'not_operator' },
     });
+    // INT-OPS-A / OPS-A.7: the read no longer needs the code; the writes still do (ops-queues.adversarial.test.ts).
     expect(
-      await w.app.engine.opsPublishers.list({
-        kind: 'operator',
-        operator_id: 'opr_demo',
-        mfa: false,
-      }),
-    ).toEqual({ ok: false, error: { code: 'mfa_required' } });
+      (
+        await w.app.engine.opsPublishers.list({
+          kind: 'operator',
+          operator_id: 'opr_demo',
+          mfa: false,
+        })
+      ).ok,
+    ).toBe(true);
   });
 
   it('the whole list names no buyer and no whole merchant id', async () => {
@@ -250,15 +253,12 @@ describe('the pages (source as text)', () => {
     expect(page).toContain("from '../../../lib/ops-publishers-copy'");
     expect(page).toContain('href="/ops/payee-requests"');
     expect(page).not.toMatch(/style=/);
-    expect(page).not.toMatch(/merchant/i);
+    // OPS-A.7: the seller queue shows the masked id from the copy module, never a whole one.
+    expect(page.replace(/maskedMerchant/g, '')).not.toMatch(/merchant/i);
   });
-  it('an operator without the authenticator code is told why, and only a non operator is redirected at once', () => {
+  it('an operator without the authenticator code reads the queue; only a non operator is redirected (OPS-A.7)', () => {
     const page = strip(read('./app/ops/publishers/page.tsx'));
-    expect(page).toMatch(/actor\?\.kind === 'operator' && !actor\.mfa\) return <MfaNeeded \/>/);
-    expect(page.indexOf('<MfaNeeded />')).toBeLessThan(
-      page.indexOf("actor?.kind !== 'operator') redirect("),
-    );
-    expect(page.match(/error\.code === 'mfa_required'\) return <MfaNeeded \/>/g)).toHaveLength(3);
+    expect(page).not.toMatch(/MfaNeeded|mfa_required/);
     expect(page).toContain('/signin?next=/ops/publishers');
     expect(PUBLISHERS_MFA_BODY).toBe(
       'This page needs your authenticator code. Sign out and sign in as Operator again with your name and the current code from your authenticator app.',

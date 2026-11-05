@@ -215,7 +215,7 @@ test.describe('operator publishers page (PUB-D)', () => {
     await expect(pub.page.getByTestId('publisher-notice')).toHaveCount(0);
   });
 
-  test('an operator without the code is told why, and a publisher cannot open the operator pages', async ({
+  test('an operator without the code reads the queue, and a publisher cannot open the operator pages', async ({
     browser,
   }) => {
     const ctx = await browser.newContext();
@@ -224,8 +224,9 @@ test.describe('operator publishers page (PUB-D)', () => {
     await view.getByLabel('Who are you testing as?').selectOption('operator');
     await view.getByLabel('Demo passcode').fill(PASSCODE);
     await view.getByRole('button', { name: 'Sign in' }).click();
-    await expect(view.getByTestId('payee-mfa-needed')).toBeVisible();
-    await expect(view.getByTestId('payee-queue-row')).toHaveCount(0);
+    // INT-OPS-A / OPS-A.7: the queue is readable without the code; the buttons say what is missing.
+    await expect(view.getByTestId('payee-mfa-needed')).toHaveCount(0);
+    await expect(view.getByText('needs your authenticator code').first()).toBeVisible();
     await ctx.close();
 
     for (const path of ['/ops', '/ops/publishers', '/ops/payee-requests']) {

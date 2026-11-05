@@ -19,7 +19,7 @@ describe('tabs per persona (spec UI0.1)', () => {
   it('operator: Home, Buyers, Sellers, Money, Agents and API, Controls', () => {
     expect(rows('operator')).toEqual([
       ['Home', '/ops', true],
-      ['Buyers', '/ops/buyers', false],
+      ['Buyers', '/ops/buyers', true],
       ['Sellers', '/ops/sellers', true],
       ['Money', '/ops/money', true],
       ['Agents and API', '/ops/agents', false],
