@@ -1509,6 +1509,12 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/no-package-escape'],
   },
   {
+    files: ['tests/int/**/*.ts'],
+    reason:
+      'INT-E2E (integrated proof and tamper demo): the story imports the web composition, the route handlers, the apps/web test helpers, the MVP-C TOTP helper and the C canary probe (tests/mvp-c/c-net-probe.ts) by relative path, like the API-W2 tests above (@umsbx/web exports none). The app runs in dry-run, nothing reaches a network, and no file names a sealed identifier',
+    off: ['sbx/no-package-escape'],
+  },
+  {
     files: ['tests/mvp-d/**/*.ts'],
     reason:
       'DP-6 (MVP-D offline gate): the D twins import the web composition, the route handlers, the apps/web test helpers and the C canary probe (tests/mvp-c/c-net-probe.ts) by relative path, like the CO-G tests above (@umsbx/web exports none). The fake Wire is injected through the composition test seam; no file names a sealed identifier',
