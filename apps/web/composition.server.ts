@@ -284,6 +284,7 @@ export {
   PAYEE_DIRECT_SENTENCE,
   SETTLEMENT_SENTENCE,
   UNIT_STATUS_TEXT,
+  csvLine,
   salesTotals,
   settlementMode,
 } from '@umsbx/publisher-console';
@@ -3800,7 +3801,28 @@ function buildApp(config: Config, opts: AppOptions): App {
       // the loop is told not to recover again. With the lock, recovery belongs to the leader: the
       // loop runs it at the start of each leadership term, so a process that is not the leader never
       // takes over operations of the live one.
-      if (!led) await recoverOnStartup(paymentsDeps);
+      // FIX-BOOT-RECOVERY (INT-E2E B3): it writes under the same journal context as the loop's own
+      // recovery (packages/jobs/src/loop.ts): system, on the job channel, job `recovery`.
+      if (!led)
+        await withTraceContext(
+          {
+            id: `ctx_job_${ids.nonce()}_boot`,
+            at: clock.now().toISOString(),
+            channel: 'job',
+            actor_kind: 'system',
+            actor_id: null,
+            on_behalf_of: null,
+            mandate_id: null,
+            mfa: false,
+            req_id: null,
+            ip_hash: null,
+            ua_family: null,
+            api_key_id: null,
+            job: 'recovery',
+            tool: null,
+          },
+          () => recoverOnStartup(paymentsDeps),
+        );
       // One loop per approval (ASM-67): `loop` above is the only one this app starts.
       let running: { stop(): Promise<void> };
       try {
