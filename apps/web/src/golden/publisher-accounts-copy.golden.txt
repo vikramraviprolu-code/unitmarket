@@ -1,0 +1,116 @@
+CLAIM_TITLE: Claim your publisher account
+CLAIM_LEDE: An operator gives you a one time invite code when your application is approved. Enter it here, then choose a username and a password. The code works once and expires after 7 days.
+CLAIM_FIELD_CODE: Invite code
+CLAIM_HINT_CODE: 12 letters and digits. Capital or small letters both work.
+CLAIM_FIELD_USERNAME: Username
+CLAIM_HINT_USERNAME: 3 to 30 small letters, digits, dots, underscores or hyphens. No email address is asked for or sent.
+CLAIM_FIELD_PASSWORD: Password
+CLAIM_HINT_PASSWORD: 12 to 128 characters. A phrase only you know works well. If you lose it, an operator resets it by hand.
+CLAIM_SUBMIT: Claim account
+CLAIM_BUSY: Claiming
+CLAIM_ERROR_TITLE: Could not claim the account
+CLAIM_HAVE_ACCOUNT: Already claimed your account?
+CLAIM_SIGN_IN_LINK: Sign in
+ACCOUNT_SIGNIN_HEADING: Sign in with your publisher account
+ACCOUNT_SIGNIN_LEDE: Use the username and password you chose when you claimed your account.
+ACCOUNT_SIGNIN_USERNAME: Username
+ACCOUNT_SIGNIN_PASSWORD: Password
+ACCOUNT_SIGNIN_SUBMIT: Sign in
+ACCOUNT_SIGNIN_BUSY: Signing in
+ACCOUNT_SIGNIN_FAILED: That username or password did not work.
+ACCOUNT_SIGNIN_CLAIM_LEAD: Have an invite code?
+ACCOUNT_SIGNIN_CLAIM_LINK: Claim your account
+DEMO_SIGNIN_HEADING: Test personas for judges and testers
+TERMS_ACCEPT_HEADING: Accept the publisher terms
+TERMS_ACCEPT_LEAD: Accepting records that you read this version of the publisher terms. It is saved against your username.
+TERMS_ACCEPT_BUTTON: Accept the publisher terms
+TERMS_ACCEPT_BUSY: Saving
+TERMS_ACCEPT_DONE: Recorded. You accepted the publisher terms.
+TERMS_CHANGED_LEAD: The terms changed. Please read and accept the current version.
+LINK_HEADING: Your PayPal address
+LINK_LEDE: UnitMarket pays out to the PayPal Business account you already have. UnitMarket never creates a PayPal account for you. Enter the email address of your own PayPal Business account. An operator checks it with you before it is used.
+LINK_NO_ACCOUNT: Only a publisher who claimed an account can link an address.
+LINK_NONE: No PayPal address is linked yet.
+LINK_FIELD_EMAIL: PayPal email address
+LINK_HINT_EMAIL: The email address of your own PayPal Business account. If you change it, it goes back to waiting for a check.
+LINK_SUBMIT: Send for checking
+LINK_SENT: Sent. Nothing is used until an operator has checked it with you.
+LINK_STATE_REQUESTED: Waiting for an operator to check it.
+LINK_STATE_VERIFIED: Checked by an operator.
+ACCESS_HEADING: Sign in access
+ACCESS_LEDE: Active publishers claim their own account with a one time invite code. The code is shown once, on this screen, and is stored only as a hash.
+ACCESS_EMPTY: No publishers to show.
+ACCESS_DEMO_NOTE: The three demo publishers sign in with their test personas and are not listed here.
+ACCESS_ISSUE_BUTTON: Issue an invite code
+ACCESS_REPLACE_BUTTON: Replace the invite code
+ACCESS_RESET_BUTTON: Reset sign in
+ACCESS_ISSUE_HINT: A new code voids the old one. The publisher claims the account with it.
+ACCESS_RESET_HINT: Reset removes the password, ends every session of this publisher and issues a new invite code so they can claim the account again.
+INVITE_SHOWN_HEADING: Invite code
+INVITE_SHOWN_WARNING: Copy this code now and give it to the publisher by a channel you trust. It is shown once and cannot be shown again.
+INVITE_COPIED_BUTTON: I have copied the code
+LINKS_HEADING: PayPal addresses to check
+LINKS_LEDE: Confirm the address with the publisher first, then type it again in full. Only then is it marked as checked.
+LINKS_EMPTY: No addresses are waiting for a check.
+LINKS_FIELD_RETYPE: Type the full PayPal email address again
+LINKS_FIELD_REASON: Reason
+LINKS_VERIFY: Mark as checked
+LINKS_DONE: Marked as checked.
+terms accepted: Accepted on 5 November 2026 (version v1) by new.owner.
+link line requested: seller@example.com. Waiting for an operator to check it.
+link line verified: seller@example.com. Checked by an operator.
+access account none: Account: not claimed yet.
+access account claimed: Account: claimed by new.owner.
+access invite none: Invite: none.
+access invite live: Invite: waiting, valid until 12 November 2026.
+access invite expired: Invite: expired.
+access invite used: Invite: used.
+access terms none: Terms: not accepted.
+access terms accepted: Terms: accepted by the publisher (version v1).
+access terms demo: Terms: demo record (version v1).
+access link none: PayPal address: none.
+access link requested: PayPal address: s***@example.com. Waiting for an operator to check it.
+access reason label: Web Pub 1: reason, 3 to 200 characters
+invite expires: It works once and expires after 12 November 2026.
+invite groups: ABCD-EFGH-JKMN
+claim error invalid_code: That invite code did not work. It may be mistyped, already used, replaced by a newer one, or expired. Ask an operator for a new one.
+claim error taken: That username is taken. Choose another.
+claim error invalid_input: Please check the form. The code is 12 letters and digits, and the username is 3 to 30 small letters, digits, dots, underscores or hyphens.
+claim error rate_limited: Too many tries from this connection. Please try again later.
+claim error busy: We cannot claim accounts right now. Please try again later.
+claim error csrf: That request was refused. Reload the page and try again.
+claim error unknown: The account could not be claimed. Please try again.
+claim error weak: The password is too short. Use at least 12 characters.
+terms error no_account: Only a publisher who claimed an account can accept the terms.
+terms error already_accepted: You already accepted this version.
+terms error csrf: That request was refused. Reload the page and try again.
+terms error unknown: The acceptance could not be saved. Please try again.
+link error no_account: Only a publisher who claimed an account can link an address.
+link error invalid_email: Please enter a valid email address, for example name@example.com.
+link error same_as_current: That is already your checked PayPal address.
+link error rate_limited: You can send 5 changes a day. Please try again tomorrow.
+link error forbidden: This account cannot do that.
+link error unknown: The address could not be sent. Please try again.
+access error has_account: This publisher already has an account. Use reset sign in instead.
+access error no_account: This publisher has no account yet. Issue an invite code instead.
+access error not_allowed: That cannot be done for this publisher: it must be active, and the demo publishers use test personas. Nothing changed.
+access error not_found: That publisher was not found.
+access error mfa_required: Changing sign in access needs a sign in with your authenticator code.
+access error invalid_input: Please give a reason of 3 to 200 characters.
+access error rate_limited: Too many changes this hour. Please try again later.
+access error unknown: The change could not be saved. Please try again.
+link decision error email_mismatch: The address you typed is not the address that was sent. Nothing changed.
+link decision error already_verified: This address was already checked.
+link decision error not_found: That publisher has no address waiting.
+link decision error mfa_required: Checking an address needs a sign in with your authenticator code.
+link decision error invalid_input: Please type the full address again and give a reason of 3 to 200 characters.
+link decision error rate_limited: Too many decisions this hour. Please try again later.
+link decision error unknown: The decision could not be saved. Please try again.
+applicants no login: Approving an applicant makes it an active publisher and shows you a one time invite code, once. Give the code to the publisher so they can claim their account and sign in. Until then it has no payee account and no offers.
+applicants lede: Publishers who applied on the public form, or whom an operator added. Applying creates no account. An approved publisher claims one with an invite code.
+approve hint: Approve makes the publisher active and shows an invite code once. The publisher claims their account with it.
+reject hint: Reject keeps the record and the reason. It cannot be undone and the applicant stays unable to sign in or sell.
+done approved: Approved. The publisher is active. Give them the invite code below so they can claim their account.
+apply confirm next: The operator will review it. If you are approved, an operator gives you an invite code to claim your account.
+apply status approved: Approved. An operator will give you an invite code to claim your account.
+agreement accepted by publisher: Publisher terms: accepted on 5 November 2026 (version v1).

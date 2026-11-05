@@ -57,6 +57,12 @@ const MFA_ROUTES: Record<string, () => Promise<Record<string, Handler>>> = {
     import('../ops/publishers/applicants/decision/route') as unknown as Promise<
       Record<string, Handler>
     >,
+  '/api/ops/publishers/access': () =>
+    import('../ops/publishers/access/route') as unknown as Promise<Record<string, Handler>>,
+  '/api/ops/publishers/paypal-link-decisions': () =>
+    import('../ops/publishers/paypal-link-decisions/route') as unknown as Promise<
+      Record<string, Handler>
+    >,
   '/api/refunds': () => import('../refunds/route') as unknown as Promise<Record<string, Handler>>,
   '/api/refunds/[id]/cancel': () =>
     import('../refunds/[id]/cancel/route') as unknown as Promise<Record<string, Handler>>,
