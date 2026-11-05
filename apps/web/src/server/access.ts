@@ -40,3 +40,5 @@ export {
   sellerLine,
   txnCsv,
 } from '../../composition.server';
+// INT-OPS-C: the operator cap revoke, for the Agents and API module.
+export { revokeMandateAsOperator } from '../../composition.server';

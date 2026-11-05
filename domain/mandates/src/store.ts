@@ -178,6 +178,52 @@ export async function revokeMandate(
   });
 }
 
+/** INT-OPS-C (C3, C4): why an operator revoked a cap. A closed list, never free text; it lands in the audit action. */
+export const OPERATOR_REVOKE_REASONS = ['abuse', 'owner_request', 'compromised', 'other'] as const;
+export type OperatorRevokeReason = (typeof OPERATOR_REVOKE_REASONS)[number];
+const REASON_SET: ReadonlySet<string> = new Set(OPERATOR_REVOKE_REASONS);
+
+export type OperatorRevokeError = 'not_found' | 'not_operator' | 'mfa_required' | 'invalid_reason';
+
+/**
+ * INT-OPS-C: an operator ends any buyer's mandate. The same locked, idempotent revoke as revokeMandate, without
+ * the buyer filter. Only an operator whose session showed the second factor (strictly `mfa === true`, like
+ * refunds) may do it. The reason code is written in clear in the audit action (`mandate.revoked.<code>`);
+ * audit_log.reason stays empty. A mandate revoked already is answered as it is, with no second audit row.
+ */
+export async function revokeMandateAsOperator(
+  db: Database,
+  deps: MandateDeps,
+  operator: Actor,
+  input: { id: string; reason_code: OperatorRevokeReason },
+): Promise<Result<MandateView, OperatorRevokeError>> {
+  if (operator.kind !== 'operator') return err('not_operator');
+  if (operator.mfa !== true) return err('mfa_required');
+  if (!REASON_SET.has(input.reason_code)) return err('invalid_reason');
+  return db.transaction(async (tx): Promise<Result<MandateView, OperatorRevokeError>> => {
+    const found = await tx.query<RawMandate>(
+      `SELECT ${MANDATE_COLUMNS} FROM mandates WHERE id = $1 FOR UPDATE`,
+      [input.id],
+    );
+    const row = found.rows[0];
+    if (row === undefined) return err('not_found');
+    if (row.revoked_at !== null) return ok(toView(row));
+    const at = deps.clock.now().toISOString();
+    await tx.query('UPDATE mandates SET revoked_at = $2, updated_at = $2 WHERE id = $1', [
+      row.id,
+      at,
+    ]);
+    await deps.audit.record(tx, {
+      actor: operator,
+      action: `mandate.revoked.${input.reason_code}`,
+      target: row.id,
+      reason: null,
+      detail: { agent_key_id: row.agent_key_id, buyer_id: row.buyer_id },
+    });
+    return ok(toView({ ...row, revoked_at: at }));
+  });
+}
+
 /**
  * What an agent key has left. A paid or ended order settles first, so room given back by an abandoned order
  * shows. With no mandate (or a revoked or expired one) the answer is the words to ask the buyer with.

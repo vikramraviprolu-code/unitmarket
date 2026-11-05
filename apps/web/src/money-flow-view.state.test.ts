@@ -69,7 +69,7 @@ async function expected(nowIso: string) {
   };
 }
 
-const asMap = (r: Awaited<ReturnType<typeof home.readMoneyFlow>>) => {
+const asMap = (r: Awaited<ReturnType<typeof home.readMoneyFlow>>): Record<string, number> => {
   if (r === null) throw new Error('expected a read');
   return {
     ...Object.fromEntries(r.stages.map((s) => [s.key, s.count])),
@@ -135,9 +135,9 @@ beforeAll(async () => {
     await w.app.db.query(
       `INSERT INTO operations (id, order_id, unit_id, kind, state, attempt, request_id, first_sent_at, idem_safe_until,
                                lease_until, next_retry_at, reconcile_until, failure_reason, created_at, updated_at)
-       SELECT $1, order_id, unit_id, kind, $2, 1, $1 || '_req', first_sent_at, idem_safe_until, $3, NULL, $4, NULL, created_at, updated_at
+       SELECT $1, order_id, unit_id, kind, $2, 1, $5, first_sent_at, idem_safe_until, $3, NULL, $4, NULL, created_at, updated_at
          FROM operations ORDER BY id LIMIT 1`,
-      [id, state, lease, reconcile],
+      [id, state, lease, reconcile, `${id}_req`],
     );
 });
 afterAll(async () => w.app.close());
@@ -189,15 +189,16 @@ describe('OPS-C.5 the counts', () => {
   it('rows just inside count and rows just outside or later do not', async () => {
     // Read before the edge rows were added, and again now: only the rows inside the window moved a count.
     const after = asMap(await home.readMoneyFlow(MFA));
-    expect(after.find - before.find).toBe(1);
-    expect(after.quote - before.quote).toBe(1);
-    expect(after.pay - before.pay).toBe(-1);
-    expect(after.refund).toBe(before.refund);
-    expect(after.refund).toBe(1);
-    expect(after.approve).toBe(before.approve);
-    expect(after.unlock).toBe(before.unlock);
-    expect(after.stuck_sent - before.stuck_sent).toBe(1);
-    expect(after.stuck_unknown - before.stuck_unknown).toBe(1);
+    const d = (k: string): number => after[k]! - before[k]!;
+    expect(d('find')).toBe(1);
+    expect(d('quote')).toBe(1);
+    expect(d('pay')).toBe(-1);
+    expect(d('refund')).toBe(0);
+    expect(after['refund']).toBe(1);
+    expect(d('approve')).toBe(0);
+    expect(d('unlock')).toBe(0);
+    expect(d('stuck_sent')).toBe(1);
+    expect(d('stuck_unknown')).toBe(1);
   });
 
   it('an operator without the second factor sees the same counts (no identity), anyone else nothing', async () => {

@@ -26,7 +26,7 @@ export const TABS: Record<ShellPersona, readonly ShellTab[]> = {
     { id: 'buyers', label: 'Buyers', href: '/ops/buyers', ready: true },
     { id: 'sellers', label: 'Sellers', href: '/ops/sellers', ready: true },
     { id: 'money', label: 'Money', href: '/ops/money', ready: true },
-    { id: 'agents', label: 'Agents and API', href: '/ops/agents', ready: false },
+    { id: 'agents', label: 'Agents and API', href: '/ops/agents', ready: true },
     { id: 'controls', label: 'Controls', href: '/ops/controls', ready: true },
   ],
   buyer: [

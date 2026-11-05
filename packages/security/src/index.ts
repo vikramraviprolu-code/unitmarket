@@ -73,6 +73,7 @@ export { runResetPassword } from './accounts-cli';
 export type { ResetCliError, ResetCliResult } from './accounts-cli';
 export {
   KEY_TOKEN_PATTERN,
+  OPERATOR_REVOKE_REASONS,
   bearerToken,
   formatKeyToken,
   hasScopes,
@@ -81,7 +82,16 @@ export {
   listKeys,
   parseKeyToken,
   revokeKey,
+  revokeKeyAsOperator,
   verifyKey,
 } from './apikey';
-export type { ApiKeyDeps, IssueError, IssueInput, IssuedKey, VerifiedKey } from './apikey';
+export type {
+  ApiKeyDeps,
+  IssueError,
+  IssueInput,
+  IssuedKey,
+  OperatorRevokeKeyError,
+  OperatorRevokeReason,
+  VerifiedKey,
+} from './apikey';
 export { keyScope } from './idempotency';

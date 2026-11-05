@@ -200,8 +200,10 @@ describe('OPS-C.4 totals and the ledger list', () => {
     const read = await money.readMoneyTotals(MFA);
     const h = await w.app.engine.health();
     expect(read!.reconciler).toEqual({ last_pass_at: h.last_pass_at, due: h.due });
+    // age_ms is measured against the wall clock at each read, so it is compared apart from the stored fields.
     const rates = await w.app.engine.fx.getRates();
-    expect(read!.rates).toEqual(rates);
+    const strip = (r: typeof rates) => (r === null ? null : { ...r, age_ms: 0 });
+    expect(strip(read!.rates)).toEqual(strip(rates));
   });
 });
 
