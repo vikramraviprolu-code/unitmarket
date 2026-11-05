@@ -1175,6 +1175,7 @@ describe('named exemptions (D-015)', () => {
         'packages/paypal/src/paypal.sandbox.contract.test.ts -> no-restricted-syntax,sbx/no-global-alias',
         'domain/library/src/world.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'domain/recovery/src/world.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
+        'domain/txn-search/src/pg.plan.integration.test.ts -> sbx/no-package-escape',
         'domain/payments/src/support.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'domain/payments/src/payments.integration.test.ts -> no-restricted-imports,sbx/no-restricted-dynamic-import',
         'tests/mvp-a/app-a20-a22-perf.integration.test.ts -> sbx/no-package-escape',

@@ -26,6 +26,8 @@ export * from './v1';
 export * from './v1-trace';
 // API-B (agent spending caps).
 export * from './mandates';
+// INT-SR0 (transaction search filter contract).
+export * from './txn-query';
 export * from './trace';
 // BR-1 (configurable business rules).
 export * from './rules';
