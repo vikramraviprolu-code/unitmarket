@@ -3104,9 +3104,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       const ops = await db.query<{ state: string; c: string | number }>(
         'SELECT state, count(*) AS c FROM operations GROUP BY state ORDER BY state',
       );
-      const alerts = await db.query<{ kind: string; created_at: unknown }>(
-        'SELECT kind, created_at FROM alerts ORDER BY created_at DESC, id LIMIT 20',
-      );
+      // INT-AL: the open alerts, newest first, from the same read the alert list uses.
+      const alerts = await listAlerts(db, { state: 'open', limit: 20 });
       const safety = await readSafetyStatus(db, clock.now(), config.outbound_approval_ref);
       const outboundSwitch = safety.switches.find((x) => x.name === 'paypal_outbound');
       const jobs = await jobsHealth(core);
@@ -3132,7 +3131,7 @@ function buildApp(config: Config, opts: AppOptions): App {
           currency: o.currency,
         })),
         operations: ops.rows.map((o) => ({ state: o.state, count: Number(o.c) })),
-        alerts: alerts.rows.map((a) => ({ kind: a.kind, created_at: iso(a.created_at) })),
+        alerts: alerts.items.map((a) => ({ kind: a.kind, created_at: a.created_at })),
         invariants: (await checkInvariants(db)).map((v) => ({
           id: v.id,
           ok: v.ok,

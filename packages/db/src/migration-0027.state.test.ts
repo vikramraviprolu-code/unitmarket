@@ -231,26 +231,31 @@ describe('the reseed wrapper', () => {
     try {
       for (const f of readdirSync(join(MIGRATIONS_ROOT, 'common')))
         cpSync(join(MIGRATIONS_ROOT, 'common', f), join(dir, f));
+      // The highest number below 0027 that no migration uses (0026 today), so a real lane never collides with it.
+      const used = new Set(readdirSync(dir).map((f) => Number(f.slice(0, 4))));
+      let n = 26;
+      while (used.has(n) && n > 0) n -= 1;
+      const num = String(n).padStart(4, '0');
       writeFileSync(
-        join(dir, '0025_zz_probe_lane.sql'),
+        join(dir, `${num}_zz_probe_lane.sql`),
         `CREATE TABLE probe_lane (id ums_id PRIMARY KEY, created_at timestamptz NOT NULL);
-CREATE FUNCTION trace_tracked_seed_probe() RETURNS void LANGUAGE sql AS $fn$
+CREATE FUNCTION trace_tracked_seed_${num}() RETURNS void LANGUAGE sql AS $fn$
   INSERT INTO trace_tracked (table_name, columns, hashed_columns, digest_columns, time_column, chain_expr) VALUES
     ('probe_lane', ARRAY['id'], ARRAY[]::text[], ARRAY[]::text[], 'created_at', 'plat')
   ;
 $fn$;
-CREATE FUNCTION trace_tracked_reseed_probe() RETURNS trigger LANGUAGE plpgsql AS $fn$
-BEGIN PERFORM trace_tracked_seed_probe(); RETURN NULL; END;
+CREATE FUNCTION trace_tracked_reseed_${num}() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN PERFORM trace_tracked_seed_${num}(); RETURN NULL; END;
 $fn$;
-CREATE TRIGGER trace_tracked_reseed_probe AFTER TRUNCATE ON trace_tracked
-  FOR EACH STATEMENT EXECUTE FUNCTION trace_tracked_reseed_probe();
-SELECT trace_tracked_seed_probe();
+CREATE TRIGGER trace_tracked_reseed_${num} AFTER TRUNCATE ON trace_tracked
+  FOR EACH STATEMENT EXECUTE FUNCTION trace_tracked_reseed_${num}();
+SELECT trace_tracked_seed_${num}();
 `,
       );
       const d = await openDatabase({ kind: 'pglite-memory' });
       toClose.push(d);
       const applied = await applyMigrations(d, clock, dir);
-      expect(applied).toContain('0025_zz_probe_lane');
+      expect(applied).toContain(`${num}_zz_probe_lane`);
       expect(applied).toContain('0027_rule_settings');
       expect(await trackedNames(d)).toEqual(
         expect.arrayContaining(['probe_lane', 'rule_settings']),
