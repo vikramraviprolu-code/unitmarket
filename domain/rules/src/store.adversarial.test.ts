@@ -2,8 +2,8 @@
 // refusal, never SQL; the second factor is checked in the domain even when the route is bypassed.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { activeRows, addRuleSetting, listRuleHistory } from './index';
-import { T0, countRows, input, rulesWorld } from './store-support';
-import type { RulesWorld } from './store-support';
+import { T0, countRows, input, rulesWorld } from './support';
+import type { RulesWorld } from './support';
 
 let w: RulesWorld;
 beforeAll(async () => {
@@ -105,7 +105,8 @@ describe('wrong JSON types and shapes', () => {
       ok: false,
       error: { code: 'rule_invalid' },
     });
-    const { reason: _r, ...missing } = base;
+    const missing: Record<string, unknown> = { ...base };
+    delete missing['reason'];
     expect(
       await addRuleSetting(w.deps, missing as unknown as Parameters<typeof addRuleSetting>[1]),
     ).toEqual({ ok: false, error: { code: 'rule_invalid' } });

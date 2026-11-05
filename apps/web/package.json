@@ -38,6 +38,7 @@
     "@umsbx/publisher-console": "workspace:*",
     "@umsbx/receipts": "workspace:*",
     "@umsbx/recovery": "workspace:*",
+    "@umsbx/rules": "workspace:*",
     "@umsbx/runtime": "workspace:*",
     "@umsbx/safety": "workspace:*",
     "@umsbx/security": "workspace:*",

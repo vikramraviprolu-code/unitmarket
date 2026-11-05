@@ -72,7 +72,7 @@ describe('TR0.1 enums', () => {
 });
 
 describe('TR0.1 the golden allow-list', () => {
-  it('names the 27 tracked tables of the spec, once each, in name order', () => {
+  it('names the 28 tracked tables (27 of the spec and rule_settings, BR-2), once each, in name order', () => {
     expect(TRACKED_TABLES.map((t) => t.table)).toEqual([
       'access_events',
       'access_windows',
@@ -99,6 +99,7 @@ describe('TR0.1 the golden allow-list', () => {
       'recovery_actions',
       'recovery_cases',
       'refund_requests',
+      'rule_settings',
       'safety_switches',
       'webhook_events',
     ]);

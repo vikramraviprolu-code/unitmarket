@@ -3,7 +3,6 @@
 // and body gives the first answer; the same key with another body is refused; no other caller reaches it.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { issueKey } from '@umsbx/security';
-import { traceInvariants } from '@umsbx/db';
 import { NOW, bootStartRig } from './ops-start-support';
 import type { StartRig } from './ops-start-support';
 import { call, signIn } from './support';
@@ -94,7 +93,12 @@ describe('POST /api/ops/rules', () => {
       "SELECT actor_kind, channel, mfa FROM trace_events WHERE source_table = 'rule_settings'",
     );
     expect(ev.rows).toEqual([{ actor_kind: 'operator', channel: 'web', mfa: true }]);
-    expect(await traceInvariants(rig!.app.db)).toEqual([]);
+    const bare = await rig!.app.db.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM trace_events WHERE actor_kind = 'unattributed' AND source_table = 'rule_settings'",
+    );
+    expect(bare.rows[0]!.n).toBe(0);
+    const found = await rig!.app.db.query<{ kind: string }>('SELECT kind FROM trace_verify()');
+    expect(found.rows).toEqual([]);
   });
 
   it('adds a seller row for a real publisher and refuses an id of the other kind', async () => {
@@ -206,7 +210,8 @@ describe('POST /api/ops/rules', () => {
   it('refuses a stray field, a missing field and a value of the wrong type (422)', async () => {
     const op = await rig!.mfaOperator();
     expect((await post(op, body({ approved_by: 'opr_other' }), 'rules-key-s1')).status).toBe(422);
-    const { reason: _r, ...noReason } = body();
+    const noReason: Record<string, unknown> = body();
+    delete noReason['reason'];
     expect((await post(op, noReason, 'rules-key-s2')).status).toBe(422);
     expect((await post(op, body({ value: '14' }), 'rules-key-s3')).status).toBe(422);
     expect(await rows()).toBe(0);

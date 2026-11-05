@@ -113,6 +113,9 @@ importers:
       '@umsbx/recovery':
         specifier: workspace:*
         version: link:../../domain/recovery
+      '@umsbx/rules':
+        specifier: workspace:*
+        version: link:../../domain/rules
       '@umsbx/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime

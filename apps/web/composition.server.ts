@@ -42,6 +42,7 @@ import type {
   Receipt,
   Rights,
   Result,
+  RuleSettingRow,
   SqlExecutor,
   SwitchName,
   SwitchReader,
@@ -157,6 +158,13 @@ import {
 } from '@umsbx/fx';
 import type { ConvertResult, FetchedRates, FxCurrency, FxRates, RefreshResult } from '@umsbx/fx';
 import { requestApproval } from '@umsbx/approval';
+import { activeRows, addRuleSetting, listRuleHistory } from '@umsbx/rules';
+import type {
+  RuleHistoryFilter,
+  RuleSettingInput,
+  RuleStoreError,
+  RulesContext,
+} from '@umsbx/rules';
 import {
   attachOrder as attachMandateOrder,
   checkBudget as checkMandateBudget,
@@ -1007,6 +1015,20 @@ export interface Engine {
     note?: string;
   }): Promise<Result<{ case_id: Id }, { code: 'not_found' | 'duplicate_open' }>>;
   opsSnapshot(actor: Actor): Promise<OpsSnapshot | null>;
+  /**
+   * BR-2: the rule settings. `add` is for an operator with the second factor (the domain checks it again);
+   * `history` is newest first, 200 rows by default and 5000 at most. No existing caller reads the rows:
+   * BR-3 and BR-4 are the lanes that will use `rules.activeRows`.
+   */
+  opsRules: {
+    add(
+      i: Omit<RuleSettingInput, 'actor'> & { actor: Actor },
+    ): Promise<Result<{ id: Id }, RuleStoreError>>;
+    history(filter?: RuleHistoryFilter, limit?: number): Promise<RuleSettingRow[]>;
+  };
+  rules: {
+    activeRows(ctx: RulesContext, at: string): Promise<RuleSettingRow[]>;
+  };
   /** AI-B: the operator evals page. Null for anyone but an operator. Runs the scripted model only. */
   evalsSummary(actor: Actor): Promise<EvalsSummary | null>;
   /**
@@ -2377,6 +2399,15 @@ function buildApp(config: Config, opts: AppOptions): App {
     aiEnabled: () => switches.isOn('ai_enabled'),
 
     agentBuyEnabled: () => switches.isOn('agent_buy_enabled'),
+
+    opsRules: {
+      add: (i) => addRuleSetting(core, i),
+      history: (filter, limit) => listRuleHistory(db, filter, limit),
+    },
+
+    rules: {
+      activeRows: (ctx, at) => activeRows(db, ctx, at),
+    },
 
     async setAgentBuy({ actor, on, reason }) {
       if (actor.kind !== 'operator') return err('operator_required');

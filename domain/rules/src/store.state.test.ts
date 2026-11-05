@@ -4,8 +4,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RuleSettingRowSchema } from '@umsbx/contracts';
 import { activeRows, addRuleSetting, listRuleHistory, resolveTerms } from './index';
-import { T0, countRows, input, rulesWorld } from './store-support';
-import type { RulesWorld } from './store-support';
+import { T0, countRows, input, rulesWorld } from './support';
+import type { RulesWorld } from './support';
 
 let w: RulesWorld;
 beforeAll(async () => {
