@@ -118,7 +118,7 @@ test.describe('payee change requests (PUB-A2)', () => {
     await o.waitForLoadState('networkidle');
     const row = o.getByTestId('payee-queue-row').filter({ hasText: NORTHFIELD });
     await expect(row).toHaveCount(1);
-    await expect(row).toContainText('Ending NT01');
+    await expect(row).toContainText('…NT01');
     // Only the last four characters are ever shown.
     await expect(o.locator('main')).not.toContainText(ID_ONE);
     await row.getByLabel(/Type the full merchant id again/).fill(ID_ONE);
@@ -145,7 +145,7 @@ test.describe('payee change requests (PUB-A2)', () => {
     await o.goto('/ops/payee-requests');
     await o.waitForLoadState('networkidle');
     const row = o.getByTestId('payee-queue-row').filter({ hasText: NORTHFIELD });
-    await expect(row).toContainText('Ending NT02');
+    await expect(row).toContainText('…NT02');
     await row.getByLabel(/Type the full merchant id again/).fill('E2EMERCHANT99');
     await row.getByLabel('Reason').fill('e2e wrong retype');
     await row.getByRole('button', { name: 'Verify' }).click();
@@ -215,7 +215,7 @@ test.describe('operator publishers page (PUB-D)', () => {
     await expect(pub.page.getByTestId('publisher-notice')).toHaveCount(0);
   });
 
-  test('an operator without the code is told why, and a publisher cannot open the operator pages', async ({
+  test('an operator without the code reads the queue, and a publisher cannot open the operator pages', async ({
     browser,
   }) => {
     const ctx = await browser.newContext();
@@ -224,8 +224,15 @@ test.describe('operator publishers page (PUB-D)', () => {
     await view.getByLabel('Who are you testing as?').selectOption('operator');
     await view.getByLabel('Demo passcode').fill(PASSCODE);
     await view.getByRole('button', { name: 'Sign in' }).click();
-    await expect(view.getByTestId('payee-mfa-needed')).toBeVisible();
-    await expect(view.getByTestId('payee-queue-row')).toHaveCount(0);
+    // INT-OPS-A / OPS-A.7: the queue is readable without the code; the buttons say what is missing.
+    await expect(view.getByTestId('payee-mfa-needed')).toHaveCount(0);
+    await expect(view.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(view).toHaveURL(/\/ops\/payee-requests/);
+    // The payee queue can be empty here, but the publishers list always has a status form per seller. The form sits in a
+    // closed details element, so it is in the page but not shown until the summary is opened.
+    await view.waitForLoadState('networkidle');
+    await view.goto('/ops/publishers');
+    await expect(view.getByText('needs your authenticator code').first()).toBeAttached();
     await ctx.close();
 
     for (const path of ['/ops', '/ops/publishers', '/ops/payee-requests']) {

@@ -69,7 +69,7 @@ describe('A-11 claim_never_unlocks', () => {
 });
 
 describe('A-12 readback_match_unlocks_and_starts_clock', () => {
-  it('a matching read-back makes the item available; started_at is the verified moment, ends_at exactly 5 days later', async () => {
+  it('a matching read-back makes the item available; started_at is the verified moment, ends_at exactly 7 days later (D-096, BR-3)', async () => {
     const w = await makeWorld({ start: '2026-10-22T10:07:31.000Z' });
     const before = w.td.clock.now().toISOString();
     await buy(w, BUYER_A, 'tide-tables');
@@ -83,7 +83,7 @@ describe('A-12 readback_match_unlocks_and_starts_clock', () => {
     );
     expect(win.state).toBe('running');
     expect(new Date(win.started_at).toISOString()).toBe(before);
-    expect(new Date(win.ends_at).getTime() - new Date(win.started_at).getTime()).toBe(5 * DAY);
+    expect(new Date(win.ends_at).getTime() - new Date(win.started_at).getTime()).toBe(7 * DAY);
     expect(await count(w, "SELECT count(*) AS c FROM ledger_entries WHERE kind = 'sale'")).toBe(1);
   });
 
@@ -107,7 +107,7 @@ describe('A-12 readback_match_unlocks_and_starts_clock', () => {
       [e.id],
     );
     expect(new Date(win.started_at).toISOString()).toBe(w.td.clock.now().toISOString());
-    expect(new Date(win.ends_at).getTime() - new Date(win.started_at).getTime()).toBe(5 * DAY);
+    expect(new Date(win.ends_at).getTime() - new Date(win.started_at).getTime()).toBe(7 * DAY);
   });
 });
 

@@ -42,7 +42,9 @@ describe('U1 library card: one statement of the time left', () => {
     expect(src).toContain('data-testid="window-meter"');
     expect(src).toContain('className="meter-bar"');
     expect(src).toContain('days used');
-    expect(src).toContain('Your 5 days start when payment is confirmed and the content is ready.');
+    expect(src).toContain(
+      'Your access window starts when payment is confirmed and the content is ready.',
+    );
   });
 });
 
@@ -96,8 +98,11 @@ describe('U4 fit card', () => {
   });
 
   it('puts the days under the price line', () => {
-    expect(accessDaysLine('online_read')).toBe('5 days to read');
-    expect(accessDaysLine('keep_retrieve')).toBe('5 days to download your copy');
+    // BR-3: the platform default is 7 days (D-096); a sale's own days come from its frozen terms.
+    expect(accessDaysLine('online_read')).toBe('7 days to read');
+    expect(accessDaysLine('keep_retrieve')).toBe('7 days to download your copy');
+    expect(accessDaysLine('online_read', 14)).toBe('14 days to read');
+    expect(accessDaysLine('keep_retrieve', 1)).toBe('1 day to download your copy');
   });
 
   it('splits rows: real assessments stay visible, "not assessed" rows go to the details', () => {

@@ -123,15 +123,23 @@ describe('who may add or decide', () => {
     expect([await pubs(), await audits(), await decisions()]).toEqual(before);
   });
 
-  it('the page data refuses a publisher, a buyer, a system actor and an operator without MFA', async () => {
+  it('the page data refuses a publisher, a buyer and a system actor; an operator without MFA may read (OPS-A.7)', async () => {
     for (const actor of [
       { kind: 'publisher', publisher_id: w.pubId['harbour-ledger'] },
       w.refund.actorA,
       { kind: 'system' },
-      { kind: 'operator', operator_id: 'opr_x', mfa: false },
     ] as const) {
       expect((await w.app.engine.opsApplicants.list(actor)).ok).toBe(false);
     }
+    expect(
+      (
+        await w.app.engine.opsApplicants.list({
+          kind: 'operator',
+          operator_id: 'opr_x',
+          mfa: false,
+        })
+      ).ok,
+    ).toBe(true);
   });
 });
 
@@ -427,11 +435,11 @@ describe('the page (source as text)', () => {
   const read = (rel: string): string => readFileSync(new URL(rel, import.meta.url), 'utf8');
   it('reads applicants only through the engine, uses its own copy module and has no inline style', () => {
     const page = strip(read('./app/ops/publishers/page.tsx'));
-    expect(page).toMatch(/engine\.opsApplicants\.list\(actor\)/);
+    expect(page).toMatch(/readOpsPublishers\(actor\)/); // INT-OPS-A: through composition/ops-sellers
     expect(page).toContain("from '../../../lib/ops-applicants-copy'");
     expect(page).toContain('ApplicantForms');
     expect(page).not.toMatch(/style=/);
-    expect(page).not.toMatch(/merchant/i);
+    expect(page.replace(/maskedMerchant/g, '')).not.toMatch(/merchant/i);
   });
   it('the forms post to the two routes and carry only the shaped fields', () => {
     const form = strip(read('./app/ops/publishers/ApplicantForms.tsx'));

@@ -1,7 +1,7 @@
 // Buyer-facing wording for the search, results and library screens. Pure; kept out of the .tsx files so
 // unit tests can pin it (the unit runner does not compile .tsx). Wording rules: D-051.
 import type { FitDimension, Rights } from '@umsbx/contracts';
-import { OPTION_LABEL, formatMinor } from './format';
+import { DEFAULT_ACCESS_DAYS, OPTION_LABEL, formatMinor } from './format';
 import { NO_RATE_NOTE, fromLead, priceView } from './buyer-price';
 import type { PriceView } from './buyer-price';
 import type { OfferPage } from './view-types';
@@ -82,9 +82,18 @@ export function priceLine(priceText: string, option: keyof typeof OPTION_LABEL):
   return `${priceText} · ${OPTION_LABEL[option]}`;
 }
 
-export function accessDaysLine(option: keyof typeof OPTION_LABEL): string {
-  return option === 'keep_retrieve' ? '5 days to download your copy' : '5 days to read';
+// BR-3: `days` comes from the frozen terms or the entitlement when there is one; without it the platform default.
+export function accessDaysLine(
+  option: keyof typeof OPTION_LABEL,
+  days: number = DEFAULT_ACCESS_DAYS,
+): string {
+  const n = `${days} ${days === 1 ? 'day' : 'days'}`;
+  return option === 'keep_retrieve' ? `${n} to download your copy` : `${n} to read`;
 }
+
+// The approval screen: the same sentence the buyer is about to agree to, with the frozen days.
+export const TERMS_INVALID_TEXT =
+  'We could not work out the terms of this purchase. Please try again later.';
 
 // Rows with a real assessment stay on the card; rows that could not be assessed go into the details.
 export function splitFitRows(dimensions: readonly FitDimension[]): {

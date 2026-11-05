@@ -24,7 +24,7 @@ const TOPICS: Record<string, { title: string; body: string[] }> = {
   delivery: {
     title: 'The content did not open',
     body: [
-      'If delivery failed on our side, your 5 days are paused and restored. You do not lose time.',
+      'If delivery failed on our side, your access time is paused and restored. You do not lose time.',
       'Ask us to look at it and we will check what happened.',
     ],
   },

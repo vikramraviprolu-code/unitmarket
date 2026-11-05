@@ -23,7 +23,7 @@ export const PERSONA_WORD: Record<ShellPersona, string> = {
 export const TABS: Record<ShellPersona, readonly ShellTab[]> = {
   operator: [
     { id: 'home', label: 'Home', href: '/ops', ready: true },
-    { id: 'buyers', label: 'Buyers', href: '/ops/buyers', ready: false },
+    { id: 'buyers', label: 'Buyers', href: '/ops/buyers', ready: true },
     { id: 'sellers', label: 'Sellers', href: '/ops/sellers', ready: true },
     { id: 'money', label: 'Money', href: '/ops/money', ready: true },
     { id: 'agents', label: 'Agents and API', href: '/ops/agents', ready: false },

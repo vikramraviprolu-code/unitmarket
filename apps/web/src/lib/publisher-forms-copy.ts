@@ -7,7 +7,7 @@ import type { OfferStatus } from './offer-copy';
 
 export type PillTone = 'good' | 'warn' | 'bad' | 'info' | 'neutral';
 
-export const BACK_TO_PUBLISHER_HOME = 'Back to publisher home';
+export const BACK_TO_PUBLISHER_HOME = 'Back to seller home';
 
 // Offer form sections
 export const SECTION_WHAT = 'What you are selling';
