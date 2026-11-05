@@ -434,7 +434,7 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 | BUY | 2 | 10 | 23 | 11 | 12 | Sonnet 5.5 high | Spec passed 12/12 (round 2); waits on UI0, TR1, SR1, OPS-B.1 |
 | SEL | 2 | 9 | 18 | 6 | 12 | Sonnet 5.5 medium | Spec passed 11/12 (round 2); waits on UI0, TR1, SR1, OPS-B.1 |
 | GA | 2 | 5 | 10 | | 10 | Sonnet 5.5 high | Spec passed 10/12 (round 2); waits on SR0, TR1, AL, OPS-A, OPS-B, BUY, SEL; scripted model (V8) |
-| E2E | 3 | 2 | 4 | 4 | | Sonnet 5.5 high | Round 2 sent to scorer |
+| E2E | 3 | 2 | 4 | 4 | | Sonnet 5.5 high | Spec passed 11/12 (round 2); waits on every must lane |
 | **Total** | | **101** | **223** | **173** | **50** | | |
 
 Later work (section 5): 31 items, 69 points. Every later row also goes into the post-12-Nov backlog.

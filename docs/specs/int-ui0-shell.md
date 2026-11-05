@@ -47,7 +47,7 @@ The table lives as data in `apps/web/src/lib/shell-moves.ts`; tests read it.
 - The kill switch, feature switches, outbound gate panel and refund panel move as they are: same components, MFA, CSRF and copy.
 - No API, domain or migration change. Nothing sets `UMS_PAYPAL_CONNECT` or inserts `outbound_approvals`.
 - The pill text comes from the stored `environment` through `src/ui/EnvLabel.tsx`, never a literal "Sandbox" or "Dry run".
-- These guard tests must pass unchanged: `src/ops-start.*.test.ts`, `src/refund.*.test.ts`, `src/operator-mfa.integration.test.ts`, `e2e/operator-mfa.spec.ts`, `e2e/refund.spec.ts`, `e2e/zz-ops-stop.spec.ts`.
+- These guard tests must pass unchanged: `src/ops-start.*.test.ts`, `src/refund.*.test.ts`, `src/operator-mfa.integration.test.ts`, `e2e/operator-mfa.spec.ts`, `e2e/refund.spec.ts`, `e2e/zz-ops-stop.spec.ts`. A guard whose page moved (the refund panel to `/ops/money`) changes its URLs only; every assertion stays, and the PR lists it (decided 5 Nov).
 - The gate runs `corepack pnpm check:no-live-host`, `check:secrets-names`, `check:routes` and `check:isolation`.
 
 ## Outputs (only these files)
@@ -64,7 +64,7 @@ Changed:
 - `src/app/ops/page.tsx` (Home plus stubs); `src/app/layout.tsx` (shell)
 - `src/lib/nav.ts`, `src/lib/publisher-copy.ts` (`PUBLISHER_NAV_LABEL` = "Seller"; UI0 owns this rename in nav and tabs; SEL renames page copy)
 - `composition.server.ts` (re-exports only)
-- `packages/contracts/src/payments.ts` (additive `REFUND_REQUEST_STATES` const: `requested`, `sent`, `unknown`, `pending`, `unresolved`, `completed`, `failed`, `cancelled`, the values `domain/payments/src/refunds.ts` writes (lines 75, 78, 284, 342, 527, 586, 711); there is no DB CHECK, so the PR cites these lines)
+- `packages/contracts/src/payments.ts` (additive `REFUND_REQUEST_STATES` const: `requested`, `sent`, `unknown`, `pending`, `unresolved`, `completed`, `failed`, `cancelled`, `rejected`, the values `domain/payments/src/refunds.ts` writes (lines 75, 78, 284, 342, 527, 586, 711, 771); there is no DB CHECK, so the PR cites these lines)
 - tests that assert old places, moved to the new URL and never weakened: `e2e/zb-section-tabs.spec.ts`, `e2e/site-shell.spec.ts`, `e2e/header-layout.spec.ts`, `e2e/publisher-pages.spec.ts`, `e2e/zd-ops-publishers.spec.ts`, `src/ops-home-copy.test.ts`, `src/ops-home-copy.golden.test.ts`, `src/publisher-copy.golden.test.ts` and `src/publisher-shell.state.test.ts` (the "Publisher" nav label)
 
 ## Acceptance tests (commit 1: tests only, run red)
