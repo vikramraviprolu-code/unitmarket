@@ -1,0 +1,4 @@
+# BR-4: the refund deadline lines a buyer reads on the library item and the receipt. Reviewed by hand.
+open: Refunds can be requested until 2026-11-08 10:00 UTC
+ended: Refund period ended
+no deadline: (no line)
