@@ -103,7 +103,7 @@ describe('ApprovalSnapshot refinements', () => {
       SnapshotPublisherSchema.safeParse({ ...pubBlock('p', 'M', 1), platform_fee_minor: 1 })
         .success,
     ).toBe(false);
-    expect(valid({ ...snapshot(), snapshot_version: '2' })).toBe(false);
+    expect(valid({ ...snapshot(), snapshot_version: '3' })).toBe(false);
   });
   it('item schema is strict', () => {
     expect(SnapshotItemSchema.safeParse({ ...item('a', 'p', 'M', 1), extra: 1 }).success).toBe(
@@ -258,5 +258,73 @@ describe('ExpectedTransaction', () => {
     expect(ExpectedTransactionSchema.safeParse({ ...expected(), total_minor: 0 }).success).toBe(
       false,
     );
+  });
+});
+
+// BR-3: version 2 carries the resolved business terms inside the snapshot (and so inside the content hash).
+describe('ApprovalSnapshot terms (BR-3)', () => {
+  const terms = (over: Record<string, unknown> = {}) => ({
+    rules_version: '1',
+    values: { 'refund.request_window': 7, 'access.window': 7, 'mandate.max_days': 90 },
+    sources: {
+      'refund.request_window': 'default',
+      'access.window': 'linked:refund.request_window',
+      'mandate.max_days': 'default',
+    },
+    digest: 'c'.repeat(64),
+    ...over,
+  });
+  const v2 = (t: unknown = terms()) => ({ ...snapshot(), snapshot_version: '2', terms: t });
+  const withValues = (values: Record<string, unknown>) =>
+    v2(terms({ values: { ...terms().values, ...values } }));
+
+  it('version 2 with strict terms parses; version 1 without terms still parses', () => {
+    expect(valid(v2())).toBe(true);
+    expect(valid(snapshot())).toBe(true);
+    const parsed = ApprovalSnapshotSchema.parse(v2());
+    expect(parsed.snapshot_version).toBe('2');
+  });
+  it('version 2 without terms is refused', () => {
+    const { terms: _dropped, ...bare } = v2();
+    expect(valid(bare)).toBe(false);
+    expect(valid(v2(undefined))).toBe(false);
+    expect(valid(v2(null))).toBe(false);
+  });
+  it('version 1 with a terms block is refused', () => {
+    expect(valid({ ...snapshot(), terms: terms() })).toBe(false);
+  });
+  it('terms are strict: unknown keys, a wrong rules_version and a bad digest are refused', () => {
+    expect(valid(v2(terms({ extra: 1 })))).toBe(false);
+    expect(valid(v2(terms({ rules_version: '2' })))).toBe(false);
+    expect(valid(v2(terms({ digest: 'xyz' })))).toBe(false);
+    expect(valid(withValues({ extra: 1 }))).toBe(false);
+  });
+  it('each value must sit inside its registry range and be a whole number', () => {
+    for (const bad of [
+      { 'refund.request_window': -1 },
+      { 'refund.request_window': 31 },
+      { 'access.window': 0 },
+      { 'access.window': 31 },
+      { 'mandate.max_days': 0 },
+      { 'mandate.max_days': 91 },
+      { 'refund.request_window': 7.5 },
+    ]) {
+      expect(valid(withValues(bad))).toBe(false);
+    }
+    for (const good of [
+      { 'refund.request_window': 0, 'access.window': 1 },
+      { 'refund.request_window': 30, 'access.window': 30, 'mandate.max_days': 1 },
+    ]) {
+      expect(valid(withValues(good))).toBe(true);
+    }
+  });
+  it('access.window may not be shorter than refund.request_window (the link rule)', () => {
+    expect(valid(withValues({ 'refund.request_window': 10, 'access.window': 9 }))).toBe(false);
+    expect(valid(withValues({ 'refund.request_window': 10, 'access.window': 10 }))).toBe(true);
+  });
+  it('the snapshot refinements still apply to version 2', () => {
+    const s = v2();
+    s.total_minor = 599;
+    expect(valid(s)).toBe(false);
   });
 });
