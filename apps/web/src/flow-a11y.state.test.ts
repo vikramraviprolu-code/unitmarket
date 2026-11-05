@@ -51,3 +51,63 @@ describe('the layout (D1, D11)', () => {
     expect(src).toContain('<SignOutButton');
   });
 });
+
+// INT-OPS-B: the text-read check for the three new operator pages and their parts. Every input has a label,
+// every table a caption or a name, every form and region a name, and the current page is marked.
+describe('INT-OPS-B pages: labelled landmarks, inputs and tables', () => {
+  const FILES = [
+    'app/ops/money/transactions/page.tsx',
+    'app/ops/controls/activity/page.tsx',
+    'app/ops/controls/invariants/page.tsx',
+    'ui/FilterBar.tsx',
+    'ui/ops/QuickFind.tsx',
+    'ui/ops/ActivityTable.tsx',
+    'ui/ops/TransactionsTable.tsx',
+    'ui/ops/VerifyTile.tsx',
+  ];
+  const named = (tag: string, src: string): string[] =>
+    [...src.matchAll(new RegExp(`<${tag}\\b[^>]*>`, 'g'))].map((m) => m[0]);
+  it.each(FILES)('%s: nav, section, form, table, ul and region elements have a name', (f) => {
+    const src = code(f);
+    for (const tag of ['nav', 'form', 'table']) {
+      for (const el of named(tag, src))
+        expect(el, `${f} ${tag}`).toMatch(/aria-label=|aria-labelledby=|role="search"/);
+    }
+    for (const el of named('section', src)) expect(el, f).toMatch(/aria-label=|aria-labelledby=/);
+  });
+  it.each(FILES)('%s: each input, select and textarea is labelled', (f) => {
+    const src = code(f);
+    const fields = ['input', 'select', 'textarea'].flatMap((t) => named(t, src));
+    for (const el of fields) {
+      const id = /\bid=(?:"([^"]+)"|\{([^}]+)\})/.exec(el);
+      const labelled =
+        /aria-label=|aria-labelledby=/.test(el) ||
+        (id !== null && new RegExp(`htmlFor=(?:"${id[1] ?? ''}"|\\{${(id[2] ?? '').replace(/[$()]/g, '\\$&')}\\})`).test(src));
+      expect(labelled, `${f}: ${el}`).toBe(true);
+    }
+  });
+  it('the Transactions and Activity tables have a caption or a name, and the pages a level one heading', () => {
+    for (const f of ['ui/ops/TransactionsTable.tsx', 'ui/ops/ActivityTable.tsx']) {
+      const src = code(f);
+      expect(src, f).toMatch(/<caption|<table[^>]*aria-label=/);
+      expect(src, f).toMatch(/<th scope="col"/);
+    }
+    for (const f of FILES.slice(0, 3)) expect(code(f), f).toMatch(/<PageHeader\b[^>]*title=/);
+  });
+  it('the filter bar names its chips list and marks nothing by colour alone', () => {
+    const src = code('ui/FilterBar.tsx');
+    expect(src).toMatch(/<ul[^>]*aria-label=/);
+    expect(src).toMatch(/role="status"|aria-live=/);
+  });
+  it('quick-find results are a named region, the input says what it does, and Enter is announced', () => {
+    const src = code('ui/ops/QuickFind.tsx');
+    expect(src).toMatch(/<section[^>]*aria-label="Quick find results"/);
+    expect(src).toMatch(/aria-live="polite"|role="status"/);
+    expect(src).toMatch(/htmlFor="shell-search-input"/);
+  });
+  it('the verify tile says its result in words and has the run link as a real link', () => {
+    const src = code('ui/ops/VerifyTile.tsx');
+    expect(src).toMatch(/<a [^>]*href=\{tile\.runHref\}|<Link[^>]*href=\{tile\.runHref\}/);
+    expect(src).toMatch(/role="status"|aria-live=/);
+  });
+});
