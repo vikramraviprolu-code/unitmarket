@@ -92,7 +92,9 @@ describe('createExposureReader', () => {
       clock: rig.clock,
     });
     expect(await empty.isEnabled('orders')).toBe(false);
-    expect(await createExposureReader({ db: rig.db, clock: rig.clock }).isEnabled('nope' as never)).toBe(false);
+    expect(
+      await createExposureReader({ db: rig.db, clock: rig.clock }).isEnabled('nope' as never),
+    ).toBe(false);
   });
 });
 
@@ -129,20 +131,29 @@ describe('the check in withRoute', () => {
     // a key that lacks the scope: the disabled group answers first
     const weak = await rig.issue(BUYER_A, 'api_client', ['catalogue:read']);
     const orders = withRoute(getOrders, Empty, ok)({ ...rig.deps, exposure: off('orders') });
-    expect(await codeOf(await orders(rig.bearer(weak.token, { url: '/api/v1/orders' })))).toBe('api_disabled');
+    expect(await codeOf(await orders(rig.bearer(weak.token, { url: '/api/v1/orders' })))).toBe(
+      'api_disabled',
+    );
     // an operator key on a non-GET: api_disabled, not mfa_required
-    const opKey = await rig.issue(OPR_MFA, 'api_client', ['orders:write']);
-    const post = withRoute(postOrders, Body, ok)({ ...rig.deps, exposure: off('orders') });
-    const r = await post(
+    const opKey = await rig.issue(OPR_MFA, 'api_client', ['ops:read']);
+    const opPost = withRoute(
+      { ...postOrders, path: '/api/v1/ops/things', scopes: ['ops:read'] },
+      Body,
+      ok,
+    );
+    const call = () =>
       rig.bearer(opKey.token, {
         method: 'POST',
-        url: '/api/v1/orders',
+        url: '/api/v1/ops/things',
         body: { n: 1 },
         headers: { 'idempotency-key': 'op-key-0001-abc' },
-      }),
-    );
-    expect(r.status).toBe(403);
-    expect(await codeOf(r)).toBe('api_disabled');
+      });
+    const closed = await opPost({ ...rig.deps, exposure: off('ops') })(call());
+    expect(closed.status).toBe(403);
+    expect(await codeOf(closed)).toBe('api_disabled');
+    // with the group open the operator-key rule answers, so the order of the two checks is proven
+    const open = await opPost({ ...rig.deps, exposure: { isEnabled: async () => true } })(call());
+    expect(await codeOf(open)).toBe('mfa_required');
   });
 
   it('a replayed Idempotency-Key after the group is disabled gets 403 api_disabled, never the stored 200', async () => {
@@ -174,10 +185,23 @@ describe('the check in withRoute', () => {
     });
     const deps = { ...rig.deps, exposure: failing };
     const k = await rig.issue(BUYER_A, 'api_client', ['orders:read']);
-    expect((await withRoute(getOrders, Empty, ok)(deps)(rig.bearer(k.token, { url: '/api/v1/orders' }))).status).toBe(403);
-    const s = await createSession(rig.deps, { kind: 'buyer', buyer_id: BUYER_A.kind === 'buyer' ? BUYER_A.buyer_id : '' });
+    expect(
+      (await withRoute(getOrders, Empty, ok)(deps)(rig.bearer(k.token, { url: '/api/v1/orders' })))
+        .status,
+    ).toBe(403);
+    const s = await createSession(rig.deps, {
+      kind: 'buyer',
+      buyer_id: BUYER_A.kind === 'buyer' ? BUYER_A.buyer_id : '',
+    });
     const sessionRoute = withRoute(
-      { ...base, path: '/api/library', method: 'GET', auth: 'buyer', rate: null, idempotent: false },
+      {
+        ...base,
+        path: '/api/library',
+        method: 'GET',
+        auth: 'buyer',
+        rate: null,
+        idempotent: false,
+      },
       Empty,
       ok,
     )(deps);
@@ -190,11 +214,17 @@ describe('the check in withRoute', () => {
   it('an apikey route whose prefix is unmapped fails closed once a reader is set', async () => {
     const rig = await makeV1Rig();
     const k = await rig.issue(BUYER_A, 'api_client', ['orders:read']);
-    const r = withRoute({ ...getOrders, path: '/api/v1/things' }, Empty, ok)({
+    const r = withRoute(
+      { ...getOrders, path: '/api/v1/things' },
+      Empty,
+      ok,
+    )({
       ...rig.deps,
       exposure: { isEnabled: async () => true },
     });
-    expect(await codeOf(await r(rig.bearer(k.token, { url: '/api/v1/things' })))).toBe('api_disabled');
+    expect(await codeOf(await r(rig.bearer(k.token, { url: '/api/v1/things' })))).toBe(
+      'api_disabled',
+    );
   });
 
   it('without a reader every group is enabled (F5)', async () => {

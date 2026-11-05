@@ -10,7 +10,10 @@ import { parseCloudStatus } from './lib/services-view';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const root = join(here, '..', '..', '..');
-const fixtureText = readFileSync(join(root, 'scripts', '__fixtures__', 'cloud-status.json'), 'utf8');
+const fixtureText = readFileSync(
+  join(root, 'scripts', '__fixtures__', 'cloud-status.json'),
+  'utf8',
+);
 const doc = (): Record<string, unknown> => JSON.parse(fixtureText) as Record<string, unknown>;
 const withService = (i: number, over: Record<string, unknown>) => {
   const d = doc();
@@ -60,13 +63,22 @@ describe('what is refused, with a plain message', () => {
     refused(JSON.stringify(withService(4, { state: 'up' })));
     refused(JSON.stringify(withService(4, { flag: 'maybe' })));
     refused(JSON.stringify({ ...doc(), services: (doc()['services'] as unknown[]).slice(0, 4) }));
-    refused(JSON.stringify({ ...doc(), services: [...(doc()['services'] as unknown[])].reverse() }));
+    refused(
+      JSON.stringify({ ...doc(), services: [...(doc()['services'] as unknown[])].reverse() }),
+    );
     refused(JSON.stringify(withService(0, { last_changed_at: 12 })));
     refused(JSON.stringify(withService(0, { url: 'javascript:alert(1)' })));
   });
 
   it('a project that would break out of a link', () => {
-    for (const project of ['javascript:alert(1)', 'my"project', 'a/b/c/d/e', 'proj?x=1', 'proj#frag', 'p\nq-abc'])
+    for (const project of [
+      'javascript:alert(1)',
+      'my"project',
+      'a/b/c/d/e',
+      'proj?x=1',
+      'proj#frag',
+      'p\nq-abc',
+    ])
       refused(JSON.stringify({ ...doc(), project }));
   });
 
@@ -81,10 +93,14 @@ describe('what is refused, with a plain message', () => {
 
 describe('the sources hold no injection or network path', () => {
   const strip = (f: string) =>
-    readFileSync(join(here, f), 'utf8').replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    readFileSync(join(here, f), 'utf8')
+      .replace(/\/\/.*$/gm, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
   it('ServicesPanel.tsx and services-view.ts hold no dangerouslySetInnerHTML, innerHTML, fetch( or method: POST', () => {
     for (const f of ['ui/ops/ServicesPanel.tsx', 'lib/services-view.ts']) {
-      expect(strip(f), f).not.toMatch(/dangerouslySetInnerHTML|innerHTML|fetch\(|method:\s*'POST'|localStorage|sessionStorage/);
+      expect(strip(f), f).not.toMatch(
+        /dangerouslySetInnerHTML|innerHTML|fetch\(|method:\s*'POST'|localStorage|sessionStorage/,
+      );
     }
   });
   it('the only builder of console links is services-view.ts, and it encodes the project', () => {

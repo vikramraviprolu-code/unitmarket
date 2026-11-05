@@ -65,7 +65,10 @@ describe('exposureView (pure)', () => {
     const withMfa = exposureView(changed, { mfa: true }).find((l) => l.group === 'orders')!;
     const without = exposureView(changed, { mfa: false }).find((l) => l.group === 'orders')!;
     expect(withMfa.state).toBe('off');
-    expect(withMfa.last_change).toMatchObject({ by: 'operator:opr_secret_name', reason_code: 'incident' });
+    expect(withMfa.last_change).toMatchObject({
+      by: 'operator:opr_secret_name',
+      reason_code: 'incident',
+    });
     expect(withMfa.toggle).toMatchObject({ action: 'on', needs_mfa: true });
     expect(without.last_change).toMatchObject({ by: 'an operator', reason_code: 'incident' });
     expect(JSON.stringify(without)).not.toContain('opr_secret_name');
@@ -110,12 +113,18 @@ describe('the read behind the screen', () => {
           changed_by: string;
           changed_at: Date | string;
           reason_code: string;
-        }>('SELECT enabled, changed_by, changed_at, reason_code FROM api_exposure WHERE group_name = $1', [g])
+        }>(
+          'SELECT enabled, changed_by, changed_at, reason_code FROM api_exposure WHERE group_name = $1',
+          [g],
+        )
       ).rows[0]!;
       const ev = (
         await rig.app.db.query<{
           occurred_at: Date | string;
-          body: { cols: Record<string, [unknown, unknown]>; hashed: Record<string, [unknown, string]> };
+          body: {
+            cols: Record<string, [unknown, unknown]>;
+            hashed: Record<string, [unknown, string]>;
+          };
         }>(
           "SELECT occurred_at, body FROM trace_events WHERE source_table = 'api_exposure' AND source_id = $1 ORDER BY seq DESC LIMIT 1",
           [g],
@@ -126,7 +135,9 @@ describe('the read behind the screen', () => {
       expect(ev.body.hashed['changed_by']![1], g).toBe(
         createHash('sha256').update(row.changed_by).digest('hex'),
       );
-      expect(new Date(ev.occurred_at).toISOString(), g).toBe(new Date(row.changed_at).toISOString());
+      expect(new Date(ev.occurred_at).toISOString(), g).toBe(
+        new Date(row.changed_at).toISOString(),
+      );
     }
   });
 });

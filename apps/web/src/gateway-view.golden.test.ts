@@ -30,13 +30,25 @@ const CLOSED: LockView = {
   l5_credentials_and_wire_ok: false,
 };
 const SPEC: Record<string, [string, string]> = {
-  L1: ['The app runs offline (mode is not sandbox).', "Owner sets the host's mode setting `UMS_MODE`."],
+  L1: [
+    'The app runs offline (mode is not sandbox).',
+    "Owner sets the host's mode setting `UMS_MODE`.",
+  ],
   L2: ['The connect flag is off.', 'Owner only: see the owner runbook.'],
-  L3: ['No active approval covers this call.', 'Owner runs `corepack pnpm safety:approve` at a terminal.'],
+  L3: [
+    'No active approval covers this call.',
+    'Owner runs `corepack pnpm safety:approve` at a terminal.',
+  ],
   L4: ['PayPal calls are switched off.', 'Use the Start button below.'],
   L5: ['Credentials or the wire self-check failed.', 'Owner checks the host secrets by name.'],
 };
-const BANNED = [/UMS_PAYPAL_CONNECT\s*=\s*on/i, /--update-env-vars/, /\bDL-[A-Za-z0-9-]+/, /approval_ref\s*=/i, /--set-env-vars/];
+const BANNED = [
+  /UMS_PAYPAL_CONNECT\s*=\s*on/i,
+  /--update-env-vars/,
+  /\bDL-[A-Za-z0-9-]+/,
+  /approval_ref\s*=/i,
+  /--set-env-vars/,
+];
 
 describe('each closed lock', () => {
   it('maps to the spec sentence and the fixed owner action', () => {
@@ -111,7 +123,9 @@ describe('what the panel never says', () => {
     for (const f of ['ui/ops/GatewayPanel.tsx', 'lib/gateway-view.ts']) {
       const src = code(f);
       expect(src, f).not.toMatch(/<form\b|\baction=|method=|fetch\(|XMLHttpRequest/);
-      expect(src, f).not.toMatch(/\/api\/ops\/start|outbound_approvals|approvals|--update-env-vars|UMS_PAYPAL_CONNECT\s*=/i);
+      expect(src, f).not.toMatch(
+        /\/api\/ops\/start|outbound_approvals|approvals|--update-env-vars|UMS_PAYPAL_CONNECT\s*=/i,
+      );
       expect(src, f).not.toMatch(/dangerouslySetInnerHTML|innerHTML/);
     }
   });

@@ -17,7 +17,13 @@ const SWITCHES = [
   'unlock_enabled',
   'webhook_enabled',
 ] as const;
-const TURNABLE = ['ai_enabled', 'checkout_enabled', 'refunds_enabled', 'unlock_enabled', 'webhook_enabled'];
+const TURNABLE = [
+  'ai_enabled',
+  'checkout_enabled',
+  'refunds_enabled',
+  'unlock_enabled',
+  'webhook_enabled',
+];
 
 let rig: ARig;
 let off: { POST: Handler; routeMeta: Record<string, unknown> };
@@ -88,7 +94,10 @@ describe('rate', () => {
       const codes: number[] = [];
       for (let i = 0; i < 11; i += 1)
         codes.push((await send(dir, dir === 'off' ? noMfa : op, 'nope')).status);
-      expect(codes.slice(0, 10).every((c) => c === 404), dir).toBe(true);
+      expect(
+        codes.slice(0, 10).every((c) => c === 404),
+        dir,
+      ).toBe(true);
       expect(codes[10], dir).toBe(429);
     }
   });
@@ -99,7 +108,11 @@ describe('off', () => {
     const res = await send('off', noMfa, 'ai_enabled', { reason_code: 'partner_request' });
     expect(res.status).toBe(200);
     expect(await state('ai_enabled')).toMatchObject({ on: false, reason: 'partner_request' });
-    const ev = await rig.app.db.query<{ channel: string; actor_kind: string; actor_id: string | null }>(
+    const ev = await rig.app.db.query<{
+      channel: string;
+      actor_kind: string;
+      actor_id: string | null;
+    }>(
       "SELECT channel, actor_kind, actor_id FROM trace_events WHERE source_table = 'safety_switches' AND source_id = 'ai_enabled' ORDER BY seq DESC LIMIT 1",
     );
     expect(ev.rows[0]).toMatchObject({ channel: 'web', actor_kind: 'operator' });
@@ -113,7 +126,8 @@ describe('off', () => {
       expect(res.status, name).toBe(200);
       expect((await state(name)).on, name).toBe(false);
     }
-    for (const name of SWITCHES) await setOn(name, name !== 'paypal_outbound' && name !== 'agent_buy_enabled');
+    for (const name of SWITCHES)
+      await setOn(name, name !== 'paypal_outbound' && name !== 'agent_buy_enabled');
   });
 
   it('a body that tries to say "on" is refused and nothing moves', async () => {
@@ -128,12 +142,19 @@ describe('off', () => {
   });
 
   it('without a reason code, or with one outside the list, is 400 and nothing moves', async () => {
-    for (const body of [{}, { reason_code: '' }, { reason_code: 'because' }, { reason: 'free text' }]) {
+    for (const body of [
+      {},
+      { reason_code: '' },
+      { reason_code: 'because' },
+      { reason: 'free text' },
+    ]) {
       const res = await send('off', noMfa, 'checkout_enabled', body);
       expect([400, 422], JSON.stringify(body)).toContain(res.status);
     }
     expect((await send('off', noMfa, 'checkout_enabled', {})).status).toBe(400);
-    expect((await send('off', noMfa, 'checkout_enabled', { reason_code: 'because' })).status).toBe(400);
+    expect((await send('off', noMfa, 'checkout_enabled', { reason_code: 'because' })).status).toBe(
+      400,
+    );
     expect((await state('checkout_enabled')).on).toBe(true);
   });
 
@@ -250,7 +271,10 @@ describe('on', () => {
   });
 
   it('the stored changed_by is the operator label and the journal holds only its sha256', async () => {
-    await setOn('ai_enabled', false);
+    // The journal hashes only the columns that changed, so start from another changer.
+    await rig.app.db.query(
+      "UPDATE safety_switches SET \"on\" = false, changed_by = 'seed' WHERE name = 'ai_enabled'",
+    );
     await send('on', op, 'ai_enabled');
     const row = await state('ai_enabled');
     expect(row.changed_by).toBe('operator:opr_ctl_mfa');

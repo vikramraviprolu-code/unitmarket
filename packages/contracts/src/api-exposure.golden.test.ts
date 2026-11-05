@@ -44,7 +44,12 @@ describe('the group list', () => {
       'mcp:check_budget',
       'mcp:buy_unit',
     ]);
-    expect([...EXPOSURE_REASON_CODES]).toEqual(['incident', 'partner_request', 'maintenance', 'other']);
+    expect([...EXPOSURE_REASON_CODES]).toEqual([
+      'incident',
+      'partner_request',
+      'maintenance',
+      'other',
+    ]);
     expect(SEED_EPOCH).toBe('1970-01-01T00:00:00Z');
   });
 
@@ -85,7 +90,14 @@ describe('every apikey route maps to exactly one group', () => {
   });
 
   it('a path outside /api/v1, a lookalike prefix and an empty prefix map to none', () => {
-    for (const p of ['/api/orders', '/api/v10/orders', '/api/v1/', '/api/v1', '/api/v1/orders2', '/api/v1/ORDERS'])
+    for (const p of [
+      '/api/orders',
+      '/api/v10/orders',
+      '/api/v1/',
+      '/api/v1',
+      '/api/v1/orders2',
+      '/api/v1/ORDERS',
+    ])
       expect(groupOfPath(p), p).toBeNull();
     expect(groupOfPath('/api/v1/orders/[ref]/cancel')).toBe('orders');
     expect(groupOfPath('/api/v1/webhook-subscriptions/[id]/deliveries')).toBe('webhooks');
@@ -95,7 +107,8 @@ describe('every apikey route maps to exactly one group', () => {
 describe('the SQL CHECK lists equal the consts (R2-2)', () => {
   const dir = join(ROOT, 'packages', 'db', 'migrations', 'common');
   const file = readdirSync(dir).find((f) => /^\d{4}_api_exposure\.sql$/.test(f));
-  const sql = (): string => readFileSync(join(dir, file ?? 'missing'), 'utf8').replace(/--.*$/gm, '');
+  const sql = (): string =>
+    readFileSync(join(dir, file ?? 'missing'), 'utf8').replace(/--.*$/gm, '');
   const listIn = (re: RegExp): string[] => {
     const m = re.exec(sql());
     expect(m, String(re)).not.toBeNull();

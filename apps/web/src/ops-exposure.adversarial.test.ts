@@ -40,7 +40,7 @@ const row = async (g: string) =>
   ).rows[0]!;
 const reset = () =>
   rig.app.db.query(
-    "UPDATE api_exposure SET enabled = true, changed_by = NULL, reason_code = NULL WHERE enabled = false",
+    'UPDATE api_exposure SET enabled = true, changed_by = NULL, reason_code = NULL WHERE enabled = false',
   );
 const errCode = async (r: Response): Promise<string> =>
   ((await r.clone().json()) as { error: { code: string } }).error.code;
@@ -78,7 +78,9 @@ describe('route meta', () => {
 describe('off', () => {
   it('works without the authenticator code for every group, writes enabled=false, the reason code and the operator', async () => {
     for (const g of API_GROUPS) {
-      const res = await send('off', noMfa, encodeURIComponent(g), { reason_code: 'partner_request' });
+      const res = await send('off', noMfa, encodeURIComponent(g), {
+        reason_code: 'partner_request',
+      });
       expect(res.status, g).toBe(200);
       expect(await row(g), g).toEqual({
         enabled: false,
@@ -98,15 +100,28 @@ describe('off', () => {
   });
 
   it('an unknown or malformed group is 404 and no row changes', async () => {
-    for (const g of ['payments', 'ORDERS', 'orders%00', '%E0%A4%A', 'mcp%3Aadmin', '..%2Forders', 'mcp:', ''])
+    for (const g of [
+      'payments',
+      'ORDERS',
+      'orders%00',
+      '%E0%A4%A',
+      'mcp%3Aadmin',
+      '..%2Forders',
+      'mcp:',
+      '',
+    ])
       expect((await send('off', noMfa, g)).status, g).toBe(404);
-    expect((await rig.app.db.query("SELECT 1 FROM api_exposure WHERE enabled = false")).rows).toEqual([]);
+    expect(
+      (await rig.app.db.query('SELECT 1 FROM api_exposure WHERE enabled = false')).rows,
+    ).toEqual([]);
   });
 
   it('without a reason code, or with one outside the list, is 400; a body that says "on" is 422', async () => {
     for (const body of [{}, { reason_code: '' }, { reason_code: 'because' }])
       expect((await send('off', noMfa, 'orders', body)).status, JSON.stringify(body)).toBe(400);
-    expect((await send('off', noMfa, 'orders', { reason_code: 'incident', enabled: true })).status).toBe(422);
+    expect(
+      (await send('off', noMfa, 'orders', { reason_code: 'incident', enabled: true })).status,
+    ).toBe(422);
     expect((await row('orders')).enabled).toBe(true);
   });
 
@@ -118,7 +133,10 @@ describe('off', () => {
         actor_id: string | null;
         chain_key: string;
         event_type: string;
-        body: { cols: Record<string, [unknown, unknown]>; hashed: Record<string, [unknown, string]> };
+        body: {
+          cols: Record<string, [unknown, unknown]>;
+          hashed: Record<string, [unknown, string]>;
+        };
       }>(
         "SELECT channel, actor_kind, actor_id, chain_key, event_type, body FROM trace_events WHERE source_table = 'api_exposure' AND source_id = 'seller' ORDER BY seq",
       );
@@ -194,7 +212,9 @@ describe('who may call, CSRF and replay (CTL.3 rules, R2-3)', () => {
         expect([401, 403], dir).toContain((await send(dir, s, 'orders')).status);
       expect((await send(dir, null, 'orders')).status, dir).toBe(401);
       for (const k of keys) {
-        const res = await send(dir, null, 'orders', undefined, idemKey(), { authorization: `Bearer ${k}` });
+        const res = await send(dir, null, 'orders', undefined, idemKey(), {
+          authorization: `Bearer ${k}`,
+        });
         expect([401, 403], dir).toContain(res.status);
       }
     }

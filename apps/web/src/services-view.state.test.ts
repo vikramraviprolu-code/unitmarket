@@ -9,7 +9,10 @@ import { CLOUD_COMMANDS, parseCloudStatus, servicesView } from './lib/services-v
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const root = join(here, '..', '..', '..');
-const fixtureText = readFileSync(join(root, 'scripts', '__fixtures__', 'cloud-status.json'), 'utf8');
+const fixtureText = readFileSync(
+  join(root, 'scripts', '__fixtures__', 'cloud-status.json'),
+  'utf8',
+);
 const fixture = JSON.parse(fixtureText) as { project: string };
 const BASE = 'https://console.cloud.google.com/';
 
@@ -23,9 +26,24 @@ const links = (v: ReturnType<typeof servicesView>): string[] =>
 
 describe('the fixture of CL1', () => {
   it('parses, and renders five cards in order: web, job loop, database, offline judge, PayPal gateway', () => {
-    const v = servicesView({ app: { revision: 'unitmarket-sandbox-00031-x7k', db: 'ok' }, cloud: parsed() });
-    expect(v.cards.map((c) => c.key)).toEqual(['web', 'job_loop', 'database', 'offline_judge', 'paypal_gateway']);
-    expect(v.cards.map((c) => c.title)).toEqual(['Web', 'Job loop', 'Database', 'Offline judge', 'PayPal gateway']);
+    const v = servicesView({
+      app: { revision: 'unitmarket-sandbox-00031-x7k', db: 'ok' },
+      cloud: parsed(),
+    });
+    expect(v.cards.map((c) => c.key)).toEqual([
+      'web',
+      'job_loop',
+      'database',
+      'offline_judge',
+      'paypal_gateway',
+    ]);
+    expect(v.cards.map((c) => c.title)).toEqual([
+      'Web',
+      'Job loop',
+      'Database',
+      'Offline judge',
+      'PayPal gateway',
+    ]);
     expect(v.checked_at).toBe('2026-11-04T22:40:00Z');
     expect(v.cards.find((c) => c.key === 'web')!.state).toBe('up');
     expect(v.cards.find((c) => c.key === 'offline_judge')!.state).toBe('absent');
@@ -59,8 +77,12 @@ describe('the fixture of CL1', () => {
 
 describe('commands and links', () => {
   it('the commands equal the seven cloud:* scripts of package.json, in order', () => {
-    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
-    const verbs = Object.keys(pkg.scripts).filter((k) => k.startsWith('cloud:')).map((k) => k.slice(6));
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    const verbs = Object.keys(pkg.scripts)
+      .filter((k) => k.startsWith('cloud:'))
+      .map((k) => k.slice(6));
     expect(verbs).toHaveLength(7);
     expect([...CLOUD_COMMANDS]).toEqual(verbs.map((v) => `corepack pnpm cloud:${v}`));
   });

@@ -44,7 +44,8 @@ beforeAll(async () => {
   app = await bootPackApp();
   buyerA = await buyer(app, 'a');
   agent = (await newAgent(app, buyerA, { mandate: null })).token;
-  client = (await newClientKey(app, buyerA, ['orders:read', 'orders:write', 'catalogue:read'])).token;
+  client = (await newClientKey(app, buyerA, ['orders:read', 'orders:write', 'catalogue:read']))
+    .token;
 });
 afterAll(async () => {
   for (const g of API_GROUPS) await setGroup(g, true);
@@ -77,7 +78,9 @@ describe('a disabled REST group', () => {
   });
 
   it('a replayed Idempotency-Key after the disable is 403 api_disabled, never the stored 200', async () => {
-    const post = (await import('../quotes/route')).POST as never as (r: Request) => Promise<Response>;
+    const post = (await import('../quotes/route')).POST as never as (
+      r: Request,
+    ) => Promise<Response>;
     const key = idemKey();
     const send = () =>
       post(
@@ -88,7 +91,11 @@ describe('a disabled REST group', () => {
             'content-type': 'application/json',
             'idempotency-key': key,
           },
-          body: JSON.stringify({ publisher: 'harbour-ledger', offer: 'tide-tables', option: 'online_read' }),
+          body: JSON.stringify({
+            publisher: 'harbour-ledger',
+            offer: 'tide-tables',
+            option: 'online_read',
+          }),
         }),
       );
     const first = await send();
@@ -157,7 +164,15 @@ describe('MCP tools', () => {
         (await rpc(agent, 'tools/list')).body.result!['tools'] as { name: string }[]
       ).map((t) => t.name);
       expect(names).toContain('buy_unit');
-      expect((await tool(agent, 'buy_unit', { publisher: 'harbour-ledger', offer: 'tide-tables', idempotency_key: idemKey() })).out.status).not.toBe('api_disabled');
+      expect(
+        (
+          await tool(agent, 'buy_unit', {
+            publisher: 'harbour-ledger',
+            offer: 'tide-tables',
+            idempotency_key: idemKey(),
+          })
+        ).out.status,
+      ).not.toBe('api_disabled');
     } finally {
       await setGroup('orders', true);
     }
