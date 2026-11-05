@@ -24,3 +24,12 @@ export type {
 export { orderMessage, salesTotals } from '../../composition.server';
 // INT-OPS-B: TR0's in-process journal verifier, for traceVerifyDetail in composition/ops-controls.ts.
 export { formatTraceFinding, verifyTrace } from '../../composition.server';
+// INT-BUY: SR1's buyer read and export, and TR1's journal sentences, for the buyer composition module.
+export {
+  TRACE_WORDS,
+  buyerLine,
+  exportName,
+  exportTransactions,
+  listTransactions,
+  txnCsv,
+} from '../../composition.server';

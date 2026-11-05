@@ -51,7 +51,13 @@ describe('tabs per persona (spec UI0.1)', () => {
       'Money',
       'Controls',
     ]);
-    expect(visibleTabs('buyer').map((t) => t.label)).toEqual(['Home', 'Find', 'Library']);
+    expect(visibleTabs('buyer').map((t) => t.label)).toEqual([
+      'Home',
+      'Find',
+      'Library',
+      'Spending',
+      'Agents',
+    ]);
     expect(visibleTabs('seller')).toHaveLength(5);
     for (const p of ['operator', 'buyer', 'seller'] as const)
       for (const t of TABS[p]) expect(typeof t.ready).toBe('boolean');

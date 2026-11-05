@@ -54,7 +54,11 @@ const ALL: TimelineEntryView[] = [
 
 describe('BUY.3 the timeline in words', () => {
   it('shows each step as the journal sentence, in time order, with the actor and channel in words', () => {
-    const v = buyerOrderTimeline({ entries: [...ALL].reverse(), truncated: false }, 'USD');
+    const v = buyerOrderTimeline(
+      { entries: [...ALL].reverse(), truncated: false },
+      'USD',
+      TRACE_WORDS,
+    );
     expect(v.kind).toBe('rows');
     if (v.kind !== 'rows') return;
     expect(v.rows.map((r) => r.text)).toEqual([
@@ -69,7 +73,7 @@ describe('BUY.3 the timeline in words', () => {
   });
 
   it('carries no operator, no context id and no identity field', () => {
-    const v = buyerOrderTimeline({ entries: ALL, truncated: false }, 'USD');
+    const v = buyerOrderTimeline({ entries: ALL, truncated: false }, 'USD', TRACE_WORDS);
     const text = JSON.stringify(v);
     for (const w of [
       'operator',
@@ -87,8 +91,10 @@ describe('BUY.3 the timeline in words', () => {
   });
 
   it('an empty answer, a missing answer and a failed read each have words', () => {
-    expect(buyerOrderTimeline({ entries: [], truncated: false }, 'USD').kind).toBe('empty');
-    expect(buyerOrderTimeline(null, 'USD').kind).toBe('error');
+    expect(buyerOrderTimeline({ entries: [], truncated: false }, 'USD', TRACE_WORDS).kind).toBe(
+      'empty',
+    );
+    expect(buyerOrderTimeline(null, 'USD', TRACE_WORDS).kind).toBe('error');
   });
 
   it('the five milestones are done only when their step happened', () => {

@@ -103,7 +103,7 @@ describe('BUY.4 the export', () => {
   });
 
   it('the 11th export in a minute is 429', async () => {
-    const s = await rig.session(B);
+    const s = await rig.session(rig.vsBuyer2);
     const seen: number[] = [];
     for (let i = 0; i < 11; i++) seen.push((await get(s)).status);
     expect(seen.slice(0, 10)).not.toContain(429);

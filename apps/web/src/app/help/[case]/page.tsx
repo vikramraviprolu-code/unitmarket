@@ -39,22 +39,30 @@ export default async function Help({
   searchParams,
 }: {
   params: Promise<{ case: string }>;
-  searchParams: Promise<{ item?: string }>;
+  searchParams: Promise<{ item?: string; order?: string }>;
 }) {
   const { case: slug } = await params;
-  const { item } = await searchParams;
+  const { item, order } = await searchParams;
   const topic = TOPICS[slug];
   if (topic === undefined) notFound();
   // GATEFIX2: a case is opened from an item. With no item the page gives guidance and a way to one.
-  const view = helpView(slug, item);
+  const view = helpView(slug, item, order);
   return (
     <>
       <h1>{topic.title}</h1>
       {topic.body.map((p) => (
         <p key={p}>{p}</p>
       ))}
+      {view.order_ref !== undefined ? (
+        <p data-testid="help-order-ref">
+          About your order <span className="mono">{view.order_ref}</span>.
+        </p>
+      ) : null}
       {view.canOpenCase ? (
-        <OpenCase note={`help:${slug}`} {...(item !== undefined ? { entitlementId: item } : {})} />
+        <OpenCase
+          note={`help:${slug}${view.order_ref !== undefined ? ` order:${view.order_ref}` : ''}`}
+          {...(item !== undefined ? { entitlementId: item } : {})}
+        />
       ) : (
         <>
           <p data-testid="help-no-item">{view.note}</p>
