@@ -427,6 +427,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
+  domain/rules:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+
   domain/txn-search:
     dependencies:
       '@umsbx/contracts':

@@ -27,3 +27,5 @@ export * from './v1';
 export * from './mandates';
 // INT-SR0 (transaction search filter contract).
 export * from './txn-query';
+// BR-1 (configurable business rules).
+export * from './rules';

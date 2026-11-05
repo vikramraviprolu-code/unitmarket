@@ -136,6 +136,15 @@ const EXPECTED_EXPORTS: string[] = [
   'MandateCreateRequestSchema',
   'MandateViewSchema',
   'BudgetStatusSchema',
+  // BR-1 (configurable business rules)
+  'RuleScopeKindSchema',
+  'RULE_KEYS',
+  'RuleKeySchema',
+  'RULES_REGISTRY',
+  'isRuleValueInRange',
+  'RuleSettingRowSchema',
+  'ResolvedTermsSchema',
+  'RulesErrorSchema',
   // API-A: buyer, seller and operator endpoints
   'OfferSummarySchema',
   'CatalogueSearchQuerySchema',
