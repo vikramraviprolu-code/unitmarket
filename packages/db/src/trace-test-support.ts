@@ -725,6 +725,28 @@ export const STEPS: Step[] = [
     },
   },
   {
+    // INT-AL (migration 0025): the state history of an alert; append-only, so no update step.
+    table: 'alert_events',
+    id: 'ale_1',
+    chain: 'ord:ord_1',
+    subject: { order_id: 'ord_1', unit_id: null },
+    insert: (db) =>
+      ins(db, 'alert_events', {
+        id: 'ale_1',
+        alert_id: 'alr_1',
+        kind: 'resolved',
+        reason_code: 'fixed_upstream',
+        note_sha256: HASH,
+        at: T,
+      }),
+    insertCols: {
+      alert_id: 'alr_1',
+      kind: 'resolved',
+      reason_code: 'fixed_upstream',
+      note_sha256: HASH,
+    },
+  },
+  {
     table: 'audit_log',
     id: 'aud_1',
     chain: 'plat',

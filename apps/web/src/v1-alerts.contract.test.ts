@@ -18,8 +18,12 @@ let r: AlertRig;
 const h: Record<string, Handler> = {};
 let orderId = '';
 let orderRef = '';
-const get = (name: string, url: string, params?: Record<string, string>, token: string | null = r.opKey) =>
-  r.rig.v1(h[name]!, token, { url, ...(params ? { params } : {}) });
+const get = (
+  name: string,
+  url: string,
+  params?: Record<string, string>,
+  token: string | null = r.opKey,
+) => r.rig.v1(h[name]!, token, { url, ...(params ? { params } : {}) });
 
 beforeAll(async () => {
   r = await bootAlertRig();
@@ -29,14 +33,23 @@ beforeAll(async () => {
   h['case'] = (await import('./app/api/v1/ops/cases/[id]/route')).GET as Handler;
   const p = await startPack(r.rig.app, r.rig.buyerA, [HARBOUR_TIDE]);
   orderRef = p.order_ref;
-  orderId = (await r.rig.app.db.query<{ id: string }>('SELECT id FROM orders WHERE order_ref = $1', [orderRef])).rows[0]!.id;
+  orderId = (
+    await r.rig.app.db.query<{ id: string }>('SELECT id FROM orders WHERE order_ref = $1', [
+      orderRef,
+    ])
+  ).rows[0]!.id;
   for (let i = 1; i <= 3; i++) {
-    await seedAlert(r.rig, { id: `alr_v${i}`, kind: 'frozen_order', reason: `v${i}`, order_id: orderId });
+    await seedAlert(r.rig, {
+      id: `alr_v${i}`,
+      kind: 'frozen_order',
+      reason: `v${i}`,
+      order_id: orderId,
+    });
   }
-  const at = new Date().toISOString();
+  const at = '2026-11-05T10:00:00.000Z';
   await r.rig.app.db.query(
     `INSERT INTO recovery_cases (id, kind, state, order_id, entitlement_id, buyer_id, opened_by, sla_due_at, credit_ms, buyer_message, created_at, updated_at)
-     SELECT 'cas_v1', 'frozen_order', 'open', $1, NULL, buyer_id, 'system', $2, 0, 'We are looking into your payment.', $2, $2 FROM orders WHERE id = $1`,
+     SELECT 'cas_v1', 'frozen_order', 'open', id, NULL, buyer_id, 'system', $2::timestamptz, 0, 'We are looking into your payment.', $2::timestamptz, $2::timestamptz FROM orders WHERE id = $1`,
     [orderId, at],
   );
 });
@@ -50,7 +63,11 @@ describe('alerts over the wire', () => {
     expect(body.items).toHaveLength(2);
     expect(body.total).toBe(3);
     expect(body.next_cursor).not.toBeNull();
-    expect(body.items[0]).toMatchObject({ kind: 'frozen_order', order_ref: orderRef, state: 'open' });
+    expect(body.items[0]).toMatchObject({
+      kind: 'frozen_order',
+      order_ref: orderRef,
+      state: 'open',
+    });
   });
 
   it('a bad filter is a 400 or 422, not an empty list', async () => {
@@ -61,7 +78,9 @@ describe('alerts over the wire', () => {
   it('one alert answers the schema with its history; an unknown one is 404', async () => {
     const res = await get('alert', '/api/v1/ops/alerts/alr_v1', { id: 'alr_v1' });
     expect(AlertDetailSchema.parse(await res.json()).id).toBe('alr_v1');
-    expect((await get('alert', '/api/v1/ops/alerts/alr_none', { id: 'alr_none' })).status).toBe(404);
+    expect((await get('alert', '/api/v1/ops/alerts/alr_none', { id: 'alr_none' })).status).toBe(
+      404,
+    );
   });
 
   it('only an operator key with ops:read reads', async () => {
@@ -73,7 +92,9 @@ describe('alerts over the wire', () => {
 
 describe('cases over the wire', () => {
   it('the queue and the detail answer their schemas; the message text is not in them', async () => {
-    const list = CaseListSchema.parse(await (await get('cases', '/api/v1/ops/cases?state=unresolved')).json());
+    const list = CaseListSchema.parse(
+      await (await get('cases', '/api/v1/ops/cases?state=unresolved')).json(),
+    );
     expect(list.items.map((c) => c.case_id)).toContain('cas_v1');
     const res = await get('case', '/api/v1/ops/cases/cas_v1', { id: 'cas_v1' });
     expect(res.status).toBe(200);
@@ -97,7 +118,9 @@ describe('cases over the wire', () => {
 
 describe('registry', () => {
   it('lists the five reads under ops:read and nothing that writes', () => {
-    const paths = V1_ROUTES.filter((x) => x.path.startsWith('/api/v1/ops')).map((x) => `${x.method} ${x.path}`);
+    const paths = V1_ROUTES.filter((x) => x.path.startsWith('/api/v1/ops')).map(
+      (x) => `${x.method} ${x.path}`,
+    );
     for (const p of [
       'GET /api/v1/ops/alerts',
       'GET /api/v1/ops/alerts/{id}',

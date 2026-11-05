@@ -23,6 +23,8 @@ import type { Db } from './trace-test-support';
 
 const COMMON = join(MIGRATIONS_ROOT, 'common');
 const JOURNAL = /^\d{4}_trace_journal\.sql$/;
+// A migration that needs the journal (INT-AL 0025 alert_events) cannot be in the world that predates it.
+const AFTER_JOURNAL = /^0025_alert_events\.sql$/;
 let beforeDir: string;
 let db: Db;
 let rowsBefore: Record<string, string[]>;
@@ -40,15 +42,20 @@ const idCol = (table: string): string =>
 beforeAll(async () => {
   beforeDir = mkdtempSync(join(tmpdir(), 'umsbx-trace-before-'));
   for (const f of readdirSync(COMMON))
-    if (!JOURNAL.test(f)) cpSync(join(COMMON, f), join(beforeDir, f));
+    if (!JOURNAL.test(f) && !AFTER_JOURNAL.test(f)) cpSync(join(COMMON, f), join(beforeDir, f));
   db = await openDatabase({ kind: 'pglite-memory' });
   await applyMigrations(db, { now: () => new Date(T) }, beforeDir);
   expect((await db.query("SELECT to_regclass('trace_events') AS t")).rows[0]).toEqual({ t: null });
-  // The world as it stood before the journal: a plain database, no context.
-  for (const s of STEPS) if (s.insert) await s.insert(db);
-  for (const s of STEPS) if (s.update) await db.query(s.update.sql, s.update.params);
+  // The world as it stood before the journal: a plain database, no context. A table that came with a later
+  // migration (alert_events) has no rows in that world.
+  const present = [];
+  for (const s of STEPS)
+    if ((await db.query('SELECT to_regclass($1) AS t', [s.table])).rows[0]!['t'] !== null)
+      present.push(s);
+  for (const s of present) if (s.insert) await s.insert(db);
+  for (const s of present) if (s.update) await db.query(s.update.sql, s.update.params);
   rowsBefore = {};
-  for (const s of STEPS) {
+  for (const s of present) {
     const col = idCol(s.table);
     rowsBefore[s.table] = (
       await db.query<{ id: string }>(`SELECT ${col} AS id FROM ${s.table} ORDER BY ${col}`)

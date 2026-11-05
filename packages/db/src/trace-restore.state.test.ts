@@ -106,7 +106,7 @@ describe('export, import, verify', () => {
       }
       expect(await tablesInDependencyOrder(target)).toContain('trace_tracked');
       const tracked = await target.query('SELECT count(*)::int AS n FROM trace_tracked');
-      expect(tracked.rows[0]).toEqual({ n: 27 });
+      expect(tracked.rows[0]).toEqual({ n: 28 });
       expect((await verifyTrace(target)).findings).toEqual([]);
     } finally {
       await s.close();

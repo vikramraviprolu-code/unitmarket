@@ -13,7 +13,8 @@ beforeAll(async () => {
 });
 afterAll(async () => w.close());
 
-const iso = (h: number): string => new Date(Date.parse('2026-10-21T10:00:00.000Z') + h * HOUR).toISOString();
+const iso = (h: number): string =>
+  new Date(Date.parse('2026-10-21T10:00:00.000Z') + h * HOUR).toISOString();
 async function seedCase(i: {
   id: string;
   order: number;
@@ -53,7 +54,9 @@ describe('case queue (AL.7)', () => {
   });
 
   it('filters by state with a true total, and pages by keyset', async () => {
-    expect((await listCases(w.db, { state: 'open' })).items.map((c) => c.case_id)).toEqual(['cas_a']);
+    expect((await listCases(w.db, { state: 'open' })).items.map((c) => c.case_id)).toEqual([
+      'cas_a',
+    ]);
     const first = await listCases(w.db, { limit: 3 });
     expect(first.items).toHaveLength(3);
     expect(first.total).toBe(4);
@@ -71,7 +74,12 @@ describe('case queue (AL.7)', () => {
 
 describe('case detail (AL.7)', () => {
   it('carries state, kind, sla, credit, linked alerts and the allowed actions', async () => {
-    const alertId = await w.rawAlert({ kind: 'payment_unresolved', order_id: 'ord_1', unit_id: 'unt_1', reason: 'r' });
+    const alertId = await w.rawAlert({
+      kind: 'payment_unresolved',
+      order_id: 'ord_1',
+      unit_id: 'unt_1',
+      reason: 'r',
+    });
     await w.insert('recovery_actions', {
       id: 'cac_x',
       case_id: 'cas_a',
@@ -105,7 +113,14 @@ describe('case detail (AL.7)', () => {
     ]);
     expect(allowedActions('open')).toEqual([...ALLOWED_CASE_ACTIONS]);
     expect(allowedActions('diagnosing')).toEqual([...ALLOWED_CASE_ACTIONS]);
-    for (const s of ['refund_pending', 'restored', 'closed_not_charged', 'refunded', 'closed_no_fault', 'closed']) {
+    for (const s of [
+      'refund_pending',
+      'restored',
+      'closed_not_charged',
+      'refunded',
+      'closed_no_fault',
+      'closed',
+    ]) {
       expect(allowedActions(s as never)).toEqual([]);
     }
     expect((await getCaseDetail(w.db, 'cas_c'))!.allowed_actions).toEqual([]);

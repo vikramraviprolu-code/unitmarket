@@ -12,8 +12,8 @@ import {
 } from './ports';
 
 describe('ports schemas', () => {
-  it('IdPrefix lists the 33 prefixes (26 plus key and evt, API-W0, wsb, wdl and pas, API-C, man and rsv, API-B)', () => {
-    expect(IdPrefixSchema.options).toHaveLength(33);
+  it('IdPrefix lists the 34 prefixes (26 plus key and evt, API-W0, wsb, wdl and pas, API-C, man and rsv, API-B, ale, INT-AL)', () => {
+    expect(IdPrefixSchema.options).toHaveLength(34);
     expect(IdPrefixSchema.safeParse('ord').success).toBe(true);
     expect(IdPrefixSchema.safeParse('xyz').success).toBe(false);
   });

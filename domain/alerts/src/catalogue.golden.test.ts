@@ -27,28 +27,44 @@ describe('alert catalogue (AL.2)', () => {
     expect([...ALERT_KINDS].sort()).toEqual([...OLD_KINDS, ...NEW_KINDS].sort());
   });
 
-  it.each([...OLD_KINDS, ...NEW_KINDS])('%s has severity, title, cause, fix link, runbook and money rule', (kind) => {
-    const reason = kind === 'mandate_near_cap' ? 'cap90_man_1' : kind === 'webhook_failing' ? 'webhook_failing_wsb_1_wdl_1' : 'x';
-    const e = describeAlert(kind, reason, {});
-    expect(e).not.toBeNull();
-    expect(SEVERITIES).toContain(e!.severity);
-    expect(e!.title.length).toBeGreaterThan(3);
-    expect(e!.cause.length).toBeGreaterThan(10);
-    expect(e!.fix.route.startsWith('/')).toBe(true);
-    expect(e!.fix.anchor).toMatch(/^[a-z0-9-]+$/);
-    expect(e!.runbook.length).toBeGreaterThan(10);
-    expect(e!.money_at_risk === null || MONEY.includes(e!.money_at_risk)).toBe(true);
-  });
+  it.each([...OLD_KINDS, ...NEW_KINDS])(
+    '%s has severity, title, cause, fix link, runbook and money rule',
+    (kind) => {
+      const reason =
+        kind === 'mandate_near_cap'
+          ? 'cap90_man_1'
+          : kind === 'webhook_failing'
+            ? 'webhook_failing_wsb_1_wdl_1'
+            : kind === 'refund_unresolved'
+              ? 'refund_outcome_unknown_rfr_1'
+              : 'x';
+      const e = describeAlert(kind, reason, {});
+      expect(e).not.toBeNull();
+      expect(SEVERITIES).toContain(e!.severity);
+      expect(e!.title.length).toBeGreaterThan(3);
+      expect(e!.cause.length).toBeGreaterThan(10);
+      expect(e!.fix.route.startsWith('/')).toBe(true);
+      expect(e!.fix.anchor).toMatch(/^[a-z0-9-]+$/);
+      expect(e!.runbook.length).toBeGreaterThan(10);
+      expect(e!.money_at_risk === null || MONEY.includes(e!.money_at_risk)).toBe(true);
+    },
+  );
 
   it('the two new kinds carry no money at risk', () => {
     expect(describeAlert('mandate_near_cap', 'cap90_man_1', {})!.money_at_risk).toBeNull();
-    expect(describeAlert('webhook_failing', 'webhook_failing_wsb_1_wdl_1', {})!.money_at_risk).toBeNull();
+    expect(
+      describeAlert('webhook_failing', 'webhook_failing_wsb_1_wdl_1', {})!.money_at_risk,
+    ).toBeNull();
   });
 
   it('money rules follow the audit table', () => {
     expect(describeAlert('payment_unresolved', 'x', {})!.money_at_risk).toBe('order_total');
-    expect(describeAlert('refund_failed', 'refund_failed_rfr_1', {})!.money_at_risk).toBe('refund_amount');
-    expect(describeAlert('refund_unresolved', 'refund_outcome_unknown_rfr_1', {})!.money_at_risk).toBe('refund_amount');
+    expect(describeAlert('refund_failed', 'refund_failed_rfr_1', {})!.money_at_risk).toBe(
+      'refund_amount',
+    );
+    expect(
+      describeAlert('refund_unresolved', 'refund_outcome_unknown_rfr_1', {})!.money_at_risk,
+    ).toBe('refund_amount');
     expect(describeAlert('unexpected_capture', 'x', {})!.money_at_risk).toBe('unit_amount');
   });
 
@@ -67,7 +83,13 @@ describe('alert catalogue (AL.2)', () => {
   });
 
   it('every BLOCKED_BY value is mapped and a fake one is not', () => {
-    expect([...BLOCKED_BY].sort()).toEqual(['budget', 'connect_off', 'egress', 'kill_switch', 'no_approval']);
+    expect([...BLOCKED_BY].sort()).toEqual([
+      'budget',
+      'connect_off',
+      'egress',
+      'kill_switch',
+      'no_approval',
+    ]);
     for (const r of BLOCKED_BY) {
       const e = describeGate(r);
       expect(e).not.toBeNull();

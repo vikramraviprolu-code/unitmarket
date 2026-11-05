@@ -11,7 +11,13 @@ const ids: string[] = [];
 beforeAll(async () => {
   w = await makeWorld('al-read');
   // 25 alerts: 5 orders, each order with 5 kinds. Created one second apart so the order is known.
-  const kinds = ['payment_unresolved', 'frozen_order', 'refund_failed', 'unexpected_capture', 'reversal_hint'];
+  const kinds = [
+    'payment_unresolved',
+    'frozen_order',
+    'refund_failed',
+    'unexpected_capture',
+    'reversal_hint',
+  ];
   for (let o = 1; o <= 5; o++) await w.order(o, { amount: 100 * o });
   await w.refundRequest({ id: 'rfr_1', unit: 1, state: 'failed', amount: 70 });
   for (let i = 0; i < 25; i++) {
@@ -109,7 +115,8 @@ describe('list (AL.1)', () => {
 
   it('no row carries buyer or publisher identity or a PayPal id', async () => {
     const text = JSON.stringify((await listAlerts(w.db, { state: 'all', limit: 100 })).items);
-    for (const bad of ['buy_1', 'pub_1', 'MERCH1', 'CAP1', 'sub_b1']) expect(text).not.toContain(bad);
+    for (const bad of ['buy_1', 'pub_1', 'MERCH1', 'CAP1', 'sub_b1'])
+      expect(text).not.toContain(bad);
   });
 
   it('one alert reads with its history', async () => {

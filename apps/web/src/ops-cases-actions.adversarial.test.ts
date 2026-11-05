@@ -30,20 +30,24 @@ const act = (
     body,
     session,
     params: { id },
-    headers: { ...(o.idem === null ? {} : { 'idempotency-key': o.idem ?? key() }), ...(o.headers ?? {}) },
+    headers: {
+      ...(o.idem === null ? {} : { 'idempotency-key': o.idem ?? key() }),
+      ...(o.headers ?? {}),
+    },
     ...(o.csrf === undefined ? {} : { csrf: o.csrf }),
   });
 
 async function seedCase(id: string, unit: BoughtUnit, state = 'open'): Promise<void> {
-  const at = new Date().toISOString();
+  const at = '2026-11-05T10:00:00.000Z';
   await w.app.db.query(
     `INSERT INTO recovery_cases (id, kind, state, order_id, entitlement_id, buyer_id, opened_by, sla_due_at, credit_ms, buyer_message, created_at, updated_at)
-     SELECT $1, 'refund_requested', $3, $2, NULL, buyer_id, 'buyer', $4, 0, 'We have your request.', $4, $4 FROM orders WHERE id = $2`,
+     SELECT $1::text, 'refund_requested', $3::text, id, NULL, buyer_id, 'buyer', $4::timestamptz, 0, 'We have your request.', $4::timestamptz, $4::timestamptz FROM orders WHERE id = $2`,
     [id, unit.order_id, state, at],
   );
 }
 const caseState = async (id: string): Promise<string> =>
-  (await w.app.db.query<{ state: string }>('SELECT state FROM recovery_cases WHERE id = $1', [id])).rows[0]!.state;
+  (await w.app.db.query<{ state: string }>('SELECT state FROM recovery_cases WHERE id = $1', [id]))
+    .rows[0]!.state;
 
 beforeAll(async () => {
   w = await bootRefundWorld();
@@ -110,15 +114,30 @@ describe('what an operator does', () => {
     const first = await act('cas_a', w.op, body, { idem: k });
     expect(first.status).toBe(200);
     expect(((await first.json()) as { state: string }).state).toBe('refund_pending');
-    expect(await count(w.app, 'SELECT count(*) AS c FROM refund_requests WHERE unit_id = $1', [u['a']!.unit_id])).toBe(1);
+    expect(
+      await count(w.app, 'SELECT count(*) AS c FROM refund_requests WHERE unit_id = $1', [
+        u['a']!.unit_id,
+      ]),
+    ).toBe(1);
     const again = await act('cas_a', w.op, body, { idem: k });
     expect(again.headers.get('idempotent-replay')).toBe('true');
-    expect(await count(w.app, 'SELECT count(*) AS c FROM refund_requests WHERE unit_id = $1', [u['a']!.unit_id])).toBe(1);
+    expect(
+      await count(w.app, 'SELECT count(*) AS c FROM refund_requests WHERE unit_id = $1', [
+        u['a']!.unit_id,
+      ]),
+    ).toBe(1);
   });
 
   it('any action on a refund_pending or closed case is 409 wrong_state', async () => {
     for (const id of ['cas_a', 'cas_d']) {
-      for (const action of ['diagnose', 'restore', 'credit', 'close_not_charged', 'offer_refund', 'close_no_fault']) {
+      for (const action of [
+        'diagnose',
+        'restore',
+        'credit',
+        'close_not_charged',
+        'offer_refund',
+        'close_no_fault',
+      ]) {
         const res = await act(id, w.op, { action, reason: 'try it', credit_ms: 1000 });
         expect(res.status, `${id} ${action}`).toBe(409);
         expect((await errorOf(res)).code).toBe('wrong_state');
@@ -128,9 +147,14 @@ describe('what an operator does', () => {
   });
 
   it('diagnose and close_no_fault are journaled with the operator as the actor', async () => {
-    expect((await act('cas_b', w.op, { action: 'diagnose', reason: 'look at it' })).status).toBe(200);
+    expect((await act('cas_b', w.op, { action: 'diagnose', reason: 'look at it' })).status).toBe(
+      200,
+    );
     expect(await caseState('cas_b')).toBe('diagnosing');
-    expect((await act('cas_b', w.op, { action: 'close_no_fault', reason: 'nothing wrong found' })).status).toBe(200);
+    expect(
+      (await act('cas_b', w.op, { action: 'close_no_fault', reason: 'nothing wrong found' }))
+        .status,
+    ).toBe(200);
     expect(await caseState('cas_b')).toBe('closed_no_fault');
     const acts = (
       await w.app.db.query<{ id: string; action: string; actor: string }>(
@@ -143,18 +167,27 @@ describe('what an operator does', () => {
     ]);
     for (const a of acts) {
       const t = (
-        await w.app.db.query<{ actor_kind: string; actor_id: string; channel: string; mfa: boolean }>(
+        await w.app.db.query<{
+          actor_kind: string;
+          actor_id: string;
+          channel: string;
+          mfa: boolean;
+        }>(
           "SELECT actor_kind, actor_id, channel, mfa FROM trace_events WHERE source_table = 'recovery_actions' AND source_id = $1",
           [a.id],
         )
       ).rows;
-      expect(t).toEqual([{ actor_kind: 'operator', actor_id: 'opr_vikram', channel: 'web', mfa: true }]);
+      expect(t).toEqual([
+        { actor_kind: 'operator', actor_id: 'opr_vikram', channel: 'web', mfa: true },
+      ]);
     }
   });
 
   it('an unknown case is 404 and an unknown action or a missing reason is refused', async () => {
     expect((await act('cas_none', w.op, { action: 'diagnose', reason: 'x1' })).status).toBe(404);
-    expect([400, 422]).toContain((await act('cas_c', w.op, { action: 'delete_everything', reason: 'x1' })).status);
+    expect([400, 422]).toContain(
+      (await act('cas_c', w.op, { action: 'delete_everything', reason: 'x1' })).status,
+    );
     expect([400, 422]).toContain((await act('cas_c', w.op, { action: 'close_no_fault' })).status);
     expect(await caseState('cas_c')).toBe('open');
   });

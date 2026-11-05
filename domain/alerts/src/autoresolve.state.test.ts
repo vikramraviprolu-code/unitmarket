@@ -46,8 +46,19 @@ describe('auto-resolve (AL.4)', () => {
 
   it('refund_outcome_unknown_<rq> resolves when the request is completed and its ledger row exists', async () => {
     await w.order(1, { status: 'paid' });
-    await w.refundRequest({ id: 'rfr_1', unit: 1, state: 'unresolved', refund_id: 'RF1', amount: 100 });
-    const a = await w.alert({ kind: 'refund_unresolved', order: 1, unit: 1, reason: 'refund_outcome_unknown_rfr_1' });
+    await w.refundRequest({
+      id: 'rfr_1',
+      unit: 1,
+      state: 'unresolved',
+      refund_id: 'RF1',
+      amount: 100,
+    });
+    const a = await w.alert({
+      kind: 'refund_unresolved',
+      order: 1,
+      unit: 1,
+      reason: 'refund_outcome_unknown_rfr_1',
+    });
     expect(await sweep()).toBe(0);
     await w.raw.query("UPDATE refund_requests SET state = 'completed' WHERE id = 'rfr_1'");
     expect(await sweep()).toBe(0); // completed but not booked
@@ -68,7 +79,13 @@ describe('auto-resolve (AL.4)', () => {
     });
     expect(await sweep()).toBe(0);
     w.clock.advance(HOUR);
-    await w.refundRequest({ id: 'rfr_2', unit: 1, state: 'completed', refund_id: 'RF2', amount: 100 });
+    await w.refundRequest({
+      id: 'rfr_2',
+      unit: 1,
+      state: 'completed',
+      refund_id: 'RF2',
+      amount: 100,
+    });
     expect(await sweep()).toBe(0); // no ledger row yet
     await w.ledgerRefund({ unit: 1, refund_id: 'RF2', amount: 100 });
     expect(await sweep()).toBe(1);

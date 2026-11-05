@@ -23,6 +23,10 @@ export * from './deps';
 // API-W0 (principals, v1 contracts).
 export * from './principal';
 export * from './v1';
+// INT-AL (alerts, needs-you, cases; the gate reasons; the operator pages).
+export * from './v1-alerts';
+export * from './gate';
+export * from './ops-pages';
 // API-B (agent spending caps).
 export * from './mandates';
 export * from './trace';

@@ -19,6 +19,7 @@ import type { Scope } from './principal';
 import { NoMatchReasonSchema, QuoteSchema } from './quote';
 import { CaseViewSchema } from './recovery';
 import { AGENT_ROUTES } from './v1-agent';
+import { ALERT_ROUTES } from './v1-alerts';
 
 // ---------- error envelope and pagination ----------
 /** The existing error body, `{ error: { code, message, support_code, fields? } }` (packages/security errors.ts). */
@@ -1046,6 +1047,7 @@ export const V1_ROUTES: readonly RouteDoc[] = [
     errors: [404],
   },
   ...AGENT_ROUTES,
+  ...ALERT_ROUTES,
 ];
 
 const jsonSchema = (schema: ZodType): Record<string, unknown> => {

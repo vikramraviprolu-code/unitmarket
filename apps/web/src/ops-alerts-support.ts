@@ -64,9 +64,15 @@ export function post(
 /** An alert row with no order (the entity is in the reason), or on the first order of the app. */
 export async function seedAlert(
   rig: ARig,
-  i: { id: string; kind: string; reason: string; order_id?: string | null; unit_id?: string | null },
+  i: {
+    id: string;
+    kind: string;
+    reason: string;
+    order_id?: string | null;
+    unit_id?: string | null;
+  },
 ): Promise<void> {
-  const at = new Date().toISOString();
+  const at = '2026-11-05T10:00:00.000Z';
   await rig.app.db.query(
     `INSERT INTO alerts (id, kind, order_id, unit_id, detail, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $6)`,

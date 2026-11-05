@@ -114,7 +114,10 @@ export interface World {
     }[]
   >;
   /** The journal rows of one source row: who and on which channel. */
-  trace(table: string, id: string): Promise<{ actor_kind: string; actor_id: string | null; channel: string | null }[]>;
+  trace(
+    table: string,
+    id: string,
+  ): Promise<{ actor_kind: string; actor_id: string | null; channel: string | null }[]>;
   count(table: string): Promise<number>;
   close(): Promise<void>;
 }
@@ -129,7 +132,7 @@ export async function makeWorld(seed = 'al'): Promise<World> {
   const T = (): string => clock.now().toISOString();
   const insert = async (table: string, row: Record<string, unknown>): Promise<void> => {
     const r: Record<string, unknown> = { created_at: T(), updated_at: T(), ...row };
-    const cols = Object.keys(r);
+    const cols = Object.keys(r).filter((c) => r[c] !== undefined);
     await raw.query(
       `INSERT INTO ${table} (${cols.map((c) => (c === 'on' ? '"on"' : c)).join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')})`,
       cols.map((c) => r[c]),
@@ -154,7 +157,12 @@ export async function makeWorld(seed = 'al'): Promise<World> {
       paypal_merchant_id: 'MERCH1',
       payee_verified_at: T(),
     });
-    await insert('buyers', { id: 'buy_1', display_name: 'b1', auth_subject: 'sub_b1', country: 'US' });
+    await insert('buyers', {
+      id: 'buy_1',
+      display_name: 'b1',
+      auth_subject: 'sub_b1',
+      country: 'US',
+    });
   };
   const world: World = {
     raw,
@@ -237,9 +245,10 @@ export async function makeWorld(seed = 'al'): Promise<World> {
       });
     },
     async ledgerRefund(i) {
-      const sale = await raw.query("SELECT id FROM ledger_entries WHERE capture_id = $1 AND kind = 'sale'", [
-        `CAP${i.unit}`,
-      ]);
+      const sale = await raw.query(
+        "SELECT id FROM ledger_entries WHERE capture_id = $1 AND kind = 'sale'",
+        [`CAP${i.unit}`],
+      );
       let saleId = (sale.rows[0] as { id: string } | undefined)?.id;
       if (saleId === undefined) {
         saleId = ids.next('led');
@@ -277,6 +286,7 @@ export async function makeWorld(seed = 'al'): Promise<World> {
         agent_buyer_id: 'buy_1',
         scopes: ['orders:write'],
         secret_hash: HASH,
+        updated_at: undefined,
       });
       await insert('mandates', {
         id: i.id,
@@ -307,12 +317,10 @@ export async function makeWorld(seed = 'al'): Promise<World> {
     async delivery(i) {
       const evt = `evt_${i.id}`;
       const at = new Date(Date.parse(START) + i.n * 1000).toISOString();
-      await raw.query('INSERT INTO event_outbox (id, type, payload, occurred_at) VALUES ($1, $2, $3, $4)', [
-        evt,
-        'order.paid',
-        '{}',
-        at,
-      ]);
+      await raw.query(
+        'INSERT INTO event_outbox (id, type, payload, occurred_at) VALUES ($1, $2, $3, $4)',
+        [evt, 'order.paid', '{}', at],
+      );
       const pending = i.status === 'pending' || i.status === 'failed';
       await insert('webhook_deliveries', {
         id: i.id,
@@ -385,13 +393,18 @@ export async function makeWorld(seed = 'al'): Promise<World> {
         reason_code: string | null;
         note_sha256: string | null;
         at: string | Date;
-      }>('SELECT id, kind, reason_code, note_sha256, at FROM alert_events WHERE alert_id = $1 ORDER BY at, created_at, id', [
-        alert_id,
-      ]);
+      }>(
+        'SELECT id, kind, reason_code, note_sha256, at FROM alert_events WHERE alert_id = $1 ORDER BY seq',
+        [alert_id],
+      );
       return r.rows.map((x) => ({ ...x, at: new Date(x.at).toISOString() }));
     },
     async trace(table, id) {
-      const r = await raw.query<{ actor_kind: string; actor_id: string | null; channel: string | null }>(
+      const r = await raw.query<{
+        actor_kind: string;
+        actor_id: string | null;
+        channel: string | null;
+      }>(
         'SELECT actor_kind, actor_id, channel FROM trace_events WHERE source_table = $1 AND source_id = $2 ORDER BY occurred_at, seq',
         [table, id],
       );

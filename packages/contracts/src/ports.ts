@@ -60,6 +60,8 @@ export const IdPrefixSchema = z.enum([
   'wsb',
   'wdl',
   'pas',
+  // INT-AL: alert events.
+  'ale',
 ]);
 export type IdPrefix = z.infer<typeof IdPrefixSchema>;
 export interface Ids {

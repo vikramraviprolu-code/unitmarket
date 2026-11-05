@@ -488,9 +488,6 @@ importers:
 
   packages/jobs:
     dependencies:
-      '@umsbx/alerts':
-        specifier: workspace:*
-        version: link:../../domain/alerts
       '@umsbx/contracts':
         specifier: workspace:*
         version: link:../contracts

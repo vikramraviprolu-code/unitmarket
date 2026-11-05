@@ -21,11 +21,17 @@ describe('alert state (AL.3)', () => {
     expect(await alertState(w.db, a)).toBe('open');
     expect((await acknowledgeAlert(w.deps, { alert_id: a })).ok).toBe(true);
     expect(await alertState(w.db, a)).toBe('acknowledged');
-    expect((await resolveAlert(w.deps, { alert_id: a, reason_code: 'fixed_upstream' })).ok).toBe(true);
+    expect((await resolveAlert(w.deps, { alert_id: a, reason_code: 'fixed_upstream' })).ok).toBe(
+      true,
+    );
     expect(await alertState(w.db, a)).toBe('resolved');
     expect((await reopenAlert(w.deps, { alert_id: a })).ok).toBe(true);
     expect(await alertState(w.db, a)).toBe('open');
-    expect((await w.events(a)).map((e) => e.kind)).toEqual(['acknowledged', 'resolved', 'reopened']);
+    expect((await w.events(a)).map((e) => e.kind)).toEqual([
+      'acknowledged',
+      'resolved',
+      'reopened',
+    ]);
   });
 
   it('a second resolve is a no-op that answers the same', async () => {
@@ -60,10 +66,20 @@ describe('alert state (AL.3)', () => {
   it('the reason code comes from a closed list and the note has at most 200 characters', async () => {
     const bad = await resolveAlert(w.deps, { alert_id: a, reason_code: 'because' as never });
     expect(bad).toEqual({ ok: false, error: { code: 'bad_input' } });
-    const long = await resolveAlert(w.deps, { alert_id: a, reason_code: 'other', note: 'x'.repeat(201) });
+    const long = await resolveAlert(w.deps, {
+      alert_id: a,
+      reason_code: 'other',
+      note: 'x'.repeat(201),
+    });
     expect(long).toEqual({ ok: false, error: { code: 'bad_input' } });
     expect(await w.events(a)).toHaveLength(0);
-    for (const code of ['fixed_upstream', 'false_positive', 'duplicate', 'accepted_risk', 'other'] as const) {
+    for (const code of [
+      'fixed_upstream',
+      'false_positive',
+      'duplicate',
+      'accepted_risk',
+      'other',
+    ] as const) {
       const id = await w.alert({ kind: 'frozen_order', order: 1, unit: 1, reason: `rc_${code}` });
       expect((await resolveAlert(w.deps, { alert_id: id, reason_code: code })).ok).toBe(true);
     }

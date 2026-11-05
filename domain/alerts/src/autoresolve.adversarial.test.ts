@@ -20,7 +20,13 @@ describe('auto-resolve negatives (AL.4)', () => {
   it.each(['cannot_book_RF1', 'ledger_rule_RF1'])(
     'a refund_unresolved %s alert on a completed request with its ledger row is NOT auto-resolved',
     async (reason) => {
-      await w.refundRequest({ id: 'rfr_1', unit: 1, state: 'completed', refund_id: 'RF1', amount: 100 });
+      await w.refundRequest({
+        id: 'rfr_1',
+        unit: 1,
+        state: 'completed',
+        refund_id: 'RF1',
+        amount: 100,
+      });
       await w.ledgerRefund({ unit: 1, refund_id: 'RF1', amount: 100 });
       const a = await w.alert({ kind: 'refund_unresolved', order: 1, unit: 1, reason });
       expect(await sweep()).toBe(0);
@@ -30,26 +36,63 @@ describe('auto-resolve negatives (AL.4)', () => {
   );
 
   it('refund_unbooked is manual only', async () => {
-    await w.refundRequest({ id: 'rfr_1', unit: 1, state: 'completed', refund_id: 'RF1', amount: 100 });
+    await w.refundRequest({
+      id: 'rfr_1',
+      unit: 1,
+      state: 'completed',
+      refund_id: 'RF1',
+      amount: 100,
+    });
     await w.ledgerRefund({ unit: 1, refund_id: 'RF1', amount: 100 });
-    const a = await w.alert({ kind: 'refund_unbooked', order: 1, unit: 1, reason: 'over_refund_remote_rfr_1' });
+    const a = await w.alert({
+      kind: 'refund_unbooked',
+      order: 1,
+      unit: 1,
+      reason: 'over_refund_remote_rfr_1',
+    });
     expect(await sweep()).toBe(0);
     expect(await alertState(w.db, a)).toBe('open');
   });
 
   it('refund_outcome_unknown_<rq> without its ledger row stays open, even when another request is booked', async () => {
-    await w.refundRequest({ id: 'rfr_1', unit: 1, state: 'completed', refund_id: 'RF1', amount: 100 });
-    await w.refundRequest({ id: 'rfr_2', unit: 1, state: 'completed', refund_id: 'RF2', amount: 100 });
+    await w.refundRequest({
+      id: 'rfr_1',
+      unit: 1,
+      state: 'completed',
+      refund_id: 'RF1',
+      amount: 100,
+    });
+    await w.refundRequest({
+      id: 'rfr_2',
+      unit: 1,
+      state: 'completed',
+      refund_id: 'RF2',
+      amount: 100,
+    });
     await w.ledgerRefund({ unit: 1, refund_id: 'RF2', amount: 100 });
-    const a = await w.alert({ kind: 'refund_unresolved', order: 1, unit: 1, reason: 'refund_outcome_unknown_rfr_1' });
+    const a = await w.alert({
+      kind: 'refund_unresolved',
+      order: 1,
+      unit: 1,
+      reason: 'refund_outcome_unknown_rfr_1',
+    });
     expect(await sweep()).toBe(0);
     expect(await alertState(w.db, a)).toBe('open');
   });
 
   it('every other kind is manual only, whatever the order status', async () => {
-    const kinds = ['create_rejected', 'content_unavailable', 'unexpected_capture', 'fee_above_amount', 'reversal', 'reversal_hint', 'partial_composite'];
+    const kinds = [
+      'create_rejected',
+      'content_unavailable',
+      'unexpected_capture',
+      'fee_above_amount',
+      'reversal',
+      'reversal_hint',
+      'partial_composite',
+    ];
     const ids: string[] = [];
-    for (const k of kinds) ids.push(await w.alert({ kind: k, order: 1, unit: 1, reason: `m_${k}` }));
+    for (const k of kinds)
+      ids.push(await w.alert({ kind: k, order: 1, unit: 1, reason: `m_${k}` }));
     expect(await sweep()).toBe(0);
     for (const id of ids) expect(await alertState(w.db, id)).toBe('open');
   });

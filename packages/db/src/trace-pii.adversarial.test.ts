@@ -111,7 +111,9 @@ describe('secrets and identifiers that are not on the allow-list stay out', () =
       `SELECT DISTINCT source_table FROM trace_events WHERE body::text LIKE '%${HASH}%' ORDER BY 1`,
     );
     expect(
-      ev.rows.map((r) => r.source_table).every((t) => ['approvals', 'receipts'].includes(t)),
+      ev.rows
+        .map((r) => r.source_table)
+        .every((t) => ['approvals', 'receipts', 'alert_events'].includes(t)),
     ).toBe(true);
   });
 

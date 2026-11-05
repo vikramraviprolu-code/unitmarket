@@ -29,10 +29,10 @@ describe.skipIf(!PG_ON)('case refund race on real Postgres (AL.8)', () => {
       try {
         const { rig } = pr;
         const bought = await buy(rig, { offer: 'knot-notebook', option: 'online_read' });
-        const at = new Date().toISOString();
+        const at = '2026-11-05T10:00:00.000Z';
         await rig.app.db.query(
           `INSERT INTO recovery_cases (id, kind, state, order_id, entitlement_id, buyer_id, opened_by, sla_due_at, credit_ms, buyer_message, created_at, updated_at)
-           SELECT 'cas_race', 'refund_requested', 'open', $1, NULL, buyer_id, 'buyer', $2, 0, 'We have your request.', $2, $2 FROM orders WHERE id = $1`,
+           SELECT 'cas_race', 'refund_requested', 'open', id, NULL, buyer_id, 'buyer', $2::timestamptz, 0, 'We have your request.', $2::timestamptz, $2::timestamptz FROM orders WHERE id = $1`,
           [bought.order_id, at],
         );
         const route = await import('../../apps/web/src/app/api/ops/cases/[id]/actions/route');
@@ -51,11 +51,15 @@ describe.skipIf(!PG_ON)('case refund race on real Postgres (AL.8)', () => {
         const statuses = results.map((r) => (r.status === 'fulfilled' ? r.value.status : 0)).sort();
         expect(statuses, `round ${round}`).toEqual([200, 409]);
         expect(
-          await rig.count('SELECT count(*) AS c FROM refund_requests WHERE unit_id = $1', [bought.unit_id]),
+          await rig.count('SELECT count(*) AS c FROM refund_requests WHERE unit_id = $1', [
+            bought.unit_id,
+          ]),
           `round ${round}`,
         ).toBe(1);
         expect(
-          await rig.count("SELECT count(*) AS c FROM recovery_cases WHERE id = 'cas_race' AND state = 'refund_pending'"),
+          await rig.count(
+            "SELECT count(*) AS c FROM recovery_cases WHERE id = 'cas_race' AND state = 'refund_pending'",
+          ),
         ).toBe(1);
         ran += 1;
       } finally {

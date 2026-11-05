@@ -32,7 +32,11 @@ describe('needs-you (AL.6)', () => {
     await resolveAlert(w.deps, { alert_id: a, reason_code: 'fixed_upstream' });
     expect(await count('open_alerts')).toBe(2);
     // an acknowledged alert is still waiting on someone
-    await acknowledgeAlert(w.deps, { alert_id: (await w.raw.query<{ id: string }>("SELECT id FROM alerts WHERE kind = 'frozen_order'")).rows[0]!.id });
+    await acknowledgeAlert(w.deps, {
+      alert_id: (
+        await w.raw.query<{ id: string }>("SELECT id FROM alerts WHERE kind = 'frozen_order'")
+      ).rows[0]!.id,
+    });
     expect(await count('open_alerts')).toBe(2);
   });
 

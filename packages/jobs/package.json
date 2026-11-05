@@ -10,7 +10,6 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@umsbx/alerts": "workspace:*",
     "@umsbx/contracts": "workspace:*",
     "@umsbx/obs": "workspace:*",
     "@umsbx/payments": "workspace:*"

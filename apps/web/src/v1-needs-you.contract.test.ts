@@ -18,14 +18,18 @@ const read = async (token: string | null = r.opKey) =>
 beforeAll(async () => {
   r = await bootAlertRig();
   get = (await import('./app/api/v1/ops/needs-you/route')).GET as Handler;
-  const at = new Date().toISOString();
+  const at = '2026-11-05T10:00:00.000Z';
   await seedAlert(r.rig, { id: 'alr_n1', kind: 'mandate_near_cap', reason: 'cap90_man_1' });
   await seedAlert(r.rig, { id: 'alr_n2', kind: 'mandate_near_cap', reason: 'cap90_man_2' });
   await seedAlert(r.rig, { id: 'alr_n3', kind: 'reversal_hint', reason: 'x' });
-  for (const [id, decided] of [['pub_wait1', false], ['pub_wait2', false], ['pub_rej', true]] as const) {
+  for (const [id, decided] of [
+    ['pub_wait1', false],
+    ['pub_wait2', false],
+    ['pub_rej', true],
+  ] as const) {
     await r.rig.app.db.query(
       `INSERT INTO publishers (id, slug, display_name, country, status, created_at, updated_at)
-       VALUES ($1, $1, $1, 'US', 'applied', $2, $2)`,
+       VALUES ($1::text, $1::text, $1::text, 'US', 'applied', $2::timestamptz, $2::timestamptz)`,
       [id, at],
     );
     if (decided) {
@@ -38,7 +42,7 @@ beforeAll(async () => {
   }
   await r.rig.app.db.query(
     `INSERT INTO payee_change_requests (id, publisher_id, requested_merchant_id, note, created_by, created_at, updated_at)
-     SELECT 'pcr_n1', id, 'MERCH9', 'n', 'publisher', $1, $1 FROM publishers WHERE slug = 'harbour-ledger'`,
+     SELECT 'pcr_n1', id, 'MERCH9', 'n', 'publisher', $1::timestamptz, $1::timestamptz FROM publishers WHERE slug = 'harbour-ledger'`,
     [at],
   );
 });
@@ -46,7 +50,8 @@ afterAll(async () => r.rig.app.close());
 
 type Row = { kind: string; sentence: string; href: string; count: number };
 const items = async (): Promise<Row[]> => ((await (await read()).json()) as { items: Row[] }).items;
-const total = (xs: Row[], kind: string): number => xs.filter((x) => x.kind === kind).reduce((n, x) => n + x.count, 0);
+const total = (xs: Row[], kind: string): number =>
+  xs.filter((x) => x.kind === kind).reduce((n, x) => n + x.count, 0);
 
 describe('GET /api/v1/ops/needs-you (AL.6)', () => {
   it('answers 200 with the shape of NeedsYouSchema', async () => {
@@ -86,7 +91,8 @@ describe('GET /api/v1/ops/needs-you (AL.6)', () => {
   it('is registered as a GET with the ops:read scope, and no /api/v1/ops route writes', () => {
     const doc = V1_ROUTES.find((x) => x.path === '/api/v1/ops/needs-you');
     expect(doc).toMatchObject({ method: 'GET', auth: 'apikey', scopes: ['ops:read'] });
-    for (const x of V1_ROUTES.filter((y) => y.path.startsWith('/api/v1/ops'))) expect(x.method).toBe('GET');
+    for (const x of V1_ROUTES.filter((y) => y.path.startsWith('/api/v1/ops')))
+      expect(x.method).toBe('GET');
   });
 
   it('there is no alert table write behind it', async () => {

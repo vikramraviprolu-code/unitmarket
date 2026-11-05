@@ -15,10 +15,12 @@ const signals = async (): Promise<{ raised: number; reopened: number }> => {
   w.as(jobCtx());
   return raiseSignals(w.deps);
 };
-const alertsOf = async (kind: string): Promise<{ id: string; reason: string; order_id: string | null }[]> =>
+const alertsOf = async (
+  kind: string,
+): Promise<{ id: string; reason: string; order_id: string | null }[]> =>
   (
     await w.raw.query<{ id: string; reason: string; order_id: string | null }>(
-      "SELECT id, detail ->> 'reason' AS reason, order_id FROM alerts WHERE kind = $1 ORDER BY created_at, id",
+      "SELECT id, detail ->> 'reason' AS reason, order_id FROM alerts WHERE kind = $1 ORDER BY created_at, detail ->> 'reason'",
       [kind],
     )
   ).rows;
@@ -41,7 +43,10 @@ describe('mandate_near_cap (AL.5)', () => {
     await w.raw.query("UPDATE mandates SET used_count = 3 WHERE id = 'man_a'");
     await w.raw.query("UPDATE mandates SET used_count = 9 WHERE id = 'man_b'");
     expect((await signals()).raised).toBe(2);
-    expect((await alertsOf('mandate_near_cap')).map((r) => r.reason).sort()).toEqual(['cap90_man_a', 'cap90_man_b']);
+    expect((await alertsOf('mandate_near_cap')).map((r) => r.reason).sort()).toEqual([
+      'cap90_man_a',
+      'cap90_man_b',
+    ]);
   });
 
   it('a second pass raises nothing new', async () => {
@@ -70,7 +75,9 @@ describe('mandate_near_cap (AL.5)', () => {
     expect(await w.count('alerts')).toBe(1);
     const ev = (await w.events(a!.id)).at(-1)!;
     expect(ev.kind).toBe('reopened');
-    expect(await w.trace('alert_events', ev.id)).toEqual([{ actor_kind: 'system', actor_id: null, channel: 'job' }]);
+    expect(await w.trace('alert_events', ev.id)).toEqual([
+      { actor_kind: 'system', actor_id: null, channel: 'job' },
+    ]);
   });
 
   it.each([
@@ -96,7 +103,9 @@ describe('webhook_failing (AL.5)', () => {
     expect((await signals()).raised).toBe(1);
     await w.delivery({ id: 'wdl_4', sub: 'wsb_1', status: 'failed', n: 4 });
     expect((await signals()).raised).toBe(0);
-    expect((await alertsOf('webhook_failing')).map((r) => r.reason)).toEqual(['webhook_failing_wsb_1_wdl_1']);
+    expect((await alertsOf('webhook_failing')).map((r) => r.reason)).toEqual([
+      'webhook_failing_wsb_1_wdl_1',
+    ]);
   });
 
   it('a recovery and then three new failures raise a new alert', async () => {
@@ -118,7 +127,8 @@ describe('webhook_failing (AL.5)', () => {
 
   it('a disabled subscription raises nothing and two passes write no new event', async () => {
     await w.subscription({ id: 'wsb_1', disabled: true });
-    for (let i = 1; i <= 3; i++) await w.delivery({ id: `wdl_${i}`, sub: 'wsb_1', status: 'failed', n: i });
+    for (let i = 1; i <= 3; i++)
+      await w.delivery({ id: `wdl_${i}`, sub: 'wsb_1', status: 'failed', n: i });
     w.as(jobCtx());
     for (let i = 0; i < 2; i++) await sweepAlerts(w.deps);
     expect(await w.count('alerts')).toBe(0);
@@ -127,7 +137,8 @@ describe('webhook_failing (AL.5)', () => {
 
   it('delivery recovery resolves the alert in the same job step, once', async () => {
     await w.subscription({ id: 'wsb_1' });
-    for (let i = 1; i <= 3; i++) await w.delivery({ id: `wdl_${i}`, sub: 'wsb_1', status: 'failed', n: i });
+    for (let i = 1; i <= 3; i++)
+      await w.delivery({ id: `wdl_${i}`, sub: 'wsb_1', status: 'failed', n: i });
     w.as(jobCtx());
     await sweepAlerts(w.deps);
     await w.delivery({ id: 'wdl_4', sub: 'wsb_1', status: 'delivered', n: 4 });
