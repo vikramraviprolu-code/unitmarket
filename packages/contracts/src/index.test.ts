@@ -186,6 +186,15 @@ const EXPECTED_EXPORTS: string[] = [
   'WebhookSubscriptionCreatedSchema',
   'WebhookDeliveryViewSchema',
   'eventAudience',
+  // INT-SR0: transaction search contract
+  'StatusGroupSchema',
+  'STATUS_GROUPS',
+  'PENDING_ATTENTION_MS',
+  'statusGroupOf',
+  'TxnQuerySchema',
+  'TXN_QUERY_KEYS',
+  'REFUSED_FIELDS',
+  'parseTxnQuery',
 ];
 
 type Def = {

@@ -173,7 +173,7 @@ SELECT 'buy_' || b, 'Buyer ' || b, 'sub-' || b, 'US', timestamptz '${NOW_SQL}', 
 
 INSERT INTO publishers (id, slug, display_name, country, paypal_merchant_id, created_at, updated_at)
 SELECT 'pub_' || p, 'seller-' || p, 'Seller ' || p, 'US', 'MERCH' || p, timestamptz '${NOW_SQL}', timestamptz '${NOW_SQL}'
-  FROM generate_series(0, 99) AS p;
+  FROM generate_series(0, 999) AS p;
 
 INSERT INTO articles (id, publisher_id, title, abstract, language, topics, published_at, sha256, content_key, bytes, mime, created_at, updated_at)
 SELECT 'art_' || p, 'pub_' || p, 'Article ' || p, 'abstract', 'en', ARRAY['news'], timestamptz '${NOW_SQL}',
@@ -196,7 +196,7 @@ SELECT 'po_' || i, 'ord_' || i, 'PP' || lpad(i::text, 10, '0'), 'single', NULL, 
   FROM seed_src;
 
 INSERT INTO order_units (id, order_id, provider_order_ref, publisher_id, reference_id, payee_merchant_id, amount_minor, platform_fee_minor, capture_id, status, status_reason, paypal_fee_minor, refunded_minor, captured_verified_at, mismatch_reason, created_at, updated_at)
-SELECT 'unt_' || i, 'ord_' || i, 'po_' || i, 'pub_' || (i % 100), 'r' || i, 'MERCH' || (i % 100), amount, 0,
+SELECT 'unt_' || i, 'ord_' || i, 'po_' || i, 'pub_' || (i % 1000), 'r' || i, 'MERCH' || (i % 1000), amount, 0,
        CASE WHEN k IN (0, 3) THEN 'CAP' || i END,
        CASE k WHEN 1 THEN 'pending' WHEN 2 THEN 'mismatch' WHEN 3 THEN 'refunded' WHEN 4 THEN 'declined' ELSE 'captured_verified' END,
        NULL, NULL, CASE WHEN k = 3 THEN amount ELSE 0 END,

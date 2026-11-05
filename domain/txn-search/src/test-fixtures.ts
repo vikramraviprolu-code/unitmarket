@@ -195,7 +195,7 @@ export async function seedOrder(db: SqlExecutor, o: OrderSpec): Promise<void> {
     for (const a of u.articles ?? []) {
       await db.query(
         `INSERT INTO entitlements (id, buyer_id, article_id, unit_id, option, policy, money_state, access_state, licence_state, transition_log, environment, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 'keep_retrieve', '{}'::jsonb, 'pending', 'locked', NULL, '[]'::jsonb, $5, $6, $6)`,
+         VALUES ($1, $2, $3, $4, 'keep_retrieve', '{}'::jsonb, 'denied', 'locked', NULL, '[]'::jsonb, $5, $6, $6)`,
         [`ent_${u.id}_${a}`, o.buyer, a, u.id, env, o.created_at],
       );
     }

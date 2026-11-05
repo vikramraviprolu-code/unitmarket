@@ -25,3 +25,5 @@ export * from './principal';
 export * from './v1';
 // API-B (agent spending caps).
 export * from './mandates';
+// INT-SR0 (transaction search filter contract).
+export * from './txn-query';

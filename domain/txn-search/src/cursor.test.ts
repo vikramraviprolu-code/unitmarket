@@ -3,6 +3,7 @@
 // one from another sort and one with a different hash each throw 400 bad_cursor; none falls back to page 1.
 import { describe, expect, it } from 'vitest';
 import { TxnSearchError, decodeCursor, encodeCursor } from './cursor';
+import type { TxnSort } from './cursor';
 
 const NEWEST = {
   s: 'newest',
@@ -65,7 +66,7 @@ describe('cursor round trip (SR0.1)', () => {
 
 describe('cursor refusals (SR0.1): each one is 400 bad_cursor', () => {
   const good = encodeCursor(NEWEST);
-  const expectBad = (token: string, over: Partial<{ sort: string; h: string }> = {}) => {
+  const expectBad = (token: string, over: Partial<{ sort: TxnSort; h: string }> = {}) => {
     const e = refused(() => decodeCursor(token, { sort: 'newest', h: 'hash-1', ...over }));
     expect(e.code).toBe('bad_cursor');
     expect(e.status).toBe(400);
@@ -80,10 +81,12 @@ describe('cursor refusals (SR0.1): each one is 400 bad_cursor', () => {
   it('an extra field (a scope value added by a client)', () =>
     expectBad(tokenOf({ ...json(good), buyer_id: 'buy_other' })));
   it('another version tag', () => expectBad(tokenOf({ ...json(good), v: 't2' })));
-  it('a tampered body (bytes changed)', () => {
-    const i = Math.floor(good.length / 2);
-    expectBad(good.slice(0, i) + (good[i] === 'A' ? 'B' : 'A') + good.slice(i + 1));
+  it('a tampered body (the opening byte changed)', () => {
+    expectBad((good[0] === 'e' ? 'f' : 'e') + good.slice(1));
   });
+  it('a truncated body', () => expectBad(good.slice(0, good.length - 7)));
+  it('a body with a character from outside the base64url alphabet', () =>
+    expectBad(good.slice(0, 10) + '+/=' + good.slice(10)));
   it('a sort value of the wrong type for the sort', () =>
     expectBad(tokenOf({ ...json(good), s: 'amount', k: 'not-a-number' }), { sort: 'amount' }));
   it('a cursor made for another sort', () => expectBad(good, { sort: 'amount' }));
