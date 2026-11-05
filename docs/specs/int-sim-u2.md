@@ -14,24 +14,26 @@ The line is a `<p className="text-sm" data-testid="movements-headline">`. It sit
 
 ## Exact strings
 
-| trades | top-ups | payout items | Output |
-|---|---|---|---|
-| 10000 | 100 | 98 | `10,000 trades became 198 money movements (100 top-ups and 98 payout items).` |
-| 1 | 1 | 0 | `1 trade became 1 money movement (1 top-up and 0 payout items).` |
-| 2 | 1 | 1 | `2 trades became 2 money movements (1 top-up and 1 payout item).` |
-| 5 | 0 | 0 | `5 trades became 0 money movements (0 top-ups and 0 payout items).` |
-| 0 | any | any | `null` |
+| trades | top-ups | payout items | Output                                                                        |
+| ------ | ------- | ------------ | ----------------------------------------------------------------------------- |
+| 10000  | 100     | 98           | `10,000 trades became 198 money movements (100 top-ups and 98 payout items).` |
+| 1      | 1       | 0            | `1 trade became 1 money movement (1 top-up and 0 payout items).`              |
+| 2      | 1       | 1            | `2 trades became 2 money movements (1 top-up and 1 payout item).`             |
+| 5      | 0       | 0            | `5 trades became 0 money movements (0 top-ups and 0 payout items).`           |
+| 0      | any     | any          | `null`                                                                        |
 
 Singular only for exactly 1: trade, money movement, top-up and payout item.
 
 ## Outputs (only these files)
 
 New:
+
 - `apps/web/sim-ui/market/headline.ts`
 - `apps/web/sim-ui/market/headline.test.ts`
 - `docs/specs/sim/sim-market-headline.md` (this spec, copied in the build commit)
 
 Changed:
+
 - `apps/web/sim-ui/market/MarketDashboard.tsx` (one paragraph)
 - `apps/web/app/sim/market/market.integration.test.tsx` (one assertion)
 - `docs/decision-log.md`: one row in the latest table, as follows. Date `4 Nov 2026`. Decision `UPI learnings: what to build (decision 52)`. Options `build items 1 to 5; build item 2 only; build none`. Choice `Build item 2 only: one headline line on /sim/market; items 1 and 3 are pitch slides; items 4 and 5 go to the post-12-Nov backlog`. Reason `small, simulation only, makes the pooling result readable`. Owner `Vikram`.
@@ -40,12 +42,12 @@ Branch `feat/sim-market-headline`, PR title prefix `[SIM]`.
 
 ## Acceptance tests (commit 1: tests only, run red)
 
-| Test | Command | Expected |
-|---|---|---|
-| `apps/web/sim-ui/market/headline.test.ts` | `corepack pnpm vitest run apps/web/sim-ui/market/headline.test.ts` | Each row of the table above, exact string or `null` |
+| Test                                                  | Command                                                                        | Expected                                                                                                                                                                               |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web/sim-ui/market/headline.test.ts`             | `corepack pnpm vitest run apps/web/sim-ui/market/headline.test.ts`             | Each row of the table above, exact string or `null`                                                                                                                                    |
 | `apps/web/app/sim/market/market.integration.test.tsx` | `corepack pnpm vitest run apps/web/app/sim/market/market.integration.test.tsx` | The default render has 0 trades, so the test steps the market first. With a run of trades greater than 0, `movements-headline` holds the function's string; with 0 trades it is absent |
-| Regression | `corepack pnpm test:module ui-sim` | Green |
-| `corepack pnpm lint && corepack pnpm typecheck` | | Green; import rules 4, 5 and 10 hold (no simulation import in product screens) |
+| Regression                                            | `corepack pnpm test:module ui-sim`                                             | Green                                                                                                                                                                                  |
+| `corepack pnpm lint && corepack pnpm typecheck`       |                                                                                | Green; import rules 4, 5 and 10 hold (no simulation import in product screens)                                                                                                         |
 
 ## Safety
 

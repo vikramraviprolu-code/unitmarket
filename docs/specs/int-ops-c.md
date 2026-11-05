@@ -7,6 +7,7 @@ Items: OPS-C.1 to OPS-C.5, 12 points, cut "should". Needs UI0, TR1, SR1 and OPS-
 ## Identity rule for this lane (C2)
 
 Every page here follows C3. Without MFA, a page uses TR1's identity-free rule:
+
 - no buyer id or name ("a buyer");
 - agent key and API key ids as `"…" + last 4`;
 - `capture_id` and `refund_id` as `"…" + last 4`.
@@ -24,16 +25,16 @@ With MFA the full values show. The buyer page (OPS-C.1) needs MFA outright. Ever
 - **OPS-C.4, Money tab** `/ops/money`: problems (from OPS-A), the reconciler state, totals **per environment, currency and kind**, each with an `EnvLabel` from the stored `environment` (C6). Each total opens a ledger list `/ops/money/ledger?environment=&currency=&kind=`. Today's exchange rates also show.
 - **OPS-C.5, money-flow strip on Home**: counts for the 24 hours ending at the injected `now`, plus stuck counts (C5):
 
-| Stage | Source and rule |
-|---|---|
-| Find | `briefs` rows with `created_at` in the window |
-| Quote | `quotes` rows with `created_at` in the window |
-| Approve | `approvals` rows with `used_at` in the window |
-| Pay | `order_units` with `captured_verified_at` in the window |
-| Unlock | `access_events` of kind `access_ready` with `at` in the window |
-| Refund | `refund_requests` in state `completed` with `updated_at` in the window |
-| Stuck: sent | `operations` with `state = 'sent'` and `lease_until < now` |
-| Stuck: unknown | `operations` with `state = 'unknown'` and `reconcile_until < now` |
+| Stage          | Source and rule                                                        |
+| -------------- | ---------------------------------------------------------------------- |
+| Find           | `briefs` rows with `created_at` in the window                          |
+| Quote          | `quotes` rows with `created_at` in the window                          |
+| Approve        | `approvals` rows with `used_at` in the window                          |
+| Pay            | `order_units` with `captured_verified_at` in the window                |
+| Unlock         | `access_events` of kind `access_ready` with `at` in the window         |
+| Refund         | `refund_requests` in state `completed` with `updated_at` in the window |
+| Stuck: sent    | `operations` with `state = 'sent'` and `lease_until < now`             |
+| Stuck: unknown | `operations` with `state = 'unknown'` and `reconcile_until < now`      |
 
 **Composition modules (S3).** Buyer page: `ops-buyers.ts`. Seller page: `ops-sellers.ts`. Agents page and both revoke writes: `ops-agents.ts`. Money tab and ledger list: `ops-money.ts`. Strip: `ops-home.ts`. Each wraps the upstream read (SR1, TR1) without copying it.
 
@@ -47,12 +48,14 @@ With MFA the full values show. The buyer page (OPS-C.1) needs MFA outright. Ever
 ## Outputs (only these files)
 
 New:
+
 - pages `apps/web/src/app/ops/buyers/[id]/page.tsx`, `ops/sellers/[id]/page.tsx`, `ops/agents/page.tsx`, `ops/money/ledger/page.tsx`
 - routes `apps/web/src/app/api/ops/mandates/[id]/revoke/route.ts`, `apps/web/src/app/api/ops/api-keys/[id]/revoke/route.ts`
 - `apps/web/src/ui/ops/{EntitySummary,CapTable,MoneyFlow}.tsx`, `apps/web/src/lib/{ops-entity-view,ops-agents-view,ops-money-view,money-flow-view}.ts`
 - the tests below
 
 Changed:
+
 - `domain/mandates/src/store.ts`, `domain/mandates/src/index.ts`, `packages/security/src/apikey.ts`, `packages/security/src/index.ts`
 - `apps/web/src/app/ops/money/page.tsx` (UI0), `apps/web/src/app/ops/page.tsx` (strip)
 - composition modules `ops-buyers.ts`, `ops-sellers.ts`, `ops-agents.ts`, `ops-money.ts`, `ops-home.ts`
@@ -61,13 +64,13 @@ Changed:
 
 ## Acceptance tests (commit 1: tests only, run red)
 
-| Item | Test file | Command | Expected |
-|---|---|---|---|
-| OPS-C.1, C.2 | `apps/web/src/ops-entity-view.state.test.ts` | `corepack pnpm vitest run apps/web/src/ops-entity-view.state.test.ts` | Seeded buyer and seller pages list the expected rows; the buyer page without MFA returns only the MFA notice; a seller page shows no buyer identity (deep scan) |
-| OPS-C.3 | `apps/web/src/ops-agents.adversarial.test.ts`, `domain/mandates/src/operator-revoke.state.test.ts`, `packages/security/src/operator-revoke.state.test.ts` | `corepack pnpm vitest run apps/web/src/ops-agents.adversarial.test.ts domain/mandates/src/operator-revoke.state.test.ts packages/security/src/operator-revoke.state.test.ts` | A seeded `whsec_` value, a webhook URL path and query, and `api_keys.secret_hash` appear in no page HTML or JSON, with or without MFA. Without MFA: no buyer id or name, key ids and provider ids as last 4 only. Both revoke routes need MFA, CSRF and an idempotency key; buyer, seller, bearer and operator-key callers are refused; a replay returns the stored answer; a revoked cap refuses `buy_unit` with the existing code; a revoked key gets 401 on its next call; the journal row has actor operator, channel `web` and `audit_log.action` `mandate.revoked.abuse` (or the key's); a second revoke writes no second audit row; an unknown id gives 404. Each domain function refuses an operator with `mfa: false` and a non-operator actor |
-| OPS-C.4 | `apps/web/src/ops-money-view.state.test.ts` | `corepack pnpm vitest run apps/web/src/ops-money-view.state.test.ts` | Each total equals the sum of its ledger list per environment, currency and kind; a seed with `dryrun` and `sandbox` rows gives two separate totals, each labelled from the stored value; the ledger list without MFA shows `capture_id` and `refund_id` as last 4 only; the reconciler state equals the job health read |
-| OPS-C.5 | `apps/web/src/money-flow-view.state.test.ts` | `corepack pnpm vitest run apps/web/src/money-flow-view.state.test.ts` | On a seeded run each stage count equals its table rule, with rows just inside and just outside the 24 hours; stuck counts equal the two operation rules |
-| a11y | `apps/web/src/flow-a11y.state.test.ts` | `corepack pnpm vitest run apps/web/src/flow-a11y.state.test.ts` | The text-read check passes for the four pages |
+| Item         | Test file                                                                                                                                                 | Command                                                                                                                                                                      | Expected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OPS-C.1, C.2 | `apps/web/src/ops-entity-view.state.test.ts`                                                                                                              | `corepack pnpm vitest run apps/web/src/ops-entity-view.state.test.ts`                                                                                                        | Seeded buyer and seller pages list the expected rows; the buyer page without MFA returns only the MFA notice; a seller page shows no buyer identity (deep scan)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| OPS-C.3      | `apps/web/src/ops-agents.adversarial.test.ts`, `domain/mandates/src/operator-revoke.state.test.ts`, `packages/security/src/operator-revoke.state.test.ts` | `corepack pnpm vitest run apps/web/src/ops-agents.adversarial.test.ts domain/mandates/src/operator-revoke.state.test.ts packages/security/src/operator-revoke.state.test.ts` | A seeded `whsec_` value, a webhook URL path and query, and `api_keys.secret_hash` appear in no page HTML or JSON, with or without MFA. Without MFA: no buyer id or name, key ids and provider ids as last 4 only. Both revoke routes need MFA, CSRF and an idempotency key; buyer, seller, bearer and operator-key callers are refused; a replay returns the stored answer; a revoked cap refuses `buy_unit` with the existing code; a revoked key gets 401 on its next call; the journal row has actor operator, channel `web` and `audit_log.action` `mandate.revoked.abuse` (or the key's); a second revoke writes no second audit row; an unknown id gives 404. Each domain function refuses an operator with `mfa: false` and a non-operator actor |
+| OPS-C.4      | `apps/web/src/ops-money-view.state.test.ts`                                                                                                               | `corepack pnpm vitest run apps/web/src/ops-money-view.state.test.ts`                                                                                                         | Each total equals the sum of its ledger list per environment, currency and kind; a seed with `dryrun` and `sandbox` rows gives two separate totals, each labelled from the stored value; the ledger list without MFA shows `capture_id` and `refund_id` as last 4 only; the reconciler state equals the job health read                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| OPS-C.5      | `apps/web/src/money-flow-view.state.test.ts`                                                                                                              | `corepack pnpm vitest run apps/web/src/money-flow-view.state.test.ts`                                                                                                        | On a seeded run each stage count equals its table rule, with rows just inside and just outside the 24 hours; stuck counts equal the two operation rules                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| a11y         | `apps/web/src/flow-a11y.state.test.ts`                                                                                                                    | `corepack pnpm vitest run apps/web/src/flow-a11y.state.test.ts`                                                                                                              | The text-read check passes for the four pages                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Mutation (OPS-C.3 is L): `pnpm mutation --require-targets --targets "domain/mandates/src/store.ts,packages/security/src/apikey.ts,apps/web/src/app/api/ops/mandates/[id]/revoke/route.ts,apps/web/src/app/api/ops/api-keys/[id]/revoke/route.ts" --test-cmd "corepack pnpm vitest run apps/web/src/ops-agents.adversarial.test.ts domain/mandates packages/security/src/operator-revoke.state.test.ts" --threshold 80`. C4 to C7 apply.
 

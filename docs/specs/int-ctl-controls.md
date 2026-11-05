@@ -8,17 +8,18 @@ Items: CTL.1 to CTL.7, 20 points: CTL.3 "should" (V3 approved), the rest "must".
 
 **CTL.1, gateway panel.** The panel on `/ops/controls` shows the five locks with plain reasons and the owner action for each closed lock. Words come from `lib/gateway-view.ts`, built on `gate-lines.ts` (`LockView`) and AL's `BLOCKED_BY`. The owner action per closed lock is fixed (F9, V4):
 
-| Lock | Line when closed | Owner action shown |
-|---|---|---|
-| L1 mode is sandbox | "The app runs offline (mode is not sandbox)." | "Owner sets the host's mode setting `UMS_MODE`." (name only, no value) |
-| L2 connect flag | "The connect flag is off." | "Owner only: see the owner runbook." (no command) |
-| L3 approval | "No active approval covers this call." | "Owner runs `corepack pnpm safety:approve` at a terminal." |
-| L4 kill switch | "PayPal calls are switched off." | "Use the Start button below." (the existing control) |
-| L5 credentials and wire | "Credentials or the wire self-check failed." | "Owner checks the host secrets by name." |
+| Lock                    | Line when closed                              | Owner action shown                                                     |
+| ----------------------- | --------------------------------------------- | ---------------------------------------------------------------------- |
+| L1 mode is sandbox      | "The app runs offline (mode is not sandbox)." | "Owner sets the host's mode setting `UMS_MODE`." (name only, no value) |
+| L2 connect flag         | "The connect flag is off."                    | "Owner only: see the owner runbook." (no command)                      |
+| L3 approval             | "No active approval covers this call."        | "Owner runs `corepack pnpm safety:approve` at a terminal."             |
+| L4 kill switch          | "PayPal calls are switched off."              | "Use the Start button below." (the existing control)                   |
+| L5 credentials and wire | "Credentials or the wire self-check failed."  | "Owner checks the host secrets by name."                               |
 
 The golden asserts no line or copy string contains `UMS_PAYPAL_CONNECT=on`, `--update-env-vars` or an approval ref. Start and Stop stay the existing controls, unchanged. Nothing here creates an approval or sets the connect flag.
 
 **CTL.2, services panel (L).**
+
 - It shows web, job loop, database, offline judge and PayPal gateway.
 - The app's own state comes from `GET /api/v1/status` (`revision`, `db`, from CL1), read through composition.
 - The cloud state comes from a **pasted** `cloud status --json`. The server never runs `gcloud` and holds no cloud permission. The paste is validated in the browser against `CloudStatusSchema` in `packages/contracts/src/cloud-status.ts` (strict, mirrors CL1's `scripts/__fixtures__/cloud-status.json`), at most 16 KB. It is never stored or posted.
@@ -27,25 +28,27 @@ The golden asserts no line or copy string contains `UMS_PAYPAL_CONNECT=on`, `--u
 - Each card shows the matching `corepack pnpm cloud:<verb>` command to copy, a Cloud Shell link and a link to Google's audit log. Phase 2 buttons are absent.
 
 **CTL.3, feature switches (L, should).**
+
 - `POST /api/ops/switches/[name]/off` is `fail_safe_without_mfa: true`, like `/api/ops/stop`. Its handler calls `setSwitch(name, false, …)` with a literal `false`; no code path in it can turn a switch on.
 - `POST /api/ops/switches/[name]/on` needs MFA.
 - Both take a reason code from the CTL.6 list (F13); the code is stored as the `setSwitch` reason, which refuses an empty reason (`switches.ts:93`).
 - `on` refuses `paypal_outbound` and `agent_buy_enabled` with 409 `use_existing_control`. Those keep the existing Start and agent-buy paths and their locks. The other five switches (`ai_enabled`, `checkout_enabled`, `refunds_enabled`, `unlock_enabled`, `webhook_enabled`) can be turned on. An unknown `[name]` gives 404.
 
 **CTL.4, registry.**
+
 - `API_GROUPS` in `packages/contracts/src/api-exposure.ts` is a const: `catalogue`, `orders`, `library`, `mandates`, `webhooks`, `seller`, `ops`, `mcp`, and the six literals `mcp:search_catalogue`, `mcp:get_offer`, `mcp:propose_pack`, `mcp:open_unit`, `mcp:check_budget`, `mcp:buy_unit` (F7).
 - `GROUP_OF_PATH` maps every `/api/v1/*` prefix of an `auth: 'apikey'` route to one group (F1):
 
-| Prefix | Group |
-|---|---|
+| Prefix                          | Group       |
+| ------------------------------- | ----------- |
 | `catalogue`, `briefs`, `offers` | `catalogue` |
-| `orders`, `quotes`, `approvals` | `orders` |
-| `library` | `library` |
-| `mandates` | `mandates` |
-| `webhook-subscriptions` | `webhooks` |
-| `seller` | `seller` |
-| `ops` | `ops` |
-| `mcp` | `mcp` |
+| `orders`, `quotes`, `approvals` | `orders`    |
+| `library`                       | `library`   |
+| `mandates`                      | `mandates`  |
+| `webhook-subscriptions`         | `webhooks`  |
+| `seller`                        | `seller`    |
+| `ops`                           | `ops`       |
+| `mcp`                           | `mcp`       |
 
 - `api-keys` (`auth: 'owner'`) and `status` (`public`) are not apikey routes and are never gated. Any `/api/v1` prefix added by SR1 or TR1 before CTL merges joins this table. The golden fails on any apikey route whose prefix is unmapped.
 - REST groups and MCP groups are independent: `orders` off does not hide `mcp:buy_unit`, and `mcp:buy_unit` off does not refuse `POST /api/v1/orders`.
@@ -60,12 +63,14 @@ The golden asserts no line or copy string contains `UMS_PAYPAL_CONNECT=on`, `--u
 - **Restore** (F4): `export-sql.ts` adds `api_exposure` to `SEED_TABLES` and lifts `api_exposure_no_delete` for the seed delete only, inside the import transaction, exactly like `safety_switches_no_delete`. `expectedTriggers` and `guardProblems` list the two new triggers.
 
 **CTL.5, enforcement (L).**
+
 - `packages/security/src/exposure.ts` exports `createExposureReader({db, clock})`, read through a 5-second cache with an injected Clock, like `createSwitchReader`. A read failure answers "disabled" for every group (fail closed).
 - `SecurityDeps.exposure?: ExposureReader` is optional (F5). Absent means all groups enabled, so existing test deps stay valid. The app sets it in both `composition.server.ts` blocks that build security deps (the deps object near line 1836 and the `securityDeps` getter near line 3440). A wiring test asserts the app's `securityDeps.exposure` is defined.
 - **Position in `withRoute` (F6):** for `auth: 'apikey'` routes only, the check runs right after the bearer key is verified (the `verifyKey` block) and before the operator-key rule, the scope check and the idempotency lookup. A disabled group answers 403 `api_disabled`. So an unauthenticated call still gets 401 `unauthenticated`, and a replayed `Idempotency-Key` after disable gets 403 `api_disabled`, never the stored 200. Session routes and pages are unaffected.
 - **MCP:** `apps/web/src/app/api/v1/mcp/route.ts` passes the reader into `AgentCall` as `exposure` (a new optional field in `apps/web/src/api-v1/agent.ts`; absent means all enabled). `dispatch.ts` hides disabled tools from `tools/list` and refuses them in `tools/call` with a tool result `{isError: true}` whose text code is `api_disabled` (the dispatch convention, F14). When `mcp` is off, `withRoute` already refuses the route with 403 `api_disabled`.
 
 **CTL.6, routes.**
+
 - `POST /api/ops/api-exposure/[group]/off` is `fail_safe_without_mfa: true`, with a reason code. Its handler writes `enabled = false` as a literal.
 - `POST /api/ops/api-exposure/[group]/on` needs MFA and a reason code.
 - Both are `auth: 'operator'`, `csrf: true`, `idempotent: true`, `risk: 'high'`, `rate` 10 per minute per actor. `[group]` is URL-decoded (`mcp%3Abuy_unit`) and checked against `API_GROUPS`; unknown gives 404.
@@ -78,6 +83,7 @@ The golden asserts no line or copy string contains `UMS_PAYPAL_CONNECT=on`, `--u
 ## Outputs (only these files)
 
 New:
+
 - `packages/db/migrations/common/00NN_api_exposure.sql`
 - `packages/contracts/src/{api-exposure,cloud-status}.ts`
 - `packages/security/src/exposure.ts`
@@ -87,6 +93,7 @@ New:
 - the tests below
 
 Changed:
+
 - `apps/web/src/app/ops/controls/page.tsx` (UI0's page; panels added)
 - `packages/security/src/route.ts` (the exposure check at the stated position; the fail-safe check reads the inventory constant), `packages/security/src/inventory.ts` (the three paths), `packages/security/src/index.ts`
 - `packages/security/src/route.failsafe.adversarial.test.ts` and `scripts/route-inventory.failsafe.test.ts`: renamed and extended from "stop only" to "these three only" (C6: the rule widens by decision row; every old case stays)
@@ -102,16 +109,16 @@ The decision row states the trade-off: an operator session without the authentic
 
 ## Acceptance tests (commit 1: tests only, run red)
 
-| Item | Test file | Command | Expected |
-|---|---|---|---|
-| CTL.1 | `apps/web/src/gateway-view.golden.test.ts` | `corepack pnpm vitest run apps/web/src/gateway-view.golden.test.ts` | Each lock and each `BLOCKED_BY` value maps to the table's sentence and owner action; no string holds `UMS_PAYPAL_CONNECT=on`, `--update-env-vars` or an approval ref; the panel source has no form posting to approvals, env or start |
-| CTL.2 | `apps/web/src/services-view.state.test.ts`, `apps/web/src/services-paste.adversarial.test.ts` | `corepack pnpm vitest run apps/web/src/services-view.state.test.ts apps/web/src/services-paste.adversarial.test.ts` | CL1's fixture renders five cards; the commands equal the seven `cloud:*` scripts in `package.json`; links start with `https://console.cloud.google.com/`. Refused with a plain message: `<script>`, extra fields, a bad enum, over 16 KB, and a project of `javascript:alert(1)`, one holding `"` or `/`, one holding `?`. `ServicesPanel.tsx` and `services-view.ts` hold no `dangerouslySetInnerHTML`, `innerHTML`, `fetch(` or `method: 'POST'` |
-| CTL.3 | `apps/web/src/ops-switches.adversarial.test.ts` | `corepack pnpm vitest run apps/web/src/ops-switches.adversarial.test.ts` | Off without MFA works and is journaled with channel `web`; off without a reason code gives 400; on without MFA gives 403; on without a reason code gives 400; `on` for `paypal_outbound` or `agent_buy_enabled` gives 409; unknown name 404; buyer, seller and bearer callers are refused; missing CSRF gives 403; a replay returns the stored answer |
-| CTL.3, CTL.6 fail-safe | `packages/security/src/route.failsafe.adversarial.test.ts`, `scripts/route-inventory.failsafe.test.ts` | `corepack pnpm vitest run packages/security/src/route.failsafe.adversarial.test.ts scripts/route-inventory.failsafe.test.ts` | The flag is accepted on exactly the three paths; on either `…/on` path or any other path it throws at build time and `check:routes` reports it; the off handlers' source passes only literal `false` |
-| CTL.4 | `packages/contracts/src/api-exposure.golden.test.ts`, `packages/db/src/migration-api-exposure.state.test.ts` | `corepack pnpm vitest run packages/contracts/src/api-exposure.golden.test.ts packages/db/src/migration-api-exposure.state.test.ts` | Every apikey route in the route inventory maps to exactly one group; `api-keys` and `status` map to none; the table is seeded on with epoch times; DELETE and TRUNCATE raise; after migrate INV-T2 is empty and `trace:verify` exits 0; a change writes one journal event; export then import into a fresh database succeeds and keeps the exposure rows |
-| CTL.5 | `packages/security/src/exposure.adversarial.test.ts`, `apps/web/src/app/api/v1/mcp/exposure.state.test.ts`, `apps/web/src/exposure-wiring.state.test.ts` | `corepack pnpm vitest run packages/security/src/exposure.adversarial.test.ts apps/web/src/app/api/v1/mcp/exposure.state.test.ts apps/web/src/exposure-wiring.state.test.ts` | With `orders` disabled: bearer `GET /api/v1/orders` gives 403 `api_disabled`; with no key it gives 401 `unauthenticated`; a replayed `Idempotency-Key` gives 403 `api_disabled`; the buyer session `GET /api/library` and `POST /api/orders` still work; `mcp:buy_unit` still works. A disabled tool is absent from `tools/list` and refused in `tools/call` with `isError`; `mcp` off refuses the route. The MCP entries of `API_GROUPS` equal `TOOL_NAMES`. The cache serves the old value under 5 s and the new one after (injected clock). A read failure answers 403 for apikey routes only. The app's `securityDeps.exposure` is defined |
-| CTL.6, CTL.7 | `apps/web/src/ops-exposure.adversarial.test.ts`, `apps/web/src/exposure-view.state.test.ts` | `corepack pnpm vitest run apps/web/src/ops-exposure.adversarial.test.ts apps/web/src/exposure-view.state.test.ts` | Off without MFA works; on needs MFA and a reason code; `mcp%3Abuy_unit` decodes and works; an unknown group gives 404; CSRF and replay as CTL.3. The screen shows `changed_by` only with MFA; the row equals the newest journal event |
-| a11y | `apps/web/src/flow-a11y.state.test.ts` | `corepack pnpm vitest run apps/web/src/flow-a11y.state.test.ts` | The text-read check passes for `/ops/controls` and `/ops/agents/exposure` |
+| Item                   | Test file                                                                                                                                                | Command                                                                                                                                                                     | Expected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CTL.1                  | `apps/web/src/gateway-view.golden.test.ts`                                                                                                               | `corepack pnpm vitest run apps/web/src/gateway-view.golden.test.ts`                                                                                                         | Each lock and each `BLOCKED_BY` value maps to the table's sentence and owner action; no string holds `UMS_PAYPAL_CONNECT=on`, `--update-env-vars` or an approval ref; the panel source has no form posting to approvals, env or start                                                                                                                                                                                                                                                                                                                                                                                                          |
+| CTL.2                  | `apps/web/src/services-view.state.test.ts`, `apps/web/src/services-paste.adversarial.test.ts`                                                            | `corepack pnpm vitest run apps/web/src/services-view.state.test.ts apps/web/src/services-paste.adversarial.test.ts`                                                         | CL1's fixture renders five cards; the commands equal the seven `cloud:*` scripts in `package.json`; links start with `https://console.cloud.google.com/`. Refused with a plain message: `<script>`, extra fields, a bad enum, over 16 KB, and a project of `javascript:alert(1)`, one holding `"` or `/`, one holding `?`. `ServicesPanel.tsx` and `services-view.ts` hold no `dangerouslySetInnerHTML`, `innerHTML`, `fetch(` or `method: 'POST'`                                                                                                                                                                                             |
+| CTL.3                  | `apps/web/src/ops-switches.adversarial.test.ts`                                                                                                          | `corepack pnpm vitest run apps/web/src/ops-switches.adversarial.test.ts`                                                                                                    | Off without MFA works and is journaled with channel `web`; off without a reason code gives 400; on without MFA gives 403; on without a reason code gives 400; `on` for `paypal_outbound` or `agent_buy_enabled` gives 409; unknown name 404; buyer, seller and bearer callers are refused; missing CSRF gives 403; a replay returns the stored answer                                                                                                                                                                                                                                                                                          |
+| CTL.3, CTL.6 fail-safe | `packages/security/src/route.failsafe.adversarial.test.ts`, `scripts/route-inventory.failsafe.test.ts`                                                   | `corepack pnpm vitest run packages/security/src/route.failsafe.adversarial.test.ts scripts/route-inventory.failsafe.test.ts`                                                | The flag is accepted on exactly the three paths; on either `…/on` path or any other path it throws at build time and `check:routes` reports it; the off handlers' source passes only literal `false`                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| CTL.4                  | `packages/contracts/src/api-exposure.golden.test.ts`, `packages/db/src/migration-api-exposure.state.test.ts`                                             | `corepack pnpm vitest run packages/contracts/src/api-exposure.golden.test.ts packages/db/src/migration-api-exposure.state.test.ts`                                          | Every apikey route in the route inventory maps to exactly one group; `api-keys` and `status` map to none; the table is seeded on with epoch times; DELETE and TRUNCATE raise; after migrate INV-T2 is empty and `trace:verify` exits 0; a change writes one journal event; export then import into a fresh database succeeds and keeps the exposure rows                                                                                                                                                                                                                                                                                       |
+| CTL.5                  | `packages/security/src/exposure.adversarial.test.ts`, `apps/web/src/app/api/v1/mcp/exposure.state.test.ts`, `apps/web/src/exposure-wiring.state.test.ts` | `corepack pnpm vitest run packages/security/src/exposure.adversarial.test.ts apps/web/src/app/api/v1/mcp/exposure.state.test.ts apps/web/src/exposure-wiring.state.test.ts` | With `orders` disabled: bearer `GET /api/v1/orders` gives 403 `api_disabled`; with no key it gives 401 `unauthenticated`; a replayed `Idempotency-Key` gives 403 `api_disabled`; the buyer session `GET /api/library` and `POST /api/orders` still work; `mcp:buy_unit` still works. A disabled tool is absent from `tools/list` and refused in `tools/call` with `isError`; `mcp` off refuses the route. The MCP entries of `API_GROUPS` equal `TOOL_NAMES`. The cache serves the old value under 5 s and the new one after (injected clock). A read failure answers 403 for apikey routes only. The app's `securityDeps.exposure` is defined |
+| CTL.6, CTL.7           | `apps/web/src/ops-exposure.adversarial.test.ts`, `apps/web/src/exposure-view.state.test.ts`                                                              | `corepack pnpm vitest run apps/web/src/ops-exposure.adversarial.test.ts apps/web/src/exposure-view.state.test.ts`                                                           | Off without MFA works; on needs MFA and a reason code; `mcp%3Abuy_unit` decodes and works; an unknown group gives 404; CSRF and replay as CTL.3. The screen shows `changed_by` only with MFA; the row equals the newest journal event                                                                                                                                                                                                                                                                                                                                                                                                          |
+| a11y                   | `apps/web/src/flow-a11y.state.test.ts`                                                                                                                   | `corepack pnpm vitest run apps/web/src/flow-a11y.state.test.ts`                                                                                                             | The text-read check passes for `/ops/controls` and `/ops/agents/exposure`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 Mutation (CTL.2, CTL.3 and CTL.5 are L): `pnpm mutation --require-targets --targets packages/security/src/exposure.ts,apps/web/src/lib/services-view.ts,apps/web/src/app/api/ops/switches/[name]/on/route.ts,apps/web/src/app/api/v1/mcp/dispatch.ts --test-cmd "corepack pnpm vitest run packages/security/src/exposure.adversarial.test.ts apps/web/src/services-paste.adversarial.test.ts apps/web/src/ops-switches.adversarial.test.ts apps/web/src/app/api/v1/mcp/exposure.state.test.ts" --threshold 80`. C4 to C7 apply. The `route.ts` change is also covered by the existing route-wrapper suites, which must stay green.
 

@@ -7,12 +7,14 @@ Items: cloud plan items 1 to 11, 21 points. Decision V4, plus a decision-log row
 ## Goal
 
 `infra/gcp/cloud.sh` has seven verbs: `doctor`, `status [--json]`, `up`, `down`, `restart`, `deploy <tag>` and `logs`.
+
 - All names come from `infra/gcp/stack.env`, which is parsed as strict `KEY=value` lines and never `source`d.
 - Every verb is idempotent and takes `--dry-run`, which makes only `describe` and `list` calls.
 - Exit codes: 0 ok, 1 failed, 2 refused, 64 usage. With no terminal, every prompt refuses with exit 2.
 - **No verb sets `UMS_PAYPAL_CONNECT` on.**
 
 `down`:
+
 - Its first mutating call sets `UMS_PAYPAL_CONNECT=off`.
 - It asks for the typed service name unless `--yes` is given.
 - It warns when the newest backup is older than 24 hours.
@@ -21,6 +23,7 @@ Items: cloud plan items 1 to 11, 21 points. Decision V4, plus a decision-log row
 `up` restores the running pair `--min-instances=1 --max-instances=1`, `--no-cpu-throttling`, ingress `all` and SQL `ALWAYS`.
 
 `deploy`:
+
 - It needs a backup at most 24 hours old, unless `--accept-old-backup` is given.
 - It refuses a dirty tree.
 - It never creates or moves a git tag, and never fetches or checks out. HEAD must already be exactly at `<tag>` (`git describe --exact-match --tags HEAD`), or it exits 2.
@@ -34,24 +37,55 @@ A runbook of at most 60 lines replaces the copy-paste guide. Agents run the kit 
 ## Status route (F11)
 
 There is no new `/api/health`. `GET /api/v1/status` (public, in OpenAPI) answers 200 `{ok: true, environment, revision, db, maintenance?}`.
+
 - `revision` is the Cloud Run `K_REVISION` value read by `packages/config`, or `null` off Cloud Run.
 - `db` is `"up"`, or `"closed"` in maintenance mode; `maintenance: true` is kept as today.
 - An unhealthy app still answers 503 `unhealthy`.
 - No switch, flag or approval detail is added.
-`up`, `deploy` and CTL.2 probe this route. `/healthz` is unchanged.
+  `up`, `deploy` and CTL.2 probe this route. `/healthz` is unchanged.
 
 ## `status --json` shape (F4)
 
 The shape is the one agreed in cloud plan 3.1 and used by CTL.2, with one field changed (R2-4). It is pinned in `scripts/__fixtures__/cloud-status.json`, which CTL.2 reads too:
 
 ```json
-{"checked_at": "...", "project": "...", "services": [
-  {"name": "web", "state": "up", "revision": "...", "url": "...", "last_changed_at": "...", "last_error": null},
-  {"name": "job_loop", "state": "up", "runs_in": "web", "last_changed_at": "...", "last_error": null},
-  {"name": "database", "state": "up", "tier": "...", "newest_backup_at": "...", "last_changed_at": "...", "last_error": null},
-  {"name": "offline_judge", "state": "absent", "last_error": null},
-  {"name": "paypal_gateway", "state": "off", "flag": "off", "approval_ref_set": true, "last_changed_at": "..."}
-]}
+{
+  "checked_at": "...",
+  "project": "...",
+  "services": [
+    {
+      "name": "web",
+      "state": "up",
+      "revision": "...",
+      "url": "...",
+      "last_changed_at": "...",
+      "last_error": null
+    },
+    {
+      "name": "job_loop",
+      "state": "up",
+      "runs_in": "web",
+      "last_changed_at": "...",
+      "last_error": null
+    },
+    {
+      "name": "database",
+      "state": "up",
+      "tier": "...",
+      "newest_backup_at": "...",
+      "last_changed_at": "...",
+      "last_error": null
+    },
+    { "name": "offline_judge", "state": "absent", "last_error": null },
+    {
+      "name": "paypal_gateway",
+      "state": "off",
+      "flag": "off",
+      "approval_ref_set": true,
+      "last_changed_at": "..."
+    }
+  ]
+}
 ```
 
 - `state` is one of `up`, `down`, `starting`, `stopping`, `error` and `absent`; `paypal_gateway.state` is `on` or `off`, the Cloud Run flag only.
@@ -61,29 +95,31 @@ The shape is the one agreed in cloud plan 3.1 and used by CTL.2, with one field 
 
 ## Guard changes (F1, F2, F3), each with a red fixture
 
-| Rule (`check-hosting-gcp.mjs`) | Change |
-|---|---|
-| `kit-files` (155-158) | `KIT` gains `cloud.sh`, `stack.env`, `lib/cloud-lib.sh`; the guard reads that one subfolder; every per-file rule (bytes, strict-mode, account-guard, live-value and the rest) applies to them |
-| `env-flags` (300) | allows exactly `--update-env-vars=UMS_PAYPAL_CONNECT=off` in `lib/cloud-lib.sh` only. Must fail: `...=on`, `UMS_MODE=x`, `UMS_PAYPAL_CONNECT=off,UMS_MODE=x`, `--remove-env-vars=UMS_PAYPAL_CONNECT`, `--clear-env-vars`, `UMS_PAYPAL_CONNECT=${ON}`, the flag split over a line continuation |
-| `min-instances`, `max-instances` (262-263) | min `0` or `1` and max `1`, in `lib/cloud-lib.sh` only. Must fail: `--min-instances=2`, `--max-instances=2` |
-| `cpu-throttling` (272) | `--no-cpu-throttling` also allowed in `lib/cloud-lib.sh` |
-| `scaling` (267) | unchanged: `--scaling` stays barred |
-| `literal-project` (478) | unchanged: doctor prints the config lines and does not run them |
-| new `no-delete` | `\bdelete\b` in any statement that runs `gcloud`, `gsutil`, `rm` or `git` fails. Echo text is not a statement, so `monitoring.sh:132` passes. Must fail: `gcloud run services "$VERB"` with `VERB=delete` set in the file |
-| `sql-protection` (362) | kept: `--no-deletion-protection` stays barred |
-| `paypal-connect` (220-226) | kept, with no exception for any helper; a gateway lane adds its own under its own decision |
+| Rule (`check-hosting-gcp.mjs`)             | Change                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kit-files` (155-158)                      | `KIT` gains `cloud.sh`, `stack.env`, `lib/cloud-lib.sh`; the guard reads that one subfolder; every per-file rule (bytes, strict-mode, account-guard, live-value and the rest) applies to them                                                                                                 |
+| `env-flags` (300)                          | allows exactly `--update-env-vars=UMS_PAYPAL_CONNECT=off` in `lib/cloud-lib.sh` only. Must fail: `...=on`, `UMS_MODE=x`, `UMS_PAYPAL_CONNECT=off,UMS_MODE=x`, `--remove-env-vars=UMS_PAYPAL_CONNECT`, `--clear-env-vars`, `UMS_PAYPAL_CONNECT=${ON}`, the flag split over a line continuation |
+| `min-instances`, `max-instances` (262-263) | min `0` or `1` and max `1`, in `lib/cloud-lib.sh` only. Must fail: `--min-instances=2`, `--max-instances=2`                                                                                                                                                                                   |
+| `cpu-throttling` (272)                     | `--no-cpu-throttling` also allowed in `lib/cloud-lib.sh`                                                                                                                                                                                                                                      |
+| `scaling` (267)                            | unchanged: `--scaling` stays barred                                                                                                                                                                                                                                                           |
+| `literal-project` (478)                    | unchanged: doctor prints the config lines and does not run them                                                                                                                                                                                                                               |
+| new `no-delete`                            | `\bdelete\b` in any statement that runs `gcloud`, `gsutil`, `rm` or `git` fails. Echo text is not a statement, so `monitoring.sh:132` passes. Must fail: `gcloud run services "$VERB"` with `VERB=delete` set in the file                                                                     |
+| `sql-protection` (362)                     | kept: `--no-deletion-protection` stays barred                                                                                                                                                                                                                                                 |
+| `paypal-connect` (220-226)                 | kept, with no exception for any helper; a gateway lane adds its own under its own decision                                                                                                                                                                                                    |
 
 Builder trap: `live-value` fails any kit line containing the word "live" (for example "the live URL"), so the kit must avoid that word.
 
 ## Outputs (only these files)
 
 New:
+
 - `infra/gcp/cloud.sh`, `infra/gcp/stack.env`, `infra/gcp/lib/cloud-lib.sh`
 - `docs/owner/CLOUD-RUNBOOK.md`
 - `scripts/__fixtures__/cloud-status.json`
 - the tests below
 
 Changed:
+
 - `scripts/check-hosting-gcp.mjs`, `scripts/check-hosting-gcp.test.ts`
 - `packages/config/src/load.ts` and `packages/config/src/schema.ts` (`revision` from `K_REVISION`; `K_REVISION` added to `ENV_NAMES`, R2-3)
 - `.env.example` (`K_REVISION=` name only; `ENV_NAMES` must equal it exactly, `schema.ts:85`)
@@ -101,22 +137,23 @@ Changed:
 
 All kit tests put a fake `gcloud` on PATH that logs each call and exits 97 on any call the case does not expect (the `deploy-kit-stub.integration.test.ts` pattern). No test reaches the network.
 
-| Item | Test file | Command | Expected |
-|---|---|---|---|
-| 1 lib | `scripts/cloud-kit.integration.test.ts` | `corepack pnpm vitest run scripts/cloud-kit.integration.test.ts` | Exit codes 0, 1, 2 and 64; usage error gives 64; `--dry-run` makes only describe and list calls |
-| 2 doctor | same file | same | No active account: exit 2, the two config lines printed, no `config set` call; an old backup prints a warning; an origin mismatch is reported |
-| 3 status | same file, `scripts/cloud-status.contract.test.ts` | same, and `corepack pnpm vitest run scripts/cloud-status.contract.test.ts` | `--json` equals the fixture shape, with five services, `state` in the enum, and no `secrets versions access` call; exit 1 when a part is down |
-| 4 up | same file | same | Calls in order: SQL `ALWAYS`, wait `RUNNABLE`, run update with min 1, max 1, no throttling, ingress all, then the health probe; a second `up` prints "already up", exit 0; a missing service gives exit 2 "run cloud deploy" |
-| 5 down | same file | same | The flag-off update is the first mutating call; with no terminal and no `--yes`, exit 2; no call contains `delete`; a backup older than 24 hours warns |
-| 6 restart | same file | same | Exactly one update, with a `restarted-at` label; image and env unchanged |
-| 7 deploy | same file | same | No backup in 24 hours: exit 2 unless `--accept-old-backup`; a dirty tree gives exit 2; a bad tag gives 64; no `git tag` or `git push`; prints the paste-back block |
-| 8 logs | same file | same | `--lines` bounded (default 100, max 1,000); no request bodies printed |
-| 9 status route | `apps/web/src/v1-status.contract.test.ts` | `corepack pnpm vitest run apps/web/src/v1-status.contract.test.ts` | 200 body has exactly `ok, environment, revision, db` (+ `maintenance` in maintenance mode, `db: "closed"`); unhealthy gives 503; matches OpenAPI; `pnpm check:openapi` and `pnpm check:routes` pass |
-| 10 guard | `scripts/check-hosting-gcp.test.ts` | `corepack pnpm vitest run scripts/check-hosting-gcp.test.ts` | Every red fixture in the guard table fails and the real kit passes; the `cloud:*` scripts map one to one to the seven verbs (no `cloud:on`); `stack.env` equals the literals in the four reviewed scripts |
-| 11 runbook | `scripts/cloud-runbook.golden.test.ts` | `corepack pnpm vitest run scripts/cloud-runbook.golden.test.ts` | `CLOUD-RUNBOOK.md` is at most 60 lines; every `corepack pnpm cloud:<verb>` in it exists in `package.json` |
-| L items 5, 10 | `scripts/cloud-kit.adversarial.test.ts` | `corepack pnpm vitest run scripts/cloud-kit.adversarial.test.ts` | See below |
+| Item           | Test file                                          | Command                                                                    | Expected                                                                                                                                                                                                                     |
+| -------------- | -------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 lib          | `scripts/cloud-kit.integration.test.ts`            | `corepack pnpm vitest run scripts/cloud-kit.integration.test.ts`           | Exit codes 0, 1, 2 and 64; usage error gives 64; `--dry-run` makes only describe and list calls                                                                                                                              |
+| 2 doctor       | same file                                          | same                                                                       | No active account: exit 2, the two config lines printed, no `config set` call; an old backup prints a warning; an origin mismatch is reported                                                                                |
+| 3 status       | same file, `scripts/cloud-status.contract.test.ts` | same, and `corepack pnpm vitest run scripts/cloud-status.contract.test.ts` | `--json` equals the fixture shape, with five services, `state` in the enum, and no `secrets versions access` call; exit 1 when a part is down                                                                                |
+| 4 up           | same file                                          | same                                                                       | Calls in order: SQL `ALWAYS`, wait `RUNNABLE`, run update with min 1, max 1, no throttling, ingress all, then the health probe; a second `up` prints "already up", exit 0; a missing service gives exit 2 "run cloud deploy" |
+| 5 down         | same file                                          | same                                                                       | The flag-off update is the first mutating call; with no terminal and no `--yes`, exit 2; no call contains `delete`; a backup older than 24 hours warns                                                                       |
+| 6 restart      | same file                                          | same                                                                       | Exactly one update, with a `restarted-at` label; image and env unchanged                                                                                                                                                     |
+| 7 deploy       | same file                                          | same                                                                       | No backup in 24 hours: exit 2 unless `--accept-old-backup`; a dirty tree gives exit 2; a bad tag gives 64; no `git tag` or `git push`; prints the paste-back block                                                           |
+| 8 logs         | same file                                          | same                                                                       | `--lines` bounded (default 100, max 1,000); no request bodies printed                                                                                                                                                        |
+| 9 status route | `apps/web/src/v1-status.contract.test.ts`          | `corepack pnpm vitest run apps/web/src/v1-status.contract.test.ts`         | 200 body has exactly `ok, environment, revision, db` (+ `maintenance` in maintenance mode, `db: "closed"`); unhealthy gives 503; matches OpenAPI; `pnpm check:openapi` and `pnpm check:routes` pass                          |
+| 10 guard       | `scripts/check-hosting-gcp.test.ts`                | `corepack pnpm vitest run scripts/check-hosting-gcp.test.ts`               | Every red fixture in the guard table fails and the real kit passes; the `cloud:*` scripts map one to one to the seven verbs (no `cloud:on`); `stack.env` equals the literals in the four reviewed scripts                    |
+| 11 runbook     | `scripts/cloud-runbook.golden.test.ts`             | `corepack pnpm vitest run scripts/cloud-runbook.golden.test.ts`            | `CLOUD-RUNBOOK.md` is at most 60 lines; every `corepack pnpm cloud:<verb>` in it exists in `package.json`                                                                                                                    |
+| L items 5, 10  | `scripts/cloud-kit.adversarial.test.ts`            | `corepack pnpm vitest run scripts/cloud-kit.adversarial.test.ts`           | See below                                                                                                                                                                                                                    |
 
 `cloud-kit.adversarial.test.ts` (F8):
+
 - `stack.env` with `SERVICE='x;touch pwn'`, `$(...)` or backticks gives exit 2, no `gcloud` call and no file created.
 - A project or region failing the `deploy.sh` regexes gives exit 2.
 - When `down`'s flag-off update fails: exit 1, with no SQL or Run call after it.

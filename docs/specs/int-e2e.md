@@ -30,28 +30,29 @@ One test drives the dry-run app through the route handlers and the web compositi
 
 **Expected journal table (F5).** One marker event per step, found in the named view. "Exactly once" counts the marker in that view. The test's expected table equals this table; it is never copied from a first run.
 
-| Step | View | Marker (source table, change) | actor_kind | channel | mfa |
-|---|---|---|---|---|---|
-| 1 | buyer timeline of P1 | `orders` insert | buyer | web | false |
-| 1 | buyer timeline of P1 | `order_units` to `captured_verified` (×2) | buyer | web | false |
-| 2 | `/api/ops/activity` chain `key:<id>` | `api_keys` insert | buyer | web | false |
-| 3 | `/api/ops/activity` chain `plat` | `safety_switches` `agent_buy_enabled` on | operator | web | true |
-| 4 | `/api/ops/activity` chain `mdt:<id>` | `mandates` insert | buyer | web | false |
-| 5 | operator MFA timeline of A1, A2, A3 | `orders` insert (on_behalf_of buyer, mandate_id set) | agent | mcp | false |
-| 6 | buyer timeline of A1 | `access_events` insert | buyer | web | false |
-| 7 | operator MFA timeline of P1 | `refund_requests` insert | operator | web | true |
-| 7 | operator MFA timeline of P1 | `refund_requests` to `completed` | operator | web | true |
-| 8 | operator MFA timeline of P2 | `alerts` insert `payment_unresolved` | system | job | false |
-| 8 | `/api/ops/activity` chain of P2 | `alert_events` `acknowledged` | operator | web | true |
-| 8 | `/api/ops/activity` chain of P2 | `alert_events` `auto_resolved` | system | job | false |
-| 9 | operator MFA timelines of the six orders | `orders` insert (×6) | agent | mcp | false |
-| 9 | `/api/ops/activity` chain `plat` | `alerts` insert `mandate_near_cap` | system | job | false |
-| 10 | `/api/ops/activity` chain `mdt:<id>` | `mandates` `exhausted_at` set | agent | mcp | false |
-| 10 | `/api/ops/activity` chain `plat` | `alert_events` `auto_resolved` | system | job | false |
-| 11 | none | no new `orders` or `mandate_reservations` row; event count unchanged | | | |
-| 12 | `/api/ops/activity` | `api_keys` insert (×2) | operator; publisher | web | true; false |
+| Step | View                                     | Marker (source table, change)                                        | actor_kind          | channel | mfa         |
+| ---- | ---------------------------------------- | -------------------------------------------------------------------- | ------------------- | ------- | ----------- |
+| 1    | buyer timeline of P1                     | `orders` insert                                                      | buyer               | web     | false       |
+| 1    | buyer timeline of P1                     | `order_units` to `captured_verified` (×2)                            | buyer               | web     | false       |
+| 2    | `/api/ops/activity` chain `key:<id>`     | `api_keys` insert                                                    | buyer               | web     | false       |
+| 3    | `/api/ops/activity` chain `plat`         | `safety_switches` `agent_buy_enabled` on                             | operator            | web     | true        |
+| 4    | `/api/ops/activity` chain `mdt:<id>`     | `mandates` insert                                                    | buyer               | web     | false       |
+| 5    | operator MFA timeline of A1, A2, A3      | `orders` insert (on_behalf_of buyer, mandate_id set)                 | agent               | mcp     | false       |
+| 6    | buyer timeline of A1                     | `access_events` insert                                               | buyer               | web     | false       |
+| 7    | operator MFA timeline of P1              | `refund_requests` insert                                             | operator            | web     | true        |
+| 7    | operator MFA timeline of P1              | `refund_requests` to `completed`                                     | operator            | web     | true        |
+| 8    | operator MFA timeline of P2              | `alerts` insert `payment_unresolved`                                 | system              | job     | false       |
+| 8    | `/api/ops/activity` chain of P2          | `alert_events` `acknowledged`                                        | operator            | web     | true        |
+| 8    | `/api/ops/activity` chain of P2          | `alert_events` `auto_resolved`                                       | system              | job     | false       |
+| 9    | operator MFA timelines of the six orders | `orders` insert (×6)                                                 | agent               | mcp     | false       |
+| 9    | `/api/ops/activity` chain `plat`         | `alerts` insert `mandate_near_cap`                                   | system              | job     | false       |
+| 10   | `/api/ops/activity` chain `mdt:<id>`     | `mandates` `exhausted_at` set                                        | agent               | mcp     | false       |
+| 10   | `/api/ops/activity` chain `plat`         | `alert_events` `auto_resolved`                                       | system              | job     | false       |
+| 11   | none                                     | no new `orders` or `mandate_reservations` row; event count unchanged |                     |         |             |
+| 12   | `/api/ops/activity`                      | `api_keys` insert (×2)                                               | operator; publisher | web     | true; false |
 
 **Checks after the story.**
+
 - The table above holds exactly.
 - **Deep scans (F11).** Canaries: the buyer id, buyer display name, agent key id, `req_id`, `ip_hash`, `ua_family` and the full PayPal ids of every order. None appears in:
   - seller answers: `/api/v1/seller/sales/[unit]/timeline`, `/api/v1/seller/sales/export` (SR1.5), `/api/publisher/sales/export` (SEL.2);
@@ -68,6 +69,7 @@ On the in-memory database only. The test asserts `config.db.kind === 'pglite-mem
 3. `ALTER TABLE trace_events DISABLE TRIGGER USER`, then change one row's `body`. Verify exits 1, and its lines name that row's chain and seq. Restore and re-enable as in step 2.
 
 **`scripts/demo-tamper.mjs` (F9)** replays these steps for the video:
+
 - It reads the target through `loadConfigFromProcess()` and `config.db.kind`, as `scripts/lib/safety-cli-main.mjs` does (S3: no `process.env` in `scripts/**`). Unset `UMS_DB` defaults to `pglite-memory` and is accepted. Any other kind exits 2 with "demo-tamper runs on pglite-memory only", **before any database import**.
 - It boots the dry-run app in-process (`registerTs`, as `scripts/safety-cli.mjs` does) and runs one purchase inside a trace context, so a ledger row exists.
 - It runs the three steps with in-process verify, prints each step in plain words, and ends with exit 0.
@@ -75,12 +77,14 @@ On the in-memory database only. The test asserts `config.db.kind === 'pglite-mem
 ## Outputs (only these files)
 
 New:
+
 - `tests/int/{package.json,tsconfig.json,story.ts,support.ts}` (`package.json` lists `@umsbx/obs`, `@umsbx/payments`, `@umsbx/db`, `@umsbx/config`, `@umsbx/contracts`, `@umsbx/security`)
 - `tests/int/integrated-story.integration.test.ts`, `tests/int/offline.adversarial.test.ts`, `tests/int/tamper.adversarial.test.ts`
 - `scripts/demo-tamper.mjs`, `scripts/demo-tamper.test.ts`
 - `docs/demo/integrated-story.md` (steps and expected screen states)
 
 Changed:
+
 - `eslint.config.mjs`: one exception entry for `tests/int/**/*.ts` with `sbx/no-package-escape` off, worded like the `tests/mvp1-api/**` entry
 - `pnpm-lock.yaml` (workspace package)
 
@@ -90,9 +94,9 @@ No product code.
 
 Commit 1 holds every test file, `story.ts` and `support.ts` (F10). Because every lane is merged first, the story may already pass at commit 1; the expected red comes from `scripts/demo-tamper.test.ts`, since the script is missing. The builder never fakes red in the story.
 
-| Item | Command | Expected |
-|---|---|---|
-| E2E.1 | `corepack pnpm vitest run tests/int/integrated-story.integration.test.ts tests/int/offline.adversarial.test.ts` | Pass. The printed journal table equals the spec table. The deep scans find no canary in the named seller and v1 operator answers. INV-T2 is empty and in-process verify exits 0. The offline record is empty and every `provider_calls.transport_kind` is `dryrun` |
+| Item  | Command                                                                                                                          | Expected                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E2E.1 | `corepack pnpm vitest run tests/int/integrated-story.integration.test.ts tests/int/offline.adversarial.test.ts`                  | Pass. The printed journal table equals the spec table. The deep scans find no canary in the named seller and v1 operator answers. INV-T2 is empty and in-process verify exits 0. The offline record is empty and every `provider_calls.transport_kind` is `dryrun`                                                                                                                                                                                                                     |
 | E2E.2 | `corepack pnpm vitest run tests/int/tamper.adversarial.test.ts scripts/demo-tamper.test.ts`, then `node scripts/demo-tamper.mjs` | The tamper test shows exit 1 with `drift ledger_entries <id> amount_minor`, exit 0 after restore, and exit 1 naming the chain and seq after the body edit. The script test: `UMS_DB=postgres` with `DATABASE_URL` at loopback port 1, and `UMS_DB=pglite-disk` with `UMS_PGLITE_DIR` at a temp path that does not exist, each exit 2 with the refusal line, and the temp path still does not exist afterwards. Unset `UMS_DB` runs. The demo run prints the steps and ends with exit 0 |
 
 This lane is the proof, so mutation does not apply. C4, C5 and C7 apply.
