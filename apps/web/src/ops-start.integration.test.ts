@@ -180,13 +180,18 @@ describe('section tabs (source)', () => {
     };
     walk(OPS_DIR);
     // INT-OPS-B: the list pages hold one section each (a table, or one tile), so jump links would only add noise.
+    // INT-OPS-A: so are the alert, case, order and Problems pages and the Buyers redirect.
     const SINGLE_SECTION = [
       'money/transactions',
       'controls/activity',
       'controls/invariants',
       'agents/exposure',
+      'alerts',
+      'buyers',
+      'money/orders',
+      'money/problems',
     ];
-    expect(found.length).toBe(11);
+    expect(found.length).toBe(18);
     for (const p of found)
       if (!SINGLE_SECTION.some((s) => p.includes(`/ops/${s}/`)))
         expect(readFileSync(p, 'utf8'), p).toContain('<SectionNav');

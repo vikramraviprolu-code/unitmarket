@@ -10,8 +10,13 @@ export {
 } from '../../composition.server';
 export type { ApiV1, ExposureRow } from '../../composition.server';
 export type {
+  AlertDetail,
+  AlertList,
   App,
   ApprovalView,
+  CaseDetail,
+  CaseQueue,
+  NeedsYouRow,
   Engine,
   LibraryEntry,
   OfferPage,

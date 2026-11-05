@@ -139,3 +139,9 @@ export const OPS_EVALS_SECTIONS: OpsSection[] = [
   { id: 'ops-evals-what', label: 'What this shows' },
   { id: 'ops-evals-table', label: 'Cases' },
 ];
+
+// INT-OPS-A / OPS-A.7: the one sentence of a button that cannot work for want of the authenticator code, and the
+// one way a PayPal merchant id is written on an operator page: an ellipsis and its last four, or "none".
+export const OPS_NEEDS_CODE = 'needs your authenticator code';
+export const maskedMerchant = (last4: string | null): string =>
+  last4 === null || last4 === '' ? 'none' : `…${last4.slice(-4)}`;

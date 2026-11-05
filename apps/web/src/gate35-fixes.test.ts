@@ -67,8 +67,11 @@ describe('D4b: an operator without the authenticator code', () => {
     expect(OPS_MFA_BODY).toMatch(/not available/i);
     expect(`${OPS_MFA_HEADING} ${OPS_MFA_BODY}`).not.toMatch(NO_DASH);
     const page = strip(read('./app/ops/payee-requests/page.tsx'));
-    expect(page).toContain('OPS_MFA_HEADING');
-    expect(page).toMatch(/actor\?\.kind === 'operator' && !actor\.mfa/);
+    // INT-OPS-A.7 moved the wall from the page into the writes: the page shows the queue and the
+    // buttons say OPS_NEEDS_CODE instead of a heading.
+    expect(page).not.toContain('OPS_MFA_HEADING');
+    expect(page).not.toMatch(/actor\?\.kind === 'operator' && !actor\.mfa/);
+    expect(strip(read('./app/ops/payee-requests/DecisionForm.tsx'))).toContain('OPS_NEEDS_CODE');
   });
 });
 

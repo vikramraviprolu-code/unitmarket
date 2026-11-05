@@ -110,10 +110,12 @@ describe('what a publisher can see', () => {
     const viewB = (await payeeView(w.db, w.actorB))!;
     expect(viewB.history.map((h) => h.request_id)).not.toContain(idA);
     expect(JSON.stringify(viewB)).not.toContain('ONLYAPUBLIS01');
-    for (const actor of [w.actorA, w.actorB, w.buyer, w.opNoMfa]) {
+    for (const actor of [w.actorA, w.actorB, w.buyer]) {
       const r = await listOpenRequests(w.db, actor);
       expect(r.ok).toBe(false);
     }
+    // INT-OPS-A / OPS-A.7: the queue is a read, so an operator without the code may list it.
+    expect((await listOpenRequests(w.db, w.opNoMfa)).ok).toBe(true);
   });
 });
 

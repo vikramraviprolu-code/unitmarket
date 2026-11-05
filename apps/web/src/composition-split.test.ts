@@ -31,7 +31,6 @@ const MODULES = [
 const PAGES: Record<string, (typeof MODULES)[number]> = {
   'ops/page.tsx': 'ops-home',
   'ops/money/page.tsx': 'ops-money',
-  'ops/buyers/page.tsx': 'ops-buyers',
   'ops/sellers/page.tsx': 'ops-sellers',
   'ops/agents/page.tsx': 'ops-agents',
   'ops/controls/page.tsx': 'ops-controls',
@@ -45,12 +44,13 @@ describe('the eight modules exist', () => {
     const files = readdirSync(join(here, 'composition')).sort();
     expect(files).toEqual(MODULES.map((m) => `${m}.ts`).sort());
   });
-  // INT-CTL (CTL.7) gives ops-agents its first read, the API exposure rows; only ops-buyers is still empty.
-  it('ops-buyers starts empty: no read, no import', () => {
-    for (const m of ['ops-buyers']) {
+  // INT-OPS-A built the Buyers reads and INT-CTL (CTL.7) gives ops-agents its first read, the API exposure rows,
+  // so no module is empty any more: each one exports at least one read.
+  it('no module is empty: each exports at least one read', () => {
+    for (const m of MODULES) {
       const src = strip(read(join(here, 'composition', `${m}.ts`)));
-      expect(importsOf(src), m).toEqual([]);
-      expect(src.replace(/\s+/g, ' ').trim(), m).toBe('export {};');
+      expect(src.replace(/\s+/g, ' ').trim(), m).not.toBe('export {};');
+      expect(src, m).toMatch(/export (async )?(function|const)/);
     }
   });
 });
