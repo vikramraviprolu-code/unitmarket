@@ -108,7 +108,7 @@ $fn$;
 -- changes only when the publisher publishes (a new article and offer, in one transaction per item).
 -- `content_ref` is the key of the hosted copy in content_blobs (text, or the picture itself); for a picture
 -- item `image_ref` is the same key. `price_minor` is the publisher's own price, `source_price_minor` the
--- proposal the source gave (kept as read). A refused item says why and keeps its key, so a re-import skips it.
+-- proposal the source gave (after the price bounds were applied). A refused item says why and keeps its key, so a re-import skips it.
 -- offer_id has no foreign key: offers are keyed by id and version.
 CREATE TABLE import_items (
   id ums_id PRIMARY KEY,

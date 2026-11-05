@@ -128,6 +128,12 @@ function readName(s: string, from: number): { name: string; end: number } {
   return { name: s.slice(from, k).toLowerCase(), end: k };
 }
 
+function isNameEnd(s: string, at: number): boolean {
+  if (at >= s.length) return true;
+  const c = s.charCodeAt(at);
+  return isSpace(c) || c === 47 /* / */ || c === 62; /* > */
+}
+
 const RAW_CLOSERS: Record<string, RegExp> = {
   script: /<\/script/gi,
   style: /<\/style/gi,
@@ -144,7 +150,8 @@ export function scanHtml(html: string, o: ScanOptions): HtmlScan {
   // tag must not close the other kind); a plain array of names does it.
   const stack: string[] = [];
   let inHead = true;
-  let i = 0;
+  // One leading byte order mark is not text (readXml does the same).
+  let i = s.charCodeAt(0) === 0xfeff ? 1 : 0;
   while (i < n) {
     const lt = s.indexOf('<', i);
     const textEnd = lt === -1 ? n : lt;
@@ -198,8 +205,18 @@ export function scanHtml(html: string, o: ScanOptions): HtmlScan {
     if (tag === null) break;
     const raw = RAW_CLOSERS[tag.name];
     if (raw !== undefined) {
+      // A raw text element ends the head when it is not allowed there (a textarea); a title may stay in it.
+      if (stack.length === 0 && inHead && !HEAD_OK.has(tag.name)) {
+        inHead = false;
+        if (o.head_only) break;
+      }
       raw.lastIndex = tag.end;
-      const m = raw.exec(s);
+      let m = raw.exec(s);
+      // The end tag name must stop at white space, a slash or a greater than sign: `</scriptx>` ends nothing.
+      while (m !== null && !isNameEnd(s, m.index + m[0].length)) {
+        raw.lastIndex = m.index + 2;
+        m = raw.exec(s);
+      }
       if (m === null) break;
       const after = afterGt(s, m.index + 2);
       if (after === -1) break;

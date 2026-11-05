@@ -181,6 +181,24 @@ describe('readProofToken: content inside these elements is not markup', () => {
   });
 });
 
+describe('readProofToken: review round fixes', () => {
+  it('a script end tag that only starts with the name does not end the script', () => {
+    const sneaky = `<script>var a = "</scriptx>${meta()}";</script>`;
+    expect(readProofToken(page(sneaky))).toBeNull();
+    expect(readProofToken(page(`<title>a</titlex>${meta()}</title>`))).toBeNull();
+  });
+  it('a real end tag with white space or a slash still ends the script', () => {
+    expect(readProofToken(page(`<script>x</script >${meta()}`))).toBe(T);
+    expect(readProofToken(page(`<script>x</script/>${meta()}`))).toBe(T);
+  });
+  it('a textarea ends the head even without a head end tag', () => {
+    expect(readProofToken(`<html><textarea>x</textarea>${meta()}`)).toBeNull();
+  });
+  it('one leading byte order mark does not fail a real proof', () => {
+    expect(readProofToken(`\ufeff${page(meta())}`)).toBe(T);
+  });
+});
+
 describe('readProofToken: a token has a fixed shape', () => {
   it.each([
     '',
