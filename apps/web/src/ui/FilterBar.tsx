@@ -5,6 +5,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { barState, fieldControls, hrefWith, withField, withoutChip } from '../lib/filter-bar-view';
 import type { BarContext, RawMap } from '../lib/filter-bar-view';
+import { AskBox } from './AskBox';
 import './ops/ops-b.css';
 
 export interface BarPreset {
@@ -17,6 +18,7 @@ export interface BarPreset {
 // INT-OPS-B / OPS-B.1: the shared filter bar. It paints what lib/filter-bar-view.ts returns and decides nothing:
 // which fields exist for the role, how a URL becomes chips, how a chip is removed. State lives in the URL, so a
 // filtered page can be bookmarked and the back button works. BUY and SEL reuse it with their own context.
+// INT-GA: the transaction bar hosts the ask box (plain words to proposed chips; nothing runs until applied).
 export function FilterBar({
   ctx,
   raw,
@@ -69,6 +71,7 @@ export function FilterBar({
           </ul>
         </nav>
       ) : null}
+      {ctx.kind === 'txn' ? <AskBox ctx={ctx} raw={raw} basePath={basePath} /> : null}
       <ul aria-label="Active filters" data-testid="filter-chips">
         {state.chips.length === 0 ? <li className="txn-note">No filters are on.</li> : null}
         {state.chips.map((c) => (
