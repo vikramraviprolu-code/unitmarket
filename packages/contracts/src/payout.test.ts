@@ -69,6 +69,6 @@ describe('payout contract (POB-M1)', () => {
   });
   it('has the pay id prefix', () => {
     expect(IdPrefixSchema.safeParse('pay').success).toBe(true);
-    expect(IdPrefixSchema.options).toHaveLength(35);
+    expect(IdPrefixSchema.options).toHaveLength(36);
   });
 });

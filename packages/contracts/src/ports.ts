@@ -60,6 +60,8 @@ export const IdPrefixSchema = z.enum([
   'wsb',
   'wdl',
   'pas',
+  // INT-AL: alert events.
+  'ale',
   // BR-2: one stored rule setting.
   'rls',
   // POB-M1: one payout to a publisher.
