@@ -160,6 +160,8 @@ describe('INT-SEL pages: labelled landmarks, inputs and tables', () => {
     expect(code('app/publisher/sales/[unit]/page.tsx')).toContain('saleView(');
     expect(code('app/publisher/page.tsx')).toContain('homeView(');
     expect(code('ui/seller/OfferPerformance.tsx')).toMatch(/<caption/);
+  });
+});
 
 // INT-OPS-A: the new operator pages and parts each have one level one heading, named landmarks and no bare inputs.
 describe('INT-OPS-A pages: named landmarks and headings', () => {
