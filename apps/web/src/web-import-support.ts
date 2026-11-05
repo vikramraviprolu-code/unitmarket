@@ -123,14 +123,12 @@ export interface ImportWebWorld {
   get: (query: string, session: Session | null) => Promise<Response>;
 }
 
-export async function bootImportWorld(
-  o: {
-    /** The scripted web, or null for the feature off. Required: the fixtures are read by the test. */
-    web: FakeWeb | null;
-    fee?: (m: number, c: string) => number;
-    env?: Record<string, string>;
-  } = {},
-): Promise<ImportWebWorld> {
+export async function bootImportWorld(o: {
+  /** The scripted web, or null for the feature off. Required: the fixtures are read by the test. */
+  web: FakeWeb | null;
+  fee?: (m: number, c: string) => number;
+  env?: Record<string, string>;
+}): Promise<ImportWebWorld> {
   const web = o.web === null ? null : o.web;
   const refund = await bootRefundWorld(o.env ?? {}, {
     ...(web === null ? {} : { test_import_fetcher: web }),
