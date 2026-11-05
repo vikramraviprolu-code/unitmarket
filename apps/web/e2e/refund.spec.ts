@@ -47,7 +47,7 @@ function countRefreshes(page: Page): () => number {
     if (
       h['rsc'] === '1' &&
       h['next-router-prefetch'] === undefined &&
-      new URL(r.url()).pathname === '/ops'
+      new URL(r.url()).pathname === '/ops/money'
     )
       n += 1;
   });
@@ -89,7 +89,7 @@ test.describe.serial('refund journey', () => {
     await expectDryRun(buyer);
 
     // 2. The operator sees the refund form (second-factor session) and refunds 0.75.
-    await op.page.goto('/ops');
+    await op.page.goto('/ops/money');
     await expect(op.page.getByTestId('refund-no-mfa')).toHaveCount(0);
     const card = unitCard(op.page, 'What a small harbour charges and why');
     await expect(card).toContainText('$2.50');
@@ -187,7 +187,7 @@ test.describe.serial('refund journey', () => {
       option: 'Download and keep',
     });
     await expect(buyer.getByTestId('order-live')).toContainText('Paid.');
-    await op.page.goto('/ops');
+    await op.page.goto('/ops/money');
     const card = unitCard(op.page, 'A notebook of six working knots');
     const refreshes = countRefreshes(op.page);
     // M1: an answer that is not a clear refusal (a server error) must not say that nothing was refunded.
@@ -295,6 +295,8 @@ test.describe('who sees the refund form', () => {
     await page.getByLabel('Demo passcode').fill(PASSCODE);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page.getByRole('heading', { level: 1, name: /Operations/ })).toBeVisible();
+    // INT-UI0: the refund block moved from /ops to /ops/money.
+    await page.goto('/ops/money');
     await expect(page.getByTestId('refund-no-mfa')).toContainText('authenticator code');
     await expect(page.getByTestId('refund-unit')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^Refund/ })).toHaveCount(0);

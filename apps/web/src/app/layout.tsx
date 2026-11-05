@@ -15,6 +15,8 @@ import { SKIN_COOKIE, skinFromCookie } from '../lib/skin';
 import { LEGAL_NAV } from '../lib/legal-copy';
 import { navItems } from '../lib/nav';
 import { SignOutButton } from '../ui/SignOutButton';
+import { Shell } from '../ui/shell/Shell';
+import { personaForActor } from '../lib/shell-tabs';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +36,18 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       ? actor.kind
       : null,
   );
+  // INT-UI0: a signed in actor gets the shell of their persona; a visitor gets the page as it was.
+  const persona = personaForActor(
+    actor?.kind === 'buyer' || actor?.kind === 'publisher' || actor?.kind === 'operator'
+      ? actor.kind
+      : null,
+  );
   const skin = skinFromCookie((await cookies()).get(SKIN_COOKIE)?.value);
+  const page = (
+    <main id="main" tabIndex={-1}>
+      {children}
+    </main>
+  );
   return (
     <html lang="en" data-skin={skin}>
       <body>
@@ -65,9 +78,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <EnvLabel environment={a.environment} />
           </div>
         </header>
-        <main id="main" tabIndex={-1}>
-          {children}
-        </main>
+        {persona === null ? (
+          page
+        ) : (
+          <Shell persona={persona} environment={a.environment}>
+            {page}
+          </Shell>
+        )}
         <footer className="site-footer">
           <p>{siteFooter(a.environment)}</p>
           <AppearanceControl skin={skin} />

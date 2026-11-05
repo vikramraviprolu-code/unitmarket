@@ -71,6 +71,7 @@ const EXPECTED_EXPORTS: string[] = [
   'PublisherFactsSchema',
   'NoMatchReasonSchema',
   'QuoteSchema',
+  'REFUND_REQUEST_STATES',
   'NoMatchSchema',
   // F3 approval
   'SnapshotItemSchema',

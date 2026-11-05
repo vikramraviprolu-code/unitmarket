@@ -107,7 +107,7 @@ test.describe('judge passcode', () => {
     const nav = page.getByRole('navigation', { name: 'Main' });
     await expect(nav.getByRole('link', { name: 'Find articles' })).toBeVisible();
     await expect(nav.getByRole('link', { name: 'Operations' })).toHaveCount(0);
-    await expect(nav.getByRole('link', { name: 'Publisher' })).toHaveCount(0);
+    await expect(nav.getByRole('link', { name: 'Seller' })).toHaveCount(0);
     // A buyer session is not an operator or publisher one.
     await page.goto('/ops');
     await expect(page).toHaveURL(/\/signin/);

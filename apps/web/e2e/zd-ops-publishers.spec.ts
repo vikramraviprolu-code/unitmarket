@@ -174,7 +174,8 @@ test.describe('operator publishers page (PUB-D)', () => {
     const northfield = o.getByTestId('publisher-row').filter({ hasText: NORTHFIELD });
     await expect(northfield.getByTestId('publisher-row-status')).toHaveText('Active');
     await expect(northfield).toContainText('Account on file ending NT01. Marked as checked.');
-    await expect(o.getByRole('link', { name: 'Payee requests' })).toBeVisible();
+    // INT-UI0: the Sellers section tabs link to it too, so the page's own link is read inside the main region.
+    await expect(o.locator('#main').getByRole('link', { name: 'Payee requests' })).toBeVisible();
   });
 
   test('suspend needs a reason; a suspended publisher sees it; reactivate puts it back', async () => {

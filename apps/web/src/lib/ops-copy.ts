@@ -96,15 +96,29 @@ export const switchNowText = (on: boolean | null): string =>
 // ---- Section tabs ------------------------------------------------------------------------------
 // One list per operator page. Each id is the id of a section element on that page, in page order.
 
+// INT-UI0: Home keeps the kill switch and the alerts, and a stub for each block that moved (lib/shell-moves.ts).
 export const OPS_HOME_SECTIONS: OpsSection[] = [
-  { id: 'ops-switches', label: 'Switches' },
   { id: 'ops-kill', label: 'Kill switch' },
-  { id: 'ops-gate-section', label: 'Approval gate' },
+  { id: 'ops-alerts', label: 'Alerts' },
+  { id: 'ops-moved', label: 'Moved sections' },
+];
+
+export const OPS_MONEY_SECTIONS: OpsSection[] = [
   { id: 'ops-refunds', label: 'Refunds' },
   { id: 'ops-orders', label: 'Orders' },
+  { id: 'ops-totals', label: 'Totals' },
   { id: 'ops-states', label: 'States' },
-  { id: 'ops-alerts', label: 'Alerts' },
   { id: 'ops-invariants', label: 'Invariants' },
+];
+
+export const OPS_SELLERS_SECTIONS: OpsSection[] = [
+  { id: 'ops-sellers-links', label: 'Seller pages' },
+  { id: 'ops-shared-payee', label: 'Shared payee' },
+];
+
+export const OPS_CONTROLS_SECTIONS: OpsSection[] = [
+  { id: 'ops-switches', label: 'Switches' },
+  { id: 'ops-gate-section', label: 'Approval gate' },
 ];
 
 export const OPS_PUBLISHERS_SECTIONS: OpsSection[] = [
