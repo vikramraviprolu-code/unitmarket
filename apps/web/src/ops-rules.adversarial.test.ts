@@ -41,8 +41,15 @@ const ctx: TraceContext = {
   ip_hash: null,
   ua_family: null,
   api_key_id: null,
+  mandate_id: null,
   job: null,
   tool: null,
+};
+const soon = async (): Promise<string> => {
+  const r = await w.app.db.query<{ t: string }>(
+    `SELECT to_char(now() AT TIME ZONE 'UTC' + interval '1 second', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS t`,
+  );
+  return r.rows[0]!.t;
 };
 const exported = async (): Promise<{ filename: string; csv: string; truncated: boolean }> => {
   const res = await call(exportRoute.GET, { url: '/api/ops/rules/export', session: w.op });
@@ -138,7 +145,7 @@ describe('text in a reason', () => {
         scope_kind: 'platform',
         scope_id: null,
         value: 8,
-        effective_from: new Date(Date.now() + 1000).toISOString(),
+        effective_from: await soon(),
         effective_until: null,
         reason: EVIL.slice(0, 120),
       },
@@ -175,7 +182,7 @@ describe('the CSV export', () => {
           scope_kind: 'platform',
           scope_id: null,
           value: 8 + at,
-          effective_from: new Date(Date.now() + 1000).toISOString(),
+          effective_from: await soon(),
           effective_until: null,
           reason: `${lead} formula`,
         },
@@ -270,8 +277,12 @@ describe('no new write path, and the journal stays whole', () => {
     await reads.readExplain(OP, 'ord_nothing_here_0001');
     await exported();
     expect(await count()).toBe(before);
+    // The rig signs its operator sessions in without a web request (createSession), so the three audit rows
+    // `session.create` it writes have no context; every other row, and every row of rule_settings, has one.
     const bare = await w.app.db.query<{ n: number }>(
-      "SELECT count(*)::int AS n FROM trace_events WHERE actor_kind = 'unattributed'",
+      `SELECT count(*)::int AS n FROM trace_events t
+         LEFT JOIN audit_log a ON a.id = t.source_id AND t.source_table = 'audit_log'
+        WHERE t.actor_kind = 'unattributed' AND coalesce(a.action, '') <> 'session.create'`,
     );
     expect(bare.rows[0]!.n).toBe(0);
     const found = await w.app.db.query<{ kind: string }>('SELECT kind FROM trace_verify()');

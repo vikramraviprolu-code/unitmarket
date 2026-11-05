@@ -26,6 +26,6 @@ export type {
   RefundOverview,
   RefundUnitView,
 } from '../../composition.server';
-export { orderMessage, salesTotals } from '../../composition.server';
+export { csvLine, orderMessage, salesTotals } from '../../composition.server';
 // INT-OPS-B: TR0's in-process journal verifier, for traceVerifyDetail in composition/ops-controls.ts.
 export { formatTraceFinding, verifyTrace } from '../../composition.server';

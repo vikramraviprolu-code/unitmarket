@@ -46,7 +46,13 @@ let v1Unit: BoughtUnit;
 let orderId = '';
 let v1OrderId = '';
 
-const when = (offsetMs: number): string => new Date(Date.now() + offsetMs).toISOString();
+// The test has no clock to read (S6); the database's is the one the form and the index use too.
+const when = async (offsetMs: number): Promise<string> => {
+  const r = await w.app.db.query<{ t: string }>(
+    `SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS t`,
+  );
+  return new Date(Date.parse(r.rows[0]!.t) + offsetMs).toISOString();
+};
 const post = (s: Session | null, body: unknown, key: string): Promise<Response> =>
   call(rulesRoute.POST, {
     url: '/api/ops/rules',
@@ -61,9 +67,15 @@ beforeAll(async () => {
   reads = await import('./composition/ops-rules');
   exportRoute = await import('./app/api/ops/rules/export/route');
   rulesRoute = await import('./app/api/ops/rules/route');
-  seller = (await w.app.db.query<{ id: string }>('SELECT id FROM publishers ORDER BY id LIMIT 1'))
-    .rows[0]!.id;
-  buyer = w.actorA.buyer_id;
+  // The publisher of the offers the world sells, so the seller setting applies to the sales below.
+  seller = (
+    await w.app.db.query<{ id: string }>("SELECT id FROM publishers WHERE slug = 'harbour-ledger'")
+  ).rows[0]!.id;
+  buyer = (
+    await w.app.db.query<{ id: string }>(
+      "SELECT id FROM buyers WHERE auth_subject = 'persona:buyer-a'",
+    )
+  ).rows[0]!.id;
   publisher = await (async () => {
     const s = await createSession(w.app.security, { kind: 'publisher', publisher_id: seller });
     return { cookie: s.cookie.split(';')[0] ?? '', csrf: s.csrf_token };
@@ -76,7 +88,7 @@ beforeAll(async () => {
       scope_kind: 'seller',
       scope_id: seller,
       value: 14,
-      effective_from: when(0),
+      effective_from: await when(0),
       effective_until: null,
       reason: 'Longer window for this seller',
     },
@@ -199,7 +211,7 @@ describe('the index: one row per registry key', () => {
             scope_kind: 'platform',
             scope_id: null,
             value: 10,
-            effective_from: when(0),
+            effective_from: await when(0),
             effective_until: null,
             reason: 'Pilot window',
           },
@@ -216,7 +228,7 @@ describe('the index: one row per registry key', () => {
             scope_kind: 'buyer',
             scope_id: buyer,
             value: 3,
-            effective_from: when(0),
+            effective_from: await when(0),
             effective_until: null,
             reason: 'Buyer asked for less',
           },
@@ -365,7 +377,7 @@ describe('the new rule page and form', () => {
         scope_kind: 'platform',
         scope_id: null,
         value: 20,
-        effective_from: when(0),
+        effective_from: await when(0),
         effective_until: null,
         reason: 'No code used',
       },
@@ -374,7 +386,7 @@ describe('the new rule page and form', () => {
     expect(res.status).toBe(403);
     const body = (await res.json()) as { error: { code: string; message: string } };
     expect(body.error.code).toBe('mfa_required');
-    expect(body.error.message).toMatch(/authenticator code/);
+    expect(body.error.message).toMatch(/second factor|authenticator code/);
     expect((await reads.readRulesHistory(OP, {}))!.rows.length).toBe(before);
   });
 
@@ -405,6 +417,13 @@ describe('the explain page', () => {
     expect(refund.source).toContain(seller);
     // not the platform value that was set later
     expect(r.rows[2]).toMatchObject({ value: 90, source: 'Platform default' });
+  });
+
+  it('finds the same order by the order reference the operator pages show', async () => {
+    const byRef = (await reads.readExplain(OP, unit.order_ref))!;
+    const byId = (await reads.readExplain(OP, orderId))!;
+    expect(byRef).toEqual(byId);
+    expect(byRef.kind).toBe('terms');
   });
 
   it('a version 1 order says it was approved before terms were recorded', async () => {
