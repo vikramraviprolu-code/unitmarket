@@ -2,7 +2,7 @@
 
 Task: Give sellers a home, sales they can open, and money and offer pages that answer "how am I doing".
 Package: `apps/web` (seller tabs, one session export route). Builder: Sonnet 5.5 medium. Reviewer: Opus 5.5 gate.
-Items: SEL.1 to SEL.9, 18 points: SEL.1 to SEL.3 "must" (6), SEL.4 to SEL.9 "should" (12). Needs UI0, TR1, SR1 and OPS-B.1 merged. Decision V2 (on-screen name "Seller"). Sources: `/mnt/project-files/operator-ux/seller-console.html` items 2 to 9; UX-13, 14, 24, 25, 26. Includes `int-wave2-conventions.md`. Round 2: fixes F1 to F8 of `sel-scorecard.md`.
+Items: SEL.1 to SEL.9, 18 points: SEL.1 to SEL.3 "must" (6), SEL.4 to SEL.9 "should" (12). Needs UI0, TR1, SR1 and OPS-B.1 merged. Decision V2 (on-screen name "Seller"). Sources: `/mnt/project-files/operator-ux/seller-console.html` items 2 to 9; UX-13, 14, 24, 25, 26. Includes `int-wave2-conventions.md`. Round 2 passed 11/12 (`sel-scorecard.md`); R2-1 and R2-2 are applied in the text; build notes below.
 
 ## Goal
 
@@ -14,7 +14,7 @@ URLs keep `/publisher` (UI0): Home `/publisher`, Offers `/publisher/offers`, Sal
 
 **Money formula (F3).** Net is the statement net from `domain/publisher-console/src/totals.ts`: gross minus refunds minus reversals. The PayPal fee is shown beside the net and is never subtracted. SEL.3, SEL.7 and SEL.8 all use this formula over `ledger_entries`.
 
-**Offer join (F3).** `txn_rows` has no offer, option, fee or net. Per-offer figures join the seller projection of `txn_rows` to `entitlements` (option on `entitlements.option`), then `entitlements.article_id` to `articles` to `offers`, then `ledger_entries` for the unit's money. A unit that holds several articles counts **once toward each offer it holds**; the tile notes "a sale with several articles counts toward each". Its money is split across those offers by the existing statement allocation, so the per-offer nets still sum to the statement net.
+**Offer join (F3).** `txn_rows` has no offer, option, fee or net. Per-offer figures join the seller projection of `txn_rows` to `entitlements` (option on `entitlements.option`), then `entitlements.article_id` to `articles` to `offers`, then `ledger_entries` for the unit's money. A unit that holds several articles counts **once toward each offer it holds**; the tile notes "a sale with several articles counts toward each". Its money is split evenly across the unit's distinct offers in minor units, with the remainder to the lowest offer id, so per-offer nets still sum to the statement net (R2-1). Because `offers` has primary key `(id, version)`, each `(unit, offer id)` pair counts once, never once per version (R2-2).
 
 - **SEL.1, sale detail.** `/publisher/sales/[unit]` comes from the TR1 seller timeline. It shows the units, fee, refund (amount, state and date only), net, and "a person" or "an agent". **No refund reason text** (F1): `refund_requests.reason` is operator free text and can hold buyer identity; a reason code is a later item that needs a migration. It never shows buyer identity (id, name, agent key or context). Another seller's unit gives 404 with the same body as an unknown unit.
 - **SEL.2, Sales.** `/publisher/sales` has All, Pending and Refunds views over SR1's seller list (keyset paging), with the shared filter bar showing seller fields only. CSV comes from `GET /api/publisher/sales/export`: `auth: 'publisher'`, `csrf: false`, `idempotent: false`, `risk: 'medium'`, `max_body_bytes: 1024`, `rate: {name: 'publisher_sales_export', per: 'actor', limit: 10, window_ms: 60_000}` (F6). It uses SR1's seller export read with the projection above. It has no buyer column and no order total.
@@ -61,6 +61,11 @@ No domain or migration change.
 | a11y | `apps/web/src/flow-a11y.state.test.ts` | `corepack pnpm vitest run apps/web/src/flow-a11y.state.test.ts` | The text-read check passes for each changed page |
 
 No L item. SEL.1 is the persona rule, so its adversarial file is required anyway. C4 to C7 apply.
+
+## Build notes (round 2, binding)
+
+- N1: SR0's `SELLER_COLUMNS` also drops `order_total_minor` (now in the SR0 spec); SEL still strips it in `seller.ts`.
+- N2: `seller-fixture.ts` is test-only; no page or route imports it.
 
 ## Do not
 

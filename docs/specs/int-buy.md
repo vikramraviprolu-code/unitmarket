@@ -2,7 +2,7 @@
 
 Task: Give buyers a home, their purchases, their order timeline, and control of their agents' spending caps and API keys.
 Package: `apps/web` (buyer tabs, two session route groups), reusing `domain/mandates` unchanged. Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
-Items: BUY.1 to BUY.10, 23 points: BUY.1 to BUY.5 "must" (11), BUY.6 to BUY.10 "should" (12). Needs UI0, TR1, SR1 and OPS-B.1 (filter bar) merged. Decision V7. Sources: `/mnt/project-files/operator-ux/buyer-home.html` items 1 to 10; UX-04, 05, 10, 11, 12, 19, 22. Includes `int-wave2-conventions.md`. Round 2: fixes F1 to F10 of `buy-scorecard.md`.
+Items: BUY.1 to BUY.10, 23 points: BUY.1 to BUY.5 "must" (11), BUY.6 to BUY.10 "should" (12). Needs UI0, TR1, SR1 and OPS-B.1 (filter bar) merged. Decision V7. Sources: `/mnt/project-files/operator-ux/buyer-home.html` items 1 to 10; UX-04, 05, 10, 11, 12, 19, 22. Includes `int-wave2-conventions.md`. Round 2 passed 12/12 (`buy-scorecard.md`); build notes below. The decision row is D-095 (free as of 5 Nov: main ends at D-093, PR #6 holds D-094).
 
 ## Goal
 
@@ -77,6 +77,13 @@ No domain, contract or migration change.
 | a11y | `apps/web/src/flow-a11y.state.test.ts` | `corepack pnpm vitest run apps/web/src/flow-a11y.state.test.ts` | The text-read check passes for each new page |
 
 Mutation (BUY.1 and BUY.8 are L): `pnpm mutation --require-targets --targets "apps/web/src/app/api/buyer/mandates/route.ts,apps/web/src/app/api/buyer/mandates/[id]/revoke/route.ts,apps/web/src/lib/buyer-agents-view.ts,apps/web/src/lib/buyer-keys-view.ts" --test-cmd "corepack pnpm vitest run apps/web/src/buyer-mandates.adversarial.test.ts apps/web/src/buyer-agents-view.golden.test.ts apps/web/src/buyer-keys.adversarial.test.ts" --threshold 80`. C4 to C7 apply.
+
+## Build notes (round 2, binding)
+
+- N1: the revoke body is an empty `{}`; the cap id comes from the path.
+- N2: the cookie plus bearer case needs TR0 merged (it reads the journal).
+- N3: the concurrent-create race uses two different `Idempotency-Key` values.
+- N4: `/buyer` stays public for anonymous visitors.
 
 ## Do not
 
