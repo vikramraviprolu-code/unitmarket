@@ -25,19 +25,25 @@ const source = (rel: string): string =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
+const AGENT_KEY_ID = 'key_canary_agent_0001';
+const AGENT_BUYER_ID = 'buyer_canary_agent_0001';
+const AGENT_MANDATE_ID = 'mandate_canary_0001';
+
 const ctx: TraceContext = {
   id: 'ctx_ga_explain',
   at: '2026-11-05T10:00:00.000Z',
   channel: 'job',
-  actor_kind: 'system',
-  actor_id: null,
-  on_behalf_of: null,
-  mandate_id: null,
+  // FU-2: the writes that put the order in attention come from an agent key, so the journal rows hold an agent key
+  // id, a buyer it acted for and a mandate id. None of them may reach the model port (see the canary list below).
+  actor_kind: 'agent',
+  actor_id: AGENT_KEY_ID,
+  on_behalf_of: AGENT_BUYER_ID,
+  mandate_id: AGENT_MANDATE_ID,
   mfa: false,
   req_id: null,
   ip_hash: null,
   ua_family: null,
-  api_key_id: null,
+  api_key_id: AGENT_KEY_ID,
   job: 'ga_test',
   tool: null,
 };
@@ -87,7 +93,7 @@ beforeAll(async () => {
     [a.order_id],
   );
   for (const r of ids.rows) if (r.v !== null) secrets.push(r.v);
-  secrets.push(attentionRef, a.order_id);
+  secrets.push(attentionRef, a.order_id, AGENT_KEY_ID, AGENT_BUYER_ID, AGENT_MANDATE_ID);
 });
 afterAll(async () => rig?.app.close());
 
@@ -109,7 +115,7 @@ const read = async (s: Sess, ref: string): Promise<Explained> => {
 
 describe('the port request is the projection only, on an MFA session too', () => {
   it('there are ids, names and amounts that must not leave', () => {
-    expect(secrets.length).toBeGreaterThanOrEqual(6);
+    expect(secrets.length).toBeGreaterThanOrEqual(9);
   });
 
   it.each([

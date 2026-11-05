@@ -9,8 +9,8 @@ import { orderPageView } from '../lib/ops-order-view';
 import type { OrderPageView } from '../lib/ops-order-view';
 import { INVARIANT_IDS, invariantLink, operationLink } from '../lib/ops-invariants-view';
 import { explainPanelView } from '../lib/explain-view';
-import type { ExplainPanelView } from '../lib/explain-view';
-import { explainForOrder } from './assist';
+import type { ExplainPanelView, ExplainPausedView } from '../lib/explain-view';
+import { explainForOrderPage } from './assist';
 import type { InvariantId, OperationState, ProblemsQuery } from '../lib/ops-invariants-view';
 
 type OperatorActor = Extract<Actor, { kind: 'operator' }>;
@@ -125,12 +125,15 @@ export async function readOrderPage(actor: Actor, ref: string): Promise<OrderPag
 }
 
 // INT-GA / GA.4: the explain panel of the order page. Null unless the order's status group is `attention` (then the
-// model is not asked) or for anyone but an operator. Built from assist.ts, which reaches the model as App.model.
+// model is not asked) or for anyone but an operator. Built from assist.ts, which reaches the model as App.model. FU-1: the
+// page keeps one answer for each order and set of inputs and spends the route's rate bucket, so a reload is free; with
+// the bucket empty it answers { paused: true }.
 export async function readOrderExplain(
   actor: Actor,
   ref: string,
-): Promise<ExplainPanelView | null> {
-  const r = await explainForOrder(actor, ref);
+): Promise<ExplainPanelView | ExplainPausedView | null> {
+  const r = await explainForOrderPage(actor, ref);
+  if (r === 'paused') return { paused: true };
   if (r === null || r === 'not_found') return null;
   return explainPanelView(r.answer, r.fixes);
 }

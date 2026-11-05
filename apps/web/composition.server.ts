@@ -324,6 +324,8 @@ export { filterLibrary, isPlainLibraryQuery, parseLibraryQuery } from '@umsbx/li
 export { assistQuery, explainOrder, orderFixIds } from '@umsbx/assist';
 export type { AssistAnswer, AssistRole, ExplainAnswer } from '@umsbx/assist';
 export { ALERT_KINDS, severityOf } from '@umsbx/alerts';
+// INT-GA FU-1: the explain panel of the order page spends a token of the route's own rate bucket.
+export { takeToken } from '@umsbx/security';
 export type { LibraryFacts, LibraryQuery } from '@umsbx/library';
 import {
   DEFAULT_RATES,

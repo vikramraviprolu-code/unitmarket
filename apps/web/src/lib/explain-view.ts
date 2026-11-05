@@ -10,6 +10,14 @@ export const EXPLAIN_SAFE = 'What is safe to do now';
 export const EXPLAIN_NOTE =
   'Written by a model from the order steps and alert kinds only. Check it against the timeline.';
 
+/** Shown in place of the panel when the page has used its share of model calls (the same 10 a minute as the route). */
+export const EXPLAIN_PAUSED =
+  'The explanation is paused for a moment because it was asked for too many times. Read the timeline below, or try again in a minute.';
+
+export interface ExplainPausedView {
+  paused: true;
+}
+
 export interface ExplainPanelView {
   what_happened: string;
   safe_now: string;

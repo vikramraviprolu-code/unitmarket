@@ -1,10 +1,21 @@
 import Link from 'next/link';
-import { EXPLAIN_NOTE, EXPLAIN_SAFE, EXPLAIN_TITLE } from '../lib/explain-view';
-import type { ExplainPanelView } from '../lib/explain-view';
+import { EXPLAIN_NOTE, EXPLAIN_PAUSED, EXPLAIN_SAFE, EXPLAIN_TITLE } from '../lib/explain-view';
+import type { ExplainPanelView, ExplainPausedView } from '../lib/explain-view';
 
 // INT-GA / GA.4: the explain panel on an operator order page in the attention group. Two plain-text paragraphs and,
 // at most, one link to the catalogue fix page. It never posts and runs nothing: the operator decides.
-export function ExplainPanel({ view }: { view: ExplainPanelView }) {
+export function ExplainPanel({ view }: { view: ExplainPanelView | ExplainPausedView }) {
+  if ('paused' in view)
+    return (
+      <section
+        aria-labelledby="order-explain-title"
+        id="order-explain"
+        data-testid="order-explain-paused"
+      >
+        <h2 id="order-explain-title">{EXPLAIN_TITLE}</h2>
+        <p className="ola-hint">{EXPLAIN_PAUSED}</p>
+      </section>
+    );
   return (
     <section aria-labelledby="order-explain-title" id="order-explain" data-testid="order-explain">
       <h2 id="order-explain-title">{EXPLAIN_TITLE}</h2>
