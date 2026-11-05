@@ -17,7 +17,8 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { migrate, openDatabase } from '../packages/db/src/index';
+import { migrate, openDatabase, withTraceDb } from '../packages/db/src/index';
+import { cliTraceContext } from '../packages/obs/src/trace-context';
 import { rowCounts } from '../packages/db/src/export-sql';
 import { systemClock } from '../packages/runtime/src/index';
 import { runBackup } from './backup.mjs';
@@ -64,8 +65,11 @@ const ledgerSums = async (db: Q) =>
 
 beforeAll(async () => {
   const src = fresh('src');
-  const db = await openDatabase({ kind: 'pglite-disk', dir: src });
-  await migrate(db, clock);
+  const raw = await openDatabase({ kind: 'pglite-disk', dir: src });
+  await migrate(raw, clock);
+  // INT-TR0: the seeded world is written under a cli context, so the backup holds no unattributed journal row.
+  const seedCtx = cliTraceContext({ id: 'ctx_restore_seed', at: T, user_hash: 'ab'.repeat(8) });
+  const db = withTraceDb(raw, () => seedCtx, clock);
   await ins(db, 'publishers', {
     id: 'pub_1',
     slug: 'p1',
@@ -213,7 +217,21 @@ async function verifyRestored(dir: string) {
   const db = await openDatabase({ kind: 'pglite-disk', dir });
   try {
     // The restore adds exactly one audit row of its own (the switch change).
-    expect(await rowCounts(db)).toEqual({ ...counts, audit_log: (counts['audit_log'] ?? 0) + 1 });
+    // The journal records both of the restore's writes (the audit row and the switch change) as system on cli.
+    expect(await rowCounts(db)).toEqual({
+      ...counts,
+      audit_log: (counts['audit_log'] ?? 0) + 1,
+      trace_events: (counts['trace_events'] ?? 0) + 2,
+      trace_context: (counts['trace_context'] ?? 0) + 1,
+      trace_heads: expect.any(Number),
+    });
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int AS n FROM trace_events WHERE actor_kind = 'unattributed'",
+        )
+      ).rows,
+    ).toEqual([{ n: 0 }]);
     expect(await ledgerSums(db)).toEqual(sums);
     // H1: a restore never leaves outbound PayPal switched on; the approval row is kept but inert.
     const sw = await db.query(

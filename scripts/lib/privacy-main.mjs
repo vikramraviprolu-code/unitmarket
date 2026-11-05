@@ -10,10 +10,12 @@
 //
 // Both refuse, before the database is opened, without a terminal, in CI and in an AI session. Names and
 // counts only in anything printed except the export document itself, which is the buyer's own data.
+import { createHash } from 'node:crypto';
+import { userInfo } from 'node:os';
 import { createInterface } from 'node:readline/promises';
 import { loadConfigFromProcess, terminalEnv } from '../../packages/config/src/index.ts';
-import { migrate, openDatabase } from '../../packages/db/src/index.ts';
-import { createAuditSink } from '../../packages/obs/src/index.ts';
+import { migrate, openDatabase, withTraceDb } from '../../packages/db/src/index.ts';
+import { cliTraceContext, createAuditSink } from '../../packages/obs/src/index.ts';
 import { cryptoIds, systemClock } from '../../packages/runtime/src/index.ts';
 import { refusal, runDelete, runExport } from './privacy.mjs';
 
@@ -49,13 +51,26 @@ const clock = systemClock();
 const ids = cryptoIds();
 const target =
   config.db.kind === 'postgres' ? { kind: 'postgres', url: config.db.url.reveal() } : config.db;
-const db = await openDatabase(target).catch((e) => {
+const rawDb = await openDatabase(target).catch((e) => {
   fail(e instanceof Error ? e.message : String(e));
   throw e; // not reached: fail() exits
 });
+// INT-TR0: every write of this run is journaled as an operator on the cli channel. The actor is the hash of the
+// OS user name (user_hash), never the name; the migration below runs on the plain database.
+const user_hash = createHash('sha256')
+  .update(`os:${userInfo().username}`)
+  .digest('hex')
+  .slice(0, 16);
+const traceCtx = cliTraceContext({
+  id: `ctx_cli_${ids.nonce()}`,
+  at: clock.now().toISOString(),
+  user_hash,
+  job: `privacy:${command}`,
+});
+const db = withTraceDb(rawDb, () => traceCtx, clock);
 let code = 0;
 try {
-  await migrate(db, clock);
+  await migrate(rawDb, clock);
   // The database this will touch, shown first, as safety:status does. The export keeps stdout for the document.
   const mode = `mode=${config.mode} db=${config.db.kind}`;
   if (command === 'export') process.stderr.write(`${mode}\n`);

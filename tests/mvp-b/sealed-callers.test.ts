@@ -298,6 +298,8 @@ describe('paths into the sealed packages (SEAL3 H-A)', () => {
         'scripts/lib/safety-cli-main.mjs -> packages/safety/src/index.ts',
         // BU-6: the owner-run suite builds its switches reader and reads the recorder's refusals
         'scripts/lib/sandbox-conformance-run.mjs -> packages/safety/src/index.ts',
+        // INT-TR0: the operator CLI test runs the real runStop on a journaled database
+        'scripts/trace-cli.state.test.ts -> packages/safety/src/index',
         'scripts/lib/sandbox-conformance-run.mjs -> packages/transport/src/index.ts',
       ].sort(),
     );

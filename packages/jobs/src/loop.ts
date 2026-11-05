@@ -21,7 +21,8 @@
 // no new pass starts, and a pass already running can no longer reach the provider (its calls answer
 // `blocked`), so a successor never works beside a predecessor's tail. stop() gives the lease back.
 import { nextDueAt, recoverOnStartup, runDue } from '@umsbx/payments';
-import type { PaymentsDeps } from '@umsbx/contracts';
+import type { PaymentsDeps, TraceContext } from '@umsbx/contracts';
+import { withTraceContext } from '@umsbx/obs';
 import { DEFAULT_CALL_GAP_MS, moneyCalls, pollAllowance, rateLimited } from './budget';
 import type { CallBudget, CallQuota } from './budget';
 import { recordPass } from './health';
@@ -171,6 +172,28 @@ export function startLoop(
           }),
         };
 
+  // INT-TR0: every recovery and every pass writes under its own journal context, system on the job channel.
+  let contexts = 0;
+  const jobContext = (job: string): TraceContext => {
+    contexts += 1;
+    return {
+      id: `ctx_job_${d.ids.nonce()}_${contexts}`,
+      at: d.clock.now().toISOString(),
+      channel: 'job',
+      actor_kind: 'system',
+      actor_id: null,
+      on_behalf_of: null,
+      mandate_id: null,
+      mfa: false,
+      req_id: null,
+      ip_hash: null,
+      ua_family: null,
+      api_key_id: null,
+      job,
+      tool: null,
+    };
+  };
+
   /** Recovery and passes for as long as this process may run them (the whole life without a leader). */
   const body = async (): Promise<void> => {
     // Recovery runs once per process, or once per leadership term: a caller that has already run it
@@ -178,7 +201,7 @@ export function startLoop(
     // over operations of a live pass.
     if (o.recover_on_start !== false) {
       try {
-        await recoverOnStartup(run);
+        await withTraceContext(jobContext('recovery'), () => recoverOnStartup(run));
       } catch (e) {
         fail('jobs.loop.recovery_failed', e);
       }
@@ -189,81 +212,87 @@ export function startLoop(
       let budgetUnknown = false;
       // What the pass did; stays null when no pass ran or the counts are not readable.
       let did: Awaited<ReturnType<typeof runDue>> | null = null;
-      try {
-        const paused = !(await d.switches.isOn('paypal_outbound'));
-        if (paused) {
-          d.log.log({ msg: 'jobs.loop.paused: outbound switch is off', level: 'warn', fields: {} });
-        } else if (noBudget) {
-          spent = true;
-          quota.left = Number.POSITIVE_INFINITY; // the gate decides
-          did = await runDue(run, { max_items: o.max_items, allow: 'money_only' });
-        } else if (o.callBudget === undefined) {
-          did = await runDue(led, { max_items: o.max_items });
-        } else {
-          let reading: { snapshot: Awaited<ReturnType<CallBudget>> } | null = null;
-          try {
-            reading = { snapshot: await o.callBudget() };
-          } catch (e) {
-            // Fail closed: without a reading nothing is spent this pass, and a broken source is
-            // asked again at the slow rhythm, not every 100 ms.
-            fail('jobs.loop.call_budget_failed', e);
-            budgetUnknown = true;
-          }
-          if (reading !== null && reading.snapshot === null && sandbox) {
-            // A null reading means "unlimited" in dry run only. In sandbox it is no budget at all:
-            // the same fail-closed path as having no callBudget (money passes, the gap on).
-            if (!nullLogged) {
-              nullLogged = true;
-              d.log.log({
-                msg: 'jobs.loop.no_call_budget',
-                level: 'error',
-                fields: {
-                  detail: 'callBudget returned null in sandbox mode, only money passes run',
-                },
-              });
-            }
+      await withTraceContext(jobContext('pass'), async () => {
+        try {
+          const paused = !(await d.switches.isOn('paypal_outbound'));
+          if (paused) {
+            d.log.log({
+              msg: 'jobs.loop.paused: outbound switch is off',
+              level: 'warn',
+              fields: {},
+            });
+          } else if (noBudget) {
             spent = true;
             quota.left = Number.POSITIVE_INFINITY; // the gate decides
             did = await runDue(run, { max_items: o.max_items, allow: 'money_only' });
-          } else if (reading !== null && reading.snapshot === null) {
-            // Unlimited (dry run): nothing is counted, so nothing is held back either.
+          } else if (o.callBudget === undefined) {
             did = await runDue(led, { max_items: o.max_items });
-          } else if (reading !== null) {
-            const snapshot = reading.snapshot as NonNullable<typeof reading.snapshot>;
-            const allowance = pollAllowance(snapshot, d.config, o.max_items);
-            if (allowance > 0) {
-              quota.left = allowance;
-              did = await runDue(run, { max_items: allowance, allow: 'all' });
-            } else {
+          } else {
+            let reading: { snapshot: Awaited<ReturnType<CallBudget>> } | null = null;
+            try {
+              reading = { snapshot: await o.callBudget() };
+            } catch (e) {
+              // Fail closed: without a reading nothing is spent this pass, and a broken source is
+              // asked again at the slow rhythm, not every 100 ms.
+              fail('jobs.loop.call_budget_failed', e);
+              budgetUnknown = true;
+            }
+            if (reading !== null && reading.snapshot === null && sandbox) {
+              // A null reading means "unlimited" in dry run only. In sandbox it is no budget at all:
+              // the same fail-closed path as having no callBudget (money passes, the gap on).
+              if (!nullLogged) {
+                nullLogged = true;
+                d.log.log({
+                  msg: 'jobs.loop.no_call_budget',
+                  level: 'error',
+                  fields: {
+                    detail: 'callBudget returned null in sandbox mode, only money passes run',
+                  },
+                });
+              }
               spent = true;
-              quota.left = moneyCalls(snapshot);
+              quota.left = Number.POSITIVE_INFINITY; // the gate decides
               did = await runDue(run, { max_items: o.max_items, allow: 'money_only' });
+            } else if (reading !== null && reading.snapshot === null) {
+              // Unlimited (dry run): nothing is counted, so nothing is held back either.
+              did = await runDue(led, { max_items: o.max_items });
+            } else if (reading !== null) {
+              const snapshot = reading.snapshot as NonNullable<typeof reading.snapshot>;
+              const allowance = pollAllowance(snapshot, d.config, o.max_items);
+              if (allowance > 0) {
+                quota.left = allowance;
+                did = await runDue(run, { max_items: allowance, allow: 'all' });
+              } else {
+                spent = true;
+                quota.left = moneyCalls(snapshot);
+                did = await runDue(run, { max_items: o.max_items, allow: 'money_only' });
+              }
             }
           }
-        }
-        await d.sweepWindows({ max_items: o.max_items });
-        if (o.deliver !== undefined) {
-          try {
-            await o.deliver();
-          } catch (e) {
-            fail('jobs.loop.deliver_failed', e);
+          await d.sweepWindows({ max_items: o.max_items });
+          if (o.deliver !== undefined) {
+            try {
+              await o.deliver();
+            } catch (e) {
+              fail('jobs.loop.deliver_failed', e);
+            }
           }
+          recordPass(d, d.clock.now().toISOString());
+          // With the allowance spent, overdue polling work must not wake the loop every 100 ms: the
+          // pass only does money work, which is looked for at the slow rhythm.
+          const next = paused || budgetUnknown || spent ? null : await nextDueAt(d.db, d.config);
+          if (next !== null) {
+            const wait = Date.parse(next) - d.clock.now().getTime();
+            // BU-9: a pass that did nothing and still finds work overdue cannot settle it; do not
+            // spin on it. Without readable counts the old rule stands.
+            const idle = did !== null && did !== undefined && idlePass(did);
+            if (idle && wait <= 0) delay = o.max_sleep_ms;
+            else delay = Math.min(o.max_sleep_ms, Math.max(MIN_SLEEP_MS, wait));
+          }
+        } catch (e) {
+          fail('jobs.loop.pass_failed', e);
         }
-        recordPass(d, d.clock.now().toISOString());
-        // With the allowance spent, overdue polling work must not wake the loop every 100 ms: the
-        // pass only does money work, which is looked for at the slow rhythm.
-        const next = paused || budgetUnknown || spent ? null : await nextDueAt(d.db, d.config);
-        if (next !== null) {
-          const wait = Date.parse(next) - d.clock.now().getTime();
-          // BU-9: a pass that did nothing and still finds work overdue cannot settle it; do not
-          // spin on it. Without readable counts the old rule stands.
-          const idle = did !== null && did !== undefined && idlePass(did);
-          if (idle && wait <= 0) delay = o.max_sleep_ms;
-          else delay = Math.min(o.max_sleep_ms, Math.max(MIN_SLEEP_MS, wait));
-        }
-      } catch (e) {
-        fail('jobs.loop.pass_failed', e);
-      }
+      });
       if (stopped || !leading()) break;
       await sleep(delay);
     }

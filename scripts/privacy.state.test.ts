@@ -614,13 +614,16 @@ describe('delete', () => {
     expect(r.value).toMatchObject({ changed: true, pseudonym: pseudo });
 
     const after = await dump(db);
-    // Only these four tables change: the buyer, the briefs, the sessions, and the audit log.
+    // Only these tables change: the buyer, the briefs, the sessions, and the audit log; the audit row is
+    // journaled, so the journal and its heads move with it (INT-TR0).
     expect(changedTables(before, after)).toEqual([
       'audit_log',
       'briefs',
       'buyer_accounts',
       'buyers',
       'sessions',
+      'trace_events',
+      'trace_heads',
     ]);
     // Every append-only and money table is byte equal.
     for (const tbl of [

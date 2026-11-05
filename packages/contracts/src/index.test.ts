@@ -30,6 +30,11 @@ const EXPECTED_EXPORTS: string[] = [
   'SwitchNameSchema',
   // F1 actor
   'ActorSchema',
+  // INT-TR0 transaction journal
+  'ACTOR_KINDS',
+  'CHANNELS',
+  'UA_FAMILIES',
+  'TRACKED_TABLES',
   // F2 transport
   'PayPalOperationSchema',
   'OutboundRequestSchema',

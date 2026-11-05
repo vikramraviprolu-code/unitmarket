@@ -485,6 +485,9 @@ importers:
       '@umsbx/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@umsbx/obs':
+        specifier: workspace:*
+        version: link:../obs
       '@umsbx/payments':
         specifier: workspace:*
         version: link:../../domain/payments
@@ -560,6 +563,9 @@ importers:
       '@umsbx/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@umsbx/obs':
+        specifier: workspace:*
+        version: link:../obs
       zod:
         specifier: 4.6.7
         version: 4.6.7

@@ -19,8 +19,10 @@ import type {
   Result,
   Scope,
   Secret,
+  TraceContext,
 } from '@umsbx/contracts';
 import { SCOPES, err, ok, toActor } from '@umsbx/contracts';
+import { uaFamilyOf, withTraceContext } from '@umsbx/obs';
 import { bearerToken, hasScopes, verifyKey } from './apikey';
 import { csrfTokenMatches, originMatches, sha256Hex } from './csrf';
 import { GENERIC_MESSAGE, errorBody, fieldNames, supportCode } from './errors';
@@ -576,7 +578,9 @@ export function withRoute<I, O>(
           idem = scope;
         }
 
-        const result = await handler({
+        // INT-TR0: from here the writes of this request carry who made them. The context is opened once the
+        // actor is known, so nothing written before authentication is attributed to a guess.
+        const routeCtx: RouteContext<I> = {
           actor,
           principal,
           scopes: held,
@@ -586,7 +590,15 @@ export function withRoute<I, O>(
           ip_hash,
           ip_known: clientIp(req, deps, call) !== 'no-address',
           log,
-        });
+        };
+        // Maintenance mode never opens the database, so there is nothing to attribute.
+        const result =
+          deps.maintenance === true
+            ? await handler(routeCtx)
+            : await withTraceContext(
+                (via.trace = requestTrace(deps, req, meta, { req_id, ip_hash, actor, principal })),
+                () => handler(routeCtx),
+              );
 
         // M3: a failure against a spent shared bucket is throttled; a success resets that bucket
         // (only this target's, for the same client key).
@@ -639,10 +651,17 @@ export function withRoute<I, O>(
       }
     };
     return async (req, call) => {
-      const via: ViaKey = { principal: null, actor: null };
+      const via: ViaKey = { principal: null, actor: null, trace: null };
       const res = await run(req, call, via);
-      if (via.principal !== null && via.actor !== null)
-        await auditRequest(deps, meta, via.principal, via.actor, res.status);
+      if (via.principal !== null && via.actor !== null) {
+        const { principal, actor } = via;
+        // The audit row of a bearer request is written in the context of that request.
+        if (via.trace !== null)
+          await withTraceContext(via.trace, () =>
+            auditRequest(deps, meta, principal, actor, res.status),
+          );
+        else await auditRequest(deps, meta, principal, actor, res.status);
+      }
       return res;
     };
   };
@@ -652,6 +671,82 @@ export function withRoute<I, O>(
 interface ViaKey {
   principal: Principal | null;
   actor: Actor | null;
+  /** The journal context opened for the request (INT-TR0), once the actor is known. */
+  trace: TraceContext | null;
+}
+
+/**
+ * INT-TR0: the journal context of one request. Ids and enums only. The address is already a keyed hash
+ * (`ip_hash`, 32 hex); the User-Agent is reduced to a family and never kept.
+ */
+function requestTrace(
+  deps: SecurityDeps,
+  req: Request,
+  meta: RouteMeta,
+  o: { req_id: string; ip_hash: string; actor: Actor; principal: Principal | null },
+): TraceContext {
+  const base = {
+    id: `ctx_${o.req_id}`,
+    at: deps.clock.now().toISOString(),
+    req_id: o.req_id,
+    ip_hash: o.ip_hash,
+    ua_family: uaFamilyOf(req.headers.get('user-agent')),
+    job: null,
+    tool: null,
+  };
+  const channel =
+    meta.auth === 'webhook' ? 'webhook' : meta.path.startsWith(V1_PREFIX) ? 'api' : 'web';
+  if (meta.auth === 'webhook') {
+    return {
+      ...base,
+      channel,
+      actor_kind: 'paypal',
+      actor_id: null,
+      on_behalf_of: null,
+      mandate_id: null,
+      mfa: false,
+      api_key_id: null,
+    };
+  }
+  if (o.principal !== null) {
+    const p = o.principal;
+    const owner =
+      p.kind === 'agent'
+        ? p.buyer_id
+        : p.owner.kind === 'buyer'
+          ? p.owner.buyer_id
+          : p.owner.kind === 'publisher'
+            ? p.owner.publisher_id
+            : p.owner.operator_id;
+    return {
+      ...base,
+      channel,
+      actor_kind: p.kind,
+      actor_id: p.key_id,
+      on_behalf_of: owner,
+      mandate_id: p.kind === 'agent' ? p.mandate_id : null,
+      mfa: false,
+      api_key_id: p.key_id,
+    };
+  }
+  const a = o.actor;
+  return {
+    ...base,
+    channel,
+    actor_kind: a.kind,
+    actor_id:
+      a.kind === 'buyer'
+        ? a.buyer_id
+        : a.kind === 'publisher'
+          ? a.publisher_id
+          : a.kind === 'operator'
+            ? a.operator_id
+            : null,
+    on_behalf_of: null,
+    mandate_id: null,
+    mfa: a.kind === 'operator' ? a.mfa : false,
+    api_key_id: null,
+  };
 }
 
 // API-W0. The wrapper writes its own audit row for an authenticated bearer request (domain code is not
