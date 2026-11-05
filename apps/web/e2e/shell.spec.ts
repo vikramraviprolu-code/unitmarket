@@ -108,10 +108,11 @@ test.describe.serial('operator shell', () => {
       'Buyers',
       'Sellers',
       'Money',
+      'Agents and API',
       'Controls',
     ]);
-    // INT-OPS-A.5 built the Buyers pages, so the tab is ready and shown.
-    await expect(nav.getByRole('link', { name: 'Agents and API' })).toHaveCount(0);
+    // INT-OPS-A.5 built the Buyers pages and INT-OPS-C the Agents and API page, so both tabs are ready and shown.
+    await expect(nav.getByRole('link', { name: 'Agents and API' })).toHaveCount(1);
     await expect(nav.getByRole('link', { name: 'Money' })).toHaveAttribute('aria-current', 'page');
     await expect(nav.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current', /.+/);
   });

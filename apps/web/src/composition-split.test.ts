@@ -33,6 +33,10 @@ const PAGES: Record<string, (typeof MODULES)[number]> = {
   'ops/money/page.tsx': 'ops-money',
   'ops/sellers/page.tsx': 'ops-sellers',
   'ops/agents/page.tsx': 'ops-agents',
+  // INT-OPS-C: the detail pages of the Buyers, Sellers and Money tabs.
+  'ops/buyers/[id]/page.tsx': 'ops-buyers',
+  'ops/sellers/[id]/page.tsx': 'ops-sellers',
+  'ops/money/ledger/page.tsx': 'ops-money',
   'ops/controls/page.tsx': 'ops-controls',
 };
 
@@ -44,24 +48,27 @@ describe('the eight modules exist', () => {
     const files = readdirSync(join(here, 'composition')).sort();
     expect(files).toEqual(MODULES.map((m) => `${m}.ts`).sort());
   });
-  // INT-OPS-A built the Buyers reads, so ops-buyers is no longer empty; only ops-agents still is.
-  it('ops-agents starts empty: no read, no import', () => {
-    for (const m of ['ops-agents']) {
+  // INT-OPS-A built the Buyers reads and INT-OPS-C the Agents and API reads, so no module is empty any more.
+  it('no module is empty', () => {
+    for (const m of MODULES) {
       const src = strip(read(join(here, 'composition', `${m}.ts`)));
-      expect(importsOf(src), m).toEqual([]);
-      expect(src.replace(/\s+/g, ' ').trim(), m).toBe('export {};');
+      expect(src.replace(/\s+/g, ' ').trim(), m).not.toBe('export {};');
     }
   });
 });
 
 describe('a page imports only its own tab module', () => {
   const existing = Object.entries(PAGES).filter(([f]) => existsSync(join(here, 'app', f)));
-  it('covers the four pages this lane builds', () => {
+  it('covers the pages UI0 and OPS-C built', () => {
     expect(existing.map(([f]) => f).sort()).toEqual(
       [
+        'ops/agents/page.tsx',
+        'ops/buyers/[id]/page.tsx',
         'ops/controls/page.tsx',
+        'ops/money/ledger/page.tsx',
         'ops/money/page.tsx',
         'ops/page.tsx',
+        'ops/sellers/[id]/page.tsx',
         'ops/sellers/page.tsx',
       ].sort(),
     );
@@ -93,18 +100,23 @@ describe('a page imports only its own tab module', () => {
 
 describe('a module reads through the one door and nothing else', () => {
   // INT-TR1 gave buyer and seller their first read (the timeline), through the same door.
-  it.each(['ops-home', 'ops-money', 'ops-sellers', 'ops-controls', 'buyer', 'seller'])(
-    '%s',
-    (m) => {
-      const specs = importsOf(read(join(here, 'composition', `${m}.ts`)));
-      expect(specs).toContain('../server/access');
-      for (const s of specs) {
-        expect(s).not.toMatch(/composition\.server/);
-        expect(s, `${m} must not import another module`).not.toMatch(/(^|\/)composition\//);
-        expect(s).not.toMatch(/^\.\/(ops|buyer|seller)/);
-      }
-    },
-  );
+  it.each([
+    'ops-home',
+    'ops-money',
+    'ops-sellers',
+    'ops-controls',
+    'ops-agents',
+    'buyer',
+    'seller',
+  ])('%s', (m) => {
+    const specs = importsOf(read(join(here, 'composition', `${m}.ts`)));
+    expect(specs).toContain('../server/access');
+    for (const s of specs) {
+      expect(s).not.toMatch(/composition\.server/);
+      expect(s, `${m} must not import another module`).not.toMatch(/(^|\/)composition\//);
+      expect(s).not.toMatch(/^\.\/(ops|buyer|seller)/);
+    }
+  });
   it('the reads are the ones the page made before: the snapshot, the refund keys and the engine convert', () => {
     const money = strip(read(join(here, 'composition', 'ops-money.ts')));
     expect(money).toContain('opsSnapshot(');

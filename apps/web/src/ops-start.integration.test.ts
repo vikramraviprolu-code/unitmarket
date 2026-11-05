@@ -180,7 +180,7 @@ describe('section tabs (source)', () => {
       'money/orders',
       'money/problems',
     ];
-    expect(found.length).toBe(17);
+    expect(found.length).toBe(21);
     for (const p of found)
       if (!SINGLE_SECTION.some((s) => p.includes(`/ops/${s}/`)))
         expect(readFileSync(p, 'utf8'), p).toContain('<SectionNav');

@@ -22,7 +22,7 @@ describe('tabs per persona (spec UI0.1)', () => {
       ['Buyers', '/ops/buyers', true],
       ['Sellers', '/ops/sellers', true],
       ['Money', '/ops/money', true],
-      ['Agents and API', '/ops/agents', false],
+      ['Agents and API', '/ops/agents', true], // INT-OPS-C built the page
       ['Controls', '/ops/controls', true],
     ]);
   });
@@ -50,6 +50,7 @@ describe('tabs per persona (spec UI0.1)', () => {
       'Buyers', // INT-OPS-A: the case queue is its page
       'Sellers',
       'Money',
+      'Agents and API', // INT-OPS-C: caps, keys and webhooks are its page
       'Controls',
     ]);
     expect(visibleTabs('buyer').map((t) => t.label)).toEqual(['Home', 'Find', 'Library']);
