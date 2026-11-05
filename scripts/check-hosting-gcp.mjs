@@ -1,9 +1,10 @@
 // Fails when the Google Cloud deployment kit (infra/gcp) holds an unsafe setting. GCP-1, D-049.
 //
-// The kit is eight files: a Dockerfile, five bash scripts, service.yaml (the fixed, non-secret environment
-// of the Cloud Run service) and service-offline.yaml (the same for the prepared second service, INFRA-A).
-// This guard reads them as text, with no dependency, and reports every violation by rule name. Values are
-// never printed: a line number or a name only.
+// The kit is eleven files: a Dockerfile, six bash scripts (the cloud kit adds cloud.sh and lib/cloud-lib.sh),
+// service.yaml (the fixed, non-secret environment of the Cloud Run service), service-offline.yaml (the same
+// for the prepared second service, INFRA-A) and stack.env (the non-secret names of the stack, INT-CL1). The
+// guard reads the folder and its one subfolder lib, as text, with no dependency, and reports every violation
+// by rule name. Values are never printed: a line number or a name only.
 //
 // Rules: kit-files, bytes, strict-mode, account-guard, login, terminal-check, print-secret, secret-read,
 // secret-literal, secret-in-env, secret-names, forbidden-name, paypal-host, live-value, paypal-connect,
@@ -13,7 +14,9 @@
 // docker-env; GCP-2 adds sql-network, sql-protection, sql-ssl, sql-connector, sql-storage, iam-role, scaling,
 // read-ifs, image-tag and docker-workdir; INFRA-A adds optional-secret, offline-paypal, offline-secret and
 // offline-shape, and applies the instance, env-file, image-tag and deploy rules to each deploy script
-// (deploy.sh for the sandbox service, deploy-offline.sh for the offline one).
+// (deploy.sh for the sandbox service, deploy-offline.sh for the offline one); INT-CL1 adds no-delete and lets
+// lib/cloud-lib.sh, and only that file, set min 0 or 1, max 1, --no-cpu-throttling and the one environment
+// flag --update-env-vars=UMS_PAYPAL_CONNECT=off.
 //
 // Pinned forms (GCP-2): an instance flag is `--max-instances=1` or `--max-instances 1`; a service.yaml
 // value is `KEY: 'value'` or `KEY: "value"` with nothing else on the line.
@@ -30,14 +33,20 @@ const ROOT = resolveRoot(process.argv, import.meta.url);
 const KIT_DIR = join(ROOT, 'infra', 'gcp');
 const KIT = [
   'Dockerfile',
+  'cloud.sh',
   'deploy-offline.sh',
   'deploy.sh',
+  'lib/cloud-lib.sh',
   'monitoring.sh',
   'service-offline.yaml',
   'service.yaml',
   'set-secret.sh',
   'setup.sh',
+  'stack.env',
 ];
+// INT-CL1: the one file that may set the stopped and the running state, and the one environment flag.
+const CLOUD_LIB = 'lib/cloud-lib.sh';
+const FLAG_OFF_TOKEN = /^--update-env-vars=UMS_PAYPAL_CONNECT=off(?=\s|$)/;
 // Each deploy script, the yaml it passes, and the variable that names the image in its IMAGE line.
 const DEPLOYERS = {
   'deploy.sh': { yaml: 'service.yaml', imageVar: 'SERVICE' },
@@ -150,9 +159,21 @@ function statements(lines) {
   return out;
 }
 
+/** The kit's files: the folder itself and the one subfolder lib (as lib/<name>). Any other folder is listed with a slash. */
+function listKit() {
+  const out = [];
+  for (const e of readdirSync(KIT_DIR, { withFileTypes: true })) {
+    if (!e.isDirectory()) out.push(e.name);
+    else if (e.name === 'lib')
+      for (const f of readdirSync(join(KIT_DIR, 'lib'))) out.push(`lib/${f}`);
+    else out.push(`${e.name}/`);
+  }
+  return out.sort();
+}
+
 function main() {
   if (!existsSync(KIT_DIR)) return fail('kit-files', 'infra/gcp is missing');
-  const present = readdirSync(KIT_DIR).sort();
+  const present = listKit();
   for (const f of KIT) if (!present.includes(f)) fail('kit-files', `${f} is missing`);
   for (const f of present)
     if (!KIT.includes(f)) fail('kit-files', `${f} is not in the reviewed kit`);
@@ -245,9 +266,12 @@ function main() {
   // INFRA-A: a rule about the deploy scripts holds for each of them: exactly one hit in each deploy
   // script, none in any other file.
   const outside = (hits) => hits.some((h) => !(h.s.f in DEPLOYERS));
-  const only = (hits, name, rule, want) => {
+  // INT-CL1: hits in lib/cloud-lib.sh are allowed too, when they carry one of the values in `libWant`.
+  const only = (hits, name, rule, want, libWant) => {
     const bad =
-      outside(hits) ||
+      hits.some(
+        (h) => !(h.s.f in DEPLOYERS) && !(h.s.f === CLOUD_LIB && libWant.includes(h.m[1])),
+      ) ||
       Object.keys(DEPLOYERS).some((d) => {
         if (!files[d]) return false;
         const mine = hits.filter((h) => h.s.f === d);
@@ -256,11 +280,14 @@ function main() {
     if (bad)
       fail(
         rule,
-        `${name} must appear exactly once in each deploy script (deploy.sh, deploy-offline.sh), as ${name}=${want} or ${name} ${want}`,
+        `${name} must appear exactly once in each deploy script (deploy.sh, deploy-offline.sh), as ${name}=${want} or ${name} ${want}; lib/cloud-lib.sh may also set ${libWant.join(' or ')}`,
       );
   };
-  only(count(/--max-instances(?:[=\s]+(\S+))?/g), '--max-instances', 'max-instances', '1');
-  only(count(/--min-instances(?:[=\s]+(\S+))?/g), '--min-instances', 'min-instances', '1');
+  only(count(/--max-instances(?:[=\s]+(\S+))?/g), '--max-instances', 'max-instances', '1', ['1']);
+  only(count(/--min-instances(?:[=\s]+(\S+))?/g), '--min-instances', 'min-instances', '1', [
+    '0',
+    '1',
+  ]);
   if (
     count(/(?<![A-Za-z0-9-])--(?:scaling|max|min)(?![A-Za-z0-9-])|\bupdate-scaling\b/g).length > 0
   )
@@ -271,12 +298,12 @@ function main() {
     if (/\bminScale\b/.test(files[f])) fail('min-instances', `${f} sets a minScale annotation`);
   const nt = count(/(?<![A-Za-z-])--no-cpu-throttling\b/g);
   if (
-    outside(nt) ||
+    nt.some((h) => !(h.s.f in DEPLOYERS) && h.s.f !== CLOUD_LIB) ||
     Object.keys(DEPLOYERS).some((d) => files[d] && nt.filter((h) => h.s.f === d).length !== 1)
   )
     fail(
       'cpu-throttling',
-      '--no-cpu-throttling must appear exactly once in each deploy script (deploy.sh, deploy-offline.sh)',
+      '--no-cpu-throttling must appear exactly once in each deploy script (deploy.sh, deploy-offline.sh); lib/cloud-lib.sh may also use it',
     );
   if (count(/(?<!no-)--cpu-throttling\b/g).length > 0)
     fail('cpu-throttling', '--cpu-throttling (CPU only while serving) is not allowed');
@@ -296,13 +323,26 @@ function main() {
       'env-file',
       'each deploy script must pass --env-vars-file="${HERE}/<its yaml>" (service.yaml or service-offline.yaml), once and only that',
     );
-  if (count(/--(?:set|update|remove)-env-vars|--clear-env-vars/g).length > 0)
-    fail('env-flags', 'environment values must come from the service yaml files only');
+  // INT-CL1: the one exception is the token --update-env-vars=UMS_PAYPAL_CONNECT=off, in lib/cloud-lib.sh only.
+  for (const h of count(/--(?:set|update|remove)-env-vars|--clear-env-vars/g))
+    if (!(h.s.f === CLOUD_LIB && FLAG_OFF_TOKEN.test(h.s.text.slice(h.m.index))))
+      fail(
+        'env-flags',
+        `${h.s.f}:${h.s.no} environment values must come from the service yaml files only (lib/cloud-lib.sh may set the connection flag to off)`,
+      );
   for (const h of count(/--(?:set|update)-env-vars[= ]\S*?\b([A-Z][A-Z0-9_]*)=/g))
     if (SECRETS.has(h.m[1]))
       fail('secret-in-env', `${h.s.f}:${h.s.no} passes a secret name as an env var`);
   if (count(/\bgcloud\s+(?:beta\s+)?builds\s+triggers\b|--source\b|--git-repo\b/g).length > 0)
     fail('auto-deploy', 'no build trigger, no deploy from source or from Git');
+
+  // INT-CL1: a Cloud Run deploy belongs to the two deploy scripts; the cloud kit runs deploy.sh and nothing else.
+  for (const s of code)
+    if (!(s.f in DEPLOYERS) && /\bgcloud\s+(?:beta\s+)?run\s+deploy\b/.test(s.text))
+      fail(
+        'deploy-shape',
+        `${s.f}:${s.no} a gcloud run deploy outside deploy.sh and deploy-offline.sh`,
+      );
 
   // ---- the deploy statements -----------------------------------------------------------------------
   for (const d of Object.keys(DEPLOYERS)) {
@@ -477,6 +517,18 @@ function main() {
         fail('login', `${f}:${s.no} signs in; the owner signs in beforehand`);
       if (/\bgcloud\s+config\s+set\b/.test(s.text))
         fail('literal-project', `${f}:${s.no} sets a gcloud default`);
+      // INT-CL1: nothing in the kit deletes. The quoted text of a message (echo, printf, die, say, warn) is not a
+      // statement, so a message may say the word; anything else with the word fails, a variable holding it included.
+      // A quoted string that holds a command substitution ($( or a backtick) is not stripped: it runs.
+      if (
+        /\bdelete\b/.test(
+          s.text.replace(
+            /\b(?:echo|printf|die|die_[a-z]+|say|warn)\s+(?:-[A-Za-z]+\s+)*(?:"(?:(?!\$\(|`)(?:[^"\\]|\\.))*"|'[^']*')/g,
+            '',
+          ),
+        )
+      )
+        fail('no-delete', `${f}:${s.no} a statement with the word delete`);
       for (const m of s.text.matchAll(/--(project|region)(?:=|\s+)(\S?)/g))
         if (m[2] !== '"' && m[2] !== '$')
           fail('literal-project', `${f}:${s.no} gives --${m[1]} a literal value`);
