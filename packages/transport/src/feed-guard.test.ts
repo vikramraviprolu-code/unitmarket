@@ -1,5 +1,7 @@
-// FEED (E-02, SOP 18, P19): the pure feed guards. Table driven; nothing here resolves a name or opens a
-// socket. Host names use the invalid top level domain only.
+// FEED (E-02, SOP 18, P19) adapted for the web import (POB-I1, D-089): the pure guards. Table driven;
+// nothing here resolves a name or opens a socket. Host names use the invalid top level domain only.
+// The allow list is the publisher's verified domain, given per call; the head check knows two kinds, text
+// (page, feed, proof) and image.
 import { describe, expect, it } from 'vitest';
 import {
   FEED_DEADLINE_MS,
@@ -8,6 +10,7 @@ import {
   checkFeedHead,
   checkFeedUrl,
   checkResolved,
+  feedMediaType,
   isPublicAddress,
 } from './feed-guard';
 
@@ -91,6 +94,14 @@ describe('checkFeedUrl refuses', () => {
     'https://[2001:db8::1]/feed',
     'https://0/feed',
     'https://4294967295/feed',
+    // The Cloud Run and Compute Engine metadata service, in every spelling a url can take.
+    'https://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token',
+    'https://2852039166/computeMetadata/v1/',
+    'https://0xa9fea9fe/computeMetadata/v1/',
+    'https://0251.0376.0251.0376/computeMetadata/v1/',
+    'https://169.254.169.254:80/computeMetadata/v1/',
+    'https://[fd00:ec2::254]/latest/meta-data',
+    'https://[::ffff:a9fe:a9fe]/computeMetadata/v1/',
   ]);
   refuse('host_not_allowed', [
     'https://localhost/feed',
@@ -101,6 +112,7 @@ describe('checkFeedUrl refuses', () => {
     `https://${HOST}.evil.invalid/feed`,
     `https://x${HOST}/feed`,
     'https://metadata.google.internal/computeMetadata/v1/',
+    'https://metadata/computeMetadata/v1/',
     'https://xn--80ak6aa92e.invalid/feed',
   ]);
   refuse('bad_url', [
@@ -305,6 +317,11 @@ describe('checkFeedHead', () => {
     [200, { 'content-type': 'application/xml' }],
     [200, { 'content-type': 'text/xml; charset=utf-8' }],
     [200, { 'content-type': 'application/feed+json' }],
+    [200, { 'content-type': 'application/ld+json' }],
+    [200, { 'content-type': 'text/html; charset=utf-8' }],
+    [200, { 'content-type': 'TEXT/HTML' }],
+    [200, { 'content-type': 'application/xhtml+xml' }],
+    [200, { 'content-type': 'text/plain; charset=utf-8' }],
     [200, { 'content-type': 'application/json', 'content-encoding': 'identity' }],
     [200, { 'content-type': 'application/json', 'content-length': '2097152' }],
   ])('accepts %j %j', (status, headers) => {
@@ -322,9 +339,11 @@ describe('checkFeedHead', () => {
   );
   it.each([
     [{}],
-    [{ 'content-type': 'text/html' }],
-    [{ 'content-type': 'text/html; charset=utf-8' }],
-    [{ 'content-type': 'text/plain' }],
+    [{ 'content-type': 'text/html; charset=iso-8859-1' }],
+    [{ 'content-type': 'text/plain; charset=utf-16' }],
+    [{ 'content-type': 'text/css' }],
+    [{ 'content-type': 'text/javascript' }],
+    [{ 'content-type': 'image/svg+xml' }],
     [{ 'content-type': 'application/octet-stream' }],
     [{ 'content-type': 'application/javascript' }],
     [{ 'content-type': 'image/png' }],
@@ -349,5 +368,47 @@ describe('checkFeedHead', () => {
   });
   it.each(['abc', '-1', '1e3', ''])('a malformed content-length %j is refused', (n) => {
     expect(checkFeedHead(200, { ...good, 'content-length': n })).toBe('too_large');
+  });
+});
+
+describe('checkFeedHead for an image', () => {
+  const img = (headers: Record<string, string | string[]>, status = 200) =>
+    checkFeedHead(status, headers, 'image');
+  it.each(['image/jpeg', 'image/png', 'image/webp', 'IMAGE/PNG'])('accepts %s', (t) => {
+    expect(img({ 'content-type': t })).toBeNull();
+    expect(img({ 'content-type': t, 'content-length': '2097152' })).toBeNull();
+  });
+  it.each([
+    'image/svg+xml',
+    'image/gif',
+    'image/avif',
+    'image/x-icon',
+    'image/jpeg2',
+    'text/html',
+    'application/json',
+    'application/octet-stream',
+    '',
+  ])('refuses the type %j', (t) => {
+    expect(img({ 'content-type': t })).toBe('bad_content_type');
+  });
+  it('refuses a list of types and a missing type', () => {
+    expect(img({ 'content-type': ['image/png', 'image/png'] })).toBe('bad_content_type');
+    expect(img({})).toBe('bad_content_type');
+  });
+  it('keeps the rules of the text kind: redirect, status, encoding, size', () => {
+    expect(img({ 'content-type': 'image/png', location: 'https://10.0.0.1/' }, 302)).toBe(
+      'redirect',
+    );
+    expect(img({ 'content-type': 'image/png' }, 404)).toBe('bad_status');
+    expect(img({ 'content-type': 'image/png', 'content-encoding': 'gzip' })).toBe(
+      'content_encoding',
+    );
+    expect(img({ 'content-type': 'image/png', 'content-length': '2097153' })).toBe('too_large');
+  });
+  it('an image type is not a text type and the reverse', () => {
+    expect(feedMediaType('image/png', 'text')).toBeNull();
+    expect(feedMediaType('text/html', 'image')).toBeNull();
+    expect(feedMediaType('image/webp', 'image')).toBe('image/webp');
+    expect(feedMediaType('text/html; charset=utf-8')).toBe('text/html');
   });
 });

@@ -1,10 +1,13 @@
-// FEED, E-02 `feed_ssrf` (mvp-plan MVP-E, nfr SOP 18, P19). The feed fetcher against a fake name
-// service and a fake request function: nothing resolves a real name and nothing opens a socket. Every
-// refusal is table driven. A refusal is a fixed kind and nothing else (no url, address or peer text).
+// FEED, E-02 `feed_ssrf` (mvp-plan MVP-E, nfr SOP 18, P19), adapted for the web import (POB-I1, D-089).
+// The guarded fetcher against a fake name service and a fake request function: nothing resolves a real
+// name and nothing opens a socket. The allow list is given per call (the publisher's verified domain);
+// each call resolves once and checks every answer. Every refusal is table driven. A refusal is a fixed
+// kind and nothing else (no url, address or peer text).
 import type https from 'node:https';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FEED_MAX_BYTES, FEED_DEADLINE_MS } from './feed-guard';
 import { createFeedFetcher, makeFeedFetcher } from './feed-fetch';
+import type { FetchOptions } from './feed-fetch';
 import { fakeRequest } from './https-fake';
 import type { Script } from './https-fake';
 
@@ -41,12 +44,12 @@ function rig(script: Script, o: RigOptions = {}) {
       if (o.headers !== undefined) Object.assign(res as object, { headers: o.headers });
       cb(res);
     })) as unknown as typeof https.request;
-  const fetcher = makeFeedFetcher({
-    allow: o.allow ?? [HOST],
-    resolve,
-    request,
-    agent: {} as https.Agent,
-  });
+  const inner = makeFeedFetcher({ resolve, request, agent: {} as https.Agent });
+  // The allow list is a per-call option; the rig supplies the one verified host unless a test says otherwise.
+  const fetcher = {
+    fetch: (url: string, over: Partial<FetchOptions> = {}) =>
+      inner.fetch(url, { allow: o.allow ?? [HOST], ...over }),
+  };
   return { fetcher, resolve, calls: fake.calls };
 }
 
@@ -64,7 +67,13 @@ describe('the happy path is exactly one pinned GET', () => {
   it('resolves once, dials the pinned address and sends nothing else', async () => {
     const { fetcher, resolve, calls } = rig(response());
     const r = await fetcher.fetch(URL_OK);
-    expect(r).toEqual({ ok: true, body: BODY, content_type: 'application/json', host: HOST });
+    expect(r).toEqual({
+      ok: true,
+      body: BODY,
+      bytes: new TextEncoder().encode(BODY),
+      content_type: 'application/json',
+      host: HOST,
+    });
     expect(resolve).toHaveBeenCalledTimes(1);
     expect(resolve).toHaveBeenCalledWith(HOST);
     expect(calls).toHaveLength(1);
@@ -109,6 +118,17 @@ describe('E-02: refusals before any name is resolved or any socket exists', () =
     ['octal encoding', 'https://0251.0376.0251.0376/', 'ip_literal'],
     ['ipv6 loopback', 'https://[::1]/', 'ip_literal'],
     ['ipv4-mapped ipv6', 'https://[::ffff:169.254.169.254]/', 'ip_literal'],
+    [
+      'Cloud Run metadata token path',
+      'https://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token',
+      'ip_literal',
+    ],
+    [
+      'Cloud Run metadata name',
+      'https://metadata.google.internal/computeMetadata/v1/',
+      'host_not_allowed',
+    ],
+    ['metadata ipv6 address', 'https://[fd00:ec2::254]/latest/meta-data', 'ip_literal'],
     ['userinfo', `https://user:pw@${HOST}/offers.json`, 'userinfo'],
     ['other port', `https://${HOST}:8443/offers.json`, 'bad_port'],
     ['host off the list', 'https://evil.invalid/offers.json', 'host_not_allowed'],
@@ -127,18 +147,43 @@ describe('E-02: refusals before any name is resolved or any socket exists', () =
     expect(calls).toHaveLength(0);
   });
 
-  it('the production factory refuses to exist with an empty allow-list', () => {
-    expect(() => createFeedFetcher({ allow: [] })).toThrow();
-    expect(() => createFeedFetcher({ allow: ['8.8.8.8'] })).toThrow();
-    expect(() => createFeedFetcher({ allow: ['*.pub-one.invalid'] })).toThrow();
-    expect(() => createFeedFetcher({ allow: ['Feeds.Pub-One.invalid'] })).toThrow();
-    expect(() => createFeedFetcher({ allow: [HOST] })).not.toThrow();
+  it('the production factory takes no allow list: it is built once and each call names its host', () => {
+    expect(() => createFeedFetcher()).not.toThrow();
+    expect(typeof createFeedFetcher().fetch).toBe('function');
+  });
+
+  it.each([
+    ['an address', ['8.8.8.8']],
+    ['a wildcard', ['*.pub-one.invalid']],
+    ['an upper case name', ['Feeds.Pub-One.invalid']],
+    ['localhost', ['localhost']],
+    ['a single label', ['intranet']],
+    ['a name with a port', [`${HOST}:443`]],
+    ['a good name beside a bad one', [HOST, '10.0.0.1']],
+    ['a value that is not a string', [5 as unknown as string]],
+  ])('an unusable allow list entry (%s) refuses the call before any lookup', async (_n, allow) => {
+    const { fetcher, resolve, calls } = rig(response(), { allow });
+    expect(await fetcher.fetch(URL_OK)).toEqual({ ok: false, reason: 'host_not_allowed' });
+    expect(resolve).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(0);
+  });
+
+  it('the host of the url must be one of the hosts of THIS call, not of an earlier call', async () => {
+    const { fetcher, resolve } = rig(response());
+    expect((await fetcher.fetch(URL_OK)).ok).toBe(true);
+    const other = await fetcher.fetch('https://other.pub-two.invalid/x', { allow: [HOST] });
+    expect(other).toEqual({ ok: false, reason: 'host_not_allowed' });
+    expect(resolve).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('E-02: an allow-listed name that resolves somewhere private is refused', () => {
   it.each([
     ['link-local metadata', ['169.254.169.254']],
+    ['Cloud Run metadata address by a verified name', ['169.254.169.254']],
+    ['metadata ipv6 address', ['fd00:ec2::254']],
+    ['reserved 0.0.0.0', ['0.0.0.0']],
+    ['broadcast', ['255.255.255.255']],
     ['loopback', ['127.0.0.1']],
     ['private 10/8', ['10.0.0.1']],
     ['private 172.16/12', ['172.16.5.5']],
@@ -169,7 +214,7 @@ describe('E-02: an allow-listed name that resolves somewhere private is refused'
     });
   });
 
-  it('resolves once per import: a second answer is never asked for (no rebinding window)', async () => {
+  it('resolves once per call: a second answer is never asked for (no rebinding window)', async () => {
     let n = 0;
     const { fetcher, calls, resolve } = rig(response(), {
       addresses: () => (++n === 1 ? [PUBLIC] : ['169.254.169.254']),
@@ -275,12 +320,11 @@ describe('E-02: size, time, type, status', () => {
     let release: (a: string[]) => void = () => undefined;
     const fake = fakeRequest({ kind: 'hang' });
     const fetcher = makeFeedFetcher({
-      allow: [HOST],
       resolve: () => new Promise<string[]>((r) => (release = r)),
       request: fake.request as unknown as typeof https.request,
       agent: {} as https.Agent,
     });
-    const p = fetcher.fetch(URL_OK);
+    const p = fetcher.fetch(URL_OK, { allow: [HOST] });
     await vi.advanceTimersByTimeAsync(FEED_DEADLINE_MS - 1000);
     release([PUBLIC]);
     await vi.advanceTimersByTimeAsync(1500);
@@ -288,8 +332,8 @@ describe('E-02: size, time, type, status', () => {
   });
 
   it.each([
-    ['html', 'text/html'],
-    ['plain text', 'text/plain'],
+    ['css', 'text/css'],
+    ['an image asked for as text', 'image/png'],
     ['octet stream', 'application/octet-stream'],
     ['javascript', 'application/javascript'],
     ['none', ''],
@@ -434,5 +478,118 @@ describe('stress: odd and huge input never throws and never reaches the network 
     expect(a.ok && a.body.length).toBe(10_000);
     const b = await rig(response(['a'.repeat(FEED_MAX_BYTES * 3)])).fetcher.fetch(URL_OK);
     expect(b).toEqual({ ok: false, reason: 'too_large' });
+  });
+});
+
+describe('POB-I1: a verified domain that resolves to a private address after the verification', () => {
+  it('is refused on the next call: every call looks the name up again and checks every answer', async () => {
+    let n = 0;
+    const { fetcher, calls, resolve } = rig(response(), {
+      // The first call (the proof) sees a public address; later the name points at the metadata service.
+      addresses: () => (++n === 1 ? [PUBLIC] : ['169.254.169.254']),
+    });
+    expect((await fetcher.fetch(URL_OK)).ok).toBe(true);
+    expect(await fetcher.fetch(URL_OK)).toEqual({ ok: false, reason: 'private_address' });
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(calls).toHaveLength(1);
+  });
+
+  it.each([
+    '10.0.0.8',
+    '127.0.0.1',
+    '192.168.1.5',
+    '100.64.0.9',
+    '::1',
+    'fd12::5',
+    '::ffff:7f00:1',
+  ])('a later answer of %s is refused with no request', async (later) => {
+    let n = 0;
+    const { fetcher, calls } = rig(response(), {
+      addresses: () => (++n === 1 ? [PUBLIC] : [later]),
+    });
+    await fetcher.fetch(URL_OK);
+    expect(await fetcher.fetch(URL_OK)).toEqual({ ok: false, reason: 'private_address' });
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe('POB-I1: the image kind', () => {
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+  const IMG_URL = `https://${HOST}/p/one.png`;
+  const imgHead = { 'content-type': 'image/png' };
+
+  it('returns the bytes untouched, no text body, and asks for images only', async () => {
+    const { fetcher, calls } = rig(response([PNG], imgHead));
+    const r = await fetcher.fetch(IMG_URL, { kind: 'image' });
+    expect(r).toEqual({
+      ok: true,
+      body: '',
+      bytes: PNG,
+      content_type: 'image/png',
+      host: HOST,
+    });
+    const accept = (calls[0]!.options['headers'] as Record<string, string>)['accept'];
+    expect(accept).toContain('image/png');
+    expect(accept).not.toContain('json');
+  });
+
+  it('keeps bytes that are not UTF-8 (no decode for an image)', async () => {
+    const odd = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0xfe, 0xff]);
+    const r = await rig(response([odd], { 'content-type': 'image/jpeg' })).fetcher.fetch(IMG_URL, {
+      kind: 'image',
+    });
+    expect(r.ok && Array.from(r.bytes)).toEqual(Array.from(odd));
+  });
+
+  it.each([
+    ['svg', 'image/svg+xml'],
+    ['gif', 'image/gif'],
+    ['html', 'text/html'],
+    ['json', 'application/json'],
+  ])('refuses %s as an image', async (_n, ct) => {
+    const { fetcher, calls } = rig(response([PNG], { 'content-type': ct }));
+    expect(await fetcher.fetch(IMG_URL, { kind: 'image' })).toEqual({
+      ok: false,
+      reason: 'bad_content_type',
+    });
+    expect(calls[0]!.resDestroyed).toBe(true);
+  });
+
+  it('caps an image at 2 MB, with or without a declared length', async () => {
+    const full = new Uint8Array(FEED_MAX_BYTES);
+    expect(
+      (await rig(response([full], imgHead)).fetcher.fetch(IMG_URL, { kind: 'image' })).ok,
+    ).toBe(true);
+    const over = await rig(response([full, new Uint8Array(1)], imgHead)).fetcher.fetch(IMG_URL, {
+      kind: 'image',
+    });
+    expect(over).toEqual({ ok: false, reason: 'too_large' });
+    const declared = await rig(
+      response([PNG], { ...imgHead, 'content-length': String(FEED_MAX_BYTES + 1) }),
+    ).fetcher.fetch(IMG_URL, { kind: 'image' });
+    expect(declared).toEqual({ ok: false, reason: 'too_large' });
+  });
+
+  it('never follows a redirect for an image either', async () => {
+    const { fetcher, calls } = rig({
+      kind: 'response',
+      status: 302,
+      headers: { location: 'https://10.0.0.1/x.png', ...imgHead },
+      chunks: [],
+    });
+    expect(await fetcher.fetch(IMG_URL, { kind: 'image' })).toEqual({
+      ok: false,
+      reason: 'redirect',
+    });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('the host rules are the same: an image on another host is host_not_allowed, no lookup', async () => {
+    const { fetcher, resolve } = rig(response([PNG], imgHead));
+    expect(await fetcher.fetch('https://cdn.pub-two.invalid/x.png', { kind: 'image' })).toEqual({
+      ok: false,
+      reason: 'host_not_allowed',
+    });
+    expect(resolve).not.toHaveBeenCalled();
   });
 });

@@ -478,7 +478,15 @@ const isTest = (f: string) =>
 // Built at run time: this file does not itself name the production Wire module.
 const MODULE = ['wire', 'https'].join('-');
 const FUNCTION = ['create', 'Https', 'Wire'].join('');
-const code = (f: string) => readFileSync(f, 'utf8').replace(/^\s*\/\/.*$/gm, '');
+// Line comments and block comments are not code. (A block comment may name `fetch(` in prose.)
+const code = (f: string) =>
+  readFileSync(f, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+// FEED (POB-I1): the one line of feed-fetch.ts that may read as a call to fetch: the interface method.
+const FEED_FETCH = 'packages/transport/src/feed-fetch.ts';
+const FEED_INTERFACE_LINE = 'fetch(url: string, o: FetchOptions): Promise<FeedFetchResult>;';
+const FETCH_CALL = /(^|[^.\w$])fetch\s*\(|globalThis\s*\.\s*fetch\s*\(/m;
 
 describe('the production network call lives in exactly one file', () => {
   const pkgFiles = walk(join(REPO, 'packages')).filter((f) => /\.(ts|tsx|mts|js|mjs)$/.test(f));
@@ -501,9 +509,30 @@ describe('the production network call lives in exactly one file', () => {
   it('no non-test file of the transport package calls fetch', () => {
     const hits = prod
       .filter((f) => rel(f).startsWith('packages/transport/src/'))
-      .filter((f) => /(^|[^.\w$])fetch\s*\(|globalThis\s*\.\s*fetch\s*\(/m.test(code(f)));
-    // FEED: feed-fetch.ts names its interface method `fetch(`; that one line is the only exemption.
-    expect(hits.map(rel)).toEqual(['packages/transport/src/feed-fetch.ts']);
+      .filter((f) => {
+        // The exact interface line of the feed fetcher is exempt; nothing else is.
+        const text =
+          rel(f) === FEED_FETCH
+            ? code(f).replace(
+                new RegExp(`^\\s*${FEED_INTERFACE_LINE.replace(/[().]/g, '\\$&')}\\s*$`, 'm'),
+                '',
+              )
+            : code(f);
+        return FETCH_CALL.test(text);
+      });
+    expect(hits.map(rel)).toEqual([]);
+  });
+  it('the feed fetcher has exactly one line that reads as fetch( and it is the interface method', () => {
+    const lines = code(join(REPO, FEED_FETCH))
+      .split('\n')
+      .filter((l) => FETCH_CALL.test(l));
+    expect(lines.map((l) => l.trim())).toEqual([FEED_INTERFACE_LINE]);
+  });
+  it('a block comment cannot hide a call: the stripped text of a sample still shows the call', () => {
+    const sample = 'const a = 1; /* note */ fetch(x);\n/* fetch(y) */';
+    const stripped = sample.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(FETCH_CALL.test(stripped)).toBe(true);
+    expect(FETCH_CALL.test('/* fetch(y) */'.replace(/\/\*[\s\S]*?\*\//g, ''))).toBe(false);
   });
   it('the production Wire file reads the global fetch only to compare it, never to call it', () => {
     const src = code(join(REPO, `packages/transport/src/${MODULE}.ts`));

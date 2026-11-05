@@ -439,3 +439,101 @@ describe('parseFeed: Atom and RSS', () => {
     expect(i!.title).toBe('A &lt; B');
   });
 });
+
+// POB-I1 (D-089): the web import keeps an entry that has only a link (its own page is read later), and
+// every entry reports its link. The default stays as FEED had it: an entry without text is skipped.
+describe('links and entries without text (web import)', () => {
+  const rss = (item: string) =>
+    `<?xml version="1.0"?><rss version="2.0"><channel><language>en</language>${item}</channel></rss>`;
+  const XML_CT = 'application/rss+xml';
+
+  it('RSS: the link of an item is reported, and the guid is the id', () => {
+    const r = parseFeed(
+      rss(
+        '<item><guid>g1</guid><title>T</title><link>https://shop.pub-one.invalid/a/1</link><description>Text</description></item>',
+      ),
+      XML_CT,
+    );
+    expect(r.ok && r.value.items[0]!.link).toBe('https://shop.pub-one.invalid/a/1');
+  });
+
+  it('by default an item with only a link is skipped, as before', () => {
+    const r = parseFeed(
+      rss('<item><guid>g1</guid><title>T</title><link>https://x.invalid/a</link></item>'),
+      XML_CT,
+    );
+    expect(r.ok && r.value.items).toEqual([]);
+    expect(r.ok && r.value.skipped).toBe(1);
+  });
+
+  it('with keepBodyless the item stays: empty body, the link kept, summary taken from the title', () => {
+    const r = parseFeed(
+      rss('<item><guid>g1</guid><title>Quay walk</title><link>https://x.invalid/a</link></item>'),
+      XML_CT,
+      { keepBodyless: true },
+    );
+    expect(r.ok && r.value.items).toEqual([
+      expect.objectContaining({
+        source_id: 'g1',
+        title: 'Quay walk',
+        abstract: 'Quay walk',
+        body: '',
+        link: 'https://x.invalid/a',
+      }),
+    ]);
+  });
+
+  it('with keepBodyless an item with neither text nor link is still skipped', () => {
+    const r = parseFeed(rss('<item><guid>g1</guid><title>Quay walk</title></item>'), XML_CT, {
+      keepBodyless: true,
+    });
+    expect(r.ok && r.value.items).toEqual([]);
+    expect(r.ok && r.value.skipped).toBe(1);
+  });
+
+  it('with keepBodyless an item with no guid takes its link as the id', () => {
+    const r = parseFeed(
+      rss('<item><title>Quay walk</title><link>https://x.invalid/a</link></item>'),
+      XML_CT,
+      { keepBodyless: true },
+    );
+    expect(r.ok && r.value.items[0]!.source_id).toBe('https://x.invalid/a');
+  });
+
+  it('Atom: the alternate link is reported (rel alternate or no rel), other links are not', () => {
+    const atom =
+      '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>1</id><title>T</title><summary>S</summary><content>Body</content>' +
+      '<link rel="enclosure" href="https://x.invalid/file.pdf"/><link rel="alternate" href="https://x.invalid/page"/></entry>' +
+      '<entry><id>2</id><title>U</title><content>Body</content><link href="https://x.invalid/other"/></entry></feed>';
+    const r = parseFeed(atom, 'application/atom+xml');
+    expect(r.ok && r.value.items.map((i) => i.link)).toEqual([
+      'https://x.invalid/page',
+      'https://x.invalid/other',
+    ]);
+  });
+
+  it('JSON feed: the url field is the link', () => {
+    const r = parseFeed(
+      JSON.stringify({
+        items: [{ id: '1', title: 'T', content_text: 'Body', url: 'https://x.invalid/a' }],
+      }),
+      'application/feed+json',
+    );
+    expect(r.ok && r.value.items[0]!.link).toBe('https://x.invalid/a');
+  });
+
+  it('a link is text of at most 2048 visible characters or none; nothing else is kept', () => {
+    for (const bad of [
+      'javascript:alert(1)',
+      'a b',
+      `https://x.invalid/${'a'.repeat(2100)}`,
+      '<b>x</b>',
+    ]) {
+      const r = parseFeed(
+        JSON.stringify({ items: [{ id: '1', title: 'T', content_text: 'Body', url: bad }] }),
+        'application/feed+json',
+      );
+      expect(r.ok && r.value.items[0]!.link).toBeNull();
+    }
+  });
+});
