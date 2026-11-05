@@ -31,7 +31,14 @@ export function dayText(isoUtc: string): string {
   return `${String(d)} ${MONTHS[m - 1] ?? ''} ${y}`;
 }
 
-export function agreementText(a: { accepted_at: string; terms_version: string }): string {
+export function agreementText(a: {
+  accepted_at: string;
+  terms_version: string;
+  method?: 'seeded_demo' | 'publisher_accepted';
+}): string {
+  // POB-P1: a click through record is the publisher's own act, not a demo record.
+  if (a.method === 'publisher_accepted')
+    return `Publisher terms: accepted on ${dayText(a.accepted_at)} (version ${a.terms_version}).`;
   return `Publisher terms: accepted on ${dayText(a.accepted_at)} (version ${a.terms_version}), demo record.`;
 }
 

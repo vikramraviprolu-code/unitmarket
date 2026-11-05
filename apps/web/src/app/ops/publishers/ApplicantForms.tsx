@@ -18,6 +18,7 @@ import {
 } from '../../../lib/ops-applicants-copy';
 import { OPS_NEEDS_CODE } from '../../../lib/ops-copy';
 import { ErrorState } from '../../../ui/ErrorState';
+import { InviteCodePanel } from './InviteCodePanel';
 
 // PUB-E2: the add form and the answer form of the Applicants section. They only carry what the operator
 // typed; the routes check everything again (operator, second factor, CSRF, shape, status rules).
@@ -136,16 +137,22 @@ export function DecideApplicantForm({
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // POB-P1: the invite code of an approval lives here until the operator confirms they copied it. The row
+  // leaves the list on refresh, so refreshing is held back until then.
+  const [invite, setInvite] = useState<{ code: string; expires_at: string } | null>(null);
 
   async function decide(decision: 'approve' | 'reject') {
     setBusy(true);
     setError(null);
     setDone(null);
-    const r = await postJson<{ state: string }>('/api/ops/publishers/applicants/decision', {
-      publisher_id: publisherId,
-      decision,
-      reason,
-    });
+    const r = await postJson<{ state: string; invite?: { code: string; expires_at: string } }>(
+      '/api/ops/publishers/applicants/decision',
+      {
+        publisher_id: publisherId,
+        decision,
+        reason,
+      },
+    );
     setBusy(false);
     if (!r.ok) {
       setError(r.status === 401 ? 'Please sign in again.' : applicantErrorText(r.code));
@@ -153,8 +160,27 @@ export function DecideApplicantForm({
     }
     setReason('');
     setDone(decision === 'approve' ? DONE_APPROVED : DONE_REJECTED);
+    if (r.data.invite !== undefined) {
+      setInvite(r.data.invite);
+      return;
+    }
     router.refresh();
   }
+
+  if (invite !== null)
+    return (
+      <div>
+        <div aria-live="polite">{done}</div>
+        <InviteCodePanel
+          code={invite.code}
+          expiresAt={invite.expires_at}
+          onDone={() => {
+            setInvite(null);
+            router.refresh();
+          }}
+        />
+      </div>
+    );
 
   return (
     <div>

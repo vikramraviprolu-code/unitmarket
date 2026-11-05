@@ -1187,6 +1187,7 @@ const HELPERS = ['test-fixtures.ts', 'world.ts', 'support.ts'];
 const HASH_ONLY = {
   delivery: ['link-token.ts', 'store-pg.ts'],
   rules: ['digest.ts'],
+  catalogue: ['publisher-invites.ts'],
   alerts: ['state.ts'],
 };
 const HASH_HELPERS = { delivery: ['world.ts'] };

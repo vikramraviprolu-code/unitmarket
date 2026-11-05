@@ -30,6 +30,14 @@ import {
   payeeEndingText,
 } from '../../../lib/publisher-forms-copy';
 import { RequestForm } from './RequestForm';
+import { PaypalLinkForm } from './PaypalLinkForm';
+import {
+  LINK_HEADING,
+  LINK_LEDE,
+  LINK_NONE,
+  LINK_NO_ACCOUNT,
+  linkLine,
+} from '../../../lib/publisher-accounts-copy';
 import '../pk-forms.css';
 
 export const metadata: Metadata = { title: 'Where you get paid' };
@@ -42,6 +50,8 @@ export default async function PayoutAccount() {
   if (actor?.kind !== 'publisher') redirect('/signin?next=/publisher/payout-account');
   const view = await (await app()).engine.payee.view(actor);
   if (view === null) redirect('/signin?next=/publisher/payout-account');
+  // POB-P1: the publisher's own PayPal address. Only a publisher who claimed an account can link one.
+  const account = await (await app()).engine.publisherAccounts.view(actor);
   const operatorChecked = view.history.some((h) => h.state === 'verified');
   const chip = payeeChip({
     last4: view.last4,
@@ -62,6 +72,7 @@ export default async function PayoutAccount() {
         label="On this page"
         items={[
           { id: 'payee-current', label: 'Your account' },
+          { id: 'paypal-link', label: 'Your PayPal address' },
           { id: 'payee-settlement-section', label: 'Where sales money goes' },
           { id: 'payee-request', label: 'Ask for a change' },
           { id: 'payee-history-section', label: 'Your requests' },
@@ -83,6 +94,23 @@ export default async function PayoutAccount() {
             <dt>{LABEL_VERIFIED_BY}</dt>
             <dd data-testid="payee-verified-by">{verifiedByText(operatorChecked)}</dd>
           </dl>
+        </div>
+      </Section>
+      <Section title={LINK_HEADING} id="paypal-link">
+        <div className="pk-panel">
+          <p>{LINK_LEDE}</p>
+          {account === null ? (
+            <p data-testid="paypal-link-no-account">{LINK_NO_ACCOUNT}</p>
+          ) : (
+            <>
+              <p data-testid="paypal-link-current">
+                {account.link === null
+                  ? LINK_NONE
+                  : linkLine(account.link.email, account.link.state)}
+              </p>
+              <PaypalLinkForm />
+            </>
+          )}
         </div>
       </Section>
       <Section title={PAYEE_SECTION_SETTLEMENT} id="payee-settlement-section">

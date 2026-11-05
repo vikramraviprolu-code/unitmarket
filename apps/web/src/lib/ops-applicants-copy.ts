@@ -4,9 +4,9 @@
 
 export const APPLICANTS_HEADING = 'Applicants';
 export const APPLICANTS_LEDE =
-  'Publishers who applied on the public form, or whom an operator added. Nobody gets an account or sign in from applying.';
+  'Publishers who applied on the public form, or whom an operator added. Applying creates no account. An approved publisher claims one with an invite code.';
 export const APPLICANTS_NO_LOGIN =
-  'Approving an applicant makes it an active publisher, but it cannot sign in yet. The owners must add a persona and a passcode for it first. Until then it has no payee account and no offers.';
+  'Approving an applicant makes it an active publisher and shows you a one time invite code, once. Give the code to the publisher so they can claim their account and sign in. Until then it has no payee account and no offers.';
 export const APPLICANTS_EMPTY = 'No applicants waiting.';
 
 export const ADD_HEADING = 'Add an applicant';
@@ -23,7 +23,7 @@ export const ADD_BUTTON = 'Add applicant';
 export const APPROVE_BUTTON = 'Approve';
 export const REJECT_BUTTON = 'Reject';
 export const APPROVE_HINT =
-  'Approve makes the publisher active. It cannot sign in until the owners add a persona and a passcode.';
+  'Approve makes the publisher active and shows an invite code once. The publisher claims their account with it.';
 export const REJECT_HINT =
   'Reject keeps the record and the reason. It cannot be undone and the applicant stays unable to sign in or sell.';
 
@@ -42,7 +42,7 @@ export const applicantLine = (a: { country: string; slug: string }): string =>
 
 export const DONE_ADDED = 'Applicant added. It is waiting for your answer.';
 export const DONE_APPROVED =
-  'Approved. The publisher is active but cannot sign in until the owners add a persona.';
+  'Approved. The publisher is active. Give them the invite code below so they can claim their account.';
 export const DONE_REJECTED = 'Rejected. The record and your reason are kept.';
 
 export function applicantErrorText(code: string): string {
