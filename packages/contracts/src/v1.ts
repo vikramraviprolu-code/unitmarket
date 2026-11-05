@@ -18,6 +18,7 @@ import { KeyKindSchema, SCOPES, ScopeSchema } from './principal';
 import type { Scope } from './principal';
 import { NoMatchReasonSchema, QuoteSchema } from './quote';
 import { CaseViewSchema } from './recovery';
+import { TxnExportSchema, TxnLinePageSchema, TxnQueryMapSchema } from './txn-query';
 import { AGENT_ROUTES } from './v1-agent';
 import { ALERT_ROUTES } from './v1-alerts';
 import { TRACE_ROUTES } from './v1-trace';
@@ -311,9 +312,11 @@ export const OrderPlacedSchema = z
   .object({ order_id: IdSchema, order_ref: IdSchema, status: z.string().min(1).max(40) })
   .strict();
 
-export const OrderListQuerySchema = z
-  .object({ limit: Limit.optional(), cursor: CursorText.optional() })
-  .strict();
+/**
+ * INT-SR1: the order list takes the raw query map. `limit` and `cursor` alone keep the old paging; any
+ * TxnQuery key switches to keyset paging (`parseTxnQuery` drops bad values, so none of them answers 422).
+ */
+export const OrderListQuerySchema = TxnQueryMapSchema;
 export const OrderSummarySchema = z
   .object({
     order_ref: IdSchema,
@@ -850,12 +853,24 @@ export const V1_ROUTES: readonly RouteDoc[] = [
   {
     method: 'GET',
     path: '/api/v1/orders',
-    summary: 'Your orders, newest first. Pages with cursor.',
+    summary:
+      'Your orders, newest first. With no parameters: the order list with cursor. With any filter (TxnQuery: from, to, min_minor, max_minor, currency, status, refund, case, q, ref, channel, sort, dir, limit, cursor): one line per purchased item, paged by keyset.',
     auth: 'apikey',
     scopes: ['orders:read'],
     input: { in: 'query', schema: OrderListQuerySchema },
-    success: { status: 200, schema: OrderListSchema },
-    errors: [400, 422],
+    success: { status: 200, schema: z.union([OrderListSchema, TxnLinePageSchema]) },
+    errors: [400],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/orders/export',
+    summary:
+      'Your lines under the current filter as CSV text in a JSON answer { filename, csv, truncated }. At most 5000 rows.',
+    auth: 'apikey',
+    scopes: ['orders:read'],
+    input: { in: 'query', schema: TxnQueryMapSchema },
+    success: { status: 200, schema: TxnExportSchema },
+    errors: [400],
   },
   {
     method: 'GET',
@@ -880,12 +895,13 @@ export const V1_ROUTES: readonly RouteDoc[] = [
   {
     method: 'GET',
     path: '/api/v1/library',
-    summary: 'What you own: one entry per item with its access window and state.',
+    summary:
+      'What you own: one entry per item with its access window and state. Filters: from and to (purchased date), seller, q (item text), access (available, ended, revoked); limit and cursor page.',
     auth: 'apikey',
     scopes: ['library:read'],
-    input: { in: 'none' },
+    input: { in: 'query', schema: TxnQueryMapSchema },
     success: { status: 200, schema: LibraryListSchema },
-    errors: [],
+    errors: [400],
   },
   {
     method: 'POST',
@@ -942,12 +958,24 @@ export const V1_ROUTES: readonly RouteDoc[] = [
   {
     method: 'GET',
     path: '/api/v1/seller/sales',
-    summary: 'Your sales, newest first. No buyer identity.',
+    summary:
+      'Your sales, newest first. No buyer identity. With no parameters: every sale. With any filter (TxnQuery without buyer, seller, agent_key, environment, flags), limit or cursor: keyset paging.',
     auth: 'apikey',
     scopes: ['sales:read'],
-    input: { in: 'none' },
-    success: { status: 200, schema: SellerSalesSchema },
-    errors: [404],
+    input: { in: 'query', schema: TxnQueryMapSchema },
+    success: { status: 200, schema: z.union([SellerSalesSchema, TxnLinePageSchema]) },
+    errors: [400, 404],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/seller/sales/export',
+    summary:
+      'Your sales under the current filter as CSV text in a JSON answer. No buyer column. At most 5000 rows.',
+    auth: 'apikey',
+    scopes: ['sales:read'],
+    input: { in: 'query', schema: TxnQueryMapSchema },
+    success: { status: 200, schema: TxnExportSchema },
+    errors: [400],
   },
   // ----- API-A: operator (reads only; no key ever changes a switch, starts or stops anything) -----
   {
@@ -981,6 +1009,17 @@ export const V1_ROUTES: readonly RouteDoc[] = [
     input: { in: 'none' },
     success: { status: 200, schema: OpsOrderDetailSchema },
     errors: [404],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/ops/transactions',
+    summary:
+      'Every purchased item with filters and four saved views (view=needs_attention, refunds_today, agent_purchases, sandbox_only). Order refs, amounts, states, flags and opaque ids only: no buyer or seller name and no provider order id.',
+    auth: 'apikey',
+    scopes: ['ops:read'],
+    input: { in: 'query', schema: TxnQueryMapSchema },
+    success: { status: 200, schema: TxnLinePageSchema },
+    errors: [400],
   },
   {
     method: 'GET',

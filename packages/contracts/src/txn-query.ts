@@ -270,3 +270,77 @@ export function parseTxnQuery(raw: Raw): TxnQuery {
 
   return out as TxnQuery;
 }
+
+// ---------- INT-SR1: response rows ----------
+
+/** The raw URL string map the search routes take. Value errors never fail here: parseTxnQuery drops them. */
+const queryMap = z.record(z.string().max(100), z.string().max(4200));
+/**
+ * withRoute asks every schema for `.strict()` (rule L2). The search routes take the raw string map: a bad value
+ * or an unknown key is dropped by `parseTxnQuery`, never a 422, and the role check (scopeQuery) reads the raw
+ * keys and answers 400 `field_not_allowed`. So strict is the map itself. The named keys are the documented
+ * parameters (`view`: operator saved view; `access`: library access state).
+ */
+export const TxnQueryMapSchema = Object.assign(queryMap, { strict: () => queryMap });
+
+/** A cell of the shared line: every field one role may be shown. Which role sees which is fixed in code. */
+export const TxnLineSchema = z
+  .object({
+    unit_id: z.string().min(1).max(200),
+    order_ref: z.string().min(1).max(200),
+    order_ref6: z.string().min(1).max(6),
+    /** The one of six plain words: attention, refunded, part_refunded, paid, failed, in_progress. */
+    status: StatusGroupSchema,
+    order_status: z.string().max(60),
+    unit_status: z.string().max(60),
+    created_at: z.string().max(40),
+    updated_at: z.string().max(40),
+    captured_at: z.string().max(40).nullable(),
+    currency: z.string().max(3),
+    amount_minor: z.number().int(),
+    refunded_minor: z.number().int(),
+    environment: z.enum(ENVIRONMENT_VALUES),
+    titles: z.array(z.string().max(300)),
+    refund_state: z.string().max(60).nullable(),
+    refund_amount_minor: z.number().int().nullable(),
+    case_state: z.string().max(60).nullable(),
+    case_kind: z.string().max(60).nullable(),
+    channel: z.enum(CHANNEL_VALUES),
+    // Buyer and operator lines.
+    order_total_minor: z.number().int().optional(),
+    agent_key_id: z.string().max(200).nullable().optional(),
+    // Operator lines (opaque ids).
+    publisher_id: z.string().max(200).optional(),
+    buyer_id: z.string().max(200).optional(),
+    mandate_id: z.string().max(200).nullable().optional(),
+    alert_count: z.number().int().optional(),
+    has_unknown_op: z.boolean().optional(),
+    order_mismatch: z.boolean().optional(),
+    // Seller lines: the seller's own name.
+    seller_name: z.string().max(300).optional(),
+    // Operator lines with MFA only.
+    seller_slug: z.string().max(200).optional(),
+    buyer_display_name: z.string().max(300).optional(),
+    provider_order_id: z.string().max(200).nullable().optional(),
+    capture_id: z.string().max(200).nullable().optional(),
+    refund_id: z.string().max(200).nullable().optional(),
+  })
+  .strict();
+export type TxnLine = z.infer<typeof TxnLineSchema>;
+
+export const TxnLinePageSchema = z
+  .object({
+    items: z.array(TxnLineSchema),
+    next_cursor: z.string().min(1).max(500).nullable(),
+  })
+  .strict();
+
+/** PUB-E1 shape: the file is a JSON string, never a text/csv answer. */
+export const TxnExportSchema = z
+  .object({
+    filename: z.string().min(1).max(120),
+    csv: z.string(),
+    truncated: z.boolean(),
+  })
+  .strict();
+export type TxnExport = z.infer<typeof TxnExportSchema>;

@@ -1,6 +1,6 @@
 import { withRoute } from '@umsbx/security';
 import type { RouteMeta } from '@umsbx/security';
-import { z } from 'zod';
+import { TxnQueryMapSchema } from '@umsbx/contracts';
 import { listLibrary } from '../../../../api-v1/buyer';
 import { app, securityDeps } from '../../../../server/access';
 
@@ -17,6 +17,6 @@ export const routeMeta: RouteMeta = {
   risk: 'low',
 };
 
-export const GET = withRoute(routeMeta, z.object({}).strict(), async ({ actor, principal }) =>
-  listLibrary(await app(), { actor, principal }),
+export const GET = withRoute(routeMeta, TxnQueryMapSchema, async ({ actor, principal, input }) =>
+  listLibrary(await app(), { actor, principal }, input),
 )(securityDeps);

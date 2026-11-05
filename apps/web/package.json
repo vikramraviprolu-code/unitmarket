@@ -45,6 +45,7 @@
     "@umsbx/security": "workspace:*",
     "@umsbx/trace": "workspace:*",
     "@umsbx/transport": "workspace:*",
+    "@umsbx/txn-search": "workspace:*",
     "next": "15.5.28",
     "react": "19.1.10",
     "react-dom": "19.1.10",

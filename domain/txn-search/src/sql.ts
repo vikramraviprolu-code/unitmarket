@@ -174,7 +174,7 @@ function rankSql(stale: () => string): string {
 // ---------- Text ----------
 
 /** Escape for LIKE: the escape character first, then % and _. Lower-casing happens in SQL, on both sides. */
-const escapeLike = (s: string): string =>
+export const escapeLike = (s: string): string =>
   s.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 
 const REFUND_REQUESTED = ['requested', 'sent', 'unknown', 'pending', 'unresolved'];

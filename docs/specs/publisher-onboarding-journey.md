@@ -47,7 +47,7 @@ to the e2e suite when the screens exist. Nothing calls PayPal or the open web in
 | A6  | Where files are stored      | The existing content table, with hard size caps. A bucket is the later design for thousands of photos; v1 caps the batch (100 items, 2 MB each).                                                                                     |
 | A7  | Payout timing               | A sale's payout is due when its access window ends and no open refund exists. One payout per publisher and currency per run.                                                                                                         |
 | A8  | Real PayPal                 | No real sandbox payout or order runs without the owner's explicit "approve" and an approval row inserted at his own terminal. Offline first.                                                                                         |
-| A9  | Migrations                  | P1 uses 0020, M1 uses 0021, I1 uses 0022. Coordinator assigns; any other number is a stop and report.                                                                                                                                |
+| A9  | Migrations                  | 0020 to 0027 are taken on main. Planned: P1 0028, M1 0029, I1 0030; each lane takes the next free number when it starts and again when it rebases. Coordinator renumbers on a clash.                                                 |
 
 ## Acceptance (the whole journey)
 
@@ -59,3 +59,7 @@ to the e2e suite when the screens exist. Nothing calls PayPal or the open web in
 
 Do not: connect to PayPal or the open web in any test; add a dependency without a decision row; copy code from the
 simulation repository; put a secret anywhere; deploy.
+
+## Rebuild note (5 Nov)
+
+The first builds of P1, M1 and I1 were lost in a container reset before they were pushed. Rebuild from the lane specs, which now carry the review findings. The coordinator pushes each lane branch after every commit round, so a reset cannot take it again.

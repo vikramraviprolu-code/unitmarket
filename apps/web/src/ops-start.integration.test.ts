@@ -169,7 +169,11 @@ describe('section tabs (source)', () => {
       }
     };
     walk(OPS_DIR);
-    expect(found.length).toBe(7);
-    for (const p of found) expect(readFileSync(p, 'utf8'), p).toContain('<SectionNav');
+    // INT-OPS-B: the list pages hold one section each (a table, or one tile), so jump links would only add noise.
+    const SINGLE_SECTION = ['money/transactions', 'controls/activity', 'controls/invariants'];
+    expect(found.length).toBe(10);
+    for (const p of found)
+      if (!SINGLE_SECTION.some((s) => p.includes(`/ops/${s}/`)))
+        expect(readFileSync(p, 'utf8'), p).toContain('<SectionNav');
   });
 });

@@ -2,9 +2,19 @@
 // mfa false), and nothing here changes a switch, starts or stops outbound calls, or opens a refund: the
 // facade for operators has no such method (see facades.ts), and this file has none either.
 // The answers carry no buyer or publisher identity, no PayPal order id, no merchant id and no secret.
+import type { Actor } from '@umsbx/contracts';
 import type { HttpResult } from '@umsbx/security';
+import {
+  exportName,
+  exportTransactions,
+  isViewId,
+  listTransactions,
+  txnCsv,
+  quickFind,
+} from '../../composition.server';
 import type { App } from '../../composition.server';
-import { FORBIDDEN, NOT_FOUND, ownerOf, type Ctx } from './guard';
+import { findForActor, hasOpsIdentity, withOpsIdentity } from '../server/ops-identity';
+import { FORBIDDEN, NOT_FOUND, ownerOf, searchRefusal, type Ctx } from './guard';
 
 type Result<T> = Promise<HttpResult<T>>;
 
@@ -148,4 +158,73 @@ export async function status(a: App): Result<unknown> {
         },
       }
     : { status: 503, code: 'unhealthy', message: 'The service is not ready.' };
+}
+
+// INT-SR1 (SR1.3): the operator transaction list with four saved views (`view=`). The key route and the
+// session route run the same function; withOpsIdentity adds names and PayPal ids only for a session with MFA.
+const viewOf = (raw: Record<string, string>) =>
+  raw['view'] !== undefined && isViewId(raw['view']) ? raw['view'] : undefined;
+
+export async function opsTransactionsFor(
+  a: App,
+  actor: Actor,
+  raw: Record<string, string>,
+): Result<unknown> {
+  const now = a.security.clock.now();
+  const view = viewOf(raw);
+  try {
+    const r = await listTransactions(a.db, actor, raw, { now, ...(view ? { view } : {}) });
+    return {
+      status: 200,
+      body: { items: withOpsIdentity(actor, r.rows, now), next_cursor: r.next_cursor },
+    };
+  } catch (e) {
+    const refused = searchRefusal(e);
+    if (refused !== null) return refused;
+    throw e;
+  }
+}
+
+/** GET /api/v1/ops/transactions: an operator key; no identity, whatever the key asks for. */
+export async function transactions(a: App, ctx: Ctx, raw: Record<string, string>): Result<unknown> {
+  const actor = ownerOf(ctx, 'operator');
+  return actor === null ? FORBIDDEN : opsTransactionsFor(a, actor, raw);
+}
+
+/** GET /api/ops/transactions/export: the same filter as CSV text; identity columns only with MFA. */
+export async function opsExportFor(
+  a: App,
+  actor: Actor,
+  raw: Record<string, string>,
+): Result<unknown> {
+  const now = a.security.clock.now();
+  const view = viewOf(raw);
+  try {
+    const r = await exportTransactions(a.db, actor, raw, { now, ...(view ? { view } : {}) });
+    const lines = withOpsIdentity(actor, r.rows, now);
+    return {
+      status: 200,
+      body: {
+        filename: exportName('ops', now),
+        csv: txnCsv('ops', lines, hasOpsIdentity(actor)),
+        truncated: r.truncated,
+      },
+    };
+  } catch (e) {
+    const refused = searchRefusal(e);
+    if (refused !== null) return refused;
+    throw e;
+  }
+}
+
+/** GET /api/ops/find: quick-find from the operator session. */
+export async function opsFind(a: App, actor: Actor, q: string): Result<unknown> {
+  try {
+    const found = await quickFind(a.db, actor, q, { now: a.security.clock.now() });
+    return { status: 200, body: findForActor(actor, found) };
+  } catch (e) {
+    const refused = searchRefusal(e);
+    if (refused !== null) return refused;
+    throw e;
+  }
 }
