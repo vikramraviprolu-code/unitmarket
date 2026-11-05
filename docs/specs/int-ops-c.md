@@ -2,7 +2,7 @@
 
 Task: A detail page for every buyer, seller and agent key, and a money tab that opens into ledger lines.
 Package: `apps/web` (Buyers, Sellers, Agents and API, Money tabs), two operator revoke functions (`domain/mandates`, `packages/security`). Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
-Items: OPS-C.1 to OPS-C.5, 12 points, cut "should". Needs UI0, TR1, SR1 and OPS-A merged (OPS-A creates the Buyers landing page, S2). Sources: operator items 11 to 15; UX-09, UX-19 (operator half), UX-20. Includes `int-wave2-conventions.md`. Round 2: fixes S2, S3 and C1 to C7 of `ops-scorecard.md`.
+Items: OPS-C.1 to OPS-C.5, 12 points, cut "should". Needs UI0, TR1, SR1 and OPS-A merged (OPS-A creates the Buyers landing page, S2). Sources: operator items 11 to 15; UX-09, UX-19 (operator half), UX-20. Includes `int-wave2-conventions.md`. Round 2 passed 11/12 (`ops-scorecard.md`); build notes below override the text above where they differ.
 
 ## Identity rule for this lane (C2)
 
@@ -70,6 +70,12 @@ Changed:
 | a11y | `apps/web/src/flow-a11y.state.test.ts` | `corepack pnpm vitest run apps/web/src/flow-a11y.state.test.ts` | The text-read check passes for the four pages |
 
 Mutation (OPS-C.3 is L): `pnpm mutation --require-targets --targets "domain/mandates/src/store.ts,packages/security/src/apikey.ts,apps/web/src/app/api/ops/mandates/[id]/revoke/route.ts,apps/web/src/app/api/ops/api-keys/[id]/revoke/route.ts" --test-cmd "corepack pnpm vitest run apps/web/src/ops-agents.adversarial.test.ts domain/mandates packages/security/src/operator-revoke.state.test.ts" --threshold 80`. C4 to C7 apply.
+
+## Build notes (round 2, binding)
+
+- N-C1: the mutation `--test-cmd` also runs `packages/security/src/apikey.test.ts` and `packages/security/src/apikey.state.test.ts`, so mutants in create, verify and list are killed.
+- N-C2: add one 429 case for the 30 per hour revoke rate.
+- N-C3: the webhook host is parsed inside the read, so the full URL never reaches page props; the canary scan covers client props too.
 
 ## Do not
 

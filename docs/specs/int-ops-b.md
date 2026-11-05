@@ -2,7 +2,7 @@
 
 Task: Find any transaction in seconds, and see who did what, when and from where.
 Package: `apps/web` (shared filter bar, Money › Transactions, the `/` quick-find, Controls › Activity and Invariants, the timeline verified mark). Builder: Sonnet 5.5 medium. Reviewer: Opus 5.5 gate.
-Items: OPS-B.1 to OPS-B.5, 9 points, all "must". Needs UI0, SR0 (with `REFUSED_FIELDS`), SR1 and TR1 merged. Sources: operator items 5, 10, 19; search T3.1, T3.4, T3.5; UX-21. Includes `int-wave2-conventions.md`. Round 2: fixes S1, S3 and B1 to B7 of `ops-scorecard.md`.
+Items: OPS-B.1 to OPS-B.5, 9 points, all "must". Needs UI0, SR0 (with `REFUSED_FIELDS`), SR1 and TR1 merged. Sources: operator items 5, 10, 19; search T3.1, T3.4, T3.5; UX-21. Includes `int-wave2-conventions.md`. Round 2 passed 11/12 (`ops-scorecard.md`); build notes below override the text above where they differ.
 
 ## Goal
 
@@ -58,6 +58,11 @@ No API, domain or migration change: every route used already exists from SR1 and
 | a11y | `apps/web/src/flow-a11y.state.test.ts` | `corepack pnpm vitest run apps/web/src/flow-a11y.state.test.ts` | The text-read check passes for the three pages |
 
 No L item, so no mutation target. C4 to C7 apply.
+
+## Build notes (round 2, binding)
+
+- N-B1: "Run verify" is a link to `/ops/controls/invariants?verify=1`. The server page calls `traceVerifyDetail` only when that parameter is present. No route and no server action (a server action would bypass `withRoute`).
+- N-B2: buyer and seller sessions never reach the verify call (the page refuses them first).
 
 ## Do not
 

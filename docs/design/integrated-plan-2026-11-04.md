@@ -427,9 +427,9 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 | TR1 Timeline | 1 | 6 | 14 | 14 | | Sonnet 5.5 high | Spec passed 11/12; waits on TR0, UI0 |
 | AL Alerts and cases | 1 | 8 | 18 | 18 | | Sonnet 5.5 high | Spec passed 10/12; waits on TR0, UI0 |
 | SR1 Search APIs | 1 | 7 | 17 | 17 | | Sonnet 5.5 high | Spec passed 11/12; stacks on SR0 |
-| OPS-A | 2 | 7 | 12 | 12 | | Sonnet 5.5 medium | Round 1 6/12; revising |
-| OPS-B | 2 | 5 | 9 | 9 | | Sonnet 5.5 medium | Round 1 8/12; revising |
-| OPS-C | 2 | 5 | 12 | | 12 | Sonnet 5.5 high | Round 1 7/12; revising |
+| OPS-A | 2 | 7 | 12 | 12 | | Sonnet 5.5 medium | Spec passed 12/12 (round 2); waits on UI0, TR1, AL |
+| OPS-B | 2 | 5 | 9 | 9 | | Sonnet 5.5 medium | Spec passed 11/12 (round 2); waits on UI0, SR0, SR1, TR1 |
+| OPS-C | 2 | 5 | 12 | | 12 | Sonnet 5.5 high | Spec passed 11/12 (round 2); waits on UI0, TR1, SR1, OPS-A |
 | CTL | 2 | 7 | 20 | 16 | 4 | Sonnet 5.5 high | Spec passed 11/12 (round 2); waits on CL1, UI0, TR0, AL |
 | BUY | 2 | 10 | 23 | 11 | 12 | Sonnet 5.5 high | Spec passed 12/12 (round 2); waits on UI0, TR1, SR1, OPS-B.1 |
 | SEL | 2 | 9 | 18 | 6 | 12 | Sonnet 5.5 medium | Spec passed 11/12 (round 2); waits on UI0, TR1, SR1, OPS-B.1 |

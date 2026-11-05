@@ -2,7 +2,7 @@
 
 Task: The operator screens that turn "something is wrong" into one click to the fix.
 Package: `apps/web` (operator Home, Money › Problems, alerts, cases, order page, shell bell), plus the read side of four seller-queue functions in `domain/catalogue` and `domain/publisher-console`, and one additive field in `domain/payments` invariants. Builder: Sonnet 5.5 medium. Reviewer: Opus 5.5 gate.
-Items: OPS-A.1 to OPS-A.7, 12 points, all "must". Needs UI0, TR1 and AL merged. Decision V6. Sources: operator page items 6, 7, 7b, 9; UX-01, 02, 03, 06, 07, 08. Includes `int-wave2-conventions.md` (C1 to C7). Round 2: fixes S1 to S3 and A1 to A7 of `ops-scorecard.md`.
+Items: OPS-A.1 to OPS-A.7, 12 points, all "must". Needs UI0, TR1 and AL merged. Decision V6. Sources: operator page items 6, 7, 7b, 9; UX-01, 02, 03, 06, 07, 08. Includes `int-wave2-conventions.md` (C1 to C7). Round 2 passed 12/12 (`ops-scorecard.md`); build notes below.
 
 ## Goal
 
@@ -85,6 +85,11 @@ Unchanged and still green: the write-refusal cases `ops-publishers.adversarial.t
 | a11y | `apps/web/src/flow-a11y.state.test.ts` | `corepack pnpm vitest run apps/web/src/flow-a11y.state.test.ts` | The text-read check passes for each new page |
 
 No L item, so no mutation target. C4 to C7 apply.
+
+## Build notes (round 2, binding)
+
+- N-A1: the additive `rows` field on invariant results changes no existing answer (callers filter on `!ok` today). The PR lists any moved test.
+- N-A2: the relaxed domain reads still refuse every non-operator actor.
 
 ## Do not
 
