@@ -109,6 +109,7 @@ const DOMAIN = [
   'fx',
   'mandates',
   'rules',
+  'trace',
 ];
 const INFRA = [
   'config',

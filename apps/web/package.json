@@ -41,6 +41,7 @@
     "@umsbx/runtime": "workspace:*",
     "@umsbx/safety": "workspace:*",
     "@umsbx/security": "workspace:*",
+    "@umsbx/trace": "workspace:*",
     "@umsbx/transport": "workspace:*",
     "next": "15.5.28",
     "react": "19.1.10",
