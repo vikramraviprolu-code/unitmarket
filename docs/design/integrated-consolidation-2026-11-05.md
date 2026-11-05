@@ -34,6 +34,26 @@ Specs updated: `int-tr0-journal.md` (D-097), `int-sr0-search-base.md` (D-098), `
 
 TR0's capture triggers must exist before any later migration writes a tracked table, so 0024 to 0027 must merge after 0023. BR-1 (registry and resolver) has no migration. A BR lane that needs a decision row takes D-101 or later from section 1. No lane may renumber an earlier migration.
 
+### Adding a tracked table in a later migration (journal seed convention)
+
+TR0's 0023 owns `trace_tracked_seed()`, `trace_tracked_reseed()` and the trigger `trace_tracked_reseed`. No later migration renames, replaces or drops any of them, and no later migration uses a shared or fixed name such as `trace_tracked_seed_0023`. A migration `NNNN` that adds tracked tables creates only names that carry its own number:
+
+```sql
+CREATE FUNCTION trace_tracked_seed_NNNN() RETURNS void LANGUAGE sql AS $fn$
+  INSERT INTO trace_tracked (table_name, columns, hashed_columns, digest_columns, time_column, chain_expr)
+  VALUES (...);                                   -- only this migration's tables
+$fn$;
+CREATE FUNCTION trace_tracked_reseed_NNNN() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN PERFORM trace_tracked_seed_NNNN(); RETURN NULL; END;
+$fn$;
+CREATE TRIGGER trace_tracked_reseed_NNNN AFTER TRUNCATE ON trace_tracked
+  FOR EACH STATEMENT EXECUTE FUNCTION trace_tracked_reseed_NNNN();
+SELECT trace_tracked_seed_NNNN();
+-- then the capture trigger on each new table, as 0023 attaches it
+```
+
+Postgres fires the AFTER TRUNCATE triggers in name order, so a reset refills 0023's rows first and then each later migration's rows. Each lane's tests must include: (1) a fresh database migrates from empty to head with no "already exists" error; (2) after a reset (`ums.allow_reset`), `trace_tracked` holds every 0023 row plus this migration's rows; (3) `trace:verify` reports ok and 0 unattributed after seeded writes. Applies to AL (0025), CTL (0026), BR-2 (0027) and every later lane.
+
 ## 3. Owner decisions folded in (5 Nov)
 
 1. **Consolidation pass and CI fix.** Done here, and PR #9 (tests in 4 shards, 30-minute timeout, four more offline checks).
@@ -97,7 +117,10 @@ Critical path: TR0 then TR1 then OPS-A, and SR0 then SR1 then OPS-B then BUY and
 
 ## 7. Known risks
 
-- **CI time.** PR #9's first run proves the 4-shard split. If one shard still nears 30 minutes, the fix is 6 shards, not a longer timeout.
+- **CI time.** After TR0 a shard took 25 of 30 minutes. The CI-2 PR moves to 6 shards, adds `check:business-rules` (BR-10 gate) and a `postgres` job that runs the real-Postgres suites (TR0 N5). Rule: add shards, never raise the timeout. Only the architect thread edits `ci.yml`.
+- **Journal bypass (TR0 N1).** Any SQL session can set `ums.trace` to restore mode and write without a journal row. `trace:verify` reports it as drift, so it is detected, not prevented. TR1 adds a named adversarial case for it (a restore-mode `orders.status` edit is reported as `drift orders <id> status`). Prevention (a separate database role for restore) is post-12-Nov backlog, because every app connection uses one role today.
+- **Journal cost (TR0 N2).** A tracked write costs about 2.5x to 3x as much with the journal. Every lane that adds tracked writes (SR0, AL, BR-2, CTL) pastes the `TRACE-PERF` line in its PR. The gate refuses a PR whose journaled p95 passes 3x plain p95 on the runner.
+- **`SELECT fn()` writes (TR0 N4).** Such a write would be unattributed; INV-T2 lists it. No lane may add a SQL function that writes tracked rows.
 - **gitleaks.** It cannot run in thread sandboxes. Each PR's author pastes local output, or the gate notes it is missing.
 - **Known failing case** `due.reread.state.test.ts:55` (`it.fails`) stays as is; E2E must not count on it.
 - **Stacked branches.** SR0 is stacked on TR0. If TR0 changes after review, SR0 rebases before its gate.

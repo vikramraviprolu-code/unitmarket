@@ -42,6 +42,7 @@ import type {
   Receipt,
   Rights,
   Result,
+  RuleSettingRow,
   SqlExecutor,
   SwitchName,
   SwitchReader,
@@ -157,6 +158,13 @@ import {
 } from '@umsbx/fx';
 import type { ConvertResult, FetchedRates, FxCurrency, FxRates, RefreshResult } from '@umsbx/fx';
 import { requestApproval } from '@umsbx/approval';
+import { activeRows, addRuleSetting, listRuleHistory } from '@umsbx/rules';
+import type {
+  RuleHistoryFilter,
+  RuleSettingInput,
+  RuleStoreError,
+  RulesContext,
+} from '@umsbx/rules';
 import {
   attachOrder as attachMandateOrder,
   checkBudget as checkMandateBudget,
@@ -295,6 +303,15 @@ import {
   verifyPasscode,
 } from '@umsbx/security';
 import type { ApiKeyDeps } from '@umsbx/security';
+import {
+  activityPage,
+  buyerTimeline,
+  evidenceHtml,
+  evidencePack,
+  opsTimeline,
+  sellerTimeline,
+  verifyJournal,
+} from '@umsbx/trace';
 import type { AgentFacade, BuyerFacade, OpsFacade, SellerFacade } from './src/api-v1/facades';
 import {
   createAgentFacade,
@@ -757,6 +774,8 @@ export interface App {
   startJobs(): Promise<{ stop(): Promise<void> }>;
   readonly db: Database;
   readonly engine: Engine;
+  /** INT-TR1: the journal reads. */
+  readonly trace: TraceReads;
   readonly security: SecurityDeps;
   /** The sandbox outbound (the five locks); null in offline mode. */
   readonly outbound: Outbound | null;
@@ -771,6 +790,20 @@ export interface App {
   deliverWebhooks(o: { max_items: number }): Promise<DeliverCounts>;
   close(): Promise<void>;
 }
+
+/** INT-TR1: the journal reads (timelines, activity, evidence, verify), bound to the app database. Read only. */
+export function traceReads(db: SqlExecutor) {
+  return {
+    buyerTimeline: (o: Parameters<typeof buyerTimeline>[1]) => buyerTimeline(db, o),
+    sellerTimeline: (o: Parameters<typeof sellerTimeline>[1]) => sellerTimeline(db, o),
+    opsTimeline: (o: Parameters<typeof opsTimeline>[1]) => opsTimeline(db, o),
+    activityPage: (o: Parameters<typeof activityPage>[1]) => activityPage(db, o),
+    evidencePack: (o: Parameters<typeof evidencePack>[1]) => evidencePack(db, o),
+    evidenceHtml,
+    verifyJournal: () => verifyJournal(db),
+  };
+}
+export type TraceReads = ReturnType<typeof traceReads>;
 
 /** What a publisher sees on /publisher (PUB-A1). The payee is the last 4 characters and the verification time. */
 export interface PublisherHome {
@@ -1036,6 +1069,20 @@ export interface Engine {
     note?: string;
   }): Promise<Result<{ case_id: Id }, { code: 'not_found' | 'duplicate_open' }>>;
   opsSnapshot(actor: Actor): Promise<OpsSnapshot | null>;
+  /**
+   * BR-2: the rule settings. `add` is for an operator with the second factor (the domain checks it again);
+   * `history` is newest first, 200 rows by default and 5000 at most. No existing caller reads the rows:
+   * BR-3 and BR-4 are the lanes that will use `rules.activeRows`.
+   */
+  opsRules: {
+    add(
+      i: Omit<RuleSettingInput, 'actor'> & { actor: Actor },
+    ): Promise<Result<{ id: Id }, RuleStoreError>>;
+    history(filter?: RuleHistoryFilter, limit?: number): Promise<RuleSettingRow[]>;
+  };
+  rules: {
+    activeRows(ctx: RulesContext, at: string): Promise<RuleSettingRow[]>;
+  };
   /** AI-B: the operator evals page. Null for anyone but an operator. Runs the scripted model only. */
   evalsSummary(actor: Actor): Promise<EvalsSummary | null>;
   /**
@@ -2452,6 +2499,15 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     agentBuyEnabled: () => switches.isOn('agent_buy_enabled'),
 
+    opsRules: {
+      add: (i) => addRuleSetting(core, i),
+      history: (filter, limit) => listRuleHistory(db, filter, limit),
+    },
+
+    rules: {
+      activeRows: (ctx, at) => activeRows(db, ctx, at),
+    },
+
     async setAgentBuy({ actor, on, reason }) {
       if (actor.kind !== 'operator') return err('operator_required');
       // Turning agent buying ON needs the second factor; turning it OFF never does.
@@ -3498,6 +3554,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
     db,
     engine,
+    trace: traceReads(db),
     security,
     outbound,
     model_id: model.model_id,

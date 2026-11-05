@@ -298,6 +298,28 @@ export const TRACKED_TABLES: readonly TrackedTable[] = [
     'updated_at',
     'ord:unit_id',
   ),
+  // BR-2: a rule setting is a control row (refund window, access window, mandate length). Append-only, so it
+  // has a frozen source digest; the reason is only ever a sha256; the platform chain holds it.
+  t(
+    'rule_settings',
+    ['rule_key', 'scope_kind', 'scope_id', 'value', 'effective_from', 'effective_until', 'set_by'],
+    ['reason'],
+    'created_at',
+    'plat',
+    [
+      'id',
+      'rule_key',
+      'scope_kind',
+      'scope_id',
+      'value',
+      'effective_from',
+      'effective_until',
+      'set_by',
+      'reason',
+      'approved_by',
+      'created_at',
+    ],
+  ),
   t('safety_switches', ['on', 'changed_at'], ['reason', 'changed_by'], 'changed_at', 'plat'),
   // webhook_events: the order is found from resource.provider_order_id, else resource.capture_id, else
   // resource.refund_id (R2-8); an event that names no known order goes to the platform chain.

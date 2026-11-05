@@ -52,8 +52,10 @@ describe('0025 journal seed convention', () => {
     expect(fns).toEqual([
       'trace_tracked_reseed',
       'trace_tracked_reseed_0025',
+      'trace_tracked_reseed_0027',
       'trace_tracked_seed',
       'trace_tracked_seed_0025',
+      'trace_tracked_seed_0027',
     ]);
   });
 

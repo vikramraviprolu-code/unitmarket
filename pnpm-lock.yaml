@@ -116,6 +116,9 @@ importers:
       '@umsbx/recovery':
         specifier: workspace:*
         version: link:../../domain/recovery
+      '@umsbx/rules':
+        specifier: workspace:*
+        version: link:../../domain/rules
       '@umsbx/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -125,6 +128,9 @@ importers:
       '@umsbx/security':
         specifier: workspace:*
         version: link:../../packages/security
+      '@umsbx/trace':
+        specifier: workspace:*
+        version: link:../../domain/trace
       '@umsbx/transport':
         specifier: workspace:*
         version: link:../../packages/transport
@@ -451,6 +457,39 @@ importers:
       '@umsbx/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+
+  domain/trace:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/obs':
+        specifier: workspace:*
+        version: link:../../packages/obs
+
+  domain/txn-search:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   packages/config:
     dependencies:
@@ -497,6 +536,9 @@ importers:
       '@umsbx/payments':
         specifier: workspace:*
         version: link:../../domain/payments
+      '@umsbx/trace':
+        specifier: workspace:*
+        version: link:../../domain/trace
     devDependencies:
       '@umsbx/db':
         specifier: workspace:*

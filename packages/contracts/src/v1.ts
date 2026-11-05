@@ -20,6 +20,7 @@ import { NoMatchReasonSchema, QuoteSchema } from './quote';
 import { CaseViewSchema } from './recovery';
 import { AGENT_ROUTES } from './v1-agent';
 import { ALERT_ROUTES } from './v1-alerts';
+import { TRACE_ROUTES } from './v1-trace';
 
 // ---------- error envelope and pagination ----------
 /** The existing error body, `{ error: { code, message, support_code, fields? } }` (packages/security errors.ts). */
@@ -1048,6 +1049,7 @@ export const V1_ROUTES: readonly RouteDoc[] = [
   },
   ...AGENT_ROUTES,
   ...ALERT_ROUTES,
+  ...TRACE_ROUTES,
 ];
 
 const jsonSchema = (schema: ZodType): Record<string, unknown> => {

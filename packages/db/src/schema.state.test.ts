@@ -264,17 +264,27 @@ describe('migrations', () => {
   });
   it('every table has id (or its natural key), created_at and updated_at without defaults', async () => {
     const t = await db.query<{ table_name: string; cols: string[] }>(
-      `SELECT table_name, array_agg(column_name::text) AS cols FROM information_schema.columns
-       WHERE table_schema = 'public' AND table_name <> 'schema_migrations' GROUP BY table_name`,
+      `SELECT c.table_name, array_agg(c.column_name::text) AS cols FROM information_schema.columns c
+       JOIN information_schema.tables t
+         ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
+       WHERE c.table_schema = 'public' AND c.table_name <> 'schema_migrations' GROUP BY c.table_name`,
     );
     expect(t.rows.length).toBeGreaterThanOrEqual(35);
+    // INT-SR0 (migration 0024): txn_rows is a read view, not a table; the query above lists base tables only.
     // MC2-L4: fx_rates is the one exception, by its spec (docs/specs/mc2-l4-fx-rates.md): an append-only table
     // keyed (date, quote) whose own stamp is fetched_at; it has no created_at or updated_at.
     // API-W0 (migration 0019, spec F1 and F3): api_keys is stamped by revoked_at and last_used_at and
     // event_outbox is append-only with occurred_at; the spec fixes their columns, so neither has updated_at.
     // API-B (migration 0021): a mandate reservation is stamped by created_at and settled_at, and its row changes
     // only when it settles; the spec fixes its columns, so it has no updated_at either.
-    const NO_UPDATED_AT = new Set(['api_keys', 'event_outbox', 'mandate_reservations']);
+    // BR-2 (migration 0027): a rule setting is append-only and stamped by created_at; RuleSettingRowSchema fixes
+    // its columns, so it has no updated_at.
+    const NO_UPDATED_AT = new Set([
+      'api_keys',
+      'event_outbox',
+      'mandate_reservations',
+      'rule_settings',
+    ]);
     // INT-TR0 (migration 0023): the journal tables carry their own stamps (occurred_at, at, sealed day) and are
     // append-only or maintained by trigger; the spec fixes their columns, so none has created_at or updated_at.
     for (const r of t.rows.filter(
