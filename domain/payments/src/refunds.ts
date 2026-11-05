@@ -1042,7 +1042,7 @@ async function bookEntry(
         kind: 'refund_unresolved',
         order_id: unit.order_id,
         unit_id: unit.id,
-        reason: `split_rule_${refund_id}`,
+        reason: `ledger_rule_split_${refund_id}`,
         detail: { rule: e.message.slice(0, 200) },
       });
     }
