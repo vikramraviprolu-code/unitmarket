@@ -94,7 +94,7 @@ describe('what is refused, with a plain message', () => {
 describe('the sources hold no injection or network path', () => {
   const strip = (f: string) =>
     readFileSync(join(here, f), 'utf8')
-      .replace(/\/\/.*$/gm, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1')
       .replace(/\/\*[\s\S]*?\*\//g, '');
   it('ServicesPanel.tsx and services-view.ts hold no dangerouslySetInnerHTML, innerHTML, fetch( or method: POST', () => {
     for (const f of ['ui/ops/ServicesPanel.tsx', 'lib/services-view.ts']) {

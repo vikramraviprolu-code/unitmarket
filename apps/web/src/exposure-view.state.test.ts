@@ -79,17 +79,29 @@ describe('the read behind the screen', () => {
   it('returns the 14 rows from api_exposure and never touches trace_events', async () => {
     const mod = await import('./composition/ops-agents');
     const seen: string[] = [];
-    const q = rig.app.db.query.bind(rig.app.db);
-    rig.app.db.query = (async (sql: string, p?: unknown[]) => {
+    // The app database is a tracing proxy over the real one, whose own `query` we swap for a recording one. The
+    // recorder puts the real one back while it runs, so the proxy's call into it does not loop.
+    const target = rig.app.db as unknown as {
+      query: (s: string, p?: unknown[]) => Promise<unknown>;
+    };
+    const raw = target.query;
+    const real = Object.getOwnPropertyDescriptor(rig.app.db, 'query');
+    const recorder = async (sql: string, p?: unknown[]) => {
       seen.push(sql);
-      return q(sql, p);
-    }) as never;
+      if (real !== undefined) Object.defineProperty(rig.app.db, 'query', real);
+      try {
+        return await raw.call(rig.app.db, sql, p);
+      } finally {
+        target.query = recorder;
+      }
+    };
+    target.query = recorder;
     try {
       const r = await mod.readExposure({ kind: 'operator', operator_id: 'opr_x', mfa: true });
       expect(r).not.toBeNull();
       expect(r!.map((x) => x.group_name).sort()).toEqual([...API_GROUPS].sort());
     } finally {
-      rig.app.db.query = q as never;
+      if (real !== undefined) Object.defineProperty(rig.app.db, 'query', real);
     }
     expect(seen.some((s) => /trace_events/i.test(s))).toBe(false);
     expect(seen.some((s) => /api_exposure/i.test(s))).toBe(true);

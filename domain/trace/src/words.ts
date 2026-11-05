@@ -18,6 +18,10 @@ const BASE: Record<string, readonly [string, string]> = {
   ],
   alert_events: ['A check was acknowledged or closed.', 'A record about a check changed.'],
   alerts: ['A check was raised for the team.', 'A check raised for the team changed.'],
+  api_exposure: [
+    'An API group was closed or opened for partners.',
+    'An API group was closed or opened for partners.',
+  ],
   api_keys: ['An API key was created.', 'An API key changed.'],
   approvals: [
     'The buyer was asked to approve the purchase.',

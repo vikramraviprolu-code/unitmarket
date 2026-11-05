@@ -153,8 +153,13 @@ describe('an update of a copied column writes [old, new]', () => {
         expect(e.body.cols).toEqual({});
       } else {
         expect(e.body.cols[s.update!.col]).toEqual([s.update!.before, s.update!.after]);
-        // The switch update also sets the hashed reason and changed_by; every other step touches no hashed column.
-        const hashedKeys = s.table === 'safety_switches' ? ['changed_by', 'reason'] : [];
+        // The switch update also sets the hashed reason and changed_by; an api_exposure update sets the hashed changed_by; every other step touches no hashed column.
+        const hashedKeys =
+          s.table === 'safety_switches'
+            ? ['changed_by', 'reason']
+            : s.table === 'api_exposure'
+              ? ['changed_by']
+              : [];
         expect(Object.keys(e.body.hashed).sort()).toEqual(hashedKeys);
       }
     });

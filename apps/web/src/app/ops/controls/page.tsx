@@ -4,7 +4,7 @@ import { currentActor } from '../../../server/session';
 import { mintKeys, readAppStatus, readOpsControls } from '../../../composition/ops-controls';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { gateLines } from '../../../lib/gate-lines';
-import { Chip, PageHeader, Section } from '../../../ui/publisher/kit';
+import { PageHeader, Section } from '../../../ui/publisher/kit';
 import { OPS_HOME_HEADING_SWITCHES, OPS_HOME_SWITCHES_LEDE } from '../../../lib/ops-home-copy';
 import { GatewayPanel } from '../../../ui/ops/GatewayPanel';
 import { ServicesPanel } from '../../../ui/ops/ServicesPanel';

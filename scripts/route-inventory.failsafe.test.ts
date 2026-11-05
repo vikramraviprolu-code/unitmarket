@@ -50,7 +50,11 @@ describe('fail_safe_without_mfa in the route inventory', () => {
   it('is printed for the two INT-CTL off paths and passes the check', () => {
     const r = run(
       repoWith({
-        'api/ops/switches/[name]/off/route.ts': route('/api/ops/switches/[name]/off', 'operator', FLAG),
+        'api/ops/switches/[name]/off/route.ts': route(
+          '/api/ops/switches/[name]/off',
+          'operator',
+          FLAG,
+        ),
         'api/ops/api-exposure/[group]/off/route.ts': route(
           '/api/ops/api-exposure/[group]/off',
           'operator',
@@ -82,7 +86,9 @@ describe('fail_safe_without_mfa in the route inventory', () => {
       '/api/ops/switches/[name]/off',
       '/api/ops/api-exposure/[group]/off',
     ]) {
-      const r = run(repoWith({ [`${path.replace('/api/', 'api/')}/route.ts`]: route(path, 'buyer', FLAG) }));
+      const r = run(
+        repoWith({ [`${path.replace('/api/', 'api/')}/route.ts`]: route(path, 'buyer', FLAG) }),
+      );
       expect(r.status, path).toBe(1);
     }
   });
@@ -105,7 +111,9 @@ describe('fail_safe_without_mfa in the route inventory', () => {
     ]) {
       const src = readFileSync(join(REPO_ROOT, f), 'utf8')
         .replace(/\/\/.*$/gm, '')
-        .replace(/\/\*[\s\S]*?\*\//g, '');
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        // The route's own rule (csrf: true, idempotent: true, ...) is not an argument to the engine.
+        .replace(/export const routeMeta[\s\S]*?\n\};/, '');
       expect(src, f).toMatch(/\bfalse\b/);
       expect(src, f).not.toMatch(/\btrue\b/);
       expect(src, f).not.toMatch(/input\.(on|enabled)/);

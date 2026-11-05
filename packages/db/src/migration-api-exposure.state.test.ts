@@ -55,7 +55,9 @@ describe('the seed', () => {
   });
 
   it('DELETE and TRUNCATE raise, and an UPDATE still works', async () => {
-    await expect(db.query("DELETE FROM api_exposure WHERE group_name = 'orders'")).rejects.toThrow();
+    await expect(
+      db.query("DELETE FROM api_exposure WHERE group_name = 'orders'"),
+    ).rejects.toThrow();
     await expect(db.exec('TRUNCATE api_exposure')).rejects.toThrow();
     const names = await db.query(
       "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgrelid = 'api_exposure'::regclass AND tgname IN ('api_exposure_no_delete', 'api_exposure_no_truncate') ORDER BY tgname",
@@ -129,7 +131,9 @@ describe('restore', () => {
       expect((await rows(t)).find((x) => x.group_name === 'seller')!.enabled).toBe(false);
       expect((await verifyTrace(t)).findings).toEqual([]);
       // the delete guard is back on after the import
-      await expect(t.query("DELETE FROM api_exposure WHERE group_name = 'orders'")).rejects.toThrow();
+      await expect(
+        t.query("DELETE FROM api_exposure WHERE group_name = 'orders'"),
+      ).rejects.toThrow();
     } finally {
       await s.close();
       await t.close();

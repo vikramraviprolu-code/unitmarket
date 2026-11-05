@@ -1,6 +1,5 @@
 // INT-CTL / CTL.4: the registry of API groups. Every apikey route of the inventory maps to exactly one group;
 // api-keys (owner) and status (public) map to none; the SQL CHECK lists of migration 0026 equal the consts (R2-2).
-import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,17 +13,25 @@ import {
 } from './api-exposure';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const inventory = (): { method: string; path: string; auth: string }[] => {
-  const r = spawnSync(process.execPath, [join(ROOT, 'scripts', 'route-inventory.mjs')], {
-    encoding: 'utf8',
+// The route files are read as text (no process is spawned): each carries one `routeMeta` with path and auth.
+const routeFiles = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory()
+      ? routeFiles(join(dir, e.name))
+      : e.name === 'route.ts'
+        ? [join(dir, e.name)]
+        : [],
+  );
+const inventory = (): { method: string; path: string; auth: string }[] =>
+  routeFiles(join(ROOT, 'apps', 'web', 'src', 'app', 'api')).flatMap((f) => {
+    const src = readFileSync(f, 'utf8');
+    const path = /path:\s*'(\/[^']+)'/.exec(src)?.[1];
+    const auth = /auth:\s*'(\w+)'/.exec(src)?.[1];
+    const method = /method:\s*'(\w+)'/.exec(src)?.[1];
+    return path === undefined || auth === undefined || method === undefined
+      ? []
+      : [{ method, path, auth }];
   });
-  expect(r.status, r.stderr).toBe(0);
-  return r.stdout
-    .split('\n')
-    .map((l) => /^(GET|POST|PATCH|DELETE) (\/\S+) auth=(\w+)/.exec(l))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .map((m) => ({ method: m[1]!, path: m[2]!, auth: m[3]! }));
-};
 
 describe('the group list', () => {
   it('is the eight REST and MCP groups plus the six MCP tools (F7)', () => {

@@ -12,7 +12,7 @@ const AT = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
 const ERR = z.string().max(500).nullable();
 const TEXT = z.string().min(1).max(200);
 
-export const CLOUD_PROJECT_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+export const CLOUD_PROJECT_PATTERN = /^[a-z][a-z0-9-]{3,28}[a-z0-9]$/;
 
 const Web = z
   .object({
