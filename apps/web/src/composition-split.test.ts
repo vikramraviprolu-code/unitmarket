@@ -25,6 +25,10 @@ const MODULES = [
   'ops-controls',
   'buyer',
   'seller',
+  // INT-GA (R2-4): the assist reads (the ask box route and the explain panel). Not a tab: no page imports it.
+  'assist',
+  // BR-6: the reads of the Business rules pages.
+  'ops-rules',
 ] as const;
 
 /** Page file (under src/app) to the one module it may import. Pages another lane builds are listed too. */
@@ -36,7 +40,7 @@ const PAGES: Record<string, (typeof MODULES)[number]> = {
   'ops/controls/page.tsx': 'ops-controls',
 };
 
-describe('the eight modules exist', () => {
+describe('the ten modules exist', () => {
   it.each(MODULES)('src/composition/%s.ts', (m) => {
     expect(existsSync(join(here, 'composition', `${m}.ts`))).toBe(true);
   });
@@ -102,6 +106,7 @@ describe('a module reads through the one door and nothing else', () => {
     'ops-controls',
     'buyer',
     'seller',
+    'assist',
   ])('%s', (m) => {
     const specs = importsOf(read(join(here, 'composition', `${m}.ts`)));
     expect(specs).toContain('../server/access');

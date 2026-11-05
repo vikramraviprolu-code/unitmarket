@@ -267,6 +267,9 @@ const EXPECTED_EXPORTS: string[] = [
   'TxnLinePageSchema',
   'TxnLineSchema',
   'TxnQueryMapSchema',
+  // INT-GA: the shared word table of the plain-words search
+  'ASSIST_SYNONYMS',
+  'ASSIST_SORT_DIR',
 ];
 
 type Def = {

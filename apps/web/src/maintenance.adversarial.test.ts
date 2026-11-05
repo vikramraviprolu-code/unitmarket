@@ -75,6 +75,10 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/applications/route.ts': () => import('./app/api/applications/route'),
   'api/approvals/route.ts': () => import('./app/api/approvals/route'),
   'api/briefs/route.ts': () => import('./app/api/briefs/route'),
+  'api/buyer/mandates/[id]/revoke/route.ts': () =>
+    import('./app/api/buyer/mandates/[id]/revoke/route'),
+  'api/buyer/mandates/route.ts': () => import('./app/api/buyer/mandates/route'),
+  'api/buyer/orders/export/route.ts': () => import('./app/api/buyer/orders/export/route'),
   'api/cases/route.ts': () => import('./app/api/cases/route'),
   'api/discover/route.ts': () => import('./app/api/discover/route'),
   'api/v1/api-keys/[id]/route.ts': () => import('./app/api/v1/api-keys/[id]/route'),
@@ -108,9 +112,12 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/v1/ops/needs-you/route.ts': () => import('./app/api/v1/ops/needs-you/route'),
   'api/ops/rules/route.ts': () => import('./app/api/ops/rules/route'),
   'api/ops/fee/route.ts': () => import('./app/api/ops/fee/route'),
+  'api/ops/rules/export/route.ts': () => import('./app/api/ops/rules/export/route'),
   'api/ops/start/route.ts': () => import('./app/api/ops/start/route'),
   'api/ops/stop/route.ts': () => import('./app/api/ops/stop/route'),
   'api/ops/activity/route.ts': () => import('./app/api/ops/activity/route'),
+  'api/assist/query/route.ts': () => import('./app/api/assist/query/route'),
+  'api/ops/orders/[ref]/explain/route.ts': () => import('./app/api/ops/orders/[ref]/explain/route'),
   'api/ops/orders/[ref]/timeline/route.ts': () =>
     import('./app/api/ops/orders/[ref]/timeline/route'),
   'api/ops/units/[id]/evidence/route.ts': () => import('./app/api/ops/units/[id]/evidence/route'),
@@ -129,6 +136,12 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
     import('./app/api/ops/publishers/applicants/route'),
   'api/ops/publishers/applicants/decision/route.ts': () =>
     import('./app/api/ops/publishers/applicants/decision/route'),
+  'api/ops/publishers/access/route.ts': () => import('./app/api/ops/publishers/access/route'),
+  'api/ops/publishers/paypal-link-decisions/route.ts': () =>
+    import('./app/api/ops/publishers/paypal-link-decisions/route'),
+  'api/publisher-accounts/claim/route.ts': () => import('./app/api/publisher-accounts/claim/route'),
+  'api/publisher/paypal-link/route.ts': () => import('./app/api/publisher/paypal-link/route'),
+  'api/publisher/terms/accept/route.ts': () => import('./app/api/publisher/terms/accept/route'),
   'api/ops/payee-decisions/route.ts': () => import('./app/api/ops/payee-decisions/route'),
   'api/publisher/export/route.ts': () => import('./app/api/publisher/export/route'),
   'api/publisher/sales/export/route.ts': () => import('./app/api/publisher/sales/export/route'),

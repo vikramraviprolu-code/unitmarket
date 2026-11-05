@@ -1014,7 +1014,7 @@ export const V1_ROUTES: readonly RouteDoc[] = [
     method: 'GET',
     path: '/api/v1/ops/transactions',
     summary:
-      'Every purchased item with filters and four saved views (view=needs_attention, refunds_today, agent_purchases, sandbox_only). Order refs, amounts, states, flags and opaque ids only: no buyer or seller name and no provider order id.',
+      'Every purchased item with filters and four saved views (view=needs_attention, refunds_today, agent_purchases, sandbox_only). Order refs, amounts, states, flags and opaque ids only: no buyer id, agent key id, buyer or seller name, or provider order id.',
     auth: 'apikey',
     scopes: ['ops:read'],
     input: { in: 'query', schema: TxnQueryMapSchema },

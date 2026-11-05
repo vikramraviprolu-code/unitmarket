@@ -90,3 +90,25 @@
   display: grid;
   min-width: 0;
 }
+
+/* POB-P1: the one time invite code panel and the access forms of the operator publishers page. */
+.pk-invite {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius, 8px);
+  background: var(--surface);
+}
+.pk-invite h4 {
+  margin: 0 0 6px;
+}
+.pk-invite-code {
+  display: inline-block;
+  margin: 4px 0 8px;
+  padding: 6px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.4rem;
+  letter-spacing: 0.08em;
+  user-select: all;
+  overflow-wrap: anywhere;
+}

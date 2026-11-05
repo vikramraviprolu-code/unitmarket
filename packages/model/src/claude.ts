@@ -1,4 +1,6 @@
-// AI-A (D-067). A ModelPort over the Claude messages API, for brief_parse and pack_compose only.
+// AI-A (D-067). A ModelPort over the Claude messages API, for brief_parse and pack_compose, and (INT-GA,
+// GA-L1 to GA-L3, D-100) txn_query and explain_order: the scrubbed rest of a plain-words search and the
+// identity-free projection of a problem order, nothing else.
 // It never sees PayPal data and sends no tools. It is built around two ports: a ModelWire (the only way
 // out, one host, owned by packages/transport and injected by composition) and a ModelSpendStore.
 // On ANY error, refusal, cap, oversize input or answer that does not fit its schema, the scripted model
@@ -19,7 +21,16 @@ import {
   worstCaseMicroUsd,
 } from './caps';
 import { parseBrief } from './parse-brief';
-import { BriefParseOutputSchema, ComposeInputSchema, MAX_BRIEF_CHARS } from './schemas';
+import { EXPLAIN_SYSTEM, TXN_QUERY_SYSTEM } from './prompts';
+import {
+  BriefParseOutputSchema,
+  ComposeInputSchema,
+  ExplainInputSchema,
+  ExplainOutputSchema,
+  MAX_BRIEF_CHARS,
+  MAX_REST_CHARS,
+  TxnQueryAnswerSchema,
+} from './schemas';
 import { sanitiseModelOutput } from './tools';
 
 export const CLAUDE_MODEL_ID = 'claude-haiku-5-5';
@@ -56,6 +67,10 @@ interface Checked {
   ids: Set<string> | null;
   /** The reader text (brief_parse), or null. */
   raw: string | null;
+  /** INT-GA: the system prompt the adapter sends for an assist purpose (GA-L3), or null for the caller's own. */
+  system: string | null;
+  /** INT-GA: which assist answer to expect, with the fix ids an explain answer may pick (GA-L2), or null. */
+  assist: { kind: 'txn' } | { kind: 'explain'; fix: Set<string> } | null;
 }
 
 /** The request the adapter is willing to send, or null: the scripted model then answers (and errors) alone. */
@@ -65,7 +80,7 @@ function check(request: ModelRequest): Checked | null {
     if (!isRecord(input) || Object.keys(input).join() !== 'raw_text') return null;
     const raw = input['raw_text'];
     if (typeof raw !== 'string' || raw.length > MAX_BRIEF_CHARS) return null;
-    return { userText: JSON.stringify(input), ids: null, raw };
+    return { userText: JSON.stringify(input), ids: null, raw, system: null, assist: null };
   }
   if (request.purpose === 'pack_compose') {
     const parsed = ComposeInputSchema.safeParse(input);
@@ -74,6 +89,33 @@ function check(request: ModelRequest): Checked | null {
       userText: JSON.stringify(input),
       ids: new Set(parsed.data.candidates.map((c) => c.offer_id)),
       raw: null,
+      system: null,
+      assist: null,
+    };
+  }
+  // GA-L1: exactly {rest}, a string of at most 500 characters (the scrubbed remainder GA.2 produces).
+  if (request.purpose === 'txn_query') {
+    if (!isRecord(input) || Object.keys(input).join() !== 'rest') return null;
+    const rest = input['rest'];
+    if (typeof rest !== 'string' || rest.length > MAX_REST_CHARS) return null;
+    return {
+      userText: JSON.stringify({ rest }),
+      ids: null,
+      raw: null,
+      system: TXN_QUERY_SYSTEM,
+      assist: { kind: 'txn' },
+    };
+  }
+  // GA-L2: the strict projection; any identity key (order_ref, buyer, actor_id, at, amount, ...) fails the parse.
+  if (request.purpose === 'explain_order') {
+    const parsed = ExplainInputSchema.safeParse(input);
+    if (!parsed.success) return null;
+    return {
+      userText: JSON.stringify(parsed.data),
+      ids: null,
+      raw: null,
+      system: EXPLAIN_SYSTEM,
+      assist: { kind: 'explain', fix: new Set(parsed.data.fix_ids) },
     };
   }
   return null;
@@ -117,7 +159,8 @@ export function createClaudeModel(deps: ClaudeModelDeps): ModelPort {
   async function attempt(request: ModelRequest): Promise<ModelResponse | null> {
     const checked = check(request);
     if (checked === null) return null;
-    const chars = request.system.length + checked.userText.length;
+    const system = checked.system ?? request.system;
+    const chars = system.length + checked.userText.length;
     const tokens = estimateInputTokens(chars);
     if (tokens > MAX_INPUT_TOKENS) return null;
 
@@ -126,7 +169,7 @@ export function createClaudeModel(deps: ClaudeModelDeps): ModelPort {
       max_tokens: MAX_OUTPUT_TOKENS,
       thinking: { type: 'disabled' },
       output_config: { effort: 'low' },
-      system: request.system,
+      system,
       messages: [{ role: 'user', content: checked.userText }],
     });
     // Stopped by the operator: nothing is charged and nothing is sent.
@@ -141,6 +184,19 @@ export function createClaudeModel(deps: ClaudeModelDeps): ModelPort {
     if (env === null) return null;
     const raw: unknown = parseAnswerText(env.text);
 
+    // INT-GA: an assist answer must fit its schema exactly, or the scripted model answers (GA-L1, GA-L2).
+    if (checked.assist !== null) {
+      if (checked.assist.kind === 'txn') {
+        const parsed = TxnQueryAnswerSchema.safeParse(raw);
+        if (!parsed.success) return null;
+        return { kind: 'ok', output: parsed.data, ...usageOf(env) };
+      }
+      const parsed = ExplainOutputSchema.safeParse(raw);
+      if (!parsed.success) return null;
+      const id = parsed.data.action_id;
+      if (id !== 'none' && !checked.assist.fix.has(id)) return null;
+      return { kind: 'ok', output: parsed.data, ...usageOf(env) };
+    }
     if (checked.ids === null) {
       const parsed = BriefParseOutputSchema.safeParse(raw);
       if (!parsed.success) return null;
