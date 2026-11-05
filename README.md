@@ -111,7 +111,7 @@ corepack pnpm run ci               # every offline check, several minutes
 
 ## PayPal
 
-Sandbox only. There is no live mode anywhere in the code: boot refuses any value naming live or production, the sandbox address is one constant in `packages/paypal/src/endpoints.ts`, and `pnpm check:no-live-host` fails the build if a live PayPal host appears.
+Sandbox only. There is no live mode anywhere in the code: boot refuses any value naming live or production, the sandbox address is one constant in `packages/transport/src/endpoints.ts`, and `pnpm check:no-live-host` fails the build if a live PayPal host appears.
 
 - **What the app calls.** Five sandbox operations, through one sealed transport package: get a token, create an order, get an order, capture an order, and read the capture (Orders v2). Refunds, webhook postbacks and payouts are not called in a sitting.
 - **Two keys.** Reaching the sandbox needs `UMS_PAYPAL_CONNECT=on` **and** an active approval row that the owner inserts at a terminal with `pnpm safety:approve`, which refuses in CI. The row sets a scope, an amount cap per order and a call budget.
