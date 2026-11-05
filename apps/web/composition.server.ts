@@ -48,7 +48,8 @@ import type {
   SwitchReader,
   Transport,
 } from '@umsbx/contracts';
-import { err, ok } from '@umsbx/contracts';
+import { API_GROUPS, EXPOSURE_REASON_CODES, err, isApiGroup, ok } from '@umsbx/contracts';
+import type { ApiGroup } from '@umsbx/contracts';
 import {
   BOOT_REFUSAL_EXIT_CODE,
   loadConfig,
@@ -331,6 +332,8 @@ export {
   txnCsv,
 } from '@umsbx/txn-search';
 export type { FindResult } from '@umsbx/txn-search';
+// INT-SEL: the sentences of the journal steps, for the seller sale page (read only).
+export { WORDS as TRACE_WORDS } from '@umsbx/trace';
 // INT-OPS-B: the in-process journal verifier of TR0, for the Invariants tile (read only).
 export { formatTraceFinding, verifyTrace } from '@umsbx/db';
 export { filterLibrary, isPlainLibraryQuery, parseLibraryQuery } from '@umsbx/library';
@@ -338,6 +341,7 @@ export type { LibraryFacts, LibraryQuery } from '@umsbx/library';
 import {
   DEFAULT_RATES,
   SESSION_COOKIE,
+  createExposureReader,
   createSession,
   operatorSignIn,
   resolveSession,
@@ -360,6 +364,7 @@ import {
   opsTimeline,
   sellerTimeline,
   verifyJournal,
+  WORDS,
 } from '@umsbx/trace';
 import type { AgentFacade, BuyerFacade, OpsFacade, SellerFacade } from './src/api-v1/facades';
 import {
@@ -407,6 +412,8 @@ import {
 } from './src/server/refund';
 import type { RefundFacade, RefundOverview, RefundUnitView } from './src/server/refund';
 export type { RefundOverview, RefundUnitView };
+// INT-OPS-A: the read shapes of the alert, case and needs-you pages, for the pure view modules in apps/web/src/lib.
+export type { AlertDetail, AlertList, NeedsYouRow, CaseDetail, CaseQueue };
 
 type Env = Record<string, string | undefined>;
 export interface AppOptions {
@@ -608,6 +615,8 @@ export interface ApprovalView {
   currency: string;
   environment: EnvironmentLabel;
   content_hash: string;
+  /** BR-3: the days of access frozen in the approval (5 for an approval stored before the terms existed). */
+  access_days: number;
   items: {
     article_id: Id;
     title: string;
@@ -708,7 +717,13 @@ export interface OpsSnapshot {
   orders: { order_ref: string; status: string; total_minor: number; currency: string }[];
   operations: { state: string; count: number }[];
   alerts: { kind: string; created_at: string }[];
-  invariants: { id: string; ok: boolean; detail: string }[];
+  /** `rows` (INT-OPS-A) is every row that breaks the invariant, by table and id; `detail` still shows five. */
+  invariants: {
+    id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7';
+    ok: boolean;
+    detail: string;
+    rows: { table: string; id: string }[];
+  }[];
   /** The paypal_outbound switch (the kill switch) and the budget left under the active approval. */
   kill_switch: {
     outbound_on: boolean;
@@ -860,6 +875,8 @@ export function traceReads(db: SqlExecutor) {
     evidencePack: (o: Parameters<typeof evidencePack>[1]) => evidencePack(db, o),
     evidenceHtml,
     verifyJournal: () => verifyJournal(db),
+    /** The words of every journal step, for the order page (OPS-A.4). */
+    words: WORDS,
   };
 }
 export type TraceReads = ReturnType<typeof traceReads>;
@@ -889,6 +906,15 @@ export type SignUpResult =
       code: 'invalid_input' | 'busy' | 'rate_limited' | 'taken' | 'weak_password';
       reason?: PasswordRefusal;
     };
+
+/** INT-CTL: one api_exposure row as the exposure screen reads it (the screen words it; see lib/exposure-view.ts). */
+export interface ExposureRow {
+  group_name: ApiGroup;
+  enabled: boolean;
+  changed_by: string | null;
+  changed_at: string;
+  reason_code: string | null;
+}
 
 export interface Engine {
   personas(): readonly Persona[];
@@ -1058,6 +1084,28 @@ export interface Engine {
     on: boolean;
     reason: string;
   }): Promise<Result<void, 'operator_required' | 'mfa_required' | 'reason_required'>>;
+  /**
+   * INT-CTL (CTL.3): an operator changes one of the seven safety switches. The reason is a code from the closed list
+   * and is stored as the switch's reason. Turning on needs the second factor and refuses the two switches that keep
+   * their own controls (paypal_outbound: Start; agent_buy_enabled: agent buy).
+   */
+  setFeatureSwitch(i: {
+    actor: Actor;
+    name: SwitchName;
+    on: boolean;
+    reason_code: string;
+  }): Promise<
+    Result<void, 'operator_required' | 'mfa_required' | 'use_existing_control' | 'reason_required'>
+  >;
+  /** INT-CTL (CTL.6): an operator opens or closes one API group to partners. Opening needs the second factor. */
+  setApiExposure(i: {
+    actor: Actor;
+    group: ApiGroup;
+    enabled: boolean;
+    reason_code: string;
+  }): Promise<Result<void, 'operator_required' | 'mfa_required' | 'reason_required'>>;
+  /** INT-CTL (CTL.7): the api_exposure rows, as stored. Operators only; any other actor gets null. */
+  readApiExposure(actor: Actor): Promise<ExposureRow[] | null>;
   parseNeed(i: { actor: Actor; text: string }): ReturnType<typeof parseNeed>;
   discover(i: { actor: Actor; text: string }): Promise<
     | { ai_off: true }
@@ -1176,6 +1224,20 @@ export interface Engine {
   >;
   /** The stored paypal_outbound switch, read now (no cache), or null when it cannot be read. For an operator only. */
   outboundSwitchOn(actor: Actor): Promise<boolean | null>;
+  /**
+   * INT-OPS-A OPS-A.1: the facts behind the four health lights of operator Home, read now: the health check, the
+   * stored switch, the lock block, the last job pass and the injected clock. Null for anyone but an operator.
+   */
+  opsHealth(actor: Actor): Promise<{
+    app: 'up' | 'unknown';
+    maintenance: boolean;
+    db: boolean;
+    environment: EnvironmentLabel;
+    switch_on: boolean | null;
+    outbound: { open: boolean; blocked_by: string | null } | null;
+    last_pass_at: string | null;
+    now: string;
+  } | null>;
   health(): Promise<{
     ok: boolean;
     environment: EnvironmentLabel;
@@ -1251,7 +1313,7 @@ export interface Engine {
   /**
    * PUB-A2: where a publisher gets paid. `view` is the S6 page data (last 4 only, newest request first);
    * `request` stores a change request and changes nothing else; `openRequests` and `decide` are the
-   * operator side and need the second factor. A verify is refused with `owner_command_required` when
+   * operator side: any operator reads the queue (INT-OPS-A), and `decide` needs the second factor. A verify is refused with `owner_command_required` when
    * the app runs in sandbox mode (D-062). The whole merchant id is never returned by any method.
    */
   payee: {
@@ -1855,6 +1917,12 @@ function buildApp(config: Config, opts: AppOptions): App {
   );
 
   const switches: SwitchReader = createSwitchReader(db, clock, opts.switch_cache_ms);
+  // INT-CTL: which API groups partners may call; the same cache rule as the switches (tests pass 0).
+  const exposure = createExposureReader({
+    db,
+    clock,
+    ...(opts.switch_cache_ms === undefined ? {} : { cache_ms: opts.switch_cache_ms }),
+  });
   const content: ContentStore = createPgContentStore(db);
   const gate = createOutboundGate({ db, clock, switches, config });
 
@@ -2138,6 +2206,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     // socket address) every client shares one 'no-address' bucket; the login then refuses only
     // wrong passcodes once it is spent. A hosted deployment must set the proxy count.
     trusted_proxies: config.trusted_proxies,
+    exposure,
   };
 
   // --- engine --------------------------------------------------------------------------------
@@ -2685,6 +2754,68 @@ function buildApp(config: Config, opts: AppOptions): App {
       return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
     },
 
+    async setFeatureSwitch({ actor, name, on, reason_code }) {
+      if (actor.kind !== 'operator') return err('operator_required');
+      if (!(EXPOSURE_REASON_CODES as readonly string[]).includes(reason_code))
+        return err('reason_required');
+      if (on) {
+        // Turning on needs the second factor, and two switches keep their own controls and locks (Start, agent buy).
+        if (!actor.mfa) return err('mfa_required');
+        if (name === 'paypal_outbound' || name === 'agent_buy_enabled')
+          return err('use_existing_control');
+      }
+      const r = await setSwitch(db, audit, clock, {
+        name,
+        on,
+        by: actor,
+        reason: reason_code,
+        approval_ref: null,
+      });
+      if (r.ok) return ok(undefined);
+      return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+    },
+
+    async setApiExposure({ actor, group, enabled, reason_code }) {
+      if (actor.kind !== 'operator') return err('operator_required');
+      if (!(EXPOSURE_REASON_CODES as readonly string[]).includes(reason_code))
+        return err('reason_required');
+      if (enabled && !actor.mfa) return err('mfa_required');
+      const at = clock.now().toISOString();
+      await db.transaction(async (tx) => {
+        await tx.query(
+          `UPDATE api_exposure SET enabled = $2, changed_by = $3, changed_at = $4, reason_code = $5, updated_at = $4
+            WHERE group_name = $1`,
+          [group, enabled, `operator:${actor.operator_id}`, at, reason_code],
+        );
+        await audit.record(tx, {
+          actor,
+          action: `exposure.${group}.${enabled ? 'on' : 'off'}`,
+          target: null,
+          reason: reason_code,
+          detail: { group, enabled },
+        });
+      });
+      return ok(undefined);
+    },
+
+    async readApiExposure(actor) {
+      if (actor.kind !== 'operator') return null;
+      const r = await db.query<{
+        group_name: ApiGroup;
+        enabled: boolean;
+        changed_by: string | null;
+        changed_at: Date | string;
+        reason_code: string | null;
+      }>(
+        'SELECT group_name, enabled, changed_by, changed_at, reason_code FROM api_exposure ORDER BY group_name',
+      );
+      const rank = (g: string): number => (API_GROUPS as readonly string[]).indexOf(g);
+      return r.rows
+        .filter((x) => isApiGroup(x.group_name))
+        .map((x) => ({ ...x, changed_at: new Date(x.changed_at).toISOString() }))
+        .sort((a, b) => rank(a.group_name) - rank(b.group_name));
+    },
+
     async parseNeed(i) {
       return parseNeed(agent, i);
     },
@@ -2749,6 +2880,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         currency: string;
         publishers?: { publisher_id: string; amount_minor: number }[];
         settlement?: { payments: number };
+        terms?: { values: { 'access.window': number } };
       };
       const items: ApprovalView['items'] = [];
       const itemPublisher: string[] = [];
@@ -2789,6 +2921,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         currency: snap.currency,
         environment: row.environment,
         content_hash: row.content_hash,
+        access_days: snap.terms?.values['access.window'] ?? 5,
         items,
         blocks,
         settlement: snap.settlement === undefined ? null : { payments: snap.settlement.payments },
@@ -3298,6 +3431,7 @@ function buildApp(config: Config, opts: AppOptions): App {
           id: v.id,
           ok: v.ok,
           detail: v.detail,
+          rows: v.rows,
         })),
         kill_switch: {
           outbound_on: outboundSwitch?.on === true,
@@ -3551,7 +3685,6 @@ function buildApp(config: Config, opts: AppOptions): App {
     opsPublishers: {
       async list(actor) {
         if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
-        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
         const publishers = await publisherExposure(db, actor, clock.now().toISOString(), {
           own_merchant_id: config.own_merchant_id,
           environment,
@@ -3592,7 +3725,6 @@ function buildApp(config: Config, opts: AppOptions): App {
     opsApplicants: {
       async list(actor) {
         if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
-        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
         const applicants = await listApplicants(db, actor);
         if (applicants === null) return { ok: false, error: { code: 'not_operator' } };
         return { ok: true, value: { applicants } };
@@ -3646,7 +3778,6 @@ function buildApp(config: Config, opts: AppOptions): App {
     opsAgreements: {
       async list(actor) {
         if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
-        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
         const agreements = await listAgreements(db, actor);
         if (agreements === null) return { ok: false, error: { code: 'not_operator' } };
         return { ok: true, value: { agreements } };
@@ -3710,6 +3841,33 @@ function buildApp(config: Config, opts: AppOptions): App {
         if (actor.kind !== 'operator') return null;
         return getCaseDetail(db, case_id, { with_message: true });
       },
+    },
+
+    async opsHealth(actor) {
+      if (actor.kind !== 'operator') return null;
+      let h: Awaited<ReturnType<Engine['health']>> | null = null;
+      try {
+        h = await engine.health();
+      } catch {
+        h = null;
+      }
+      let out: { open: boolean; blocked_by: string | null } | null = null;
+      try {
+        const s = outbound === null ? null : await outbound.status();
+        out = s === null ? null : { open: s.open, blocked_by: s.blocked_by };
+      } catch {
+        out = null;
+      }
+      return {
+        app: h === null ? 'unknown' : 'up',
+        maintenance: h?.maintenance ?? false,
+        db: h?.db ?? false,
+        environment,
+        switch_on: h?.maintenance === true ? null : await engine.outboundSwitchOn(actor),
+        outbound: out,
+        last_pass_at: h?.last_pass_at ?? null,
+        now: clock.now().toISOString(),
+      };
     },
 
     async health() {
@@ -3889,6 +4047,9 @@ export const securityDeps: SecurityDeps = {
   },
   get trusted_proxies() {
     return getApp().security.trusted_proxies ?? 0;
+  },
+  get exposure() {
+    return getApp().security.exposure;
   },
 };
 

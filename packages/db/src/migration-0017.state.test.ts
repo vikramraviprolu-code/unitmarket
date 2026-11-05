@@ -254,6 +254,8 @@ describe('migration 0017', () => {
               'publisher_domains',
               'import_batches',
               'import_items',
+              // INT-CTL (migration 0026): the seeded API exposure rows.
+              'api_exposure',
             ].includes(t),
         ),
       ).toEqual(['fx_rates']);

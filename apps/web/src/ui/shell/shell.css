@@ -177,3 +177,24 @@
     padding-bottom: calc(76px + env(safe-area-inset-bottom));
   }
 }
+
+/* INT-OPS-A / OPS-A.2: the alert bell of the operator shell. */
+.shell-bell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+  color: inherit;
+  text-decoration: none;
+}
+.shell-bell-count {
+  min-width: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-weight: 600;
+  text-align: center;
+}

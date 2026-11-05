@@ -4,36 +4,10 @@
 // in an aria-live region without reloading. The operator then refunds the rest by keyboard, and the
 // buyer sees "Refunded" and cannot open the item. Runs before the ops stop drill (zz-ops-stop.spec.ts):
 // that stop stays in force for the life of the server and would block every PayPal call, refunds included.
-import { createHmac } from 'node:crypto';
 import { test, expect } from '@playwright/test';
-import type { Browser, BrowserContext, Page } from '@playwright/test';
-import { PASSCODE, TOTP_KEY_BYTES, buyerPage, expectDryRun, payWithScenario } from './support';
-
-async function nextCode(page: Page): Promise<string> {
-  // One step ahead of the server clock: the earlier sign-in spec used the current step, and a step
-  // may be used once, in rising order. The server accepts one step either side.
-  const res = await page.request.get('/healthz');
-  const serverMs = new Date(res.headers()['date'] ?? '').getTime();
-  expect(Number.isFinite(serverMs)).toBe(true);
-  const msg = Buffer.alloc(8);
-  msg.writeBigUInt64BE(BigInt(Math.floor(serverMs / 30_000) + 1));
-  const mac = createHmac('sha1', TOTP_KEY_BYTES).update(msg).digest();
-  const o = (mac[19] ?? 0) & 15;
-  return String((mac.readUInt32BE(o) & 0x7fffffff) % 1_000_000).padStart(6, '0');
-}
-
-async function operatorWithCode(browser: Browser): Promise<{ ctx: BrowserContext; page: Page }> {
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage();
-  await page.goto('/signin?next=/ops');
-  await page.getByLabel('Who are you testing as?').selectOption('operator');
-  await page.getByLabel('Operator name').fill('vikram');
-  await page.getByLabel('Demo passcode').fill(PASSCODE);
-  await page.getByLabel('Authenticator code').fill(await nextCode(page));
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: /Operations/ })).toBeVisible();
-  return { ctx, page };
-}
+import type { BrowserContext, Page } from '@playwright/test';
+import { PASSCODE, buyerPage, expectDryRun, payWithScenario } from './support';
+import { operatorWithCode } from './operator-session';
 
 const unitCard = (page: Page, title: string) =>
   page.getByTestId('refund-unit').filter({ hasText: title });

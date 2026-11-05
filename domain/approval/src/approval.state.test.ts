@@ -74,7 +74,7 @@ describe('requestApproval freezes the offer', () => {
       await requestApproval(h.deps, { actor: BUYER_A, selection: quote, consent: CONSENT }),
     );
     expect(g.snapshot).toEqual({
-      snapshot_version: '1',
+      snapshot_version: '2',
       items: [
         {
           article_id: 'art_1',
@@ -87,9 +87,9 @@ describe('requestApproval freezes the offer', () => {
           option: 'keep_retrieve',
           policy: {
             id: 'keep_retrieve',
-            version: '1',
+            version: '1+rules',
             option: 'keep_retrieve',
-            window_ms: 432_000_000,
+            window_ms: 604_800_000,
             start_rule: 'payment_verified_and_delivery_ready',
           },
           rights: { scope: 'personal_use', ai_scope: 'review', redistribution: false },
@@ -110,6 +110,16 @@ describe('requestApproval freezes the offer', () => {
       reader: { buyer_id: 'buy_A' },
       rule_version: 'rules-1',
       pricing_rule_version: 'pricing-1',
+      terms: {
+        rules_version: '1',
+        values: { 'refund.request_window': 7, 'access.window': 7, 'mandate.max_days': 90 },
+        sources: {
+          'refund.request_window': 'default',
+          'access.window': 'linked:refund.request_window',
+          'mandate.max_days': 'default',
+        },
+        digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      },
     });
     expect(g.content_hash).toBe(contentHash(g.snapshot));
     expect(g.expires_at).toBe('2026-10-22T10:15:00.000Z');

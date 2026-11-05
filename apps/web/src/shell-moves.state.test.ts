@@ -99,7 +99,9 @@ describe('the moved panels are the same components', () => {
   });
   it('Controls holds the switches and the outbound gate as they were', () => {
     const src = read(pageOf('/ops/controls'));
-    expect(src).toContain('data-testid={`ops-switch-${name}`}');
+    // INT-CTL: the switch cards moved into SwitchList, which the page renders.
+    expect(src).toContain('<SwitchList');
+    expect(read('ui/ops/SwitchList.tsx')).toContain('data-testid={`ops-switch-${l.name}`}');
     expect(src).toContain('data-testid="ops-gate"');
     expect(src).toContain('gateLines(');
   });

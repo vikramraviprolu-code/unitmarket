@@ -4,6 +4,7 @@
 import { cpSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { API_GROUPS } from '@umsbx/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MIGRATIONS_ROOT, applyMigrations } from './migrate';
 import { openDatabase } from './index';
@@ -99,7 +100,8 @@ describe('the migration backfills what was already there', () => {
 
   it('the total is the number of tracked rows: no table is skipped, none is counted twice', async () => {
     const tracked = Object.values(rowsBefore).reduce((n, ids) => n + ids.length, 0);
-    expect(await countEvents(db)).toBe(tracked);
+    // INT-CTL: api_exposure is created by a later migration and seeded with one row per group; each is backfilled too.
+    expect(await countEvents(db)).toBe(tracked + API_GROUPS.length);
     expect(tracked).toBeGreaterThan(30);
   });
 

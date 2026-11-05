@@ -3,6 +3,7 @@
 // PUB-B: tide tables read $1.00 here, not $0.40. The e2e server runs with NODE_ENV=production, so the demo
 // price step (decision 37) applies at boot. The earlier $0.40 contradicted decision 37.
 import { test, expect } from '@playwright/test';
+import { RULES_REGISTRY } from '@umsbx/contracts';
 import { askPrice, buyerPage, expectDryRun, payWithScenario, toApproval } from './support';
 
 test.describe('offer and discovery journeys up to the approval screen', () => {
@@ -143,7 +144,7 @@ test.describe('labels and accessibility', () => {
 });
 
 test.describe('payments journeys (real engine over the dry-run model, no PayPal)', () => {
-  test('offer journey: approve, dry-run approve, return, library shows Ready with 5 days, receipt hash matches (A-12, PAY-09)', async ({
+  test('offer journey: approve, dry-run approve, return, library shows Ready with the default window (7 days, BR-3), receipt hash matches (A-12, PAY-09)', async ({
     browser,
   }) => {
     const page = await buyerPage(browser);
@@ -155,8 +156,13 @@ test.describe('payments journeys (real engine over the dry-run model, no PayPal)
     expect(receiptHref).toMatch(/^\/receipts\/ord_/);
     await page.getByRole('link', { name: 'Open my library' }).click();
     const item = page.getByTestId('library-item').filter({ hasText: 'tide table' }).first();
+    // BR-3: the buyer gets the longer of the access and refund defaults (7 days), read from the registry.
+    const windowDays = Math.max(
+      RULES_REGISTRY['access.window'].default,
+      RULES_REGISTRY['refund.request_window'].default,
+    );
     await expect(item.getByTestId('library-status')).toContainText(
-      /Ready, (5 days|4 days 2\d hours) left/,
+      new RegExp(`Ready, (${windowDays} days|${windowDays - 1} days 2\\d hours) left`),
     );
     await page.goto(receiptHref ?? '/');
     const shown = (await page.getByTestId('receipt-sha256').textContent())?.trim();

@@ -78,7 +78,8 @@ export async function publisherExposure(
   at: string,
   ctx: ExposureContext,
 ): Promise<PublisherExposure[] | null> {
-  if (actor.kind !== 'operator' || !actor.mfa) return null;
+  // INT-OPS-A / OPS-A.7: a read; an operator without the code gets the same rows (the merchant id stays last 4).
+  if (actor.kind !== 'operator') return null;
   const pubs = await db.query<{
     id: string;
     slug: string;

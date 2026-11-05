@@ -11,6 +11,7 @@ import {
   MinorUnitsSchema,
   Sha256HexSchema,
 } from './primitives';
+import { RULE_KEYS, ResolvedTermsSchema, isRuleValueInRange } from './rules';
 
 export const SnapshotItemSchema = z
   .object({
@@ -49,27 +50,60 @@ const SnapshotSettlementSchema = z
   .strict();
 export type SnapshotSettlement = z.infer<typeof SnapshotSettlementSchema>;
 
-// Refinements: unique article ids; every item has a publisher block with the same payee; each
-// publisher amount equals the sum of its items; the total equals the sum of publishers. A snapshot
-// has one currency field and items carry none, so a second currency cannot be expressed (strict).
+// BR-3: the business terms resolved for this sale, frozen with the snapshot (inside the content hash).
+// Same shape as the resolver's result, with every value held to its registry range and the link rule
+// (access is never shorter than the refund window) re-checked, so a stored block cannot say otherwise.
+// The schema is not exported (the contracts index test lists its exports exactly); use the type.
+const SnapshotTermsSchema = ResolvedTermsSchema.superRefine((terms, ctx) => {
+  for (const key of RULE_KEYS) {
+    if (!isRuleValueInRange(key, terms.values[key])) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['values', key],
+        message: `${key} is outside its safe range`,
+      });
+    }
+  }
+  if (terms.values['access.window'] < terms.values['refund.request_window']) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['values', 'access.window'],
+      message: 'access.window must not be shorter than refund.request_window',
+    });
+  }
+});
+export type SnapshotTerms = z.infer<typeof SnapshotTermsSchema>;
+
+// The fields both versions share.
+const snapshotShape = {
+  items: z.array(SnapshotItemSchema).min(1),
+  publishers: z.array(SnapshotPublisherSchema).min(1),
+  total_minor: MinorUnitsSchema,
+  currency: CurrencyCodeSchema,
+  corridor_id: CorridorIdSchema,
+  reader: z.object({ buyer_id: IdSchema }).strict(),
+  rule_version: z.string().min(1),
+  pricing_rule_version: z.string().min(1),
+  // Only a snapshot with exactly two publishers carries it, and it is inside the content hash. A
+  // one-publisher snapshot has no `settlement` key at all, so its hash is what it always was.
+  settlement: SnapshotSettlementSchema.optional(),
+  // API-B: set only when the order is bought by an agent inside a buyer's mandate. Inside the content hash.
+  mandate_id: IdSchema.optional(),
+};
+
+// Version 1 is every approval stored before BR-3: it has no `terms`. Version 2 is what requestApproval
+// writes now and `terms` is required, so no new sale can escape a rule that reads the terms (BR-4's refund
+// deadline). A version 1 body with a `terms` key, and a version 2 body without one, are both refused.
+const SnapshotV1Schema = z.object({ snapshot_version: z.literal('1'), ...snapshotShape }).strict();
+const SnapshotV2Schema = z
+  .object({ snapshot_version: z.literal('2'), ...snapshotShape, terms: SnapshotTermsSchema })
+  .strict();
+
+// Refinements, applied to both versions: unique article ids; every item has a publisher block with the
+// same payee; each publisher amount equals the sum of its items; the total equals the sum of publishers.
+// A snapshot has one currency field and items carry none, so a second currency cannot be expressed (strict).
 export const ApprovalSnapshotSchema = z
-  .object({
-    snapshot_version: z.literal('1'),
-    items: z.array(SnapshotItemSchema).min(1),
-    publishers: z.array(SnapshotPublisherSchema).min(1),
-    total_minor: MinorUnitsSchema,
-    currency: CurrencyCodeSchema,
-    corridor_id: CorridorIdSchema,
-    reader: z.object({ buyer_id: IdSchema }).strict(),
-    rule_version: z.string().min(1),
-    pricing_rule_version: z.string().min(1),
-    // Only a snapshot with exactly two publishers carries it, and it is inside the content hash. A
-    // one-publisher snapshot has no `settlement` key at all, so its hash is what it always was.
-    settlement: SnapshotSettlementSchema.optional(),
-    // API-B: set only when the order is bought by an agent inside a buyer's mandate. Inside the content hash.
-    mandate_id: IdSchema.optional(),
-  })
-  .strict()
+  .union([SnapshotV1Schema, SnapshotV2Schema])
   .superRefine((snapshot, ctx) => {
     const issue = (message: string, path: (string | number)[]) =>
       ctx.addIssue({ code: 'custom', message, path });

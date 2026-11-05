@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withRoute } from '@umsbx/security';
 import type { RouteMeta } from '@umsbx/security';
 import { app, securityDeps } from '../../../server/access';
+import { TERMS_INVALID_TEXT } from '../../../lib/buyer-copy';
 import { MIXED_CURRENCY_TEXT, TOO_MANY_PUBLISHERS_TEXT } from '../../../lib/composite-copy';
 
 export const routeMeta: RouteMeta = {
@@ -35,6 +36,7 @@ const STATUS: Record<string, 400 | 403 | 404 | 409 | 410 | 422> = {
   not_owner: 403,
   too_many_items: 422,
   too_many_publishers: 422,
+  terms_invalid: 422,
 };
 const TEXT: Record<string, string> = {
   quote_expired: 'That quote expired. Please start again to see the current price.',
@@ -43,6 +45,7 @@ const TEXT: Record<string, string> = {
   unknown_selection: 'We could not find that selection.',
   mixed_currency: MIXED_CURRENCY_TEXT,
   too_many_publishers: TOO_MANY_PUBLISHERS_TEXT,
+  terms_invalid: TERMS_INVALID_TEXT,
 };
 
 export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {

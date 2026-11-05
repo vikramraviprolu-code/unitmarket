@@ -8,7 +8,7 @@
 // idempotency claim. Everything that touches money (the cap, the order, the approval) is in the domain and is
 // reached through the Engine, the mandate service and the claim store of the composition root.
 import { z } from 'zod';
-import type { Actor, Scope } from '@umsbx/contracts';
+import type { Actor, ExposureReader, Scope } from '@umsbx/contracts';
 import { searchOffers } from '../../composition.server';
 import type { Engine, MandateService, OfferPage, PurchaseClaims } from '../../composition.server';
 
@@ -38,6 +38,8 @@ export interface AgentCall {
   key_id: string;
   buyer_id: string;
   scopes: readonly Scope[];
+  /** INT-CTL: the API exposure registry. Absent only in tests that do not exercise it; the route always sets it. */
+  exposure?: ExposureReader | undefined;
 }
 
 export type ToolOut = { status: string } & Record<string, unknown>;

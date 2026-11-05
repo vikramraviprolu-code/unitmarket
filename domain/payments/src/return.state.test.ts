@@ -5,7 +5,6 @@ import { loadOrderView, onBuyerReturn, requestIdFor } from './index';
 import {
   BUYER_A,
   BUYER_B,
-  FIVE_DAYS_MS,
   approved,
   awaiting,
   count,
@@ -69,7 +68,7 @@ describe('the verified journey', () => {
     expect(r.value.items[0]).toMatchObject({ article_id: 'art_1', access: 'available' });
     const now = w.clock.now().getTime();
     expect(Date.parse(r.value.items[0]!.window.started_at!)).toBe(now);
-    expect(Date.parse(r.value.items[0]!.window.ends_at!)).toBe(now + FIVE_DAYS_MS);
+    expect(Date.parse(r.value.items[0]!.window.ends_at!)).toBe(now + 7 * 86_400_000);
     expect(r.value.items[0]!.window.state).toBe('running');
 
     const u = await unit(a.order_id);
