@@ -29,9 +29,10 @@ Specs updated: `int-tr0-journal.md` (D-097), `int-sr0-search-base.md` (D-098), `
 | 0024   | SR0 `txn_search`             | indexes and `txn_rows` view only       |
 | 0025   | AL `alert_events`            |                                        |
 | 0026   | CTL `api_exposure`           |                                        |
-| 0027+  | next free in merge order     | any lane not listed takes the next one |
+| 0027   | BR-2 (configurable rules: settings, agreements, versions, acceptances) | merges after TR0; adds its four tables to TR0's tracked list |
+| 0028+  | next free in merge order     | any lane not listed takes the next one |
 
-TR0's capture triggers must exist before any later migration writes a tracked table, so 0024 to 0026 must merge after 0023. No lane may renumber an earlier migration.
+TR0's capture triggers must exist before any later migration writes a tracked table, so 0024 to 0027 must merge after 0023. BR-1 (registry and resolver) has no migration. A BR lane that needs a decision row takes D-101 or later from section 1. No lane may renumber an earlier migration.
 
 ## 3. Owner decisions folded in (5 Nov)
 
