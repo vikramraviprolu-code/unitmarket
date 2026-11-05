@@ -51,3 +51,11 @@ export const BAD_CURSOR: HttpResult<never> = {
   code: 'bad_cursor',
   message: 'That page marker is not valid. Start again from the first page.',
 };
+
+/** INT-SR1: a search refusal (field_not_allowed, bad_cursor, forbidden) as the answer the route gives. */
+export function searchRefusal(e: unknown): HttpResult<never> | null {
+  if (typeof e !== 'object' || e === null || (e as { name?: unknown }).name !== 'TxnSearchError')
+    return null;
+  const t = e as { status: 400 | 403; code: string; message: string };
+  return { status: t.status, code: t.code, message: t.message };
+}

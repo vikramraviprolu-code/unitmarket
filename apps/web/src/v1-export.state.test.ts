@@ -136,7 +136,7 @@ describe('SR1.5 operator session CSV', () => {
 });
 
 describe('SR1.5 truncation', () => {
-  it('is false at 5,000 rows and true above', async () => {
+  it('is true above 5,000 rows and false below', async () => {
     const q = {
       buyer_id: buyerId(),
       publisher_id: harbourId(),

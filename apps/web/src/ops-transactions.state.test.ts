@@ -4,8 +4,8 @@
 // those only when the session has MFA; the single helper is src/server/ops-identity.ts. views-seed gives
 // Needs attention 4, Refunds today 2, Agent purchases 5 and Sandbox only 3.
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { VIEWS_EXPECTED, VIEWS_MEMBERS } from '@umsbx/txn-search';
-import type { ViewId } from '@umsbx/txn-search';
+import type { Actor } from '@umsbx/contracts';
+import { VIEWS_EXPECTED, VIEWS_MEMBERS } from '../composition.server';
 import { expectOffline } from './api-v1/offline-guard';
 import { bootSearch, json } from './search-support';
 import type { Handler, SearchRig, Sess } from './search-support';
@@ -15,7 +15,7 @@ vi.mock('node:net', async (orig) => (await import('./api-v1/offline-guard')).net
 vi.mock('node:dns', async (orig) => (await import('./api-v1/offline-guard')).dnsMock(await orig()));
 expectOffline();
 
-const VIEWS = Object.keys(VIEWS_EXPECTED) as ViewId[];
+const VIEWS = Object.keys(VIEWS_EXPECTED) as (keyof typeof VIEWS_EXPECTED)[];
 const IDENTITY_WORDS = [
   'Vera Viewer',
   'Wes Watcher',
@@ -154,5 +154,46 @@ describe('SR1.3 paging', () => {
     expect(units(p2.body.items).some((u) => units(p1.body.items).includes(u))).toBe(false);
     const other = await viaKey(`?limit=4&status=paid&cursor=${p1.body.next_cursor!}`);
     expect(other.res.status).toBe(400);
+  });
+});
+
+describe('SR1.3 handler refusals', () => {
+  it('a buyer gets 403 from quick-find; a system actor gets 403 from the list and the export', async () => {
+    const { opsExportFor, opsFind, opsTransactionsFor } = await import('./api-v1/ops');
+    const system: Actor = { kind: 'system' };
+    for (const r of [
+      await opsFind(rig.app, rig.buyerA, 'order'),
+      await opsTransactionsFor(rig.app, system, {}),
+      await opsExportFor(rig.app, system, {}),
+    ]) {
+      expect(r.status).toBe(403);
+      expect((r as { code?: string }).code).toBe('forbidden');
+    }
+  });
+
+  it('quick-find for an operator answers 200', async () => {
+    const { opsFind } = await import('./api-v1/ops');
+    expect((await opsFind(rig.app, rig.operator, 'order')).status).toBe(200);
+  });
+});
+
+describe('SR1.5 quick-find identity', () => {
+  it('findForActor drops buyers and seller names without MFA and keeps them with MFA', async () => {
+    const { findForActor, hasOpsIdentity } = await import('./server/ops-identity');
+    const found = {
+      orders: [],
+      buyers: [{ id: 'b1', display_name: 'Vera' }],
+      sellers: [{ id: 's1', slug: 'quay', display_name: 'Quay' }],
+    } as never;
+    const keyActor = { kind: 'operator', operator_id: 'o', mfa: false } as Actor;
+    const sessionActor = { kind: 'operator', operator_id: 'o', mfa: true } as Actor;
+    expect(hasOpsIdentity(keyActor)).toBe(false);
+    expect(hasOpsIdentity(sessionActor)).toBe(true);
+    expect(hasOpsIdentity(rig.buyerA)).toBe(false);
+    expect(findForActor(sessionActor, found)).toBe(found);
+    const cut = findForActor(keyActor, found) as unknown as Record<string, unknown>;
+    expect(cut['buyers']).toBeUndefined();
+    expect(JSON.stringify(cut)).not.toContain('Quay');
+    expect(JSON.stringify(cut)).toContain('quay');
   });
 });

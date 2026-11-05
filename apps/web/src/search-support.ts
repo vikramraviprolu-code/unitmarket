@@ -3,7 +3,7 @@
 // to its database, and a helper that writes many plain sales for an existing buyer and seller. The `now` of
 // the seed is the app's own injected clock, so "Refunds today" and "pending for an hour" line up.
 import type { Actor, SqlExecutor } from '@umsbx/contracts';
-import { seedViewsWorld } from '@umsbx/txn-search';
+import { seedViewsWorld } from '../composition.server';
 import type { AppOptions } from '../composition.server';
 import { bootA, json } from './api-v1/a-support';
 import type { ARig, Handler, Sess } from './api-v1/a-support';
@@ -110,7 +110,7 @@ export async function seedSales(db: SqlExecutor, s: SalesSeed): Promise<string[]
     );
     await db.query(
       `INSERT INTO order_units (id, order_id, provider_order_ref, publisher_id, reference_id, payee_merchant_id, amount_minor, platform_fee_minor, capture_id, status, status_reason, paypal_fee_minor, refunded_minor, captured_verified_at, mismatch_reason, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, NULL, NULL, 0, $10, NULL, $11, $11)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, NULL, NULL, $12, $10, NULL, $11, $11)`,
       [
         `${s.prefix}u${String(i)}`,
         o,
@@ -119,10 +119,13 @@ export async function seedSales(db: SqlExecutor, s: SalesSeed): Promise<string[]
         `reference-${o}`,
         merchant,
         s.amount_minor ?? 500,
-        unitStatus === 'captured_verified' ? `CAPS${String(counter)}` : null,
+        unitStatus === 'captured_verified' || unitStatus === 'refunded'
+          ? `CAPS${String(counter)}`
+          : null,
         unitStatus,
-        unitStatus === 'captured_verified' ? created : null,
+        unitStatus === 'captured_verified' || unitStatus === 'refunded' ? created : null,
         created,
+        unitStatus === 'refunded' ? (s.amount_minor ?? 500) : 0,
       ],
     );
   }
@@ -152,7 +155,7 @@ SELECT 'apr_${p}' || i, '${q.buyer_id}', '{}'::jsonb, lpad(to_hex(i + 5000000), 
 INSERT INTO orders (id, approval_id, buyer_id, content_hash, order_ref, expected, status, mismatch, corridor_id, currency, total_minor, environment, created_at, updated_at)
 SELECT '${p}o' || i, 'apr_${p}' || i, '${q.buyer_id}', lpad(to_hex(i + 6000000), 64, '0'), '${p}' || lpad(i::text, 6, '0'), '{}'::jsonb, 'paid_partial', false, '${q.corridor}', 'USD', 500, 'dryrun', at, at FROM bulk_src;
 INSERT INTO provider_orders (id, order_id, provider_order_id, route, approve_url, status, created_at, updated_at, position, po_ref, publisher_id, state, first_approved_at)
-SELECT 'po_${p}' || i, '${p}o' || i, 'PPB' || '${p}' || lpad(i::text, 8, '0'), 'single', NULL, NULL, at, at, 1, '${p}' || lpad(i::text, 6, '0'), NULL, 'prepared', NULL FROM bulk_src;
+SELECT 'po_${p}' || i, '${p}o' || i, 'PPB' || '${p.toUpperCase()}' || lpad(i::text, 8, '0'), 'single', NULL, NULL, at, at, 1, '${p}' || lpad(i::text, 6, '0'), NULL, 'prepared', NULL FROM bulk_src;
 INSERT INTO order_units (id, order_id, provider_order_ref, publisher_id, reference_id, payee_merchant_id, amount_minor, platform_fee_minor, capture_id, status, status_reason, paypal_fee_minor, refunded_minor, captured_verified_at, mismatch_reason, created_at, updated_at)
 SELECT '${p}u' || i, '${p}o' || i, 'po_${p}' || i, '${q.publisher_id}', 'reference-${p}' || i, '${q.merchant}', 500, 0, 'CAPB${p}' || i, 'captured_verified', NULL, NULL, 0, at, NULL, at, at FROM bulk_src;
 DROP TABLE bulk_src;

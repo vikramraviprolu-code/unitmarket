@@ -101,14 +101,14 @@ describe('cursors', () => {
       `/api/v1/orders?status=refunded&limit=2&cursor=${p1.next_cursor}`,
     );
     expect(other.status).toBe(400);
-    expect((await json<{ code: string }>(other)).code).toBe('bad_cursor');
+    expect((await json<{ error: { code: string } }>(other)).error.code).toBe('bad_cursor');
     const theirs = await v1(
       'orders',
       buyerB,
       `/api/v1/orders?status=paid&limit=2&cursor=${p1.next_cursor}`,
     );
     expect(theirs.status).toBe(400);
-    expect((await json<{ code: string }>(theirs)).code).toBe('bad_cursor');
+    expect((await json<{ error: { code: string } }>(theirs)).error.code).toBe('bad_cursor');
     const s1 = await json<{ next_cursor: string }>(
       await v1('sales', sellerH, '/api/v1/seller/sales?limit=2'),
     );
@@ -121,21 +121,14 @@ describe('cursors', () => {
   });
 
   it('an old o1 cursor sent with a filter is 400 bad_cursor; without a filter it still pages', async () => {
-    const first = await json<{ next_cursor: string | null }>(
-      await v1('orders', buyerA, '/api/v1/orders?limit=2'),
-    );
-    expect(first.next_cursor).not.toBeNull();
-    expect(Buffer.from(first.next_cursor!, 'base64url').toString().startsWith('o1:')).toBe(true);
-    const filtered = await v1(
-      'orders',
-      buyerA,
-      `/api/v1/orders?status=paid&cursor=${first.next_cursor}`,
-    );
+    // What main handed out: base64url of `o1:<id of the last order shown>`.
+    const o1 = Buffer.from('o1:ado3').toString('base64url');
+    const filtered = await v1('orders', buyerA, `/api/v1/orders?status=paid&cursor=${o1}`);
     expect(filtered.status).toBe(400);
-    expect((await json<{ code: string }>(filtered)).code).toBe('bad_cursor');
-    expect((await v1('orders', buyerA, `/api/v1/orders?cursor=${first.next_cursor}`)).status).toBe(
-      200,
-    );
+    expect((await json<{ error: { code: string } }>(filtered)).error.code).toBe('bad_cursor');
+    const plain = await v1('orders', buyerA, `/api/v1/orders?cursor=${o1}`);
+    expect(plain.status).toBe(200);
+    expect(await items(plain)).toHaveLength(3);
     expect((await v1('orders', buyerA, '/api/v1/orders?cursor=%00%00')).status).toBe(400);
   });
 
@@ -175,7 +168,7 @@ describe('tenants', () => {
     // A buyer cannot name another buyer or a seller.
     const r = await v1('orders', buyerA, '/api/v1/orders?buyer=vs_b2');
     expect(r.status).toBe(400);
-    expect((await json<{ code: string }>(r)).code).toBe('field_not_allowed');
+    expect((await json<{ error: { code: string } }>(r)).error.code).toBe('field_not_allowed');
   });
 
   it('a seller sending agent_key, buyer, seller, environment or flags gets 400 field_not_allowed', async () => {
@@ -193,7 +186,7 @@ describe('tenants', () => {
       ] as const) {
         const r = await v1(n, sellerH, `${u}?${f}`);
         expect(r.status, `${n} ${f}`).toBe(400);
-        expect((await json<{ code: string }>(r)).code).toBe('field_not_allowed');
+        expect((await json<{ error: { code: string } }>(r)).error.code).toBe('field_not_allowed');
       }
     }
   });
@@ -260,7 +253,11 @@ describe('quick-find limits and logs', () => {
     await v1('opsKey', opKey, `/api/v1/ops/transactions?q=${q}`);
     await sess('opsSession', sessMfa, `/api/ops/transactions?q=${q}`);
     await sess('find', sessMfa, `/api/ops/find?q=${q}`);
-    expect(logs.length).toBeGreaterThan(0);
+    // The log sink and the audit rows (the bearer requests above wrote some) hold the path, never the query.
+    const audit = await rig.app.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM audit_log WHERE detail::text LIKE '%7c1e9d42%' OR target LIKE '%7c1e9d42%' OR coalesce(reason, '') LIKE '%7c1e9d42%'`,
+    );
+    expect(audit.rows[0]!.n).toBe(0);
     expect(logs.filter((l) => l.includes(CANARY))).toEqual([]);
     expect(logs.filter((l) => l.includes('7c1e9d42'))).toEqual([]);
   });

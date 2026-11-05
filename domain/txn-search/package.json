@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@umsbx/contracts": "workspace:*"
+    "@umsbx/contracts": "workspace:*",
+    "@umsbx/publisher-console": "workspace:*"
   },
   "devDependencies": {
     "@umsbx/db": "workspace:*",

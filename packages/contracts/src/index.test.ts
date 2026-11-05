@@ -209,6 +209,11 @@ const EXPECTED_EXPORTS: string[] = [
   'TXN_QUERY_KEYS',
   'REFUSED_FIELDS',
   'parseTxnQuery',
+  // INT-SR1: search API contract
+  'TxnExportSchema',
+  'TxnLinePageSchema',
+  'TxnLineSchema',
+  'TxnQueryMapSchema',
 ];
 
 type Def = {
