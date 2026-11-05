@@ -108,6 +108,7 @@ const DOMAIN = [
   'publisher-console',
   'fx',
   'mandates',
+  'txn-search',
   'rules',
 ];
 const INFRA = [
@@ -1509,6 +1510,12 @@ export const NAMED_EXEMPTIONS = [
     ],
     reason:
       'PG-2 (real-Postgres race and wiring tests): they import the web composition, the C rig and the throwaway-Postgres test helper (packages/db/src/pg-testing.ts, not a package export) by relative path, like the CO-G tests above. They run only when UMS_TEST_PG_BIN is set, on a unix-socket server in a temp directory; no file names a sealed identifier',
+    off: ['sbx/no-package-escape'],
+  },
+  {
+    files: ['domain/txn-search/src/pg.plan.integration.test.ts'],
+    reason:
+      'SR0.5 (transaction search plan test on real Postgres): it imports the throwaway-Postgres test helper (packages/db/src/pg-testing.ts, not a package export) by relative path, like PG-2 above. It runs only when UMS_TEST_PG_BIN is set, on a unix-socket server in a temp directory; no file names a sealed identifier',
     off: ['sbx/no-package-escape'],
   },
   {
