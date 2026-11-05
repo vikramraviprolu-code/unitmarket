@@ -119,9 +119,9 @@ describe('an insert writes one event', () => {
     });
   });
 
-  it('the world wrote one event per inserted row (the publishers step also inserts pub_2) and the migration seven', async () => {
+  it('the world wrote one event per inserted row (the publishers step also inserts pub_2) and the migration 21', async () => {
     const inserts = STEPS.filter((s) => s.insert).length + 1;
-    expect(await countEvents(db)).toBe(inserts + 7);
+    expect(await countEvents(db)).toBe(inserts + 21);
   });
 });
 

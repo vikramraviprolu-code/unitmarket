@@ -250,6 +250,8 @@ describe('migration 0017', () => {
               'alert_events',
               // BR-2 (migration 0027): rule settings.
               'rule_settings',
+              // INT-CTL (migration 0026): the seeded API exposure rows.
+              'api_exposure',
             ].includes(t),
         ),
       ).toEqual(['fx_rates']);
