@@ -1,0 +1,72 @@
+/* INT-UI0 shared parts: the reference with its copy control (Ref) and the timeline (Timeline). Tokens only. */
+.ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ref code {
+  font-family: var(--mono);
+}
+.ref-copy {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.ref-copy:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.ref-copy:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.ref-status {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.tl {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tl-step {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  padding: 12px 0 12px 16px;
+  border-left: 3px solid var(--line-soft);
+}
+.tl-step + .tl-step {
+  border-top: 1px solid var(--line-soft);
+}
+.tl-when {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.tl-who {
+  font-weight: 600;
+}
+.tl-via {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.tl-note {
+  color: var(--warn);
+  font-size: 0.9rem;
+}
+.tl-empty,
+.tl-error,
+.tl-cap {
+  margin: 0;
+  padding: 12px 0;
+  color: var(--muted);
+}
+.tl-error {
+  color: var(--bad);
+}

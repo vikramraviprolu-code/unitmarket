@@ -133,7 +133,7 @@ export async function switches(a: App, ctx: Ctx): Result<unknown> {
   };
 }
 
-// O5: the same answer as /healthz.
+// O5: /healthz plus the revision and whether the database is open (INT-CL1). 503 stays when unhealthy.
 export async function status(a: App): Result<unknown> {
   const h = await a.engine.health();
   return h.ok
@@ -142,6 +142,8 @@ export async function status(a: App): Result<unknown> {
         body: {
           ok: true,
           environment: h.environment,
+          revision: h.revision,
+          db: h.db ? 'up' : 'closed',
           ...(h.maintenance ? { maintenance: true } : {}),
         },
       }

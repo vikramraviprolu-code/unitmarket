@@ -78,6 +78,11 @@ export interface Config {
    * ums-maintenance; with a PGlite folder on disk it is that folder's sibling, never inside it.
    */
   maintenance_flag: string | null;
+  /**
+   * K_REVISION (INT-CL1): the Cloud Run revision name, set by the platform; null anywhere else. It is
+   * public (shown on /api/v1/status), not a secret, and no switch depends on it.
+   */
+  revision: string | null;
   env_label: 'Dry run' | 'Sandbox';
   node_env: 'development' | 'test' | 'production';
 }
@@ -105,6 +110,7 @@ export const ENV_NAMES = [
   'UMS_CORRIDORS',
   'UMS_TRUSTED_PROXIES',
   'UMS_MAINTENANCE_FLAG',
+  'K_REVISION',
   'UMS_PUBLISHER_PASSCODE_HASH',
   'UMS_JUDGE_PASSCODE_HASH',
   'UMS_OFFER_MAX_MINOR',

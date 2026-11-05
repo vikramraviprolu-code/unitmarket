@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { status } from '../../../../api-v1/ops';
 import { app, securityDeps } from '../../../../server/access';
 
-// API-A (O5): the public status of the service, the same answer as /healthz. No key, no switch, no lock.
+// API-A (O5): the public status of the service, /healthz plus revision and db (INT-CL1). No key, no switch, no lock.
 export const routeMeta: RouteMeta = {
   path: '/api/v1/status',
   method: 'GET',

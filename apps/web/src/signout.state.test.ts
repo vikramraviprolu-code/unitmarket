@@ -80,7 +80,8 @@ describe('header items per role (D11)', () => {
     expect(navItems('buyer').sign_out).toBe(true);
   });
   it('publisher: publisher, help, sign out; never Find articles', () => {
-    expect(labels('publisher')).toEqual(['Publisher', 'Help']);
+    // INT-UI0: the nav label is Seller (decision V2); the URL stays /publisher.
+    expect(labels('publisher')).toEqual(['Seller', 'Help']);
     expect(navItems('publisher').sign_out).toBe(true);
   });
   it('operator: operations, help, sign out; never Find articles', () => {

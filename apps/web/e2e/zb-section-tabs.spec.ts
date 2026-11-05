@@ -14,7 +14,15 @@ import { PASSCODE, TOTP_KEY_BYTES } from './support';
 const WIDTHS = [320, 360, 560, 700, 900, 1100, 1280, 1440, 1600] as const;
 const SHOT_WIDTHS: readonly number[] = [360, 700, 1280];
 const SKINS = ['market', 'harbour'] as const;
-const PAGES = ['/ops', '/legal/terms', '/legal/publisher-terms'] as const;
+// INT-UI0: the blocks moved to the Money, Sellers and Controls tabs, so those pages carry the bar too.
+const PAGES = [
+  '/ops',
+  '/ops/money',
+  '/ops/sellers',
+  '/ops/controls',
+  '/legal/terms',
+  '/legal/publisher-terms',
+] as const;
 
 async function serverStep(page: Page): Promise<number> {
   const res = await page.request.get('/healthz');
@@ -150,7 +158,8 @@ test.describe.serial('section tabs wrap', () => {
         { name: 'um_skin', value: 'market', url: baseURL ?? 'http://localhost:3100' },
       ]);
       await page.setViewportSize({ width, height: 800 });
-      await page.goto('/ops');
+      // INT-UI0: the Approval gate block moved from /ops to /ops/controls.
+      await page.goto('/ops/controls');
       await page.getByTestId('section-nav').getByRole('link', { name: 'Approval gate' }).click();
       await expect(page).toHaveURL(/#ops-gate-section$/);
       const landed = async () =>
@@ -166,13 +175,20 @@ test.describe.serial('section tabs wrap', () => {
             headerBottom,
             scrolled: window.scrollY > 0,
             vh: window.innerHeight,
+            // INT-UI0: /ops/controls is shorter than /ops was, so the gate block may sit under the top of the
+            // window when the page is already scrolled to its end. The block is still reached and in view.
+            atEnd: window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1,
           };
         });
       // Smooth scrolling: poll until the page has settled with the section at the top.
       await expect
         .poll(async () => {
           const l = await landed();
-          return l.scrolled && l.top >= l.headerBottom - 1 && l.top < l.headerBottom + 80;
+          return (
+            l.scrolled &&
+            l.top >= l.headerBottom - 1 &&
+            (l.top < l.headerBottom + 80 || (l.atEnd && l.top < l.vh))
+          );
         })
         .toBe(true);
       const l = await landed();

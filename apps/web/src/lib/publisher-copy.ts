@@ -43,7 +43,8 @@ export const PUBLISHER_PASSCODE_LABEL = 'Publisher passcode';
 export const PUBLISHER_PASSCODE_HINT =
   'The publisher passcode your team lead gave you. The demo passcode does not work for publishers.';
 
-export const PUBLISHER_NAV_LABEL = 'Publisher';
+// INT-UI0 owns this rename in the nav and the tabs (decision V2); SEL renames the page copy.
+export const PUBLISHER_NAV_LABEL = 'Seller';
 export const PUBLISHER_HEADING = 'Publisher home';
 export const PUBLISHER_LEDE = 'This page shows your own publisher account. It is read only.';
 export const LABEL_NAME = 'Name';

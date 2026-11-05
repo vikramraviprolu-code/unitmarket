@@ -388,6 +388,13 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
     maintenance_flag = rawFlag;
   }
 
+  // 16b. the Cloud Run revision (INT-CL1): optional, a plain lower-case name. The error names the variable.
+  const rawRevision = val(env, 'K_REVISION');
+  if (rawRevision !== undefined && !/^[a-z][a-z0-9-]{0,62}$/.test(rawRevision)) {
+    return refuse('invalid_value', 'K_REVISION');
+  }
+  const revision = rawRevision ?? null;
+
   // 17. the publisher passcode hash (CFG-0, D-065 item 34): optional, same shape as the demo hash, and
   // never equal to it (a separate hash is the point). Equality ignores the separator form, so the `:` and
   // `$` spellings of one hash count as equal. The error names the variable, never the value.
@@ -462,6 +469,7 @@ export function loadConfig(env: Env, opts: LoadOptions = {}): Result<Config, Boo
     corridors,
     trusted_proxies,
     maintenance_flag,
+    revision,
     env_label: mode === 'sandbox' ? 'Sandbox' : 'Dry run',
     node_env,
   });

@@ -47,7 +47,7 @@ The recordings in this cut are dry run. The plan (D1) is to replace scene 3 with
 | `assets/footage/`                | The three screen recordings, 1080p                                                                         |
 | `assets/agent-story.json`        | The recorded agent API answers shown in scene 4                                                            |
 | `capture/`                       | Playwright scripts that recorded the footage and the agent answers                                         |
-| `vendor/gsap.min.js`             | GSAP 3.14.2, vendored so renders need no network (GSAP standard no-charge licence)                         |
+| `vendor/gsap.min.js`             | GSAP 3.14.2, vendored so renders need no network. Not Apache-2.0: see `vendor/NOTICE`                      |
 
 ## Render it
 
@@ -81,4 +81,4 @@ Never record the sign-up or password-reset pages: they show a real email address
 - Every scene carries its label: PayPal sandbox, Dry run, Simulation or Proposal.
 - No third-party logos or music. "Uber model" is said as "a ride-hailing model".
 - Fees are computed from PayPal's public US pricing pages (October 2026), used as inputs, not quotes.
-- The micro-settlement price is our proposal to PayPal, not a PayPal product.
+- The micro-settlement price and pooled settlement are our proposal to PayPal. The video makes no claim about what PayPal does or does not offer today; PayPal publishes a micropayments rate, which the simulation uses only as an input.
