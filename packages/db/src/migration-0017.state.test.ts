@@ -240,6 +240,12 @@ describe('migration 0017', () => {
               'webhook_subscriptions',
               'webhook_fanout',
               'webhook_deliveries',
+              // INT-TR0 (migration 0023): the journal.
+              'trace_context',
+              'trace_events',
+              'trace_heads',
+              'trace_seals',
+              'trace_tracked',
             ].includes(t),
         ),
       ).toEqual(['fx_rates']);

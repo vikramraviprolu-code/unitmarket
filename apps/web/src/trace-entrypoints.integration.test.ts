@@ -1,12 +1,11 @@
 // INT-TR0 / TR0.2: the entry points of the real offline app. A buyer web request, an agent MCP buy (with
 // on_behalf_of and mandate_id), a job pass, a signed webhook and the boot seed each leave journal rows with
-// the right actor_kind, channel and req_id; no write in any of them is unattributed. The two operator CLI
+// the right actor_kind, channel and req_id; no write in any of them is unattributed. The job pass case lives in
+// packages/jobs/src/loop-trace.integration.test.ts (apps/web may not import jobs or runtime, lint Z1). The two operator CLI
 // cases (safety stop, privacy delete) live in scripts/trace-cli.state.test.ts because apps/web does not
 // import scripts/lib (R2-9).
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Actor } from '@umsbx/contracts';
-import { startLoop } from '@umsbx/jobs';
-import { fakeClock } from '@umsbx/runtime';
 import type { App } from '../composition.server';
 import { bootPackApp, buyer } from './composite-support';
 import { call, signIn } from './support';
@@ -22,15 +21,6 @@ import {
 } from './app/api/v1/mcp/agent-test-support';
 
 vi.mock('server-only', () => ({}));
-// The job pass case drives the real loop with the payments engine stubbed out: the loop must open the
-// context, whatever the engine does.
-vi.mock('@umsbx/payments', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@umsbx/payments')>()),
-  runDue: vi.fn().mockResolvedValue({ processed: 0, still_unknown: 0, expired: 0, abandoned: 0 }),
-  recoverOnStartup: vi.fn().mockResolvedValue({ resumed: 0, repaired: 0 }),
-  nextDueAt: vi.fn().mockResolvedValue(null),
-}));
-
 interface Ev {
   actor_kind: string;
   actor_id: string | null;
@@ -163,6 +153,9 @@ describe('an agent buy over MCP', () => {
     const before = (
       await app.db.query<{ n: number }>('SELECT count(*)::int AS n FROM trace_events')
     ).rows[0]!.n;
+    // The setup above (offers, key, mandate, switch) is written by test helpers with no request around it, so
+    // those rows are unattributed by design. The buy itself must add none.
+    const setupRows = await unattributed(app);
     const r = await tool(agent.token, 'buy_unit', buyArgs('harbour-ledger', offer!));
     expect(r.out.status).not.toBe('invalid_arguments');
     const after = await events(
@@ -192,57 +185,7 @@ describe('an agent buy over MCP', () => {
     expect(
       (await app.db.query<{ n: number }>('SELECT count(*)::int AS n FROM trace_events')).rows[0]!.n,
     ).toBeGreaterThan(before);
-    expect(await unattributed(app)).toEqual([]);
-  });
-});
-
-describe('a job pass', () => {
-  let app: App;
-  beforeAll(async () => {
-    app = await bootPackApp();
-  }, 120_000);
-  afterAll(async () => {
-    await app.close();
-  });
-
-  it('writes as system on the job channel, one context per pass', async () => {
-    let n = 0;
-    const deps = {
-      db: app.db,
-      clock: fakeClock('2026-11-04T10:00:00.000Z'),
-      ids: { next: () => 'x', nonce: () => 'n' },
-      log: {
-        log: () => undefined,
-        child() {
-          return this;
-        },
-      },
-      audit: { record: () => Promise.resolve() },
-      switches: { isOn: () => Promise.resolve(true) },
-      config: { abandoned_checkout_ms: 86_400_000 },
-      environment: 'dryrun',
-      paypal: {},
-      content: {},
-      sweepWindows: async () => {
-        n += 1;
-        await app.db.query(
-          `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ($1, 'job_probe', '{}', '2026-11-04T10:00:00Z', '2026-11-04T10:00:00Z')`,
-          [`alr_job_${n}`],
-        );
-        return { ended: 0 };
-      },
-    } as unknown as Parameters<typeof startLoop>[0];
-    const loop = startLoop(deps, { max_sleep_ms: 5, max_items: 3 });
-    await vi.waitFor(() => expect(n).toBeGreaterThanOrEqual(2), { timeout: 5000 });
-    await loop.stop();
-    const rows = await events(app, "source_table = 'alerts' AND source_id LIKE 'alr_job_%'");
-    expect(rows.length).toBeGreaterThanOrEqual(2);
-    expect(rows.every((e) => e.actor_kind === 'system' && e.channel === 'job')).toBe(true);
-    const ctxIds = new Set(rows.map((e) => e.ctx_id));
-    expect(ctxIds.size).toBe(rows.length); // a context per pass, not one for the life of the loop
-    const cx = await contextOf(app, rows[0]!.ctx_id);
-    expect(cx.job).toMatch(/\S/);
-    expect(await unattributed(app)).toEqual([]);
+    expect(await unattributed(app)).toEqual(setupRows);
   });
 });
 

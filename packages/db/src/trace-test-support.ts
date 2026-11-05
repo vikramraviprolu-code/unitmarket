@@ -4,6 +4,7 @@
 // column. The expectations here are written by hand from the spec table, not read from the migration.
 import type { Clock, Database, SqlExecutor, TraceContext } from '@umsbx/contracts';
 import { migrate, openDatabase } from './index';
+import type { SqlDriver } from './driver';
 import { withTraceDb } from './trace-db';
 
 export const T = '2026-11-04T10:00:00Z';
@@ -14,7 +15,7 @@ export const HASH = 'a'.repeat(64);
 export const HASH2 = 'b'.repeat(64);
 export const clock: Clock = { now: () => new Date(T2) };
 
-export type Db = Database & { close(): Promise<void>; readonly target?: string };
+export type Db = SqlDriver;
 
 export async function freshDb(): Promise<Db> {
   const d = await openDatabase({ kind: 'pglite-memory' });
@@ -58,7 +59,12 @@ export async function ins(
   row: Record<string, unknown>,
   withTimes = true,
 ): Promise<void> {
-  const r = withTimes ? { created_at: T, updated_at: T, ...row } : row;
+  let r: Record<string, unknown> = withTimes ? { created_at: T, updated_at: T, ...row } : row;
+  // alerts_one_per_kind: one open alert per (kind, order, unit, reason). Give each test alert its own reason.
+  if (table === 'alerts' && typeof r['detail'] === 'string') {
+    const d = JSON.parse(r['detail']) as Record<string, unknown>;
+    if (d['reason'] === undefined) r = { ...r, detail: JSON.stringify({ ...d, reason: r['id'] }) };
+  }
   const cols = Object.keys(r);
   await db.query(
     `INSERT INTO ${table} (${cols.map((c) => (c === 'on' ? '"on"' : c)).join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')})`,
@@ -132,7 +138,7 @@ export interface Step {
   subject?: Partial<
     Pick<EventRow, 'order_id' | 'unit_id' | 'mandate_ref' | 'publisher_id' | 'buyer_id'>
   >;
-  /** Absent for the six migration-seeded safety switches. */
+  /** Absent for the seven migration-seeded safety switches. */
   insert?: (db: SqlExecutor) => Promise<void>;
   /** Copied columns the insert event must hold as [null, value]. */
   insertCols?: Record<string, unknown>;
@@ -258,10 +264,10 @@ export const STEPS: Step[] = [
     insertCols: { content_hash: HASH, used_at: null, environment: 'dryrun' },
     insertHashed: ['snapshot'],
     update: {
-      sql: `UPDATE approvals SET used_at = '${T2}', updated_at = '${T2}' WHERE id = 'apr_1'`,
+      sql: `UPDATE approvals SET used_at = '2026-11-04T10:05:00Z', updated_at = '${T2}' WHERE id = 'apr_1'`,
       col: 'used_at',
       before: null,
-      after: '2026-11-04T11:00:00+00:00',
+      after: '2026-11-04T10:05:00+00:00',
     },
   },
   {
@@ -712,7 +718,7 @@ export const STEPS: Step[] = [
     insertCols: { kind: 'unit_mismatch', order_id: 'ord_1', unit_id: 'unt_1' },
     insertHashed: ['detail'],
     update: {
-      sql: `UPDATE alerts SET detail = '{"reason":"r","note":"changed"}'::jsonb, updated_at = '${T2}' WHERE id = 'alr_1'`,
+      sql: `UPDATE alerts SET detail = '{"reason":"r","note":"CANARY-ALERT-DETAIL","n":2}'::jsonb, updated_at = '${T2}' WHERE id = 'alr_1'`,
       col: 'detail',
       before: null,
       after: null,

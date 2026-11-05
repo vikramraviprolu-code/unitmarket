@@ -67,6 +67,7 @@ describe('canaries never appear', () => {
       'alerts',
       'audit_log',
       'safety_switches',
+      'payee_change_requests',
       'payee_decisions',
       'publisher_applicant_decisions',
     ];
@@ -83,7 +84,10 @@ describe('canaries never appear', () => {
   });
 
   it('a hashed jsonb column is hashed over its text, so the same detail gives the same hash and a change gives another', async () => {
-    const a = (await eventsOf(db, 'alerts', 'alr_1'))[0]!;
+    // The world updates alr_1's detail once: the first event hashes the original, the last the current text.
+    const events = await eventsOf(db, 'alerts', 'alr_1');
+    expect(events[0]!.body.hashed['detail']![1]).not.toBe(events.at(-1)!.body.hashed['detail']![1]);
+    const a = events.at(-1)!;
     const hash = String(a.body.hashed['detail']![1]);
     expect(hash).toMatch(/^[a-f0-9]{64}$/);
     expect(hash).toBe(

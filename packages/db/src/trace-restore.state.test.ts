@@ -12,6 +12,8 @@ import {
 import { traceInvariants, verifyTrace } from './trace-verify';
 import {
   EVENTS_GUARD,
+  HASH,
+  T15,
   allEvents,
   as,
   clock,
@@ -46,11 +48,11 @@ const backfillOf = async (d: Db) =>
   ).rows;
 
 describe('export, import, verify', () => {
-  it('starts from a freshly migrated database: it already holds the six backfill events of the seeded switches', async () => {
+  it('starts from a freshly migrated database: it already holds the seven backfill events of the seeded switches', async () => {
     const d = await freshDb();
     try {
       const rows = await backfillOf(d);
-      expect(rows).toHaveLength(6);
+      expect(rows).toHaveLength(7);
       expect(rows.every((r) => r.chain_key === 'plat')).toBe(true);
     } finally {
       await d.close();
@@ -80,7 +82,7 @@ describe('export, import, verify', () => {
       );
       expect(dup.rows).toEqual([]);
       expect(await backfillOf(target)).toEqual(await backfillOf(source));
-      expect(await backfillOf(target)).toHaveLength(6);
+      expect(await backfillOf(target)).toHaveLength(7);
     } finally {
       await target.close();
     }
@@ -91,6 +93,7 @@ describe('export, import, verify', () => {
     const target = await freshDb();
     try {
       await seedWorld(s);
+      await updateWorld(s);
       await s.query("SELECT trace_seal('2026-11-03', '2026-11-04T00:00:05Z')");
       const text = await exportSql(s, { utc: '2026-11-04T12:00:00Z' });
       expect(text).not.toContain('INSERT INTO "trace_tracked"');
@@ -116,7 +119,7 @@ describe('export, import, verify', () => {
     try {
       const before = await countEvents(target);
       await importSql(target, sql);
-      expect(before).toBe(6);
+      expect(before).toBe(7);
       expect(await countEvents(target)).toBe(await countEvents(source));
     } finally {
       await target.close();
@@ -132,15 +135,23 @@ describe('export, import, verify', () => {
           "SELECT seq::int FROM trace_heads WHERE chain_key = 'buy:buy_1'",
         )
       ).rows[0]!.seq;
-      await as(target, ctx(), clock).query(
-        "UPDATE approvals SET used_at = '2026-11-04T11:30:00Z', updated_at = '2026-11-04T11:30:00Z' WHERE id = 'apr_1'",
-      );
+      // apr_1 is already used and frozen, so the next write on the buyer chain is a new approval.
+      await ins(as(target, ctx(), clock), 'approvals', {
+        id: 'apr_after',
+        buyer_id: 'buy_1',
+        snapshot: j({ v: 1 }),
+        content_hash: HASH,
+        nonce: 'nonce_after',
+        expires_at: T15,
+        used_at: null,
+        environment: 'dryrun',
+      });
       const next = (
         await target.query<{ seq: number }>(
           "SELECT seq::int FROM trace_heads WHERE chain_key = 'buy:buy_1'",
         )
       ).rows[0]!.seq;
-      expect(next).toBeGreaterThanOrEqual(last);
+      expect(next).toBe(last + 1);
       expect((await verifyTrace(target)).findings).toEqual([]);
     } finally {
       await target.close();
@@ -193,6 +204,7 @@ describe('what a restore refuses and what it reports', () => {
     const target = await freshDb();
     try {
       await seedWorld(s);
+      await updateWorld(s);
       await ins(s, 'alerts', {
         id: 'alr_bare',
         kind: 'k',
@@ -228,29 +240,21 @@ describe('what a restore refuses and what it reports', () => {
     }
   });
 
-  it('the delete escape needs restore mode and removes backfill rows only', async () => {
+  it('restore mode alone is not an escape: a session that sets it still cannot delete or edit journal rows', async () => {
     const d = await freshDb();
     try {
-      await ins(as(d, ctx()), 'alerts', {
-        id: 'alr_keep',
-        kind: 'k',
-        order_id: null,
-        unit_id: null,
-        detail: j({}),
-      });
-      await expect(
-        d.query("DELETE FROM trace_events WHERE channel = 'backfill'"),
-      ).rejects.toThrow();
       await d.exec(`SELECT set_config('ums.trace', '{"mode":"restore"}', false)`);
       try {
         await expect(
-          d.query("DELETE FROM trace_events WHERE source_id = 'alr_keep'"),
-        ).rejects.toThrow();
-        await d.query("DELETE FROM trace_events WHERE channel = 'backfill'");
+          d.query("DELETE FROM trace_events WHERE channel = 'backfill'"),
+        ).rejects.toThrow(/append-only/);
+        await expect(d.query('UPDATE trace_events SET mfa = NOT mfa')).rejects.toThrow(
+          /append-only/,
+        );
       } finally {
         await d.exec(`SELECT set_config('ums.trace', '', false)`);
       }
-      expect(await countEvents(d)).toBe(1);
+      expect(await countEvents(d)).toBe(7);
     } finally {
       await d.close();
     }

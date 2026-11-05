@@ -2,6 +2,7 @@
 // batch is not supported. A bad call is a JSON-RPC error with HTTP 200; a bad key, a missing header or a body
 // that is too large never reach this file (the route wrapper answers them with the usual envelope). Tool
 // refusals are not JSON-RPC errors: they are tool results with isError, so an agent reads them like any answer.
+import { extendTraceContext } from '@umsbx/obs';
 import { TOOL_NAMES, callTool, describeTools } from '../../../../api-v1/agent';
 import type { AgentCall, ToolName } from '../../../../api-v1/agent';
 
@@ -75,7 +76,11 @@ export async function dispatch(call: AgentCall, req: RpcInput): Promise<RpcOutco
       }
       const args = params['arguments'] === undefined ? {} : params['arguments'];
       if (!isRecord(args)) return fail(id, -32602, 'Invalid params: arguments must be an object');
-      const r = await callTool(call, params['name'], args);
+      // INT-TR0: the writes of a tool call are journaled on the mcp channel, with the tool's name.
+      const name = params['name'];
+      const r = await extendTraceContext({ channel: 'mcp', tool: name }, () =>
+        callTool(call, name, args),
+      );
       return reply(id, {
         content: [{ type: 'text', text: JSON.stringify(r.out) }],
         structuredContent: r.out,

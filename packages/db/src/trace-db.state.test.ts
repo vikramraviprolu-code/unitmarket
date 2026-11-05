@@ -3,7 +3,7 @@
 // capture trigger records an unattributed row.
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Clock, Database, TraceContext } from '@umsbx/contracts';
+import type { Clock, Database, SqlExecutor, TraceContext } from '@umsbx/contracts';
 import { withTraceDb } from './trace-db';
 import {
   allEvents,
@@ -29,7 +29,7 @@ afterAll(async () => {
 });
 
 let n = 0;
-const alert = (d: { query: Database['query'] }, id: string) =>
+const alert = (d: SqlExecutor, id: string) =>
   ins(d, 'alerts', {
     id,
     kind: 'unit_mismatch',
@@ -86,8 +86,8 @@ describe('a write under a context is attributed to it', () => {
     const c = ctx({ channel: 'cli', actor_id: 'cli:abc' });
     await as(db, c).exec(
       `INSERT INTO alerts (id, kind, order_id, unit_id, detail, created_at, updated_at)
-       VALUES ('alr_x1', 'k', NULL, NULL, '{"a":1}', '${T}', '${T}'),
-              ('alr_x2', 'k', NULL, NULL, '{"a":2}', '${T}', '${T}')`,
+       VALUES ('alr_x1', 'k', NULL, NULL, '{"a":1,"reason":"x1"}', '${T}', '${T}'),
+              ('alr_x2', 'k', NULL, NULL, '{"a":2,"reason":"x2"}', '${T}', '${T}')`,
     );
     for (const id of ['alr_x1', 'alr_x2']) {
       const [e] = await eventsOf(db, 'alerts', id);
@@ -117,7 +117,7 @@ describe('a write under a context is attributed to it', () => {
     const c = ctx();
     await as(db, c).query(
       `WITH x AS (INSERT INTO alerts (id, kind, order_id, unit_id, detail, created_at, updated_at)
-                  VALUES ('alr_cte', 'k', NULL, NULL, '{}', '${T}', '${T}') RETURNING id)
+                  VALUES ('alr_cte', 'k', NULL, NULL, '{"reason":"cte"}', '${T}', '${T}') RETURNING id)
        SELECT id FROM x`,
     );
     const [e] = await eventsOf(db, 'alerts', 'alr_cte');
@@ -140,7 +140,7 @@ describe('a write under a context is attributed to it', () => {
     await traced.query('  select count(*) from alerts');
     expect(transactions).toBe(0);
     await traced.exec(
-      "INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_spy', 'k', '{}', '" +
+      "INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_spy', 'k', '{\"reason\":\"spy\"}', '" +
         T +
         "', '" +
         T +

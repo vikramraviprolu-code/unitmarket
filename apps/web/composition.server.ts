@@ -27,6 +27,7 @@ import type {
   ContentStore,
   CoreDeps,
   Database,
+  TraceContext,
   DomainConfig,
   EnvironmentLabel,
   Id,
@@ -58,10 +59,16 @@ export { BOOT_REFUSAL_EXIT_CODE };
 // API-A (A0): the catalogue text search, re-exported for the v1 handlers (they reach domain code only here).
 export { searchOffers } from '@umsbx/catalogue';
 import type { Config } from '@umsbx/config';
-import { migrate, openDatabase } from '@umsbx/db';
+import { migrate, openDatabase, withTraceDb } from '@umsbx/db';
 import type { SqlDriver } from '@umsbx/db';
 import { cryptoIds, cryptoSecretSource, systemClock } from '@umsbx/runtime';
-import { createAuditSink, createLogger, redact } from '@umsbx/obs';
+import {
+  bindTraceMandate,
+  createAuditSink,
+  createLogger,
+  currentTraceContext,
+  redact,
+} from '@umsbx/obs';
 import {
   createOutboundGate,
   createSwitchReader,
@@ -1493,7 +1500,28 @@ function buildApp(config: Config, opts: AppOptions): App {
     })();
     return driver;
   };
-  const seed = async (d: SqlDriver): Promise<void> => {
+  const seed = async (raw: SqlDriver): Promise<void> => {
+    // INT-TR0: the boot seed and the demo seed write as system on the seed channel, each under its own context.
+    const seedContext = (job: string): TraceContext => ({
+      id: `ctx_seed_${job}_${ids.nonce()}`,
+      at: clock.now().toISOString(),
+      channel: 'seed',
+      actor_kind: 'system',
+      actor_id: null,
+      on_behalf_of: null,
+      mandate_id: null,
+      mfa: false,
+      req_id: null,
+      ip_hash: null,
+      ua_family: null,
+      api_key_id: null,
+      job,
+      tool: null,
+    });
+    const bootCtx = seedContext('boot');
+    const demoCtx = seedContext('demo');
+    const d = withTraceDb(raw, () => bootCtx, clock);
+    const demo = withTraceDb(raw, () => demoCtx, clock);
     const n = await d.query<{ c: string | number }>('SELECT count(*) AS c FROM publishers');
     if (Number(n.rows[0]?.c ?? 0) === 0) await seedCatalogue(d, clock, ids, SEED_DATA);
     // DP-5: the second publisher of MVP-D. Every boot, after the base seed, so it reaches a disk that
@@ -1525,7 +1553,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     if (config.node_env !== 'test' || opts.test_seed?.demo_prices === true) {
       try {
         await applyDemoPrices({
-          db: d,
+          db: demo,
           clock,
           ids,
           audit,
@@ -1586,12 +1614,17 @@ function buildApp(config: Config, opts: AppOptions): App {
       );
     }
   };
-  const db: Database = {
-    dialect: config.db.kind === 'postgres' ? 'pg' : 'pglite',
-    query: async (sql, params) => (await open()).query(sql, params),
-    exec: async (sql) => (await open()).exec(sql),
-    transaction: async <T>(fn: (tx: SqlExecutor) => Promise<T>) => (await open()).transaction(fn),
-  };
+  // INT-TR0: every write through this handle carries the context of the request, job pass or webhook that made it.
+  const db: Database = withTraceDb(
+    {
+      dialect: config.db.kind === 'postgres' ? 'pg' : 'pglite',
+      query: async (sql, params) => (await open()).query(sql, params),
+      exec: async (sql) => (await open()).exec(sql),
+      transaction: async <T>(fn: (tx: SqlExecutor) => Promise<T>) => (await open()).transaction(fn),
+    },
+    currentTraceContext,
+    clock,
+  );
 
   const switches: SwitchReader = createSwitchReader(db, clock, opts.switch_cache_ms);
   const content: ContentStore = createPgContentStore(db);
@@ -3543,7 +3576,12 @@ function createMandateService(a: App, events: EventOutbox): MandateService {
     create: (i) => createMandate(a.db, deps, i),
     get: (buyer_id, id) => getMandate(a.db, buyer_id, id),
     revoke: (buyer_id, id) => revokeMandate(a.db, deps, { buyer_id, id }),
-    budget: (i) => checkMandateBudget(a.db, deps, i),
+    budget: async (i) => {
+      const r = await checkMandateBudget(a.db, deps, i);
+      // INT-TR0: from here the agent's writes in this request are journaled under this mandate.
+      if (r.status === 'active') bindTraceMandate(r.mandate_id);
+      return r;
+    },
   };
 }
 

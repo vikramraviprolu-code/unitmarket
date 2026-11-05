@@ -109,7 +109,7 @@ describe('trace:verify on a PGlite data directory', () => {
   it('drift (state edited with the capture trigger off) exits 1 and is named', async () => {
     const dir = await seededDir(async (db) => {
       await db.exec('ALTER TABLE orders DISABLE TRIGGER trace_capture_orders');
-      await db.exec("UPDATE orders SET status = 'cancelled' WHERE id = 'ord_1'");
+      await db.exec("UPDATE orders SET status = 'frozen' WHERE id = 'ord_1'");
       await db.exec('ALTER TABLE orders ENABLE TRIGGER trace_capture_orders');
     });
     const r = run(env(dir));

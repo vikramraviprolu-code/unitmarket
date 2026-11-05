@@ -109,7 +109,7 @@ describe('an insert writes one event', () => {
     });
   }
 
-  it('the six seeded safety switches have no insert event of their own: the migration journals them', async () => {
+  it('the seven seeded safety switches have no insert event of their own: the migration journals them', async () => {
     const e = await eventsOf(db, 'safety_switches', 'ai_enabled');
     expect(e).toHaveLength(1);
     expect(e[0]).toMatchObject({
@@ -119,9 +119,9 @@ describe('an insert writes one event', () => {
     });
   });
 
-  it('the world wrote one event per inserted row (the publishers step also inserts pub_2) and the migration six', async () => {
+  it('the world wrote one event per inserted row (the publishers step also inserts pub_2) and the migration seven', async () => {
     const inserts = STEPS.filter((s) => s.insert).length + 1;
-    expect(await countEvents(db)).toBe(inserts + 6);
+    expect(await countEvents(db)).toBe(inserts + 7);
   });
 });
 
@@ -153,7 +153,9 @@ describe('an update of a copied column writes [old, new]', () => {
         expect(e.body.cols).toEqual({});
       } else {
         expect(e.body.cols[s.update!.col]).toEqual([s.update!.before, s.update!.after]);
-        expect(Object.keys(e.body.hashed)).toEqual([]);
+        // The switch update also sets the hashed reason and changed_by; every other step touches no hashed column.
+        const hashedKeys = s.table === 'safety_switches' ? ['changed_by', 'reason'] : [];
+        expect(Object.keys(e.body.hashed).sort()).toEqual(hashedKeys);
       }
     });
   }
@@ -367,7 +369,7 @@ describe('reset and column changes', () => {
     const d = await freshDb();
     try {
       await as(d, ctx()).query(
-        `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_r', 'k', '{}', '${T}', '${T}')`,
+        `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_r', 'k', '{"reason":"r"}', '${T}', '${T}')`,
       );
       expect(await countEvents(d)).toBeGreaterThan(0);
       await resetDatabase(d);
@@ -379,7 +381,7 @@ describe('reset and column changes', () => {
         (await d.query<{ n: number }>('SELECT count(*)::int AS n FROM trace_tracked')).rows[0]!.n,
       ).toBe(TRACKED_TABLES.length);
       await as(d, ctx()).query(
-        `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_r2', 'k', '{}', '${T}', '${T}')`,
+        `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_r2', 'k', '{"reason":"r2"}', '${T}', '${T}')`,
       );
       expect((await eventsOf(d, 'alerts', 'alr_r2'))[0]!.seq).toBe(1);
     } finally {

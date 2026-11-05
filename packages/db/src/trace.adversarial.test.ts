@@ -106,12 +106,18 @@ describe('check chain: the journal itself', () => {
   });
 
   it('actor_kind rewritten from operator to system is reported', async () => {
+    // The one operator row on the platform chain is the safety switch update; find its seq rather than count to it.
+    const seq = (
+      await db.query<{ seq: number }>(
+        "SELECT seq::int AS seq FROM trace_events WHERE chain_key = 'plat' AND actor_kind = 'operator'",
+      )
+    ).rows[0]!.seq;
     const r = await tampered([EVENTS_GUARD], async (tx) => {
       await tx.exec(
-        "UPDATE trace_events SET actor_kind = 'system', actor_id = NULL WHERE chain_key = 'plat' AND seq = 8",
+        `UPDATE trace_events SET actor_kind = 'system', actor_id = NULL WHERE chain_key = 'plat' AND seq = ${seq}`,
       );
     });
-    expect(named(r, 'chain', 'plat', 8).length).toBeGreaterThan(0);
+    expect(named(r, 'chain', 'plat', seq).length).toBeGreaterThan(0);
   });
 
   it('a row deleted from the middle is reported where the chain jumps', async () => {
@@ -301,7 +307,7 @@ describe('check digest: append-only tables', () => {
 describe('check drift: state edited with the capture trigger off', () => {
   it('orders.status is reported as drift orders ord_1 status', async () => {
     const r = await tampered([captureOf('orders')], async (tx) => {
-      await tx.exec("UPDATE orders SET status = 'cancelled' WHERE id = 'ord_1'");
+      await tx.exec("UPDATE orders SET status = 'frozen' WHERE id = 'ord_1'");
     });
     expect(
       r.findings.some((f) => f.check === 'drift' && /orders ord_1 status/.test(f.detail)),
@@ -329,7 +335,7 @@ describe('check drift: state edited with the capture trigger off', () => {
   it('a tracked row inserted with the trigger off is reported as having no journal event', async () => {
     const r = await tampered([captureOf('alerts')], async (tx) => {
       await tx.exec(
-        `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_ghost', 'k', '{}', '2026-11-04T10:00:00Z', '2026-11-04T10:00:00Z')`,
+        `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_ghost', 'k', '{"reason":"ghost"}', '2026-11-04T10:00:00Z', '2026-11-04T10:00:00Z')`,
       );
     });
     expect(r.findings.some((f) => f.check === 'drift' && /alerts alr_ghost/.test(f.detail))).toBe(

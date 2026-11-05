@@ -27,7 +27,15 @@ let beforeDir: string;
 let db: Db;
 let rowsBefore: Record<string, string[]>;
 
-const idCol = (table: string): string => (table === 'safety_switches' ? 'name' : 'id');
+// The id the journal uses as source_id: offers are keyed by id and version, two tables by another column.
+const idCol = (table: string): string =>
+  table === 'safety_switches'
+    ? 'name'
+    : table === 'access_windows'
+      ? 'entitlement_id'
+      : table === 'offers'
+        ? "id || ':' || version"
+        : 'id';
 
 beforeAll(async () => {
   beforeDir = mkdtempSync(join(tmpdir(), 'umsbx-trace-before-'));
@@ -143,7 +151,7 @@ describe('a second call adds nothing', () => {
     // A row inserted with its capture trigger off has no event: the next backfill picks it up.
     await db.exec('ALTER TABLE alerts DISABLE TRIGGER trace_capture_alerts');
     await db.query(
-      `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_gap', 'k', '{}', '${T}', '${T}')`,
+      `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_gap', 'k', '{"reason":"gap"}', '${T}', '${T}')`,
     );
     await db.exec('ALTER TABLE alerts ENABLE TRIGGER trace_capture_alerts');
     expect((await verifyTrace(db)).findings.some((f) => f.detail.includes('alr_gap'))).toBe(true);

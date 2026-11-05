@@ -97,8 +97,10 @@ const readbacks = async (order_id: string) =>
 async function tableCounts(): Promise<Record<string, number>> {
   const tables = await w.rows<{ table_name: string }>(
     `SELECT table_name FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name`,
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+        AND table_name NOT LIKE 'trace\\_%' ORDER BY table_name`,
   );
+  // The journal (trace_*) grows with every tracked write by trigger; these tests count the tables a handler writes.
   const out: Record<string, number> = {};
   for (const t of tables) out[t.table_name] = await count(w, t.table_name);
   return out;

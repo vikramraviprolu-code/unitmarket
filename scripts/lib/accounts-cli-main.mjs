@@ -8,11 +8,13 @@
 // printed and never logged. It passes the same environment guard as the other operator scripts (the config
 // loader), so a stray database setting or the connect switch is refused first. The app must not hold the
 // database (single-opener lock): on a laptop stop it, reset, restart.
+import { createHash } from 'node:crypto';
+import { userInfo } from 'node:os';
 import { Writable } from 'node:stream';
 import { createInterface } from 'node:readline';
 import { loadConfigFromProcess, terminalEnv } from '../../packages/config/src/index.ts';
-import { migrate, openDatabase } from '../../packages/db/src/index.ts';
-import { createAuditSink, createLogger } from '../../packages/obs/src/index.ts';
+import { migrate, openDatabase, withTraceDb } from '../../packages/db/src/index.ts';
+import { cliTraceContext, createAuditSink, createLogger } from '../../packages/obs/src/index.ts';
 import { cryptoIds, systemClock } from '../../packages/runtime/src/index.ts';
 import { runResetPassword } from '../../packages/security/src/index.ts';
 
@@ -48,10 +50,23 @@ const clock = systemClock();
 const ids = cryptoIds();
 const target =
   config.db.kind === 'postgres' ? { kind: 'postgres', url: config.db.url.reveal() } : config.db;
-const db = await openDatabase(target).catch((e) => {
+const rawDb = await openDatabase(target).catch((e) => {
   fail(e instanceof Error ? e.message : String(e));
   throw e; // not reached: fail() exits
 });
+// INT-TR0: every write of this run is journaled as an operator on the cli channel. The actor is the hash of the
+// OS user name (user_hash), never the name; the migration below runs on the plain database.
+const user_hash = createHash('sha256')
+  .update(`os:${userInfo().username}`)
+  .digest('hex')
+  .slice(0, 16);
+const traceCtx = cliTraceContext({
+  id: `ctx_cli_${ids.nonce()}`,
+  at: clock.now().toISOString(),
+  user_hash,
+  job: 'accounts:reset-password',
+});
+const db = withTraceDb(rawDb, () => traceCtx, clock);
 
 // Reads one line with the typed characters hidden. The prompt is written, the echo is muted for the answer.
 function askSecret(prompt) {
@@ -91,7 +106,7 @@ function askSecret(prompt) {
 
 let code = 0;
 try {
-  await migrate(db, clock);
+  await migrate(rawDb, clock);
   say(`mode=${config.mode} db=${config.db.kind}`);
   const log = createLogger(() => undefined, {}, clock);
   const r = await runResetPassword({
