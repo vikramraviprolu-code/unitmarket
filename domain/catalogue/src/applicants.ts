@@ -2,8 +2,8 @@
 // factor, adds an applicant (a publishers row with status applied, no payee, no offers), then approves it
 // (applied to active) or rejects it. The 0012 CHECK has no rejected status, so a rejection is a row in
 // publisher_applicant_decisions and the publisher stays applied. One decision per applicant. This is not
-// signup: nobody creates an account by themselves, and an approved applicant has no sign in until the owners
-// add a persona. Orders, units, access, approvals and the ledger are never touched. One audit row per change.
+// signup: nobody creates an account by themselves. POB-P1 (D-089): an approval also issues the one time invite
+// code (publisher-invites.ts) that the publisher claims an account with. Orders, units, access, approvals and the ledger are never touched. One audit row per change.
 // PUB-APPLY adds the one public way in: submitApplication, callable with no actor, which creates the same kind
 // of applicant row and nothing else (no account, no payee, no offer, no sign in).
 import { err, ok } from '@umsbx/contracts';
