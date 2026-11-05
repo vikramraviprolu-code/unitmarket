@@ -36,7 +36,7 @@ The check runs on the raw key set before values are parsed, so a bad value never
 | api_client, owner operator (`mfa: false`) | nothing | none, but `buyer` and `seller` accept opaque ids only (no name match) |
 | operator session | nothing | none |
 
-A buyer's `agent_key` is ANDed with the buyer pin, so another buyer's key gives zero rows. Sellers never get buyer columns: `sql.ts` selects from `SELLER_COLUMNS`, which leaves out `buyer_id`, `buyer_display_name`, `agent_key_id` and `mandate_id`.
+A buyer's `agent_key` is ANDed with the buyer pin, so another buyer's key gives zero rows. Sellers never get buyer columns: `sql.ts` selects from `SELLER_COLUMNS`, which leaves out `buyer_id`, `buyer_display_name`, `agent_key_id`, `mandate_id` and `order_total_minor` (a seller never sees an order total, TR1 F7; added 5 Nov from the SEL scorecard F2). `scope.adversarial.test.ts` asserts seller rows have no `order_total_minor`.
 
 **Text match.** `q` runs as `EXISTS (entitlements e JOIN articles a ... WHERE lower(a.title) LIKE '%' || $q || '%' ESCAPE '\')`. `$q` is lower-cased, then `\` is escaped first, then `%` and `_`. Parameters are always bound; nothing is concatenated into SQL.
 
