@@ -72,7 +72,7 @@ describe('TR0.1 enums', () => {
 });
 
 describe('TR0.1 the golden allow-list', () => {
-  it('names the 29 tracked tables (the 27 of the spec, rule_settings of BR-2 and alert_events of INT-AL), once each, in name order', () => {
+  it('names the 29 tracked tables (27 of the spec, alert_events of INT-AL and rule_settings of BR-2), once each, in name order', () => {
     expect(TRACKED_TABLES.map((t) => t.table)).toEqual([
       'access_events',
       'access_windows',
@@ -196,7 +196,7 @@ describe('TR0.1 the golden allow-list', () => {
     expect(everything).not.toContain('transition_log');
   });
 
-  it('gives a frozen digest column list to the nine append-only tables and to no other', () => {
+  it('gives a frozen digest column list to the ten append-only tables and to no other', () => {
     const withDigest = TRACKED_TABLES.filter((t) => t.digest.length > 0).map((t) => t.table);
     expect(withDigest).toEqual([
       'access_events',

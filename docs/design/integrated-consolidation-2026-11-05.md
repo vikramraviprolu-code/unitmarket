@@ -54,6 +54,10 @@ SELECT trace_tracked_seed_NNNN();
 
 Postgres fires the AFTER TRUNCATE triggers in name order, so a reset refills 0023's rows first and then each later migration's rows. Each lane's tests must include: (1) a fresh database migrates from empty to head with no "already exists" error; (2) after a reset (`ums.allow_reset`), `trace_tracked` holds every 0023 row plus this migration's rows; (3) `trace:verify` reports ok and 0 unattributed after seeded writes. Applies to AL (0025), CTL (0026), BR-2 (0027) and every later lane.
 
+Test file and command (PR #22 gate follow-up F1, binding). Each lane puts the three tests in one file, `packages/db/src/migration-NNNN-journal.state.test.ts`, with three `it` blocks named "fresh migrate to head", "reset refills every tracked row" and "trace:verify ok, 0 unattributed". The file uses `freshDb()` from `./trace-test-support`, `resetDatabase` from `./testing` and `verifyTrace` plus `traceInvariants` from `./trace-verify`. Test (2) compares `trace_tracked` after the reset with `TRACKED_TABLES` from `@umsbx/contracts`, row for row. The acceptance command is `corepack pnpm vitest run packages/db/src/migration-NNNN-journal.state.test.ts`; the expected result is 3 passed. The lane then runs `corepack pnpm trace:verify` once against a migrated local database and pastes the line. Lanes: AL `migration-0025-journal.state.test.ts`, CTL `migration-0026-journal.state.test.ts`, BR-2 `migration-0027-journal.state.test.ts`.
+
+Naming check (F2). A later migration never creates, renames or replaces any `_0023` object. A gate refuses a branch whose diff names `trace_tracked_seed_0023` or `trace_tracked_reseed_0023` outside a comment.
+
 ## 3. Owner decisions folded in (5 Nov)
 
 1. **Consolidation pass and CI fix.** Done here, and PR #9 (tests in 4 shards, 30-minute timeout, four more offline checks).
