@@ -70,6 +70,7 @@ describe('canaries never appear', () => {
       'payee_change_requests',
       'payee_decisions',
       'publisher_applicant_decisions',
+      'rule_settings',
     ];
     let all = '';
     for (const t of tables) all += await dump(t);

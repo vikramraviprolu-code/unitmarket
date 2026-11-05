@@ -20,24 +20,29 @@ interface SeedRow {
 const list = (s: string): string[] =>
   s.trim() === '' ? [] : s.split(',').map((x) => x.trim().replace(/^'|'$/g, ''));
 
+// The journal migration seeds the first rows. A later lane that adds a tracked table (BR-2, AL, CTL) writes
+// its own row in the same line format inside its own migration, so every migration file is read and the
+// rows are compared by table name.
 function seedRowsOfMigration(): SeedRow[] {
-  const file = readdirSync(MIGRATIONS).find((f) => /^\d{4}_trace_journal\.sql$/.test(f));
-  expect(file, 'the trace journal migration exists').toBeDefined();
-  const sql = readFileSync(new URL(file!, MIGRATIONS), 'utf8');
+  const journal = readdirSync(MIGRATIONS).find((f) => /^\d{4}_trace_journal\.sql$/.test(f));
+  expect(journal, 'the trace journal migration exists').toBeDefined();
   const out: SeedRow[] = [];
   const row =
     /^\s*\('([a-z_]+)', ARRAY\[([^\]]*)\](?:::text\[\])?, ARRAY\[([^\]]*)\](?:::text\[\])?, ARRAY\[([^\]]*)\](?:::text\[\])?, '([a-z_]+)', '([^']+)'\),?\s*$/gm;
-  for (const m of sql.matchAll(row)) {
-    out.push({
-      table: m[1]!,
-      copied: list(m[2]!),
-      hashed: list(m[3]!),
-      digest: list(m[4]!),
-      time: m[5]!,
-      chain: m[6]!,
-    });
+  for (const file of readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql'))) {
+    const sql = readFileSync(new URL(file, MIGRATIONS), 'utf8');
+    for (const m of sql.matchAll(row)) {
+      out.push({
+        table: m[1]!,
+        copied: list(m[2]!),
+        hashed: list(m[3]!),
+        digest: list(m[4]!),
+        time: m[5]!,
+        chain: m[6]!,
+      });
+    }
   }
-  return out;
+  return out.sort((a, b) => (a.table < b.table ? -1 : a.table > b.table ? 1 : 0));
 }
 
 describe('TR0.1 enums', () => {
@@ -189,7 +194,7 @@ describe('TR0.1 the golden allow-list', () => {
     expect(everything).not.toContain('transition_log');
   });
 
-  it('gives a frozen digest column list to the eight append-only tables and to no other', () => {
+  it('gives a frozen digest column list to the nine append-only tables and to no other', () => {
     const withDigest = TRACKED_TABLES.filter((t) => t.digest.length > 0).map((t) => t.table);
     expect(withDigest).toEqual([
       'access_events',
@@ -200,6 +205,7 @@ describe('TR0.1 the golden allow-list', () => {
       'publisher_applicant_decisions',
       'receipts',
       'recovery_actions',
+      'rule_settings',
     ]);
     for (const t of TRACKED_TABLES.filter((x) => x.digest.length > 0)) {
       expect(t.digest).toContain('id');
@@ -224,14 +230,16 @@ describe('TR0.1 the migration writes exactly the golden list', () => {
   it('trace_tracked seed rows equal TRACKED_TABLES, column by column', () => {
     const seeded = seedRowsOfMigration();
     expect(seeded).toEqual(
-      TRACKED_TABLES.map((t) => ({
-        table: t.table,
-        copied: [...t.copied],
-        hashed: [...t.hashed],
-        digest: [...t.digest],
-        time: t.time,
-        chain: t.chain,
-      })),
+      [...TRACKED_TABLES]
+        .sort((a, b) => (a.table < b.table ? -1 : a.table > b.table ? 1 : 0))
+        .map((t) => ({
+          table: t.table,
+          copied: [...t.copied],
+          hashed: [...t.hashed],
+          digest: [...t.digest],
+          time: t.time,
+          chain: t.chain,
+        })),
     );
   });
 });
