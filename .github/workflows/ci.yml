@@ -41,9 +41,15 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
 
+  # The six suites take over 20 minutes on one 2-core runner (restore and C-11 alone take about 4), so
+  # every PR was cancelled at the timeout with all tests passing. Four shards by file, each with room.
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,7 +59,7 @@ jobs:
           node-version-file: .nvmrc
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
+      - run: pnpm test --shard=${{ matrix.shard }}/4
 
   checks:
     runs-on: ubuntu-latest
@@ -73,6 +79,10 @@ jobs:
       - run: pnpm check:secrets-names
       - run: pnpm check:fixtures
       - run: pnpm check:routes
+      - run: pnpm check:openapi
+      - run: pnpm check:hosting
+      - run: pnpm check:hosting-gcp
+      - run: pnpm check:licences
       - run: pnpm check:provenance
       # SUP-2: zero high or critical in production dependencies, or a dated waiver in the gate report.
       - run: pnpm audit --prod
