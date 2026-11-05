@@ -10,9 +10,23 @@ import type {
   OrderPlaceRequestSchema,
   OrderListQuerySchema,
 } from '@umsbx/contracts';
+import { parseTxnQuery } from '@umsbx/contracts';
 import type { HttpResult } from '@umsbx/security';
 import type { z } from 'zod';
-import { searchOffers } from '../../composition.server';
+import {
+  buyerLine,
+  checkScope,
+  exportName,
+  exportTransactions,
+  filterLibrary,
+  isPlainLibraryQuery,
+  listTransactions,
+  parseLibraryQuery,
+  queryHash,
+  searchOffers,
+  txnCsv,
+} from '../../composition.server';
+import type { LibraryFacts } from '../../composition.server';
 import type { App, OfferPage } from '../../composition.server';
 import { MIXED_CURRENCY_TEXT, TOO_MANY_PUBLISHERS_TEXT } from '../lib/composite-copy';
 import { CANCEL_ANSWER } from '../lib/order-actions';
@@ -23,11 +37,13 @@ import {
   decodeCursor,
   encodeCursor,
   ownerOf,
+  searchRefusal,
   type Ctx,
 } from './guard';
 
 type Result<T> = Promise<HttpResult<T>>;
 const DEFAULT_LIMIT = 20;
+const LIBRARY_PAGE = 25;
 
 /** The buyer view of an offer: the page without the renegotiation floor, with the lowest price named. */
 export function toSummary(o: OfferPage): OfferSummary {
@@ -282,7 +298,11 @@ export async function placeOrder(
   return { status: e.http, code: 'approval', message: 'That approval can no longer be used.' };
 }
 
-// B8: a read of the buyer's own orders, newest first. The cursor is the id of the last order shown.
+// B8: a read of the buyer's own orders, newest first. INT-SR1: a call with no filter, with or without a
+// `limit`, and with no cursor or an old `o1` cursor, is answered as before (the cursor is the id of the last
+// order shown; the existing B8 contract test pages that way with `limit=1`). Any TxnQuery filter, or a new
+// cursor, switches to keyset paging over the lines (default 25, max 100); an `o1` cursor sent with a filter
+// is `bad_cursor`.
 export async function listOrders(
   a: App,
   ctx: Ctx,
@@ -290,14 +310,53 @@ export async function listOrders(
 ): Result<unknown> {
   const actor = ownerOf(ctx, 'buyer');
   if (actor === null) return FORBIDDEN;
-  const limit = q.limit ?? DEFAULT_LIMIT;
+  const parsed = parseTxnQuery(q);
+  const keys = Object.keys(parsed);
+  const filters = keys.filter((k) => k !== 'limit' && k !== 'cursor');
+  const oldCursor = parsed.cursor !== undefined && decodeCursor('o1', parsed.cursor) !== null;
+  const legacy = filters.length === 0 && (parsed.cursor === undefined || oldCursor);
+  if (!legacy) {
+    const now = a.security.clock.now();
+    try {
+      const r = await listTransactions(a.db, actor, q, { now });
+      return {
+        status: 200,
+        body: { items: r.rows.map((row) => buyerLine(row, now)), next_cursor: r.next_cursor },
+      };
+    } catch (e) {
+      const refused = searchRefusal(e);
+      if (refused !== null) return refused;
+      throw e;
+    }
+  }
+  try {
+    checkScope(actor, q);
+  } catch (e) {
+    const refused = searchRefusal(e);
+    if (refused !== null) return refused;
+    throw e;
+  }
+  return legacyOrders(
+    a,
+    actor.buyer_id,
+    Math.min(parsed.limit ?? DEFAULT_LIMIT, 50),
+    parsed.cursor,
+  );
+}
+
+async function legacyOrders(
+  a: App,
+  buyer_id: string,
+  limit: number,
+  cursor: string | undefined,
+): Result<unknown> {
   let after: string | null = null;
-  if (q.cursor !== undefined) {
-    after = decodeCursor('o1', q.cursor);
+  if (cursor !== undefined) {
+    after = decodeCursor('o1', cursor);
     if (after === null) return BAD_CURSOR;
     const known = await a.db.query('SELECT 1 FROM orders WHERE id = $1 AND buyer_id = $2', [
       after,
-      actor.buyer_id,
+      buyer_id,
     ]);
     if (known.rows.length === 0) return BAD_CURSOR;
   }
@@ -316,7 +375,7 @@ export async function listOrders(
           AND ($2::text IS NULL OR (created_at, id) < (SELECT created_at, id FROM orders WHERE id = $2))
         ORDER BY created_at DESC, id DESC
         LIMIT $3`,
-      [actor.buyer_id, after, limit + 1],
+      [buyer_id, after, limit + 1],
     )
   ).rows;
   const page = rows.slice(0, limit);
@@ -334,6 +393,35 @@ export async function listOrders(
       next_cursor: rows.length > limit ? encodeCursor('o1', page[page.length - 1]!.id) : null,
     },
   };
+}
+
+// INT-SR1: the current filter as CSV text in a JSON answer.
+export async function exportOrders(
+  a: App,
+  ctx: Ctx,
+  q: z.infer<typeof OrderListQuerySchema>,
+): Result<unknown> {
+  const actor = ownerOf(ctx, 'buyer');
+  if (actor === null) return FORBIDDEN;
+  const now = a.security.clock.now();
+  try {
+    const r = await exportTransactions(a.db, actor, q, { now });
+    return {
+      status: 200,
+      body: {
+        filename: exportName('buyer', now),
+        csv: txnCsv(
+          'buyer',
+          r.rows.map((row) => buyerLine(row, now)),
+        ),
+        truncated: r.truncated,
+      },
+    };
+  } catch (e) {
+    const refused = searchRefusal(e);
+    if (refused !== null) return refused;
+    throw e;
+  }
 }
 
 // B9: another buyer's order and a missing one answer the same.
@@ -364,11 +452,69 @@ export async function cancelOrder(a: App, ctx: Ctx, order_ref: string): Result<u
   }
 }
 
-// B11
-export async function listLibrary(a: App, ctx: Ctx): Result<unknown> {
+// B11. INT-SR1 (SR1.6): with no parameters, every entry and next_cursor null, as before. Filters: from and to
+// (purchased date), seller (name, slug or id), q (item text) and access (available, ended, revoked). A filter,
+// a limit or a cursor pages (default 25, max 100); the cursor is bound to the filter and the buyer.
+export async function listLibrary(
+  a: App,
+  ctx: Ctx,
+  raw: Record<string, string> = {},
+): Result<unknown> {
   const actor = ownerOf(ctx, 'buyer');
   if (actor === null) return FORBIDDEN;
-  return { status: 200, body: { items: await a.engine.library({ actor }), next_cursor: null } };
+  const all = await a.engine.library({ actor });
+  const query = parseLibraryQuery(raw);
+  if (isPlainLibraryQuery(query)) return { status: 200, body: { items: all, next_cursor: null } };
+  const found = await a.db.query<{
+    id: string;
+    created_at: unknown;
+    publisher_id: string;
+    slug: string;
+  }>(
+    `SELECT e.id, e.created_at, p.id AS publisher_id, p.slug
+       FROM entitlements e
+       JOIN articles ar ON ar.id = e.article_id
+       JOIN publishers p ON p.id = ar.publisher_id
+      WHERE e.buyer_id = $1`,
+    [actor.buyer_id],
+  );
+  const facts = new Map<string, LibraryFacts>(
+    found.rows.map((r) => [
+      r.id,
+      {
+        created_at: new Date(r.created_at as string | number | Date).toISOString(),
+        publisher_id: r.publisher_id,
+        publisher_slug: r.slug,
+      },
+    ]),
+  );
+  const { cursor, limit, ...filters } = query;
+  const hash = queryHash(
+    { ...filters, ...(limit !== undefined ? { limit } : {}) } as Parameters<typeof queryHash>[0],
+    `library:${actor.buyer_id}`,
+  );
+  const matching = filterLibrary(all, facts, query);
+  let start = 0;
+  if (cursor !== undefined) {
+    const at = decodeCursor('l1', cursor);
+    const dot = at === null ? -1 : at.indexOf('.');
+    if (at === null || dot < 0 || at.slice(0, dot) !== hash) return BAD_CURSOR;
+    const idx = matching.findIndex((e) => e.entitlement_id === at.slice(dot + 1));
+    if (idx < 0) return BAD_CURSOR;
+    start = idx + 1;
+  }
+  const size = limit ?? LIBRARY_PAGE;
+  const page = matching.slice(start, start + size);
+  const more = start + size < matching.length;
+  return {
+    status: 200,
+    body: {
+      items: page,
+      next_cursor: more
+        ? encodeCursor('l1', `${hash}.${page[page.length - 1]!.entitlement_id}`)
+        : null,
+    },
+  };
 }
 
 // B12: the link is not bound to a browser session (a key has none).

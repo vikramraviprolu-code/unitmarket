@@ -2265,7 +2265,7 @@
         }
       },
       "get": {
-        "summary": "Your orders, newest first. Pages with cursor.",
+        "summary": "Your orders, newest first. With no parameters: the order list with cursor. With any filter (TxnQuery: from, to, min_minor, max_minor, currency, status, refund, case, q, ref, channel, sort, dir, limit, cursor): one line per purchased item, paged by keyset.",
         "security": [
           {
             "bearerKey": [
@@ -2273,102 +2273,361 @@
             ]
           }
         ],
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 50
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 500
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": "Success.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "order_ref": {
-                            "type": "string",
-                            "maxLength": 200,
-                            "pattern": "^(?:\\S|\\S[\\s\\S]*\\S)$"
-                          },
-                          "status": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 40
-                          },
-                          "environment": {
-                            "type": "string",
-                            "enum": [
-                              "dryrun",
-                              "sandbox"
-                            ]
-                          },
-                          "currency": {
-                            "type": "string",
-                            "pattern": "^[A-Z]{3}$"
-                          },
-                          "total_minor": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "created_at": {
-                            "type": "string",
-                            "format": "date-time",
-                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "order_ref": {
+                                "type": "string",
+                                "maxLength": 200,
+                                "pattern": "^(?:\\S|\\S[\\s\\S]*\\S)$"
+                              },
+                              "status": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "environment": {
+                                "type": "string",
+                                "enum": [
+                                  "dryrun",
+                                  "sandbox"
+                                ]
+                              },
+                              "currency": {
+                                "type": "string",
+                                "pattern": "^[A-Z]{3}$"
+                              },
+                              "total_minor": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "created_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                              }
+                            },
+                            "required": [
+                              "order_ref",
+                              "status",
+                              "environment",
+                              "currency",
+                              "total_minor",
+                              "created_at"
+                            ],
+                            "additionalProperties": false
                           }
                         },
-                        "required": [
-                          "order_ref",
-                          "status",
-                          "environment",
-                          "currency",
-                          "total_minor",
-                          "created_at"
-                        ],
-                        "additionalProperties": false
-                      }
-                    },
-                    "next_cursor": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 500
-                        },
-                        {
-                          "type": "null"
+                        "next_cursor": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
-                      ]
+                      },
+                      "required": [
+                        "items",
+                        "next_cursor"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "unit_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "order_ref": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "order_ref6": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 6
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "attention",
+                                  "refunded",
+                                  "part_refunded",
+                                  "paid",
+                                  "failed",
+                                  "in_progress"
+                                ]
+                              },
+                              "order_status": {
+                                "type": "string",
+                                "maxLength": 60
+                              },
+                              "unit_status": {
+                                "type": "string",
+                                "maxLength": 60
+                              },
+                              "created_at": {
+                                "type": "string",
+                                "maxLength": 40
+                              },
+                              "updated_at": {
+                                "type": "string",
+                                "maxLength": 40
+                              },
+                              "captured_at": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 40
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "currency": {
+                                "type": "string",
+                                "maxLength": 3
+                              },
+                              "amount_minor": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "refunded_minor": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "environment": {
+                                "type": "string",
+                                "enum": [
+                                  "dryrun",
+                                  "sandbox"
+                                ]
+                              },
+                              "titles": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 300
+                                }
+                              },
+                              "refund_state": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 60
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "refund_amount_minor": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "case_state": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 60
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "case_kind": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 60
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "channel": {
+                                "type": "string",
+                                "enum": [
+                                  "human",
+                                  "agent"
+                                ]
+                              },
+                              "order_total_minor": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "agent_key_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "publisher_id": {
+                                "type": "string",
+                                "maxLength": 200
+                              },
+                              "buyer_id": {
+                                "type": "string",
+                                "maxLength": 200
+                              },
+                              "mandate_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "alert_count": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "has_unknown_op": {
+                                "type": "boolean"
+                              },
+                              "order_mismatch": {
+                                "type": "boolean"
+                              },
+                              "seller_name": {
+                                "type": "string",
+                                "maxLength": 300
+                              },
+                              "seller_slug": {
+                                "type": "string",
+                                "maxLength": 200
+                              },
+                              "buyer_display_name": {
+                                "type": "string",
+                                "maxLength": 300
+                              },
+                              "provider_order_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "capture_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "refund_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "unit_id",
+                              "order_ref",
+                              "order_ref6",
+                              "status",
+                              "order_status",
+                              "unit_status",
+                              "created_at",
+                              "updated_at",
+                              "captured_at",
+                              "currency",
+                              "amount_minor",
+                              "refunded_minor",
+                              "environment",
+                              "titles",
+                              "refund_state",
+                              "refund_amount_minor",
+                              "case_state",
+                              "case_kind",
+                              "channel"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "next_cursor": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "next_cursor"
+                      ],
+                      "additionalProperties": false
                     }
-                  },
-                  "required": [
-                    "items",
-                    "next_cursor"
-                  ],
-                  "additionalProperties": false
+                  ]
                 }
               }
             }
@@ -2403,8 +2662,82 @@
               }
             }
           },
-          "422": {
-            "description": "The request did not match the expected shape.",
+          "429": {
+            "description": "Too many requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/export": {
+      "get": {
+        "summary": "Your lines under the current filter as CSV text in a JSON answer { filename, csv, truncated }. At most 5000 rows.",
+        "security": [
+          {
+            "bearerKey": [
+              "orders:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "filename": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    },
+                    "csv": {
+                      "type": "string"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "filename",
+                    "csv",
+                    "truncated"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A required header is missing or malformed (for example Idempotency-Key).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credentials are valid but may not do this.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2725,7 +3058,7 @@
     },
     "/api/v1/library": {
       "get": {
-        "summary": "What you own: one entry per item with its access window and state.",
+        "summary": "What you own: one entry per item with its access window and state. Filters: from and to (purchased date), seller, q (item text), access (available, ended, revoked); limit and cursor page.",
         "security": [
           {
             "bearerKey": [
@@ -3016,6 +3349,16 @@
                     "next_cursor"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A required header is missing or malformed (for example Idempotency-Key).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3864,7 +4207,7 @@
     },
     "/api/v1/seller/sales": {
       "get": {
-        "summary": "Your sales, newest first. No buyer identity.",
+        "summary": "Your sales, newest first. No buyer identity. With no parameters: every sale. With any filter (TxnQuery without buyer, seller, agent_key, environment, flags), limit or cursor: keyset paging.",
         "security": [
           {
             "bearerKey": [
@@ -3879,113 +4222,403 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "at": {
-                            "type": "string",
-                            "format": "date-time",
-                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
-                          },
-                          "order_ref6": {
-                            "type": "string"
-                          },
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
                           "items": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "properties": {
-                                "title": {
-                                  "type": "string"
-                                },
-                                "option": {
-                                  "type": "string",
-                                  "enum": [
-                                    "keep_retrieve",
-                                    "online_read"
-                                  ]
+                            "type": "object",
+                            "properties": {
+                              "at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                              },
+                              "order_ref6": {
+                                "type": "string"
+                              },
+                              "items": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "title": {
+                                      "type": "string"
+                                    },
+                                    "option": {
+                                      "type": "string",
+                                      "enum": [
+                                        "keep_retrieve",
+                                        "online_read"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "title",
+                                    "option"
+                                  ],
+                                  "additionalProperties": false
                                 }
                               },
-                              "required": [
-                                "title",
-                                "option"
-                              ],
-                              "additionalProperties": false
-                            }
-                          },
-                          "amount_minor": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "currency": {
-                            "type": "string",
-                            "pattern": "^[A-Z]{3}$"
-                          },
-                          "paypal_fee_minor": {
-                            "anyOf": [
-                              {
+                              "amount_minor": {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 9007199254740991
                               },
-                              {
-                                "type": "null"
+                              "currency": {
+                                "type": "string",
+                                "pattern": "^[A-Z]{3}$"
+                              },
+                              "paypal_fee_minor": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "expected",
+                                  "captured_verified",
+                                  "pending",
+                                  "declined",
+                                  "mismatch",
+                                  "partially_refunded",
+                                  "refunded",
+                                  "reversal_suspected",
+                                  "reversed"
+                                ]
+                              },
+                              "status_text": {
+                                "type": "string"
+                              },
+                              "environment": {
+                                "type": "string",
+                                "enum": [
+                                  "dryrun",
+                                  "sandbox"
+                                ]
                               }
-                            ]
-                          },
-                          "status": {
-                            "type": "string",
-                            "enum": [
-                              "expected",
-                              "captured_verified",
-                              "pending",
-                              "declined",
-                              "mismatch",
-                              "partially_refunded",
-                              "refunded",
-                              "reversal_suspected",
-                              "reversed"
-                            ]
-                          },
-                          "status_text": {
-                            "type": "string"
-                          },
-                          "environment": {
-                            "type": "string",
-                            "enum": [
-                              "dryrun",
-                              "sandbox"
-                            ]
+                            },
+                            "required": [
+                              "at",
+                              "order_ref6",
+                              "items",
+                              "amount_minor",
+                              "currency",
+                              "paypal_fee_minor",
+                              "status",
+                              "status_text",
+                              "environment"
+                            ],
+                            "additionalProperties": false
                           }
                         },
-                        "required": [
-                          "at",
-                          "order_ref6",
-                          "items",
-                          "amount_minor",
-                          "currency",
-                          "paypal_fee_minor",
-                          "status",
-                          "status_text",
-                          "environment"
-                        ],
-                        "additionalProperties": false
-                      }
+                        "next_cursor": {
+                          "type": "null"
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "next_cursor"
+                      ],
+                      "additionalProperties": false
                     },
-                    "next_cursor": {
-                      "type": "null"
+                    {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "unit_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "order_ref": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "order_ref6": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 6
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "attention",
+                                  "refunded",
+                                  "part_refunded",
+                                  "paid",
+                                  "failed",
+                                  "in_progress"
+                                ]
+                              },
+                              "order_status": {
+                                "type": "string",
+                                "maxLength": 60
+                              },
+                              "unit_status": {
+                                "type": "string",
+                                "maxLength": 60
+                              },
+                              "created_at": {
+                                "type": "string",
+                                "maxLength": 40
+                              },
+                              "updated_at": {
+                                "type": "string",
+                                "maxLength": 40
+                              },
+                              "captured_at": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 40
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "currency": {
+                                "type": "string",
+                                "maxLength": 3
+                              },
+                              "amount_minor": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "refunded_minor": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "environment": {
+                                "type": "string",
+                                "enum": [
+                                  "dryrun",
+                                  "sandbox"
+                                ]
+                              },
+                              "titles": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 300
+                                }
+                              },
+                              "refund_state": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 60
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "refund_amount_minor": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "case_state": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 60
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "case_kind": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 60
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "channel": {
+                                "type": "string",
+                                "enum": [
+                                  "human",
+                                  "agent"
+                                ]
+                              },
+                              "order_total_minor": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "agent_key_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "publisher_id": {
+                                "type": "string",
+                                "maxLength": 200
+                              },
+                              "buyer_id": {
+                                "type": "string",
+                                "maxLength": 200
+                              },
+                              "mandate_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "alert_count": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "has_unknown_op": {
+                                "type": "boolean"
+                              },
+                              "order_mismatch": {
+                                "type": "boolean"
+                              },
+                              "seller_name": {
+                                "type": "string",
+                                "maxLength": 300
+                              },
+                              "seller_slug": {
+                                "type": "string",
+                                "maxLength": 200
+                              },
+                              "buyer_display_name": {
+                                "type": "string",
+                                "maxLength": 300
+                              },
+                              "provider_order_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "capture_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "refund_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "unit_id",
+                              "order_ref",
+                              "order_ref6",
+                              "status",
+                              "order_status",
+                              "unit_status",
+                              "created_at",
+                              "updated_at",
+                              "captured_at",
+                              "currency",
+                              "amount_minor",
+                              "refunded_minor",
+                              "environment",
+                              "titles",
+                              "refund_state",
+                              "refund_amount_minor",
+                              "case_state",
+                              "case_kind",
+                              "channel"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "next_cursor": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "next_cursor"
+                      ],
+                      "additionalProperties": false
                     }
-                  },
-                  "required": [
-                    "items",
-                    "next_cursor"
-                  ],
-                  "additionalProperties": false
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A required header is missing or malformed (for example Idempotency-Key).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -4012,6 +4645,90 @@
           },
           "404": {
             "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/seller/sales/export": {
+      "get": {
+        "summary": "Your sales under the current filter as CSV text in a JSON answer. No buyer column. At most 5000 rows.",
+        "security": [
+          {
+            "bearerKey": [
+              "sales:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "filename": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    },
+                    "csv": {
+                      "type": "string"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "filename",
+                    "csv",
+                    "truncated"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A required header is missing or malformed (for example Idempotency-Key).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credentials are valid but may not do this.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4564,6 +5281,344 @@
           },
           "404": {
             "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ops/transactions": {
+      "get": {
+        "summary": "Every purchased item with filters and four saved views (view=needs_attention, refunds_today, agent_purchases, sandbox_only). Order refs, amounts, states, flags and opaque ids only: no buyer or seller name and no provider order id.",
+        "security": [
+          {
+            "bearerKey": [
+              "ops:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "unit_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "order_ref": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "order_ref6": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 6
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "attention",
+                              "refunded",
+                              "part_refunded",
+                              "paid",
+                              "failed",
+                              "in_progress"
+                            ]
+                          },
+                          "order_status": {
+                            "type": "string",
+                            "maxLength": 60
+                          },
+                          "unit_status": {
+                            "type": "string",
+                            "maxLength": 60
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "updated_at": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "captured_at": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 40
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "currency": {
+                            "type": "string",
+                            "maxLength": 3
+                          },
+                          "amount_minor": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "refunded_minor": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "environment": {
+                            "type": "string",
+                            "enum": [
+                              "dryrun",
+                              "sandbox"
+                            ]
+                          },
+                          "titles": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 300
+                            }
+                          },
+                          "refund_state": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 60
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "refund_amount_minor": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "case_state": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 60
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "case_kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 60
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "channel": {
+                            "type": "string",
+                            "enum": [
+                              "human",
+                              "agent"
+                            ]
+                          },
+                          "order_total_minor": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "agent_key_id": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 200
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "publisher_id": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "buyer_id": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "mandate_id": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 200
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "alert_count": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "has_unknown_op": {
+                            "type": "boolean"
+                          },
+                          "order_mismatch": {
+                            "type": "boolean"
+                          },
+                          "seller_name": {
+                            "type": "string",
+                            "maxLength": 300
+                          },
+                          "seller_slug": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "buyer_display_name": {
+                            "type": "string",
+                            "maxLength": 300
+                          },
+                          "provider_order_id": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 200
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "capture_id": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 200
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "refund_id": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 200
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "unit_id",
+                          "order_ref",
+                          "order_ref6",
+                          "status",
+                          "order_status",
+                          "unit_status",
+                          "created_at",
+                          "updated_at",
+                          "captured_at",
+                          "currency",
+                          "amount_minor",
+                          "refunded_minor",
+                          "environment",
+                          "titles",
+                          "refund_state",
+                          "refund_amount_minor",
+                          "case_state",
+                          "case_kind",
+                          "channel"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next_cursor"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A required header is missing or malformed (for example Idempotency-Key).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credentials are valid but may not do this.",
             "content": {
               "application/json": {
                 "schema": {
