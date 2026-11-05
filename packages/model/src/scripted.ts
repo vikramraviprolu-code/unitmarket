@@ -3,7 +3,14 @@
 import type { ModelPort, ModelRequest, ModelResponse } from '@umsbx/contracts';
 import { composePack } from './compose';
 import { parseBrief } from './parse-brief';
-import { ComposeInputSchema, MAX_BRIEF_CHARS, MAX_CANDIDATES } from './schemas';
+import { answerExplain, answerTxnQuery } from './scripted-assist';
+import {
+  ComposeInputSchema,
+  ExplainInputSchema,
+  MAX_BRIEF_CHARS,
+  MAX_CANDIDATES,
+  MAX_REST_CHARS,
+} from './schemas';
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -33,6 +40,17 @@ export function createScriptedModel(): ModelPort {
         if (Array.isArray(c) && c.length > MAX_CANDIDATES) return fail('too_many_candidates');
         const parsed = ComposeInputSchema.safeParse(input);
         return parsed.success ? good(composePack(parsed.data)) : fail('invalid_input');
+      }
+      // INT-GA: the two assist purposes (scripted-assist.ts).
+      if (request.purpose === 'txn_query') {
+        const rest = input['rest'];
+        if (typeof rest !== 'string') return fail('invalid_input');
+        if (rest.length > MAX_REST_CHARS) return fail('too_long');
+        return good(answerTxnQuery(rest));
+      }
+      if (request.purpose === 'explain_order') {
+        const parsed = ExplainInputSchema.safeParse(input);
+        return parsed.success ? good(answerExplain(parsed.data)) : fail('invalid_input');
       }
       return fail('unsupported_purpose');
     },

@@ -2,8 +2,9 @@ import { notFound, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { currentActor } from '../../../../../server/session';
-import { readOrderPage } from '../../../../../composition/ops-money';
+import { readOrderExplain, readOrderPage } from '../../../../../composition/ops-money';
 import { EnvLabel } from '../../../../../ui/EnvLabel';
+import { ExplainPanel } from '../../../../../ui/ExplainPanel';
 import { Chip, PageHeader, Section } from '../../../../../ui/publisher/kit';
 import { Timeline } from '../../../../../ui/Timeline';
 import { OPS_NEEDS_CODE } from '../../../../../lib/ops-copy';
@@ -22,6 +23,8 @@ export default async function OpsOrder({ params }: { params: Promise<{ ref: stri
   const { ref } = await params;
   const view = await readOrderPage(actor, decodeURIComponent(ref));
   if (view === null) notFound();
+  // INT-GA / GA.4: only an order in the attention group has a panel (the composition answers null otherwise).
+  const explain = await readOrderExplain(actor, decodeURIComponent(ref));
   return (
     <>
       <PageHeader
@@ -42,6 +45,7 @@ export default async function OpsOrder({ params }: { params: Promise<{ ref: stri
           </Link>
         ))}
       </p>
+      {explain !== null ? <ExplainPanel view={explain} /> : null}
       <Section title="Summary" id="order-summary">
         <dl className="pk-facts">
           <dt>Status</dt>
