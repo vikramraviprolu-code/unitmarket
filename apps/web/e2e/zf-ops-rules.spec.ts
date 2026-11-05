@@ -2,13 +2,13 @@
 // code from the public RFC 6238 test key (as shell.spec.ts does), reads the rules, adds a platform refund window
 // through the form, sees it on the list and the history, reads the terms of an existing order, and a buyer, a
 // seller and a visitor are sent to sign in. Light (Bright Market) and dark (Deep Harbour) screenshots of the four
-// pages go to the folder in UMS_SHOTS_DIR when it is set, else to the ignored test-results folder. The file name
+// pages go to the ignored test-results folder. The file name
 // sorts after ze-publisher-offers.spec.ts and before zz-ops-stop.spec.ts, so the authenticator codes rise in order
 // and the stop spec still runs last.
 import { createHmac } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
-import { PASSCODE, TOTP_KEY_BYTES, buyerPage } from './support';
+import { PASSCODE, TOTP_KEY_BYTES, buyerPage, payWithScenario } from './support';
 
 async function serverStep(page: Page): Promise<number> {
   const res = await page.request.get('/healthz');
@@ -58,6 +58,14 @@ test.describe('operator business rules screens', () => {
   let op: { ctx: BrowserContext; page: Page };
   test.beforeAll(async ({ browser }) => {
     op = await operatorWithCode(browser);
+    // Run alone there is no order yet: buy one as buyer b, as ops-order.spec.ts does.
+    await op.page.goto('/ops/money/transactions');
+    await expect(op.page.getByTestId('txn-status')).not.toHaveText('Loading transactions.');
+    if ((await op.page.locator('a[href^="/ops/money/orders/"]').count()) === 0) {
+      const buyer = await buyerPage(browser, 'b');
+      await payWithScenario(buyer, { offer: 'tide-tables', scenario: 'happy' });
+      await buyer.context().close();
+    }
   });
   test.afterAll(async () => {
     await op.ctx.close();
@@ -80,10 +88,10 @@ test.describe('operator business rules screens', () => {
     await expect(op.page.getByTestId('rules-impact')).toContainText(
       'Sales already approved keep their terms.',
     );
-    await op.page.getByLabel('Rule').selectOption({ label: 'Refund window' });
-    await op.page.getByLabel('Applies to').selectOption({ label: 'Everyone' });
-    await op.page.getByLabel('Value in days').fill('10');
-    await op.page.getByLabel('Reason').fill('Pilot window for the demo');
+    await op.page.getByLabel('Rule', { exact: true }).selectOption({ label: 'Refund window' });
+    await op.page.getByLabel('Applies to', { exact: true }).selectOption({ label: 'Everyone' });
+    await op.page.getByLabel('Value in days', { exact: true }).fill('10');
+    await op.page.getByLabel('Reason', { exact: true }).fill('Pilot window for the demo');
     await op.page.getByTestId('rules-save').click();
     await expect(op.page.getByTestId('rules-answer')).toContainText('Saved.');
     await op.page.goto('/ops/rules');
@@ -125,9 +133,7 @@ test.describe('operator business rules screens', () => {
   });
 
   test('screenshots in light and dark', async ({ baseURL }, testInfo) => {
-    const dir = process.env['UMS_SHOTS_DIR'];
-    const out = (name: string): string =>
-      dir === undefined ? testInfo.outputPath(name) : `${dir}/${name}`;
+    const out = (name: string): string => testInfo.outputPath(name);
     await op.page.goto('/ops/money/transactions');
     const ref = (await op.page
       .locator('a[href^="/ops/money/orders/"]')
