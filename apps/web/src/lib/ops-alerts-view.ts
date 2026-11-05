@@ -29,9 +29,12 @@ export function parseAlertFilter(sp: Params): AlertFilter {
   const severity = first(sp['severity']);
   const kind = first(sp['kind']);
   const f: AlertFilter = {
-    state: (ALERT_STATES as readonly string[]).includes(state ?? '') ? (state as AlertStateFilter) : 'open',
+    state: (ALERT_STATES as readonly string[]).includes(state ?? '')
+      ? (state as AlertStateFilter)
+      : 'open',
   };
-  if ((ALERT_SEVERITIES as readonly string[]).includes(severity ?? '')) f.severity = severity as AlertSeverity;
+  if ((ALERT_SEVERITIES as readonly string[]).includes(severity ?? ''))
+    f.severity = severity as AlertSeverity;
   if (kind !== undefined && /^[a-z][a-z_]{0,39}$/.test(kind)) f.kind = kind;
   return f;
 }
@@ -58,7 +61,8 @@ export function alertsHref(f: AlertFilter): string {
   return s === '' ? '/ops/alerts' : `/ops/alerts?${s}`;
 }
 
-export const fixHref = (fix: { route: string; anchor: string }): string => `${fix.route}#${fix.anchor}`;
+export const fixHref = (fix: { route: string; anchor: string }): string =>
+  `${fix.route}#${fix.anchor}`;
 
 export const orderHref = (ref: string, anchor: string | null): string =>
   `/ops/money/orders/${encodeURIComponent(ref)}${anchor === null ? '' : `#${anchor}`}`;
@@ -68,7 +72,11 @@ export function moneyText(
 ): string | null {
   if (m === null) return null;
   const what =
-    m.kind === 'order_total' ? 'Order total' : m.kind === 'unit_amount' ? 'Item amount' : 'Refund amount';
+    m.kind === 'order_total'
+      ? 'Order total'
+      : m.kind === 'unit_amount'
+        ? 'Item amount'
+        : 'Refund amount';
   return `${what} at risk: ${formatMinor(m.minor, m.currency)}`;
 }
 
@@ -126,7 +134,8 @@ export interface AlertListView {
   filter: AlertFilter;
 }
 
-const count = (n: number, one: string, many: string): string => `${String(n)} ${n === 1 ? one : many}`;
+const count = (n: number, one: string, many: string): string =>
+  `${String(n)} ${n === 1 ? one : many}`;
 
 export function alertListView(list: AlertList, f: AlertFilter): AlertListView {
   const next = list.next_cursor;
@@ -147,7 +156,10 @@ export function alertListView(list: AlertList, f: AlertFilter): AlertListView {
     })),
     total: list.total,
     total_text: list.total === 0 ? 'No alerts' : count(list.total, 'alert', 'alerts'),
-    next_href: next === null ? null : `${base}${base.includes('?') ? '&' : '?'}cursor=${encodeURIComponent(next)}`,
+    next_href:
+      next === null
+        ? null
+        : `${base}${base.includes('?') ? '&' : '?'}cursor=${encodeURIComponent(next)}`,
     show_resolved: { on: f.state === 'all', href: alertsHref(toggle) },
     filter: f,
   };

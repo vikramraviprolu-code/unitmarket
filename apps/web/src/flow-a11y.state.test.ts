@@ -138,10 +138,13 @@ describe('INT-OPS-A pages: named landmarks and headings', () => {
     }
     expect(src).not.toMatch(/<input\b(?![^>]*(aria-label=|id=))/);
   });
-  it.each(FILES.filter((f) => f.startsWith('app/')))('%s has a page header (the one level one heading)', (f) => {
-    expect(code(f)).toMatch(/<PageHeader\b[^>]*title=/);
-    expect(code(f).match(/<PageHeader\b/g) ?? []).toHaveLength(1);
-  });
+  it.each(FILES.filter((f) => f.startsWith('app/')))(
+    '%s has a page header (the one level one heading)',
+    (f) => {
+      expect(code(f)).toMatch(/<PageHeader\b[^>]*title=/);
+      expect(code(f).match(/<PageHeader\b/g) ?? []).toHaveLength(1);
+    },
+  );
   it('the health lights say their state in words, not by colour alone', () => {
     expect(code('ui/ops/HealthLights.tsx')).toMatch(/\.word/);
   });

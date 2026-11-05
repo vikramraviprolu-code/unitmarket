@@ -61,7 +61,8 @@ function paypalLight(i: HealthInput): HealthLight {
   if (i.outbound === null) return { ...base, word: 'unknown', tone: 'neutral' };
   if (i.outbound.open) return { ...base, word: 'on', tone: 'good' };
   const by = i.outbound.blocked_by;
-  const why = by !== null && Object.hasOwn(BLOCKED_WORDS, by) ? BLOCKED_WORDS[by as BlockedBy] : null;
+  const why =
+    by !== null && Object.hasOwn(BLOCKED_WORDS, by) ? BLOCKED_WORDS[by as BlockedBy] : null;
   return { ...base, word: why === null ? 'blocked' : `blocked (${why})`, tone: 'bad' };
 }
 

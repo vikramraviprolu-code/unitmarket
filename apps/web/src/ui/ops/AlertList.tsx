@@ -6,7 +6,12 @@ import type { Tone } from '../publisher/kit';
 import { TableScroll } from '../../app/publisher/pk-sales-parts';
 import './ops-a.css';
 
-const TONE: Record<string, Tone> = { critical: 'bad', high: 'warn', medium: 'info', info: 'neutral' };
+const TONE: Record<string, Tone> = {
+  critical: 'bad',
+  high: 'warn',
+  medium: 'info',
+  info: 'neutral',
+};
 const STATES = [
   ['open', 'Open'],
   ['acknowledged', 'Acknowledged'],
@@ -40,7 +45,10 @@ export function AlertList({ view }: { view: AlertListView }) {
           <ul>
             <li>
               <Link
-                href={alertsHref({ state: f.state, ...(f.kind === undefined ? {} : { kind: f.kind }) })}
+                href={alertsHref({
+                  state: f.state,
+                  ...(f.kind === undefined ? {} : { kind: f.kind }),
+                })}
                 aria-current={f.severity === undefined ? 'true' : undefined}
               >
                 Any severity

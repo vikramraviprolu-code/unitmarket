@@ -30,7 +30,8 @@ describe('the map', () => {
   it('has a Problems URL for every invariant id, INV1 to INV7, and no other', () => {
     expect(INVARIANT_IDS).toEqual(['INV1', 'INV2', 'INV3', 'INV4', 'INV5', 'INV6', 'INV7']);
     expect(Object.keys(INVARIANT_PROBLEMS_URL).sort()).toEqual([...INVARIANT_IDS].sort());
-    for (const id of INVARIANT_IDS) expect(INVARIANT_PROBLEMS_URL[id]).toBe(`/ops/money/problems?inv=${id}`);
+    for (const id of INVARIANT_IDS)
+      expect(INVARIANT_PROBLEMS_URL[id]).toBe(`/ops/money/problems?inv=${id}`);
   });
 
   it('has a Problems URL for every OperationStateSchema value, and no other', () => {
@@ -76,8 +77,12 @@ describe('the page data, over a real database', () => {
     rig = await bootAlertRig();
     money = await import('./composition/ops-money');
     const db = rig.rig.app.db;
-    buyer = (await db.query<{ id: string }>("SELECT id FROM buyers WHERE auth_subject = 'persona:buyer-a'")).rows[0]!.id;
-    publisher = (await db.query<{ id: string }>("SELECT id FROM publishers WHERE slug = 'harbour-ledger'")).rows[0]!.id;
+    buyer = (
+      await db.query<{ id: string }>("SELECT id FROM buyers WHERE auth_subject = 'persona:buyer-a'")
+    ).rows[0]!.id;
+    publisher = (
+      await db.query<{ id: string }>("SELECT id FROM publishers WHERE slug = 'harbour-ledger'")
+    ).rows[0]!.id;
   });
   afterAll(async () => rig?.rig.app.close());
 
@@ -153,7 +158,12 @@ describe('the page data, over a real database', () => {
 
   it('?op=unknown lists exactly the unknown operations, with id, kind, order, attempt and lease', async () => {
     const db = rig.rig.app.db;
-    const order = (await db.query<{ id: string; order_ref: string }>('SELECT id, order_ref FROM orders WHERE order_ref = $1', [one[0]])).rows[0]!;
+    const order = (
+      await db.query<{ id: string; order_ref: string }>(
+        'SELECT id, order_ref FROM orders WHERE order_ref = $1',
+        [one[0]],
+      )
+    ).rows[0]!;
     const at = '2026-11-05T09:00:00.000Z';
     const op = (id: string, state: string, kind: string, attempt: number, extra: string) =>
       db.query(
@@ -184,7 +194,10 @@ describe('the page data, over a real database', () => {
     if (p.kind !== 'none') throw new Error('not the overview');
     const failing = (await snapshot()).filter((v) => !v.ok).map((v) => v.id);
     expect(p.invariants.filter((v) => v.href !== null).map((v) => v.id)).toEqual(failing);
-    expect(p.states.find((s) => s.state === 'unknown')).toMatchObject({ count: 2, href: '/ops/money/problems?op=unknown' });
+    expect(p.states.find((s) => s.state === 'unknown')).toMatchObject({
+      count: 2,
+      href: '/ops/money/problems?op=unknown',
+    });
   });
 
   it('a very long list is capped and says how many there are', async () => {
@@ -196,22 +209,33 @@ describe('the page data, over a real database', () => {
 
   it('an operator without the code may read it, and a buyer or a seller reads nothing', async () => {
     expect(await money.readProblems(PLAIN, { kind: 'inv', id: 'INV1' })).not.toBeNull();
-    expect(await money.readProblems({ kind: 'buyer', buyer_id: buyer }, { kind: 'inv', id: 'INV1' })).toBeNull();
-    expect(await money.readProblems({ kind: 'publisher', publisher_id: publisher }, { kind: 'op', state: 'unknown' })).toBeNull();
+    expect(
+      await money.readProblems({ kind: 'buyer', buyer_id: buyer }, { kind: 'inv', id: 'INV1' }),
+    ).toBeNull();
+    expect(
+      await money.readProblems(
+        { kind: 'publisher', publisher_id: publisher },
+        { kind: 'op', state: 'unknown' },
+      ),
+    ).toBeNull();
   });
 });
 
 describe('the page and the links (source as text)', () => {
   const here = fileURLToPath(new URL('.', import.meta.url));
   const src = (rel: string): string =>
-    readFileSync(`${here}${rel}`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    readFileSync(`${here}${rel}`, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
   it('Money links failing invariants and operation tiles through the map, and the Problems page is operator only', () => {
     const money = src('app/ops/money/page.tsx');
     expect(money).toContain('invariantLink(');
     expect(money).toContain('operationLink(');
     const page = src('app/ops/money/problems/page.tsx');
-    expect(page).toMatch(/actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/money\/problems'\)/);
+    expect(page).toMatch(
+      /actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/money\/problems'\)/,
+    );
     expect(page).toMatch(/from '(\.\.\/)+composition\/ops-money'/);
     expect(page).not.toMatch(/server\/access|composition\.server/);
   });

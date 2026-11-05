@@ -31,7 +31,10 @@ export default async function OpsProblems({
   if (p === null) redirect('/signin?next=/ops/money/problems');
   return (
     <>
-      <PageHeader title="Problems" lede="The orders and operations behind a failing check on Money." />
+      <PageHeader
+        title="Problems"
+        lede="The orders and operations behind a failing check on Money."
+      />
       <p>
         <Link href="/ops/money">Back to Money</Link>
       </p>

@@ -15,8 +15,10 @@ export const OPERATION_PROBLEMS_URL = Object.fromEntries(
   OperationStateSchema.options.map((s) => [s, `/ops/money/problems?op=${s}`]),
 ) as Record<OperationState, string>;
 
-const isInvariant = (id: string): id is InvariantId => (INVARIANT_IDS as readonly string[]).includes(id);
-const isOperation = (s: string): s is OperationState => (OperationStateSchema.options as readonly string[]).includes(s);
+const isInvariant = (id: string): id is InvariantId =>
+  (INVARIANT_IDS as readonly string[]).includes(id);
+const isOperation = (s: string): s is OperationState =>
+  (OperationStateSchema.options as readonly string[]).includes(s);
 
 /** A link for a failing invariant only; null when it holds or the id is not one of the seven. */
 export const invariantLink = (id: string, ok: boolean): string | null =>
@@ -26,14 +28,15 @@ export const operationLink = (state: string): string | null =>
   isOperation(state) ? OPERATION_PROBLEMS_URL[state] : null;
 
 export type ProblemsQuery =
-  | { kind: 'inv'; id: InvariantId }
-  | { kind: 'op'; state: OperationState }
-  | { kind: 'none' };
+  { kind: 'inv'; id: InvariantId } | { kind: 'op'; state: OperationState } | { kind: 'none' };
 
-const first = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
+const first = (v: string | string[] | undefined): string | undefined =>
+  Array.isArray(v) ? v[0] : v;
 
 /** One invariant id or one state; anything else is the overview. The invariant wins when both are given. */
-export function parseProblemsQuery(sp: Record<string, string | string[] | undefined>): ProblemsQuery {
+export function parseProblemsQuery(
+  sp: Record<string, string | string[] | undefined>,
+): ProblemsQuery {
   const inv = first(sp['inv']);
   if (inv !== undefined && isInvariant(inv)) return { kind: 'inv', id: inv };
   const op = first(sp['op']);

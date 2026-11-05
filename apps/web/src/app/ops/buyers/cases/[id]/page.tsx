@@ -22,7 +22,10 @@ export default async function OpsCase({ params }: { params: Promise<{ id: string
   const view = caseDetailView(page.detail, { mfa: actor.mfa === true, keys: page.keys });
   return (
     <>
-      <PageHeader title={`Case: ${view.kind_word}`} lede={`${view.state_word}, due ${view.sla_text}.`} />
+      <PageHeader
+        title={`Case: ${view.kind_word}`}
+        lede={`${view.state_word}, due ${view.sla_text}.`}
+      />
       <p>
         <Link href="/ops/buyers/cases">All cases</Link>
       </p>

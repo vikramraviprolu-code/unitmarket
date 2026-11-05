@@ -144,9 +144,19 @@ describe('OPS-A.2 needs-you and the bell, over AL read', () => {
     expect(bellCounts([])).toEqual({ critical: 0, high: 0, medium: 0, info: 0, total: 0 });
     expect(
       bellCounts([
-        { kind: 'applicants_waiting', sentence: '4 critical alerts are waiting for you.', href: '/ops/publishers', count: 4 },
+        {
+          kind: 'applicants_waiting',
+          sentence: '4 critical alerts are waiting for you.',
+          href: '/ops/publishers',
+          count: 4,
+        },
         { kind: 'open_alerts', sentence: 'Something else.', href: '/ops', count: 9 },
-        { kind: 'open_alerts', sentence: '1 high alert is waiting for you.', href: '/ops', count: 1 },
+        {
+          kind: 'open_alerts',
+          sentence: '1 high alert is waiting for you.',
+          href: '/ops',
+          count: 1,
+        },
       ]),
     ).toEqual({ critical: 0, high: 1, medium: 0, info: 0, total: 1 });
   });
@@ -177,7 +187,7 @@ describe('OPS-A.2 the bell is in the operator shell only', () => {
     const shell = source('ui/shell/Shell.tsx');
     expect(shell).toContain("import { AlertBell } from './AlertBell'");
     expect(shell).toMatch(/persona === 'operator' \? <AlertBell \/> : null/);
-    expect(shell.match(/AlertBell/g)).toHaveLength(2);
+    expect(shell.match(/AlertBell/g)).toHaveLength(3); // the import line has two, the use one
   });
 
   it('no other file imports AlertBell, so the buyer and seller shells cannot show it', () => {

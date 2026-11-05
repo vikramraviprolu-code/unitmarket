@@ -76,7 +76,10 @@ export async function readOrderPage(actor: Actor, ref: string): Promise<OrderPag
     amount_minor: string | number;
     status: string;
     capture_id: string | null;
-  }>('SELECT id, amount_minor, status, capture_id FROM order_units WHERE order_id = $1 ORDER BY id', [o.id]);
+  }>(
+    'SELECT id, amount_minor, status, capture_id FROM order_units WHERE order_id = $1 ORDER BY id',
+    [o.id],
+  );
   const pos = await a.db.query<{ provider_order_id: string }>(
     `SELECT provider_order_id FROM provider_orders
       WHERE order_id = $1 AND provider_order_id IS NOT NULL ORDER BY position NULLS LAST, id`,
@@ -157,7 +160,8 @@ const orderLink = (ref: string): string => `/ops/money/orders/${encodeURICompone
 
 // The order of each kind of row an invariant names, as one query per table.
 const ORDER_OF_ROW: Record<string, string> = {
-  order_units: 'SELECT o.order_ref FROM order_units u JOIN orders o ON o.id = u.order_id WHERE u.id = ANY($1::text[])',
+  order_units:
+    'SELECT o.order_ref FROM order_units u JOIN orders o ON o.id = u.order_id WHERE u.id = ANY($1::text[])',
   entitlements:
     'SELECT o.order_ref FROM entitlements e JOIN order_units u ON u.id = e.unit_id JOIN orders o ON o.id = u.order_id WHERE e.id = ANY($1::text[])',
   orders: 'SELECT o.order_ref FROM orders o WHERE o.id = ANY($1::text[])',
@@ -184,7 +188,8 @@ export async function readProblems(actor: Actor, q: ProblemsQuery): Promise<Prob
       for (const [table, ids] of byTable) {
         const sql = ORDER_OF_ROW[table];
         if (sql === undefined) continue;
-        for (const row of (await a.db.query<{ order_ref: string }>(sql, [ids])).rows) refs.add(row.order_ref);
+        for (const row of (await a.db.query<{ order_ref: string }>(sql, [ids])).rows)
+          refs.add(row.order_ref);
       }
     }
     const all = [...refs].sort();
@@ -193,14 +198,20 @@ export async function readProblems(actor: Actor, q: ProblemsQuery): Promise<Prob
       id: q.id,
       ok: inv.ok,
       detail: inv.detail,
-      orders: all.slice(0, PROBLEMS_CAP).map((order_ref) => ({ order_ref, href: orderLink(order_ref) })),
+      orders: all
+        .slice(0, PROBLEMS_CAP)
+        .map((order_ref) => ({ order_ref, href: orderLink(order_ref) })),
       total: all.length,
       capped: all.length > PROBLEMS_CAP,
     };
   }
   if (q.kind === 'op') {
     const total = Number(
-      (await a.db.query<{ c: string }>('SELECT count(*) AS c FROM operations WHERE state = $1', [q.state])).rows[0]?.c ?? 0,
+      (
+        await a.db.query<{ c: string }>('SELECT count(*) AS c FROM operations WHERE state = $1', [
+          q.state,
+        ])
+      ).rows[0]?.c ?? 0,
     );
     const ops = await a.db.query<{
       id: string;

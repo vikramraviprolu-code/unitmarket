@@ -32,7 +32,7 @@ const source = (rel: string): string =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const IP = 'cd'.repeat(32);
+const IP = 'cd'.repeat(16);
 const MFA: Actor = { kind: 'operator', operator_id: 'opr_vikram', mfa: true };
 const PLAIN: Actor = { kind: 'operator', operator_id: 'opr_demo', mfa: false };
 const SCRIPT = '<script>alert("x")</script> We have your request & will write back.';
@@ -45,7 +45,13 @@ let buyerName = '';
 let providerIds: string[] = [];
 const NOW = '2026-11-05T12:00:00.000Z';
 
-async function seedCase(id: string, unit: BoughtUnit, state: string, sla: string, message = 'We have your request.') {
+async function seedCase(
+  id: string,
+  unit: BoughtUnit,
+  state: string,
+  sla: string,
+  message = 'We have your request.',
+) {
   await w.app.db.query(
     `INSERT INTO recovery_cases (id, kind, state, order_id, entitlement_id, buyer_id, opened_by, sla_due_at, credit_ms, buyer_message, created_at, updated_at)
      SELECT $1::text, 'refund_requested', $3::text, id, NULL, buyer_id, 'buyer', $4::timestamptz, 0, $5::text, $4::timestamptz, $4::timestamptz FROM orders WHERE id = $2`,
@@ -57,17 +63,53 @@ beforeAll(async () => {
   w = await bootRefundWorld();
   buyers = await import('./composition/ops-buyers');
   actionRoute = (await import('./app/api/ops/cases/[id]/actions/route')) as never;
-  for (const [k, offer] of [['a', 'knot-notebook'], ['b', 'harbour-fees'], ['c', 'ferry-timetables'], ['d', 'tide-tables']] as const)
+  for (const [k, offer] of [
+    ['a', 'knot-notebook'],
+    ['b', 'harbour-fees'],
+    ['c', 'ferry-timetables'],
+    ['d', 'tide-tables'],
+  ] as const)
     u[k] = await buy(w, { offer, option: 'online_read' });
   // Out of SLA order on purpose: c is due first, then a, then d (closed), then b.
   await seedCase('cas_b', u['b']!, 'open', '2026-11-06T10:00:00.000Z');
   await seedCase('cas_a', u['a']!, 'diagnosing', '2026-11-05T11:00:00.000Z', SCRIPT);
   await seedCase('cas_c', u['c']!, 'open', '2026-11-05T09:00:00.000Z');
   await seedCase('cas_d', u['d']!, 'closed_no_fault', '2026-11-05T10:00:00.000Z');
-  buyerName = (await w.app.db.query<{ n: string }>('SELECT display_name AS n FROM buyers WHERE id = (SELECT buyer_id FROM orders WHERE id = $1)', [u['a']!.order_id])).rows[0]!.n;
-  providerIds = (await w.app.db.query<{ v: string }>('SELECT provider_order_id AS v FROM provider_orders WHERE order_id = $1', [u['a']!.order_id])).rows.map((r) => r.v);
-  providerIds.push(...(await w.app.db.query<{ v: string }>('SELECT capture_id AS v FROM order_units WHERE id = $1', [u['a']!.unit_id])).rows.map((r) => r.v));
-  const ctx: TraceContext = { id: 'ctx_case_ip', at: NOW, channel: 'web', actor_kind: 'operator', actor_id: 'vikram', on_behalf_of: null, mandate_id: null, mfa: true, req_id: 'req_case1', ip_hash: IP, ua_family: 'curl', api_key_id: null, job: null, tool: null };
+  buyerName = (
+    await w.app.db.query<{ n: string }>(
+      'SELECT display_name AS n FROM buyers WHERE id = (SELECT buyer_id FROM orders WHERE id = $1)',
+      [u['a']!.order_id],
+    )
+  ).rows[0]!.n;
+  providerIds = (
+    await w.app.db.query<{ v: string }>(
+      'SELECT provider_order_id AS v FROM provider_orders WHERE order_id = $1',
+      [u['a']!.order_id],
+    )
+  ).rows.map((r) => r.v);
+  providerIds.push(
+    ...(
+      await w.app.db.query<{ v: string }>('SELECT capture_id AS v FROM order_units WHERE id = $1', [
+        u['a']!.unit_id,
+      ])
+    ).rows.map((r) => r.v),
+  );
+  const ctx: TraceContext = {
+    id: 'ctx_case_ip',
+    at: NOW,
+    channel: 'web',
+    actor_kind: 'operator',
+    actor_id: 'vikram',
+    on_behalf_of: null,
+    mandate_id: null,
+    mfa: true,
+    req_id: 'req_case1',
+    ip_hash: IP,
+    ua_family: 'curl',
+    api_key_id: null,
+    job: null,
+    tool: null,
+  };
   await withTraceContext(ctx, () =>
     w.app.db.query(
       `INSERT INTO alerts (id, kind, order_id, detail, created_at, updated_at) VALUES ('alr_caseA', 'frozen_order', $1, '{"reason":"c"}'::jsonb, now(), now())`,
@@ -104,9 +146,27 @@ describe('the queue', () => {
     const v = caseQueueView(
       {
         items: [
-          { case_id: 'cas_2', kind: 'frozen_order', state: 'open', sla_due_at: '2026-11-07T00:00:00.000Z', order_ref: 'DL-2' },
-          { case_id: 'cas_1', kind: 'frozen_order', state: 'open', sla_due_at: '2026-11-05T00:00:00.000Z', order_ref: 'DL-1' },
-          { case_id: 'cas_0', kind: 'frozen_order', state: 'open', sla_due_at: '2026-11-05T00:00:00.000Z', order_ref: null },
+          {
+            case_id: 'cas_2',
+            kind: 'frozen_order',
+            state: 'open',
+            sla_due_at: '2026-11-07T00:00:00.000Z',
+            order_ref: 'DL-2',
+          },
+          {
+            case_id: 'cas_1',
+            kind: 'frozen_order',
+            state: 'open',
+            sla_due_at: '2026-11-05T00:00:00.000Z',
+            order_ref: 'DL-1',
+          },
+          {
+            case_id: 'cas_0',
+            kind: 'frozen_order',
+            state: 'open',
+            sla_due_at: '2026-11-05T00:00:00.000Z',
+            order_ref: null,
+          },
         ],
         total: 3,
         next_cursor: null,
@@ -122,7 +182,11 @@ describe('the queue', () => {
   it('marks a case past its SLA as late, and one before it as not', async () => {
     const f = parseCaseFilter({ state: 'unresolved' });
     const v = caseQueueView(await buyers.readCaseQueue(caseQuery(f)), f, NOW);
-    expect(v.rows.map((r) => [r.case_id, r.late])).toEqual([['cas_c', true], ['cas_a', true], ['cas_b', false]]);
+    expect(v.rows.map((r) => [r.case_id, r.late])).toEqual([
+      ['cas_c', true],
+      ['cas_a', true],
+      ['cas_b', false],
+    ]);
   });
 
   it('every state filter gives the AL total, and closed cases are found by their own state', async () => {
@@ -156,7 +220,14 @@ describe('the detail', () => {
   it('offers all six actions while the case is open or being diagnosed, in AL order', async () => {
     for (const id of ['cas_c', 'cas_a']) {
       const v = await page(id);
-      expect(v.actions.map((a) => a.kind)).toEqual(['diagnose', 'restore', 'credit', 'close_not_charged', 'offer_refund', 'close_no_fault']);
+      expect(v.actions.map((a) => a.kind)).toEqual([
+        'diagnose',
+        'restore',
+        'credit',
+        'close_not_charged',
+        'offer_refund',
+        'close_no_fault',
+      ]);
       for (const a of v.actions) expect(a.label).toBe(CASE_ACTION_WORDS[a.kind]);
     }
   });
@@ -192,16 +263,40 @@ describe('the detail', () => {
     const a = v.actions.find((x) => x.kind === 'offer_refund')!;
     const req = caseActionRequest('cas_c', a, 'goodwill refund, order held too long');
     expect(req.path).toBe('/api/ops/cases/cas_c/actions');
-    expect(req.body).toEqual({ action: 'offer_refund', reason: 'goodwill refund, order held too long' });
+    expect(req.body).toEqual({
+      action: 'offer_refund',
+      reason: 'goodwill refund, order held too long',
+    });
     expect(req.headers).toEqual({ 'idempotency-key': a.key });
     const send = () =>
-      call(actionRoute.POST, { url: req.path, method: 'POST', body: req.body, session: w.op, params: { id: 'cas_c' }, headers: req.headers });
+      call(actionRoute.POST, {
+        url: req.path,
+        method: 'POST',
+        body: req.body,
+        session: w.op,
+        params: { id: 'cas_c' },
+        headers: req.headers,
+      });
     // The key from the page is short in this test; the route wants a real one, so the page passes AL's own.
     const keyed = { ...req, headers: { 'idempotency-key': key() } };
-    const first = await call(actionRoute.POST, { url: keyed.path, method: 'POST', body: keyed.body, session: w.op, params: { id: 'cas_c' }, headers: keyed.headers });
+    const first = await call(actionRoute.POST, {
+      url: keyed.path,
+      method: 'POST',
+      body: keyed.body,
+      session: w.op,
+      params: { id: 'cas_c' },
+      headers: keyed.headers,
+    });
     expect(first.status).toBe(200);
     expect(await count(w.app, 'SELECT count(*) AS c FROM refund_requests')).toBe(1);
-    const again = await call(actionRoute.POST, { url: keyed.path, method: 'POST', body: keyed.body, session: w.op, params: { id: 'cas_c' }, headers: keyed.headers });
+    const again = await call(actionRoute.POST, {
+      url: keyed.path,
+      method: 'POST',
+      body: keyed.body,
+      session: w.op,
+      params: { id: 'cas_c' },
+      headers: keyed.headers,
+    });
     expect(again.status).toBe(200);
     expect(await count(w.app, 'SELECT count(*) AS c FROM refund_requests')).toBe(1);
     void send;
@@ -210,18 +305,26 @@ describe('the detail', () => {
   it('the action request carries the credit length only for credit', async () => {
     const v = await page('cas_a');
     const credit = v.actions.find((x) => x.kind === 'credit')!;
-    expect(caseActionRequest('cas_a', credit, 'two hours of extra access', 7_200_000).body).toEqual({
-      action: 'credit',
-      reason: 'two hours of extra access',
-      credit_ms: 7_200_000,
-    });
+    expect(caseActionRequest('cas_a', credit, 'two hours of extra access', 7_200_000).body).toEqual(
+      {
+        action: 'credit',
+        reason: 'two hours of extra access',
+        credit_ms: 7_200_000,
+      },
+    );
     const diagnose = v.actions.find((x) => x.kind === 'diagnose')!;
-    expect(caseActionRequest('cas_a', diagnose, 'look at it', 5).body).toEqual({ action: 'diagnose', reason: 'look at it' });
+    expect(caseActionRequest('cas_a', diagnose, 'look at it', 5).body).toEqual({
+      action: 'diagnose',
+      reason: 'look at it',
+    });
   });
 
   it('shows the message to the buyer as plain system text, markup and all', async () => {
     const v = await page('cas_a');
-    expect(v.buyer_message).toEqual({ label: 'Message the system sent to the buyer', text: SCRIPT });
+    expect(v.buyer_message).toEqual({
+      label: 'Message the system sent to the buyer',
+      text: SCRIPT,
+    });
     const card = source('ui/ops/CaseCard.tsx');
     expect(card).not.toMatch(/dangerouslySetInnerHTML/);
     expect(card).toMatch(/\{view\.buyer_message\.text\}|\{m\.text\}|buyer_message\.text/);
@@ -242,12 +345,16 @@ describe('the detail', () => {
   it('links the order and the alerts of the case', async () => {
     const v = await page('cas_a');
     expect(v.order_href).toBe(`/ops/money/orders/${u['a']!.order_ref}`);
-    expect(v.alerts).toEqual([{ alert_id: 'alr_caseA', kind: 'frozen_order', href: '/ops/alerts/alr_caseA' }]);
+    expect(v.alerts).toEqual([
+      { alert_id: 'alr_caseA', kind: 'frozen_order', href: '/ops/alerts/alr_caseA' },
+    ]);
   });
 
   it('answers null for a case that is not there and for anyone but an operator', async () => {
     expect(await buyers.readCasePage(MFA, 'cas_missing')).toBeNull();
-    expect(await buyers.readCasePage({ kind: 'buyer', buyer_id: 'x' } as never, 'cas_a')).toBeNull();
+    expect(
+      await buyers.readCasePage({ kind: 'buyer', buyer_id: 'x' } as never, 'cas_a'),
+    ).toBeNull();
   });
 });
 
@@ -264,7 +371,9 @@ describe('the Buyers tab and the pages (source as text)', () => {
     '%s is operator only, reads through ops-buyers.ts alone and has no style or raw HTML',
     (f) => {
       const page = source(f);
-      expect(page).toMatch(/actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/buyers\/cases[^']*'\)/);
+      expect(page).toMatch(
+        /actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/buyers\/cases[^']*'\)/,
+      );
       expect(page).toMatch(/from '(\.\.\/)+composition\/ops-buyers'/);
       expect(page).not.toMatch(/server\/access|composition\.server/);
       expect(page).not.toMatch(/style=|dangerouslySetInnerHTML/);

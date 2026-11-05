@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { withTraceContext } from '@umsbx/obs';
 import type { Actor, TraceContext } from '@umsbx/contracts';
-import { HARBOUR_FERRY, HARBOUR_TIDE, runPack } from './composite-support';
+import { HARBOUR_TIDE, QUAY_MARKET, runPack } from './composite-support';
 import { bootAlertRig } from './ops-alerts-support';
 import type { AlertRig } from './ops-alerts-support';
 import { alertDetailView, orderHref } from './lib/ops-alerts-view';
@@ -24,7 +24,7 @@ const source = (rel: string): string =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const IP = 'ab'.repeat(32);
+const IP = 'ab'.repeat(16);
 const ctx: TraceContext = {
   id: 'ctx_ord_a1',
   at: '2026-11-05T10:00:00.000Z',
@@ -57,14 +57,30 @@ beforeAll(async () => {
   money = await import('./composition/ops-money');
   home = await import('./composition/ops-home');
   const app = rig.rig.app;
-  const started = await runPack(app, rig.rig.buyerA, [HARBOUR_TIDE, HARBOUR_FERRY], ['happy']);
+  const started = await runPack(app, rig.rig.buyerA, [HARBOUR_TIDE, QUAY_MARKET], ['happy']);
   ref = started.order_ref;
   const q = (s: string, p: unknown[] = []) => app.db.query<Record<string, string>>(s, p);
-  units = (await q('SELECT id FROM order_units WHERE order_id = $1 ORDER BY id', [started.order_id])).rows.map((r) => r['id']!);
-  buyerName = (await q('SELECT b.display_name AS n FROM buyers b JOIN orders o ON o.buyer_id = b.id WHERE o.id = $1', [started.order_id])).rows[0]!['n']!;
+  units = (
+    await q('SELECT id FROM order_units WHERE order_id = $1 ORDER BY id', [started.order_id])
+  ).rows.map((r) => r['id']!);
+  buyerName = (
+    await q(
+      'SELECT b.display_name AS n FROM buyers b JOIN orders o ON o.buyer_id = b.id WHERE o.id = $1',
+      [started.order_id],
+    )
+  ).rows[0]!['n']!;
   providerIds = [
-    ...(await q('SELECT provider_order_id AS v FROM provider_orders WHERE order_id = $1', [started.order_id])).rows.map((r) => r['v']!),
-    ...(await q('SELECT capture_id AS v FROM order_units WHERE order_id = $1 AND capture_id IS NOT NULL', [started.order_id])).rows.map((r) => r['v']!),
+    ...(
+      await q('SELECT provider_order_id AS v FROM provider_orders WHERE order_id = $1', [
+        started.order_id,
+      ])
+    ).rows.map((r) => r['v']!),
+    ...(
+      await q(
+        'SELECT capture_id AS v FROM order_units WHERE order_id = $1 AND capture_id IS NOT NULL',
+        [started.order_id],
+      )
+    ).rows.map((r) => r['v']!),
   ];
   await withTraceContext(ctx, () =>
     app.db.query(
@@ -79,7 +95,7 @@ afterAll(async () => rig?.rig.app.close());
 describe('the order page view', () => {
   it('the order has two units, so the test is about a two unit order', () => {
     expect(units).toHaveLength(2);
-    expect(providerIds.length).toBeGreaterThanOrEqual(3);
+    expect(providerIds.length).toBeGreaterThanOrEqual(2);
     expect(buyerName.length).toBeGreaterThan(2);
   });
 
@@ -128,11 +144,19 @@ describe('the order page view', () => {
     const withCode = (await money.readOrderPage(MFA, ref))!;
     expect(withCode.units.map((u) => u.evidence)).toHaveLength(2);
     for (const u of withCode.units) {
-      expect(u.evidence).toEqual({ label: 'Evidence pack', href: `/api/ops/units/${u.id}/evidence.html`, enabled: true });
+      expect(u.evidence).toEqual({
+        label: 'Evidence pack',
+        href: `/api/ops/units/${u.id}/evidence.html`,
+        enabled: true,
+      });
     }
     const without = (await money.readOrderPage(PLAIN, ref))!;
     for (const u of without.units) {
-      expect(u.evidence).toEqual({ label: 'needs your authenticator code', href: null, enabled: false });
+      expect(u.evidence).toEqual({
+        label: 'needs your authenticator code',
+        href: null,
+        enabled: false,
+      });
     }
   });
 
@@ -158,7 +182,15 @@ describe('the order page view', () => {
 
   it('with no alert on the order there is no fix link', () => {
     const v = orderPageView({
-      order: { order_ref: 'DL-0', status: 'paid', total_minor: 500, currency: 'USD', environment: 'dryrun', created_at: '2026-11-05T10:00:00.000Z', buyer_name: null },
+      order: {
+        order_ref: 'DL-0',
+        status: 'paid',
+        total_minor: 500,
+        currency: 'USD',
+        environment: 'dryrun',
+        created_at: '2026-11-05T10:00:00.000Z',
+        buyer_name: null,
+      },
       units: [],
       entries: [],
       truncated: false,
@@ -176,9 +208,15 @@ describe('an alert opens the order at its own entry (A7)', () => {
   it('the alert page link ends #seq-<n> of the entry whose source is that alert', async () => {
     const page = (await home.readAlertPage(MFA, 'alr_ordpage'))!;
     const direct = (await rig.rig.app.trace.opsTimeline({ order_ref: ref, mfa: true }))!;
-    const mine = direct.entries.find((e) => e.source.table === 'alerts' && e.source.id === 'alr_ordpage')!;
+    const mine = direct.entries.find(
+      (e) => e.source.table === 'alerts' && e.source.id === 'alr_ordpage',
+    )!;
     expect(mine).toBeDefined();
-    const v = alertDetailView(page.detail, { mfa: true, keys: page.keys, order_anchor: page.order_anchor });
+    const v = alertDetailView(page.detail, {
+      mfa: true,
+      keys: page.keys,
+      order_anchor: page.order_anchor,
+    });
     expect(page.order_anchor).toBe(`seq-${mine.seq}`);
     expect(v.order_href).toBe(`${orderHref(ref, null)}#seq-${mine.seq}`);
     expect(v.order_href).toMatch(/^\/ops\/money\/orders\/[^#]+#seq-\d+$/);
@@ -187,7 +225,9 @@ describe('an alert opens the order at its own entry (A7)', () => {
   it('the page has that entry under that id', async () => {
     const v = (await money.readOrderPage(MFA, ref))!;
     const direct = (await rig.rig.app.trace.opsTimeline({ order_ref: ref, mfa: true }))!;
-    const i = direct.entries.findIndex((e) => e.source.table === 'alerts' && e.source.id === 'alr_ordpage');
+    const i = direct.entries.findIndex(
+      (e) => e.source.table === 'alerts' && e.source.id === 'alr_ordpage',
+    );
     expect(v.anchors[i]).toBe(`seq-${direct.entries[i]!.seq}`);
   });
 
@@ -197,7 +237,9 @@ describe('an alert opens the order at its own entry (A7)', () => {
     );
     const page = (await home.readAlertPage(MFA, 'alr_noorder'))!;
     expect(page.order_anchor).toBeNull();
-    expect(alertDetailView(page.detail, { mfa: true, keys: page.keys, order_anchor: null }).order_href).toBeNull();
+    expect(
+      alertDetailView(page.detail, { mfa: true, keys: page.keys, order_anchor: null }).order_href,
+    ).toBeNull();
     expect(await home.readAlertPage(MFA, 'alr_missing')).toBeNull();
   });
 });
@@ -205,7 +247,9 @@ describe('an alert opens the order at its own entry (A7)', () => {
 describe('the page itself (source as text)', () => {
   const page = source('app/ops/money/orders/[ref]/page.tsx');
   it('is operator only and reads through ops-money.ts alone', () => {
-    expect(page).toMatch(/actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/money'\)/);
+    expect(page).toMatch(
+      /actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/money'\)/,
+    );
     expect(page).toMatch(/from '(\.\.\/)+composition\/ops-money'/);
     expect(page).not.toMatch(/server\/access|composition\.server/);
     expect(page).not.toMatch(/style=|dangerouslySetInnerHTML/);

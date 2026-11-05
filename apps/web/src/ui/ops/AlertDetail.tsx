@@ -20,8 +20,11 @@ function ActionForm({ view, action }: { view: AlertDetailView; action: AlertActi
   async function press() {
     setBusy(true);
     setError(null);
-    const body = action.kind === 'resolve' ? { reason_code: reason, ...(note.trim() === '' ? {} : { note }) } : {};
-    const r = await postJson<{ state: string }>(action.path, body, { 'idempotency-key': action.key });
+    const body =
+      action.kind === 'resolve'
+        ? { reason_code: reason, ...(note.trim() === '' ? {} : { note }) }
+        : {};
+    const r = await postJson(action.path, body, { 'idempotency-key': action.key });
     setBusy(false);
     if (!r.ok) {
       setError(r.status === 401 ? 'Please sign in again.' : r.message);

@@ -249,7 +249,7 @@ describe('the pages (source as text)', () => {
     const page = strip(read('./app/ops/publishers/page.tsx'));
     expect(page).toMatch(/actor\?\.kind !== 'operator'/);
     expect(page).toContain("redirect('/signin?next=/ops/publishers')");
-    expect(page).toMatch(/engine\.opsPublishers\.list\(actor\)/);
+    expect(page).toMatch(/readOpsPublishers\(actor\)/); // INT-OPS-A: through composition/ops-sellers
     expect(page).toContain("from '../../../lib/ops-publishers-copy'");
     expect(page).toContain('href="/ops/payee-requests"');
     expect(page).not.toMatch(/style=/);

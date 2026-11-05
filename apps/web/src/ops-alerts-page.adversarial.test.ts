@@ -25,25 +25,33 @@ describe('who may open the alert pages', () => {
   it.each(PAGES)('%s sends anyone but an operator to sign in before reading', (f) => {
     const page = source(f);
     expect(page).toMatch(/const actor = await currentActor\(\)/);
-    expect(page).toMatch(/actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/alerts[^']*'\)/);
+    expect(page).toMatch(
+      /actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/alerts[^']*'\)/,
+    );
     expect(page.indexOf("actor?.kind !== 'operator'")).toBeLessThan(page.search(/await read[A-Z]/));
   });
 
-  it.each(PAGES)('%s does not turn an operator without the code away: it reads, the buttons are off', (f) => {
-    const page = source(f);
-    expect(page).not.toMatch(/MfaNeeded|mfa_required/);
-    expect(page).toMatch(/actor\.mfa/);
-  });
+  it.each(PAGES)(
+    '%s does not turn an operator without the code away: it reads, the buttons are off',
+    (f) => {
+      const page = source(f);
+      expect(page).not.toMatch(/MfaNeeded|mfa_required/);
+      expect(page).toMatch(/actor\.mfa/);
+    },
+  );
 });
 
 describe('what the alert pages read and show', () => {
-  it.each(PAGES)('%s reads only from composition/ops-home and never from the door or the root', (f) => {
-    const page = source(f);
-    expect(page).toMatch(/from '(\.\.\/)+composition\/ops-home'/);
-    expect(page).not.toMatch(/server\/access/);
-    expect(page).not.toMatch(/composition\.server/);
-    expect(page).not.toMatch(/\b(INSERT|UPDATE|DELETE)\b/);
-  });
+  it.each(PAGES)(
+    '%s reads only from composition/ops-home and never from the door or the root',
+    (f) => {
+      const page = source(f);
+      expect(page).toMatch(/from '(\.\.\/)+composition\/ops-home'/);
+      expect(page).not.toMatch(/server\/access/);
+      expect(page).not.toMatch(/composition\.server/);
+      expect(page).not.toMatch(/\b(INSERT|UPDATE|DELETE)\b/);
+    },
+  );
 
   it.each([...PAGES, ...PARTS])('%s has no inline style and no raw HTML', (f) => {
     const src = source(f);
@@ -52,7 +60,9 @@ describe('what the alert pages read and show', () => {
   });
 
   it.each([...PAGES, ...PARTS])('%s names no buyer, no seller and no provider id', (f) => {
-    expect(source(f)).not.toMatch(/buyer_id|publisher_id|display_name|merchant|provider_order_id|capture_id|ip_hash/);
+    expect(source(f)).not.toMatch(
+      /buyer_id|publisher_id|display_name|merchant|provider_order_id|capture_id|ip_hash/,
+    );
   });
 
   it('the list page and its table have names a screen reader can use', () => {

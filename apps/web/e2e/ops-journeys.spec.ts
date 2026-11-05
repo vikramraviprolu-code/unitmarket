@@ -11,8 +11,12 @@ test.describe('operator home journeys', () => {
     await op.getByLabel('Who are you testing as?').selectOption('operator');
     await op.getByLabel('Demo passcode').fill(PASSCODE);
     await op.getByRole('button', { name: 'Sign in' }).click();
-    for (const id of ['app', 'database', 'paypal', 'jobs']) await expect(op.getByTestId(`health-light-${id}`)).toBeVisible();
-    await op.getByRole('link', { name: /alerts/i }).first().click();
+    for (const id of ['app', 'database', 'paypal', 'jobs'])
+      await expect(op.getByTestId(`health-light-${id}`)).toBeVisible();
+    await op
+      .getByRole('link', { name: /alerts/i })
+      .first()
+      .click();
     await expect(op).toHaveURL(/\/ops\/alerts/);
     await op.goto('/ops/buyers');
     await expect(op).toHaveURL(/\/ops\/buyers\/cases/);

@@ -65,7 +65,11 @@ export default async function OpsCases({
                     {r.sla_text} {r.late ? <Chip tone="bad">Late</Chip> : null}
                   </td>
                   <td data-label="Order">
-                    {r.order_href === null ? 'none' : <Link href={r.order_href}>{r.order_ref}</Link>}
+                    {r.order_href === null ? (
+                      'none'
+                    ) : (
+                      <Link href={r.order_href}>{r.order_ref}</Link>
+                    )}
                   </td>
                 </tr>
               ))}

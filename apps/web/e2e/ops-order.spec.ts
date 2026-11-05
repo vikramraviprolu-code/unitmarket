@@ -1,10 +1,16 @@
 // INT-OPS-A / OPS-A.4 e2e (offline, dry run): an operator without the code opens an order from the Money page and
 // sees the summary and the timeline, with no buyer name; every timeline row carries the id seq-<n>.
 import { test, expect } from '@playwright/test';
-import { PASSCODE } from './support';
+import { PASSCODE, buyerPage, payWithScenario } from './support';
 
 test.describe('operator order page', () => {
-  test('opens from Transactions, shows seq anchors, and keeps the evidence button off without the code', async ({ browser }) => {
+  test('opens from Transactions, shows seq anchors, and keeps the evidence button off without the code', async ({
+    browser,
+  }) => {
+    // Own order, so the file runs alone as well as after the journeys.
+    const buyer = await buyerPage(browser, 'b');
+    await payWithScenario(buyer, { offer: 'tide-tables', scenario: 'happy' });
+    await buyer.context().close();
     const ctx = await browser.newContext();
     const op = await ctx.newPage();
     await op.goto('/signin?next=/ops/money/transactions');

@@ -72,7 +72,12 @@ export interface OrderPageView {
   /** PayPal order and capture ids: whole with the second factor, otherwise "…" and the last four. */
   provider_ids: { label: string; value: string }[];
   /** Request id, address prefix and browser of the steps that have them. Empty without the second factor. */
-  request_details: { seq: number; req_id: string | null; address: string | null; browser: string | null }[];
+  request_details: {
+    seq: number;
+    req_id: string | null;
+    address: string | null;
+    browser: string | null;
+  }[];
   timeline: TimelineView;
   /** seq-<n> of each timeline entry, in entry order. */
   anchors: string[];
@@ -94,7 +99,8 @@ export function orderPageView(i: OrderPageInput): OrderPageView {
   for (const [n, p] of (i.provider_orders ?? []).entries())
     ids.push({ label: `PayPal order ${String(n + 1)}`, value: shown(p.provider_order_id) });
   for (const u of i.units)
-    if (u.capture_id !== null) ids.push({ label: `Capture of ${u.id}`, value: shown(u.capture_id) });
+    if (u.capture_id !== null)
+      ids.push({ label: `Capture of ${u.id}`, value: shown(u.capture_id) });
   const details = i.mfa
     ? i.entries
         .filter((e) => e.req_id != null || e.ip_hash != null || e.ua_family != null)

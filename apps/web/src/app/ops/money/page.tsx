@@ -135,7 +135,8 @@ export default async function OpsMoney() {
                       OPS_HOME_STATES_NOTE
                     ) : (
                       <>
-                        {OPS_HOME_STATES_NOTE} <Link href={operationLink(t.key)!}>See the operations</Link>
+                        {OPS_HOME_STATES_NOTE}{' '}
+                        <Link href={operationLink(t.key)!}>See the operations</Link>
                       </>
                     )
                   }

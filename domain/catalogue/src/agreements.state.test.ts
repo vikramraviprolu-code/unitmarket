@@ -83,7 +83,9 @@ describe('reads', () => {
     expect(await listAgreements(w.db, w.harbour)).toBe(null);
     const all = await listAgreements(w.db, w.operator);
     // INT-OPS-A / OPS-A.7: a read, so an operator without the code gets the same rows.
-    expect(await listAgreements(w.db, { kind: 'operator', operator_id: 'opr_v', mfa: false })).toEqual(all);
+    expect(
+      await listAgreements(w.db, { kind: 'operator', operator_id: 'opr_v', mfa: false }),
+    ).toEqual(all);
     expect(all?.map((x) => x.publisher_id).sort()).toEqual(Object.values(w.pubId).sort());
   });
 

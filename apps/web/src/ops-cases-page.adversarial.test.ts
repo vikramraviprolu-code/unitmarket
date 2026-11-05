@@ -36,14 +36,29 @@ beforeAll(async () => {
      SELECT 'cas_evil', 'refund_requested', 'open', id, NULL, buyer_id, 'buyer', $2::timestamptz, 0, $3::text, $2::timestamptz, $2::timestamptz FROM orders WHERE id = $1`,
     [unit.order_id, at, EVIL],
   );
-  buyerName = (await w.app.db.query<{ n: string }>('SELECT display_name AS n FROM buyers WHERE id = (SELECT buyer_id FROM orders WHERE id = $1)', [unit.order_id])).rows[0]!.n;
-  ids = (await w.app.db.query<{ v: string }>('SELECT provider_order_id AS v FROM provider_orders WHERE order_id = $1', [unit.order_id])).rows.map((r) => r.v);
+  buyerName = (
+    await w.app.db.query<{ n: string }>(
+      'SELECT display_name AS n FROM buyers WHERE id = (SELECT buyer_id FROM orders WHERE id = $1)',
+      [unit.order_id],
+    )
+  ).rows[0]!.n;
+  ids = (
+    await w.app.db.query<{ v: string }>(
+      'SELECT provider_order_id AS v FROM provider_orders WHERE order_id = $1',
+      [unit.order_id],
+    )
+  ).rows.map((r) => r.v);
 });
 afterAll(async () => w.app.close());
 
 describe('who may read a case', () => {
   it('the files exist, and the Buyers redirect is there', () => {
-    for (const f of ['app/ops/buyers/page.tsx', 'app/ops/buyers/cases/page.tsx', 'app/ops/buyers/cases/[id]/page.tsx', 'ui/ops/CaseCard.tsx'])
+    for (const f of [
+      'app/ops/buyers/page.tsx',
+      'app/ops/buyers/cases/page.tsx',
+      'app/ops/buyers/cases/[id]/page.tsx',
+      'ui/ops/CaseCard.tsx',
+    ])
       expect(existsSync(join(here, f)), f).toBe(true);
   });
 
@@ -52,14 +67,26 @@ describe('who may read a case', () => {
     (f) => {
       const page = source(f);
       expect(page).toMatch(/actor\?\.kind !== 'operator'\) redirect\(/);
-      expect(page.indexOf("actor?.kind !== 'operator'")).toBeLessThan(page.search(/await read[A-Z]/));
+      expect(page.indexOf("actor?.kind !== 'operator'")).toBeLessThan(
+        page.search(/await read[A-Z]/),
+      );
     },
   );
 
   it('the case reads answer null for a buyer, a seller and the system, even with a valid case id', async () => {
-    for (const actor of [w.actorA, w.actorB, { kind: 'publisher', publisher_id: 'pub_x' }, { kind: 'system' }] as const)
+    for (const actor of [
+      w.actorA,
+      w.actorB,
+      { kind: 'publisher', publisher_id: 'pub_x' },
+      { kind: 'system' },
+    ] as const)
       expect(await buyers.readCasePage(actor as never, 'cas_evil')).toBeNull();
-    expect(await buyers.readCasePage({ kind: 'operator', operator_id: 'opr_demo', mfa: false }, 'cas_evil')).not.toBeNull();
+    expect(
+      await buyers.readCasePage(
+        { kind: 'operator', operator_id: 'opr_demo', mfa: false },
+        'cas_evil',
+      ),
+    ).not.toBeNull();
   });
 });
 
@@ -74,16 +101,34 @@ describe('what a case shows', () => {
   });
 
   it('the message is kept as typed: plain text, never HTML, never run', async () => {
-    const p = (await buyers.readCasePage({ kind: 'operator', operator_id: 'opr_vikram', mfa: true }, 'cas_evil'))!;
+    const p = (await buyers.readCasePage(
+      { kind: 'operator', operator_id: 'opr_vikram', mfa: true },
+      'cas_evil',
+    ))!;
     const v = caseDetailView(p.detail, { mfa: true, keys: p.keys });
     expect(v.buyer_message!.text).toBe(EVIL);
-    for (const f of ['ui/ops/CaseCard.tsx', 'app/ops/buyers/cases/[id]/page.tsx', 'app/ops/buyers/cases/page.tsx'])
+    for (const f of [
+      'ui/ops/CaseCard.tsx',
+      'app/ops/buyers/cases/[id]/page.tsx',
+      'app/ops/buyers/cases/page.tsx',
+    ])
       expect(source(f)).not.toMatch(/dangerouslySetInnerHTML|innerHTML|\.html\(/);
   });
 
   it('a case with no message shows no message block', async () => {
     const view = caseDetailView(
-      { case_id: 'cas_n', kind: 'frozen_order', state: 'open', sla_due_at: '2026-11-05T10:00:00.000Z', order_ref: null, credit_ms: 0, opened_by: 'system', alerts: [], allowed_actions: [], buyer_message_present: false },
+      {
+        case_id: 'cas_n',
+        kind: 'frozen_order',
+        state: 'open',
+        sla_due_at: '2026-11-05T10:00:00.000Z',
+        order_ref: null,
+        credit_ms: 0,
+        opened_by: 'system',
+        alerts: [],
+        allowed_actions: [],
+        buyer_message_present: false,
+      },
       { mfa: false, keys: {} },
     );
     expect(view.buyer_message).toBeNull();
@@ -91,7 +136,10 @@ describe('what a case shows', () => {
   });
 
   it('a session without the second factor sees nothing that names a person', async () => {
-    const p = (await buyers.readCasePage({ kind: 'operator', operator_id: 'opr_demo', mfa: false }, 'cas_evil'))!;
+    const p = (await buyers.readCasePage(
+      { kind: 'operator', operator_id: 'opr_demo', mfa: false },
+      'cas_evil',
+    ))!;
     const text = JSON.stringify(caseDetailView(p.detail, { mfa: false, keys: p.keys }));
     expect(text).not.toContain(buyerName);
     for (const id of ids) expect(text).not.toContain(id);

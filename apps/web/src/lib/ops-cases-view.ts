@@ -15,11 +15,16 @@ export interface CaseFilter {
   state: CaseFilterState;
 }
 
-const first = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
+const first = (v: string | string[] | undefined): string | undefined =>
+  Array.isArray(v) ? v[0] : v;
 
 export function parseCaseFilter(sp: Record<string, string | string[] | undefined>): CaseFilter {
   const s = first(sp['state']);
-  return { state: (CASE_STATES as readonly string[]).includes(s ?? '') ? (s as CaseFilterState) : 'unresolved' };
+  return {
+    state: (CASE_STATES as readonly string[]).includes(s ?? '')
+      ? (s as CaseFilterState)
+      : 'unresolved',
+  };
 }
 
 export const caseQuery = (f: CaseFilter): { state: CaseFilterState } => ({ state: f.state });
@@ -69,24 +74,35 @@ const casesHref = (state: CaseFilterState): string =>
 
 export function caseQueueView(queue: CaseQueue, f: CaseFilter, nowIso: string): CaseQueueView {
   const rows = [...queue.items]
-    .sort((a, b) => (a.sla_due_at < b.sla_due_at ? -1 : a.sla_due_at > b.sla_due_at ? 1 : a.case_id < b.case_id ? -1 : 1))
-    .map(
-      (c): CaseRowView => ({
-        case_id: c.case_id,
-        href: `/ops/buyers/cases/${c.case_id}`,
-        kind_word: kindWord(c.kind),
-        state_word: stateWord(c.state),
-        sla_due_at: c.sla_due_at,
-        sla_text: formatDateTime(c.sla_due_at),
-        late: c.sla_due_at < nowIso && (c.state === 'open' || c.state === 'diagnosing' || c.state === 'refund_pending'),
-        order_ref: c.order_ref,
-        order_href: c.order_ref === null ? null : orderHref(c.order_ref, null),
-      }),
-    );
+    .sort((a, b) =>
+      a.sla_due_at < b.sla_due_at
+        ? -1
+        : a.sla_due_at > b.sla_due_at
+          ? 1
+          : a.case_id < b.case_id
+            ? -1
+            : 1,
+    )
+    .map((c): CaseRowView => ({
+      case_id: c.case_id,
+      href: `/ops/buyers/cases/${c.case_id}`,
+      kind_word: kindWord(c.kind),
+      state_word: stateWord(c.state),
+      sla_due_at: c.sla_due_at,
+      sla_text: formatDateTime(c.sla_due_at),
+      late:
+        c.sla_due_at < nowIso &&
+        (c.state === 'open' || c.state === 'diagnosing' || c.state === 'refund_pending'),
+      order_ref: c.order_ref,
+      order_href: c.order_ref === null ? null : orderHref(c.order_ref, null),
+    }));
   return {
     rows,
     total: queue.total,
-    total_text: queue.total === 0 ? 'No cases' : `${String(queue.total)} ${queue.total === 1 ? 'case' : 'cases'}`,
+    total_text:
+      queue.total === 0
+        ? 'No cases'
+        : `${String(queue.total)} ${queue.total === 1 ? 'case' : 'cases'}`,
     filters: CASE_STATES.map((state) => ({
       state,
       label: stateWord(state),
@@ -98,7 +114,14 @@ export function caseQueueView(queue: CaseQueue, f: CaseFilter, nowIso: string): 
 }
 
 /** The six actions AL allows on a case, in AL's order. */
-export const CASE_ACTION_KINDS = ['diagnose', 'restore', 'credit', 'close_not_charged', 'offer_refund', 'close_no_fault'] as const;
+export const CASE_ACTION_KINDS = [
+  'diagnose',
+  'restore',
+  'credit',
+  'close_not_charged',
+  'offer_refund',
+  'close_no_fault',
+] as const;
 export type CaseActionKind = CaseDetail['allowed_actions'][number];
 export const CASE_ACTION_WORDS: Record<CaseActionKind, string> = {
   diagnose: 'Diagnose',
@@ -147,18 +170,20 @@ export function caseDetailView(
       d.buyer_message === undefined || d.buyer_message === ''
         ? null
         : { label: 'Message the system sent to the buyer', text: d.buyer_message },
-    alerts: d.alerts.map((a) => ({ alert_id: a.alert_id, kind: a.kind, href: `/ops/alerts/${a.alert_id}` })),
-    actions: d.allowed_actions.map(
-      (kind): CaseActionView => ({
-        kind,
-        label: CASE_ACTION_WORDS[kind],
-        path: `/api/ops/cases/${d.case_id}/actions`,
-        key: o.keys[kind] ?? '',
-        enabled: o.mfa,
-        hint: o.mfa ? null : OPS_NEEDS_CODE,
-        needs_credit: kind === 'credit',
-      }),
-    ),
+    alerts: d.alerts.map((a) => ({
+      alert_id: a.alert_id,
+      kind: a.kind,
+      href: `/ops/alerts/${a.alert_id}`,
+    })),
+    actions: d.allowed_actions.map((kind): CaseActionView => ({
+      kind,
+      label: CASE_ACTION_WORDS[kind],
+      path: `/api/ops/cases/${d.case_id}/actions`,
+      key: o.keys[kind] ?? '',
+      enabled: o.mfa,
+      hint: o.mfa ? null : OPS_NEEDS_CODE,
+      needs_credit: kind === 'credit',
+    })),
   };
 }
 

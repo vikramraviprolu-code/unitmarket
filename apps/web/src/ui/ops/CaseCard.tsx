@@ -22,7 +22,7 @@ function ActionForm({ caseId, action }: { caseId: string; action: CaseActionView
     setError(null);
     const credit = action.needs_credit ? Math.round(Number(hours) * 3_600_000) : undefined;
     const req = caseActionRequest(caseId, action, reason, credit);
-    const r = await postJson<{ state: string }>(req.path, req.body, req.headers);
+    const r = await postJson(req.path, req.body, req.headers);
     setBusy(false);
     if (!r.ok) {
       setError(r.status === 401 ? 'Please sign in again.' : r.message);

@@ -68,14 +68,24 @@ async function inv1(db: SqlExecutor): Promise<Result> {
     if (r['verified'] === true) {
       if (sales !== 1 || sale !== amount) {
         bad.push(
-          bad_('order_units', id, `unit ${id}: ${sales} sale entries totalling ${sale}, captured amount ${amount}`),
+          bad_(
+            'order_units',
+            id,
+            `unit ${id}: ${sales} sale entries totalling ${sale}, captured amount ${amount}`,
+          ),
         );
       } else if (refund !== refunded || sale - refund !== amount - refunded) {
-        bad.push(bad_('order_units', id, `unit ${id}: ledger refunds ${refund}, unit says ${refunded}`));
+        bad.push(
+          bad_('order_units', id, `unit ${id}: ledger refunds ${refund}, unit says ${refunded}`),
+        );
       }
     } else if (sales > 0 || refund > 0) {
       bad.push(
-        bad_('order_units', id, `unit ${id}: not verified but the ledger has sale ${sale} and refund ${refund}`),
+        bad_(
+          'order_units',
+          id,
+          `unit ${id}: not verified but the ledger has sale ${sale} and refund ${refund}`,
+        ),
       );
     }
   }
@@ -172,7 +182,11 @@ async function inv4(db: SqlExecutor): Promise<Result> {
       expected.credit_ms !== Number(w['credit_ms'])
     ) {
       bad.push(
-        bad_('entitlements', id, `item ${id}: stored end ${iso(w['ends_at'])}, log gives ${expected.ends_at}`),
+        bad_(
+          'entitlements',
+          id,
+          `item ${id}: stored end ${iso(w['ends_at'])}, log gives ${expected.ends_at}`,
+        ),
       );
     }
   }
@@ -194,7 +208,9 @@ async function inv5(db: SqlExecutor): Promise<Result> {
                           AND p.state = 'failed' AND p.failure_reason = 'window_expired')
       ORDER BY o.id`,
   );
-  const bad = rows.rows.map((r) => bad_('orders', r.id, `order ${r.id} is ${r.status} and nothing polls it`));
+  const bad = rows.rows.map((r) =>
+    bad_('orders', r.id, `order ${r.id} is ${r.status} and nothing polls it`),
+  );
   // Per PayPal order, for a pack (a single order has one, and the order check above covers it).
   const perPo = await db.query<{ id: string; order_id: string; state: string }>(
     `SELECT p.id, p.order_id, p.state FROM provider_orders p
@@ -207,7 +223,11 @@ async function inv5(db: SqlExecutor): Promise<Result> {
   );
   for (const r of perPo.rows) {
     bad.push(
-      bad_('provider_orders', r.id, `provider order ${r.id} of order ${r.order_id} is ${r.state} and nothing polls it`),
+      bad_(
+        'provider_orders',
+        r.id,
+        `provider order ${r.id} of order ${r.order_id} is ${r.state} and nothing polls it`,
+      ),
     );
   }
   return {

@@ -28,7 +28,12 @@ let rig: AlertRig;
 let home: typeof import('./composition/ops-home');
 type Handler = Parameters<typeof post>[0];
 const route = async (verb: 'acknowledge' | 'resolve' | 'reopen'): Promise<Handler> =>
-  (await import(`./app/api/ops/alerts/[id]/${verb}/route`)).POST as Handler;
+  (verb === 'acknowledge'
+    ? await import('./app/api/ops/alerts/[id]/acknowledge/route')
+    : verb === 'resolve'
+      ? await import('./app/api/ops/alerts/[id]/resolve/route')
+      : await import('./app/api/ops/alerts/[id]/reopen/route')
+  ).POST as Handler;
 const go = async (verb: 'acknowledge' | 'resolve' | 'reopen', id: string, body: unknown = {}) =>
   post(await route(verb), `/api/ops/alerts/${id}/${verb}`, {
     session: rig.op,
@@ -76,7 +81,9 @@ describe('the filters', () => {
 
   it('build an address and read it back', () => {
     expect(alertsHref({ state: 'open' })).toBe('/ops/alerts');
-    expect(alertsHref({ state: 'all', severity: 'high' })).toBe('/ops/alerts?state=all&severity=high');
+    expect(alertsHref({ state: 'all', severity: 'high' })).toBe(
+      '/ops/alerts?state=all&severity=high',
+    );
     const f = { state: 'acknowledged', severity: 'high', kind: 'payment_unresolved' } as const;
     const q = Object.fromEntries(new URL(alertsHref(f), 'http://x').searchParams);
     expect(parseAlertFilter(q)).toEqual(f);
@@ -96,14 +103,16 @@ describe('the filters', () => {
     expect((await listFor({ state: 'all', severity: 'info' })).view.total).toBe(1);
     expect((await listFor({ state: 'all', kind: 'payment_unresolved' })).view.total).toBe(2);
     expect((await listFor({ kind: 'payment_unresolved' })).view.total).toBe(1);
-    expect((await listFor({ state: 'all', severity: 'high', kind: 'frozen_order' })).view.total).toBe(0);
+    expect(
+      (await listFor({ state: 'all', severity: 'high', kind: 'frozen_order' })).view.total,
+    ).toBe(0);
   });
 
   it('equal the engine answer for every combination, and a row is never lost to a page', async () => {
     for (const state of ['open', 'acknowledged', 'resolved', 'all']) {
       for (const severity of [undefined, 'critical', 'high', 'medium', 'info']) {
         const sp = { state, ...(severity === undefined ? {} : { severity }) };
-        const { f, list, view } = await listFor(sp);
+        const { f, view } = await listFor(sp);
         const direct = await rig.rig.app.engine.opsReads.alerts(alertQuery(f));
         expect(view.total).toBe(direct.total);
         expect(view.rows.map((r) => r.id)).toEqual(direct.items.map((i) => i.id));
@@ -113,7 +122,11 @@ describe('the filters', () => {
 
   it('true totals: a list longer than one page says so, and the next link keeps the filter', async () => {
     for (let i = 0; i < 30; i += 1)
-      await seedAlert(rig.rig, { id: `alr_w${String(i).padStart(2, '0')}`, kind: 'reversal_hint', reason: `w${i}` });
+      await seedAlert(rig.rig, {
+        id: `alr_w${String(i).padStart(2, '0')}`,
+        kind: 'reversal_hint',
+        reason: `w${i}`,
+      });
     const { list, view } = await listFor({ state: 'all', severity: 'info' });
     expect(list.total).toBe(31);
     expect(view.total).toBe(31);
@@ -155,7 +168,11 @@ describe('the alert detail', () => {
   const view = async (id: string, mfa = true) => {
     const d = await home.readAlertDetail(id);
     expect(d).not.toBeNull();
-    return alertDetailView(d!, { mfa, keys: { acknowledge: 'k1', resolve: 'k2', reopen: 'k3' }, order_anchor: null });
+    return alertDetailView(d!, {
+      mfa,
+      keys: { acknowledge: 'k1', resolve: 'k2', reopen: 'k3' },
+      order_anchor: null,
+    });
   };
 
   it('shows cause, title, state and the fix link of the catalogue', async () => {
@@ -182,7 +199,8 @@ describe('the alert detail', () => {
     const resolve = (await view('alr_v01')).actions.find((a) => a.kind === 'resolve')!;
     expect(resolve.reasons!.map((r) => r.code)).toEqual([...RESOLVE_REASON_CODES]);
     expect(Object.keys(RESOLVE_REASON_WORDS).sort()).toEqual([...RESOLVE_REASON_CODES].sort());
-    for (const r of resolve.reasons!) expect(r.label).toBe(RESOLVE_REASON_WORDS[r.code as keyof typeof RESOLVE_REASON_WORDS]);
+    for (const r of resolve.reasons!)
+      expect(r.label).toBe(RESOLVE_REASON_WORDS[r.code as keyof typeof RESOLVE_REASON_WORDS]);
     for (const a of (await view('alr_v01')).actions.filter((x) => x.kind !== 'resolve'))
       expect(a.reasons).toBeUndefined();
   });
@@ -212,7 +230,12 @@ describe('the alert detail', () => {
       const before = await view('alr_walk');
       const a = before.actions.find((x) => x.kind === verb)!;
       expect(a).toBeDefined();
-      const res = await post(await route(verb), a.path, { session: rig.op, body, idem: key(), params: { id: 'alr_walk' } });
+      const res = await post(await route(verb), a.path, {
+        session: rig.op,
+        body,
+        idem: key(),
+        params: { id: 'alr_walk' },
+      });
       expect(res.status).toBe(200);
       return (await res.json()) as { state: string };
     };
@@ -229,9 +252,7 @@ describe('the alert detail', () => {
 
   it('shows the history of the alert, oldest first', async () => {
     const v = await view('alr_v06');
-    expect(v.history.map((h) => h.text)).toEqual([
-      'Resolved: false positive',
-    ]);
+    expect(v.history.map((h) => h.text)).toEqual(['Resolved: false positive']);
   });
 });
 
@@ -271,13 +292,30 @@ describe('money, the order link and the anchor', () => {
 
   it('the case link is the case page, and none when there is no case', () => {
     const base = {
-      id: 'alr_x', kind: 'frozen_order', severity: 'critical', title: 'Order frozen', cause: 'c', state: 'open',
-      order_ref: null, unit_id: null, money_at_risk: null, case_id: 'cas_9', fix: { route: '/ops/money', anchor: 'ops-orders' },
-      next_action: 'n', created_at: '2026-11-05T10:00:00.000Z', history: [],
+      id: 'alr_x',
+      kind: 'frozen_order',
+      severity: 'critical',
+      title: 'Order frozen',
+      cause: 'c',
+      state: 'open',
+      order_ref: null,
+      unit_id: null,
+      money_at_risk: null,
+      case_id: 'cas_9',
+      fix: { route: '/ops/money', anchor: 'ops-orders' },
+      next_action: 'n',
+      created_at: '2026-11-05T10:00:00.000Z',
+      history: [],
     } as unknown as Parameters<typeof alertDetailView>[0];
-    const o = { mfa: true, keys: { acknowledge: 'a', resolve: 'b', reopen: 'c' }, order_anchor: null };
+    const o = {
+      mfa: true,
+      keys: { acknowledge: 'a', resolve: 'b', reopen: 'c' },
+      order_anchor: null,
+    };
     expect(alertDetailView(base, o).case_href).toBe('/ops/buyers/cases/cas_9');
     expect(alertDetailView({ ...base, case_id: null }, o).case_href).toBeNull();
-    expect(alertDetailView({ ...base, order_ref: 'DL-9' }, { ...o, order_anchor: 'seq-3' }).order_href).toBe('/ops/money/orders/DL-9#seq-3');
+    expect(
+      alertDetailView({ ...base, order_ref: 'DL-9' }, { ...o, order_anchor: 'seq-3' }).order_href,
+    ).toBe('/ops/money/orders/DL-9#seq-3');
   });
 });
