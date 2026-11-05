@@ -63,6 +63,16 @@ const EXPECTED_EXPORTS: string[] = [
   'CaseActionBodySchema',
   'ALERT_ROUTES',
   'BLOCKED_BY',
+  // INT-CTL
+  'API_GROUPS',
+  'EXPOSURE_REASON_CODES',
+  'SEED_EPOCH',
+  'GROUP_OF_PATH',
+  'groupOfPath',
+  'isApiGroup',
+  'CLOUD_STATUS_MAX_BYTES',
+  'CLOUD_PROJECT_PATTERN',
+  'CloudStatusSchema',
   'OPS_PAGES',
   // F2 transport
   'PayPalOperationSchema',

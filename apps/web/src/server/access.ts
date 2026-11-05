@@ -8,7 +8,7 @@ export {
   createApiV1,
   securityDeps,
 } from '../../composition.server';
-export type { ApiV1 } from '../../composition.server';
+export type { ApiV1, ExposureRow } from '../../composition.server';
 export type {
   AlertDetail,
   AlertList,
@@ -28,6 +28,17 @@ export type {
   RefundOverview,
   RefundUnitView,
 } from '../../composition.server';
-export { orderMessage, salesTotals } from '../../composition.server';
+export { UNIT_STATUS_TEXT, orderMessage, salesTotals } from '../../composition.server';
 // INT-OPS-B: TR0's in-process journal verifier, for traceVerifyDetail in composition/ops-controls.ts.
 export { formatTraceFinding, verifyTrace } from '../../composition.server';
+// INT-SEL: the transaction list and export reads for the seller composition module (read only).
+export {
+  TRACE_WORDS,
+  TxnSearchError,
+  exportName,
+  exportTransactions,
+  isPlainQuery,
+  listTransactions,
+  sellerLine,
+  txnCsv,
+} from '../../composition.server';

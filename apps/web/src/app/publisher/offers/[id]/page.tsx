@@ -55,6 +55,8 @@ import {
 } from '../../../../lib/publisher-forms-copy';
 import { OfferForm, WithdrawForm } from './OfferForm';
 import '../../pk-forms.css';
+import { readSellerOffer } from '../../../../composition/seller';
+import { SEVERAL_ARTICLES_NOTE } from '../../../../lib/seller-offer-view';
 
 export const metadata: Metadata = { title: 'Change an offer' };
 
@@ -70,6 +72,9 @@ export default async function PublisherOffer({ params }: { params: Promise<{ id:
   if (actor?.kind !== 'publisher') redirect(`/signin?next=${encodeURIComponent(here)}`);
   const o = await (await app()).engine.offers.get(actor, id);
   if (o === null) notFound();
+  // INT-SEL (SEL.6): the sales of this offer, once each across its versions, with its share of each sale's money.
+  const sold = await readSellerOffer(actor, id);
+  const sales = sold === null ? [] : sold.sales;
   const live = o.status === 'authorised';
   const rows = OPTIONS.map((option) => {
     const current = o.options.find((p) => p.option === option);
@@ -208,6 +213,48 @@ export default async function PublisherOffer({ params }: { params: Promise<{ id:
           </ul>
         </div>
       </Section>
+      <section
+        aria-labelledby="offer-sales-h"
+        className="pk-section"
+        id="offer-sales"
+        data-testid="offer-sales"
+      >
+        <h2 id="offer-sales-h">Sales of this offer</h2>
+        {sales.length === 0 ? (
+          <p className="muted">No sales of this offer yet.</p>
+        ) : (
+          <>
+            <table className="pk-table">
+              <caption className="visually-hidden">Sales of this offer</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Sale</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" className="pk-num">
+                    Net share
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sales.map((x) => (
+                  <tr key={x.unit_id}>
+                    <td>{formatDateTime(x.created_at)}</td>
+                    <td className="mono">
+                      <Link href={`/publisher/sales/${encodeURIComponent(x.unit_id)}`}>
+                        {x.order_ref6}
+                      </Link>
+                    </td>
+                    <td>{x.status}</td>
+                    <td className="pk-num">{formatMinor(x.net_minor, x.currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="muted">{SEVERAL_ARTICLES_NOTE}</p>
+          </>
+        )}
+      </section>
     </>
   );
 }

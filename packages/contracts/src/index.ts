@@ -37,3 +37,6 @@ export * from './trace';
 export * from './rules';
 // POB-M1 (fee on top, payout to publishers).
 export * from './payout';
+// INT-CTL (API exposure registry, the pasted cloud status).
+export * from './api-exposure';
+export * from './cloud-status';

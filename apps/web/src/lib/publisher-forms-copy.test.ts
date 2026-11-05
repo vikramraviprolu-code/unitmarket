@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { parsePriceMinor } from './offer-copy';
 import {
+  BACK_TO_PUBLISHER_HOME,
   BUYER_SEES_NOTE_READONLY,
   BUYER_SEES_OFF,
   OFFER_READONLY_LEDE,
@@ -144,5 +145,12 @@ describe('collectOptions', () => {
     expect(collectOptions(rows([false, ''], [false, '']), 500, parsePriceMinor).code).toBe(
       'invalid_options',
     );
+  });
+});
+
+// INT-SEL (F5): the page words say Seller; the identifier keeps its name.
+describe('seller words on the forms', () => {
+  it('the way back says seller home', () => {
+    expect(BACK_TO_PUBLISHER_HOME).toBe('Back to seller home');
   });
 });

@@ -31,6 +31,22 @@ import {
 } from '../../../lib/statement-copy';
 import { DownloadCsv } from '../DownloadCsv';
 import { MoneyBlock } from '../MoneyBlock';
+import { FilterBar } from '../../../ui/FilterBar';
+import { barState, queryString } from '../../../lib/filter-bar-view';
+import { readSellerSales } from '../../../composition/seller';
+import {
+  MORE_SALES,
+  OPEN_SALE,
+  SALES_EMPTY,
+  SALES_EXPORT_HREF,
+  SALES_EXPORT_LABEL,
+  parseSalesTab,
+  salesRows,
+  salesTabQuery,
+  tabHref,
+  tabText,
+  SALES_TABS,
+} from '../../../lib/seller-sales-view';
 import { Details, EnvChip, TableScroll } from '../pk-sales-parts';
 import { HOW_MADE_SUMMARY, totalsTiles, unitStatusTone } from '../../../lib/publisher-sales-view';
 import {
@@ -41,8 +57,6 @@ import {
 } from '../../../lib/pending-copy';
 import {
   EXPORT_NOTE,
-  EXPORT_SALES_HREF,
-  EXPORT_SALES_LABEL,
   REFUNDS_COLUMNS,
   REFUNDS_HEADING,
   REFUNDS_LEDE,
@@ -54,7 +68,11 @@ export const metadata: Metadata = { title: 'Sales' };
 
 // PUB-C, S4: the units the signed-in publisher sold. The page reads no parameter: the publisher id
 // is the session's, and the engine filters every query by it. No buyer is named anywhere.
-export default async function PublisherSales() {
+export default async function PublisherSales({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const actor = await currentActor();
   if (actor?.kind !== 'publisher') redirect('/signin?next=/publisher/sales');
   const a = await app();
@@ -70,6 +88,38 @@ export default async function PublisherSales() {
   // MC2-L6 (D-083): the units PayPal holds pending, with the closed label, and the seller's two choices.
   const pending = pendingSellerView((await a.engine.publisherPending(actor)) ?? []);
   const { counted: rows, notCounted } = splitSales(all);
+  // INT-SEL (SEL.2): the list below is SR1's seller list, in three views and with the seller filter bar. The
+  // address holds the view, the filters and the cursor; the seller is always the session's.
+  const sp = await searchParams;
+  const one = (v: string | string[] | undefined): string | undefined =>
+    Array.isArray(v) ? v[0] : v;
+  const tab = parseSalesTab(sp['view']);
+  const barCtx = { kind: 'txn', persona: 'publisher' } as const;
+  const filterRaw: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(sp))
+    if (k !== 'view' && k !== 'cursor') filterRaw[k] = one(v);
+  const filters = barState(barCtx, filterRaw).map;
+  const cursor = one(sp['cursor']);
+  const listed = await readSellerSales(actor, {
+    ...salesTabQuery(tab),
+    ...filters,
+    ...(cursor === undefined ? {} : { cursor }),
+  });
+  if (listed.kind === 'forbidden') redirect('/signin?next=/publisher/sales');
+  const list = listed.kind === 'ok' ? listed : null;
+  const lines = list === null ? [] : salesRows(list.lines);
+  // The way each article was bought and the PayPal fee come from the statement read model (same unit, same ref).
+  const detail = new Map(all.map((r) => [r.order_ref6, r] as const));
+  const base = tab === 'all' ? '/publisher/sales' : `/publisher/sales?view=${tab}`;
+  const qs = queryString(filters);
+  const exportHref =
+    qs === '' && tab === 'all'
+      ? SALES_EXPORT_HREF
+      : `${SALES_EXPORT_HREF}?${queryString({ ...salesTabQuery(tab), ...filters })}`;
+  const moreHref =
+    list?.next_cursor == null
+      ? null
+      : `${base}${base.includes('?') ? '&' : '?'}${qs}${qs === '' ? '' : '&'}cursor=${encodeURIComponent(list.next_cursor)}`;
   const mismatchCount = rows.filter((r) => r.status === 'mismatch').length;
   // The label follows the stored environment of the rows; with no rows, the app's.
   const environments = [...new Set(all.map((r) => r.environment))].sort();
@@ -85,11 +135,7 @@ export default async function PublisherSales() {
               <EnvLabel key={e} environment={e} />
             ))}
             {rows.length > 0 ? (
-              <DownloadCsv
-                href={EXPORT_SALES_HREF}
-                label={EXPORT_SALES_LABEL}
-                testId="export-sales"
-              />
+              <DownloadCsv href={exportHref} label={SALES_EXPORT_LABEL} testId="export-sales" />
             ) : null}
           </>
         }
@@ -103,7 +149,7 @@ export default async function PublisherSales() {
         items={[
           ...(totals.length > 0 ? [{ id: 'totals', label: 'Totals' }] : []),
           ...(pending.rows.length > 0 ? [{ id: 'pending', label: 'Pending' }] : []),
-          ...(rows.length > 0 ? [{ id: 'sales-list', label: 'Sales' }] : []),
+          { id: 'sales-list', label: 'Sales' },
           { id: 'refunds', label: 'Refunds' },
         ]}
       />
@@ -207,70 +253,116 @@ export default async function PublisherSales() {
           )}
         </Section>
       ) : null}
-      {rows.length === 0 ? (
-        <Section>
-          <EmptyState title={SALES_EMPTY_TITLE}>{SALES_EMPTY_BODY}</EmptyState>
-        </Section>
-      ) : (
-        <Section id="sales-list">
-          <p className="pk-count" role="status" data-testid="sales-count">
-            {salesCountText(rows.length)}
+      <Section title="Your sales" id="sales-list">
+        <nav aria-label="Sales views">
+          <ul className="pk-sublinks" data-testid="sales-views">
+            {SALES_TABS.map((t) => (
+              <li key={t}>
+                <Link href={tabHref(t)} aria-current={t === tab ? 'page' : undefined}>
+                  {list === null ? t : tabText(t, list.counts)}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <FilterBar
+          ctx={barCtx}
+          raw={filterRaw}
+          basePath={base}
+          presets={[]}
+          label="Filter your sales"
+        />
+        {listed.kind === 'refused' ? (
+          <p role="alert" className="pk-notice" data-testid="sales-refused">
+            {listed.message}
           </p>
-          <p className="table-hint pk-hint muted">Scroll sideways to see more</p>
-          <TableScroll label={SALES_HEADING}>
-            <table className="pk-table" data-testid="sales-table">
-              <caption className="visually-hidden">{SALES_HEADING}</caption>
-              <thead>
-                <tr>
-                  <th scope="col">{SALES_COLUMNS.date}</th>
-                  <th scope="col">{SALES_COLUMNS.order}</th>
-                  <th scope="col">{SALES_COLUMNS.article}</th>
-                  <th scope="col">{SALES_COLUMNS.access}</th>
-                  <th scope="col" className="pk-num">
-                    {SALES_COLUMNS.amount}
-                  </th>
-                  <th scope="col" className="pk-num">
-                    {SALES_COLUMNS.fee}
-                  </th>
-                  <th scope="col">{SALES_COLUMNS.status}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr key={`${r.order_ref6}-${String(i)}`} id={`order-${r.order_ref6}`}>
-                    <td className="pk-nowrap" data-label={SALES_COLUMNS.date}>
-                      {formatDateTime(r.at)}
-                    </td>
-                    <td className="mono pk-nowrap" data-label={SALES_COLUMNS.order}>
-                      {r.order_ref6}
-                    </td>
-                    <td data-label={SALES_COLUMNS.article}>
-                      {r.items.map((it, k) => (
-                        <div key={`${it.title}-${String(k)}`}>{it.title}</div>
-                      ))}
-                    </td>
-                    <td data-label={SALES_COLUMNS.access}>
-                      {r.items.map((it, k) => (
-                        <div key={`${it.title}-${String(k)}`}>{optionLabel(it.option)}</div>
-                      ))}
-                    </td>
-                    <td className="pk-num" data-label={SALES_COLUMNS.amount}>
-                      {formatMinor(r.amount_minor, r.currency)}
-                    </td>
-                    <td className="pk-num" data-label={SALES_COLUMNS.fee}>
-                      {feeText(r.paypal_fee_minor, r.currency, r.environment)}
-                    </td>
-                    <td data-label={SALES_COLUMNS.status}>
-                      <Chip tone={unitStatusTone(r.status)}>{r.status_text}</Chip>
-                    </td>
+        ) : lines.length === 0 ? (
+          <EmptyState
+            title={
+              rows.length === 0 && qs === '' && tab === 'all' ? SALES_EMPTY_TITLE : SALES_EMPTY
+            }
+          >
+            {rows.length === 0 && qs === '' && tab === 'all' ? SALES_EMPTY_BODY : ''}
+          </EmptyState>
+        ) : (
+          <>
+            <p className="pk-count" role="status" data-testid="sales-count">
+              {salesCountText(lines.length)}
+            </p>
+            <p className="table-hint pk-hint muted">Scroll sideways to see more</p>
+            <TableScroll label={SALES_HEADING}>
+              <table className="pk-table" data-testid="sales-table">
+                <caption className="visually-hidden">{SALES_HEADING}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{SALES_COLUMNS.date}</th>
+                    <th scope="col">{SALES_COLUMNS.order}</th>
+                    <th scope="col">{SALES_COLUMNS.article}</th>
+                    <th scope="col">{SALES_COLUMNS.access}</th>
+                    <th scope="col" className="pk-num">
+                      {SALES_COLUMNS.amount}
+                    </th>
+                    <th scope="col" className="pk-num">
+                      {SALES_COLUMNS.fee}
+                    </th>
+                    <th scope="col">{SALES_COLUMNS.status}</th>
+                    <th scope="col">Bought by</th>
+                    <th scope="col">
+                      <span className="visually-hidden">Open</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-          <p className="muted">{SALES_ORDER_NOTE}</p>
-        </Section>
-      )}
+                </thead>
+                <tbody>
+                  {lines.map((r) => (
+                    <tr key={r.unit_id} id={`order-${r.ref6}`}>
+                      <td className="pk-nowrap" data-label={SALES_COLUMNS.date}>
+                        {r.when}
+                      </td>
+                      <td className="mono pk-nowrap" data-label={SALES_COLUMNS.order}>
+                        {r.ref6}
+                      </td>
+                      <td data-label={SALES_COLUMNS.article}>{r.titles}</td>
+                      <td data-label={SALES_COLUMNS.access}>
+                        {(detail.get(r.ref6)?.items ?? []).map((it, k) => (
+                          <div key={`${it.title}-${String(k)}`}>{optionLabel(it.option)}</div>
+                        ))}
+                      </td>
+                      <td className="pk-num" data-label={SALES_COLUMNS.amount}>
+                        {r.amount}
+                      </td>
+                      <td className="pk-num" data-label={SALES_COLUMNS.fee}>
+                        {(() => {
+                          const d = detail.get(r.ref6);
+                          return d === undefined
+                            ? ''
+                            : feeText(d.paypal_fee_minor, d.currency, d.environment);
+                        })()}
+                      </td>
+                      <td data-label={SALES_COLUMNS.status}>
+                        <Chip tone="neutral">{r.status}</Chip>
+                      </td>
+                      <td data-label="Bought by">{r.channel}</td>
+                      <td>
+                        <Link href={r.href} aria-label={`${OPEN_SALE} ${r.ref6}`}>
+                          {OPEN_SALE}
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableScroll>
+            {moreHref === null ? null : (
+              <p>
+                <Link href={moreHref} data-testid="sales-more">
+                  {MORE_SALES}
+                </Link>
+              </p>
+            )}
+            <p className="muted">{SALES_ORDER_NOTE}</p>
+          </>
+        )}
+      </Section>
       {mismatchCount > 0 ? (
         <p className="pk-notice" data-testid="sales-mismatch">
           {mismatchSalesText(mismatchCount)}
