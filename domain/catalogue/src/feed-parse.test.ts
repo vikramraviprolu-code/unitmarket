@@ -86,8 +86,8 @@ describe('sanitiseFeedText', () => {
     );
   });
 
-  it('is linear on hostile input', () => {
-    const t0 = performance.now();
+  // No clock in a test (S6): the bound is the test timeout.
+  it('is linear on hostile input', { timeout: 10_000 }, () => {
     for (const raw of [
       '<'.repeat(200_000),
       '<a'.repeat(100_000),
@@ -100,7 +100,6 @@ describe('sanitiseFeedText', () => {
       const out = one(raw, 500);
       expect(out).not.toMatch(/[<>]/);
     }
-    expect(performance.now() - t0).toBeLessThan(5000);
   });
 
   it('never throws on lone surrogates, huge code points or odd numeric entities', () => {
@@ -381,7 +380,9 @@ describe('parseFeed: Atom and RSS', () => {
   // still not reading: nothing in this module can reach a link, and the text fields never hold it.
   it('a link in an entry is reported in the link field only, never in the text fields', () => {
     const got = items(parseFeed(ATOM, 'application/atom+xml'));
-    const text = JSON.stringify(got.map(({ link: _link, ...rest }) => rest));
+    const text = JSON.stringify(
+      got.map((i) => Object.fromEntries(Object.entries(i).filter(([k]) => k !== 'link'))),
+    );
     expect(text).not.toContain('elsewhere.invalid');
     expect(got.some((i) => i.link !== null && i.link.includes('elsewhere.invalid'))).toBe(true);
   });

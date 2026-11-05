@@ -17,7 +17,7 @@ const only = (r: Extracted): Candidate => {
 };
 
 describe('schema.org JSON-LD: a graph of articles and products', () => {
-  const r = run(fx('web-shop-jsonld.html'));
+  const r = run(fx('web-shop-jsonld.page'));
 
   it('finds six items in page order and no link to follow', () => {
     expect(r.reason).toBeNull();
@@ -93,7 +93,7 @@ describe('schema.org JSON-LD: a graph of articles and products', () => {
 });
 
 describe('schema.org JSON-LD: an item list', () => {
-  const r = run(fx('web-itemlist.html'));
+  const r = run(fx('web-itemlist.page'));
   it('an entry with its own data is an item, a same host address is a link, another host is skipped', () => {
     expect(r.reason).toBeNull();
     expect(r.candidates).toHaveLength(1);
@@ -109,7 +109,7 @@ describe('schema.org JSON-LD: an item list', () => {
 
 describe('a single item page', () => {
   it('JSON-LD Article', () => {
-    const c = only(run(fx('web-item-article.html')));
+    const c = only(run(fx('web-item-article.page')));
     expect(c).toMatchObject({
       kind: 'article',
       title: 'Quay walk',
@@ -120,7 +120,7 @@ describe('a single item page', () => {
   });
 
   it('OpenGraph article: the description is the only text', () => {
-    const c = only(run(fx('web-og-article.html')));
+    const c = only(run(fx('web-og-article.page')));
     expect(c.kind).toBe('article');
     expect(c.source_key).toBe(`https://${HOST}/a/lock-times`);
     expect(c.title).toBe('Lock times');
@@ -130,7 +130,7 @@ describe('a single item page', () => {
   });
 
   it('OpenGraph product: a picture item with the price tags', () => {
-    expect(only(run(fx('web-item-og-product.html')))).toMatchObject({
+    expect(only(run(fx('web-item-og-product.page')))).toMatchObject({
       kind: 'image',
       source_key: `https://${HOST}/p/chart-page`,
       title: 'Harbour chart (page)',
@@ -284,7 +284,7 @@ describe('what a type can be', () => {
 });
 
 describe('hostile pages: everything becomes inert text, nothing becomes a command or a link to follow', () => {
-  const r = run(fx('web-hostile.html'));
+  const r = run(fx('web-hostile.page'));
 
   it('reads the four entries and counts the broken block as skipped', () => {
     expect(r.candidates).toHaveLength(4);
@@ -299,8 +299,7 @@ describe('hostile pages: everything becomes inert text, nothing becomes a comman
       expect(text).not.toContain('alert(');
       expect(text).not.toContain('steal(');
       expect(text).not.toContain('display:none');
-      // eslint-disable-next-line no-control-regex
-      expect(text).not.toMatch(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/);
+      expect([...text].filter((ch) => ch.charCodeAt(0) < 32 && ch !== '\n')).toEqual([]);
     }
   });
 
@@ -388,14 +387,17 @@ describe('limits and linear time', () => {
     expect(run(xml, 'application/rss+xml').reason).toBe('bad_document');
   });
 
-  it('a 2 MB page of angle brackets and a 2 MB page of open tags finish quickly', () => {
-    const t0 = Date.now();
-    run('<'.repeat(2 * 1024 * 1024));
-    run('<script type="application/ld+json">'.repeat(60_000));
-    run('<meta property="og:title" content="'.repeat(60_000));
-    run('<!--'.repeat(500_000));
-    expect(Date.now() - t0).toBeLessThan(5000);
-  });
+  // No clock in a test (S6): the bound is the test timeout. A scan that is not linear would not finish in 10 s.
+  it(
+    'a 2 MB page of angle brackets and a 2 MB page of open tags finish quickly',
+    { timeout: 10_000 },
+    () => {
+      run('<'.repeat(2 * 1024 * 1024));
+      run('<script type="application/ld+json">'.repeat(60_000));
+      run('<meta property="og:title" content="'.repeat(60_000));
+      run('<!--'.repeat(500_000));
+    },
+  );
 
   it('more than 100 products in a graph is refused whole', () => {
     const graph = Array.from({ length: 101 }, (_, i) => ({

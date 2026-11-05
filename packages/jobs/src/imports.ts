@@ -12,6 +12,8 @@ export interface ImportRunner {
 }
 
 export interface ImportWorker {
+  /** The runner's recover, passed through (so a caller holds one object for both). */
+  recover(): Promise<unknown>;
   /** Starts a chain of runNext calls unless one is running or the worker is stopped. Returns at once. */
   kick(): void;
   /** Resolves when no chain is running. */
@@ -39,6 +41,7 @@ export function createImportWorker(runner: ImportRunner, log: Logger): ImportWor
     }
   };
   return {
+    recover: () => runner.recover(),
     kick(): void {
       if (stopped || current !== null) return;
       current = chain().finally(() => {

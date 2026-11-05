@@ -199,11 +199,10 @@ describe('readProofToken: a token has a fixed shape', () => {
   });
 });
 
-describe('readProofToken: hostile input is read in linear time', () => {
+// No clock in a test (S6): the bound is the test timeout. A scan that is not linear would not finish in 10 s.
+describe('readProofToken: hostile input is read in linear time', { timeout: 10_000 }, () => {
   const budget = (fn: () => void): void => {
-    const t0 = Date.now();
     fn();
-    expect(Date.now() - t0).toBeLessThan(3000);
   };
   it('does not throw on odd values', () => {
     for (const v of [undefined, null, 5, {}, []] as unknown[])

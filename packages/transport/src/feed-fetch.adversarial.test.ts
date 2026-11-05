@@ -30,7 +30,8 @@ interface RigOptions {
 
 function rig(script: Script, o: RigOptions = {}) {
   const fake = fakeRequest(script);
-  const resolve = vi.fn(async (_host: string): Promise<string[]> => {
+  const resolve = vi.fn(async (...asked: [string]): Promise<string[]> => {
+    void asked;
     if (o.resolveNever === true) return new Promise<string[]>(() => undefined);
     if (o.resolveError === true) throw new Error('SECRET-DNS-TEXT 10.9.9.9');
     const a = o.addresses ?? [PUBLIC];

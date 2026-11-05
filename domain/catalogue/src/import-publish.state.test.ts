@@ -3,6 +3,7 @@
 // authorisation row and an audit row. The attestation of rights is asked once per batch. The buyer price
 // shown at review comes from the injected ImportFeePolicy (the default is no fee). A price is the
 // publisher's own and obeys the same bounds as any offer price.
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { listAuthorisedOffers } from './read';
 import { listOwnOffers } from './write';
@@ -25,12 +26,15 @@ import {
 } from './import-support';
 import type { ImportWorld } from './import-support';
 
+const fixture = (name: string): string =>
+  readFileSync(new URL(`../test-data/${name}`, import.meta.url), 'utf8');
+
 const worlds: ImportWorld[] = [];
 afterEach(async () => {
   for (const w of worlds.splice(0)) await w.db.close();
 });
 async function staged(): Promise<{ w: ImportWorld; id: string }> {
-  const w = await importWorld(shopPages());
+  const w = await importWorld(shopPages(fixture));
   worlds.push(w);
   await verifyShop(w);
   const b = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
@@ -388,7 +392,7 @@ describe('publishBatch', () => {
   });
 
   it('a batch still running cannot be published from', async () => {
-    const w = await importWorld(shopPages());
+    const w = await importWorld(shopPages(fixture));
     worlds.push(w);
     await verifyShop(w);
     const b = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });

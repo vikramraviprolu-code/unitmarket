@@ -5,6 +5,7 @@
 // findings of the Opus review of 4 November are each a test here: proof_lost, the may-fetch check before
 // every fetch, the 120 second deadline, a batch ended by recovery that is not overwritten, one transaction
 // for edit and hide.
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkDomain, listDomains, requestDomain } from './domain-proof';
 import {
@@ -28,7 +29,6 @@ import {
   batchRow,
   byKey,
   countOf,
-  fixture,
   homeWithToken,
   importWorld,
   itemRows,
@@ -38,8 +38,11 @@ import {
 } from './import-support';
 import type { ImportWorld } from './import-support';
 
+const fixture = (name: string): string =>
+  readFileSync(new URL(`../test-data/${name}`, import.meta.url), 'utf8');
+
 const worlds: ImportWorld[] = [];
-const fresh = async (pages = shopPages()): Promise<ImportWorld> => {
+const fresh = async (pages = shopPages(fixture)): Promise<ImportWorld> => {
   const w = await importWorld(pages);
   worlds.push(w);
   return w;

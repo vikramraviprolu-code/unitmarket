@@ -125,8 +125,6 @@ export function startLoop(
       wake = done;
     });
 
-  const importWorker = o.imports === undefined ? null : createImportWorker(o.imports, d.log);
-
   const sandbox = d.environment === 'sandbox';
   if (sandbox) {
     const every = d.config.reread_paid_every_ms;
@@ -205,6 +203,20 @@ export function startLoop(
     };
   };
 
+  // POB-I1: the import runner, under its own journal context (system, job channel). The worker's chain may be
+  // started from a request or from a pass; the run it makes is neither, so it never takes their context.
+  const importWorker =
+    o.imports === undefined
+      ? null
+      : createImportWorker(
+          {
+            recover: () =>
+              withTraceContext(jobContext('import_recovery'), () => o.imports!.recover()),
+            runNext: () => withTraceContext(jobContext('import'), () => o.imports!.runNext()),
+          },
+          d.log,
+        );
+
   // INT-TR1: the first pass at or after 00:05 UTC seals the previous UTC day, once. The seal is not a provider
   // call, so it runs while the outbound switch is off. It has its own context (system, job, seal); a failure
   // is logged and never fails the pass.
@@ -223,9 +235,9 @@ export function startLoop(
 
   /** Recovery and passes for as long as this process may run them (the whole life without a leader). */
   const body = async (): Promise<void> => {
-    if (o.imports !== undefined) {
+    if (importWorker !== null) {
       try {
-        await o.imports.recover();
+        await importWorker.recover();
       } catch (e) {
         fail('jobs.loop.imports_recover_failed', e);
       }

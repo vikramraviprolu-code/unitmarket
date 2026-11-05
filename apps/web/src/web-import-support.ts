@@ -53,10 +53,10 @@ export interface FakeWeb {
 
 export function shopPages(): Record<string, Page> {
   return {
-    [SOURCE_URL]: { content_type: 'text/html; charset=utf-8', body: data('web-shop-jsonld.html') },
+    [SOURCE_URL]: { content_type: 'text/html; charset=utf-8', body: data('web-shop-jsonld.page') },
     [`${SHOP}/img/chart.png`]: { content_type: 'image/png', bytes: PNG },
     [`${SHOP}/img/knots.jpg`]: { content_type: 'image/jpeg', bytes: JPEG },
-    [`${SHOP}/a/quay-walk`]: { body: data('web-item-article.html') },
+    [`${SHOP}/a/quay-walk`]: { body: data('web-item-article.page') },
     [`${SHOP}/feed.xml`]: { content_type: 'application/rss+xml', body: data('web-shop.rss.xml') },
     [`${SHOP}/plain`]: {
       body: '<html><head><title>Plain</title></head><body><p>Hi</p></body></html>',
@@ -199,17 +199,17 @@ export async function verifyShopOverHttp(
   return token;
 }
 
-/** Waits (real time, short) until the batch has ended, for tests that let the job loop run it. */
-export async function waitForBatch(app: App, id: string, ms = 8000): Promise<string> {
-  const t0 = Date.now();
-  for (;;) {
+/** Waits (real time, short polls) until the batch has ended, for tests that let the job loop run it. */
+export async function waitForBatch(app: App, id: string, polls = 250): Promise<string> {
+  let state = 'missing';
+  for (let n = 0; n < polls; n += 1) {
     const r = await app.db.query<{ state: string }>(
       'SELECT state FROM import_batches WHERE id = $1',
       [id],
     );
-    const state = r.rows[0]?.state ?? 'missing';
+    state = r.rows[0]?.state ?? 'missing';
     if (state !== 'queued' && state !== 'running') return state;
-    if (Date.now() - t0 > ms) return `timeout:${state}`;
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
+  return `timeout:${state}`;
 }

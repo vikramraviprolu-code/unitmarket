@@ -2,7 +2,6 @@
 // fixture shop pages and a world with the seeded publishers. Nothing here opens a socket: the "fetcher"
 // answers from a map of address to page and keeps a log of every call, so a test can say exactly which
 // addresses were asked for and with which allow list.
-import { readFileSync } from 'node:fs';
 import type { Database } from '@umsbx/contracts';
 import { offersWorld } from './write-support';
 import type { OffersWorld } from './write-support';
@@ -16,8 +15,8 @@ export const SHOP = `https://${SHOP_HOST}`;
 export const SOURCE_URL = `${SHOP}/catalogue`;
 export const WELL_KNOWN_URL = `${SHOP}/.well-known/unitmarket-verify.txt`;
 
-export const fixture = (name: string): string =>
-  readFileSync(new URL(`../test-data/${name}`, import.meta.url), 'utf8');
+/** Reads a fixture of ../test-data as text. Only a *.test.ts file may use node:fs, so the tests pass this in. */
+export type FixtureReader = (name: string) => string;
 
 /** Smallest byte strings that carry the signature of each allowed picture type. */
 export const PNG = new Uint8Array([
@@ -97,16 +96,16 @@ export const homeWithToken = (token: string, host = SHOP_HOST): string =>
   `<meta name="unitmarket-verify" content="${token}"></head><body><h1>Home</h1></body></html>`;
 
 /** The pages of the fixture shop (no proof yet: a test adds it after asking for a token). */
-export function shopPages(): Record<string, ScriptedPage> {
+export function shopPages(fixture: FixtureReader): Record<string, ScriptedPage> {
   return {
     [SOURCE_URL]: {
       content_type: 'text/html; charset=utf-8',
-      body: fixture('web-shop-jsonld.html'),
+      body: fixture('web-shop-jsonld.page'),
     },
     [`${SHOP}/img/chart.png`]: { content_type: 'image/png', bytes: PNG },
     [`${SHOP}/img/knots.jpg`]: { content_type: 'image/jpeg', bytes: JPEG },
-    [`${SHOP}/a/quay-walk`]: { body: fixture('web-item-article.html') },
-    [`${SHOP}/p/chart-page`]: { body: fixture('web-item-og-product.html') },
+    [`${SHOP}/a/quay-walk`]: { body: fixture('web-item-article.page') },
+    [`${SHOP}/p/chart-page`]: { body: fixture('web-item-og-product.page') },
     [`${SHOP}/feed.xml`]: {
       content_type: 'application/rss+xml',
       body: fixture('web-shop.rss.xml'),
@@ -115,7 +114,7 @@ export function shopPages(): Record<string, ScriptedPage> {
       content_type: 'application/xml',
       body: fixture('web-shop-sitemap.xml'),
     },
-    [`${SHOP}/hostile`]: { body: fixture('web-hostile.html') },
+    [`${SHOP}/hostile`]: { body: fixture('web-hostile.page') },
     [`${SHOP}/plain`]: {
       body: '<html><head><title>Plain</title></head><body><p>Hi</p></body></html>',
     },
@@ -132,9 +131,7 @@ export interface ImportWorld extends OffersWorld {
   idep(over?: Partial<ImportDeps>): ImportDeps;
 }
 
-export async function importWorld(
-  pages: Record<string, ScriptedPage> = shopPages(),
-): Promise<ImportWorld> {
+export async function importWorld(pages: Record<string, ScriptedPage>): Promise<ImportWorld> {
   const base = await offersWorld();
   const web = scriptedWeb(pages);
   const may = { on: true, throws: false, asked: 0 };
