@@ -2,7 +2,7 @@
 
 Task: Two GenAI features on the existing model port, built and tested on the scripted model.
 Package: new `domain/assist` (`@umsbx/assist`), `packages/contracts` (two model purposes, assist word table), `packages/model` (scripted rules and prompts), `apps/web` (two routes, ask box, explain panel). Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
-Items: GA.1 to GA.5, 10 points, cut "should". Needs SR0, TR1, AL, OPS-A, OPS-B, BUY and SEL merged (the ask box sits in OPS-B's `FilterBar`, which BUY.4 and SEL.2 place on the buyer and seller pages; `buyer.ts` and `seller.ts` are BUY and SEL files). Decision V8 (scripted model now; the live model only on Vikram's yes). Source: search proposal section 7, features 1 and 2. Includes `int-wave2-conventions.md`. Round 2: fixes F1 to F15 of `ga-scorecard.md`.
+Items: GA.1 to GA.5, 10 points, cut "should". Needs SR0, TR1, AL, OPS-A, OPS-B, BUY and SEL merged (the ask box sits in OPS-B's `FilterBar`, which BUY.4 and SEL.2 place on the buyer and seller pages; `buyer.ts` and `seller.ts` are BUY and SEL files). Decision V8 (scripted model now; the live model only on Vikram's yes). Source: search proposal section 7, features 1 and 2. Includes `int-wave2-conventions.md`. Round 2 passed 10/12 (`ga-scorecard.md`); build notes R2-1 to R2-5 below override the text above where they differ.
 
 ## Model boundary (V8, F9, F15)
 
@@ -73,7 +73,7 @@ Changed:
 - `apps/web/package.json`, `pnpm-lock.yaml`
 - `apps/web/src/ui/FilterBar.tsx` (hosts AskBox)
 - `apps/web/src/app/ops/money/orders/[ref]/page.tsx` (panel)
-- `apps/web/composition.server.ts` (`assistDeps()` only), composition modules `ops-money.ts`, `buyer.ts`, `seller.ts`
+- `apps/web/composition.server.ts` (re-export lines only, R2-4), new composition module `assist.ts`, composition modules `ops-money.ts`, `buyer.ts`, `seller.ts`
 
 `packages/model/src/claude.ts` is unchanged.
 
@@ -89,6 +89,14 @@ Changed:
 | C5 | gate | `corepack pnpm trace:verify` after the suites above | Exit 0; INV-T2 empty |
 
 No L item. The model boundary is covered by the adversarial files above. C4 to C7 apply, and the live model is never called in CI (V8). The spend caps and the `ai_enabled` switch are unchanged.
+
+## Build notes (round 2, binding)
+
+- R2-1: `fixIds` holds AL catalogue **alert kinds** with a `fix` only. `BLOCKED_BY` values are not an input to `explainOrder`, so they are not in `fixIds`. GA.5's 30 cases cover each fix kind at least once and each critical or high kind at least twice.
+- R2-2: the no-overlap check compares whole eval phrases of 3 or more words and eval refs only, not single chip values such as "attention".
+- R2-3: order refs and provider ids are placed in SR0's `ref` field, not `q` (`q` is the title match).
+- R2-4: `assistDeps()` lives in `apps/web/src/composition/assist.ts`, not in `composition.server.ts` (UI0.7 allows only re-exports there). `composition.server.ts` gains re-export lines only: `createScriptedModel` from `@umsbx/model` and AL's catalogue. `assist.ts` uses the scripted port directly; this is the same behaviour as the app port, because `claude.ts` never serves these purposes. If a needed value cannot be reached by a re-export, stop and report.
+- R2-5: `REFUSED_FIELDS` comes from OPS-B fix B1. If it is absent at build, stop and report.
 
 ## Do not
 

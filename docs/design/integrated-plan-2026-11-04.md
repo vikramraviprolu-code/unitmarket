@@ -433,7 +433,7 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 | CTL | 2 | 7 | 20 | 16 | 4 | Sonnet 5.5 high | Spec passed 11/12 (round 2); waits on CL1, UI0, TR0, AL |
 | BUY | 2 | 10 | 23 | 11 | 12 | Sonnet 5.5 high | Round 1 8/12; revising |
 | SEL | 2 | 9 | 18 | 6 | 12 | Sonnet 5.5 medium | Round 1 8/12; revising |
-| GA | 2 | 5 | 10 | | 10 | Sonnet 5.5 high | Round 1 7/12; revising; scripted model (V8) |
+| GA | 2 | 5 | 10 | | 10 | Sonnet 5.5 high | Spec passed 10/12 (round 2); waits on SR0, TR1, AL, OPS-A, OPS-B, BUY, SEL; scripted model (V8) |
 | E2E | 3 | 2 | 4 | 4 | | Sonnet 5.5 high | Round 1 7/12; revising |
 | **Total** | | **101** | **223** | **173** | **50** | | |
 
