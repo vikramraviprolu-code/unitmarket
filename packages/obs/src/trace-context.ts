@@ -1,19 +1,17 @@
 // INT-TR0 / TR0.2: the context store of the transaction journal. One context per request, job pass, webhook,
-// CLI run or seed block, carried through async calls by AsyncLocalStorage and never mixed between them.
+// CLI run or seed block, carried through async calls by one process-wide AsyncLocalStorage (trace-store.ts) and never mixed between them.
 // withTraceDb (packages/db) reads it and puts it on every write. Ids and enums only: no name, no raw IP
 // address and no User-Agent ever enters a context (the raw header is reduced to a family here).
-import { AsyncLocalStorage } from 'node:async_hooks';
 import type { TraceContext, UaFamily } from '@umsbx/contracts';
-
-const store = new AsyncLocalStorage<TraceContext>();
+import { traceStore } from './trace-store';
 
 /** Runs `fn` with `ctx` as the current context. The stored context is a copy. */
 export function withTraceContext<T>(ctx: TraceContext, fn: () => Promise<T>): Promise<T> {
-  return store.run({ ...ctx }, fn);
+  return traceStore().run({ ...ctx }, fn);
 }
 
 export function currentTraceContext(): TraceContext | undefined {
-  return store.getStore();
+  return traceStore().getStore();
 }
 
 /**
@@ -24,10 +22,10 @@ export function extendTraceContext<T>(
   patch: Partial<Omit<TraceContext, 'id'>>,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const parent = store.getStore();
+  const parent = traceStore().getStore();
   if (parent === undefined) return fn();
   const suffix = patch.tool ?? patch.job ?? patch.channel ?? 'child';
-  return store.run({ ...parent, ...patch, id: `${parent.id}:${suffix}` }, fn);
+  return traceStore().run({ ...parent, ...patch, id: `${parent.id}:${suffix}` }, fn);
 }
 
 /**
@@ -35,7 +33,7 @@ export function extendTraceContext<T>(
  * open now. Writes made after this call carry it. Without an open context it does nothing.
  */
 export function bindTraceMandate(mandate_id: string): void {
-  const cur = store.getStore();
+  const cur = traceStore().getStore();
   if (cur !== undefined) cur.mandate_id = mandate_id;
 }
 
