@@ -274,6 +274,15 @@ import {
   verifyPasscode,
 } from '@umsbx/security';
 import type { ApiKeyDeps } from '@umsbx/security';
+import {
+  activityPage,
+  buyerTimeline,
+  evidenceHtml,
+  evidencePack,
+  opsTimeline,
+  sellerTimeline,
+  verifyJournal,
+} from '@umsbx/trace';
 import type { AgentFacade, BuyerFacade, OpsFacade, SellerFacade } from './src/api-v1/facades';
 import {
   createAgentFacade,
@@ -736,6 +745,8 @@ export interface App {
   startJobs(): Promise<{ stop(): Promise<void> }>;
   readonly db: Database;
   readonly engine: Engine;
+  /** INT-TR1: the journal reads. */
+  readonly trace: TraceReads;
   readonly security: SecurityDeps;
   /** The sandbox outbound (the five locks); null in offline mode. */
   readonly outbound: Outbound | null;
@@ -750,6 +761,20 @@ export interface App {
   deliverWebhooks(o: { max_items: number }): Promise<DeliverCounts>;
   close(): Promise<void>;
 }
+
+/** INT-TR1: the journal reads (timelines, activity, evidence, verify), bound to the app database. Read only. */
+export function traceReads(db: SqlExecutor) {
+  return {
+    buyerTimeline: (o: Parameters<typeof buyerTimeline>[1]) => buyerTimeline(db, o),
+    sellerTimeline: (o: Parameters<typeof sellerTimeline>[1]) => sellerTimeline(db, o),
+    opsTimeline: (o: Parameters<typeof opsTimeline>[1]) => opsTimeline(db, o),
+    activityPage: (o: Parameters<typeof activityPage>[1]) => activityPage(db, o),
+    evidencePack: (o: Parameters<typeof evidencePack>[1]) => evidencePack(db, o),
+    evidenceHtml,
+    verifyJournal: () => verifyJournal(db),
+  };
+}
+export type TraceReads = ReturnType<typeof traceReads>;
 
 /** What a publisher sees on /publisher (PUB-A1). The payee is the last 4 characters and the verification time. */
 export interface PublisherHome {
@@ -3409,6 +3434,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
     db,
     engine,
+    trace: traceReads(db),
     security,
     outbound,
     model_id: model.model_id,

@@ -12,7 +12,8 @@
   "dependencies": {
     "@umsbx/contracts": "workspace:*",
     "@umsbx/obs": "workspace:*",
-    "@umsbx/payments": "workspace:*"
+    "@umsbx/payments": "workspace:*",
+    "@umsbx/trace": "workspace:*"
   },
   "devDependencies": {
     "@umsbx/db": "workspace:*",

@@ -110,6 +110,7 @@ const DOMAIN = [
   'mandates',
   'txn-search',
   'rules',
+  'trace',
 ];
 const INFRA = [
   'config',

@@ -125,6 +125,9 @@ importers:
       '@umsbx/security':
         specifier: workspace:*
         version: link:../../packages/security
+      '@umsbx/trace':
+        specifier: workspace:*
+        version: link:../../domain/trace
       '@umsbx/transport':
         specifier: workspace:*
         version: link:../../packages/transport
@@ -443,6 +446,19 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
 
+  domain/trace:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/obs':
+        specifier: workspace:*
+        version: link:../../packages/obs
+
   domain/txn-search:
     dependencies:
       '@umsbx/contracts':
@@ -501,6 +517,9 @@ importers:
       '@umsbx/payments':
         specifier: workspace:*
         version: link:../../domain/payments
+      '@umsbx/trace':
+        specifier: workspace:*
+        version: link:../../domain/trace
     devDependencies:
       '@umsbx/db':
         specifier: workspace:*

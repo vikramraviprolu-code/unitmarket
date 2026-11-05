@@ -30,7 +30,10 @@ function walk(dir, accept, out = []) {
 // Review 4 M6. The text check in inventory.ts is a first filter; this parse is the rule: each
 // exported HTTP verb is a const whose initializer is exactly withRoute(routeMeta, ...), seen
 // through parentheses and type assertions only.
-const STREAM_WRAPPER_FILES = new Set(['apps/web/src/app/c/[token]/route.ts']);
+const STREAM_WRAPPER_FILES = new Set([
+  'apps/web/src/app/c/[token]/route.ts',
+  'apps/web/src/app/api/ops/units/[id]/evidence.html/route.ts',
+]);
 const VERBS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 const peel = (n) => {
   while (

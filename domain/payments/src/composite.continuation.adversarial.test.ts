@@ -452,8 +452,9 @@ describe('orders.status has one writer', () => {
     const writer = /UPDATE\s+orders\s+SET\b[^;`'"]*?\bstatus\s*=/is;
     const offenders = files
       .filter((f) => !f.endsWith(join('payments', 'src', 'composite.ts')))
-      // the test worlds (support.ts, ops/support.ts) put orders in states nothing else reaches; they are not product code
-      .filter((f) => !/payments[\\/]src[\\/](ops[\\/])?support\.ts$/.test(f))
+      // the test worlds (support.ts, ops/support.ts, and the trace seed in trace/src/support.ts) put orders in
+      // states nothing else reaches; they are not product code
+      .filter((f) => !/(payments[\\/]src[\\/](ops[\\/])?|trace[\\/]src[\\/])support\.ts$/.test(f))
       .filter((f) => writer.test(readFileSync(f, 'utf8')))
       .map((f) => relative(root, f));
     expect(offenders).toEqual([]);
