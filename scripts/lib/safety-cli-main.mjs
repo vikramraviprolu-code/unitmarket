@@ -20,10 +20,12 @@
 //                                           error is printed as the driver's scrubbed message.
 //                                           The app must not hold the database (single-opener lock): on a laptop stop it, resume, restart; on the host start it in maintenance mode first (D-037, MVPC-OWNER-STEPS.md Step 6).
 // The operator id names who is acting; the person at a TTY is the second factor the CLIs rely on.
+import { createHash } from 'node:crypto';
+import { userInfo } from 'node:os';
 import { createInterface } from 'node:readline/promises';
 import { loadConfigFromProcess, terminalEnv } from '../../packages/config/src/index.ts';
-import { migrate, openDatabase } from '../../packages/db/src/index.ts';
-import { createAuditSink } from '../../packages/obs/src/index.ts';
+import { migrate, openDatabase, withTraceDb } from '../../packages/db/src/index.ts';
+import { cliTraceContext, createAuditSink } from '../../packages/obs/src/index.ts';
 import { cryptoIds, systemClock } from '../../packages/runtime/src/index.ts';
 import {
   readSafetyStatus,
@@ -60,12 +62,25 @@ const ids = cryptoIds();
 // which scrubs it from every error; nothing below prints it.
 const target =
   config.db.kind === 'postgres' ? { kind: 'postgres', url: config.db.url.reveal() } : config.db;
-const db = await openDatabase(target).catch((e) => {
+const rawDb = await openDatabase(target).catch((e) => {
   fail(e instanceof Error ? e.message : String(e));
   throw e; // not reached: fail() exits
 });
+// INT-TR0: every write of this run is journaled as an operator on the cli channel. The actor is the hash of the
+// OS user name (user_hash), never the name; the migration below runs on the plain database.
+const user_hash = createHash('sha256')
+  .update(`os:${userInfo().username}`)
+  .digest('hex')
+  .slice(0, 16);
+const traceCtx = cliTraceContext({
+  id: `ctx_cli_${ids.nonce()}`,
+  at: clock.now().toISOString(),
+  user_hash,
+  job: `safety:${command}`,
+});
+const db = withTraceDb(rawDb, () => traceCtx, clock);
 try {
-  await migrate(db, clock);
+  await migrate(rawDb, clock);
   const tty = { isTTY: process.stdin.isTTY, env: terminalEnv() };
   const operator = flag('operator');
   const by = operator ? { kind: 'operator', operator_id: operator, mfa: true } : { kind: 'system' };

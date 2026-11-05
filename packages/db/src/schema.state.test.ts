@@ -275,7 +275,11 @@ describe('migrations', () => {
     // API-B (migration 0021): a mandate reservation is stamped by created_at and settled_at, and its row changes
     // only when it settles; the spec fixes its columns, so it has no updated_at either.
     const NO_UPDATED_AT = new Set(['api_keys', 'event_outbox', 'mandate_reservations']);
-    for (const r of t.rows.filter((x) => x.table_name !== 'fx_rates')) {
+    // INT-TR0 (migration 0023): the journal tables carry their own stamps (occurred_at, at, sealed day) and are
+    // append-only or maintained by trigger; the spec fixes their columns, so none has created_at or updated_at.
+    for (const r of t.rows.filter(
+      (x) => x.table_name !== 'fx_rates' && !x.table_name.startsWith('trace_'),
+    )) {
       expect(r.cols, r.table_name).toContain(NO_UPDATED_AT.has(r.table_name) ? 'id' : 'created_at');
       if (!NO_UPDATED_AT.has(r.table_name)) expect(r.cols, r.table_name).toContain('updated_at');
     }

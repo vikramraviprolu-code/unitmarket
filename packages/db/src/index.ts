@@ -26,3 +26,7 @@ export {
 export type { MigrationSet } from './migrate';
 export { tablesInDependencyOrder } from './export-sql';
 export { withSerializationRetry, isRetryableSqlError } from './retry';
+// INT-TR0 (transaction journal).
+export { withTraceDb, traceSetting } from './trace-db';
+export { verifyTrace, traceInvariants, formatTraceFinding } from './trace-verify';
+export type { TraceFinding, TraceReport } from './trace-verify';

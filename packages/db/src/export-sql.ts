@@ -10,6 +10,8 @@ import { PGlite } from '@electric-sql/pglite';
 import type { Clock, Database, SqlExecutor } from '@umsbx/contracts';
 import { applyMigrations, MIGRATIONS_ROOT } from './migrate';
 import { openDatabase } from './pglite';
+import { traceInvariants } from './trace-verify';
+import { traceSetting } from './trace-db';
 
 export async function tablesInDependencyOrder(db: SqlExecutor): Promise<string[]> {
   const tables = await db.query<{ tablename: string }>(
@@ -75,8 +77,15 @@ export interface ExportOptions {
   utc: string;
 }
 
+// INT-TR0: trace_tracked is the allow-list of the journal. The migration writes it and a reset writes it
+// again; an export neither needs nor carries it.
+const NOT_EXPORTED: readonly string[] = ['trace_tracked'];
+// INT-TR0 (restore): a freshly migrated database already holds the journal rows of the six seeded switches
+// (channel backfill) and their heads. The import accepts them and replaces them with the exported journal.
+const TRACE_EVENTS_GUARD = 'trace_events_append_only';
+
 export async function exportSql(db: SqlExecutor, options: ExportOptions): Promise<string> {
-  const tables = await tablesInDependencyOrder(db);
+  const tables = (await tablesInDependencyOrder(db)).filter((t) => !NOT_EXPORTED.includes(t));
   const lines = [
     '-- UnitMarket sandbox logical export (CO-10). One INSERT per table, parents first.',
     `-- format: ${EXPORT_FORMAT}`,
@@ -188,11 +197,14 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
   await db.transaction(async (tx) => {
     const order = await tablesInDependencyOrder(tx);
     for (const t of order) {
+      if (NOT_EXPORTED.includes(t) || t === 'trace_heads') continue;
       const seeded = (SEED_TABLES as readonly string[]).includes(t);
       const r = await tx.query<{ n: number }>(
         seeded
           ? `SELECT count(*)::int AS n FROM ${quote(t)} WHERE ${NOT_SEED_ROW[t] ?? `created_at <> '${SEED_EPOCH}'`}`
-          : `SELECT count(*)::int AS n FROM ${quote(t)}`,
+          : t === 'trace_events'
+            ? `SELECT count(*)::int AS n FROM ${quote(t)} WHERE channel IS DISTINCT FROM 'backfill'`
+            : `SELECT count(*)::int AS n FROM ${quote(t)}`,
       );
       if (r.rows[0]!.n > 0) {
         throw new Error(
@@ -207,6 +219,14 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
     // Inside this transaction only, and only the one guard that refuses to delete the seed switch
     // rows. Every INSERT guard (ledger bounds, order currency and approval checks) stays on, so the
     // import re-checks what it loads; foreign keys, checks and unique indexes stay enforced too.
+    // Restore mode: the capture triggers journal nothing while the rows load, and the exported events keep
+    // their seqs. The setting is local to this transaction. The migration's own backfill events and heads
+    // are removed with the journal guard lifted for these two deletes only (like the seed guards below).
+    await tx.query('SELECT set_config(\'ums.trace\', \'{"mode":"restore"}\', true)');
+    await tx.exec(`ALTER TABLE trace_events DISABLE TRIGGER ${quote(TRACE_EVENTS_GUARD)}`);
+    await tx.exec("DELETE FROM trace_events WHERE channel = 'backfill'");
+    await tx.exec('DELETE FROM trace_heads');
+    await tx.exec(`ALTER TABLE trace_events ENABLE TRIGGER ${quote(TRACE_EVENTS_GUARD)}`);
     await tx.exec(`ALTER TABLE safety_switches DISABLE TRIGGER ${quote(SEED_DELETE_GUARD)}`);
     await tx.exec(`ALTER TABLE fx_rates DISABLE TRIGGER ${quote(FX_DELETE_GUARD)}`);
     for (const t of [...order].reverse()) {
@@ -232,7 +252,9 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
       );
     }
     await tx.exec(`ALTER TABLE safety_switches ENABLE TRIGGER ${quote(SEED_DELETE_GUARD)}`);
-    const broken = await checkInvariants(tx);
+    // INV-T2 (a row written with no context) is reported after a restore, never a reason to refuse it: a
+    // backup taken before the journal's callers all carried a context must still load.
+    const broken = (await checkInvariants(tx)).filter((l) => !l.startsWith('INV-T2'));
     if (broken.length > 0) {
       throw new Error(`import refused: the loaded data breaks an invariant: ${broken.join('; ')}`);
     }
@@ -331,6 +353,8 @@ export async function checkInvariants(db: SqlExecutor): Promise<string[]> {
      ORDER BY 1`,
   );
   if (env.length) out.push(describe('environment of a row differs from its order', env));
+  // INT-TR0: INV-T1 (the journal's chains, heads, seals and digests) and INV-T2 (no unattributed write).
+  out.push(...(await traceInvariants(db)));
   return out;
 }
 
@@ -407,6 +431,29 @@ export async function disarmOutbound(
   atIso: string,
   auditId: string,
 ): Promise<OutboundState> {
+  // INT-TR0: the restore's own writes (the switch and its audit row) are journaled as system on the cli channel,
+  // not left unattributed. The caller runs this inside a transaction, so the setting covers all three writes.
+  await db.query("SELECT set_config('ums.trace', $1, true)", [
+    traceSetting(
+      {
+        id: `ctx_${auditId}`,
+        at: atIso,
+        channel: 'cli',
+        actor_kind: 'system',
+        actor_id: 'restore',
+        on_behalf_of: null,
+        mandate_id: null,
+        mfa: false,
+        req_id: null,
+        ip_hash: null,
+        ua_family: null,
+        api_key_id: null,
+        job: 'restore',
+        tool: null,
+      },
+      { now: () => new Date(atIso) },
+    ),
+  ]);
   const was = await db.query<{ on: boolean }>(
     `SELECT "on" FROM safety_switches WHERE name = 'paypal_outbound'`,
   );
