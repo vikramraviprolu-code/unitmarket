@@ -11,7 +11,16 @@ import type { z } from 'zod';
 import type { App } from '../../composition.server';
 import { offerErrorText } from '../lib/offer-copy';
 import { createErrorText } from '../lib/publisher-e1-copy';
-import { FORBIDDEN, ownerOf, type Ctx } from './guard';
+import {
+  checkScope,
+  exportName,
+  exportTransactions,
+  isPlainQuery,
+  listTransactions,
+  sellerLine,
+  txnCsv,
+} from '../../composition.server';
+import { FORBIDDEN, ownerOf, searchRefusal, type Ctx } from './guard';
 
 type Result<T> = Promise<HttpResult<T>>;
 
@@ -101,10 +110,62 @@ export async function withdrawOffer(
     : refusal(r.error.code, offerErrorText);
 }
 
-// S5
-export async function listSales(a: App, ctx: Ctx): Result<unknown> {
+// S5. INT-SR1: with no query parameters the answer is what it was (every sale, next_cursor null); any filter,
+// limit or cursor pages by keyset over txn_rows with the seller columns (no buyer, no agent key, no mandate).
+export async function listSales(
+  a: App,
+  ctx: Ctx,
+  raw: Record<string, string> = {},
+): Result<unknown> {
   const actor = ownerOf(ctx, 'publisher');
   if (actor === null) return FORBIDDEN;
-  const items = await a.engine.publisherSales(actor);
-  return items === null ? FORBIDDEN : { status: 200, body: { items, next_cursor: null } };
+  if (isPlainQuery(raw)) {
+    // A refused field is still refused when its value would parse to nothing: the role check reads raw keys.
+    try {
+      checkScope(actor, raw);
+    } catch (e) {
+      const refused = searchRefusal(e);
+      if (refused !== null) return refused;
+      throw e;
+    }
+    const items = await a.engine.publisherSales(actor);
+    return items === null ? FORBIDDEN : { status: 200, body: { items, next_cursor: null } };
+  }
+  const now = a.security.clock.now();
+  try {
+    const r = await listTransactions(a.db, actor, raw, { now });
+    return {
+      status: 200,
+      body: { items: r.rows.map((row) => sellerLine(row, now)), next_cursor: r.next_cursor },
+    };
+  } catch (e) {
+    const refused = searchRefusal(e);
+    if (refused !== null) return refused;
+    throw e;
+  }
+}
+
+// INT-SR1: the current filter as CSV text in a JSON answer. No buyer column.
+export async function exportSales(a: App, ctx: Ctx, raw: Record<string, string>): Result<unknown> {
+  const actor = ownerOf(ctx, 'publisher');
+  if (actor === null) return FORBIDDEN;
+  const now = a.security.clock.now();
+  try {
+    const r = await exportTransactions(a.db, actor, raw, { now });
+    return {
+      status: 200,
+      body: {
+        filename: exportName('seller', now),
+        csv: txnCsv(
+          'seller',
+          r.rows.map((row) => sellerLine(row, now)),
+        ),
+        truncated: r.truncated,
+      },
+    };
+  } catch (e) {
+    const refused = searchRefusal(e);
+    if (refused !== null) return refused;
+    throw e;
+  }
 }

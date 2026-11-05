@@ -257,6 +257,31 @@ export {
   settlementMode,
 } from '@umsbx/publisher-console';
 export type { SalesTotal } from '@umsbx/publisher-console';
+
+// INT-SR1 (Z1): the route handlers of the search lanes reach the search and library-filter code through here.
+// The views-seed names are test data for the SR1 suites; nothing in the product reads them.
+export {
+  TxnSearchError,
+  VIEWS_EXPECTED,
+  VIEWS_MEMBERS,
+  buyerLine,
+  checkScope,
+  exportName,
+  exportTransactions,
+  isPlainQuery,
+  isViewId,
+  listTransactions,
+  opsLine,
+  principalKey,
+  queryHash,
+  quickFind,
+  seedViewsWorld,
+  sellerLine,
+  txnCsv,
+} from '@umsbx/txn-search';
+export type { FindResult } from '@umsbx/txn-search';
+export { filterLibrary, isPlainLibraryQuery, parseLibraryQuery } from '@umsbx/library';
+export type { LibraryFacts, LibraryQuery } from '@umsbx/library';
 import {
   DEFAULT_RATES,
   SESSION_COOKIE,

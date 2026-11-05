@@ -4,7 +4,7 @@
 import { createSession, issueKey } from '@umsbx/security';
 import type { Actor, Scope } from '@umsbx/contracts';
 import { apiKeyDeps } from '../../composition.server';
-import type { App } from '../../composition.server';
+import type { App, AppOptions } from '../../composition.server';
 import { bootPackApp, buyer } from '../composite-support';
 import { ORIGIN } from '../support';
 
@@ -51,8 +51,11 @@ export interface ARig {
 let counter = 0;
 export const idemKey = (): string => `a-test-idem-${String(++counter).padStart(6, '0')}-xyz`;
 
-export async function bootA(over: Record<string, string> = {}): Promise<ARig> {
-  const app = await bootPackApp(over);
+export async function bootA(
+  over: Record<string, string> = {},
+  opts: AppOptions = {},
+): Promise<ARig> {
+  const app = await bootPackApp(over, opts);
   const pub = async (slug: string): Promise<Actor> => ({
     kind: 'publisher',
     publisher_id: (
