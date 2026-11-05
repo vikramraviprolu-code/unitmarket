@@ -306,10 +306,10 @@ export const TxnLineSchema = z
     case_state: z.string().max(60).nullable(),
     case_kind: z.string().max(60).nullable(),
     channel: z.enum(CHANNEL_VALUES),
-    // Buyer and operator lines.
+    // Buyer and operator lines. On an operator line agent_key_id needs MFA (C3, FIX-B4).
     order_total_minor: z.number().int().optional(),
     agent_key_id: z.string().max(200).nullable().optional(),
-    // Operator lines (opaque ids).
+    // Operator lines (opaque ids). buyer_id needs MFA (C3, FIX-B4).
     publisher_id: z.string().max(200).optional(),
     buyer_id: z.string().max(200).optional(),
     mandate_id: z.string().max(200).nullable().optional(),
