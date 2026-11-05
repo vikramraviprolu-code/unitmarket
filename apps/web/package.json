@@ -16,6 +16,7 @@
   "dependencies": {
     "@electric-sql/pglite": "0.5.10",
     "@umsbx/access-clock": "workspace:*",
+    "@umsbx/alerts": "workspace:*",
     "@umsbx/approval": "workspace:*",
     "@umsbx/catalogue": "workspace:*",
     "@umsbx/config": "workspace:*",

@@ -47,6 +47,9 @@ importers:
       '@umsbx/access-clock':
         specifier: workspace:*
         version: link:../../domain/access-clock
+      '@umsbx/alerts':
+        specifier: workspace:*
+        version: link:../../domain/alerts
       '@umsbx/approval':
         specifier: workspace:*
         version: link:../../domain/approval
@@ -165,6 +168,22 @@ importers:
       '@umsbx/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+
+  domain/alerts:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/payments':
+        specifier: workspace:*
+        version: link:../payments
     devDependencies:
       '@umsbx/db':
         specifier: workspace:*

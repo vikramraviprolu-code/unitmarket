@@ -19,3 +19,28 @@ export async function readOpsHome(actor: OperatorActor): Promise<OpsHomeRead | n
   if (snap === null) return null;
   return { snap, flagOff: snap.gate.mode === 'sandbox' && !snap.gate.connect };
 }
+
+// INT-AL: the alert and case reads of the operator pages (Needs you, the alert list and detail, the case queue
+// and detail). They run over the engine's read methods, so a page never reaches the domain packages. The case
+// detail is the one read that carries the text of the message to the buyer; it needs an operator.
+type Reads = Awaited<ReturnType<typeof app>>['engine']['opsReads'];
+
+export async function readNeedsYou(): Promise<Awaited<ReturnType<Reads['needsYou']>>> {
+  return (await app()).engine.opsReads.needsYou();
+}
+export async function readAlertList(
+  q: Parameters<Reads['alerts']>[0],
+): Promise<Awaited<ReturnType<Reads['alerts']>>> {
+  return (await app()).engine.opsReads.alerts(q);
+}
+export async function readAlertDetail(id: string): Promise<Awaited<ReturnType<Reads['alert']>>> {
+  return (await app()).engine.opsReads.alert(id);
+}
+export async function readCaseQueue(
+  q: Parameters<Reads['cases']>[0],
+): Promise<Awaited<ReturnType<Reads['cases']>>> {
+  return (await app()).engine.opsReads.cases(q);
+}
+export async function readCaseDetail(actor: OperatorActor, id: string) {
+  return (await app()).engine.opsCases.detail(actor, id);
+}
