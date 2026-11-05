@@ -67,7 +67,7 @@ beforeAll(async () => {
   buyerName = (await w.app.db.query<{ n: string }>('SELECT display_name AS n FROM buyers WHERE id = (SELECT buyer_id FROM orders WHERE id = $1)', [u['a']!.order_id])).rows[0]!.n;
   providerIds = (await w.app.db.query<{ v: string }>('SELECT provider_order_id AS v FROM provider_orders WHERE order_id = $1', [u['a']!.order_id])).rows.map((r) => r.v);
   providerIds.push(...(await w.app.db.query<{ v: string }>('SELECT capture_id AS v FROM order_units WHERE id = $1', [u['a']!.unit_id])).rows.map((r) => r.v));
-  const ctx: TraceContext = { id: 'ctx_case_ip', at: NOW, channel: 'web', actor_kind: 'operator', actor_id: 'vikram', on_behalf_of: null, mandate_id: null, mfa: true, req_id: 'req_case1', ip_hash: IP, ua_family: 'Firefox', api_key_id: null, job: null, tool: null };
+  const ctx: TraceContext = { id: 'ctx_case_ip', at: NOW, channel: 'web', actor_kind: 'operator', actor_id: 'vikram', on_behalf_of: null, mandate_id: null, mfa: true, req_id: 'req_case1', ip_hash: IP, ua_family: 'curl', api_key_id: null, job: null, tool: null };
   await withTraceContext(ctx, () =>
     w.app.db.query(
       `INSERT INTO alerts (id, kind, order_id, detail, created_at, updated_at) VALUES ('alr_caseA', 'frozen_order', $1, '{"reason":"c"}'::jsonb, now(), now())`,

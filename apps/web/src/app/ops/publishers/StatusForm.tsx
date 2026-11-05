@@ -10,6 +10,7 @@ import {
   SUSPEND_BUTTON,
   statusErrorText,
 } from '../../../lib/ops-publishers-copy';
+import { OPS_NEEDS_CODE } from '../../../lib/ops-copy';
 import { ErrorState } from '../../../ui/ErrorState';
 
 // PUB-D: suspend or reactivate one publisher. The route does every check; this form only carries the
@@ -18,10 +19,13 @@ export function StatusForm({
   publisherId,
   name,
   suspended,
+  hasCode,
 }: {
   publisherId: string;
   name: string;
   suspended: boolean;
+  /** True for a session with the authenticator code; without it the button is off and says why. */
+  hasCode: boolean;
 }) {
   const router = useRouter();
   const [reason, setReason] = useState('');
@@ -67,11 +71,12 @@ export function StatusForm({
         <button
           type="button"
           className="btn"
-          disabled={busy || reason.trim().length < 3}
+          disabled={!hasCode || busy || reason.trim().length < 3}
           onClick={() => void change()}
         >
           {suspended ? REACTIVATE_BUTTON : SUSPEND_BUTTON}
         </button>
+        {hasCode ? null : <span className="muted"> {OPS_NEEDS_CODE}</span>}
       </div>
       <div aria-live="polite">{done}</div>
       {error ? <ErrorState title="Not saved">{error}</ErrorState> : null}

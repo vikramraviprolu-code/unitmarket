@@ -274,7 +274,7 @@ describe('money, the order link and the anchor', () => {
       id: 'alr_x', kind: 'frozen_order', severity: 'critical', title: 'Order frozen', cause: 'c', state: 'open',
       order_ref: null, unit_id: null, money_at_risk: null, case_id: 'cas_9', fix: { route: '/ops/money', anchor: 'ops-orders' },
       next_action: 'n', created_at: '2026-11-05T10:00:00.000Z', history: [],
-    } as const;
+    } as unknown as Parameters<typeof alertDetailView>[0];
     const o = { mfa: true, keys: { acknowledge: 'a', resolve: 'b', reopen: 'c' }, order_anchor: null };
     expect(alertDetailView(base, o).case_href).toBe('/ops/buyers/cases/cas_9');
     expect(alertDetailView({ ...base, case_id: null }, o).case_href).toBeNull();

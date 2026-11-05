@@ -36,7 +36,7 @@ const ctx: TraceContext = {
   mfa: true,
   req_id: 'req_ordpage1',
   ip_hash: IP,
-  ua_family: 'Firefox',
+  ua_family: 'curl',
   api_key_id: null,
   job: null,
   tool: null,
@@ -109,7 +109,7 @@ describe('the order page view', () => {
     expect(text).not.toContain(IP);
     expect(text).not.toContain(IP.slice(0, 8));
     expect(text).not.toContain('req_ordpage1');
-    expect(text).not.toContain('Firefox');
+    expect(text).not.toContain('curl');
     expect(v.buyer).toBeNull();
     for (const id of providerIds) expect(text).toContain(`…${id.slice(-4)}`);
   });
