@@ -19,6 +19,7 @@ import {
 import { SectionNav } from '../../../ui/SectionNav';
 import { OPS_REPORTING_HEADING, OPS_REPORTING_LEDE } from '../../../lib/ops-reporting-view';
 import { OPS_MONEY_SECTIONS } from '../../../lib/ops-copy';
+import { ratesText } from '../../../lib/ops-money-view';
 import Link from 'next/link';
 import { invariantLink, operationLink } from '../../../lib/ops-invariants-view';
 import { RefundPanel } from '../RefundPanel';
@@ -171,11 +172,7 @@ export default async function OpsMoney() {
               {kinds.reconciler.due} due.
             </dd>
             <dt>Exchange rates</dt>
-            <dd>
-              {kinds.rates === null
-                ? 'No rates stored.'
-                : `${kinds.rates.date}: 1 EUR is ${kinds.rates.eur_usd} USD and ${kinds.rates.eur_gbp} GBP.`}
-            </dd>
+            <dd>{ratesText(kinds.rates)}</dd>
           </dl>
         )}
       </Section>

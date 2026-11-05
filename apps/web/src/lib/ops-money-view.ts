@@ -54,3 +54,11 @@ export const kindWord = (kind: string): string =>
 export const OPS_LEDGER_SECTIONS: { id: string; label: string }[] = [
   { id: 'ledger-lines', label: 'Lines' },
 ];
+
+/** The stored rates of the day as one sentence; the Money page shows it as it is and computes nothing from it. */
+export function ratesText(
+  rates: { date: string; eur_usd: number | string; eur_gbp: number | string } | null,
+): string {
+  if (rates === null) return 'No rates stored.';
+  return `${rates.date}: 1 EUR is ${rates.eur_usd} USD and ${rates.eur_gbp} GBP.`;
+}

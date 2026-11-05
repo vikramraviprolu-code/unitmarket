@@ -90,6 +90,8 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/library/[id]/link/route.ts': () => import('./app/api/library/[id]/link/route'),
   'api/library/route.ts': () => import('./app/api/library/route'),
   'api/ops/agent-buy/route.ts': () => import('./app/api/ops/agent-buy/route'),
+  'api/ops/api-keys/[id]/revoke/route.ts': () => import('./app/api/ops/api-keys/[id]/revoke/route'),
+  'api/ops/mandates/[id]/revoke/route.ts': () => import('./app/api/ops/mandates/[id]/revoke/route'),
   'api/ops/alerts/[id]/acknowledge/route.ts': () =>
     import('./app/api/ops/alerts/[id]/acknowledge/route'),
   'api/ops/alerts/[id]/reopen/route.ts': () => import('./app/api/ops/alerts/[id]/reopen/route'),
