@@ -19,7 +19,7 @@ describe('tabs per persona (spec UI0.1)', () => {
   it('operator: Home, Buyers, Sellers, Money, Agents and API, Controls', () => {
     expect(rows('operator')).toEqual([
       ['Home', '/ops', true],
-      ['Buyers', '/ops/buyers', false],
+      ['Buyers', '/ops/buyers', true],
       ['Sellers', '/ops/sellers', true],
       ['Money', '/ops/money', true],
       ['Agents and API', '/ops/agents', false],
@@ -47,6 +47,7 @@ describe('tabs per persona (spec UI0.1)', () => {
   it('a tab whose page another lane builds is hidden, never shown as coming soon', () => {
     expect(visibleTabs('operator').map((t) => t.label)).toEqual([
       'Home',
+      'Buyers', // INT-OPS-A: the case queue is its page
       'Sellers',
       'Money',
       'Controls',

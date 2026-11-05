@@ -72,12 +72,13 @@ describe('TR0.1 enums', () => {
 });
 
 describe('TR0.1 the golden allow-list', () => {
-  it('names the 29 tracked tables (27 of the spec, alert_events of INT-AL and rule_settings of BR-2), once each, in name order', () => {
+  it('names the 30 tracked tables (27 of the spec, alert_events of INT-AL, rule_settings of BR-2 and api_exposure of INT-CTL), once each, in name order', () => {
     expect(TRACKED_TABLES.map((t) => t.table)).toEqual([
       'access_events',
       'access_windows',
       'alert_events',
       'alerts',
+      'api_exposure',
       'api_keys',
       'approvals',
       'audit_log',

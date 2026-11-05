@@ -168,8 +168,8 @@ export async function listOpenRequests(
   db: Database,
   actor: Actor,
 ): Promise<Result<OpenRequest[], PayeeError>> {
+  // INT-OPS-A / OPS-A.7: a read, so an operator without the code may open the queue (last 4 only). The decision still needs it.
   if (actor.kind !== 'operator') return fail('not_operator');
-  if (!actor.mfa) return fail('mfa_required');
   const r = await db.query<{
     id: string;
     publisher_id: string;

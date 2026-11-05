@@ -103,8 +103,14 @@ test.describe.serial('operator shell', () => {
     await op.page.setViewportSize({ width: 1280, height: 800 });
     await op.page.goto('/ops/money');
     const nav = tabsNav(op.page, 'Operator');
-    await expect(nav.getByRole('link')).toHaveText(['Home', 'Sellers', 'Money', 'Controls']);
-    await expect(nav.getByRole('link', { name: 'Buyers' })).toHaveCount(0);
+    await expect(nav.getByRole('link')).toHaveText([
+      'Home',
+      'Buyers',
+      'Sellers',
+      'Money',
+      'Controls',
+    ]);
+    // INT-OPS-A.5 built the Buyers pages, so the tab is ready and shown.
     await expect(nav.getByRole('link', { name: 'Agents and API' })).toHaveCount(0);
     await expect(nav.getByRole('link', { name: 'Money' })).toHaveAttribute('aria-current', 'page');
     await expect(nav.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current', /.+/);

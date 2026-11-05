@@ -50,6 +50,7 @@ export const POST = withRoute(routeMeta, Envelope, async ({ principal, scopes, i
     key_id: principal.key_id,
     buyer_id: principal.buyer_id,
     scopes,
+    exposure: a.security.exposure,
   };
   const r = await dispatch(call, input);
   if (r.kind === 'notification') return { status: 202, body: {} };

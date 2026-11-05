@@ -12,6 +12,7 @@ import type {
   AuditSink,
   Clock,
   Database,
+  ExposureReader,
   Id,
   Ids,
   Logger,
@@ -21,10 +22,11 @@ import type {
   Secret,
   TraceContext,
 } from '@umsbx/contracts';
-import { SCOPES, err, ok, toActor } from '@umsbx/contracts';
+import { SCOPES, err, groupOfPath, ok, toActor } from '@umsbx/contracts';
 import { uaFamilyOf, withTraceContext } from '@umsbx/obs';
 import { bearerToken, hasScopes, verifyKey } from './apikey';
 import { csrfTokenMatches, originMatches, sha256Hex } from './csrf';
+import { FAIL_SAFE_WITHOUT_MFA_ROUTES } from './inventory';
 import { GENERIC_MESSAGE, errorBody, fieldNames, supportCode } from './errors';
 import { securityHeaders } from './headers';
 import {
@@ -127,6 +129,12 @@ export interface SecurityDeps {
    * does; nothing here sets it, the composition root supplies it.
    */
   maintenance?: boolean;
+  /**
+   * INT-CTL (F5). Which API groups partners may call. Optional: absent means every group is enabled, so deps built
+   * by a test stay valid. The app sets it. It is read for `auth: 'apikey'` routes only, right after the bearer key
+   * is verified (a disabled group answers 403 api_disabled); session routes and pages never read it.
+   */
+  exposure?: ExposureReader | undefined;
 }
 
 export type HttpResult<O> =
@@ -229,9 +237,9 @@ function validateMeta(meta: RouteMeta): void {
     bad('rate_target needs an ip rate');
   if (meta.fail_safe_without_mfa === true && (meta.auth !== 'operator' || meta.method !== 'POST'))
     bad('fail_safe_without_mfa is for operator POST routes only');
-  // One route only (BU-2 review B3); scripts/route-inventory.mjs checks the same list statically.
-  if (meta.fail_safe_without_mfa === true && meta.path !== '/api/ops/stop')
-    bad('fail_safe_without_mfa is allowed on /api/ops/stop only');
+  // Three routes only (BU-2 review B3, INT-CTL F2); scripts/route-inventory.mjs checks the same list statically.
+  if (meta.fail_safe_without_mfa === true && !FAIL_SAFE_WITHOUT_MFA_ROUTES.includes(meta.path))
+    bad(`fail_safe_without_mfa is allowed on ${FAIL_SAFE_WITHOUT_MFA_ROUTES.join(', ')} only`);
 }
 
 const json = (status: number, body: unknown, headers: Headers): Response => {
@@ -423,6 +431,14 @@ export function withRoute<I, O>(
             return fail(401, 'unauthenticated', BEARER_REFUSAL);
           const verified = await verifyKey(deps, token);
           if (!verified.ok) return fail(401, 'unauthenticated', BEARER_REFUSAL);
+          // INT-CTL (F6): a switched-off API group answers before the operator-key rule, the scope check and the
+          // idempotency lookup, so a replayed Idempotency-Key after a disable is refused, not answered from store.
+          // An unmapped prefix cannot be proven open, so it counts as closed once a reader is set.
+          if (deps.exposure !== undefined) {
+            const group = groupOfPath(meta.path);
+            if (group === null || !(await deps.exposure.isEnabled(group)))
+              return fail(403, 'api_disabled', 'This part of the API is switched off.');
+          }
           principal = verified.value.principal;
           held = verified.value.scopes;
           actor = toActor(principal);

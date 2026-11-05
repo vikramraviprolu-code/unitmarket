@@ -8,10 +8,15 @@ export {
   createApiV1,
   securityDeps,
 } from '../../composition.server';
-export type { ApiV1 } from '../../composition.server';
+export type { ApiV1, ExposureRow } from '../../composition.server';
 export type {
+  AlertDetail,
+  AlertList,
   App,
   ApprovalView,
+  CaseDetail,
+  CaseQueue,
+  NeedsYouRow,
   Engine,
   LibraryEntry,
   OfferPage,
@@ -21,15 +26,19 @@ export type {
   RefundOverview,
   RefundUnitView,
 } from '../../composition.server';
-export { orderMessage, salesTotals } from '../../composition.server';
+export { UNIT_STATUS_TEXT, orderMessage, salesTotals } from '../../composition.server';
 // INT-OPS-B: TR0's in-process journal verifier, for traceVerifyDetail in composition/ops-controls.ts.
 export { formatTraceFinding, verifyTrace } from '../../composition.server';
-// INT-BUY: SR1's buyer read and export, and TR1's journal sentences, for the buyer composition module.
+// INT-SEL and INT-BUY: the transaction list and export reads and the journal sentences, for the seller and buyer
+// composition modules (read only).
 export {
   TRACE_WORDS,
+  TxnSearchError,
   buyerLine,
   exportName,
   exportTransactions,
+  isPlainQuery,
   listTransactions,
+  sellerLine,
   txnCsv,
 } from '../../composition.server';

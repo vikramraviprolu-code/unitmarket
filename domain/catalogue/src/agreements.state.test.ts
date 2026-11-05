@@ -79,12 +79,13 @@ describe('reads', () => {
     expect(await ownAgreement(w.db, w.system)).toBe(null);
   });
 
-  it('the operator list needs the second factor and gives the latest record per publisher', async () => {
+  it('the operator list is for an operator, with or without the code, and gives the latest record per publisher', async () => {
     expect(await listAgreements(w.db, w.harbour)).toBe(null);
-    expect(await listAgreements(w.db, { kind: 'operator', operator_id: 'opr_v', mfa: false })).toBe(
-      null,
-    );
     const all = await listAgreements(w.db, w.operator);
+    // INT-OPS-A / OPS-A.7: a read, so an operator without the code gets the same rows.
+    expect(
+      await listAgreements(w.db, { kind: 'operator', operator_id: 'opr_v', mfa: false }),
+    ).toEqual(all);
     expect(all?.map((x) => x.publisher_id).sort()).toEqual(Object.values(w.pubId).sort());
   });
 
