@@ -231,7 +231,10 @@ type Headers = Record<string, string | string[] | undefined>;
  * The media type of an acceptable content type header, or null. For text a charset, when given, must be
  * UTF-8. For an image only the three types of the import count (no svg: it can hold script).
  */
-export function feedMediaType(header: string | string[] | undefined, kind: FeedKind = 'text'): string | null {
+export function feedMediaType(
+  header: string | string[] | undefined,
+  kind: FeedKind = 'text',
+): string | null {
   if (typeof header !== 'string') return null;
   const parts = header.split(';').map((p) => p.trim());
   const type = parts[0]!.toLowerCase();

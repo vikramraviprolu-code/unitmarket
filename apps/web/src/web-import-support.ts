@@ -1,7 +1,6 @@
 // POB-I1 test helper: a booted offline app whose web import fetcher is a scripted web (no socket), a
 // publisher session per seeded publisher, and call helpers for the import routes. The fixture pages are
 // read from the catalogue package's test-data folder as text. Nothing here reads the environment.
-import { readFileSync } from 'node:fs';
 import { createSession } from '@umsbx/security';
 import type { Actor } from '@umsbx/contracts';
 import type { App } from '../composition.server';
@@ -20,8 +19,8 @@ export const SHOP = `https://${SHOP_HOST}`;
 export const SOURCE_URL = `${SHOP}/catalogue`;
 export const WELL_KNOWN_URL = `${SHOP}/.well-known/unitmarket-verify.txt`;
 
-const data = (name: string): string =>
-  readFileSync(new URL(`../../../domain/catalogue/test-data/${name}`, import.meta.url), 'utf8');
+/** Reads a fixture of domain/catalogue/test-data as text. Only a *.test.ts file may use node:fs: the test passes this in. */
+export type FixtureReader = (name: string) => string;
 
 export const PNG = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 1, 2, 3,
@@ -51,7 +50,7 @@ export interface FakeWeb {
   >;
 }
 
-export function shopPages(): Record<string, Page> {
+export function shopPages(data: FixtureReader): Record<string, Page> {
   return {
     [SOURCE_URL]: { content_type: 'text/html; charset=utf-8', body: data('web-shop-jsonld.page') },
     [`${SHOP}/img/chart.png`]: { content_type: 'image/png', bytes: PNG },
@@ -64,7 +63,7 @@ export function shopPages(): Record<string, Page> {
   };
 }
 
-export function fakeWeb(pages: Record<string, Page> = shopPages()): FakeWeb {
+export function fakeWeb(pages: Record<string, Page>): FakeWeb {
   const web: FakeWeb = {
     pages,
     calls: [],
@@ -126,12 +125,13 @@ export interface ImportWebWorld {
 
 export async function bootImportWorld(
   o: {
-    web?: FakeWeb | null;
+    /** The scripted web, or null for the feature off. Required: the fixtures are read by the test. */
+    web: FakeWeb | null;
     fee?: (m: number, c: string) => number;
     env?: Record<string, string>;
   } = {},
 ): Promise<ImportWebWorld> {
-  const web = o.web === null ? null : (o.web ?? fakeWeb());
+  const web = o.web === null ? null : o.web;
   const refund = await bootRefundWorld(o.env ?? {}, {
     ...(web === null ? {} : { test_import_fetcher: web }),
     ...(o.fee === undefined ? {} : { import_fee: { feeFor: o.fee } }),

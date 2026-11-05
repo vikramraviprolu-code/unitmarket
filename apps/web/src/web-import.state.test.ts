@@ -26,8 +26,12 @@ import * as copy from './lib/web-import-copy';
 vi.mock('server-only', () => ({}));
 
 const worlds: ImportWebWorld[] = [];
-const boot = async (o: Parameters<typeof bootImportWorld>[0] = {}): Promise<ImportWebWorld> => {
-  const w = await bootImportWorld(o);
+const data = (name: string): string =>
+  readFileSync(new URL(`../../../domain/catalogue/test-data/${name}`, import.meta.url), 'utf8');
+const boot = async (
+  o: Partial<Parameters<typeof bootImportWorld>[0]> = {},
+): Promise<ImportWebWorld> => {
+  const w = await bootImportWorld({ web: fakeWeb(shopPages(data)), ...o });
   worlds.push(w);
   return w;
 };
@@ -603,12 +607,12 @@ describe('the pages (source read as text)', () => {
 
 describe('the fixture shop pages are what the tests think they are', () => {
   it('has the source page, two pictures and a feed', () => {
-    const p = shopPages();
+    const p = shopPages(data);
     expect(Object.keys(p)).toEqual(
       expect.arrayContaining([SOURCE_URL, `${SHOP}/img/chart.png`, `${SHOP}/feed.xml`]),
     );
     expect(PNG[0]).toBe(0x89);
     expect(JPEG[0]).toBe(0xff);
-    expect(fakeWeb().calls).toEqual([]);
+    expect(fakeWeb({}).calls).toEqual([]);
   });
 });
