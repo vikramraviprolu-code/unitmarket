@@ -123,13 +123,17 @@ export interface BuyerHomeRead {
   recent: TxnLine[];
 }
 
-/** Approvals the buyer has not used, which have not ended, newest first. */
+/**
+ * Approvals the buyer has not used, which have not ended, newest first. An agent approval (its snapshot names a
+ * mandate) is never for the buyer to act on, so it is left out (FIX-B5): a refused agent buy leaves one unused.
+ */
 export async function readPendingApprovals(buyer_id: string): Promise<PendingApprovalInput[]> {
   const a = await app();
   const now = a.security.clock.now().toISOString();
   const ids = await a.db.query<{ id: string }>(
     `SELECT id FROM approvals
       WHERE buyer_id = $1 AND used_at IS NULL AND expires_at > $2
+        AND snapshot->>'mandate_id' IS NULL
       ORDER BY created_at DESC, id DESC LIMIT 20`,
     [buyer_id, now],
   );
