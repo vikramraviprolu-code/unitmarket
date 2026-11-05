@@ -122,7 +122,10 @@ describe('OPS-B.2 the CSV button', () => {
 
 describe('OPS-B.2 identity (C3)', () => {
   const rowsFor = async (s: Sess, withMfa: boolean) => {
-    const page = await readList(s, listUrl(withMfa ? OPERATOR : OPERATOR_KEY, parseQueryString('view=agent_purchases')));
+    const page = await readList(
+      s,
+      listUrl(withMfa ? OPERATOR : OPERATOR_KEY, parseQueryString('view=agent_purchases')),
+    );
     return rowsOf(page.items, { mfa: withMfa });
   };
 
@@ -137,7 +140,10 @@ describe('OPS-B.2 identity (C3)', () => {
   });
 
   it('without MFA the rows have no buyer, no seller and no provider id (deep scan)', async () => {
-    const page = await readList(noMfa, listUrl(OPERATOR_KEY, parseQueryString('view=agent_purchases')));
+    const page = await readList(
+      noMfa,
+      listUrl(OPERATOR_KEY, parseQueryString('view=agent_purchases')),
+    );
     const rows = rowsOf(page.items, { mfa: false });
     expect(rows).toHaveLength(5);
     const text = JSON.stringify(rows);
@@ -197,12 +203,26 @@ describe('OPS-B.2 the rows and the page states', () => {
   });
 
   it('writes the empty, error and refused states in plain sentences', () => {
-    expect(pageViewOf({ ok: true, data: { items: [], next_cursor: null } }, { mfa: true }).kind).toBe('empty');
-    const failed = pageViewOf({ ok: false, status: 0, code: 'network', message: 'x' }, { mfa: true });
-    expect(failed).toEqual({ kind: 'error', message: expect.stringMatching(/could not be loaded/i) });
-    const refused = pageViewOf({ ok: false, status: 400, code: 'field_not_allowed', message: 'x' }, { mfa: true });
+    expect(
+      pageViewOf({ ok: true, data: { items: [], next_cursor: null } }, { mfa: true }).kind,
+    ).toBe('empty');
+    const failed = pageViewOf(
+      { ok: false, status: 0, code: 'network', message: 'x' },
+      { mfa: true },
+    );
+    expect(failed).toEqual({
+      kind: 'error',
+      message: expect.stringMatching(/could not be loaded/i),
+    });
+    const refused = pageViewOf(
+      { ok: false, status: 400, code: 'field_not_allowed', message: 'x' },
+      { mfa: true },
+    );
     expect(refused.kind).toBe('error');
-    const limited = pageViewOf({ ok: false, status: 429, code: 'rate_limited', message: 'x' }, { mfa: true });
+    const limited = pageViewOf(
+      { ok: false, status: 429, code: 'rate_limited', message: 'x' },
+      { mfa: true },
+    );
     expect(limited).toEqual({ kind: 'error', message: expect.stringMatching(/too many|wait/i) });
   });
 
@@ -228,7 +248,9 @@ describe('OPS-B.2 the page reads only through getJson', () => {
 
   it('the page checks for an operator first and reads only from its tab module', () => {
     const page = source('app/ops/money/transactions/page.tsx');
-    expect(page).toMatch(/if \(actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/money\/transactions'\);/);
+    expect(page).toMatch(
+      /if \(actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/money\/transactions'\);/,
+    );
     expect(page).toMatch(/from '\.\.\/\.\.\/\.\.\/\.\.\/composition\/ops-money'/);
     expect(page).not.toMatch(/composition\.server|server\/access/);
   });

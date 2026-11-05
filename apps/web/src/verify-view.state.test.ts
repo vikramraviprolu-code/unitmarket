@@ -12,12 +12,7 @@ import { NOW, bootStartRig } from './ops-start-support';
 import type { StartRig } from './ops-start-support';
 import { TIMELINE_FIXTURES } from './lib/timeline-view';
 import type { TimelineEntryView } from './lib/timeline-view';
-import {
-  INVARIANTS_HREF,
-  RUN_VERIFY_HREF,
-  timelineMark,
-  verifyTileView,
-} from './lib/verify-view';
+import { INVARIANTS_HREF, RUN_VERIFY_HREF, timelineMark, verifyTileView } from './lib/verify-view';
 
 vi.mock('server-only', () => ({}));
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
@@ -57,7 +52,7 @@ beforeAll(async () => {
   for (const n of [1, 2, 3])
     await withTraceContext({ ...ctx, id: `ctx_verify_${n}` }, () =>
       rig.app.db.query(
-        `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ($1::text, 'job_probe', '{}'::jsonb, '2026-11-04T12:00:00Z', '2026-11-04T12:00:00Z')`,
+        `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ($1::text, 'job_probe', jsonb_build_object('reason', $1::text), '2026-11-04T12:00:00Z', '2026-11-04T12:00:00Z')`,
         [`alr_ver_${n}`],
       ),
     );
@@ -107,7 +102,9 @@ describe('OPS-B.5 the tile on a healthy database', () => {
 
   it('refuses a buyer, a seller and the system actor (N-B2)', async () => {
     expect(await controls.traceVerifyDetail({ kind: 'buyer', buyer_id: 'buy_1' })).toBeNull();
-    expect(await controls.traceVerifyDetail({ kind: 'publisher', publisher_id: 'pub_1' })).toBeNull();
+    expect(
+      await controls.traceVerifyDetail({ kind: 'publisher', publisher_id: 'pub_1' }),
+    ).toBeNull();
     expect(await controls.traceVerifyDetail({ kind: 'system' })).toBeNull();
     expect(verifyTileView({ state: 'refused' })).toMatchObject({ kind: 'refused', lines: [] });
   });
@@ -165,7 +162,10 @@ describe('OPS-B.5 a broken chain names the chain and the row', () => {
 
   it('shows at most 20 lines and says how many more there are', () => {
     const lines = Array.from({ length: 31 }, (_, i) => `chain c${i} seq 1: x`);
-    const tile = verifyTileView({ state: 'ran', detail: { ok: false, chains: 1, rows: 1, seals: 0, lines } });
+    const tile = verifyTileView({
+      state: 'ran',
+      detail: { ok: false, chains: 1, rows: 1, seals: 0, lines },
+    });
     expect(tile.lines).toHaveLength(20);
     expect(tile.more).toBe('and 11 more');
   });
@@ -175,7 +175,9 @@ describe('OPS-B.5 the page runs verify only on request (N-B1)', () => {
   const page = source('app/ops/controls/invariants/page.tsx');
 
   it('checks for an operator first and reads only from the Controls module', () => {
-    expect(page).toMatch(/if \(actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/controls\/invariants'\);/);
+    expect(page).toMatch(
+      /if \(actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/controls\/invariants'\);/,
+    );
     expect(page).toMatch(/from '\.\.\/\.\.\/\.\.\/\.\.\/composition\/ops-controls'/);
     expect(page).not.toMatch(/composition\.server|server\/access/);
   });
@@ -188,7 +190,9 @@ describe('OPS-B.5 the page runs verify only on request (N-B1)', () => {
 
   it('has no route and no server action for it', () => {
     expect(page).not.toMatch(/'use server'|"use server"/);
-    expect(source('ui/ops/VerifyTile.tsx')).not.toMatch(/'use server'|"use server"|fetch\s*\(|<form/);
+    expect(source('ui/ops/VerifyTile.tsx')).not.toMatch(
+      /'use server'|"use server"|fetch\s*\(|<form/,
+    );
     expect(source('ui/ops/VerifyTile.tsx')).toMatch(/href=\{tile\.runHref\}/);
   });
 
@@ -217,18 +221,20 @@ describe('OPS-B.5 the verified mark of a timeline (S1)', () => {
   });
 
   it('names the lowest seq that is not verified', () => {
-    expect(timelineMark([entry(1, true), entry(9, false), entry(7, false), entry(8, true)])).toEqual({
+    expect(
+      timelineMark([entry(1, true), entry(9, false), entry(7, false), entry(8, true)]),
+    ).toEqual({
       kind: 'broken',
       text: 'first broken row at seq 7',
     });
-    expect(timelineMark([entry(1, true), entry(7, false), entry(9, false)]).text).toBe(
+    expect(timelineMark([entry(1, true), entry(7, false), entry(9, false)])?.text).toBe(
       'first broken row at seq 7',
     );
   });
 
   it('draws nothing for an empty timeline, and the fixture world has one unverified row', () => {
     expect(timelineMark([])).toBeNull();
-    expect(timelineMark(TIMELINE_FIXTURES).text).toBe('first broken row at seq 6');
+    expect(timelineMark(TIMELINE_FIXTURES)?.text).toBe('first broken row at seq 6');
   });
 
   it('is derived from the entries, with no extra call: the component reads timelineMark and nothing fetches', () => {

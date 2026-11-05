@@ -27,7 +27,7 @@ const TXN_URLS = [
   '',
   'status=attention',
   'status=attention,paid',
-  'status=paid,failed&currency=USD',
+  'currency=USD&status=paid,failed',
   'from=2026-11-01&to=2026-11-04',
   'min_minor=500&max_minor=2500',
   'currency=EUR,USD',
@@ -60,11 +60,16 @@ describe('OPS-B.1 URL to chips and back', () => {
   it('gives one chip for each value of a list, so one value can be removed', () => {
     const state = barState(OPERATOR, parseQueryString('status=attention,paid&currency=USD'));
     expect(state.chips.map((c) => `${c.field}:${c.value}`)).toEqual([
+      'currency:USD',
       'status:attention',
       'status:paid',
-      'currency:USD',
     ]);
-    const without = withoutChip(OPERATOR, parseQueryString('status=attention,paid'), 'status', 'paid');
+    const without = withoutChip(
+      OPERATOR,
+      parseQueryString('status=attention,paid'),
+      'status',
+      'paid',
+    );
     expect(queryString(without)).toBe('status=attention');
     const none = withoutChip(OPERATOR, parseQueryString('status=attention'), 'status', 'attention');
     expect(queryString(none)).toBe('');
@@ -79,8 +84,12 @@ describe('OPS-B.1 URL to chips and back', () => {
       'status=attention&channel=human',
     );
     // A value that is already there is not added twice; a value the field does not take changes nothing.
-    expect(queryString(withField(OPERATOR, raw, 'status', 'attention'))).toBe('status=attention&channel=agent');
-    expect(queryString(withField(OPERATOR, raw, 'status', 'bogus'))).toBe('status=attention&channel=agent');
+    expect(queryString(withField(OPERATOR, raw, 'status', 'attention'))).toBe(
+      'status=attention&channel=agent',
+    );
+    expect(queryString(withField(OPERATOR, raw, 'status', 'bogus'))).toBe(
+      'status=attention&channel=agent',
+    );
   });
 
   it('turns an amount typed in money into minor units', () => {
@@ -95,7 +104,10 @@ describe('OPS-B.1 URL to chips and back', () => {
   });
 
   it('gives each chip words a person can read, with no raw key as the only text', () => {
-    const state = barState(OPERATOR, parseQueryString('status=part_refunded&from=2026-11-01&min_minor=500'));
+    const state = barState(
+      OPERATOR,
+      parseQueryString('status=part_refunded&from=2026-11-01&min_minor=500'),
+    );
     expect(state.chips.map((c) => c.text)).toEqual([
       'From 2026-11-01',
       'Amount at least 5.00',
@@ -123,7 +135,9 @@ describe('OPS-B.1 the Activity bar', () => {
     expect(preset).toBeDefined();
     expect(preset!.label).toBe('Switch history');
     expect(preset!.map).toEqual({ event_type: 'safety_switches.' });
-    expect(queryString(barState(ACTIVITY_MFA, preset!.map).map)).toBe('event_type=safety_switches.');
+    expect(queryString(barState(ACTIVITY_MFA, preset!.map).map)).toBe(
+      'event_type=safety_switches.',
+    );
   });
 });
 

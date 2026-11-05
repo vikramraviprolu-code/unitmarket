@@ -25,3 +25,18 @@ export async function readOpsMoney(actor: OperatorActor): Promise<OpsMoneyRead |
   });
   return { snap, refundKeys, reporting };
 }
+
+// INT-OPS-B / OPS-B.2: the props of the Transactions page, and nothing else. The list itself comes from
+// GET /api/ops/transactions in the browser (SR1), so the cursor hash and the MFA rule stay in the route. The
+// environment is the app's stored one, for the label; `mfa` only says which fields the filter bar may offer.
+export interface OpsTransactionsProps {
+  environment: OpsSnapshot['environment'];
+  mfa: boolean;
+}
+
+export async function readOpsTransactionsProps(
+  actor: OperatorActor,
+): Promise<OpsTransactionsProps | null> {
+  const snap = await (await app()).engine.opsSnapshot(actor);
+  return snap === null ? null : { environment: snap.environment, mfa: actor.mfa };
+}

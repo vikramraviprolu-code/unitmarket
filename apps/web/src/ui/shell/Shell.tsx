@@ -27,7 +27,7 @@ export function Shell({
         <div className="shell-inner">
           <div className="shell-row">
             <Tabs persona={persona} />
-            <SearchSlot />
+            <SearchSlot persona={persona} />
           </div>
           <div className="shell-crumbrow">
             <Breadcrumb />

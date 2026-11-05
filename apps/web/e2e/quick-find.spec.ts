@@ -6,7 +6,7 @@
 import { createHmac } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
-import { PASSCODE, TOTP_KEY_BYTES } from './support';
+import { PASSCODE, TOTP_KEY_BYTES, buyerPage, payWithScenario } from './support';
 
 const PUBLISHER_PASSCODE = 'e2e publisher passcode';
 
@@ -57,9 +57,19 @@ test.describe.serial('quick-find', () => {
     await op.ctx.close();
   });
 
-  test('the Transactions page lists orders, and the first row links to its order page', async () => {
+  test('the Transactions page lists orders, and the first row links to its order page', async ({
+    browser,
+  }) => {
     await op.page.goto('/ops/money/transactions');
     await expect(op.page.getByRole('heading', { level: 1, name: 'Transactions' })).toBeVisible();
+    await expect(op.page.getByTestId('txn-status')).not.toHaveText('Loading transactions.');
+    if ((await op.page.getByTestId('txn-ref').count()) === 0) {
+      // A server that no earlier file used: make one order the way a buyer does.
+      const buyer = await buyerPage(browser, 'b');
+      await payWithScenario(buyer, { offer: 'tide-tables', scenario: 'happy' });
+      await buyer.context().close();
+      await op.page.reload();
+    }
     const first = op.page.getByTestId('txn-ref').first();
     await expect(first).toBeVisible();
     const href = (await first.getAttribute('href')) ?? '';
@@ -95,7 +105,9 @@ test.describe.serial('quick-find', () => {
     expect(seen).toEqual([]);
   });
 
-  test('a seller sees the search slot without any quick-find results or request', async ({ browser }) => {
+  test('a seller sees the search slot without any quick-find results or request', async ({
+    browser,
+  }) => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     const seen: string[] = [];

@@ -35,7 +35,8 @@ const refusedBy = (p: FilterPersona, field: string): boolean => {
     scopeQuery(PRINCIPAL[p], { [field]: 'x' }, parseTxnQuery({ [field]: 'x' }));
     return false;
   } catch (e) {
-    if (e instanceof TxnSearchError && e.code === 'field_not_allowed' && e.status === 400) return true;
+    if (e instanceof TxnSearchError && e.code === 'field_not_allowed' && e.status === 400)
+      return true;
     throw e;
   }
 };
@@ -52,13 +53,16 @@ describe('OPS-B.1 refused fields (B1)', () => {
       expect(offered).not.toContain(f);
   });
 
-  it.each(PERSONAS)('for every field, %s: refused by the bar exactly when scopeQuery refuses', (persona) => {
-    const offered = offeredFields({ kind: 'txn', persona });
-    for (const field of TXN_FIELDS) {
-      const refused = refusedBy(persona, field);
-      expect(offered.includes(field), `${persona} ${field}`).toBe(!refused);
-    }
-  });
+  it.each(PERSONAS)(
+    'for every field, %s: refused by the bar exactly when scopeQuery refuses',
+    (persona) => {
+      const offered = offeredFields({ kind: 'txn', persona });
+      for (const field of TXN_FIELDS) {
+        const refused = refusedBy(persona, field);
+        expect(offered.includes(field), `${persona} ${field}`).toBe(!refused);
+      }
+    },
+  );
 
   it('maps a signed-in actor to the role the server will apply', () => {
     expect(txnPersona({ kind: 'operator', mfa: true })).toBe('operator');
@@ -86,10 +90,14 @@ describe('OPS-B.1 refused fields (B1)', () => {
   });
 
   it('whatever URL arrives, what the bar sends is never refused for the role', () => {
-    const noisy = parseQueryString(TXN_FIELDS.map((f) => `${f}=x`).join('&') + '&view=sandbox_only&sort=amount');
+    const noisy = parseQueryString(
+      TXN_FIELDS.map((f) => `${f}=x`).join('&') + '&view=sandbox_only&sort=amount',
+    );
     for (const persona of PERSONAS) {
       const state = barState({ kind: 'txn', persona }, noisy);
-      expect(() => scopeQuery(PRINCIPAL[persona], state.map, parseTxnQuery(state.map))).not.toThrow();
+      expect(() =>
+        scopeQuery(PRINCIPAL[persona], state.map, parseTxnQuery(state.map)),
+      ).not.toThrow();
     }
   });
 });
@@ -122,14 +130,21 @@ describe('OPS-B.1 hostile URLs', () => {
   });
 
   it('keeps a value that looks like markup as text, encoded', () => {
-    const state = barState(ctx, parseQueryString(`q=${encodeURIComponent('<script>alert(1)</script>')}`));
+    const state = barState(
+      ctx,
+      parseQueryString(`q=${encodeURIComponent('<script>alert(1)</script>')}`),
+    );
     expect(queryString(state.map)).toBe('q=%3Cscript%3Ealert(1)%3C%2Fscript%3E');
     expect(state.chips[0]!.text).toBe('Search: <script>alert(1)</script>');
   });
 
   it('keeps only the first of a repeated key and survives a malformed escape', () => {
-    expect(queryString(barState(ctx, parseQueryString('status=paid&status=failed')).map)).toBe('status=paid');
+    expect(queryString(barState(ctx, parseQueryString('status=paid&status=failed')).map)).toBe(
+      'status=paid',
+    );
     expect(() => parseQueryString('q=%E0%A4%A&status=paid')).not.toThrow();
-    expect(queryString(barState(ctx, parseQueryString('q=%E0%A4%A&status=paid')).map)).toContain('status=paid');
+    expect(queryString(barState(ctx, parseQueryString('q=%E0%A4%A&status=paid')).map)).toContain(
+      'status=paid',
+    );
   });
 });

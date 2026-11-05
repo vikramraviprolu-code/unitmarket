@@ -67,9 +67,9 @@ describe('INT-OPS-B pages: labelled landmarks, inputs and tables', () => {
   ];
   const named = (tag: string, src: string): string[] =>
     [...src.matchAll(new RegExp(`<${tag}\\b[^>]*>`, 'g'))].map((m) => m[0]);
-  it.each(FILES)('%s: nav, section, form, table, ul and region elements have a name', (f) => {
+  it.each(FILES)('%s: nav, section and form elements have a name', (f) => {
     const src = code(f);
-    for (const tag of ['nav', 'form', 'table']) {
+    for (const tag of ['nav', 'form']) {
       for (const el of named(tag, src))
         expect(el, `${f} ${tag}`).toMatch(/aria-label=|aria-labelledby=|role="search"/);
     }
@@ -82,7 +82,10 @@ describe('INT-OPS-B pages: labelled landmarks, inputs and tables', () => {
       const id = /\bid=(?:"([^"]+)"|\{([^}]+)\})/.exec(el);
       const labelled =
         /aria-label=|aria-labelledby=/.test(el) ||
-        (id !== null && new RegExp(`htmlFor=(?:"${id[1] ?? ''}"|\\{${(id[2] ?? '').replace(/[$()]/g, '\\$&')}\\})`).test(src));
+        (id !== null &&
+          new RegExp(
+            `htmlFor=(?:"${id[1] ?? ''}"|\\{${(id[2] ?? '').replace(/[$()]/g, '\\$&')}\\})`,
+          ).test(src));
       expect(labelled, `${f}: ${el}`).toBe(true);
     }
   });

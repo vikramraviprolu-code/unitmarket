@@ -1,5 +1,7 @@
 import type { TimelineView } from '../lib/timeline-view';
+import { timelineMark } from '../lib/verify-view';
 import './shared-parts.css';
+import './ops/ops-b.css';
 
 // INT-UI0 / UI0.6: the timeline of one order or unit. It paints what lib/timeline-view.ts returns and decides
 // nothing: the order, the words, the empty and the error state all come from there. Until TR1 lands the
@@ -17,6 +19,8 @@ export function Timeline({ view, label }: { view: TimelineView; label: string })
         {view.message}
       </p>
     );
+  // OPS-B.5 (S1): the mark comes from the entries' own flags: "verified", or the lowest seq that is not.
+  const mark = timelineMark(view.rows);
   return (
     <>
       <ol className="tl" aria-label={label} data-testid="timeline">
@@ -36,6 +40,11 @@ export function Timeline({ view, label }: { view: TimelineView; label: string })
           </li>
         ))}
       </ol>
+      {mark !== null ? (
+        <p className={`tl-mark tl-mark-${mark.kind}`} data-testid="timeline-mark">
+          {mark.text}
+        </p>
+      ) : null}
       {view.truncated !== null ? <p className="tl-cap">{view.truncated}</p> : null}
     </>
   );

@@ -155,29 +155,53 @@ describe('OPS-B.4 without the second factor (B5)', () => {
   });
 
   it('shows the operator id only where TR1 sent it (system and operator rows), never for others', async () => {
-    const page = await read(plain, activityUrl(PLAIN_CTX, parseQueryString('event_type=alerts.&limit=100')));
+    const page = await read(
+      plain,
+      activityUrl(PLAIN_CTX, parseQueryString('event_type=alerts.&limit=100')),
+    );
     const rows = activityRowsOf(page.items, { mfa: false });
-    for (const r of rows) if (r.actor_id !== null) expect(['system', 'operator']).toContain(r.actor_kind);
+    for (const r of rows)
+      if (r.actor_id !== null) expect(['system', 'operator']).toContain(r.actor_kind);
   });
 
   it('a server refusal is worded, not shown raw', () => {
     const v = activityPageView(
-      { ok: false, status: 403, code: 'mfa_required', message: 'Filtering by actor needs the second factor.' },
+      {
+        ok: false,
+        status: 403,
+        code: 'mfa_required',
+        message: 'Filtering by actor needs the second factor.',
+      },
       { mfa: false },
     );
-    expect(v).toEqual({ kind: 'error', message: expect.stringMatching(/second factor|authenticator/i) });
-    const bad = activityPageView({ ok: false, status: 400, code: 'bad_cursor', message: 'x' }, { mfa: true });
+    expect(v).toEqual({
+      kind: 'error',
+      message: expect.stringMatching(/second factor|authenticator/i),
+    });
+    const bad = activityPageView(
+      { ok: false, status: 400, code: 'bad_cursor', message: 'x' },
+      { mfa: true },
+    );
     expect(bad).toEqual({ kind: 'error', message: expect.stringMatching(/first page/i) });
   });
 });
 
 describe('OPS-B.4 filters and paging', () => {
   it('filters narrow: channel, actor kind and the event prefix combine with AND', async () => {
-    const all = await read(mfa, activityUrl(MFA_CTX, parseQueryString('event_type=alerts.&limit=200')));
-    const web = await read(mfa, activityUrl(MFA_CTX, parseQueryString('event_type=alerts.&channel=web&limit=200')));
+    const all = await read(
+      mfa,
+      activityUrl(MFA_CTX, parseQueryString('event_type=alerts.&limit=200')),
+    );
+    const web = await read(
+      mfa,
+      activityUrl(MFA_CTX, parseQueryString('event_type=alerts.&channel=web&limit=200')),
+    );
     const job = await read(
       mfa,
-      activityUrl(MFA_CTX, parseQueryString('event_type=alerts.&actor_kind=system&channel=job&limit=200')),
+      activityUrl(
+        MFA_CTX,
+        parseQueryString('event_type=alerts.&actor_kind=system&channel=job&limit=200'),
+      ),
     );
     expect(all.items.length).toBe(70);
     expect(web.items.length).toBe(10);
@@ -187,7 +211,10 @@ describe('OPS-B.4 filters and paging', () => {
       activityUrl(MFA_CTX, parseQueryString('event_type=alerts.&actor_kind=operator&channel=job')),
     );
     expect(activityPageView({ ok: true, data: none }, { mfa: true }).kind).toBe('empty');
-    const named = await read(mfa, activityUrl(MFA_CTX, parseQueryString('actor_id=opr_vikram&event_type=alerts.&limit=200')));
+    const named = await read(
+      mfa,
+      activityUrl(MFA_CTX, parseQueryString('actor_id=opr_vikram&event_type=alerts.&limit=200')),
+    );
     expect(named.items.length).toBe(10);
   });
 
@@ -230,7 +257,9 @@ describe('OPS-B.4 the page reads only through getJson', () => {
 
   it('the page checks for an operator first and reads only from the Controls module', () => {
     const page = source('app/ops/controls/activity/page.tsx');
-    expect(page).toMatch(/if \(actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/controls\/activity'\);/);
+    expect(page).toMatch(
+      /if \(actor\?\.kind !== 'operator'\) redirect\('\/signin\?next=\/ops\/controls\/activity'\);/,
+    );
     expect(page).toMatch(/from '\.\.\/\.\.\/\.\.\/\.\.\/composition\/ops-controls'/);
     expect(page).not.toMatch(/composition\.server|server\/access/);
   });

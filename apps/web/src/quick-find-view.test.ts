@@ -79,7 +79,16 @@ describe('OPS-B.3 the groups', () => {
       FIND_GROUP_ORDER.filter((g) => v.groups.some((x) => x.id === g)),
     );
     expect(v.groups.map((g) => g.label)).toEqual(
-      v.groups.map((g) => ({ orders: 'Orders', sellers: 'Sellers', offers: 'Offers', keys: 'Keys', buyers: 'Buyers' })[g.id]),
+      v.groups.map(
+        (g) =>
+          ({
+            orders: 'Orders',
+            sellers: 'Sellers',
+            offers: 'Offers',
+            keys: 'Keys',
+            buyers: 'Buyers',
+          })[g.id],
+      ),
     );
     expect(v.groups.some((g) => g.id === 'sellers')).toBe(true);
   });
@@ -188,7 +197,9 @@ describe('OPS-B.3 the typed text is never logged', () => {
   it('the component and the view hold no console call, no storage write and no beacon', () => {
     for (const f of ['ui/ops/QuickFind.tsx', 'lib/quick-find-view.ts']) {
       const src = code(f);
-      expect(src, f).not.toMatch(/console\.|localStorage|sessionStorage|sendBeacon|document\.cookie/);
+      expect(src, f).not.toMatch(
+        /console\.|localStorage|sessionStorage|sendBeacon|document\.cookie/,
+      );
     }
   });
 
