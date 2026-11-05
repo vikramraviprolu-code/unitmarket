@@ -44,19 +44,30 @@ export interface ScriptedCall {
 export interface ScriptedWeb extends ImportFetcherPort {
   pages: Record<string, ScriptedPage>;
   calls: ScriptedCall[];
-  /** Runs before each answer (the call has been logged); a test may move the clock or read the database. */
+  /**
+   * Runs before each answer (the call has been logged); a test may move the clock or read the database. `n` counts
+   * the calls made since the hook was set: the first call after it is 1.
+   */
   hook: ((n: number, url: string) => Promise<void> | void) | null;
 }
 
 export function scriptedWeb(pages: Record<string, ScriptedPage> = {}): ScriptedWeb {
+  let hook: ScriptedWeb['hook'] = null;
+  let hookBase = 0;
   const web: ScriptedWeb = {
     pages,
     calls: [],
-    hook: null,
+    get hook() {
+      return hook;
+    },
+    set hook(fn) {
+      hook = fn;
+      hookBase = web.calls.length;
+    },
     async fetch(url, o): Promise<ImportFetchOutcome> {
       const kind = o.kind ?? 'text';
       web.calls.push({ url, allow: [...o.allow], kind });
-      if (web.hook !== null) await web.hook(web.calls.length, url);
+      if (hook !== null) await hook(web.calls.length - hookBase, url);
       let host: string;
       try {
         host = new URL(url).hostname;

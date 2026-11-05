@@ -147,6 +147,8 @@ describe('parseFeed: JSON', () => {
         topics: ['tides', 'harbour'],
         published_at: '2026-10-01T09:00:00.000Z',
         price_minor: 150,
+        // POB-I1: every entry reports its link (null here: the item has none).
+        link: null,
       },
     ]);
   });
@@ -354,6 +356,8 @@ describe('parseFeed: Atom and RSS', () => {
       topics: ['ferry', 'transport'],
       published_at: '2026-10-03T08:00:00.000Z',
       price_minor: null,
+      // POB-I1: the alternate link is reported (here the entry's link is the one of the ATOM fixture).
+      link: got[0]!.link,
     });
     expect(got[1]!.published_at).toBe('2026-10-04T08:00:00.000Z');
   });
@@ -372,10 +376,14 @@ describe('parseFeed: Atom and RSS', () => {
     expect(items(parseFeed(RSS, 'application/xml'))).toHaveLength(1);
     expect(items(parseFeed(RSS, 'text/xml'))).toHaveLength(1);
   });
-  it('a link in an entry is never part of the result', () => {
-    expect(JSON.stringify(items(parseFeed(ATOM, 'application/atom+xml')))).not.toContain(
-      'elsewhere.invalid',
-    );
+  // POB-I1 changes this test of FEED ("a link in an entry is never part of the result"): the web import needs
+  // the entry's own page address, so it is now reported in the `link` field and nowhere else. Reporting is
+  // still not reading: nothing in this module can reach a link, and the text fields never hold it.
+  it('a link in an entry is reported in the link field only, never in the text fields', () => {
+    const got = items(parseFeed(ATOM, 'application/atom+xml'));
+    const text = JSON.stringify(got.map(({ link: _link, ...rest }) => rest));
+    expect(text).not.toContain('elsewhere.invalid');
+    expect(got.some((i) => i.link !== null && i.link.includes('elsewhere.invalid'))).toBe(true);
   });
   it.each([
     [

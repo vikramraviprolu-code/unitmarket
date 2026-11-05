@@ -1,5 +1,5 @@
-// FEED (E-03). A strict reader for publisher offer feeds (JSON, Atom, RSS) and the sanitiser every feed
-// text goes through. Pure: no network, no clock, no database, no dependency.
+// FEED (E-03), reused by the web import (POB-I1, D-089). A strict reader for feeds (JSON, Atom, RSS) and the
+// sanitiser every text from a site goes through. Pure: no network, no clock, no database, no dependency.
 //
 // What the text becomes: plain data. Tags are removed (script and style bodies with them), character
 // references are decoded once and the result is stripped again, control and invisible characters go, and no
@@ -30,6 +30,17 @@ export interface FeedItem {
   published_at: string | null;
   /** The feed's proposed price when it is a safe integer, else null. Range is the importer's rule. */
   price_minor: number | null;
+  /** The entry's own page: plain http or https text of at most 2048 visible characters, else null. Never fetched here. */
+  link: string | null;
+}
+
+export interface ParseOptions {
+  /**
+   * Keep an entry that has a link but no text (the web import reads its own page later). Such an entry has an
+   * empty body, takes its summary from the title and, with no id, its link as the id. Default false: an entry
+   * without text is skipped, as FEED had it.
+   */
+  keepBodyless?: boolean;
 }
 
 export type FeedParseCode = 'bad_json' | 'bad_xml' | 'unsupported' | 'too_many_items';
@@ -171,6 +182,7 @@ interface RawItem {
   topics: unknown;
   published: unknown;
   price: unknown;
+  link?: unknown;
 }
 
 const cpLength = (s: string): number => Array.from(s).length;
@@ -183,14 +195,25 @@ function toIso(v: unknown): string | null {
   return /^\d{4}-/.test(iso) ? iso : null;
 }
 
-function buildItem(r: RawItem): FeedItem | null {
-  const source_id = sanitiseFeedText(r.id, { max: FEED_SOURCE_ID_MAX });
+const LINK_SHAPE = /^https?:\/\/[\x21-\x7e]+$/;
+function cleanLink(v: unknown): string | null {
+  const t = sanitiseFeedText(v, { max: 2049 });
+  return t.length > 0 && t.length <= 2048 && LINK_SHAPE.test(t) ? t : null;
+}
+
+function buildItem(r: RawItem, keepBodyless: boolean): FeedItem | null {
+  const link = cleanLink(r.link);
+  let source_id = sanitiseFeedText(r.id, { max: FEED_SOURCE_ID_MAX });
+  if (source_id === '' && keepBodyless && link !== null)
+    source_id = link.slice(0, FEED_SOURCE_ID_MAX);
   const title = sanitiseFeedText(r.title, { max: FEED_TITLE_MAX });
   if (source_id === '' || title === '') return null;
   const body = sanitiseFeedText(r.body, { max: FEED_BODY_MAX + 1, multiline: true });
-  if (body === '' || cpLength(body) > FEED_BODY_MAX) return null;
+  if (body === '' && !(keepBodyless && link !== null)) return null;
+  if (cpLength(body) > FEED_BODY_MAX) return null;
   let abstract = sanitiseFeedText(r.summary, { max: FEED_ABSTRACT_MAX });
   if (abstract === '') abstract = sanitiseFeedText(body, { max: FEED_ABSTRACT_MAX });
+  if (abstract === '' && keepBodyless) abstract = title;
   if (abstract === '') return null;
   const lang = sanitiseFeedText(r.language, { max: 16 }).toLowerCase();
   const language = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/.test(lang) ? lang : 'und';
@@ -212,15 +235,19 @@ function buildItem(r: RawItem): FeedItem | null {
     topics,
     published_at: toIso(r.published),
     price_minor,
+    link,
   };
 }
 
-function collect(raws: Iterable<RawItem | null>): Result<ParsedFeed, FeedParseError> {
+function collect(
+  raws: Iterable<RawItem | null>,
+  keepBodyless: boolean,
+): Result<ParsedFeed, FeedParseError> {
   const items: FeedItem[] = [];
   const seen = new Set<string>();
   let skipped = 0;
   for (const r of raws) {
-    const item = r === null ? null : buildItem(r);
+    const item = r === null ? null : buildItem(r, keepBodyless);
     if (item === null || seen.has(item.source_id)) {
       skipped += 1;
       continue;
@@ -241,7 +268,7 @@ const first = (o: Record<string, unknown>, keys: string[]): unknown => {
   return undefined;
 };
 
-function parseJson(text: string): Result<ParsedFeed, FeedParseError> {
+function parseJson(text: string, keepBodyless: boolean): Result<ParsedFeed, FeedParseError> {
   let doc: unknown;
   try {
     doc = JSON.parse(text);
@@ -264,16 +291,18 @@ function parseJson(text: string): Result<ParsedFeed, FeedParseError> {
             topics: first(v, ['topics', 'tags']),
             published: first(v, ['published', 'date_published']),
             price: first(v, ['price_minor']),
+            link: first(v, ['url']),
           }
         : null,
     ),
+    keepBodyless,
   );
 }
 
 // ---------------------------------------------------------------------------------------------
 // XML (Atom and RSS)
 
-interface XNode {
+export interface XNode {
   name: string;
   attrs: Record<string, string>;
   children: XNode[];
@@ -286,7 +315,7 @@ const TAG_END = /[ \t\r\n]*(\/?)>/y;
 const NAME = /[A-Za-z_][A-Za-z0-9_.:-]*/y;
 const XML_DECL = /^<\?xml[ \t\r\n][^>]*\?>/;
 
-function readXml(input: string): XNode | null {
+export function readXml(input: string): XNode | null {
   const s = input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
   let pos = 0;
   const decl = XML_DECL.exec(s);
@@ -371,7 +400,7 @@ const child = (n: XNode, name: string): XNode | undefined =>
   n.children.find((c) => c.name === name);
 const textOf = (n: XNode | undefined): string | undefined => n?.text;
 
-function parseXml(text: string): Result<ParsedFeed, FeedParseError> {
+function parseXml(text: string, keepBodyless: boolean): Result<ParsedFeed, FeedParseError> {
   const root = readXml(text);
   if (root === null) return err({ code: 'bad_xml' });
   let raws: RawItem[];
@@ -387,6 +416,9 @@ function parseXml(text: string): Result<ParsedFeed, FeedParseError> {
       topics: e.children.filter((c) => c.name === 'category').map((c) => c.attrs['term']),
       published: textOf(child(e, 'published')) ?? textOf(child(e, 'updated')),
       price: undefined,
+      link: e.children.find(
+        (c) => c.name === 'link' && (c.attrs['rel'] ?? 'alternate') === 'alternate',
+      )?.attrs['href'],
     }));
   } else if (root.name === 'rss') {
     const channel = child(root, 'channel');
@@ -402,11 +434,12 @@ function parseXml(text: string): Result<ParsedFeed, FeedParseError> {
       topics: it.children.filter((c) => c.name === 'category').map((c) => c.text),
       published: textOf(child(it, 'pubDate')),
       price: undefined,
+      link: textOf(child(it, 'link')),
     }));
   } else {
     return err({ code: 'unsupported' });
   }
-  return collect(raws);
+  return collect(raws, keepBodyless);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -420,9 +453,14 @@ const XML_TYPES = new Set([
 ]);
 
 /** Reads a feed body. `contentType` is the media type the fetcher saw (parameters are ignored). */
-export function parseFeed(body: string, contentType: string): Result<ParsedFeed, FeedParseError> {
+export function parseFeed(
+  body: string,
+  contentType: string,
+  opts: ParseOptions = {},
+): Result<ParsedFeed, FeedParseError> {
   const type = (contentType.split(';')[0] ?? '').trim().toLowerCase();
-  if (JSON_TYPES.has(type)) return parseJson(body);
-  if (XML_TYPES.has(type)) return parseXml(body);
+  const keep = opts.keepBodyless === true;
+  if (JSON_TYPES.has(type)) return parseJson(body, keep);
+  if (XML_TYPES.has(type)) return parseXml(body, keep);
   return err({ code: 'unsupported' });
 }

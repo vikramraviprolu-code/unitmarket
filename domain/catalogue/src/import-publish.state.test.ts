@@ -451,6 +451,7 @@ describe('re-import after publishing', () => {
         'Low water is at noon.',
       ).replace('"1.50"', '"9.99"'),
     };
+    w.web.calls.length = 0;
     const b2 = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
     expect(b2.ok).toBe(true);
     await runNextBatch(w.idep());

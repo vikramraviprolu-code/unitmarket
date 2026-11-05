@@ -10,30 +10,38 @@ import {
   endsInNumber,
   feedMediaType,
 } from './feed-guard';
-import type { FeedRefusal } from './feed-guard';
+import type { FeedKind, FeedRefusal } from './feed-guard';
 
-// FEED (E-02, nfr SOP 18, P19). The one real fetcher for publisher offer feeds, and the only network code
-// the feed import has. It is not a general client: GET only, https on port 443 only, a host that is on the
-// owner's allow-list, an address that is public. It is never built unless the allow-list is non-empty, and
-// no code path calls it except an operator's import (composition decides, domain/catalogue asks).
+// FEED (E-02, nfr SOP 18, P19), adapted for the web import (POB-I1, D-089). The one real fetcher for a
+// publisher's own web address, and the only network code the import has. It is not a general client: GET
+// only, https on port 443 only, a host that the CALLER names for this one call (the publisher's verified
+// domain, or the host whose proof is being checked), an address that is public. Nothing is configured: the
+// feature has no allow list of its own and no deploy is needed for a new publisher.
 //
-// What it does, in order: check the url (feed-guard); resolve the name ONCE; refuse if ANY answer is
-// non-public; connect to the pinned address (the host name is only the TLS name and the Host header, so
-// there is no second lookup to rebind); check the connected peer is that address; never follow a redirect;
-// refuse a wrong type, a compressed body or more than 2 MB; give up after 5 s for the whole exchange.
-// A refusal is a fixed kind. No url, address, header or peer text is kept in it.
+// What it does, in order: check the allow list and the url (feed-guard); resolve the name ONCE for this call;
+// refuse if ANY answer is non-public (so a domain that was fine at the proof and now points inside is
+// refused on the next call); connect to the pinned address (the host name is only the TLS name and the Host
+// header, so there is no second lookup to rebind); check the connected peer is that address; never follow a
+// redirect; refuse a wrong type, a compressed body or more than 2 MB; give up after 5 s for the whole
+// exchange. A refusal is a fixed kind. No url, address, header or peer text is kept in it.
+
+/** What one call may do: reach only these hosts, and receive text or a picture. */
+export interface FetchOptions {
+  /** The hosts this call may reach (exact lower case names). Empty: refused as feed_off. */
+  allow: readonly string[];
+  /** Default text. A picture is jpeg, png or webp only, and its bytes are returned undecoded. */
+  kind?: FeedKind;
+}
 
 export type FeedFetchResult =
-  | { ok: true; body: string; content_type: string; host: string }
+  | { ok: true; body: string; bytes: Uint8Array; content_type: string; host: string }
   | { ok: false; reason: FeedRefusal };
 
 export interface FeedFetcher {
-  fetch(url: string): Promise<FeedFetchResult>;
+  fetch(url: string, o: FetchOptions): Promise<FeedFetchResult>;
 }
 
 export interface FeedFetcherDeps {
-  /** The owner's allow-list of feed hosts (exact names). Empty: every call is refused as feed_off. */
-  allow: readonly string[];
   /** One name lookup per fetch: every address the name has. A fake in tests. */
   resolve: (host: string) => Promise<readonly string[]>;
   /** https.request captured at load (a fake in tests). */
@@ -43,13 +51,20 @@ export interface FeedFetcherDeps {
 
 const fail = (reason: FeedRefusal): FeedFetchResult => ({ ok: false, reason });
 const peerOf = (a: string): string => a.toLowerCase().replace(/^::ffff:/, '');
-const ACCEPT =
-  'application/json, application/feed+json, application/atom+xml, application/rss+xml, application/xml;q=0.9, text/xml;q=0.9';
+const ACCEPT: Record<FeedKind, string> = {
+  text: 'text/html, application/json, application/feed+json, application/ld+json, application/atom+xml, application/rss+xml, application/xml;q=0.9, text/xml;q=0.9, text/plain;q=0.8',
+  image: 'image/jpeg, image/png, image/webp',
+};
 
 /** Internal: builds the fetcher from its dependencies. Used by createFeedFetcher and by its tests. */
 export function makeFeedFetcher(deps: FeedFetcherDeps): FeedFetcher {
-  function fetchFeed(url: string): Promise<FeedFetchResult> {
-    const checked = checkFeedUrl(url, deps.allow);
+  function fetchFeed(url: string, o: FetchOptions): Promise<FeedFetchResult> {
+    const allow: unknown = o?.allow;
+    if (!Array.isArray(allow) || allow.length === 0) return Promise.resolve(fail('feed_off'));
+    // Every entry must be a usable lower case name: one bad entry refuses the call before any lookup.
+    if (!allow.every(isFeedHostName)) return Promise.resolve(fail('host_not_allowed'));
+    const kind: FeedKind = o.kind === 'image' ? 'image' : 'text';
+    const checked = checkFeedUrl(url, allow);
     if (!checked.ok) return Promise.resolve(fail(checked.reason));
     const { host, path } = checked;
     return new Promise<FeedFetchResult>((resolve) => {
@@ -96,7 +111,7 @@ export function makeFeedFetcher(deps: FeedFetcherDeps): FeedFetcher {
               method: 'GET',
               headers: {
                 host,
-                accept: ACCEPT,
+                accept: ACCEPT[kind],
                 'accept-encoding': 'identity',
                 'user-agent': 'UnitMarket-Feed/1',
               },
@@ -122,9 +137,9 @@ export function makeFeedFetcher(deps: FeedFetcherDeps): FeedFetcher {
         const remote = response.socket?.remoteAddress;
         if (typeof remote !== 'string' || peerOf(remote) !== peerOf(pinned))
           return settle(fail('pin_mismatch'));
-        const refusal = checkFeedHead(response.statusCode ?? 0, response.headers);
+        const refusal = checkFeedHead(response.statusCode ?? 0, response.headers, kind);
         if (refusal !== null) return settle(fail(refusal));
-        const content_type = feedMediaType(response.headers['content-type']) ?? '';
+        const content_type = feedMediaType(response.headers['content-type'], kind) ?? '';
         const chunks: Buffer[] = [];
         let total = 0;
         let ended = false;
@@ -137,13 +152,15 @@ export function makeFeedFetcher(deps: FeedFetcherDeps): FeedFetcher {
         });
         response.on('end', () => {
           ended = true;
+          const bytes = new Uint8Array(Buffer.concat(chunks));
+          if (kind === 'image') return settle({ ok: true, body: '', bytes, content_type, host });
           let body: string;
           try {
-            body = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
+            body = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
           } catch {
             return settle(fail('bad_body'));
           }
-          settle({ ok: true, body, content_type, host });
+          settle({ ok: true, body, bytes, content_type, host });
         });
         response.on('close', () => {
           if (!ended) settle(fail('network'));
@@ -157,7 +174,7 @@ export function makeFeedFetcher(deps: FeedFetcherDeps): FeedFetcher {
 const HOSTNAME =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
-/** A usable allow-list entry: a lower case DNS name with at least two labels, not a number, not localhost. */
+/** A usable allow list entry: a lower case DNS name with at least two labels, not a number, not localhost. */
 export function isFeedHostName(h: unknown): h is string {
   return (
     typeof h === 'string' &&
@@ -174,14 +191,11 @@ const LOADED_REQUEST = https.request;
 const LOADED_LOOKUP = dns.promises.lookup;
 
 /**
- * The production fetcher. Throws on an empty or unusable allow-list: the fetcher does not exist while the
- * feature is off. Composition builds it only when the configured list is non-empty.
+ * The production fetcher. It takes no allow list: each call names the host it may reach. Composition builds
+ * it once, outside tests, and passes it to the domain as a port.
  */
-export function createFeedFetcher(o: { allow: readonly string[] }): FeedFetcher {
-  if (!Array.isArray(o.allow) || o.allow.length === 0 || !o.allow.every(isFeedHostName))
-    throw new Error('feed fetcher: the allow-list is empty or has an unusable entry');
+export function createFeedFetcher(): FeedFetcher {
   return makeFeedFetcher({
-    allow: [...o.allow],
     resolve: async (host) =>
       (await LOADED_LOOKUP(host, { all: true, verbatim: true })).map((a) => a.address),
     request: LOADED_REQUEST,

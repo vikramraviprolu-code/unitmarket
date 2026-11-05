@@ -1,13 +1,20 @@
-// FEED (E-02, nfr SOP 18, P19). Pure guards for the publisher feed import: no name lookup, no socket, no
-// clock. A url, a resolved address and a response head are each checked here; feed-fetch.ts is the one
-// place that acts on the answers. Every refusal is a fixed kind, never the text that caused it.
+// FEED (E-02, nfr SOP 18, P19), adapted for the web import (POB-I1, D-089). Pure guards: no name lookup, no
+// socket, no clock. A url, a resolved address and a response head are each checked here; feed-fetch.ts is the
+// one place that acts on the answers. Every refusal is a fixed kind, never the text that caused it.
+//
+// The allow list is not configuration any more: the caller names, for each call, the one host it may reach
+// (the publisher's verified domain, or the host whose proof is being checked). The address checks are the
+// same as before. A call has one of two kinds: text (a page, a feed, the proof file) or image.
 
-/** Largest feed body: 2 MB. */
+/** Largest body of any call (a feed, a page, a picture): 2 MB. */
 export const FEED_MAX_BYTES = 2 * 1024 * 1024;
 /** The whole exchange, name lookup included: 5 s. */
 export const FEED_DEADLINE_MS = 5000;
 export const FEED_MAX_URL_CHARS = 2048;
 const MAX_ADDRESSES = 32;
+
+/** What a call may receive: text (page, feed, proof) or a picture. */
+export type FeedKind = 'text' | 'image';
 
 export type FeedRefusal =
   | 'feed_off'
@@ -204,23 +211,32 @@ export function checkResolved(addresses: readonly unknown[]): ResolvedCheck {
 // ---------------------------------------------------------------------------------------------
 // The response head
 
-const FEED_TYPES: ReadonlySet<string> = new Set([
+const TEXT_TYPES: ReadonlySet<string> = new Set([
   'application/json',
   'application/feed+json',
+  'application/ld+json',
   'application/atom+xml',
   'application/rss+xml',
   'application/xml',
   'text/xml',
+  'text/html',
+  'application/xhtml+xml',
+  'text/plain',
 ]);
+const IMAGE_TYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 type Headers = Record<string, string | string[] | undefined>;
 
-/** The media type of an acceptable content type header, or null. A charset, when given, must be UTF-8. */
-export function feedMediaType(header: string | string[] | undefined): string | null {
+/**
+ * The media type of an acceptable content type header, or null. For text a charset, when given, must be
+ * UTF-8. For an image only the three types of the import count (no svg: it can hold script).
+ */
+export function feedMediaType(header: string | string[] | undefined, kind: FeedKind = 'text'): string | null {
   if (typeof header !== 'string') return null;
   const parts = header.split(';').map((p) => p.trim());
   const type = parts[0]!.toLowerCase();
-  if (!FEED_TYPES.has(type)) return null;
+  if (kind === 'image') return IMAGE_TYPES.has(type) ? type : null;
+  if (!TEXT_TYPES.has(type)) return null;
   for (const p of parts.slice(1)) {
     const m = /^charset\s*=\s*"?([^"]*)"?$/i.exec(p);
     if (m !== null && m[1]!.trim().toLowerCase() !== 'utf-8') return null;
@@ -229,10 +245,14 @@ export function feedMediaType(header: string | string[] | undefined): string | n
 }
 
 /** Null when the head is acceptable, otherwise the refusal kind. */
-export function checkFeedHead(status: number, headers: Headers): FeedRefusal | null {
+export function checkFeedHead(
+  status: number,
+  headers: Headers,
+  kind: FeedKind = 'text',
+): FeedRefusal | null {
   if (Number.isInteger(status) && status >= 300 && status <= 399) return 'redirect';
   if (status !== 200) return 'bad_status';
-  if (feedMediaType(headers['content-type']) === null) return 'bad_content_type';
+  if (feedMediaType(headers['content-type'], kind) === null) return 'bad_content_type';
   const enc = headers['content-encoding'];
   if (enc !== undefined) {
     const e = Array.isArray(enc) ? enc.join(',') : enc;

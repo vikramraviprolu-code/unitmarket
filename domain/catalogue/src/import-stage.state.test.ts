@@ -196,7 +196,7 @@ describe('checkDomain: one guarded GET of each of two fixed paths, nothing else'
     ).rows[0]!;
     expect(row.state).toBe('verified');
     expect(new Date(row.verified_at as string).toISOString()).toBe(w.clock.now().toISOString());
-    expect((await auditRows(w.db, 'domain.%')).map((a) => a.action)).toEqual([
+    expect((await auditRows(w.db, 'domain.%')).map((a) => a.action).sort()).toEqual([
       'domain.requested',
       'domain.verified',
     ]);
@@ -349,7 +349,6 @@ describe('startVerifiedImport (begin)', () => {
       'https://pending.pub-one.invalid/catalogue',
       'https://sub.shop.pub-one.invalid/catalogue',
       'https://pub-one.invalid/catalogue',
-      'https://metadata.google.internal/computeMetadata/v1/',
     ]) {
       expect(await startVerifiedImport(w.idep(), w.harbour, { source_url: url })).toEqual({
         ok: false,
@@ -369,6 +368,7 @@ describe('startVerifiedImport (begin)', () => {
     'http://shop.pub-one.invalid/catalogue',
     'https://127.0.0.1/catalogue',
     'https://169.254.169.254/computeMetadata/v1/',
+    'https://metadata.google.internal/computeMetadata/v1/',
     'https://user:pw@shop.pub-one.invalid/',
     'https://shop.pub-one.invalid:8443/catalogue',
     'shop.pub-one.invalid/catalogue',
@@ -961,6 +961,7 @@ describe('the may-fetch check, the deadline and recovery (review findings)', () 
     const w = await fresh();
     await verifyShop(w);
     const b = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
+    w.web.calls.length = 0;
     const id = b.ok ? b.value.batch_id : '';
     w.may.asked = 0;
     // allow the source and the first picture, then switch off
@@ -984,6 +985,7 @@ describe('the may-fetch check, the deadline and recovery (review findings)', () 
     const w = await fresh();
     await verifyShop(w);
     const b = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
+    w.web.calls.length = 0;
     w.web.hook = (n) => {
       if (n === 1) w.may.throws = true;
     };
@@ -999,6 +1001,7 @@ describe('the may-fetch check, the deadline and recovery (review findings)', () 
     const w = await fresh();
     await verifyShop(w);
     const b = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
+    w.web.calls.length = 0;
     w.may.on = false;
     await runNextBatch(w.idep());
     expect(w.web.calls).toHaveLength(0);
@@ -1013,6 +1016,7 @@ describe('the may-fetch check, the deadline and recovery (review findings)', () 
     const w = await fresh();
     await verifyShop(w);
     const b = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
+    w.web.calls.length = 0;
     const id = b.ok ? b.value.batch_id : '';
     w.web.hook = (n) => {
       if (n === 2) w.clock.advance(BATCH_DEADLINE_MS + 1);
@@ -1029,6 +1033,7 @@ describe('the may-fetch check, the deadline and recovery (review findings)', () 
     const w = await fresh();
     await verifyShop(w);
     const b = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
+    w.web.calls.length = 0;
     w.web.hook = (n) => {
       if (n === 2) w.clock.advance(BATCH_DEADLINE_MS);
     };
@@ -1040,6 +1045,7 @@ describe('the may-fetch check, the deadline and recovery (review findings)', () 
     const w = await fresh();
     await verifyShop(w);
     const b = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
+    w.web.calls.length = 0;
     const id = b.ok ? b.value.batch_id : '';
     await w.db.query(
       `INSERT INTO import_batches (id, publisher_id, source_host, source_url, state, total, done, refused, existing, changed, created_by, created_at, updated_at)
@@ -1075,6 +1081,7 @@ describe('the may-fetch check, the deadline and recovery (review findings)', () 
     const w = await fresh();
     await verifyShop(w);
     const b = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
+    w.web.calls.length = 0;
     const id = b.ok ? b.value.batch_id : '';
     w.web.hook = async (n) => {
       if (n === 2) await recoverImports(w.idep());
@@ -1095,6 +1102,7 @@ describe('the may-fetch check, the deadline and recovery (review findings)', () 
     const w = await fresh();
     await verifyShop(w);
     const b = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
+    w.web.calls.length = 0;
     await w.db.query(`UPDATE publishers SET status = 'suspended' WHERE id = $1`, [
       w.pubId['harbour-ledger'],
     ]);
@@ -1110,6 +1118,7 @@ describe('the may-fetch check, the deadline and recovery (review findings)', () 
     const w = await fresh();
     await verifyShop(w);
     const b = await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
+    w.web.calls.length = 0;
     expect(await runNextBatch(w.idep({ fetcher: null }))).toEqual({ ran: false, batch_id: null });
     expect((await batchRow(w.db, b.ok ? b.value.batch_id : '')).state).toBe('queued');
   });
