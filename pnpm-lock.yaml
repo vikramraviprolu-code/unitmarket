@@ -53,6 +53,9 @@ importers:
       '@umsbx/approval':
         specifier: workspace:*
         version: link:../../domain/approval
+      '@umsbx/assist':
+        specifier: workspace:*
+        version: link:../../domain/assist
       '@umsbx/catalogue':
         specifier: workspace:*
         version: link:../../domain/catalogue
@@ -207,6 +210,19 @@ importers:
       '@umsbx/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+
+  domain/assist:
+    dependencies:
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/alerts':
+        specifier: workspace:*
+        version: link:../alerts
+      '@umsbx/model':
+        specifier: workspace:*
+        version: link:../../packages/model
 
   domain/catalogue:
     dependencies:
@@ -678,6 +694,30 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  tests/int:
+    dependencies:
+      '@umsbx/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@umsbx/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/obs':
+        specifier: workspace:*
+        version: link:../../packages/obs
+      '@umsbx/payments':
+        specifier: workspace:*
+        version: link:../../domain/payments
+      '@umsbx/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+      server-only:
+        specifier: 0.0.1
+        version: 0.0.1
 
   tests/mvp-a:
     dependencies:

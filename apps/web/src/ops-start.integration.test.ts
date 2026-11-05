@@ -55,7 +55,11 @@ describe('/ops Kill switch block (source)', () => {
   it('WEB-POLISH-2: the flag state reaches the badges and the start sentence, and Stop uses the shared words', () => {
     expect(page).toContain("switchChip('paypal_outbound', snap.kill_switch.outbound_on, flagOff)");
     // INT-UI0: the switch badges moved to /ops/controls, and the flagOff read moved to the tab modules.
-    expect(read('controls/page.tsx')).toContain('switchView(name, on, flagOff)');
+    // INT-CTL: the badges are built in lib/switches-view.ts, which the Controls page and its switch list use.
+    expect(readFileSync(join(import.meta.dirname, 'lib', 'switches-view.ts'), 'utf8')).toContain(
+      'switchView(name, on, flagOff)',
+    );
+    expect(read('controls/page.tsx')).toContain('switchLines(snap.switches, flagOff)');
     for (const m of ['ops-home', 'ops-controls'])
       expect(
         readFileSync(join(import.meta.dirname, 'composition', `${m}.ts`), 'utf8'),
@@ -155,7 +159,13 @@ describe('section tabs (source)', () => {
       'ops-states',
       'ops-invariants',
     ]);
-    expect(OPS_CONTROLS_SECTIONS.map((s) => s.id)).toEqual(['ops-switches', 'ops-gate-section']);
+    // INT-CTL adds the gateway locks and the services panel to the Controls tab.
+    expect(OPS_CONTROLS_SECTIONS.map((s) => s.id)).toEqual([
+      'ops-switches',
+      'ops-gate-section',
+      'ops-gateway',
+      'ops-services',
+    ]);
     expect(OPS_SELLERS_SECTIONS.map((s) => s.id)).toContain('ops-shared-payee');
   });
 
@@ -175,12 +185,16 @@ describe('section tabs (source)', () => {
       'money/transactions',
       'controls/activity',
       'controls/invariants',
+      'agents/exposure',
       'alerts',
       'buyers',
       'money/orders',
       'money/problems',
+      // BR-6: the rules list, form, history and explain pages each hold one table or one form.
+      'rules',
     ];
-    expect(found.length).toBe(17);
+    // BR-6: count 18 to 22, pages added: /ops/rules, /ops/rules/new, /ops/rules/history, /ops/rules/explain.
+    expect(found.length).toBe(22);
     for (const p of found)
       if (!SINGLE_SECTION.some((s) => p.includes(`/ops/${s}/`)))
         expect(readFileSync(p, 'utf8'), p).toContain('<SectionNav');

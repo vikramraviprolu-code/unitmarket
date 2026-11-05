@@ -1,7 +1,7 @@
 // Buyer-facing wording for the search, results and library screens. Pure; kept out of the .tsx files so
 // unit tests can pin it (the unit runner does not compile .tsx). Wording rules: D-051.
 import type { FitDimension, Rights } from '@umsbx/contracts';
-import { DEFAULT_ACCESS_DAYS, OPTION_LABEL, formatDateTime } from './format';
+import { DEFAULT_ACCESS_DAYS, OPTION_LABEL, formatDateTime, formatMinor } from './format';
 import { NO_RATE_NOTE, fromLead, priceView } from './buyer-price';
 import type { PriceView } from './buyer-price';
 import type { OfferPage } from './view-types';
@@ -216,3 +216,35 @@ export function refundWindowLine(v: RefundWindowView): string | null {
       return null;
   }
 }
+
+// INT-BUY / BUY.1: the sentence a buyer reads before it gives an agent a spending cap. The confirm button under it
+// sets terms_accepted, so the sentence is the whole of what is agreed. Additive: nothing above changes.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "30 Nov": the day of an ISO time in UTC, as the cap sentences write it. */
+export function capDay(isoUtc: string): string {
+  const d = new Date(isoUtc);
+  return `${String(d.getUTCDate())} ${MONTHS[d.getUTCMonth()]!}`;
+}
+
+export const purchasesWord = (n: number): string =>
+  `${String(n)} ${n === 1 ? 'purchase' : 'purchases'}`;
+
+export function capConfirmSentence(i: {
+  currency: string;
+  max_total_minor: number | null;
+  max_count: number | null;
+  expires_at: string;
+}): string {
+  const spend =
+    i.max_total_minor === null ? null : `spend up to ${formatMinor(i.max_total_minor, i.currency)}`;
+  const buy = i.max_count === null ? null : `make up to ${purchasesWord(i.max_count)}`;
+  const what = [spend, buy].filter((x): x is string => x !== null).join(' and ');
+  return `Your agent may ${what} until ${capDay(i.expires_at)}.`;
+}
+
+export const CAP_CONFIRM_BUTTON = 'Confirm and set the cap';
+export const CAP_CONFIRM_NOTE =
+  'The cap limits what your agent can spend. You can end it at any moment.';
+export const CAP_NO_KEYS =
+  'You have no agent key yet. Make one under API keys, then come back to give it a cap.';

@@ -1,6 +1,6 @@
 nav: Seller
-heading: Publisher home
-lede: This page shows your own publisher account. It is read only.
+heading: Seller home
+lede: This page shows your own seller account. It is read only.
 labels: Name | Status | Offers live | Payee account on file | Settlement
 status applied: Applied. Waiting for approval.
 status active: Active
@@ -19,9 +19,9 @@ payee waiting: Waiting for a check. Account on file ending AB12.
 payee verified: Marked as checked. Account on file ending AB12.
 persona buyer-a: Buyer A
 persona buyer-b: Buyer B
-persona publisher-harbour-ledger: Harbour Ledger (publisher)
-persona publisher-quayside-gazette: Quayside Gazette (publisher)
-persona publisher-northfield-quarterly: Northfield Quarterly (publisher)
+persona publisher-harbour-ledger: Harbour Ledger (seller)
+persona publisher-quayside-gazette: Quayside Gazette (seller)
+persona publisher-northfield-quarterly: Northfield Quarterly (seller)
 persona operator: Operator
 passcode demo: Demo passcode | The passcode your team lead gave you. You can paste it.
 passcode publisher: Publisher passcode | The publisher passcode your team lead gave you. The demo passcode does not work for publishers.

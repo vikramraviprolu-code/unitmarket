@@ -85,7 +85,8 @@ describe('header items per role (D11)', () => {
     expect(navItems('publisher').sign_out).toBe(true);
   });
   it('operator: operations, help, sign out; never Find articles', () => {
-    expect(labels('operator')).toEqual(['Operations', 'Help']);
+    // BR-6: the Business rules pages have an entry in the operator header.
+    expect(labels('operator')).toEqual(['Operations', 'Business rules', 'Help']);
     expect(navItems('operator').sign_out).toBe(true);
   });
   it('the label has no dash', () => {

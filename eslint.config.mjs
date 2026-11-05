@@ -112,6 +112,7 @@ const DOMAIN = [
   'txn-search',
   'rules',
   'trace',
+  'assist',
 ];
 const INFRA = [
   'config',
@@ -1186,6 +1187,7 @@ const HELPERS = ['test-fixtures.ts', 'world.ts', 'support.ts'];
 const HASH_ONLY = {
   delivery: ['link-token.ts', 'store-pg.ts'],
   rules: ['digest.ts'],
+  catalogue: ['publisher-invites.ts'],
   alerts: ['state.ts'],
 };
 const HASH_HELPERS = { delivery: ['world.ts'] };
@@ -1198,6 +1200,8 @@ const packageEntries = [
     const s4 = ['discovery', 'fit'].includes(name);
     // S4/9.10 (lane 14b CR-1): only discovery calls the model port implementation.
     const modelOk = name === 'discovery' ? ['model'] : [];
+    // INT-GA (F1): assist's tests and evals run on the scripted model; its production code never imports it.
+    const harnessModelOk = name === 'assist' ? ['model'] : modelOk;
     const prodExtra = [
       pat(except(INFRA, ['testkit', ...modelOk]), S1_MSG),
       pat(FRAMEWORK, S1_MSG),
@@ -1205,7 +1209,7 @@ const packageEntries = [
       ...(s4 ? [pat(AGENT_FORBIDDEN, S4_MSG)] : []),
     ];
     const harnessExtra = (nodeAllowed) => [
-      pat(except(INFRA, ['testkit', 'db', 'runtime', ...modelOk]), S1_MSG),
+      pat(except(INFRA, ['testkit', 'db', 'runtime', ...harnessModelOk]), S1_MSG),
       pat(FRAMEWORK, S1_MSG),
       pat(nodeAllowed ? DRIVERS.filter((d) => d !== 'node:*') : DRIVERS, S1_MSG),
       ...(s4
@@ -1510,6 +1514,12 @@ export const NAMED_EXEMPTIONS = [
     files: ['tests/mvp1-api/**/*.ts'],
     reason:
       'API-W2 (MVP 1 end-to-end proof): the story imports the web composition, the route handlers, the apps/web test helpers, the MVP-C TOTP helper and the C canary probe (tests/mvp-c/c-net-probe.ts) by relative path, like the DP-6 twins below (@umsbx/web exports none). The app runs in dry-run, nothing reaches a network, and no file names a sealed identifier',
+    off: ['sbx/no-package-escape'],
+  },
+  {
+    files: ['tests/int/**/*.ts'],
+    reason:
+      'INT-E2E (integrated proof and tamper demo): the story imports the web composition, the route handlers, the apps/web test helpers, the MVP-C TOTP helper and the C canary probe (tests/mvp-c/c-net-probe.ts) by relative path, like the API-W2 tests above (@umsbx/web exports none). The app runs in dry-run, nothing reaches a network, and no file names a sealed identifier',
     off: ['sbx/no-package-escape'],
   },
   {

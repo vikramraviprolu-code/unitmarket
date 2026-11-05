@@ -68,6 +68,7 @@ describe('lines', () => {
 
   it('the ops line carries flags as booleans only for true, and ids without identity', () => {
     const on = opsLine(row(), NOW, false);
+    expect(on).toMatchObject({ publisher_id: 'pub1', mandate_id: 'man1' });
     expect(on).toMatchObject({ has_unknown_op: true, order_mismatch: true, alert_count: 3 });
     const off = opsLine(row({ has_unknown_op: false, order_mismatch: false }), NOW, false);
     expect(off).toMatchObject({ has_unknown_op: false, order_mismatch: false });
@@ -76,12 +77,25 @@ describe('lines', () => {
     expect((on as unknown as Record<string, unknown>)['seller_name']).toBeUndefined();
     expect((on as unknown as Record<string, unknown>)['provider_order_id']).toBeUndefined();
     expect(opsLine(row(), NOW, true)).toMatchObject({
+      buyer_id: 'buy1',
+      agent_key_id: 'key1',
       seller_name: 'Quay',
       buyer_display_name: 'Vera',
       provider_order_id: 'PO1',
       capture_id: 'CAP1',
       refund_id: 'RF1',
     });
+  });
+
+  it('B4 (C3): without identity the ops line has no buyer id and no agent key id', () => {
+    const off = opsLine(row(), NOW, false) as unknown as Record<string, unknown>;
+    expect(off).not.toHaveProperty('buyer_id');
+    expect(off).not.toHaveProperty('agent_key_id');
+    const odd = opsLine(row({ agent_key_id: null }), NOW, false) as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(odd).not.toHaveProperty('agent_key_id');
   });
 
   it('the buyer line has the seller name and the total but no buyer name', () => {
@@ -123,12 +137,12 @@ describe('csv', () => {
     );
     expect(head(plain).slice(12)).toEqual([
       'unit_id',
-      'buyer_id',
       'publisher_id',
       'alerts',
       'unknown_operation',
     ]);
-    expect(first(plain).slice(12)).toEqual(['u1', 'buy1', 'pub1', '3', 'yes']);
+    expect(first(plain).slice(12)).toEqual(['u1', 'pub1', '3', 'yes']);
+    expect(plain).not.toContain('buy1');
     expect(head(plain)[1]).toBe('order_ref');
     expect(plain).not.toContain('Quay');
     const full = txnCsv(
@@ -136,20 +150,21 @@ describe('csv', () => {
       rows.map((r) => opsLine(r, NOW, true)),
       true,
     );
-    expect(head(full).slice(17)).toEqual([
+    expect(head(full).slice(16)).toEqual([
+      'buyer_id',
       'buyer_name',
       'seller_name',
       'provider_order_id',
       'capture_id',
       'refund_id',
     ]);
-    expect(first(full).slice(17)).toEqual(['Vera', 'Quay', 'PO1', 'CAP1', 'RF1']);
+    expect(first(full).slice(16)).toEqual(['buy1', 'Vera', 'Quay', 'PO1', 'CAP1', 'RF1']);
   });
 
   it('ops: no unknown operation says no, and a missing alert count says 0', () => {
     const l = opsLine(row({ has_unknown_op: false }), NOW, false);
     const bare = { ...l, alert_count: undefined } as unknown as typeof l;
-    expect(first(txnCsv('ops', [bare])).slice(15)).toEqual(['0', 'no']);
+    expect(first(txnCsv('ops', [bare])).slice(14)).toEqual(['0', 'no']);
   });
 
   it('an ops-only column never appears on buyer and seller files, even with identity set', () => {

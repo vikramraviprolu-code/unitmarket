@@ -1,6 +1,6 @@
 // INT-UI0 / UI0.1: the lasting tabs of each persona, as data. Pure: no server module, no clock, no
 // identity. The shell renders what this returns and the tests pin it. A tab whose page another lane builds
-// (operator Buyers and Agents in OPS-C; buyer Spending and Agents in BUY) carries `ready: false` and stays
+// (operator Buyers and Agents in OPS-C) carries `ready: false` and stays
 // out of the shell until that lane flips the flag, so nobody sees an empty "coming soon" tab.
 // Seller URLs keep /publisher; the labels say Seller words (decision V2). The public /seller apply page
 // is not part of any persona and is unchanged.
@@ -33,8 +33,8 @@ export const TABS: Record<ShellPersona, readonly ShellTab[]> = {
     { id: 'home', label: 'Home', href: '/buyer', ready: true },
     { id: 'find', label: 'Find', href: '/discover', ready: true },
     { id: 'library', label: 'Library', href: '/library', ready: true },
-    { id: 'spending', label: 'Spending', href: '/buyer/spending', ready: false },
-    { id: 'agents', label: 'Agents', href: '/buyer/agents', ready: false },
+    { id: 'spending', label: 'Spending', href: '/buyer/spending', ready: true },
+    { id: 'agents', label: 'Agents', href: '/buyer/agents', ready: true },
   ],
   seller: [
     { id: 'home', label: 'Home', href: '/publisher', ready: true },
@@ -77,7 +77,7 @@ const under = (path: string, base: string): boolean => path === base || path.sta
 /**
  * Which tab a path belongs to, or null. Home matches its own URL only, so /ops is not a prefix of every
  * operator page. Pages kept at their old URLs belong to a tab: /ops/publishers and /ops/payee-requests to
- * Sellers, /ops/evals to Controls.
+ * Sellers, /ops/evals to Controls. BR-6: /ops/rules and the pages below it belong to Controls.
  */
 export function activeTabId(persona: ShellPersona, rawPath: string): string | null {
   const path = cleanPath(rawPath);
@@ -93,14 +93,16 @@ export function activeTabId(persona: ShellPersona, rawPath: string): string | nu
         return 'sellers';
       if (under(path, '/ops/money')) return 'money';
       if (under(path, '/ops/agents')) return 'agents';
-      if (under(path, '/ops/controls') || under(path, '/ops/evals')) return 'controls';
+      if (under(path, '/ops/controls') || under(path, '/ops/evals') || under(path, '/ops/rules'))
+        return 'controls';
       return null;
     case 'buyer':
       if (path === '/buyer') return 'home';
       if (under(path, '/discover')) return 'find';
       if (under(path, '/library')) return 'library';
-      if (under(path, '/buyer/spending')) return 'spending';
-      if (under(path, '/buyer/agents')) return 'agents';
+      if (under(path, '/buyer/spending') || under(path, '/buyer/receipts')) return 'spending';
+      if (under(path, '/buyer/agents') || under(path, '/buyer/keys')) return 'agents';
+      if (under(path, '/buyer/approvals')) return 'home';
       return null;
     case 'seller':
       if (path === '/publisher') return 'home';
@@ -128,6 +130,7 @@ const CONTROLS_SUB: readonly [string, string][] = [
   ['Evals', '/ops/evals'],
   ['Activity', '/ops/controls/activity'],
   ['Invariants', '/ops/controls/invariants'],
+  ['Business rules', '/ops/rules'],
 ];
 const MONEY_SUB: readonly [string, string][] = [
   ['Overview', '/ops/money'],

@@ -319,7 +319,7 @@ describe('submitApplication', () => {
         decision: 'approve',
         reason: 'Checked their site',
       }),
-    ).toEqual({ ok: true, value: { state: 'active' } });
+    ).toMatchObject({ ok: true, value: { state: 'active' } }); // POB-P1: the value also carries the invite
     expect(await applicationStatus(w.db, slug)).toBe('approved');
   });
 });

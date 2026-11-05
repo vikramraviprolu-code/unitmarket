@@ -1,0 +1,1055 @@
+{
+  "_about": "INT-GA / GA.5: thirty problem orders, written by hand in commit 1. Each is a projected entry list (the seven identity-free fields) plus the AL alert kinds on the order, with the safe action expected from AL's catalogue: the most severe kind that has a fix (critical, high, medium, info; ties in catalogue order), or none.",
+  "cases": [
+    {
+      "id": "p01",
+      "note": "PayPal hold on capture",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "orders.update",
+          "words_key": "orders.frozen",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "capture_requested",
+          "state_to": "frozen"
+        },
+        {
+          "seq": 4,
+          "event_type": "alerts.insert",
+          "words_key": "alerts.raised",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": null,
+          "state_to": "open"
+        }
+      ],
+      "alert_kinds": ["frozen_order"],
+      "expect_action_id": "frozen_order"
+    },
+    {
+      "id": "p02",
+      "note": "frozen beats an info hint",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "orders.update",
+          "words_key": "orders.frozen",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "capture_claimed",
+          "state_to": "frozen"
+        }
+      ],
+      "alert_kinds": ["reversal_hint", "frozen_order"],
+      "expect_action_id": "frozen_order"
+    },
+    {
+      "id": "p03",
+      "note": "PayPal refused create",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "orders.update",
+          "words_key": "orders.failed",
+          "actor_kind": "system",
+          "channel": "web",
+          "state_from": "awaiting_buyer",
+          "state_to": "failed"
+        }
+      ],
+      "alert_kinds": ["create_rejected"],
+      "expect_action_id": "create_rejected"
+    },
+    {
+      "id": "p04",
+      "note": "agent order refused, cap info too",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "orders.update",
+          "words_key": "orders.failed",
+          "actor_kind": "agent",
+          "channel": "api",
+          "state_from": "awaiting_buyer",
+          "state_to": "failed"
+        }
+      ],
+      "alert_kinds": ["create_rejected", "mandate_near_cap"],
+      "expect_action_id": "create_rejected"
+    },
+    {
+      "id": "p05",
+      "note": "paid but bytes missing",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "order_units.update",
+          "words_key": "order_units.captured_verified",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "pending",
+          "state_to": "captured_verified"
+        },
+        {
+          "seq": 4,
+          "event_type": "alerts.insert",
+          "words_key": "alerts.raised",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": null,
+          "state_to": "open"
+        }
+      ],
+      "alert_kinds": ["content_unavailable"],
+      "expect_action_id": "content_unavailable"
+    },
+    {
+      "id": "p06",
+      "note": "medium beats info",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "order_units.update",
+          "words_key": "order_units.captured_verified",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "pending",
+          "state_to": "captured_verified"
+        }
+      ],
+      "alert_kinds": ["content_unavailable", "reversal_hint"],
+      "expect_action_id": "content_unavailable"
+    },
+    {
+      "id": "p07",
+      "note": "capture we did not ask for",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "order_units.update",
+          "words_key": "order_units.mismatch",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "expected",
+          "state_to": "mismatch"
+        }
+      ],
+      "alert_kinds": ["unexpected_capture"],
+      "expect_action_id": "unexpected_capture"
+    },
+    {
+      "id": "p08",
+      "note": "high beats medium",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "order_units.update",
+          "words_key": "order_units.mismatch",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "expected",
+          "state_to": "mismatch"
+        },
+        {
+          "seq": 4,
+          "event_type": "order_units.update",
+          "words_key": "order_units.declined",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "pending",
+          "state_to": "declined"
+        }
+      ],
+      "alert_kinds": ["partial_composite", "unexpected_capture"],
+      "expect_action_id": "unexpected_capture"
+    },
+    {
+      "id": "p09",
+      "note": "fee above price on an offer",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        }
+      ],
+      "alert_kinds": ["fee_above_amount"],
+      "expect_action_id": "fee_above_amount"
+    },
+    {
+      "id": "p10",
+      "note": "two mediums: catalogue order",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        }
+      ],
+      "alert_kinds": ["fee_above_amount", "webhook_failing"],
+      "expect_action_id": "fee_above_amount"
+    },
+    {
+      "id": "p11",
+      "note": "capture answer unclear",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "orders.update",
+          "words_key": "orders.unresolved",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "capture_requested",
+          "state_to": "unresolved"
+        }
+      ],
+      "alert_kinds": ["payment_unresolved"],
+      "expect_action_id": "payment_unresolved"
+    },
+    {
+      "id": "p12",
+      "note": "high beats medium",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "orders.update",
+          "words_key": "orders.unresolved",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "capture_requested",
+          "state_to": "unresolved"
+        }
+      ],
+      "alert_kinds": ["payment_unresolved", "create_rejected"],
+      "expect_action_id": "payment_unresolved"
+    },
+    {
+      "id": "p13",
+      "note": "money taken back",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "order_units.update",
+          "words_key": "order_units.reversed",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "captured_verified",
+          "state_to": "reversed"
+        }
+      ],
+      "alert_kinds": ["reversal"],
+      "expect_action_id": "reversal"
+    },
+    {
+      "id": "p14",
+      "note": "hint then real reversal",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "order_units.update",
+          "words_key": "order_units.reversal_suspected",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "captured_verified",
+          "state_to": "reversal_suspected"
+        },
+        {
+          "seq": 4,
+          "event_type": "order_units.update",
+          "words_key": "order_units.reversed",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "reversal_suspected",
+          "state_to": "reversed"
+        }
+      ],
+      "alert_kinds": ["reversal_hint", "reversal"],
+      "expect_action_id": "reversal"
+    },
+    {
+      "id": "p15",
+      "note": "webhook hint only",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "order_units.update",
+          "words_key": "order_units.reversal_suspected",
+          "actor_kind": "system",
+          "channel": "webhook",
+          "state_from": "captured_verified",
+          "state_to": "reversal_suspected"
+        }
+      ],
+      "alert_kinds": ["reversal_hint"],
+      "expect_action_id": "reversal_hint"
+    },
+    {
+      "id": "p16",
+      "note": "two infos: catalogue order",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        }
+      ],
+      "alert_kinds": ["mandate_near_cap", "reversal_hint"],
+      "expect_action_id": "reversal_hint"
+    },
+    {
+      "id": "p17",
+      "note": "pack partly paid",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "order_units.update",
+          "words_key": "order_units.declined",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "pending",
+          "state_to": "declined"
+        },
+        {
+          "seq": 4,
+          "event_type": "orders.update",
+          "words_key": "orders.paid_partial",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "capture_requested",
+          "state_to": "paid_partial"
+        }
+      ],
+      "alert_kinds": ["partial_composite"],
+      "expect_action_id": "partial_composite"
+    },
+    {
+      "id": "p18",
+      "note": "agent pack partly paid",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "orders.update",
+          "words_key": "orders.paid_partial",
+          "actor_kind": "agent",
+          "channel": "api",
+          "state_from": "capture_requested",
+          "state_to": "paid_partial"
+        }
+      ],
+      "alert_kinds": ["partial_composite", "mandate_near_cap"],
+      "expect_action_id": "partial_composite"
+    },
+    {
+      "id": "p19",
+      "note": "refund not in ledger",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "refund_requests.update",
+          "words_key": "refund_requests.completed",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "requested",
+          "state_to": "completed"
+        }
+      ],
+      "alert_kinds": ["refund_unbooked"],
+      "expect_action_id": "refund_unbooked"
+    },
+    {
+      "id": "p20",
+      "note": "high beats medium",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "refund_requests.update",
+          "words_key": "refund_requests.completed",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "requested",
+          "state_to": "completed"
+        }
+      ],
+      "alert_kinds": ["refund_unbooked", "webhook_failing"],
+      "expect_action_id": "refund_unbooked"
+    },
+    {
+      "id": "p21",
+      "note": "refund failed",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "refund_requests.update",
+          "words_key": "refund_requests.failed",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "requested",
+          "state_to": "failed"
+        }
+      ],
+      "alert_kinds": ["refund_failed"],
+      "expect_action_id": "refund_failed"
+    },
+    {
+      "id": "p22",
+      "note": "high beats medium",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "refund_requests.update",
+          "words_key": "refund_requests.failed",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "sent",
+          "state_to": "failed"
+        }
+      ],
+      "alert_kinds": ["refund_failed", "partial_composite"],
+      "expect_action_id": "refund_failed"
+    },
+    {
+      "id": "p23",
+      "note": "refund outcome unknown",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "refund_requests.update",
+          "words_key": "refund_requests.unknown",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "sent",
+          "state_to": "unknown"
+        }
+      ],
+      "alert_kinds": ["refund_unresolved"],
+      "expect_action_id": "refund_unresolved"
+    },
+    {
+      "id": "p24",
+      "note": "critical beats high",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "refund_requests.update",
+          "words_key": "refund_requests.unknown",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "sent",
+          "state_to": "unknown"
+        },
+        {
+          "seq": 4,
+          "event_type": "refund_requests.update",
+          "words_key": "refund_requests.failed",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "requested",
+          "state_to": "failed"
+        }
+      ],
+      "alert_kinds": ["refund_failed", "refund_unresolved"],
+      "expect_action_id": "refund_unresolved"
+    },
+    {
+      "id": "p25",
+      "note": "cap at 90 percent",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "mandate_reservations.insert",
+          "words_key": "mandate_reservations.reserved",
+          "actor_kind": "agent",
+          "channel": "api",
+          "state_from": null,
+          "state_to": "reserved"
+        }
+      ],
+      "alert_kinds": ["mandate_near_cap"],
+      "expect_action_id": "mandate_near_cap"
+    },
+    {
+      "id": "p26",
+      "note": "same kind twice",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        }
+      ],
+      "alert_kinds": ["mandate_near_cap", "mandate_near_cap"],
+      "expect_action_id": "mandate_near_cap"
+    },
+    {
+      "id": "p27",
+      "note": "deliveries failing",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        }
+      ],
+      "alert_kinds": ["webhook_failing"],
+      "expect_action_id": "webhook_failing"
+    },
+    {
+      "id": "p28",
+      "note": "medium beats info",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        }
+      ],
+      "alert_kinds": ["webhook_failing", "reversal_hint"],
+      "expect_action_id": "webhook_failing"
+    },
+    {
+      "id": "p29",
+      "note": "attention with no alert: no action",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "orders.update",
+          "words_key": "orders.unresolved",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "capture_claimed",
+          "state_to": "unresolved"
+        }
+      ],
+      "alert_kinds": [],
+      "expect_action_id": "none"
+    },
+    {
+      "id": "p30",
+      "note": "a kind outside the catalogue: no action",
+      "entries": [
+        {
+          "seq": 1,
+          "event_type": "orders.insert",
+          "words_key": "orders.created",
+          "actor_kind": "buyer",
+          "channel": "web",
+          "state_from": null,
+          "state_to": "created"
+        },
+        {
+          "seq": 2,
+          "event_type": "orders.update",
+          "words_key": "orders.awaiting_buyer",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "created",
+          "state_to": "awaiting_buyer"
+        },
+        {
+          "seq": 3,
+          "event_type": "order_units.update",
+          "words_key": "order_units.pending",
+          "actor_kind": "system",
+          "channel": "job",
+          "state_from": "pending",
+          "state_to": "pending"
+        }
+      ],
+      "alert_kinds": ["job_probe"],
+      "expect_action_id": "none"
+    }
+  ]
+}

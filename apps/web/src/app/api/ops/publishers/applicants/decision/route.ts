@@ -7,7 +7,9 @@ import { applicantErrorText } from '../../../../../../lib/ops-applicants-copy';
 // PUB-E2: an operator approves (applied to active) or rejects (stays applied, a decision row) one applicant.
 // Operator session WITH the second factor, CSRF, a reason of 3 to 200 characters. Only the publisher id,
 // the decision and the reason are read. Orders, units, access, approvals and the ledger are not touched; the
-// audit row carries the operator and the reason. An approved applicant still has no sign in.
+// audit row carries the operator and the reason. POB-P1: an approval also answers with the one time invite code
+// (12 characters, valid 7 days) in `invite`, once. Nothing keeps the code in clear, so no later call can show it,
+// and the answer is not cached.
 export const routeMeta: RouteMeta = {
   path: '/api/ops/publishers/applicants/decision',
   method: 'POST',
@@ -29,7 +31,18 @@ const Input = z
 
 export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
   const r = await (await app()).engine.opsApplicants.decide({ actor, ...input });
-  if (r.ok) return { status: 200, body: { state: r.value.state } };
+  if (r.ok)
+    return {
+      status: 200,
+      body:
+        r.value.invite === undefined
+          ? { state: r.value.state }
+          : {
+              state: r.value.state,
+              invite: { code: r.value.invite.code, expires_at: r.value.invite.expires_at },
+            },
+      headers: { 'cache-control': 'no-store' },
+    };
   const code = r.error.code;
   const message = applicantErrorText(code);
   switch (code) {

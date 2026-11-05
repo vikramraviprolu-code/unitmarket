@@ -7,12 +7,21 @@ import {
   SELLER_SIGNIN_TITLE,
 } from '../../../lib/account-copy';
 import { safeNext } from '../../../lib/next-path';
+import {
+  ACCOUNT_SIGNIN_CLAIM_LEAD,
+  ACCOUNT_SIGNIN_CLAIM_LINK,
+  ACCOUNT_SIGNIN_HEADING,
+  ACCOUNT_SIGNIN_LEDE,
+  DEMO_SIGNIN_HEADING,
+} from '../../../lib/publisher-accounts-copy';
+import { AccountSignInForm } from './AccountSignInForm';
 import { SellerSignInForm } from './SellerSignInForm';
 import '../../auth.css';
 
 export const metadata: Metadata = { title: SELLER_SIGNIN_TITLE, referrer: 'no-referrer' };
 
-// ID-ACCOUNTS: publisher sign in. It posts to the existing /api/session with a publisher persona.
+// ID-ACCOUNTS: publisher sign in. POB-P1: first the publisher's own account (username and password, claimed with
+// an invite code), then the test personas for judges. Both post to /api/session.
 export default async function SellerSignIn({
   searchParams,
 }: {
@@ -26,7 +35,21 @@ export default async function SellerSignIn({
         <h1>{SELLER_SIGNIN_TITLE}</h1>
         <p className="lede">{SELLER_SIGNIN_LEDE}</p>
       </header>
-      <SellerSignInForm next={next === '/' ? '/publisher' : next} />
+      <section aria-labelledby="seller-account-heading">
+        <h2 id="seller-account-heading">{ACCOUNT_SIGNIN_HEADING}</h2>
+        <p className="lede">{ACCOUNT_SIGNIN_LEDE}</p>
+        <AccountSignInForm next={next === '/' ? '/publisher' : next} />
+        <p className="auth-links">
+          <span>{ACCOUNT_SIGNIN_CLAIM_LEAD}</span>
+          <Link className="auth-link" href="/signin/seller/claim">
+            {ACCOUNT_SIGNIN_CLAIM_LINK}
+          </Link>
+        </p>
+      </section>
+      <section aria-labelledby="seller-demo-heading">
+        <h2 id="seller-demo-heading">{DEMO_SIGNIN_HEADING}</h2>
+        <SellerSignInForm next={next === '/' ? '/publisher' : next} />
+      </section>
       <p className="auth-links">
         <span>{SELLER_SIGNIN_APPLY_LEAD}</span>
         <Link className="auth-link" href="/apply">

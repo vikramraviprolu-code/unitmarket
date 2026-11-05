@@ -38,11 +38,19 @@ const CONTROL_ROUTES: Record<string, () => Promise<Record<string, Handler>>> = {
   '/api/ops/start': () =>
     import('../ops/start/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/stop': () => import('../ops/stop/route') as unknown as Promise<Record<string, Handler>>,
+  '/api/ops/switches/[name]/on': () =>
+    import('../ops/switches/[name]/on/route') as unknown as Promise<Record<string, Handler>>,
+  '/api/ops/switches/[name]/off': () =>
+    import('../ops/switches/[name]/off/route') as unknown as Promise<Record<string, Handler>>,
   '/api/v1/ops/switches': () =>
     import('./ops/switches/route') as unknown as Promise<Record<string, Handler>>,
 };
 // The other operator POSTs the guard covers: they need a session with a second factor, and a key has none.
 const MFA_ROUTES: Record<string, () => Promise<Record<string, Handler>>> = {
+  '/api/ops/api-exposure/[group]/on': () =>
+    import('../ops/api-exposure/[group]/on/route') as unknown as Promise<Record<string, Handler>>,
+  '/api/ops/api-exposure/[group]/off': () =>
+    import('../ops/api-exposure/[group]/off/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/agent-buy': () =>
     import('../ops/agent-buy/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/rules': () =>
@@ -55,6 +63,12 @@ const MFA_ROUTES: Record<string, () => Promise<Record<string, Handler>>> = {
     import('../ops/publishers/applicants/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/publishers/applicants/decision': () =>
     import('../ops/publishers/applicants/decision/route') as unknown as Promise<
+      Record<string, Handler>
+    >,
+  '/api/ops/publishers/access': () =>
+    import('../ops/publishers/access/route') as unknown as Promise<Record<string, Handler>>,
+  '/api/ops/publishers/paypal-link-decisions': () =>
+    import('../ops/publishers/paypal-link-decisions/route') as unknown as Promise<
       Record<string, Handler>
     >,
   '/api/ops/alerts/[id]/acknowledge': () =>

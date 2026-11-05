@@ -163,7 +163,8 @@ describe('decideApplicant', () => {
   it('approve makes the applicant active, records the decision, one audit row, money untouched', async () => {
     const pid = await id('tidewater-review');
     const before = await Promise.all(MONEY.map(n));
-    expect(await decide(pid, 'approve')).toEqual({ ok: true, value: { state: 'active' } });
+    // POB-P1: approval also returns the one time invite (checked in publisher-invites.state.test.ts)
+    expect(await decide(pid, 'approve')).toMatchObject({ ok: true, value: { state: 'active' } });
     expect((await row(pid))!.status).toBe('active');
     const d = await w.db.query<Record<string, unknown>>(
       'SELECT decision, operator_id, reason FROM publisher_applicant_decisions WHERE publisher_id = $1',

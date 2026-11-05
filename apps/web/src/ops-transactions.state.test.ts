@@ -112,7 +112,8 @@ describe('SR1.3 identity', () => {
   it('the key route takes opaque ids for buyer and seller, never names', async () => {
     const byId = await viaKey('?buyer=vs_b2&limit=100');
     expect(byId.body.items.length).toBeGreaterThan(0);
-    for (const i of byId.body.items) expect(i['buyer_id']).toBe('vs_b2');
+    // B4 (C3): the key may filter by the opaque buyer id, but no line carries it back.
+    for (const i of byId.body.items) expect(i).not.toHaveProperty('buyer_id');
     const byName = await viaKey('?buyer=Wes&limit=100');
     expect(byName.body.items).toEqual([]);
     const bySeller = await viaKey('?seller=Quay&limit=100');

@@ -9,6 +9,7 @@ import { EnvLabel } from '../../ui/EnvLabel';
 import { SectionNav } from '../../ui/SectionNav';
 import { Chip, Section, StatTile } from '../../ui/publisher/kit';
 import { HomeCard } from './HomeCard';
+import { TermsAccept } from './TermsAccept';
 import {
   APPLIED_NOTICE,
   LINK_OFFERS,
@@ -53,6 +54,12 @@ import {
 } from '../../lib/publisher-home-copy';
 import { formatDateTime, formatMinor } from '../../lib/format';
 import { LINK_PUBLISHER_TERMS } from '../../lib/agreement-copy';
+import { PUBLISHER_TERMS_VERSION } from '../../lib/legal-copy';
+import { termsAcceptedText } from '../../lib/publisher-accounts-copy';
+import { readSellerHome, readSellerSetup } from '../../composition/seller';
+import { homeView } from '../../lib/seller-home-view';
+import { AgentShare } from '../../ui/seller/AgentShare';
+import { SetupPath } from '../../ui/seller/SetupPath';
 
 export const metadata: Metadata = { title: 'Publisher' };
 
@@ -70,11 +77,19 @@ export default async function PublisherHome() {
   const since = await a.engine.publisherSince(actor);
   const feed = since?.counts == null ? [] : sinceItems(since.counts);
   const agreement = await a.engine.publisherAgreement(actor);
+  // POB-P1: only a publisher who claimed an account can accept the terms; a demo persona keeps its seeded record.
+  const account = await a.engine.publisherAccounts.view(actor);
+  const termsOutstanding =
+    account !== null && (agreement === null || agreement.terms_version !== PUBLISHER_TERMS_VERSION);
   const statement = await a.engine.publisherStatement(actor);
   const { block, others } = primaryBlock(
     statement === null ? [] : salesTotals(statement.blocks),
     a.environment,
   );
+  // INT-SEL (SEL.3, SEL.4): this week, the agent share, the top offers, and the setup path until it is done.
+  const setup = await readSellerSetup(actor);
+  const sel = await readSellerHome(actor);
+  const hv = sel === null ? null : homeView(sel);
   const status = statusChip(home.status);
   const payee = payeeChip(home.payee);
   const terms = termsChip(agreement);
@@ -162,6 +177,47 @@ export default async function PublisherHome() {
           {OTHER_CURRENCIES_NOTE}
         </p>
       ) : null}
+      {setup === null || setup.done ? null : <SetupPath steps={setup.steps} />}
+      {hv === null ? null : (
+        <>
+          <section aria-labelledby="week-h" className="pk-section" data-testid="seller-week">
+            <h2 id="week-h">This week</h2>
+            {hv.week.kind === 'empty' ? (
+              <p className="muted">{hv.week.text}</p>
+            ) : (
+              <>
+                <p className="pk-tile-value">{hv.week.units_text}</p>
+                <p>
+                  Net <strong data-testid="seller-week-net">{hv.week.net_text}</strong>
+                </p>
+                <p className="muted">
+                  Gross {hv.week.gross_text}, refunds and reversals {hv.week.refunds_text}.
+                </p>
+                <p className="muted">{hv.week.note}</p>
+              </>
+            )}
+            <p data-testid="seller-needs-you">{hv.needs_you.text}</p>
+          </section>
+          <AgentShare view={hv.agent} />
+          <section aria-labelledby="top-h" className="pk-section" data-testid="seller-top-offers">
+            <h2 id="top-h">Top offers, last 30 days</h2>
+            {hv.top.length === 0 ? (
+              <p className="muted">{hv.top_empty}</p>
+            ) : (
+              <>
+                <ol>
+                  {hv.top.map((t) => (
+                    <li key={t.offer_id}>
+                      <Link href={t.href}>{t.title}</Link>: {t.units_text}, net {t.net_text}
+                    </li>
+                  ))}
+                </ol>
+                <p className="muted">{hv.top_note}</p>
+              </>
+            )}
+          </section>
+        </>
+      )}
       <Section title={ACCOUNT_HEADING} id="account">
         <div className="pk-panel">
           <dl className="pk-facts">
@@ -181,9 +237,15 @@ export default async function PublisherHome() {
                 {agreement === null ? null : <span>{termsDetail(agreement)}</span>}
                 <Link href="/legal/publisher-terms">{LINK_PUBLISHER_TERMS}</Link>
               </span>
+              {agreement?.method === 'publisher_accepted' ? (
+                <span className="muted" data-testid="publisher-agreement-by">
+                  {termsAcceptedText(agreement)}
+                </span>
+              ) : null}
             </dd>
           </dl>
         </div>
+        {termsOutstanding ? <TermsAccept changed={agreement !== null} /> : null}
       </Section>
       <Section title={CARDS_LABEL} id="next">
         <ul className="pk-cards pk-cards-home" data-testid="publisher-links">

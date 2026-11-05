@@ -93,3 +93,27 @@ export async function getJson<T>(path: string): Promise<ApiOk<T> | ApiFail> {
     return { ok: false, status: 0, code: 'network', message: 'We could not reach the server.' };
   }
 }
+
+// INT-BUY / BUY.8: DELETE with the CSRF token and an Idempotency-Key, for revoking an API key.
+export async function deleteJson<T>(
+  path: string,
+  extra: Record<string, string> = {},
+): Promise<ApiOk<T> | ApiFail> {
+  try {
+    const res = await fetch(path, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+      headers: { 'x-csrf-token': readCsrf(), ...extra },
+    });
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (res.ok) return { ok: true, status: res.status, data: json as T };
+    return failure(res.status, json);
+  } catch {
+    return {
+      ok: false,
+      status: 0,
+      code: 'network',
+      message: 'We could not reach the server. Check your connection and try again.',
+    };
+  }
+}

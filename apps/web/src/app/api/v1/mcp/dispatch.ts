@@ -2,6 +2,7 @@
 // batch is not supported. A bad call is a JSON-RPC error with HTTP 200; a bad key, a missing header or a body
 // that is too large never reach this file (the route wrapper answers them with the usual envelope). Tool
 // refusals are not JSON-RPC errors: they are tool results with isError, so an agent reads them like any answer.
+import { isApiGroup } from '@umsbx/contracts';
 import { extendTraceContext } from '@umsbx/obs';
 import { TOOL_NAMES, callTool, describeTools } from '../../../../api-v1/agent';
 import type { AgentCall, ToolName } from '../../../../api-v1/agent';
@@ -43,6 +44,13 @@ const fail = (id: RpcId, code: number, message: string): RpcOutcome => ({
   body: { jsonrpc: '2.0', id, error: { code, message } },
 });
 
+/** INT-CTL: whether the registry has the tool's group (`mcp:<tool>`) open. No reader means no registry in play. */
+async function toolOpen(call: AgentCall, tool: string): Promise<boolean> {
+  if (call.exposure === undefined) return true;
+  const group = `mcp:${tool}`;
+  return isApiGroup(group) && (await call.exposure.isEnabled(group));
+}
+
 export async function dispatch(call: AgentCall, req: RpcInput): Promise<RpcOutcome> {
   const hasId = req.id !== undefined;
   if (req.jsonrpc !== '2.0' || typeof req.method !== 'string' || (hasId && !isId(req.id))) {
@@ -68,8 +76,12 @@ export async function dispatch(call: AgentCall, req: RpcInput): Promise<RpcOutco
     }
     case 'ping':
       return reply(id, {});
-    case 'tools/list':
-      return reply(id, { tools: describeTools() });
+    case 'tools/list': {
+      // INT-CTL: a tool an operator has closed is not offered. A failed read closes every tool (fail closed).
+      const open: ReturnType<typeof describeTools> = [];
+      for (const t of describeTools()) if (await toolOpen(call, t.name)) open.push(t);
+      return reply(id, { tools: open });
+    }
     case 'tools/call': {
       if (!isRecord(params) || !isToolName(params['name'])) {
         return fail(id, -32602, 'Invalid params: name must be one of the tools');
@@ -78,6 +90,14 @@ export async function dispatch(call: AgentCall, req: RpcInput): Promise<RpcOutco
       if (!isRecord(args)) return fail(id, -32602, 'Invalid params: arguments must be an object');
       // INT-TR0: the writes of a tool call are journaled on the mcp channel, with the tool's name.
       const name = params['name'];
+      if (!(await toolOpen(call, name))) {
+        const out = { status: 'api_disabled' };
+        return reply(id, {
+          content: [{ type: 'text', text: JSON.stringify(out) }],
+          structuredContent: out,
+          isError: true,
+        });
+      }
       const r = await extendTraceContext({ channel: 'mcp', tool: name }, () =>
         callTool(call, name, args),
       );

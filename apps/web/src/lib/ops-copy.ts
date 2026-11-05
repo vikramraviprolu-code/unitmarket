@@ -119,11 +119,14 @@ export const OPS_SELLERS_SECTIONS: OpsSection[] = [
 export const OPS_CONTROLS_SECTIONS: OpsSection[] = [
   { id: 'ops-switches', label: 'Switches' },
   { id: 'ops-gate-section', label: 'Approval gate' },
+  { id: 'ops-gateway', label: 'Gateway locks' },
+  { id: 'ops-services', label: 'Services' },
 ];
 
 export const OPS_PUBLISHERS_SECTIONS: OpsSection[] = [
   { id: 'ops-pub-summary', label: 'Summary' },
   { id: 'ops-pub-applicants', label: 'Applicants' },
+  { id: 'ops-pub-access', label: 'Sign in access' },
   { id: 'ops-pub-list', label: 'Publishers' },
 ];
 

@@ -48,7 +48,8 @@ import type {
   SwitchReader,
   Transport,
 } from '@umsbx/contracts';
-import { err, ok } from '@umsbx/contracts';
+import { API_GROUPS, EXPOSURE_REASON_CODES, err, isApiGroup, ok } from '@umsbx/contracts';
+import type { ApiGroup } from '@umsbx/contracts';
 import {
   BOOT_REFUSAL_EXIT_CODE,
   loadConfig,
@@ -134,6 +135,13 @@ import {
   listAgreements,
   ownAgreement,
   seedAgreements,
+  acceptTerms,
+  decidePaypalLink,
+  issueInvite,
+  listPublisherAccess,
+  ownPaypalLink,
+  requestPaypalLink,
+  resetPublisherSignIn,
 } from '@umsbx/catalogue';
 import type {
   Agreement,
@@ -147,7 +155,13 @@ import type {
   OwnOfferDetail,
   PayeeError,
   PayeeView,
+  PaypalLinkView,
   PriceInput,
+  InviteError,
+  IssuedInvite,
+  LinkError,
+  PublisherAccessRow,
+  TermsError,
   StatusError,
 } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
@@ -283,6 +297,7 @@ export {
   PAYEE_DIRECT_SENTENCE,
   SETTLEMENT_SENTENCE,
   UNIT_STATUS_TEXT,
+  csvLine,
   salesTotals,
   settlementMode,
 } from '@umsbx/publisher-console';
@@ -311,13 +326,24 @@ export {
   txnCsv,
 } from '@umsbx/txn-search';
 export type { FindResult } from '@umsbx/txn-search';
+// INT-BUY: the journal sentences of TR1 (domain/trace/src/words.ts), so the buyer order page can word its timeline.
+// INT-SEL: the sentences of the journal steps, for the seller sale page (read only).
+export { WORDS as TRACE_WORDS } from '@umsbx/trace';
 // INT-OPS-B: the in-process journal verifier of TR0, for the Invariants tile (read only).
 export { formatTraceFinding, verifyTrace } from '@umsbx/db';
 export { filterLibrary, isPlainLibraryQuery, parseLibraryQuery } from '@umsbx/library';
+// INT-GA: the assist code (plain-words search, the explain panel) and AL's catalogue, for the assist composition module.
+// GA-L5: the model port itself reaches it as App.model.
+export { assistQuery, explainOrder, orderFixIds } from '@umsbx/assist';
+export type { AssistAnswer, AssistRole, ExplainAnswer } from '@umsbx/assist';
+export { ALERT_KINDS, severityOf } from '@umsbx/alerts';
+// INT-GA FU-1: the explain panel of the order page spends a token of the route's own rate bucket.
+export { takeToken } from '@umsbx/security';
 export type { LibraryFacts, LibraryQuery } from '@umsbx/library';
 import {
   DEFAULT_RATES,
   SESSION_COOKIE,
+  createExposureReader,
   createSession,
   operatorSignIn,
   resolveSession,
@@ -325,8 +351,10 @@ import {
   clearSessionCookie,
   changePassword as changeAccountPassword,
   checkNewAccount,
+  claimPublisherAccount,
   createAccount,
   revokeBuyerSessions,
+  verifyPublisherLogin,
   takeToken,
   verifyAccountLogin,
   verifyPasscode,
@@ -827,6 +855,11 @@ export interface App {
    * UMS_AI_ADAPTER=claude, a key is set and the app is not in maintenance.
    */
   readonly model_id: string;
+  /**
+   * INT-GA (GA-L5): the model port the app built (chooseModel): scripted, or the Claude adapter behind the caps and
+   * the paypal_outbound kill switch. The assist reads (the assist composition module) use it.
+   */
+  readonly model: ModelPort;
   /** API-C: where MVP 1 webhook deliveries go. It records each request and opens no socket. */
   readonly webhook_sink: InProcessSink;
   /** API-C: one webhook delivery pass (the job loop calls it each pass; tests call it directly). */
@@ -875,6 +908,15 @@ export type SignUpResult =
       code: 'invalid_input' | 'busy' | 'rate_limited' | 'taken' | 'weak_password';
       reason?: PasswordRefusal;
     };
+
+/** INT-CTL: one api_exposure row as the exposure screen reads it (the screen words it; see lib/exposure-view.ts). */
+export interface ExposureRow {
+  group_name: ApiGroup;
+  enabled: boolean;
+  changed_by: string | null;
+  changed_at: string;
+  reason_code: string | null;
+}
 
 export interface Engine {
   personas(): readonly Persona[];
@@ -1044,6 +1086,28 @@ export interface Engine {
     on: boolean;
     reason: string;
   }): Promise<Result<void, 'operator_required' | 'mfa_required' | 'reason_required'>>;
+  /**
+   * INT-CTL (CTL.3): an operator changes one of the seven safety switches. The reason is a code from the closed list
+   * and is stored as the switch's reason. Turning on needs the second factor and refuses the two switches that keep
+   * their own controls (paypal_outbound: Start; agent_buy_enabled: agent buy).
+   */
+  setFeatureSwitch(i: {
+    actor: Actor;
+    name: SwitchName;
+    on: boolean;
+    reason_code: string;
+  }): Promise<
+    Result<void, 'operator_required' | 'mfa_required' | 'use_existing_control' | 'reason_required'>
+  >;
+  /** INT-CTL (CTL.6): an operator opens or closes one API group to partners. Opening needs the second factor. */
+  setApiExposure(i: {
+    actor: Actor;
+    group: ApiGroup;
+    enabled: boolean;
+    reason_code: string;
+  }): Promise<Result<void, 'operator_required' | 'mfa_required' | 'reason_required'>>;
+  /** INT-CTL (CTL.7): the api_exposure rows, as stored. Operators only; any other actor gets null. */
+  readApiExposure(actor: Actor): Promise<ExposureRow[] | null>;
   parseNeed(i: { actor: Actor; text: string }): ReturnType<typeof parseNeed>;
   discover(i: { actor: Actor; text: string }): Promise<
     | { ai_off: true }
@@ -1335,7 +1399,7 @@ export interface Engine {
       publisher_id: Id;
       decision: 'approve' | 'reject';
       reason: string;
-    }): Promise<Result<{ state: 'active' | 'rejected' }, ApplicantError>>;
+    }): Promise<Result<{ state: 'active' | 'rejected'; invite?: IssuedInvite }, ApplicantError>>;
   };
   /**
    * PUB-APPLY, public (no actor, no session). `applyToPublish` leaves one application: an applicant record
@@ -1362,6 +1426,69 @@ export interface Engine {
    */
   opsAgreements: {
     list(actor: Actor): Promise<Result<{ agreements: Agreement[] }, ApplicantError>>;
+  };
+  /**
+   * POB-P1 (D-089): the publisher's own account. `claim` is public: the invite code an operator showed once, a
+   * username and a password make the account and sign the publisher in (a bad code, however it is bad, is
+   * `invalid_code`). `signIn` checks a username and password against the publisher accounts (an active publisher
+   * only, one answer for every failure). `view` is the signed in publisher's own account page data, null for any
+   * other actor; `acceptTerms` writes the click through record at the current terms version; `requestLink` stores
+   * the publisher's own PayPal address as requested. The demo personas have no account, so they get `no_account`.
+   */
+  publisherAccounts: {
+    claim(i: {
+      code: string;
+      username: string;
+      password: string;
+      ip_hash: string;
+      ip_known: boolean;
+      previous: { id: Id; actor: Actor } | null;
+    }): Promise<
+      | { ok: true; csrf_token: string; cookie: string }
+      | { ok: false; code: 'invalid_input' | 'invalid_code' | 'taken' | 'rate_limited' | 'busy' }
+      | { ok: false; code: 'weak_password'; reason: PasswordRefusal }
+    >;
+    signIn(i: {
+      username: string;
+      password: string;
+      previous: { id: Id; actor: Actor } | null;
+    }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
+    view(actor: Actor): Promise<{
+      username: string;
+      terms_version: string;
+      agreement: Agreement | null;
+      link: PaypalLinkView | null;
+    } | null>;
+    acceptTerms(actor: Actor): Promise<Result<{ terms_version: string }, TermsError>>;
+    requestLink(i: {
+      actor: Actor;
+      email: string;
+    }): Promise<Result<{ state: 'requested' }, LinkError>>;
+  };
+  /**
+   * POB-P1, operator only (second factor required): who can sign in. `list` shows every non demo publisher with
+   * its account, invite, terms and link state (link email masked). `issue` and `reset` return a new invite code
+   * once; nothing keeps it. `decideLink` marks a publisher's PayPal address as checked after the operator types it
+   * again in full.
+   */
+  opsPublisherAccess: {
+    list(actor: Actor): Promise<Result<{ rows: PublisherAccessRow[] }, InviteError>>;
+    issue(i: {
+      actor: Actor;
+      publisher_id: Id;
+      reason: string;
+    }): Promise<Result<IssuedInvite, InviteError>>;
+    reset(i: {
+      actor: Actor;
+      publisher_id: Id;
+      reason: string;
+    }): Promise<Result<IssuedInvite, InviteError>>;
+    decideLink(i: {
+      actor: Actor;
+      publisher_id: Id;
+      email_retyped: string;
+      reason: string;
+    }): Promise<Result<{ state: 'verified' }, LinkError>>;
   };
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
@@ -1815,6 +1942,12 @@ function buildApp(config: Config, opts: AppOptions): App {
   );
 
   const switches: SwitchReader = createSwitchReader(db, clock, opts.switch_cache_ms);
+  // INT-CTL: which API groups partners may call; the same cache rule as the switches (tests pass 0).
+  const exposure = createExposureReader({
+    db,
+    clock,
+    ...(opts.switch_cache_ms === undefined ? {} : { cache_ms: opts.switch_cache_ms }),
+  });
   const content: ContentStore = createPgContentStore(db);
   const gate = createOutboundGate({ db, clock, switches, config });
 
@@ -1948,6 +2081,8 @@ function buildApp(config: Config, opts: AppOptions): App {
   };
   // PUB-B: what the offer writes need; the price cap is the configured one (UMS_OFFER_MAX_MINOR).
   const offerDeps = { db, clock, ids, audit, offer_max_minor: config.offer_max_minor };
+  // POB-P1: the demo publishers are never issued an invite; the domain cannot import the persona list.
+  const inviteDeps = { db, clock, ids, audit, demo_slugs: PUBLISHER_PERSONAS.map((x) => x.slug) };
   const packWindowMs = core.config.pack_approval_window_ms ?? PACK_APPROVAL_WINDOW_MS;
   // CO-1d (D-038): the learn window's recorder. Built only when a window was configured; the window
   // itself is checked per delivery against the clock. It describes the certificate through the one
@@ -2078,6 +2213,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     // socket address) every client shares one 'no-address' bucket; the login then refuses only
     // wrong passcodes once it is spent. A hosted deployment must set the proxy count.
     trusted_proxies: config.trusted_proxies,
+    exposure,
   };
 
   // --- engine --------------------------------------------------------------------------------
@@ -2623,6 +2759,68 @@ function buildApp(config: Config, opts: AppOptions): App {
       });
       if (r.ok) return ok(undefined);
       return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+    },
+
+    async setFeatureSwitch({ actor, name, on, reason_code }) {
+      if (actor.kind !== 'operator') return err('operator_required');
+      if (!(EXPOSURE_REASON_CODES as readonly string[]).includes(reason_code))
+        return err('reason_required');
+      if (on) {
+        // Turning on needs the second factor, and two switches keep their own controls and locks (Start, agent buy).
+        if (!actor.mfa) return err('mfa_required');
+        if (name === 'paypal_outbound' || name === 'agent_buy_enabled')
+          return err('use_existing_control');
+      }
+      const r = await setSwitch(db, audit, clock, {
+        name,
+        on,
+        by: actor,
+        reason: reason_code,
+        approval_ref: null,
+      });
+      if (r.ok) return ok(undefined);
+      return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+    },
+
+    async setApiExposure({ actor, group, enabled, reason_code }) {
+      if (actor.kind !== 'operator') return err('operator_required');
+      if (!(EXPOSURE_REASON_CODES as readonly string[]).includes(reason_code))
+        return err('reason_required');
+      if (enabled && !actor.mfa) return err('mfa_required');
+      const at = clock.now().toISOString();
+      await db.transaction(async (tx) => {
+        await tx.query(
+          `UPDATE api_exposure SET enabled = $2, changed_by = $3, changed_at = $4, reason_code = $5, updated_at = $4
+            WHERE group_name = $1`,
+          [group, enabled, `operator:${actor.operator_id}`, at, reason_code],
+        );
+        await audit.record(tx, {
+          actor,
+          action: `exposure.${group}.${enabled ? 'on' : 'off'}`,
+          target: null,
+          reason: reason_code,
+          detail: { group, enabled },
+        });
+      });
+      return ok(undefined);
+    },
+
+    async readApiExposure(actor) {
+      if (actor.kind !== 'operator') return null;
+      const r = await db.query<{
+        group_name: ApiGroup;
+        enabled: boolean;
+        changed_by: string | null;
+        changed_at: Date | string;
+        reason_code: string | null;
+      }>(
+        'SELECT group_name, enabled, changed_by, changed_at, reason_code FROM api_exposure ORDER BY group_name',
+      );
+      const rank = (g: string): number => (API_GROUPS as readonly string[]).indexOf(g);
+      return r.rows
+        .filter((x) => isApiGroup(x.group_name))
+        .map((x) => ({ ...x, changed_at: new Date(x.changed_at).toISOString() }))
+        .sort((a, b) => rank(a.group_name) - rank(b.group_name));
     },
 
     async parseNeed(i) {
@@ -3571,6 +3769,81 @@ function buildApp(config: Config, opts: AppOptions): App {
       },
     },
 
+    // POB-P1 (D-089): publisher accounts. The rules live in @umsbx/security (publisher-accounts.ts) and
+    // @umsbx/catalogue (publisher-invites.ts, paypal-link.ts, agreements.ts).
+    publisherAccounts: {
+      async claim(i) {
+        // No known address: every visitor would share one bucket. Refuse before anything is read or spent.
+        if (!i.ip_known) return { ok: false, code: 'busy' };
+        const made = await claimPublisherAccount(security, {
+          code: i.code,
+          username: i.username,
+          password: i.password,
+          ip_hash: i.ip_hash,
+        });
+        if (!made.ok) return made;
+        const actor: Actor = { kind: 'publisher', publisher_id: made.publisher_id };
+        const s = await createSession(security, actor);
+        if (i.previous !== null) await revokeSession(security, i.previous);
+        return { ok: true, csrf_token: s.csrf_token, cookie: s.cookie };
+      },
+
+      async signIn({ username, password, previous }) {
+        const r = await verifyPublisherLogin(security, { username, password });
+        if (!r.ok) return null;
+        const actor: Actor = { kind: 'publisher', publisher_id: r.publisher_id };
+        const s = await createSession(security, actor);
+        if (previous !== null) await revokeSession(security, previous);
+        return { actor, cookie: s.cookie, csrf_token: s.csrf_token };
+      },
+
+      async view(actor) {
+        if (actor.kind !== 'publisher') return null;
+        const a = await db.query<{ username: string }>(
+          'SELECT username FROM publisher_accounts WHERE publisher_id = $1',
+          [actor.publisher_id],
+        );
+        const username = a.rows[0]?.username;
+        if (username === undefined) return null;
+        return {
+          username,
+          terms_version: PUBLISHER_TERMS_VERSION,
+          agreement: await ownAgreement(db, actor),
+          link: await ownPaypalLink(db, actor),
+        };
+      },
+
+      async acceptTerms(actor) {
+        const r = await acceptTerms(core, actor, { terms_version: PUBLISHER_TERMS_VERSION });
+        return r.ok ? { ok: true, value: { terms_version: r.value.terms_version } } : r;
+      },
+
+      requestLink: (i) => requestPaypalLink(core, i.actor, { email: i.email }),
+    },
+
+    opsPublisherAccess: {
+      async list(actor) {
+        if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
+        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
+        const rows = await listPublisherAccess(inviteDeps, actor);
+        if (rows === null) return { ok: false, error: { code: 'not_operator' } };
+        return { ok: true, value: { rows } };
+      },
+      issue: (i) =>
+        issueInvite(inviteDeps, i.actor, { publisher_id: i.publisher_id, reason: i.reason }),
+      reset: (i) =>
+        resetPublisherSignIn(inviteDeps, i.actor, {
+          publisher_id: i.publisher_id,
+          reason: i.reason,
+        }),
+      decideLink: (i) =>
+        decidePaypalLink(core, i.actor, {
+          publisher_id: i.publisher_id,
+          email_retyped: i.email_retyped,
+          reason: i.reason,
+        }),
+    },
+
     newKey: () => ids.nonce(),
 
     // Lane 10: turn new alerts and delivery failures into cases; close restored ones.
@@ -3696,6 +3969,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     security,
     outbound,
     model_id: model.model_id,
+    model,
     webhook_sink,
     deliverWebhooks: async (o) => {
       // CO-7b: no database in maintenance mode, so nothing to deliver.
@@ -3719,7 +3993,28 @@ function buildApp(config: Config, opts: AppOptions): App {
       // the loop is told not to recover again. With the lock, recovery belongs to the leader: the
       // loop runs it at the start of each leadership term, so a process that is not the leader never
       // takes over operations of the live one.
-      if (!led) await recoverOnStartup(paymentsDeps);
+      // FIX-BOOT-RECOVERY (INT-E2E B3): it writes under the same journal context as the loop's own
+      // recovery (packages/jobs/src/loop.ts): system, on the job channel, job `recovery`.
+      if (!led)
+        await withTraceContext(
+          {
+            id: `ctx_job_${ids.nonce()}_boot`,
+            at: clock.now().toISOString(),
+            channel: 'job',
+            actor_kind: 'system',
+            actor_id: null,
+            on_behalf_of: null,
+            mandate_id: null,
+            mfa: false,
+            req_id: null,
+            ip_hash: null,
+            ua_family: null,
+            api_key_id: null,
+            job: 'recovery',
+            tool: null,
+          },
+          () => recoverOnStartup(paymentsDeps),
+        );
       // One loop per approval (ASM-67): `loop` above is the only one this app starts.
       let running: { stop(): Promise<void> };
       try {
@@ -3826,6 +4121,9 @@ export const securityDeps: SecurityDeps = {
   },
   get trusted_proxies() {
     return getApp().security.trusted_proxies ?? 0;
+  },
+  get exposure() {
+    return getApp().security.exposure;
   },
 };
 

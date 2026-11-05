@@ -63,6 +63,16 @@ const EXPECTED_EXPORTS: string[] = [
   'CaseActionBodySchema',
   'ALERT_ROUTES',
   'BLOCKED_BY',
+  // INT-CTL
+  'API_GROUPS',
+  'EXPOSURE_REASON_CODES',
+  'SEED_EPOCH',
+  'GROUP_OF_PATH',
+  'groupOfPath',
+  'isApiGroup',
+  'CLOUD_STATUS_MAX_BYTES',
+  'CLOUD_PROJECT_PATTERN',
+  'CloudStatusSchema',
   'OPS_PAGES',
   // F2 transport
   'PayPalOperationSchema',
@@ -251,6 +261,9 @@ const EXPECTED_EXPORTS: string[] = [
   'TxnLinePageSchema',
   'TxnLineSchema',
   'TxnQueryMapSchema',
+  // INT-GA: the shared word table of the plain-words search
+  'ASSIST_SYNONYMS',
+  'ASSIST_SORT_DIR',
 ];
 
 type Def = {
