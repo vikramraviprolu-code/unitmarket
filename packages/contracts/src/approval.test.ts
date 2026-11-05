@@ -287,7 +287,7 @@ describe('ApprovalSnapshot terms (BR-3)', () => {
   it('version 2 without terms is refused', () => {
     const { terms: _dropped, ...bare } = v2();
     expect(valid(bare)).toBe(false);
-    expect(valid(v2(undefined))).toBe(false);
+    expect(valid({ ...v2(), terms: undefined })).toBe(false);
     expect(valid(v2(null))).toBe(false);
   });
   it('version 1 with a terms block is refused', () => {

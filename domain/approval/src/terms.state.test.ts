@@ -35,11 +35,11 @@ async function grant(selection: Parameters<typeof requestApproval>[1]['selection
   return value(await requestApproval(h.deps, { actor: BUYER_A, selection, consent: CONSENT }));
 }
 async function pack(order: string[]) {
-  await addProposal(h.db, 'prp_1', 'buy_A', [
+  await addProposal(h.db, `prp_${order.join('_')}`, 'buy_A', [
     { quote_id: 'quo_1', offer_id: 'ofr_1' },
     { quote_id: 'quo_3', offer_id: 'ofr_3' },
   ]);
-  return grant({ kind: 'proposal', proposal_id: 'prp_1', offer_ids: order });
+  return grant({ kind: 'proposal', proposal_id: `prp_${order.join('_')}`, offer_ids: order });
 }
 async function twoPublishers() {
   h = await makeHarness();

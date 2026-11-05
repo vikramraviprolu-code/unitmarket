@@ -175,6 +175,9 @@ importers:
       '@umsbx/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@umsbx/rules':
+        specifier: workspace:*
+        version: link:../rules
     devDependencies:
       '@umsbx/db':
         specifier: workspace:*

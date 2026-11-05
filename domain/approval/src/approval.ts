@@ -20,6 +20,7 @@ import type {
   CoreDeps,
   Id,
   IsoUtc,
+  ResolvedTerms,
   Result,
   Rights,
   Sha256Hex,
@@ -27,6 +28,8 @@ import type {
   SnapshotPublisher,
   SqlExecutor,
 } from '@umsbx/contracts';
+import { activeRows, resolveTerms } from '@umsbx/rules';
+import { canonicalJson, sha256Hex } from './canonical';
 import { approvalError } from './errors';
 import type { ApprovalError, VerifyError } from './errors';
 import { contentHash, minorUnitsFor } from './snapshot';
@@ -47,6 +50,46 @@ export interface ApprovalGranted {
 const MAX_ITEMS = 5;
 // A pack settles as one PayPal order per publisher (MVP-D, D2); more than two is refused.
 const MAX_PUBLISHERS = 2;
+
+const DAY_MS = 86_400_000;
+
+// ---------- business terms (BR-3) ----------
+// The digest of the resolved values: sha256 of their canonical JSON. It is the same text the resolver hashes
+// (keys sorted, no whitespace, integers), so one publisher's frozen digest equals the resolver's.
+const termsDigestOf = (values: ResolvedTerms['values']): string =>
+  sha256Hex(canonicalJson(values, 2));
+
+// One result per publisher (sorted by publisher id), merged per key by its strategy: the refund window and
+// the access window take the larger value, the mandate ceiling takes the smaller. A tie keeps the first
+// publisher, so the source text never depends on the order the buyer chose. The link rule needs no second
+// pass: every access is at least its own refund, so the largest access is at least the largest refund.
+function mergeTerms(results: readonly [ResolvedTerms, ...ResolvedTerms[]]): ResolvedTerms {
+  const [first, ...rest] = results;
+  if (rest.length === 0) return first;
+  const pick = (
+    key: keyof ResolvedTerms['values'],
+    wins: (candidate: number, best: number) => boolean,
+  ): ResolvedTerms =>
+    rest.reduce((best, r) => (wins(r.values[key], best.values[key]) ? r : best), first);
+  const refund = pick('refund.request_window', (a, b) => a > b);
+  const access = pick('access.window', (a, b) => a > b);
+  const mandate = pick('mandate.max_days', (a, b) => a < b);
+  const values = {
+    'refund.request_window': refund.values['refund.request_window'],
+    'access.window': access.values['access.window'],
+    'mandate.max_days': mandate.values['mandate.max_days'],
+  };
+  return {
+    rules_version: first.rules_version,
+    values,
+    sources: {
+      'refund.request_window': refund.sources['refund.request_window'],
+      'access.window': access.sources['access.window'],
+      'mandate.max_days': mandate.sources['mandate.max_days'],
+    },
+    digest: termsDigestOf(values),
+  };
+}
 
 // ---------- row helpers ----------
 // PGlite returns timestamptz as Date and jsonb as a parsed value; other drivers may return text.
@@ -306,12 +349,42 @@ export async function requestApproval(
     );
     if (publishers.length > MAX_PUBLISHERS) return approvalError('too_many_publishers');
     const total_minor = publishers.reduce((sum, p) => sum + p.amount_minor, 0);
+
+    // 4b. Business terms (BR-3): resolved now, once per publisher with the buyer's own rows, merged per key and
+    // frozen into the snapshot. A later rule change never touches a stored snapshot. A resolver failure
+    // (a stored value outside its range) refuses the approval: no sale proceeds on terms nobody can state.
+    const nowIso = now.toISOString();
+    const perPublisher: ResolvedTerms[] = [];
+    for (const p of publishers) {
+      const ctx = { seller_id: p.publisher_id, buyer_id: buyer.buyer_id, category: null };
+      const resolved = resolveTerms(ctx, await activeRows(tx, ctx, nowIso), nowIso);
+      if (!resolved.ok) return approvalError('terms_invalid');
+      perPublisher.push(resolved.value);
+    }
+    const [firstTerms, ...otherTerms] = perPublisher;
+    if (firstTerms === undefined) return approvalError('unknown_selection');
+    const terms = mergeTerms([firstTerms, ...otherTerms]);
+    // The access window follows the terms and is never shorter than the offer's policy. A raised policy keeps
+    // its id; its version says so, so the entitlement does not claim to be the original policy.
+    const accessMs = terms.values['access.window'] * DAY_MS;
+    const termed = items.map((item) =>
+      item.policy.window_ms >= accessMs
+        ? item
+        : {
+            ...item,
+            policy: {
+              ...item.policy,
+              window_ms: accessMs,
+              version: `${item.policy.version}+rules`,
+            },
+          },
+    );
     if (corridor.min_charge_minor !== null && total_minor < corridor.min_charge_minor) {
       return approvalError('corridor_unsupported');
     }
     const parsed = ApprovalSnapshotSchema.safeParse({
-      snapshot_version: '1',
-      items: [...items].sort((a, b) =>
+      snapshot_version: '2',
+      items: [...termed].sort((a, b) =>
         a.article_id < b.article_id ? -1 : a.article_id > b.article_id ? 1 : 0,
       ),
       publishers,
@@ -321,6 +394,7 @@ export async function requestApproval(
       reader: { buyer_id: buyer.buyer_id },
       rule_version: d.config.rule_version,
       pricing_rule_version: d.config.pricing_rule_version,
+      terms,
       // Two publishers: the settlement route is frozen with the snapshot (inside the hash). One
       // publisher: no key at all, so the snapshot and its hash are exactly what they were before.
       ...(publishers.length >= 2
@@ -415,6 +489,13 @@ export async function verifyApproval(
     return verifyError({ code: 'snapshot_tampered', http: 403 });
   }
   if (recomputed !== row.content_hash) return verifyError({ code: 'snapshot_tampered', http: 403 });
+  // BR-3: the frozen digest must be the digest of the frozen values.
+  if (
+    snapshot.data.snapshot_version === '2' &&
+    snapshot.data.terms.digest !== termsDigestOf(snapshot.data.terms.values)
+  ) {
+    return verifyError({ code: 'snapshot_tampered', http: 403 });
+  }
   // The buyer the snapshot was frozen for must be the buyer who owns the row.
   if (snapshot.data.reader.buyer_id !== row.buyer_id) {
     return verifyError({ code: 'snapshot_tampered', http: 403 });

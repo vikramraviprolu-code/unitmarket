@@ -142,9 +142,11 @@ const request = (selection: Awaited<ReturnType<typeof propose>>) =>
 const approvalRows = async (): Promise<number> =>
   (await h.db.query<{ n: number }>('SELECT count(*)::int AS n FROM approvals')).rows[0]!.n;
 
-// The content_hash of the one-publisher fixture below, computed by the code before DP-1 (commit
-// 22670d2). It must not change: a single-publisher snapshot carries no `settlement`.
-const PRE_CHANGE_SINGLE_HASH = 'e7d26637d339e8aed70062864e7ac5266054dd9751fac3da44620fe3f65d1b80';
+// The content_hash of the one-publisher fixture below. A single-publisher snapshot carries no `settlement`,
+// so DP-1 left it alone (version 1 hash e7d26637d339e8aed70062864e7ac5266054dd9751fac3da44620fe3f65d1b80,
+// commit 22670d2). BR-3 re-pinned it on purpose: the snapshot is now version 2 with `terms`, and the item
+// window is raised from 5 to 7 days (policy version '1+rules'). Nothing else in the fixture changed.
+const PRE_CHANGE_SINGLE_HASH = 'a8e9b762bbd9e3282f1207c67e85f8a9050c1b0800a69abdb57b254138777280';
 
 describe('composite snapshot (DP-1, D-04, D-07, P5)', () => {
   it('two publishers, USD: settlement per_publisher, payments 2, two blocks with their own payee and amount, total = sum', async () => {

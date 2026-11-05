@@ -262,17 +262,20 @@ export interface RuleSeed {
 }
 
 export async function setRule(db: SqlExecutor, r: RuleSeed): Promise<void> {
-  await ins(db, 'rule_settings', {
-    id: r.id,
-    rule_key: r.rule_key,
-    scope_kind: r.scope_kind,
-    scope_id: r.scope_id,
-    value: r.value,
-    effective_from: r.effective_from ?? T0,
-    effective_until: r.effective_until ?? null,
-    set_by: 'opr_test',
-    reason: 'test setting',
-    approved_by: null,
-    created_at: T0,
-  });
+  // rule_settings is append-only and has no updated_at, so this does not use `ins`.
+  await db.query(
+    `INSERT INTO rule_settings (id, rule_key, scope_kind, scope_id, value, effective_from, effective_until,
+                                set_by, reason, approved_by, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'opr_test', 'test setting', NULL, $8)`,
+    [
+      r.id,
+      r.rule_key,
+      r.scope_kind,
+      r.scope_id,
+      r.value,
+      r.effective_from ?? T0,
+      r.effective_until ?? null,
+      T0,
+    ],
+  );
 }

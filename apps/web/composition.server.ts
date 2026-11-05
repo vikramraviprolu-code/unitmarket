@@ -520,6 +520,8 @@ export interface ApprovalView {
   currency: string;
   environment: EnvironmentLabel;
   content_hash: string;
+  /** BR-3: the days of access frozen in the approval (5 for an approval stored before the terms existed). */
+  access_days: number;
   items: {
     article_id: Id;
     title: string;
@@ -2513,6 +2515,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         currency: string;
         publishers?: { publisher_id: string; amount_minor: number }[];
         settlement?: { payments: number };
+        terms?: { values: { 'access.window': number } };
       };
       const items: ApprovalView['items'] = [];
       const itemPublisher: string[] = [];
@@ -2553,6 +2556,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         currency: snap.currency,
         environment: row.environment,
         content_hash: row.content_hash,
+        access_days: snap.terms?.values['access.window'] ?? 5,
         items,
         blocks,
         settlement: snap.settlement === undefined ? null : { payments: snap.settlement.payments },
