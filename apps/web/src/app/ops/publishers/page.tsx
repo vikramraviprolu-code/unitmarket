@@ -6,7 +6,7 @@ import { currentActor } from '../../../server/session';
 import { EnvLabel, envText } from '../../../ui/EnvLabel';
 import { Chip, PageHeader, StatTile } from '../../../ui/publisher/kit';
 import { SectionNav } from '../../../ui/SectionNav';
-import { OPS_PUBLISHERS_SECTIONS, maskedMerchant } from '../../../lib/ops-copy';
+import { OPS_NEEDS_CODE, OPS_PUBLISHERS_SECTIONS, maskedMerchant } from '../../../lib/ops-copy';
 import { formatMinor } from '../../../lib/format';
 import { COL_AWAITING } from '../../../lib/pending-copy';
 import {
@@ -236,7 +236,7 @@ export default async function OpsPublishers() {
         <p className="muted">{ACCESS_DEMO_NOTE}</p>
         {accessRows.length === 0 ? (
           <p className="muted" data-testid="access-empty">
-            {ACCESS_EMPTY}
+            {mfa ? ACCESS_EMPTY : `${ACCESS_HEADING} ${OPS_NEEDS_CODE}.`}
           </p>
         ) : (
           <div className="pk-stack">
