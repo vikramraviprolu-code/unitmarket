@@ -58,8 +58,7 @@ describe('a stripped or damaged terms block is never read as "no deadline"', () 
   it('a version 2 snapshot without terms is refused', async () => {
     const { a, unit_id } = await lateSale();
     await rewriteSnapshot(w, a.order_id, (s) => {
-      const { terms: _terms, ...rest } = s;
-      return rest;
+      return Object.fromEntries(Object.entries(s).filter(([k]) => k !== 'terms'));
     });
     expect(await ask(unit_id)).toEqual({ ok: false, error: { code: 'refund_window_closed' } });
     expect(await requests()).toEqual([]);
@@ -68,8 +67,7 @@ describe('a stripped or damaged terms block is never read as "no deadline"', () 
   it('a version 2 snapshot without terms is refused even inside what would have been the window', async () => {
     const { a, unit_id } = await lateSale();
     await rewriteSnapshot(w, a.order_id, (s) => {
-      const { terms: _terms, ...rest } = s;
-      return rest;
+      return Object.fromEntries(Object.entries(s).filter(([k]) => k !== 'terms'));
     });
     w.clock.set(at(START, DAY));
     expect(await ask(unit_id)).toEqual({ ok: false, error: { code: 'refund_window_closed' } });
@@ -103,8 +101,7 @@ describe('a stripped or damaged terms block is never read as "no deadline"', () 
   it('an operator may still override a damaged block, with a reason and an audit row', async () => {
     const { a, unit_id } = await lateSale();
     await rewriteSnapshot(w, a.order_id, (s) => {
-      const { terms: _terms, ...rest } = s;
-      return rest;
+      return Object.fromEntries(Object.entries(s).filter(([k]) => k !== 'terms'));
     });
     expect((await ask(unit_id, { override_reason: 'terms block damaged, buyer paid' })).ok).toBe(
       true,

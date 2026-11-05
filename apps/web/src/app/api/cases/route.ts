@@ -32,6 +32,15 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
     ...(input.note !== undefined ? { note: input.note } : {}),
   });
   if (r.ok) return { status: 201, body: r.value };
+  // BR-4: the sale's refund period has ended. The words say what to do and name no number of days.
+  if (r.error.code === 'refund_window_closed') {
+    return {
+      status: 409,
+      code: 'refund_window_closed',
+      message:
+        'The refund period for this item has ended, so we cannot take a refund request for it. If something is wrong with it, tell us on the help page.',
+    };
+  }
   return r.error.code === 'duplicate_open'
     ? {
         status: 409,

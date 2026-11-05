@@ -1,7 +1,7 @@
 // Buyer-facing wording for the search, results and library screens. Pure; kept out of the .tsx files so
 // unit tests can pin it (the unit runner does not compile .tsx). Wording rules: D-051.
 import type { FitDimension, Rights } from '@umsbx/contracts';
-import { DEFAULT_ACCESS_DAYS, OPTION_LABEL } from './format';
+import { DEFAULT_ACCESS_DAYS, OPTION_LABEL, formatDateTime } from './format';
 import { NO_RATE_NOTE, fromLead, priceView } from './buyer-price';
 import type { PriceView } from './buyer-price';
 import type { OfferPage } from './view-types';
@@ -183,4 +183,36 @@ export function discoverNoMatchView(
     nothing_fits: !held || reasons.some((r) => r !== 'already_owned' && r !== 'unpaid_order'),
     no_rate: rateMissing ? NO_RATE_NOTE : null,
   };
+}
+
+// BR-4: the refund deadline a buyer reads on the library item and the receipt. The date is the deadline in the
+// sale's frozen terms; the words never name a number of days (D-051), so a different window needs no new copy.
+// A sale approved before the terms were recorded has no deadline and no line.
+export type RefundWindowView =
+  | { state: 'open'; deadline: string }
+  | { state: 'ended'; deadline: string }
+  | { state: 'none' }
+  /** The sale's terms could not be read: no date is shown, and the operator needs a reason to refund. */
+  | { state: 'unknown' };
+
+/** Open strictly before the deadline, ended at it and after it, none without one. */
+export function refundWindowView(deadline: string | null, nowIso: string): RefundWindowView {
+  if (deadline === null) return { state: 'none' };
+  return new Date(nowIso).getTime() < new Date(deadline).getTime()
+    ? { state: 'open', deadline }
+    : { state: 'ended', deadline };
+}
+
+export const REFUND_PERIOD_ENDED = 'Refund period ended';
+
+export function refundWindowLine(v: RefundWindowView): string | null {
+  switch (v.state) {
+    case 'open':
+      return `Refunds can be requested until ${formatDateTime(v.deadline)}`;
+    case 'ended':
+      return REFUND_PERIOD_ENDED;
+    case 'none':
+    case 'unknown':
+      return null;
+  }
 }

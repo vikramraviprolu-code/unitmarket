@@ -5,7 +5,7 @@
 // approved before the terms were recorded (version 1) has no deadline; a version 2 snapshot without usable
 // terms is refused, never treated as "no deadline". Real PGlite, synthetic rows.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { listCasesForBuyer, openCase } from './index';
+import { openCase } from './index';
 import { makeWorld } from './world';
 import type { World } from './world';
 
@@ -81,7 +81,6 @@ describe('a buyer opens a refund case against the frozen window', () => {
       ok: false,
       error: { code: 'refund_window_closed' },
     });
-    expect(await listCasesForBuyer(w.deps, buyer1)).toEqual([]);
     const rows = await w.db.query('SELECT 1 FROM recovery_cases');
     expect(rows.rows).toHaveLength(0);
   });

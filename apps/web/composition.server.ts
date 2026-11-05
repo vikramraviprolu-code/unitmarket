@@ -387,6 +387,9 @@ import {
   orderRefundLine,
 } from './src/server/refund';
 import type { RefundFacade, RefundOverview, RefundUnitView } from './src/server/refund';
+// BR-4: the refund deadline, read through the rules package in its own module.
+import { buyerRefundWindow, refundWindowsOfUnits } from './composition.refund-window';
+import type { RefundWindowView } from './src/lib/buyer-copy';
 export type { RefundOverview, RefundUnitView };
 // INT-OPS-A: the read shapes of the alert, case and needs-you pages, for the pure view modules in apps/web/src/lib.
 export type { AlertDetail, AlertList, NeedsYouRow, CaseDetail, CaseQueue };
@@ -1114,7 +1117,9 @@ export interface Engine {
     order_id?: Id;
     entitlement_id?: Id;
     note?: string;
-  }): Promise<Result<{ case_id: Id }, { code: 'not_found' | 'duplicate_open' }>>;
+  }): Promise<
+    Result<{ case_id: Id }, { code: 'not_found' | 'duplicate_open' | 'refund_window_closed' }>
+  >;
   opsSnapshot(actor: Actor): Promise<OpsSnapshot | null>;
   /**
    * BR-2: the rule settings. `add` is for an operator with the second factor (the domain checks it again);
@@ -1196,6 +1201,15 @@ export interface Engine {
    * the second factor; `cancel` withdraws a request that is still `requested`.
    */
   refund: RefundFacade;
+  /**
+   * BR-4: the refund deadline of a buyer's own item or order, for the library item and the receipt. Null for
+   * another buyer's id, an unknown id and any other actor.
+   */
+  refundWindow(i: {
+    actor: Actor;
+    entitlement_id?: Id;
+    order_id?: Id;
+  }): Promise<RefundWindowView | null>;
   /**
    * PUB-A2: where a publisher gets paid. `view` is the S6 page data (last 4 only, newest request first);
    * `request` stores a change request and changes nothing else; `openRequests` and `decide` are the
@@ -3137,6 +3151,10 @@ function buildApp(config: Config, opts: AppOptions): App {
         ...(note !== undefined ? { note } : {}),
       });
       if (r.ok) return ok({ case_id: r.value.case_id });
+      // BR-4: the buyer-opened refund case after the sale's refund deadline.
+      if (r.error.code === 'refund_window_closed') {
+        return err({ code: 'refund_window_closed' as const });
+      }
       return err({
         code:
           r.error.code === 'duplicate_open' ? ('duplicate_open' as const) : ('not_found' as const),
@@ -3251,7 +3269,11 @@ function buildApp(config: Config, opts: AppOptions): App {
         shared_payee: await sharedPayee(db),
         // P9: only a session with the second factor is shown the refund form.
         refunds:
-          actor.mfa === true ? await loadRefundOverview(db, sw['refunds_enabled'] === true) : null,
+          actor.mfa === true
+            ? await loadRefundOverview(db, sw['refunds_enabled'] === true, (ids) =>
+                refundWindowsOfUnits(db, clock.now().toISOString(), ids),
+              )
+            : null,
         totals: (await opsTotalsFor(db, actor)) ?? [],
       };
     },
@@ -3346,6 +3368,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       ),
 
     refund: refundFacade,
+
+    refundWindow: (i) => buyerRefundWindow(db, clock.now().toISOString(), i),
 
     payee: {
       async view(actor) {

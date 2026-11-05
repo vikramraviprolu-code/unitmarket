@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { postJson } from '../../lib/client-api';
-import { formatMinor } from '../../lib/format';
+import { formatDateTime, formatMinor } from '../../lib/format';
 import { parseAmount } from '../../lib/refund-amount';
 import {
   answerTone,
@@ -39,12 +39,24 @@ export function RefundPanel({ overview, keys }: { overview: RefundOverview; keys
     if (answer?.kind === 'ok') result.current?.focus();
   }, [answer]);
 
-  async function send(unit: RefundUnitView, key: string, amount: number | null, reason: string) {
+  async function send(
+    unit: RefundUnitView,
+    key: string,
+    amount: number | null,
+    reason: string,
+    override: string | null,
+  ) {
     setBusy(unit.unit_id);
     setAnswer(null);
     const r = await postJson<{ message: string; state?: string }>(
       '/api/refunds',
-      { unit_id: unit.unit_id, amount_minor: amount, reason },
+      {
+        unit_id: unit.unit_id,
+        amount_minor: amount,
+        reason,
+        // BR-4: only sent once the sale's refund period has ended; the route audits it.
+        ...(override !== null ? { override_reason: override } : {}),
+      },
       { 'idempotency-key': key },
     );
     setBusy(null);
@@ -159,18 +171,29 @@ function UnitCard({
   spent: boolean;
   enabled: boolean;
   busy: string | null;
-  send: (u: RefundUnitView, key: string, amount: number | null, reason: string) => Promise<boolean>;
+  send: (
+    u: RefundUnitView,
+    key: string,
+    amount: number | null,
+    reason: string,
+    override: string | null,
+  ) => Promise<boolean>;
   withdraw: (unit: RefundUnitView, id: string) => Promise<void>;
 }) {
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const [override, setOverride] = useState('');
+  // BR-4: after the sale's refund period (or when its terms cannot be read) a refund needs a stated reason.
+  const closed = unit.refund_window.state === 'ended' || unit.refund_window.state === 'unknown';
+  const overrideBad = closed && override.trim().length < 3;
   const digits = unit.currency === 'JPY' ? 0 : 2;
   const minor = parseAmount(amount, digits);
   const amountBad = minor === undefined;
   const label = unit.titles.length > 0 ? unit.titles.join(', ') : unit.order_ref;
   const canForm = enabled && !unit.frozen && unit.remaining_minor > 0;
   const working = busy !== null;
-  const ready = !working && !spent && !amountBad && reason.trim().length >= 3 && idemKey !== '';
+  const ready =
+    !working && !spent && !amountBad && reason.trim().length >= 3 && !overrideBad && idemKey !== '';
   const verb =
     minor === null
       ? 'Refund the rest'
@@ -190,6 +213,15 @@ function UnitCard({
         <dt>Left to refund</dt>
         <dd data-testid="refund-left">{formatMinor(unit.remaining_minor, unit.currency)}</dd>
       </dl>
+      <p className="muted" data-testid="refund-deadline">
+        {unit.refund_window.state === 'open'
+          ? `Refund period ends ${formatDateTime(unit.refund_window.deadline)}.`
+          : unit.refund_window.state === 'ended'
+            ? `Refund period ended ${formatDateTime(unit.refund_window.deadline)}. A refund now needs an override reason.`
+            : unit.refund_window.state === 'unknown'
+              ? 'The refund deadline could not be read. A refund now needs an override reason.'
+              : 'This sale has no refund deadline.'}
+      </p>
       {unit.frozen ? (
         <p className="banner banner-warn">
           Frozen: a refund list from PayPal did not add up and a person must look. Nothing can be
@@ -223,12 +255,15 @@ function UnitCard({
           onSubmit={(e) => {
             e.preventDefault();
             if (!ready || amountBad) return;
-            void send(unit, idemKey, minor, reason.trim()).then((done) => {
-              if (done) {
-                setAmount('');
-                setReason('');
-              }
-            });
+            void send(unit, idemKey, minor, reason.trim(), closed ? override.trim() : null).then(
+              (done) => {
+                if (done) {
+                  setAmount('');
+                  setReason('');
+                  setOverride('');
+                }
+              },
+            );
           }}
         >
           <div className="field">
@@ -276,6 +311,27 @@ function UnitCard({
                   : ''}
             </span>
           </div>
+          {closed ? (
+            <div className="field">
+              <label htmlFor={`override-${unit.unit_id}`}>
+                Override reason (3 to 200 characters; kept in the audit log, not sent to the buyer)
+              </label>
+              <input
+                id={`override-${unit.unit_id}`}
+                type="text"
+                maxLength={200}
+                autoComplete="off"
+                value={override}
+                data-testid="refund-override"
+                onChange={(e) => setOverride(e.target.value)}
+              />
+              <span className="hint" data-testid="refund-override-hint">
+                {overrideBad
+                  ? 'The refund period has ended. Enter an override reason of at least 3 characters to enable the button.'
+                  : ''}
+              </span>
+            </div>
+          ) : null}
           <div className="actions">
             <button type="submit" className="btn btn-primary" disabled={!ready}>
               {verb}

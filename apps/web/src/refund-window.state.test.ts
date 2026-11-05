@@ -7,7 +7,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { bootRefundWorld, buy, count, errorOf, postRefund, refundRows } from './refund-support';
 import type { BoughtUnit, RefundWorld } from './refund-support';
-import { loadRefundOverview } from './server/refund';
 
 vi.mock('server-only', () => ({}));
 
@@ -37,7 +36,7 @@ afterAll(async () => {
 });
 
 async function age(unit: BoughtUnit, days: number): Promise<void> {
-  const then = new Date(Date.now() - days * DAY).toISOString();
+  const then = new Date(w.app.security.clock.now().getTime() - days * DAY).toISOString();
   await w.app.db.query('UPDATE order_units SET captured_verified_at = $2 WHERE id = $1', [
     unit.unit_id,
     then,
@@ -59,7 +58,10 @@ describe('POST /api/refunds against the frozen window', () => {
     const res = await postRefund(w, w.op, body(u['fresh']!));
     expect(res.status).toBe(200);
     expect(
-      await count(w.app, "SELECT count(*) FROM audit_log WHERE action = 'refund_outside_window'"),
+      await count(
+        w.app,
+        "SELECT count(*) AS c FROM audit_log WHERE action = 'refund_outside_window'",
+      ),
     ).toBe(0);
   });
 
@@ -81,7 +83,10 @@ describe('POST /api/refunds against the frozen window', () => {
     expect(res.status).toBe(200);
     expect(await refundRows(w.app, u['override']!.unit_id)).toBe(1);
     expect(
-      await count(w.app, "SELECT count(*) FROM audit_log WHERE action = 'refund_outside_window'"),
+      await count(
+        w.app,
+        "SELECT count(*) AS c FROM audit_log WHERE action = 'refund_outside_window'",
+      ),
     ).toBe(1);
   });
 
@@ -106,7 +111,11 @@ describe('POST /api/refunds against the frozen window', () => {
 
 describe('the deadline the pages read', () => {
   it('the operator overview marks a fresh unit open and an old one ended, each with its deadline', async () => {
-    const o = await loadRefundOverview(w.app.db, true, new Date().toISOString());
+    const o = (await w.app.engine.opsSnapshot({
+      kind: 'operator',
+      operator_id: 'opr_vikram',
+      mfa: true,
+    }))!.refunds!;
     const by = (id: string) => o.units.find((x) => x.unit_id === id);
     const old = by(u['old']!.unit_id)!;
     expect(old.refund_window.state).toBe('ended');

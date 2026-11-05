@@ -163,7 +163,8 @@ describe('the operator override', () => {
     w.clock.set(at(DEADLINE, 2 * DAY));
     const r = await ask(unit.id, { override_reason: 'goodwill after outage, ticket 4411' });
     expect(r.ok).toBe(true);
-    expect(await auditActions()).toEqual(['refund.requested', 'refund_outside_window']);
+    // the two rows share one clock reading, so only the set is compared
+    expect((await auditActions()).sort()).toEqual(['refund.requested', 'refund_outside_window']);
     const row = (
       await w.rows<{
         actor_id: string;
@@ -285,8 +286,10 @@ describe('a version 1 sale (approved before the terms were recorded)', () => {
   it('has no deadline', async () => {
     const { a, unit } = await sale();
     await rewriteSnapshot(w, a.order_id, (s) => {
-      const { terms: _terms, ...rest } = s;
-      return { ...rest, snapshot_version: '1' };
+      return {
+        ...Object.fromEntries(Object.entries(s).filter(([k]) => k !== 'terms')),
+        snapshot_version: '1',
+      };
     });
     w.clock.set(at(START, 400 * DAY));
     expect((await ask(unit.id)).ok).toBe(true);

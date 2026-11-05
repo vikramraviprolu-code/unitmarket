@@ -30,9 +30,22 @@ const Input = z
     unit_id: IdSchema,
     amount_minor: z.number().int().safe().positive().max(100_000_000).nullable(),
     reason: z.string().trim().min(3).max(200),
+    // BR-4: only needed once the sale's refund window has closed. The reason is kept in the audit log.
+    override_reason: z.string().trim().min(3).max(200).optional(),
   })
   .strict();
 
-export const POST = withRoute(routeMeta, Input, async ({ actor, input }) =>
-  answerFor(await (await app()).engine.refund.request({ actor, ...input })),
+export const POST = withRoute(
+  routeMeta,
+  Input,
+  async ({ actor, input: { override_reason, ...rest } }) =>
+    answerFor(
+      await (
+        await app()
+      ).engine.refund.request({
+        actor,
+        ...rest,
+        ...(override_reason !== undefined ? { override_reason } : {}),
+      }),
+    ),
 )(securityDeps);
