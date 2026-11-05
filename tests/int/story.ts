@@ -578,18 +578,65 @@ step(
 
 step(
   'S11',
-  'the 11th buy answers cap_exhausted, with no new order, reservation or journal row',
+  'the 11th buy answers cap_exhausted: no money row; only the approval and its audit rows are journaled',
   async (rig) => {
-    const orders = await count(rig.app, 'SELECT count(*) AS c FROM orders');
-    const reservations = await count(rig.app, 'SELECT count(*) AS c FROM mandate_reservations');
+    const MONEY = [
+      'orders',
+      'order_units',
+      'mandate_reservations',
+      'ledger_entries',
+      'provider_calls',
+    ];
+    const before: Record<string, number> = {};
+    for (const t of MONEY) before[t] = await count(rig.app, `SELECT count(*) AS c FROM ${t}`);
+    const keys = async (): Promise<Set<string>> =>
+      new Set(
+        (
+          await rig.app.db.query<{ k: string }>(
+            "SELECT chain_key || '#' || seq::text AS k FROM trace_events",
+          )
+        ).rows.map((x) => x.k),
+      );
+    const seen = await keys();
     rig.eventsBefore11 = await count(rig.app, 'SELECT count(*) AS c FROM trace_events');
     const r = await agentBuy(rig);
     expect(r.status).toBe('cap_exhausted');
-    expect(await count(rig.app, 'SELECT count(*) AS c FROM orders')).toBe(orders);
-    expect(await count(rig.app, 'SELECT count(*) AS c FROM mandate_reservations')).toBe(
-      reservations,
-    );
-    expect(await count(rig.app, 'SELECT count(*) AS c FROM trace_events')).toBe(rig.eventsBefore11);
+    for (const t of MONEY)
+      expect(await count(rig.app, `SELECT count(*) AS c FROM ${t}`), `${t} after the refusal`).toBe(
+        before[t],
+      );
+    // B2 ruling: the only new journal rows are one approvals insert and the request's audit_log rows
+    // (approval.requested and api.request), all written by the agent.
+    const added = (
+      await rig.app.db.query<{
+        k: string;
+        source_table: string;
+        source_id: string;
+        event_type: string;
+        actor_kind: string;
+        action: string | null;
+      }>(
+        `SELECT e.chain_key || '#' || e.seq::text AS k, e.source_table, e.source_id, e.event_type,
+                e.actor_kind, e.body->'cols'->'action'->>1 AS action
+           FROM trace_events e ORDER BY e.occurred_at, e.chain_key, e.seq`,
+      )
+    ).rows.filter((e) => !seen.has(e.k));
+    expect(added.every((e) => e.actor_kind === 'agent')).toBe(true);
+    expect(added.filter((e) => e.source_table === 'approvals').map((e) => e.event_type)).toEqual([
+      'approvals.created',
+    ]);
+    const audit = added.filter((e) => e.source_table === 'audit_log');
+    expect(audit.every((e) => e.event_type === 'audit_log.created')).toBe(true);
+    expect([...new Set(audit.map((e) => e.action))].sort()).toEqual([
+      'api.request',
+      'approval.requested',
+    ]);
+    expect(added).toHaveLength(1 + audit.length);
+    // B5: the refused agent approval is not the buyer's to act on, so it is not in the pending approvals.
+    const refused = added.find((e) => e.source_table === 'approvals')!.source_id;
+    const { readPendingApprovals } = await import('../../apps/web/src/composition/buyer');
+    const pending = await readPendingApprovals(rig.buyerActor!.buyer_id);
+    expect(pending.map((p) => p.approval_id)).not.toContain(refused);
   },
 );
 
@@ -650,6 +697,8 @@ export interface JournalRow {
   mfa: boolean;
   on_behalf_of: string | null;
   mandate_id: string | null;
+  /** From the row's context: null for a session, the key id for a key. */
+  api_key_id: string | null;
 }
 
 const p1 = (r: Rig): Order[] => [r.p1!];
@@ -684,13 +733,17 @@ export const TABLE: Marker[] = [
   {
     step: 2,
     view: '`/api/ops/activity` chain `key:<id>`',
-    marker: '`api_keys` insert',
+    marker: '`api_keys` insert (context `api_key_id` null)',
     where: { kind: 'activity', chain: (r) => `key:${r.agent!.id}` },
     match: ins('api_keys'),
     times: 1,
     actor_kind: ['buyer'],
-    channel: 'web',
+    channel: 'api',
     mfa: [false],
+    row: (j) => {
+      // B1 ruling: a session call on /api/v1 is channel api; the context carries no key, so it is a session.
+      expect(j.api_key_id).toBeNull();
+    },
   },
   {
     step: 3,
@@ -852,24 +905,32 @@ export const TABLE: Marker[] = [
   {
     step: 12,
     view: '`/api/ops/activity`',
-    marker: '`api_keys` insert (×2)',
+    marker: '`api_keys` insert (×2) (context `api_key_id` null)',
     where: { kind: 'activity', chain: (r) => `key:${r.opsKey!.id}` },
     match: ins('api_keys'),
     times: 1,
     actor_kind: ['operator'],
-    channel: 'web',
+    channel: 'api',
     mfa: [true],
+    row: (j) => {
+      // B1 ruling: a session call on /api/v1 is channel api; the context carries no key, so it is a session.
+      expect(j.api_key_id).toBeNull();
+    },
   },
   {
     step: 12,
     view: '`/api/ops/activity`',
-    marker: '`api_keys` insert (×2)',
+    marker: '`api_keys` insert (×2) (context `api_key_id` null)',
     where: { kind: 'activity', chain: (r) => `key:${r.sellerKey!.id}` },
     match: ins('api_keys'),
     times: 1,
     actor_kind: ['publisher'],
-    channel: 'web',
+    channel: 'api',
     mfa: [false],
+    row: (j) => {
+      // B1 ruling: a session call on /api/v1 is channel api; the context carries no key, so it is a session.
+      expect(j.api_key_id).toBeNull();
+    },
   },
 ];
 
@@ -912,8 +973,9 @@ async function viewEntries(rig: Rig, v: View, inst: Order | string): Promise<Ent
 /** The journal row behind an entry, for the columns a view does not show (mfa on the buyer view, on_behalf_of). */
 async function journalRow(rig: Rig, e: Entry): Promise<JournalRow> {
   const r = await rig.app.db.query<JournalRow>(
-    `SELECT actor_kind, channel, mfa, on_behalf_of, mandate_id FROM trace_events
-      WHERE source_table = $1 AND source_id = $2 AND seq = $3 AND event_type = $4`,
+    `SELECT e.actor_kind, e.channel, e.mfa, e.on_behalf_of, e.mandate_id, c.api_key_id
+       FROM trace_events e LEFT JOIN trace_context c ON c.id = e.ctx_id
+      WHERE e.source_table = $1 AND e.source_id = $2 AND e.seq = $3 AND e.event_type = $4`,
     [e.source.table, e.source.id, e.seq, e.event_type],
   );
   expect(
@@ -993,7 +1055,7 @@ export function printTable(lines: TableLine[]): string {
       (l) =>
         `| ${String(l.step)} | ${l.view} | ${l.marker} | ${l.found} | ${l.actor_kind} | ${l.channel} | ${l.mfa} |`,
     ),
-    '| 11 | none | no new `orders` or `mandate_reservations` row; event count unchanged | checked in S11 |  |  |  |',
+    '| 11 | none | no new `orders`, `order_units`, `mandate_reservations`, `ledger_entries` or `provider_calls` row; only one `approvals` insert and its `audit_log` rows; the refused approval is not pending for the buyer | checked in S11 | agent | mcp; api | false |',
   ].join('\n');
 }
 
