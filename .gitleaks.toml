@@ -6,6 +6,22 @@ useDefault = true
 [allowlist]
 description = "names-only example and labelled negative fixtures"
 paths = ['''\.env\.example$''', '''scripts/__fixtures__/''']
+# Known fake values, matched exactly against the secret only (regexTarget). Each was reviewed: the three
+# UMS_*_SECRET test constants, EXPECTED_SECRET and the redaction password are D-058; the webhook test
+# secret is API-C's signature fixture; the TOTP key is the RFC 6238 test key "12345678901234567890" in
+# base32; the scope line is a config example. They recur in copied commits, so commit pins cannot cover
+# them. Any other value, in any file, is still reported. Reviewed 5 Nov 2026 (CI-3).
+regexTarget = "secret"
+regexes = [
+  '''^Qm7vK2pLx9RbT4zWc8NdYh3JfG6sAe1U$''',
+  '''^Zr5tB8nKd2VwXq7LmC4yHj9PgF3sEa6U$''',
+  '''^Jd4wN7xQk2ZcR9vTb5LmY8hGp3FsAe6U$''',
+  '''^AAISEM2EKVTHPCEZVK54ZXPO777NZOUY$''',
+  '''^S3cr3tPassw0rdXYZ$''',
+  '''^whsec_test_secret_0123456789$''',
+  '''^GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ$''',
+  '''^UMS_OUTBOUND_SCOPE=mvp_c_refunds$''',
+]
 # Two superseded commits flagged synthetic ids (checkout link tokens built from fake order ids
 # in fixtures, and an access_token-shaped test literal). Both were rewritten to low-entropy
 # values in later commits; the current tree scans clean. Reviewed 22 Oct 2026.
