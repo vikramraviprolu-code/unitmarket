@@ -1,0 +1,19 @@
+{
+  "name": "@umsbx/int-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "INT-E2E integrated proof and tamper demo: the whole story through the public routes, offline. Tests only.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@umsbx/config": "workspace:*",
+    "@umsbx/contracts": "workspace:*",
+    "@umsbx/db": "workspace:*",
+    "@umsbx/obs": "workspace:*",
+    "@umsbx/payments": "workspace:*",
+    "@umsbx/security": "workspace:*",
+    "server-only": "0.0.1"
+  }
+}
