@@ -48,7 +48,8 @@ import type {
   SwitchReader,
   Transport,
 } from '@umsbx/contracts';
-import { err, ok } from '@umsbx/contracts';
+import { API_GROUPS, EXPOSURE_REASON_CODES, err, isApiGroup, ok } from '@umsbx/contracts';
+import type { ApiGroup } from '@umsbx/contracts';
 import {
   BOOT_REFUSAL_EXIT_CODE,
   loadConfig,
@@ -320,6 +321,7 @@ export type { LibraryFacts, LibraryQuery } from '@umsbx/library';
 import {
   DEFAULT_RATES,
   SESSION_COOKIE,
+  createExposureReader,
   createSession,
   operatorSignIn,
   resolveSession,
@@ -875,6 +877,15 @@ export type SignUpResult =
       reason?: PasswordRefusal;
     };
 
+/** INT-CTL: one api_exposure row as the exposure screen reads it (the screen words it; see lib/exposure-view.ts). */
+export interface ExposureRow {
+  group_name: ApiGroup;
+  enabled: boolean;
+  changed_by: string | null;
+  changed_at: string;
+  reason_code: string | null;
+}
+
 export interface Engine {
   personas(): readonly Persona[];
   /**
@@ -1043,6 +1054,28 @@ export interface Engine {
     on: boolean;
     reason: string;
   }): Promise<Result<void, 'operator_required' | 'mfa_required' | 'reason_required'>>;
+  /**
+   * INT-CTL (CTL.3): an operator changes one of the seven safety switches. The reason is a code from the closed list
+   * and is stored as the switch's reason. Turning on needs the second factor and refuses the two switches that keep
+   * their own controls (paypal_outbound: Start; agent_buy_enabled: agent buy).
+   */
+  setFeatureSwitch(i: {
+    actor: Actor;
+    name: SwitchName;
+    on: boolean;
+    reason_code: string;
+  }): Promise<
+    Result<void, 'operator_required' | 'mfa_required' | 'use_existing_control' | 'reason_required'>
+  >;
+  /** INT-CTL (CTL.6): an operator opens or closes one API group to partners. Opening needs the second factor. */
+  setApiExposure(i: {
+    actor: Actor;
+    group: ApiGroup;
+    enabled: boolean;
+    reason_code: string;
+  }): Promise<Result<void, 'operator_required' | 'mfa_required' | 'reason_required'>>;
+  /** INT-CTL (CTL.7): the api_exposure rows, as stored. Operators only; any other actor gets null. */
+  readApiExposure(actor: Actor): Promise<ExposureRow[] | null>;
   parseNeed(i: { actor: Actor; text: string }): ReturnType<typeof parseNeed>;
   discover(i: { actor: Actor; text: string }): Promise<
     | { ai_off: true }
@@ -1803,6 +1836,12 @@ function buildApp(config: Config, opts: AppOptions): App {
   );
 
   const switches: SwitchReader = createSwitchReader(db, clock, opts.switch_cache_ms);
+  // INT-CTL: which API groups partners may call; the same cache rule as the switches (tests pass 0).
+  const exposure = createExposureReader({
+    db,
+    clock,
+    ...(opts.switch_cache_ms === undefined ? {} : { cache_ms: opts.switch_cache_ms }),
+  });
   const content: ContentStore = createPgContentStore(db);
   const gate = createOutboundGate({ db, clock, switches, config });
 
@@ -2066,6 +2105,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     // socket address) every client shares one 'no-address' bucket; the login then refuses only
     // wrong passcodes once it is spent. A hosted deployment must set the proxy count.
     trusted_proxies: config.trusted_proxies,
+    exposure,
   };
 
   // --- engine --------------------------------------------------------------------------------
@@ -2611,6 +2651,68 @@ function buildApp(config: Config, opts: AppOptions): App {
       });
       if (r.ok) return ok(undefined);
       return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+    },
+
+    async setFeatureSwitch({ actor, name, on, reason_code }) {
+      if (actor.kind !== 'operator') return err('operator_required');
+      if (!(EXPOSURE_REASON_CODES as readonly string[]).includes(reason_code))
+        return err('reason_required');
+      if (on) {
+        // Turning on needs the second factor, and two switches keep their own controls and locks (Start, agent buy).
+        if (!actor.mfa) return err('mfa_required');
+        if (name === 'paypal_outbound' || name === 'agent_buy_enabled')
+          return err('use_existing_control');
+      }
+      const r = await setSwitch(db, audit, clock, {
+        name,
+        on,
+        by: actor,
+        reason: reason_code,
+        approval_ref: null,
+      });
+      if (r.ok) return ok(undefined);
+      return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+    },
+
+    async setApiExposure({ actor, group, enabled, reason_code }) {
+      if (actor.kind !== 'operator') return err('operator_required');
+      if (!(EXPOSURE_REASON_CODES as readonly string[]).includes(reason_code))
+        return err('reason_required');
+      if (enabled && !actor.mfa) return err('mfa_required');
+      const at = clock.now().toISOString();
+      await db.transaction(async (tx) => {
+        await tx.query(
+          `UPDATE api_exposure SET enabled = $2, changed_by = $3, changed_at = $4, reason_code = $5, updated_at = $4
+            WHERE group_name = $1`,
+          [group, enabled, `operator:${actor.operator_id}`, at, reason_code],
+        );
+        await audit.record(tx, {
+          actor,
+          action: `exposure.${group}.${enabled ? 'on' : 'off'}`,
+          target: null,
+          reason: reason_code,
+          detail: { group, enabled },
+        });
+      });
+      return ok(undefined);
+    },
+
+    async readApiExposure(actor) {
+      if (actor.kind !== 'operator') return null;
+      const r = await db.query<{
+        group_name: ApiGroup;
+        enabled: boolean;
+        changed_by: string | null;
+        changed_at: Date | string;
+        reason_code: string | null;
+      }>(
+        'SELECT group_name, enabled, changed_by, changed_at, reason_code FROM api_exposure ORDER BY group_name',
+      );
+      const rank = (g: string): number => (API_GROUPS as readonly string[]).indexOf(g);
+      return r.rows
+        .filter((x) => isApiGroup(x.group_name))
+        .map((x) => ({ ...x, changed_at: new Date(x.changed_at).toISOString() }))
+        .sort((a, b) => rank(a.group_name) - rank(b.group_name));
     },
 
     async parseNeed(i) {
@@ -3804,6 +3906,9 @@ export const securityDeps: SecurityDeps = {
   },
   get trusted_proxies() {
     return getApp().security.trusted_proxies ?? 0;
+  },
+  get exposure() {
+    return getApp().security.exposure;
   },
 };
 
