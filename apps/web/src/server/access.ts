@@ -50,5 +50,6 @@ export {
   orderFixIds,
   scopeQuery,
   severityOf,
+  takeToken,
 } from '../../composition.server';
 export type { AssistAnswer, AssistRole, ExplainAnswer } from '../../composition.server';

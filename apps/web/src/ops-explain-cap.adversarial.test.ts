@@ -47,14 +47,16 @@ let orderId = '';
 let alertSeq = 0;
 const op = (id: string): Actor => ({ kind: 'operator', operator_id: id, mfa: true });
 
-// A second alert of the same kind changes what the model would be sent (alert_kinds), so it is a new "version".
+// An open alert of a new kind on the order changes what the model would be sent (alert_kinds), so it is a new
+// "version". (A second open alert of the same kind is refused by the alerts table, so each call uses the next kind.)
+const NEXT_KINDS = ['frozen_order', 'create_rejected', 'content_unavailable', 'fee_above_amount'];
 const addAlert = async (): Promise<void> => {
   alertSeq += 1;
   await withTraceContext(ctx, async () => {
     await rig.app.db.query(
       `INSERT INTO alerts (id, kind, order_id, detail, created_at, updated_at)
-       VALUES ($1, 'payment_unresolved', $2, '{"reason":"cap test"}'::jsonb, now(), now())`,
-      [`alr_cap_${alertSeq}`, orderId],
+       VALUES ($1, $2, $3, '{"reason":"cap test"}'::jsonb, now(), now())`,
+      [`alr_cap_${alertSeq}`, NEXT_KINDS[alertSeq - 1], orderId],
     );
   });
 };
@@ -70,7 +72,6 @@ beforeAll(async () => {
   await withTraceContext(ctx, async () => {
     await rig.app.db.query(`UPDATE orders SET status = 'unresolved' WHERE id = $1`, [orderId]);
   });
-  await addAlert();
 });
 afterAll(async () => rig?.app.close());
 
@@ -121,6 +122,7 @@ describe('a page read that needs the model spends the same bucket as the route',
   it('when the bucket is empty a changed order is paused, the model is not called, and a cached one still shows', async () => {
     const who = op('opr_cap_drain');
     const s: Sess = await rig.session(who);
+    await addAlert(); // a version nobody has read yet, so the first page read below is a miss and spends a token
     const get = () =>
       call(route.GET, { url: `/api/ops/orders/${ref}/explain`, session: s, params: { ref } });
     // One page read (a miss) then nine route calls use all ten tokens of this operator.

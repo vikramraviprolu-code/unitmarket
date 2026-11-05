@@ -2,6 +2,7 @@
 // panel and its route explain a problem order. Both reach the model through App.model (scripted, or Claude behind
 // the caps and the paypal_outbound switch) and AL's catalogue through the one door. Neither writes anything, runs a
 // query or logs the text, the chips or the answer.
+import { createHash } from 'node:crypto';
 import { statusGroupOf } from '@umsbx/contracts';
 import type { Actor, ModelPort } from '@umsbx/contracts';
 import {
@@ -12,6 +13,7 @@ import {
   orderFixIds,
   scopeQuery,
   severityOf,
+  takeToken,
 } from '../server/access';
 import type { App, AssistAnswer, AssistRole, ExplainAnswer } from '../server/access';
 
@@ -75,14 +77,26 @@ export interface OrderExplain {
 }
 
 /**
- * GA.4: the explanation of one order, for an operator. `not_found` when there is no such order; null when its status
- * group is not `attention` (then the model is not asked). The entries are always the identity-free operator view,
- * even on an MFA session, and the domain sends only its seven-field projection.
+ * The rate rule of the explain route (`routeMeta.rate` in app/api/ops/orders/[ref]/explain/route.ts; a test holds the
+ * two equal). The order page spends from the same bucket (name and operator id), so route and page together stay
+ * under 10 model calls a minute for each operator.
  */
-export async function explainForOrder(
+export const EXPLAIN_RATE = {
+  name: 'ops_explain',
+  per: 'actor',
+  limit: 10,
+  window_ms: 60_000,
+} as const;
+
+/** INT-GA FU-1: one entry for each order and each set of model inputs, kept in memory, at most this many. */
+export const EXPLAIN_CACHE_MAX = 200;
+const explainCache = new WeakMap<App, Map<string, Promise<OrderExplain>>>();
+
+async function explainCore(
   actor: Actor,
   ref: string,
-): Promise<OrderExplain | null | 'not_found'> {
+  page: boolean,
+): Promise<OrderExplain | null | 'not_found' | 'paused'> {
   if (actor.kind !== 'operator') return null;
   const a = await app();
   const order = (
@@ -123,6 +137,57 @@ export async function explainForOrder(
     fixes[d.kind] ??= { route: d.fix.route, anchor: d.fix.anchor };
   }
   const { model, fixIds } = await assistDeps();
-  const answer = await explainOrder(tl?.entries ?? [], kinds, fixIds, model);
-  return { answer, fixes };
+  const ask = async (): Promise<OrderExplain> => ({
+    answer: await explainOrder(tl?.entries ?? [], kinds, fixIds, model),
+    fixes,
+  });
+  if (!page) return ask();
+
+  // The page path (FU-1). The key is everything the answer depends on: the identity-free steps the model is sent, the
+  // alert kinds, the fix ids and the fix links. The same key gets the same answer without a model call (also while the
+  // first call is still running). A miss spends one token of the route's bucket; with none left the page is paused.
+  let cache = explainCache.get(a);
+  if (cache === undefined) explainCache.set(a, (cache = new Map()));
+  const key = createHash('sha256')
+    .update(JSON.stringify([order.id, tl?.entries ?? [], kinds, fixIds, fixes]))
+    .digest('hex');
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  // A page render has no trace context of its own, and the bucket is a write, so it runs as the page actor.
+  const verdict = await a.engine.asPageActor(actor, () =>
+    takeToken(a.security, EXPLAIN_RATE, actor.operator_id),
+  );
+  if (!verdict.allowed) return 'paused';
+  const again = cache.get(key);
+  if (again !== undefined) return again;
+  const started = ask();
+  cache.set(key, started);
+  started.catch(() => cache.delete(key));
+  while (cache.size > EXPLAIN_CACHE_MAX) cache.delete(cache.keys().next().value as string);
+  return started;
+}
+
+/**
+ * GA.4: the explanation of one order, for an operator. `not_found` when there is no such order; null when its status
+ * group is not `attention` (then the model is not asked). The entries are always the identity-free operator view,
+ * even on an MFA session, and the domain sends only its seven-field projection. The route calls this and counts
+ * every call against its rate rule.
+ */
+export async function explainForOrder(
+  actor: Actor,
+  ref: string,
+): Promise<OrderExplain | null | 'not_found'> {
+  const r = await explainCore(actor, ref, false);
+  return r === 'paused' ? null : r;
+}
+
+/**
+ * GA.4 on the order page (FU-1): the same explanation, but a page read keeps its answer for an unchanged order and
+ * spends a token of the route's bucket only when it must ask the model. `paused` when the bucket is empty.
+ */
+export function explainForOrderPage(
+  actor: Actor,
+  ref: string,
+): Promise<OrderExplain | null | 'not_found' | 'paused'> {
+  return explainCore(actor, ref, true);
 }
