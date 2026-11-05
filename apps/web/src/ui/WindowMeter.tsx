@@ -36,7 +36,7 @@ export function WindowMeter({
   }
   const text =
     state === 'not_started'
-      ? 'Your 5 days start when payment is confirmed and the content is ready.'
+      ? 'Your access window starts when payment is confirmed and the content is ready.'
       : state === 'paused'
         ? 'Paused while we fix a delivery problem. You do not lose time.'
         : state === 'ended'
