@@ -2,6 +2,7 @@ import type { TimelineView } from '../lib/timeline-view';
 import { timelineMark } from '../lib/verify-view';
 import './shared-parts.css';
 import './ops/ops-b.css';
+import './ops/ops-a.css';
 
 // INT-UI0 / UI0.6: the timeline of one order or unit. It paints what lib/timeline-view.ts returns and decides
 // nothing: the order, the words, the empty and the error state all come from there. Until TR1 lands the
@@ -25,7 +26,12 @@ export function Timeline({ view, label }: { view: TimelineView; label: string })
     <>
       <ol className="tl" aria-label={label} data-testid="timeline">
         {view.rows.map((r) => (
-          <li key={`${r.at}-${String(r.seq)}`} className="tl-step" data-testid="timeline-step">
+          <li
+            key={`${r.at}-${String(r.seq)}`}
+            id={`seq-${String(r.seq)}`}
+            className="tl-step ola-timeline-target"
+            data-testid="timeline-step"
+          >
             <time className="tl-when" dateTime={r.at}>
               {r.when}
             </time>

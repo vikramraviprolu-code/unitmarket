@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { currentActor } from '../../server/session';
-import { readOpsHome } from '../../composition/ops-home';
+import { readHomeLights, readNeedsYou, readOpsHome } from '../../composition/ops-home';
+import { HealthLights } from '../../ui/ops/HealthLights';
 import { EnvLabel } from '../../ui/EnvLabel';
 import { formatDateTime } from '../../lib/format';
 import { EVALS_OPS_LINK } from '../../lib/evals-copy';
@@ -20,6 +21,7 @@ import { OPS_HOME_SECTIONS } from '../../lib/ops-copy';
 import { KillControls } from './KillControls';
 import '../publisher/pk-sales.css';
 import './pk-opshome.css';
+import '../../ui/ops/ops-a.css';
 
 export const metadata: Metadata = { title: 'Operations' };
 
@@ -47,6 +49,8 @@ export default async function Ops() {
   const read = await readOpsHome(actor);
   if (read === null) redirect('/signin?next=/ops');
   const { snap, flagOff } = read;
+  const lights = await readHomeLights(actor);
+  const needsYou = await readNeedsYou();
   const killChip = switchChip('paypal_outbound', snap.kill_switch.outbound_on, flagOff);
   return (
     <>
@@ -56,6 +60,24 @@ export default async function Ops() {
         lede="Read only, except the start and stop buttons and, with the authenticator code, refunds. Everything else is changed with the operator command line."
       />
       <SectionNav label="Sections of this page" items={OPS_HOME_SECTIONS} />
+      <HealthLights lights={lights} />
+      <Section title="Needs you" id="ops-needs-you">
+        {needsYou.length === 0 ? (
+          <p className="oh-empty" data-testid="needs-you-empty">
+            Nothing is waiting for you.
+          </p>
+        ) : (
+          <ul className="ola-needs" data-testid="needs-you">
+            {needsYou.map((r) => (
+              <li key={`${r.kind}-${r.sentence}`}>
+                <Link className="ola-row-link" href={r.href}>
+                  {r.sentence}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
       <ul className="pk-cards">
         <li>
           <ActionCard href="/ops/evals" title={EVALS_OPS_LINK}>
@@ -123,6 +145,9 @@ export default async function Ops() {
       </Section>
 
       <Section title="Alerts" id="ops-alerts">
+        <p>
+          <Link href="/ops/alerts">See all alerts</Link>
+        </p>
         {snap.alerts.length === 0 ? (
           <p className="oh-empty">No alerts.</p>
         ) : (

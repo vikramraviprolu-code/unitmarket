@@ -114,3 +114,38 @@ describe('INT-OPS-B pages: labelled landmarks, inputs and tables', () => {
     expect(src).toMatch(/role="status"|aria-live=/);
   });
 });
+
+// INT-OPS-A: the new operator pages and parts each have one level one heading, named landmarks and no bare inputs.
+describe('INT-OPS-A pages: named landmarks and headings', () => {
+  const FILES = [
+    'app/ops/alerts/page.tsx',
+    'app/ops/alerts/[id]/page.tsx',
+    'app/ops/buyers/cases/page.tsx',
+    'app/ops/buyers/cases/[id]/page.tsx',
+    'app/ops/money/problems/page.tsx',
+    'app/ops/money/orders/[ref]/page.tsx',
+    'ui/ops/HealthLights.tsx',
+    'ui/ops/AlertList.tsx',
+    'ui/ops/AlertDetail.tsx',
+    'ui/ops/CaseCard.tsx',
+    'ui/shell/AlertBell.tsx',
+  ];
+  it.each(FILES)('%s: nav, section and form elements have a name', (f) => {
+    const src = code(f);
+    for (const tag of ['nav', 'section', 'form']) {
+      for (const el of [...src.matchAll(new RegExp(`<${tag}\\b[^>]*>`, 'g'))].map((m) => m[0]))
+        expect(el, `${f} ${el}`).toMatch(/aria-label=|aria-labelledby=/);
+    }
+    expect(src).not.toMatch(/<input\b(?![^>]*(aria-label=|id=))/);
+  });
+  it.each(FILES.filter((f) => f.startsWith('app/')))(
+    '%s has a page header (the one level one heading)',
+    (f) => {
+      expect(code(f)).toMatch(/<PageHeader\b[^>]*title=/);
+      expect(code(f).match(/<PageHeader\b/g) ?? []).toHaveLength(1);
+    },
+  );
+  it('the health lights say their state in words, not by colour alone', () => {
+    expect(code('ui/ops/HealthLights.tsx')).toMatch(/\.word/);
+  });
+});

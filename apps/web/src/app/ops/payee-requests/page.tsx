@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
-import { app } from '../../../server/access';
+import { readOpsPayeeQueue } from '../../../composition/ops-sellers';
 import { currentActor } from '../../../server/session';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { Chip, PageHeader, StatTile } from '../../../ui/publisher/kit';
 import { StatusBanner } from '../../../ui/StatusBanner';
 import { SectionNav } from '../../../ui/SectionNav';
-import { OPS_PAYEE_SECTIONS } from '../../../lib/ops-copy';
+import { OPS_PAYEE_SECTIONS, maskedMerchant } from '../../../lib/ops-copy';
 import { formatDateTime } from '../../../lib/format';
 import {
   OPS_COL_AGE,
@@ -15,9 +15,6 @@ import {
   OPS_EMPTY,
   OPS_HEADING,
   OPS_LEDE,
-  OPS_MFA_BODY,
-  OPS_MFA_HEADING,
-  OPS_MFA_LINK,
   OWNER_ONLY_NOTE,
   ageText,
 } from '../../../lib/payee-copy';
@@ -38,21 +35,11 @@ export const metadata: Metadata = { title: 'Payee requests' };
 // operator types the whole id again to verify. On the hosted sandbox app the form is not shown.
 export default async function PayeeRequests() {
   const actor = await currentActor();
-  // GATE35 D4b: an operator without the authenticator code is told why, not sent away silently.
-  if (actor?.kind === 'operator' && !actor.mfa)
-    return (
-      <>
-        <h1>{OPS_HEADING}</h1>
-        <StatusBanner tone="warn" title={OPS_MFA_HEADING}>
-          <span data-testid="payee-mfa-needed">{OPS_MFA_BODY}</span>{' '}
-          <Link href="/signin?next=/ops/payee-requests">{OPS_MFA_LINK}</Link>
-        </StatusBanner>
-      </>
-    );
   if (actor?.kind !== 'operator') redirect('/signin?next=/ops/payee-requests');
-  const r = await (await app()).engine.payee.openRequests(actor);
-  if (!r.ok) redirect('/signin?next=/ops/payee-requests');
-  const { requests, environment } = r.value;
+  // INT-OPS-A / OPS-A.7: an operator without the authenticator code reads the queue; the buttons are off.
+  const r = await readOpsPayeeQueue(actor);
+  if (r === null) redirect('/signin?next=/ops/payee-requests');
+  const { requests, environment, mfa } = r;
   const oldest = oldestAgeMs(requests);
   return (
     <>
@@ -94,7 +81,7 @@ export default async function PayeeRequests() {
               </div>
               <dl className="pk-facts">
                 <dt>{OPS_COL_REQUESTED}</dt>
-                <dd>Ending {q.requested_last4}</dd>
+                <dd className="mono">{maskedMerchant(q.requested_last4)}</dd>
                 <dt>{OPS_COL_AGE}</dt>
                 <dd title={formatDateTime(q.created_at)}>{ageText(q.age_ms)}</dd>
               </dl>
@@ -102,6 +89,7 @@ export default async function PayeeRequests() {
                 requestId={q.request_id}
                 last4={q.requested_last4}
                 canVerify={environment !== 'sandbox'}
+                hasCode={mfa}
               />
             </article>
           ))}

@@ -11,6 +11,7 @@ import {
   OPS_VERIFY,
   opsErrorText,
 } from '../../../lib/payee-copy';
+import { OPS_NEEDS_CODE } from '../../../lib/ops-copy';
 import { ErrorState } from '../../../ui/ErrorState';
 
 // PUB-A2: verify (type the whole id again) or reject one request. The route does the check; this form
@@ -19,10 +20,13 @@ export function DecisionForm({
   requestId,
   last4,
   canVerify,
+  hasCode,
 }: {
   requestId: string;
   last4: string;
   canVerify: boolean;
+  /** True for a session with the authenticator code; without it the buttons are off and say why. */
+  hasCode: boolean;
 }) {
   const router = useRouter();
   const [retyped, setRetyped] = useState('');
@@ -83,7 +87,7 @@ export function DecisionForm({
           <button
             type="button"
             className="btn"
-            disabled={busy || retyped === '' || reason.trim().length < 3}
+            disabled={!hasCode || busy || retyped === '' || reason.trim().length < 3}
             onClick={() => void decide('verified')}
           >
             {OPS_VERIFY}
@@ -92,11 +96,12 @@ export function DecisionForm({
         <button
           type="button"
           className="btn"
-          disabled={busy || reason.trim().length < 3}
+          disabled={!hasCode || busy || reason.trim().length < 3}
           onClick={() => void decide('rejected')}
         >
           {OPS_REJECT}
         </button>
+        {hasCode ? null : <span className="muted"> {OPS_NEEDS_CODE}</span>}
       </div>
       <div aria-live="polite">{done}</div>
       {error ? <ErrorState title="Not saved">{error}</ErrorState> : null}

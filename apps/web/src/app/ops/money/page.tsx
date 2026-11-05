@@ -19,6 +19,8 @@ import {
 import { SectionNav } from '../../../ui/SectionNav';
 import { OPS_REPORTING_HEADING, OPS_REPORTING_LEDE } from '../../../lib/ops-reporting-view';
 import { OPS_MONEY_SECTIONS } from '../../../lib/ops-copy';
+import Link from 'next/link';
+import { invariantLink, operationLink } from '../../../lib/ops-invariants-view';
 import { RefundPanel } from '../RefundPanel';
 import { ReportingTotals } from '../ReportingTotals';
 import '../../tables.css';
@@ -128,7 +130,16 @@ export default async function OpsMoney() {
                 <StatTile
                   label={t.label}
                   value={t.count}
-                  note={OPS_HOME_STATES_NOTE}
+                  note={
+                    operationLink(t.key) === null ? (
+                      OPS_HOME_STATES_NOTE
+                    ) : (
+                      <>
+                        {OPS_HOME_STATES_NOTE}{' '}
+                        <Link href={operationLink(t.key)!}>See the operations</Link>
+                      </>
+                    )
+                  }
                   testId={`ops-operations-${t.key}`}
                 />
               </li>
@@ -143,6 +154,9 @@ export default async function OpsMoney() {
           <p data-testid="ops-invariants-summary">{invariants.text}</p>
         </div>
         <div className="pk-panel">
+          <p>
+            <Link href="/ops/money/problems">All problems</Link>
+          </p>
           <ul className="oh-list">
             {snap.invariants.map((v) => {
               const c = invariantChip(v.ok);
@@ -151,6 +165,9 @@ export default async function OpsMoney() {
                   <Chip tone={c.tone}>{c.text}</Chip>
                   <span className="oh-check-id">{v.id}</span>
                   <span className="oh-check-detail">{invariantDetailText(v.detail, v.ok)}</span>
+                  {invariantLink(v.id, v.ok) !== null ? (
+                    <Link href={invariantLink(v.id, v.ok)!}>See the orders</Link>
+                  ) : null}
                 </li>
               );
             })}

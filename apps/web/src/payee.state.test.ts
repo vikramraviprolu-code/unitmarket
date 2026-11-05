@@ -201,10 +201,11 @@ describe('the pages (source text)', () => {
     expect(s6).toContain('RequestForm');
   });
 
-  it('the operator page needs an operator with the second factor and asks for the id again', () => {
+  it('the operator page reads the queue without the code, and asks for the id again', () => {
     expect(ops).toContain("actor?.kind !== 'operator'");
-    expect(ops).toContain('mfa');
-    expect(ops).toContain('engine.payee.openRequests');
+    expect(ops).toMatch(/hasCode=\{|mfa=\{|canAct=\{/);
+    expect(ops).toContain('readOpsPayeeQueue(actor)');
+    expect(read('./composition/ops-sellers.ts')).toContain('payee.openRequests(');
     expect(read('./app/ops/payee-requests/DecisionForm.tsx')).toContain('OPS_FIELD_RETYPE');
     expect(ops).not.toMatch(/style=/);
   });

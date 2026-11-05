@@ -3,6 +3,7 @@ import type { EnvironmentLabel } from '@umsbx/contracts';
 import { EnvLabel } from '../EnvLabel';
 import type { ShellPersona } from '../../lib/shell-tabs';
 import { Breadcrumb } from './Breadcrumb';
+import { AlertBell } from './AlertBell';
 import { PhoneBar } from './PhoneBar';
 import { SearchSlot } from './SearchSlot';
 import { Tabs } from './Tabs';
@@ -27,6 +28,7 @@ export function Shell({
         <div className="shell-inner">
           <div className="shell-row">
             <Tabs persona={persona} />
+            {persona === 'operator' ? <AlertBell /> : null}
             <SearchSlot persona={persona} />
           </div>
           <div className="shell-crumbrow">

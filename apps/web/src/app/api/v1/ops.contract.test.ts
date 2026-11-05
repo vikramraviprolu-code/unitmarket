@@ -61,7 +61,9 @@ const CASES: [string, () => Promise<void>][] = [
       expect(v1.orders).toEqual(snap.orders);
       expect(v1.operations).toEqual(snap.operations);
       expect(v1.alerts).toEqual(snap.alerts);
-      expect(v1.invariants).toEqual(snap.invariants);
+      expect(v1.invariants).toEqual(
+        snap.invariants.map(({ id, ok, detail }) => ({ id, ok, detail })),
+      );
       expect(v1.jobs).toEqual(snap.jobs);
       expect(v1.orders.map((o) => o.order_ref)).toContain(order_ref);
       // No buyer or publisher identity, and no credential-shaped value.

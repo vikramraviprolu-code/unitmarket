@@ -67,13 +67,17 @@ describe('who can read it', () => {
     ).toBeNull();
   });
 
-  it('the operator list needs an operator with the second factor', async () => {
+  // INT-OPS-A.7: the list is read only, so an operator without the code reads it too.
+  it('the operator list is for an operator, with or without the second factor', async () => {
     const ok = await app.engine.opsAgreements.list(OP);
     expect(ok.ok).toBe(true);
     if (ok.ok) expect(ok.value.agreements).toHaveLength(3);
-    expect(
-      await app.engine.opsAgreements.list({ kind: 'operator', operator_id: 'opr_v', mfa: false }),
-    ).toEqual({ ok: false, error: { code: 'mfa_required' } });
+    const plain = await app.engine.opsAgreements.list({
+      kind: 'operator',
+      operator_id: 'opr_v',
+      mfa: false,
+    });
+    expect(plain.ok).toBe(true);
     const pub: Actor = { kind: 'publisher', publisher_id: await idOf('harbour-ledger') };
     expect(await app.engine.opsAgreements.list(pub)).toEqual({
       ok: false,
@@ -124,7 +128,9 @@ describe('the pages', () => {
 
   it('the operator page shows the record per publisher, the flag and the applicant line', () => {
     const src = read('./app/ops/publishers/page.tsx');
-    expect(src).toContain('engine.opsAgreements.list(actor)');
+    // INT-OPS-A.7: the page reads through the ops-sellers composition, which calls opsAgreements.list.
+    expect(src).toContain('readOpsPublishers(actor)');
+    expect(read('./composition/ops-sellers.ts')).toContain('opsAgreements.list(');
     expect(src).toContain('PUBLISHER_TERMS_VERSION');
     expect(src).toContain('agreementChangedText');
     expect(src).toContain('NOT_ACCEPTED_TEXT');
