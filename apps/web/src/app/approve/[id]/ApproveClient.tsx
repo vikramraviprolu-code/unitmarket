@@ -150,7 +150,8 @@ export function ApproveClient({
         ) : null}
         <p className="muted">
           This price and these terms are frozen until {formatDateTime(view.expires_at)}. Personal
-          use only; {view.access_days} {view.access_days === 1 ? 'day' : 'days'} of access starting when payment is confirmed.
+          use only; {view.access_days} {view.access_days === 1 ? 'day' : 'days'} of access starting
+          when payment is confirmed.
         </p>
       </section>
       <Countdown

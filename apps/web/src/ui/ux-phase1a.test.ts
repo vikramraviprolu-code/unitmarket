@@ -42,7 +42,9 @@ describe('U1 library card: one statement of the time left', () => {
     expect(src).toContain('data-testid="window-meter"');
     expect(src).toContain('className="meter-bar"');
     expect(src).toContain('days used');
-    expect(src).toContain('Your access window starts when payment is confirmed and the content is ready.');
+    expect(src).toContain(
+      'Your access window starts when payment is confirmed and the content is ready.',
+    );
   });
 });
 
