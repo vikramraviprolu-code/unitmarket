@@ -38,7 +38,7 @@ describe('sending is committed before the port is called', () => {
   it('the stored state is sending while the port works, and sent afterwards', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w);
     await pass(port);
     expect(port.stateAtCall).toEqual(['sending']);
@@ -54,7 +54,7 @@ describe('a send that does not return', () => {
     w = await makeWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w, 'throw_after_execute');
     const counts = await pass(port);
     expect(counts).toMatchObject({ created: 1, sent: 0, errored: 1 });
@@ -83,7 +83,7 @@ describe('a send that does not return', () => {
   it('a throw before the provider got it is the same: still sending, resent with the same key', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w, 'throw_before_execute');
     expect(await pass(port)).toMatchObject({ created: 1, errored: 1 });
     expect((await payoutRows(w)).map((p) => p.state)).toEqual(['sending']);
@@ -96,7 +96,7 @@ describe('a send that does not return', () => {
   it('a blocked answer (switch off, lease lost) changes nothing and is tried again', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w, 'blocked');
     expect(await pass(port)).toMatchObject({ created: 1, sent: 0, blocked: 1 });
     expect((await payoutRows(w)).map((p) => [p.state, p.failure_reason])).toEqual([
@@ -111,7 +111,7 @@ describe('a send that does not return', () => {
   it('a payout in sending is never replaced by a second payout for the same unit', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w, 'throw_after_execute');
     await pass(port);
     for (let i = 0; i < 3; i += 1) await pass(port, w.restart());
@@ -122,7 +122,7 @@ describe('a send that does not return', () => {
   it('while sending, only a sent or confirmed or failed answer moves it on; the database refuses a cancel', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     await pass(spyPort(w, 'throw_after_execute'));
     await expect(w.rows("UPDATE payouts SET state = 'cancelled'")).rejects.toThrow();
     await expect(w.rows("UPDATE payouts SET state = 'due'")).rejects.toThrow();
@@ -135,7 +135,7 @@ describe('a payout the provider refused', () => {
     w = await makeWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w, 'reject');
     expect(await pass(port)).toMatchObject({ created: 1, failed: 1, sent: 0 });
     const first = (await payoutRows(w))[0]!;
@@ -163,7 +163,7 @@ describe('a payout the provider refused', () => {
   it('after 24 hours it is cancelled with an audit row and the same pass pays the units again', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w, 'reject');
     await pass(port);
     const first = (await payoutRows(w))[0]!;
@@ -194,7 +194,7 @@ describe('a payout the provider refused', () => {
     w = await makeWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w, 'reject');
     await pass(port);
     port.mode = 'accept';
@@ -214,7 +214,7 @@ describe('the payee', () => {
   it('a publisher whose payee is the shared owner account is not paid out, at creation', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     await w.rows("UPDATE publishers SET payee_shared = true WHERE id = 'pub_1'");
     const port = spyPort(w);
     expect(await pass(port)).toMatchObject({ created: 0, sent: 0 });
@@ -226,7 +226,7 @@ describe('the payee', () => {
   it('a publisher who is not active is not paid out, at creation', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     await w.rows("UPDATE publishers SET status = 'suspended' WHERE id = 'pub_1'");
     expect(await pass(spyPort(w))).toMatchObject({ created: 0 });
     await w.rows("UPDATE publishers SET status = 'applied' WHERE id = 'pub_1'");
@@ -236,7 +236,7 @@ describe('the payee', () => {
   it('a payout created while the publisher was fine is refused at send when they are not: the port is not called', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     await pass(null);
     const port = spyPort(w);
     for (const sql of [
@@ -258,7 +258,7 @@ describe('the payee', () => {
   it('a payout already in sending is checked again before it is resent', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w, 'throw_after_execute');
     await pass(port);
     await w.rows("UPDATE publishers SET payee_shared = true WHERE id = 'pub_1'");

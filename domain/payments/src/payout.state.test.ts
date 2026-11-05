@@ -12,7 +12,6 @@ import {
 import { OPERATOR, awaiting, makeWorld, paid } from './ops/support';
 import type { OpsWorld } from './ops/support';
 import {
-  FIVE_DAYS_MS,
   atEnd,
   itemsOf,
   ledgerKinds,
@@ -147,11 +146,12 @@ describe('when a payout is due', () => {
   it('not inside the window: nothing is created before the window has ended', async () => {
     w = await makeWorld();
     await priced(w, 'ofr_1', 360, 40);
-    await paid(w);
+    const a = await paid(w);
+    const unit = await unitIdOf(w, a.order_id);
     const port = spyPort(w);
     w.tick(24 * 3_600_000);
     expect(await pass(port)).toMatchObject({ created: 0, sent: 0 });
-    w.tick(FIVE_DAYS_MS - 24 * 3_600_000 - 1000);
+    await atEnd(w, unit, -1000);
     expect(await pass(port)).toMatchObject({ created: 0, sent: 0 });
     expect(await payoutRows(w)).toEqual([]);
     expect(port.calls).toHaveLength(0);
@@ -162,7 +162,7 @@ describe('when a payout is due', () => {
     await priced(w, 'ofr_1', 360, 40);
     await paid(w);
     const port = spyPort(w);
-    pastWindow(w);
+    await pastWindow(w);
     expect(await pass(port)).toMatchObject({ created: 1, sent: 1, netted: 0 });
     const rows = await payoutRows(w);
     expect(rows).toHaveLength(1);
@@ -202,7 +202,7 @@ describe('when a payout is due', () => {
   it('a confirming provider puts the payout straight to confirmed', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     await pass(spyPort(w, 'confirm'));
     expect((await payoutRows(w))[0]!.state).toBe('confirmed');
   });
@@ -223,7 +223,7 @@ describe('when a payout is due', () => {
     await priced(w, 'ofr_1', 360, 40);
     await priced(w, 'ofr_3', 350, 50);
     await paid(w, { offers: ['ofr_1', 'ofr_3'] });
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w);
     expect(await pass(port)).toMatchObject({ created: 2, sent: 2 });
     expect((await payoutRows(w)).map((p) => [p.publisher_id, p.amount_minor])).toEqual([
@@ -238,7 +238,7 @@ describe('when a payout is due', () => {
     await priced(w, 'ofr_2', 350, 50);
     await paid(w, { offers: ['ofr_1'] });
     await paid(w, { buyer_id: 'buy_B', offers: ['ofr_2'] });
-    pastWindow(w);
+    await pastWindow(w);
     expect(await pass(spyPort(w))).toMatchObject({ created: 1, sent: 1 });
     const rows = await payoutRows(w);
     expect(rows).toHaveLength(1);
@@ -263,7 +263,7 @@ describe('when a payout is due', () => {
     w = await makeWorld();
     await priced(w, 'ofr_1', 360, 40);
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w);
     await pass(port);
     expect(await pass(port)).toMatchObject({ created: 0, sent: 0, netted: 0 });
@@ -277,7 +277,7 @@ describe('when a payout is due', () => {
   it('two passes at once still make one payout', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     const port = spyPort(w);
     await Promise.all([pass(port), pass(port)]);
     expect(await payoutRows(w)).toHaveLength(1);
@@ -291,7 +291,7 @@ describe('when a payout is due', () => {
       await paid(w, { buyer_id: i === 0 ? 'buy_A' : 'buy_B', offers: [offer] });
     }
     await paid(w, { buyer_id: 'buy_A', offers: ['ofr_3'] });
-    pastWindow(w);
+    await pastWindow(w);
     // ofr_1 and ofr_2 are pub_1 (400 each): with a ceiling of 600 they cannot share one payout.
     expect(await pass(spyPort(w), w.deps, { max_minor: 600 })).toMatchObject({ created: 3 });
     expect((await payoutRows(w)).map((p) => [p.publisher_id, p.amount_minor])).toEqual([
@@ -305,7 +305,7 @@ describe('when a payout is due', () => {
     w = await makeWorld();
     await paid(w, { offers: ['ofr_1'] });
     await paid(w, { buyer_id: 'buy_B', offers: ['ofr_2'] });
-    pastWindow(w);
+    await pastWindow(w);
     expect(await pass(spyPort(w), w.deps, { max_minor: 800 })).toMatchObject({ created: 1 });
     expect((await payoutRows(w))[0]!.amount_minor).toBe(800);
   });
@@ -313,7 +313,7 @@ describe('when a payout is due', () => {
   it('without a port the payouts are created due and nothing is sent', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     expect(await pass(null)).toMatchObject({ created: 1, sent: 0 });
     expect((await payoutRows(w)).map((p) => p.state)).toEqual(['due']);
     const port = spyPort(w);
@@ -324,7 +324,7 @@ describe('when a payout is due', () => {
   it('audits the creation and the sending', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     const rec = recording(w);
     await pass(spyPort(w), rec.deps);
     expect(rec.audits.map((a) => a.action)).toEqual(['payout.created', 'payout.sent']);
@@ -342,7 +342,7 @@ describe('what keeps a sale from being paid', () => {
   it('a sale that was never captured and verified', async () => {
     w = await makeWorld();
     await awaiting(w);
-    pastWindow(w);
+    await pastWindow(w);
     expect(await pass(spyPort(w))).toMatchObject({ created: 0 });
   });
 
@@ -350,7 +350,7 @@ describe('what keeps a sale from being paid', () => {
     w = await makeWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
-    pastWindow(w);
+    await pastWindow(w);
     const r = await requestRefund(w.deps, {
       unit_id: unit,
       amount: usd(100),
@@ -368,7 +368,7 @@ describe('what keeps a sale from being paid', () => {
     w = await makeWorld();
     const a = await paid(w);
     await refund(await unitIdOf(w, a.order_id), null);
-    pastWindow(w);
+    await pastWindow(w);
     expect(await pass(spyPort(w))).toMatchObject({ created: 0 });
     expect(await payoutRows(w)).toEqual([]);
   });
@@ -378,7 +378,7 @@ describe('what keeps a sale from being paid', () => {
     const a = await paid(w);
     const cap = (await w.captureIds(a.order_id))[0]!;
     await suspectReversal(w.deps, { capture_id: cap, source: 'manual' });
-    pastWindow(w);
+    await pastWindow(w);
     expect(await pass(spyPort(w))).toMatchObject({ created: 0 });
   });
 
@@ -388,14 +388,14 @@ describe('what keeps a sale from being paid', () => {
     await w.rows(
       "UPDATE access_windows SET state = 'not_started', started_at = NULL, base_ends_at = NULL, ends_at = NULL",
     );
-    pastWindow(w);
+    await pastWindow(w);
     expect(await pass(spyPort(w))).toMatchObject({ created: 0 });
   });
 
   it('a unit of another environment is left to its own app', async () => {
     w = await makeWorld();
     await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     const other = { ...w.deps, environment: 'sandbox' as const };
     expect(await pass(spyPort(w), other)).toMatchObject({ created: 0 });
   });
@@ -414,7 +414,7 @@ describe('a refund inside the window', () => {
     expect(k.filter((x) => x.kind === 'payable_reversal').map((x) => x.amount_minor)).toEqual([
       360,
     ]);
-    pastWindow(w);
+    await pastWindow(w);
     expect(await pass(spyPort(w))).toMatchObject({ created: 0 });
   });
 
@@ -423,7 +423,7 @@ describe('a refund inside the window', () => {
     await priced(w, 'ofr_1', 360, 40);
     const a = await paid(w);
     await refund(await unitIdOf(w, a.order_id), 100);
-    pastWindow(w);
+    await pastWindow(w);
     await pass(spyPort(w));
     const rows = await payoutRows(w);
     expect(rows.map((p) => [p.amount_minor, p.state])).toEqual([[270, 'sent']]);
@@ -437,7 +437,7 @@ describe('a refund after the payout was created but before it was sent', () => {
     await priced(w, 'ofr_1', 360, 40);
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
-    pastWindow(w);
+    await pastWindow(w);
     await pass(null); // created, due, not sent
     const first = (await payoutRows(w))[0]!;
     expect(first.state).toBe('due');
@@ -468,7 +468,7 @@ describe('a refund after the payout was created but before it was sent', () => {
   it('a full refund then leaves no payout at all', async () => {
     w = await makeWorld();
     const a = await paid(w);
-    pastWindow(w);
+    await pastWindow(w);
     await pass(null);
     await refund(await unitIdOf(w, a.order_id), null);
     expect((await payoutRows(w)).map((p) => p.state)).toEqual(['cancelled']);
@@ -482,7 +482,7 @@ describe('a refund after the payout was sent', () => {
     await priced(w, 'ofr_1', 360, 40);
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
-    pastWindow(w);
+    await pastWindow(w);
     await pass(spyPort(w));
     const id = await refund(unit, 100);
     const k = await ledgerKinds(w, unit);
@@ -506,7 +506,7 @@ describe('a refund after the payout was sent', () => {
     w = await makeWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
-    pastWindow(w);
+    await pastWindow(w);
     await pass(spyPort(w));
     const first = await refund(unit, 100);
     await refund(unit, 50);
@@ -525,7 +525,7 @@ describe('a refund after the payout was sent', () => {
     await priced(w, 'ofr_1', 99, 301, 3000); // an unusual split: the fee is most of the price
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
-    pastWindow(w);
+    await pastWindow(w);
     await pass(spyPort(w));
     await refund(unit, 1); // 1 * 301 / 400 = 0.75 -> fee part 1, payable 0
     expect(

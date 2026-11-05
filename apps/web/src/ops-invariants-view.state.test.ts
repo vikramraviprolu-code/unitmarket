@@ -52,7 +52,7 @@ describe('the map', () => {
   it('reads the query: one id or one state, anything else is the overview', () => {
     expect(parseProblemsQuery({ inv: 'INV3' })).toEqual({ kind: 'inv', id: 'INV3' });
     expect(parseProblemsQuery({ op: 'unknown' })).toEqual({ kind: 'op', state: 'unknown' });
-    expect(parseProblemsQuery({ inv: 'INV8' })).toEqual({ kind: 'none' });
+    expect(parseProblemsQuery({ inv: 'INV9' })).toEqual({ kind: 'none' });
     expect(parseProblemsQuery({ op: 'weird' })).toEqual({ kind: 'none' });
     expect(parseProblemsQuery({})).toEqual({ kind: 'none' });
     expect(parseProblemsQuery({ inv: ['INV2', 'INV3'] })).toEqual({ kind: 'inv', id: 'INV2' });

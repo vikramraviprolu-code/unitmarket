@@ -100,9 +100,9 @@ describe('Engine.runPayouts', () => {
     const [offer] = await offerCodes();
     const order = await pay(offer!, actor);
     expect(await app.engine.runPayouts()).toMatchObject({ created: 0, sent: 0 });
-    vi.setSystemTime(NOW + 3 * DAY);
+    vi.setSystemTime(NOW + 3 * DAY); // inside any window the rules give (7 days by default)
     expect(await app.engine.runPayouts()).toMatchObject({ created: 0, sent: 0 });
-    vi.setSystemTime(NOW + 6 * DAY);
+    vi.setSystemTime(NOW + 9 * DAY);
     const first = await app.engine.runPayouts();
     expect(first).toMatchObject({ created: 1, sent: 1 });
     const rows = (await payouts()).rows;
@@ -119,7 +119,7 @@ describe('Engine.runPayouts', () => {
     const codes = await offerCodes();
     await pay(codes[1] ?? codes[0]!, actorB);
     await app.db.query(`UPDATE safety_switches SET "on" = false WHERE name = 'paypal_outbound'`);
-    vi.setSystemTime(NOW + 12 * DAY);
+    vi.setSystemTime(NOW + 16 * DAY);
     const off = await app.engine.runPayouts();
     expect(off).toMatchObject({ created: 1, sent: 0 });
     const due = (await payouts()).rows.filter((r) => r.state === 'due');

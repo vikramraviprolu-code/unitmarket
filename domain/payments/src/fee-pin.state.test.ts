@@ -1,6 +1,6 @@
 // POB-M1 pin: a fee on top must not change how quotes, approvals, orders, browse and discovery read a price. For an
 // offer without a fee the approval snapshot, its content hash, the order, the units and the old ledger rows are the
-// values the code produced before the fee existed (captured on main at 2cc1063). For an offer WITH a fee the same
+// values the code produced before the fee existed (captured on a clean checkout of main at 04e22fe, BR-3 merged: the snapshot now carries the resolved terms and the window is 7 days). For an offer WITH a fee the same
 // numbers read the listed (buyer) price: the fee is invisible to them.
 import { afterEach, describe, expect, it } from 'vitest';
 import { requestRefund } from './index';
@@ -13,7 +13,7 @@ afterEach(async () => {
   await w.close();
 });
 
-const PIN_HASH = 'd1bf4a99ad9bbcb6a45ee69e84f0a13215842cee3fb3b64c334629d8f259fe3a';
+const PIN_HASH = '90ee731e7f86369c5a7ae9ebb09a12cb82859205e66e7e3665cd207e1bf3aba6';
 const PIN_SNAPSHOT = {
   items: [
     {
@@ -21,8 +21,8 @@ const PIN_SNAPSHOT = {
       policy: {
         id: 'keep_retrieve',
         option: 'keep_retrieve',
-        version: '1',
-        window_ms: 432000000,
+        version: '1+rules',
+        window_ms: 604800000,
         start_rule: 'payment_verified_and_delivery_ready',
       },
       rights: { scope: 'personal_use', ai_scope: 'review', redistribution: false },
@@ -40,8 +40,8 @@ const PIN_SNAPSHOT = {
       policy: {
         id: 'keep_retrieve',
         option: 'keep_retrieve',
-        version: '1',
-        window_ms: 432000000,
+        version: '1+rules',
+        window_ms: 604800000,
         start_rule: 'payment_verified_and_delivery_ready',
       },
       rights: { scope: 'personal_use', ai_scope: 'review', redistribution: false },
@@ -55,6 +55,16 @@ const PIN_SNAPSHOT = {
       payee_merchant_id: 'MERCH2',
     },
   ],
+  terms: {
+    digest: 'a460f01cc0d7889900c27fe0f07ff998a4966155df5c0c5ee48c001268fdf0a0',
+    values: { 'access.window': 7, 'mandate.max_days': 90, 'refund.request_window': 7 },
+    sources: {
+      'access.window': 'linked:refund.request_window',
+      'mandate.max_days': 'default',
+      'refund.request_window': 'default',
+    },
+    rules_version: '1',
+  },
   reader: { buyer_id: 'buy_A' },
   currency: 'USD',
   publishers: [
@@ -75,7 +85,7 @@ const PIN_SNAPSHOT = {
   corridor_id: 'us-usd',
   total_minor: 800,
   rule_version: 'rules-1',
-  snapshot_version: '1',
+  snapshot_version: '2',
   pricing_rule_version: 'pricing-1',
 };
 

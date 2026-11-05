@@ -9,10 +9,7 @@ import type {
   PayoutSendRequest,
   PayoutSendResult,
 } from '@umsbx/contracts';
-import { FIVE_DAYS_MS } from './support';
 import type { OpsWorld } from './ops/support';
-
-export { FIVE_DAYS_MS };
 
 /**
  * Gives an offer (keep_retrieve, version 1) a fee split: seller plus fee equal its listed price. Call it before
@@ -114,8 +111,21 @@ export function recording(w: OpsWorld): Recorded {
   return { deps, audits };
 }
 
-/** The clock moved past the end of the five day window (and the hour rounding) of what was paid at START. */
-export const pastWindow = (w: OpsWorld): string => w.tick(FIVE_DAYS_MS + 3_600_000);
+/**
+ * The clock moved one hour past the end of the latest access window of anything paid so far. The window length is the one the
+ * approval froze (5 days before BR-3, the rule's value since), so no test here knows a number of days.
+ */
+export async function pastWindow(w: OpsWorld): Promise<string> {
+  const r = await w.rows<{ ends_at: Date | null }>(
+    'SELECT max(ends_at) AS ends_at FROM access_windows',
+  );
+  const end = r[0]?.ends_at;
+  // Nothing started a window (an unpaid order): any long wait will do.
+  if (end === null || end === undefined) return w.tick(30 * 86_400_000);
+  const target = end.getTime() + 3_600_000;
+  const now = w.clock.now().getTime();
+  return target > now ? w.tick(target - now) : new Date(now).toISOString();
+}
 
 /** The latest end of the access windows of a unit (what the payout waits for). */
 export async function windowEnd(w: OpsWorld, unit_id: Id): Promise<number> {
