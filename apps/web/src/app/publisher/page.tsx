@@ -9,6 +9,7 @@ import { EnvLabel } from '../../ui/EnvLabel';
 import { SectionNav } from '../../ui/SectionNav';
 import { Chip, Section, StatTile } from '../../ui/publisher/kit';
 import { HomeCard } from './HomeCard';
+import { TermsAccept } from './TermsAccept';
 import {
   APPLIED_NOTICE,
   LINK_OFFERS,
@@ -53,6 +54,8 @@ import {
 } from '../../lib/publisher-home-copy';
 import { formatDateTime, formatMinor } from '../../lib/format';
 import { LINK_PUBLISHER_TERMS } from '../../lib/agreement-copy';
+import { PUBLISHER_TERMS_VERSION } from '../../lib/legal-copy';
+import { termsAcceptedText } from '../../lib/publisher-accounts-copy';
 import { readSellerHome, readSellerSetup } from '../../composition/seller';
 import { homeView } from '../../lib/seller-home-view';
 import { AgentShare } from '../../ui/seller/AgentShare';
@@ -74,6 +77,10 @@ export default async function PublisherHome() {
   const since = await a.engine.publisherSince(actor);
   const feed = since?.counts == null ? [] : sinceItems(since.counts);
   const agreement = await a.engine.publisherAgreement(actor);
+  // POB-P1: only a publisher who claimed an account can accept the terms; a demo persona keeps its seeded record.
+  const account = await a.engine.publisherAccounts.view(actor);
+  const termsOutstanding =
+    account !== null && (agreement === null || agreement.terms_version !== PUBLISHER_TERMS_VERSION);
   const statement = await a.engine.publisherStatement(actor);
   const { block, others } = primaryBlock(
     statement === null ? [] : salesTotals(statement.blocks),
@@ -230,9 +237,15 @@ export default async function PublisherHome() {
                 {agreement === null ? null : <span>{termsDetail(agreement)}</span>}
                 <Link href="/legal/publisher-terms">{LINK_PUBLISHER_TERMS}</Link>
               </span>
+              {agreement?.method === 'publisher_accepted' ? (
+                <span className="muted" data-testid="publisher-agreement-by">
+                  {termsAcceptedText(agreement)}
+                </span>
+              ) : null}
             </dd>
           </dl>
         </div>
+        {termsOutstanding ? <TermsAccept changed={agreement !== null} /> : null}
       </Section>
       <Section title={CARDS_LABEL} id="next">
         <ul className="pk-cards pk-cards-home" data-testid="publisher-links">

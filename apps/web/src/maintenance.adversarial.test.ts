@@ -137,6 +137,12 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
     import('./app/api/ops/publishers/applicants/route'),
   'api/ops/publishers/applicants/decision/route.ts': () =>
     import('./app/api/ops/publishers/applicants/decision/route'),
+  'api/ops/publishers/access/route.ts': () => import('./app/api/ops/publishers/access/route'),
+  'api/ops/publishers/paypal-link-decisions/route.ts': () =>
+    import('./app/api/ops/publishers/paypal-link-decisions/route'),
+  'api/publisher-accounts/claim/route.ts': () => import('./app/api/publisher-accounts/claim/route'),
+  'api/publisher/paypal-link/route.ts': () => import('./app/api/publisher/paypal-link/route'),
+  'api/publisher/terms/accept/route.ts': () => import('./app/api/publisher/terms/accept/route'),
   'api/ops/payee-decisions/route.ts': () => import('./app/api/ops/payee-decisions/route'),
   'api/publisher/export/route.ts': () => import('./app/api/publisher/export/route'),
   'api/publisher/sales/export/route.ts': () => import('./app/api/publisher/sales/export/route'),

@@ -79,7 +79,7 @@ describe('apply copy (golden)', () => {
   it('shows a plain word for every state, and a neutral line for an unknown reference', () => {
     expect(copy.statusText('pending')).toBe('Waiting for review');
     expect(copy.statusText('approved')).toBe(
-      'Approved. Sign in is not automatic; the owners decide whether to set it up.',
+      'Approved. An operator will give you an invite code to claim your account.',
     );
     expect(copy.statusText('unavailable')).toBe('Not available');
     expect(copy.statusTone('unavailable')).toBe('neutral');

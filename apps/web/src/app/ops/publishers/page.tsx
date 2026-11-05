@@ -6,7 +6,7 @@ import { currentActor } from '../../../server/session';
 import { EnvLabel, envText } from '../../../ui/EnvLabel';
 import { Chip, PageHeader, StatTile } from '../../../ui/publisher/kit';
 import { SectionNav } from '../../../ui/SectionNav';
-import { OPS_PUBLISHERS_SECTIONS, maskedMerchant } from '../../../lib/ops-copy';
+import { OPS_NEEDS_CODE, OPS_PUBLISHERS_SECTIONS, maskedMerchant } from '../../../lib/ops-copy';
 import { formatMinor } from '../../../lib/format';
 import { COL_AWAITING } from '../../../lib/pending-copy';
 import {
@@ -67,8 +67,23 @@ import {
   publisherTiles,
   reasonGivenText,
 } from '../../../lib/ops-publishers-view';
+import {
+  ACCESS_DEMO_NOTE,
+  ACCESS_EMPTY,
+  ACCESS_HEADING,
+  ACCESS_ISSUE_HINT,
+  ACCESS_LEDE,
+  ACCESS_RESET_HINT,
+  LINKS_HEADING,
+  LINKS_LEDE,
+  accessAccountText,
+  accessInviteText,
+  accessLinkText,
+  accessTermsText,
+} from '../../../lib/publisher-accounts-copy';
 import { StatusForm } from './StatusForm';
 import { AddApplicantForm, DecideApplicantForm } from './ApplicantForms';
+import { AccessForm, VerifyLinkForm } from './AccessForms';
 
 export const metadata: Metadata = { title: 'Publishers' };
 
@@ -76,7 +91,12 @@ export const metadata: Metadata = { title: 'Publishers' };
 function PublisherTermsLine({
   agreement,
 }: {
-  agreement: { accepted_at: string; terms_version: string; accepted_by_label: string } | null;
+  agreement: {
+    accepted_at: string;
+    terms_version: string;
+    accepted_by_label: string;
+    method?: 'seeded_demo' | 'publisher_accepted';
+  } | null;
 }) {
   if (agreement === null)
     return (
@@ -110,6 +130,9 @@ export default async function OpsPublishers() {
   const publishers = read.publishers.filter((p) => p.status !== 'applied');
   // AGREE-1: the seeded, read only publisher terms record, by publisher. An applicant has none.
   const agreementOf = new Map(read.agreements.map((a) => [a.publisher_id, a]));
+  // POB-P1: who can sign in (the demo publishers are not listed). Empty for an operator without the code.
+  const accessRows = read.access.filter((x) => x.status !== 'applied');
+  const waitingLinks = accessRows.filter((x) => x.link?.state === 'requested');
   const tiles = publisherTiles(publishers, applicants);
   return (
     <>
@@ -201,6 +224,70 @@ export default async function OpsPublishers() {
           <h3>{ADD_HEADING}</h3>
           <AddApplicantForm hasCode={mfa} />
         </div>
+      </section>
+      <section
+        className="pk-section"
+        id="ops-pub-access"
+        aria-labelledby="access-heading"
+        data-testid="publisher-access"
+      >
+        <h2 id="access-heading">{ACCESS_HEADING}</h2>
+        <p>{ACCESS_LEDE}</p>
+        <p className="muted">{ACCESS_DEMO_NOTE}</p>
+        {accessRows.length === 0 ? (
+          <p className="muted" data-testid="access-empty">
+            {mfa ? ACCESS_EMPTY : `${ACCESS_HEADING} ${OPS_NEEDS_CODE}.`}
+          </p>
+        ) : (
+          <div className="pk-stack">
+            {accessRows.map((x) => (
+              <section
+                key={x.publisher_id}
+                className="pk-panel"
+                aria-labelledby={`access-${x.publisher_id}-h`}
+                data-testid="access-row"
+              >
+                <div className="pk-item-head">
+                  <h3 id={`access-${x.publisher_id}-h`}>{x.display_name}</h3>
+                  <div className="pk-chips">
+                    <Chip tone={publisherStatusTone(x.status as 'active' | 'suspended')}>
+                      {statusText(x.status as 'active' | 'suspended')}
+                    </Chip>
+                  </div>
+                </div>
+                <ul>
+                  <li data-testid="access-account">{accessAccountText(x.username)}</li>
+                  <li data-testid="access-invite">
+                    {accessInviteText(x.invite, x.invite_expires_at)}
+                  </li>
+                  <li>{accessTermsText(x.terms)}</li>
+                  <li>{accessLinkText(x.link)}</li>
+                </ul>
+                <p className="muted">
+                  {x.username === null ? ACCESS_ISSUE_HINT : ACCESS_RESET_HINT}
+                </p>
+                {x.username === null && x.status !== 'active' ? null : (
+                  <AccessForm
+                    publisherId={x.publisher_id}
+                    name={x.display_name}
+                    hasAccount={x.username !== null}
+                    hasInvite={x.invite === 'live' || x.invite === 'expired'}
+                  />
+                )}
+              </section>
+            ))}
+          </div>
+        )}
+        <h3>{LINKS_HEADING}</h3>
+        <p>{LINKS_LEDE}</p>
+        {waitingLinks.map((x) => (
+          <section key={x.publisher_id} className="pk-panel" data-testid="link-row">
+            <p>
+              {x.display_name}: {accessLinkText(x.link)}
+            </p>
+            <VerifyLinkForm publisherId={x.publisher_id} name={x.display_name} />
+          </section>
+        ))}
       </section>
       {publishers.length === 0 ? (
         <p className="muted" id="ops-pub-list" data-testid="publishers-empty">

@@ -24,7 +24,7 @@ export const CONFIRM_TITLE = 'Application received';
 export const CONFIRM_BODY = 'Keep this reference. It is the only way to check your application.';
 export const CONFIRM_REFERENCE_LABEL = 'Your reference';
 export const CONFIRM_NEXT =
-  'The operator will review it. You cannot sign in until the owners have set that up for you.';
+  'The operator will review it. If you are approved, an operator gives you an invite code to claim your account.';
 export const CONFIRM_LINK = 'Check the status of this application';
 
 export const STATUS_TITLE = 'Application status';
@@ -42,7 +42,7 @@ export function statusText(state: ApplyState): string {
     case 'pending':
       return 'Waiting for review';
     case 'approved':
-      return 'Approved. Sign in is not automatic; the owners decide whether to set it up.';
+      return 'Approved. An operator will give you an invite code to claim your account.';
     case 'rejected':
       return 'Not approved';
     case 'unavailable':

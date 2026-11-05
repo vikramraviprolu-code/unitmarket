@@ -135,6 +135,13 @@ import {
   listAgreements,
   ownAgreement,
   seedAgreements,
+  acceptTerms,
+  decidePaypalLink,
+  issueInvite,
+  listPublisherAccess,
+  ownPaypalLink,
+  requestPaypalLink,
+  resetPublisherSignIn,
 } from '@umsbx/catalogue';
 import type {
   Agreement,
@@ -148,7 +155,13 @@ import type {
   OwnOfferDetail,
   PayeeError,
   PayeeView,
+  PaypalLinkView,
   PriceInput,
+  InviteError,
+  IssuedInvite,
+  LinkError,
+  PublisherAccessRow,
+  TermsError,
   StatusError,
 } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
@@ -340,8 +353,10 @@ import {
   clearSessionCookie,
   changePassword as changeAccountPassword,
   checkNewAccount,
+  claimPublisherAccount,
   createAccount,
   revokeBuyerSessions,
+  verifyPublisherLogin,
   takeToken,
   verifyAccountLogin,
   verifyPasscode,
@@ -1372,7 +1387,7 @@ export interface Engine {
       publisher_id: Id;
       decision: 'approve' | 'reject';
       reason: string;
-    }): Promise<Result<{ state: 'active' | 'rejected' }, ApplicantError>>;
+    }): Promise<Result<{ state: 'active' | 'rejected'; invite?: IssuedInvite }, ApplicantError>>;
   };
   /**
    * PUB-APPLY, public (no actor, no session). `applyToPublish` leaves one application: an applicant record
@@ -1399,6 +1414,69 @@ export interface Engine {
    */
   opsAgreements: {
     list(actor: Actor): Promise<Result<{ agreements: Agreement[] }, ApplicantError>>;
+  };
+  /**
+   * POB-P1 (D-089): the publisher's own account. `claim` is public: the invite code an operator showed once, a
+   * username and a password make the account and sign the publisher in (a bad code, however it is bad, is
+   * `invalid_code`). `signIn` checks a username and password against the publisher accounts (an active publisher
+   * only, one answer for every failure). `view` is the signed in publisher's own account page data, null for any
+   * other actor; `acceptTerms` writes the click through record at the current terms version; `requestLink` stores
+   * the publisher's own PayPal address as requested. The demo personas have no account, so they get `no_account`.
+   */
+  publisherAccounts: {
+    claim(i: {
+      code: string;
+      username: string;
+      password: string;
+      ip_hash: string;
+      ip_known: boolean;
+      previous: { id: Id; actor: Actor } | null;
+    }): Promise<
+      | { ok: true; csrf_token: string; cookie: string }
+      | { ok: false; code: 'invalid_input' | 'invalid_code' | 'taken' | 'rate_limited' | 'busy' }
+      | { ok: false; code: 'weak_password'; reason: PasswordRefusal }
+    >;
+    signIn(i: {
+      username: string;
+      password: string;
+      previous: { id: Id; actor: Actor } | null;
+    }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
+    view(actor: Actor): Promise<{
+      username: string;
+      terms_version: string;
+      agreement: Agreement | null;
+      link: PaypalLinkView | null;
+    } | null>;
+    acceptTerms(actor: Actor): Promise<Result<{ terms_version: string }, TermsError>>;
+    requestLink(i: {
+      actor: Actor;
+      email: string;
+    }): Promise<Result<{ state: 'requested' }, LinkError>>;
+  };
+  /**
+   * POB-P1, operator only (second factor required): who can sign in. `list` shows every non demo publisher with
+   * its account, invite, terms and link state (link email masked). `issue` and `reset` return a new invite code
+   * once; nothing keeps it. `decideLink` marks a publisher's PayPal address as checked after the operator types it
+   * again in full.
+   */
+  opsPublisherAccess: {
+    list(actor: Actor): Promise<Result<{ rows: PublisherAccessRow[] }, InviteError>>;
+    issue(i: {
+      actor: Actor;
+      publisher_id: Id;
+      reason: string;
+    }): Promise<Result<IssuedInvite, InviteError>>;
+    reset(i: {
+      actor: Actor;
+      publisher_id: Id;
+      reason: string;
+    }): Promise<Result<IssuedInvite, InviteError>>;
+    decideLink(i: {
+      actor: Actor;
+      publisher_id: Id;
+      email_retyped: string;
+      reason: string;
+    }): Promise<Result<{ state: 'verified' }, LinkError>>;
   };
   /** A fresh single-use key for an idempotent POST (the browser holds no randomness source). */
   newKey(): string;
@@ -1991,6 +2069,8 @@ function buildApp(config: Config, opts: AppOptions): App {
   };
   // PUB-B: what the offer writes need; the price cap is the configured one (UMS_OFFER_MAX_MINOR).
   const offerDeps = { db, clock, ids, audit, offer_max_minor: config.offer_max_minor };
+  // POB-P1: the demo publishers are never issued an invite; the domain cannot import the persona list.
+  const inviteDeps = { db, clock, ids, audit, demo_slugs: PUBLISHER_PERSONAS.map((x) => x.slug) };
   const packWindowMs = core.config.pack_approval_window_ms ?? PACK_APPROVAL_WINDOW_MS;
   // CO-1d (D-038): the learn window's recorder. Built only when a window was configured; the window
   // itself is checked per delivery against the clock. It describes the certificate through the one
@@ -3665,6 +3745,81 @@ function buildApp(config: Config, opts: AppOptions): App {
         if (agreements === null) return { ok: false, error: { code: 'not_operator' } };
         return { ok: true, value: { agreements } };
       },
+    },
+
+    // POB-P1 (D-089): publisher accounts. The rules live in @umsbx/security (publisher-accounts.ts) and
+    // @umsbx/catalogue (publisher-invites.ts, paypal-link.ts, agreements.ts).
+    publisherAccounts: {
+      async claim(i) {
+        // No known address: every visitor would share one bucket. Refuse before anything is read or spent.
+        if (!i.ip_known) return { ok: false, code: 'busy' };
+        const made = await claimPublisherAccount(security, {
+          code: i.code,
+          username: i.username,
+          password: i.password,
+          ip_hash: i.ip_hash,
+        });
+        if (!made.ok) return made;
+        const actor: Actor = { kind: 'publisher', publisher_id: made.publisher_id };
+        const s = await createSession(security, actor);
+        if (i.previous !== null) await revokeSession(security, i.previous);
+        return { ok: true, csrf_token: s.csrf_token, cookie: s.cookie };
+      },
+
+      async signIn({ username, password, previous }) {
+        const r = await verifyPublisherLogin(security, { username, password });
+        if (!r.ok) return null;
+        const actor: Actor = { kind: 'publisher', publisher_id: r.publisher_id };
+        const s = await createSession(security, actor);
+        if (previous !== null) await revokeSession(security, previous);
+        return { actor, cookie: s.cookie, csrf_token: s.csrf_token };
+      },
+
+      async view(actor) {
+        if (actor.kind !== 'publisher') return null;
+        const a = await db.query<{ username: string }>(
+          'SELECT username FROM publisher_accounts WHERE publisher_id = $1',
+          [actor.publisher_id],
+        );
+        const username = a.rows[0]?.username;
+        if (username === undefined) return null;
+        return {
+          username,
+          terms_version: PUBLISHER_TERMS_VERSION,
+          agreement: await ownAgreement(db, actor),
+          link: await ownPaypalLink(db, actor),
+        };
+      },
+
+      async acceptTerms(actor) {
+        const r = await acceptTerms(core, actor, { terms_version: PUBLISHER_TERMS_VERSION });
+        return r.ok ? { ok: true, value: { terms_version: r.value.terms_version } } : r;
+      },
+
+      requestLink: (i) => requestPaypalLink(core, i.actor, { email: i.email }),
+    },
+
+    opsPublisherAccess: {
+      async list(actor) {
+        if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
+        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
+        const rows = await listPublisherAccess(inviteDeps, actor);
+        if (rows === null) return { ok: false, error: { code: 'not_operator' } };
+        return { ok: true, value: { rows } };
+      },
+      issue: (i) =>
+        issueInvite(inviteDeps, i.actor, { publisher_id: i.publisher_id, reason: i.reason }),
+      reset: (i) =>
+        resetPublisherSignIn(inviteDeps, i.actor, {
+          publisher_id: i.publisher_id,
+          reason: i.reason,
+        }),
+      decideLink: (i) =>
+        decidePaypalLink(core, i.actor, {
+          publisher_id: i.publisher_id,
+          email_retyped: i.email_retyped,
+          reason: i.reason,
+        }),
     },
 
     newKey: () => ids.nonce(),

@@ -204,7 +204,7 @@ const isLocked = (row: AccountRow, now: number): boolean =>
   row.locked_until !== null && row.locked_until !== undefined && ms(row.locked_until) > now;
 
 /** How long the account stays locked after this many failures in a row, or 0 below the threshold. */
-function lockFor(failed: number): number {
+export function lockFor(failed: number): number {
   if (failed < ACCOUNT_LOCK_THRESHOLD) return 0;
   return Math.min(
     ACCOUNT_LOCK_CAP_MS,

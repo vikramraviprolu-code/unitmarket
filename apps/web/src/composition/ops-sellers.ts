@@ -28,6 +28,8 @@ export interface OpsPublishersRead {
   environment: Listed<Awaited<ReturnType<Engine['opsPublishers']['list']>>>['environment'];
   applicants: Listed<Awaited<ReturnType<Engine['opsApplicants']['list']>>>['applicants'];
   agreements: Listed<Awaited<ReturnType<Engine['opsAgreements']['list']>>>['agreements'];
+  /** POB-P1: who can sign in. Needs the second factor, so it is empty for an operator without the code. */
+  access: Listed<Awaited<ReturnType<Engine['opsPublisherAccess']['list']>>>['rows'];
   /** True when the session has the authenticator code, so the page can switch its buttons on. */
   mfa: boolean;
 }
@@ -40,12 +42,20 @@ export async function readOpsPublishers(actor: Actor): Promise<OpsPublishersRead
   const apps = await e.opsApplicants.list(actor);
   const agr = await e.opsAgreements.list(actor);
   if (!pubs.ok || !apps.ok || !agr.ok) return null;
+  // The access list needs the second factor; without the code the queue is still read and the rows stay empty.
+  let access: OpsPublishersRead['access'] = [];
+  if (actor.mfa === true) {
+    const acc = await e.opsPublisherAccess.list(actor);
+    if (!acc.ok) return null;
+    access = acc.value.rows;
+  }
   return {
     publishers: pubs.value.publishers,
     awaiting: pubs.value.awaiting,
     environment: pubs.value.environment,
     applicants: apps.value.applicants,
     agreements: agr.value.agreements,
+    access,
     mfa: actor.mfa === true,
   };
 }

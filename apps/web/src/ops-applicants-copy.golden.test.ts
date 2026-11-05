@@ -1,7 +1,7 @@
 // PUB-E2 golden: every string the Applicants section of /ops/publishers shows. Static lines come from
 // lib/ops-applicants-copy.ts; variable lines are pinned for each state. The reviewed file is
-// golden/ops-applicants-copy.golden.txt. D-051: no italics, no dashes. The page must say plainly that an
-// approved applicant cannot sign in until the owners add a persona and passcode.
+// golden/ops-applicants-copy.golden.txt. D-051: no italics, no dashes. POB-P1 (D-089): the page must say plainly
+// that approving an applicant shows a one time invite code, which the publisher uses to claim an account.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as copy from './lib/ops-applicants-copy';
@@ -50,12 +50,11 @@ describe('ops applicants copy', () => {
     expect(lines().join('\n') + '\n').toBe(golden);
   });
 
-  it('says plainly that an approved applicant has no login until the owners add a persona and passcode', () => {
-    expect(copy.APPLICANTS_NO_LOGIN).toMatch(/cannot sign in/);
-    expect(copy.APPLICANTS_NO_LOGIN).toMatch(/persona/);
-    expect(copy.APPLICANTS_NO_LOGIN).toMatch(/passcode/);
-    expect(copy.APPLICANTS_NO_LOGIN).toMatch(/owners/);
-    expect(copy.APPROVE_HINT).toMatch(/cannot sign in/);
+  it('says plainly that approval shows a one time invite code the publisher claims an account with', () => {
+    expect(copy.APPLICANTS_NO_LOGIN).toMatch(/one time invite code/);
+    expect(copy.APPLICANTS_NO_LOGIN).toMatch(/claim their account/);
+    expect(copy.APPROVE_HINT).toMatch(/invite code/);
+    expect(copy.APPLICANTS_NO_LOGIN).not.toMatch(/persona|passcode/);
   });
 
   it('has no dash characters, no hyphen between words, no italics markup and no typed environment word', () => {
