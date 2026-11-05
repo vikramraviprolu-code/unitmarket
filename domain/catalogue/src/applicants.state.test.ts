@@ -137,15 +137,16 @@ describe('addApplicant', () => {
 });
 
 describe('listApplicants', () => {
-  it('lists applied rows as pending, and only for an operator with the second factor', async () => {
+  it('lists applied rows as pending, and only for an operator', async () => {
     const l = await listApplicants(w.db, w.operator);
     expect(l).not.toBeNull();
     expect(l!.map((a) => [a.slug, a.state])).toEqual([['tidewater-review', 'pending']]);
     expect(await listApplicants(w.db, w.harbour)).toBeNull();
     expect(await listApplicants(w.db, w.buyer)).toBeNull();
+    // INT-OPS-A / OPS-A.7: the list is a read, so an operator without the code may open it (writes still need it).
     expect(
       await listApplicants(w.db, { kind: 'operator', operator_id: 'opr_x', mfa: false }),
-    ).toBeNull();
+    ).toEqual(l);
   });
 });
 

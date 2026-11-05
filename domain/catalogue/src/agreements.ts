@@ -90,9 +90,9 @@ export async function ownAgreement(db: Database, actor: Actor): Promise<Agreemen
   return row === undefined ? null : toAgreement(row);
 }
 
-/** The latest record of every publisher that has one. Null for any actor that is not an operator with MFA. */
+/** The latest record of every publisher that has one. Null for any actor that is not an operator (a read: no code needed, OPS-A.7). */
 export async function listAgreements(db: Database, operator: Actor): Promise<Agreement[] | null> {
-  if (operator.kind !== 'operator' || !operator.mfa) return null;
+  if (operator.kind !== 'operator') return null;
   const r = await db.query<Row>(`${LATEST} ORDER BY publisher_id, accepted_at DESC, id DESC`);
   return r.rows.map(toAgreement);
 }

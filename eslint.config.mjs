@@ -103,6 +103,7 @@ const DOMAIN = [
   'ledger',
   'receipts',
   'recovery',
+  'alerts',
   'catalogue',
   'library',
   'publisher-console',
@@ -1186,6 +1187,7 @@ const HASH_ONLY = {
   delivery: ['link-token.ts', 'store-pg.ts'],
   rules: ['digest.ts'],
   catalogue: ['publisher-invites.ts'],
+  alerts: ['state.ts'],
 };
 const HASH_HELPERS = { delivery: ['world.ts'] };
 const packageEntries = [
@@ -1456,6 +1458,12 @@ export const NAMED_EXEMPTIONS = [
   {
     files: ['apps/web/src/server/singleton.ts'],
     reason: 'process-wide app holder shared by route bundles and instrumentation (globalThis key)',
+    off: ['sbx/no-global-alias', 'no-restricted-syntax'],
+  },
+  {
+    files: ['packages/obs/src/trace-store.ts'],
+    reason:
+      'process-wide trace context store shared by bundle copies (globalThis Symbol key, reads only its own key)',
     off: ['sbx/no-global-alias', 'no-restricted-syntax'],
   },
   {

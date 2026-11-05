@@ -48,7 +48,8 @@ import type {
   SwitchReader,
   Transport,
 } from '@umsbx/contracts';
-import { err, ok } from '@umsbx/contracts';
+import { API_GROUPS, EXPOSURE_REASON_CODES, err, isApiGroup, ok } from '@umsbx/contracts';
+import type { ApiGroup } from '@umsbx/contracts';
 import {
   BOOT_REFUSAL_EXIT_CODE,
   loadConfig,
@@ -69,6 +70,7 @@ import {
   createLogger,
   currentTraceContext,
   redact,
+  withTraceContext,
 } from '@umsbx/obs';
 import {
   createOutboundGate,
@@ -206,12 +208,41 @@ import {
 } from '@umsbx/receipts';
 import { sweepWindows } from '@umsbx/access-clock';
 import {
+  acknowledgeAlert,
+  getAlert,
+  listAlerts,
+  needsYou,
+  reopenAlert,
+  resolveAlert,
+  sweepAlerts,
+} from '@umsbx/alerts';
+import type {
+  AlertDetail,
+  AlertList,
+  AlertQuery,
+  AlertStateView,
+  NeedsYouRow,
+  ResolveReasonCode,
+  StateError,
+} from '@umsbx/alerts';
+import {
   applyAutomaticRules,
+  diagnose as diagnoseCase,
+  getCaseDetail,
+  listCases,
   listCasesForBuyer,
   openCase as openRecoveryCase,
   resolve as resolveRecoveryCase,
 } from '@umsbx/recovery';
-import type { ResolveAction, ResolveDeps } from '@umsbx/recovery';
+import type {
+  CaseAction,
+  CaseDetail,
+  CaseError,
+  CaseQueue,
+  CaseQueueState,
+  ResolveAction,
+  ResolveDeps,
+} from '@umsbx/recovery';
 import {
   beginCheckout as beginPaymentsCheckout,
   cancelOrder as cancelPaymentsOrder,
@@ -294,6 +325,8 @@ export {
   txnCsv,
 } from '@umsbx/txn-search';
 export type { FindResult } from '@umsbx/txn-search';
+// INT-SEL: the sentences of the journal steps, for the seller sale page (read only).
+export { WORDS as TRACE_WORDS } from '@umsbx/trace';
 // INT-OPS-B: the in-process journal verifier of TR0, for the Invariants tile (read only).
 export { formatTraceFinding, verifyTrace } from '@umsbx/db';
 export { filterLibrary, isPlainLibraryQuery, parseLibraryQuery } from '@umsbx/library';
@@ -301,6 +334,7 @@ export type { LibraryFacts, LibraryQuery } from '@umsbx/library';
 import {
   DEFAULT_RATES,
   SESSION_COOKIE,
+  createExposureReader,
   createSession,
   operatorSignIn,
   resolveSession,
@@ -325,6 +359,7 @@ import {
   opsTimeline,
   sellerTimeline,
   verifyJournal,
+  WORDS,
 } from '@umsbx/trace';
 import type { AgentFacade, BuyerFacade, OpsFacade, SellerFacade } from './src/api-v1/facades';
 import {
@@ -372,6 +407,8 @@ import {
 } from './src/server/refund';
 import type { RefundFacade, RefundOverview, RefundUnitView } from './src/server/refund';
 export type { RefundOverview, RefundUnitView };
+// INT-OPS-A: the read shapes of the alert, case and needs-you pages, for the pure view modules in apps/web/src/lib.
+export type { AlertDetail, AlertList, NeedsYouRow, CaseDetail, CaseQueue };
 
 type Env = Record<string, string | undefined>;
 export interface AppOptions {
@@ -563,6 +600,8 @@ export interface ApprovalView {
   currency: string;
   environment: EnvironmentLabel;
   content_hash: string;
+  /** BR-3: the days of access frozen in the approval (5 for an approval stored before the terms existed). */
+  access_days: number;
   items: {
     article_id: Id;
     title: string;
@@ -663,7 +702,13 @@ export interface OpsSnapshot {
   orders: { order_ref: string; status: string; total_minor: number; currency: string }[];
   operations: { state: string; count: number }[];
   alerts: { kind: string; created_at: string }[];
-  invariants: { id: string; ok: boolean; detail: string }[];
+  /** `rows` (INT-OPS-A) is every row that breaks the invariant, by table and id; `detail` still shows five. */
+  invariants: {
+    id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7';
+    ok: boolean;
+    detail: string;
+    rows: { table: string; id: string }[];
+  }[];
   /** The paypal_outbound switch (the kill switch) and the budget left under the active approval. */
   kill_switch: {
     outbound_on: boolean;
@@ -815,6 +860,8 @@ export function traceReads(db: SqlExecutor) {
     evidencePack: (o: Parameters<typeof evidencePack>[1]) => evidencePack(db, o),
     evidenceHtml,
     verifyJournal: () => verifyJournal(db),
+    /** The words of every journal step, for the order page (OPS-A.4). */
+    words: WORDS,
   };
 }
 export type TraceReads = ReturnType<typeof traceReads>;
@@ -844,6 +891,15 @@ export type SignUpResult =
       code: 'invalid_input' | 'busy' | 'rate_limited' | 'taken' | 'weak_password';
       reason?: PasswordRefusal;
     };
+
+/** INT-CTL: one api_exposure row as the exposure screen reads it (the screen words it; see lib/exposure-view.ts). */
+export interface ExposureRow {
+  group_name: ApiGroup;
+  enabled: boolean;
+  changed_by: string | null;
+  changed_at: string;
+  reason_code: string | null;
+}
 
 export interface Engine {
   personas(): readonly Persona[];
@@ -887,6 +943,11 @@ export interface Engine {
     code?: string | undefined;
   }): Promise<{ actor: Actor; cookie: string; csrf_token: string } | null>;
   actorFromCookie(cookie: string | null): Promise<Actor | null>;
+  /**
+   * INT-TC1: runs `fn` under a journal context for a page render that writes (a page is not a route, so
+   * withRoute opens no context for it). The context is the signed-in actor's, channel web, nothing else known.
+   */
+  asPageActor<T>(actor: Actor, fn: () => Promise<T>): Promise<T>;
   /**
    * ID-ACCOUNTS: buyer accounts (a username and a password, no email). Every sign in and every signup makes
    * a new session and ends `previous`, the session of the browser's own cookie, if there is one.
@@ -1008,6 +1069,28 @@ export interface Engine {
     on: boolean;
     reason: string;
   }): Promise<Result<void, 'operator_required' | 'mfa_required' | 'reason_required'>>;
+  /**
+   * INT-CTL (CTL.3): an operator changes one of the seven safety switches. The reason is a code from the closed list
+   * and is stored as the switch's reason. Turning on needs the second factor and refuses the two switches that keep
+   * their own controls (paypal_outbound: Start; agent_buy_enabled: agent buy).
+   */
+  setFeatureSwitch(i: {
+    actor: Actor;
+    name: SwitchName;
+    on: boolean;
+    reason_code: string;
+  }): Promise<
+    Result<void, 'operator_required' | 'mfa_required' | 'use_existing_control' | 'reason_required'>
+  >;
+  /** INT-CTL (CTL.6): an operator opens or closes one API group to partners. Opening needs the second factor. */
+  setApiExposure(i: {
+    actor: Actor;
+    group: ApiGroup;
+    enabled: boolean;
+    reason_code: string;
+  }): Promise<Result<void, 'operator_required' | 'mfa_required' | 'reason_required'>>;
+  /** INT-CTL (CTL.7): the api_exposure rows, as stored. Operators only; any other actor gets null. */
+  readApiExposure(actor: Actor): Promise<ExposureRow[] | null>;
   parseNeed(i: { actor: Actor; text: string }): ReturnType<typeof parseNeed>;
   discover(i: { actor: Actor; text: string }): Promise<
     | { ai_off: true }
@@ -1126,6 +1209,20 @@ export interface Engine {
   >;
   /** The stored paypal_outbound switch, read now (no cache), or null when it cannot be read. For an operator only. */
   outboundSwitchOn(actor: Actor): Promise<boolean | null>;
+  /**
+   * INT-OPS-A OPS-A.1: the facts behind the four health lights of operator Home, read now: the health check, the
+   * stored switch, the lock block, the last job pass and the injected clock. Null for anyone but an operator.
+   */
+  opsHealth(actor: Actor): Promise<{
+    app: 'up' | 'unknown';
+    maintenance: boolean;
+    db: boolean;
+    environment: EnvironmentLabel;
+    switch_on: boolean | null;
+    outbound: { open: boolean; blocked_by: string | null } | null;
+    last_pass_at: string | null;
+    now: string;
+  } | null>;
   health(): Promise<{
     ok: boolean;
     environment: EnvironmentLabel;
@@ -1152,7 +1249,7 @@ export interface Engine {
   /**
    * PUB-A2: where a publisher gets paid. `view` is the S6 page data (last 4 only, newest request first);
    * `request` stores a change request and changes nothing else; `openRequests` and `decide` are the
-   * operator side and need the second factor. A verify is refused with `owner_command_required` when
+   * operator side: any operator reads the queue (INT-OPS-A), and `decide` needs the second factor. A verify is refused with `owner_command_required` when
    * the app runs in sandbox mode (D-062). The whole merchant id is never returned by any method.
    */
   payee: {
@@ -1376,6 +1473,41 @@ export interface Engine {
     action: ResolveAction;
     reason: string;
   }): ReturnType<typeof resolveRecoveryCase>;
+  /** INT-AL AL.1, AL.6, AL.7: the operator reads (no identity, no message text). The v1 routes use these. */
+  opsReads: {
+    alerts(q: AlertQuery): Promise<AlertList>;
+    alert(id: string): Promise<AlertDetail | null>;
+    needsYou(): Promise<NeedsYouRow[]>;
+    cases(q: {
+      state?: CaseQueueState | undefined;
+      limit?: number | undefined;
+      cursor?: string | undefined;
+    }): Promise<CaseQueue>;
+    case(id: string): Promise<CaseDetail | null>;
+  };
+  /** INT-AL AL.8: an operator acknowledges, resolves or reopens one alert. The journal records the actor. */
+  opsAlerts: {
+    acknowledge(i: { actor: Actor; alert_id: string }): Promise<Result<AlertStateView, StateError>>;
+    resolve(i: {
+      actor: Actor;
+      alert_id: string;
+      reason_code: ResolveReasonCode;
+      note?: string;
+    }): Promise<Result<AlertStateView, StateError>>;
+    reopen(i: { actor: Actor; alert_id: string }): Promise<Result<AlertStateView, StateError>>;
+  };
+  /** INT-AL AL.8: an operator acts on one case. The answer is the case as the queue shows it, after the action. */
+  opsCases: {
+    act(i: {
+      actor: Actor;
+      case_id: Id;
+      action: CaseAction;
+      reason: string;
+      credit_ms?: number;
+    }): Promise<Result<CaseDetail, CaseError>>;
+    /** The case with the text of the message to the buyer (the operator page only; never the v1 read). */
+    detail(actor: Actor, case_id: Id): Promise<CaseDetail | null>;
+  };
 }
 
 /** Sandbox polling cadence (ASM-52): a paid order is re-read every 6 h; at most 2 provider calls a second. */
@@ -1782,6 +1914,12 @@ function buildApp(config: Config, opts: AppOptions): App {
   );
 
   const switches: SwitchReader = createSwitchReader(db, clock, opts.switch_cache_ms);
+  // INT-CTL: which API groups partners may call; the same cache rule as the switches (tests pass 0).
+  const exposure = createExposureReader({
+    db,
+    clock,
+    ...(opts.switch_cache_ms === undefined ? {} : { cache_ms: opts.switch_cache_ms }),
+  });
   const content: ContentStore = createPgContentStore(db);
   const gate = createOutboundGate({ db, clock, switches, config });
 
@@ -2002,6 +2140,16 @@ function buildApp(config: Config, opts: AppOptions): App {
   const sweepAll = async (x: { max_items: number }): Promise<{ ended: number }> => {
     const swept = await sweepWindows(core, x);
     await applyAutomaticRules(core, x);
+    // INT-AL: raise the two signals, then resolve what has cleared. A failure here never stops the pass.
+    try {
+      await sweepAlerts(core);
+    } catch (e) {
+      log.log({
+        msg: 'alerts.sweep_failed',
+        level: 'error',
+        fields: { error: e instanceof Error ? e.message : 'unknown' },
+      });
+    }
     return swept;
   };
 
@@ -2037,6 +2185,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     // socket address) every client shares one 'no-address' bucket; the login then refuses only
     // wrong passcodes once it is spent. A hosted deployment must set the proxy count.
     trusted_proxies: config.trusted_proxies,
+    exposure,
   };
 
   // --- engine --------------------------------------------------------------------------------
@@ -2260,6 +2409,33 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
 
     actorFromCookie: (cookie) => resolveSession(security, cookie),
+    asPageActor: (actor, fn) =>
+      withTraceContext(
+        {
+          id: `ctx_page_${ids.nonce()}`,
+          at: clock.now().toISOString(),
+          channel: 'web',
+          actor_kind: actor.kind,
+          actor_id:
+            actor.kind === 'buyer'
+              ? actor.buyer_id
+              : actor.kind === 'publisher'
+                ? actor.publisher_id
+                : actor.kind === 'operator'
+                  ? actor.operator_id
+                  : null,
+          on_behalf_of: null,
+          mandate_id: null,
+          mfa: actor.kind === 'operator' ? actor.mfa : false,
+          req_id: null,
+          ip_hash: null,
+          ua_family: null,
+          api_key_id: null,
+          job: null,
+          tool: null,
+        },
+        fn,
+      ),
 
     // ID-ACCOUNTS. Routes call these; the rules live in @umsbx/security (accounts.ts).
     accounts: {
@@ -2557,6 +2733,68 @@ function buildApp(config: Config, opts: AppOptions): App {
       return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
     },
 
+    async setFeatureSwitch({ actor, name, on, reason_code }) {
+      if (actor.kind !== 'operator') return err('operator_required');
+      if (!(EXPOSURE_REASON_CODES as readonly string[]).includes(reason_code))
+        return err('reason_required');
+      if (on) {
+        // Turning on needs the second factor, and two switches keep their own controls and locks (Start, agent buy).
+        if (!actor.mfa) return err('mfa_required');
+        if (name === 'paypal_outbound' || name === 'agent_buy_enabled')
+          return err('use_existing_control');
+      }
+      const r = await setSwitch(db, audit, clock, {
+        name,
+        on,
+        by: actor,
+        reason: reason_code,
+        approval_ref: null,
+      });
+      if (r.ok) return ok(undefined);
+      return err(r.error === 'operator_required' ? 'operator_required' : 'reason_required');
+    },
+
+    async setApiExposure({ actor, group, enabled, reason_code }) {
+      if (actor.kind !== 'operator') return err('operator_required');
+      if (!(EXPOSURE_REASON_CODES as readonly string[]).includes(reason_code))
+        return err('reason_required');
+      if (enabled && !actor.mfa) return err('mfa_required');
+      const at = clock.now().toISOString();
+      await db.transaction(async (tx) => {
+        await tx.query(
+          `UPDATE api_exposure SET enabled = $2, changed_by = $3, changed_at = $4, reason_code = $5, updated_at = $4
+            WHERE group_name = $1`,
+          [group, enabled, `operator:${actor.operator_id}`, at, reason_code],
+        );
+        await audit.record(tx, {
+          actor,
+          action: `exposure.${group}.${enabled ? 'on' : 'off'}`,
+          target: null,
+          reason: reason_code,
+          detail: { group, enabled },
+        });
+      });
+      return ok(undefined);
+    },
+
+    async readApiExposure(actor) {
+      if (actor.kind !== 'operator') return null;
+      const r = await db.query<{
+        group_name: ApiGroup;
+        enabled: boolean;
+        changed_by: string | null;
+        changed_at: Date | string;
+        reason_code: string | null;
+      }>(
+        'SELECT group_name, enabled, changed_by, changed_at, reason_code FROM api_exposure ORDER BY group_name',
+      );
+      const rank = (g: string): number => (API_GROUPS as readonly string[]).indexOf(g);
+      return r.rows
+        .filter((x) => isApiGroup(x.group_name))
+        .map((x) => ({ ...x, changed_at: new Date(x.changed_at).toISOString() }))
+        .sort((a, b) => rank(a.group_name) - rank(b.group_name));
+    },
+
     async parseNeed(i) {
       return parseNeed(agent, i);
     },
@@ -2621,6 +2859,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         currency: string;
         publishers?: { publisher_id: string; amount_minor: number }[];
         settlement?: { payments: number };
+        terms?: { values: { 'access.window': number } };
       };
       const items: ApprovalView['items'] = [];
       const itemPublisher: string[] = [];
@@ -2661,6 +2900,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         currency: snap.currency,
         environment: row.environment,
         content_hash: row.content_hash,
+        access_days: snap.terms?.values['access.window'] ?? 5,
         items,
         blocks,
         settlement: snap.settlement === undefined ? null : { payments: snap.settlement.payments },
@@ -3138,9 +3378,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       const ops = await db.query<{ state: string; c: string | number }>(
         'SELECT state, count(*) AS c FROM operations GROUP BY state ORDER BY state',
       );
-      const alerts = await db.query<{ kind: string; created_at: unknown }>(
-        'SELECT kind, created_at FROM alerts ORDER BY created_at DESC, id LIMIT 20',
-      );
+      // INT-AL: the open alerts, newest first, from the same read the alert list uses.
+      const alerts = await listAlerts(db, { state: 'open', limit: 20 });
       const safety = await readSafetyStatus(db, clock.now(), config.outbound_approval_ref);
       const outboundSwitch = safety.switches.find((x) => x.name === 'paypal_outbound');
       const jobs = await jobsHealth(core);
@@ -3166,11 +3405,12 @@ function buildApp(config: Config, opts: AppOptions): App {
           currency: o.currency,
         })),
         operations: ops.rows.map((o) => ({ state: o.state, count: Number(o.c) })),
-        alerts: alerts.rows.map((a) => ({ kind: a.kind, created_at: iso(a.created_at) })),
+        alerts: alerts.items.map((a) => ({ kind: a.kind, created_at: a.created_at })),
         invariants: (await checkInvariants(db)).map((v) => ({
           id: v.id,
           ok: v.ok,
           detail: v.detail,
+          rows: v.rows,
         })),
         kill_switch: {
           outbound_on: outboundSwitch?.on === true,
@@ -3392,7 +3632,6 @@ function buildApp(config: Config, opts: AppOptions): App {
     opsPublishers: {
       async list(actor) {
         if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
-        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
         const publishers = await publisherExposure(db, actor, clock.now().toISOString(), {
           own_merchant_id: config.own_merchant_id,
           environment,
@@ -3433,7 +3672,6 @@ function buildApp(config: Config, opts: AppOptions): App {
     opsApplicants: {
       async list(actor) {
         if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
-        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
         const applicants = await listApplicants(db, actor);
         if (applicants === null) return { ok: false, error: { code: 'not_operator' } };
         return { ok: true, value: { applicants } };
@@ -3487,7 +3725,6 @@ function buildApp(config: Config, opts: AppOptions): App {
     opsAgreements: {
       async list(actor) {
         if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
-        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
         const agreements = await listAgreements(db, actor);
         if (agreements === null) return { ok: false, error: { code: 'not_operator' } };
         return { ok: true, value: { agreements } };
@@ -3581,6 +3818,79 @@ function buildApp(config: Config, opts: AppOptions): App {
         by: i.actor,
         reason: i.reason,
       }),
+
+    opsReads: {
+      alerts: (q) => listAlerts(db, q),
+      alert: (id) => getAlert(db, id),
+      needsYou: () => needsYou(db),
+      cases: (q) => listCases(db, q),
+      case: (id) => getCaseDetail(db, id),
+    },
+
+    opsAlerts: {
+      acknowledge: (i) => acknowledgeAlert(core, { alert_id: i.alert_id }),
+      resolve: (i) =>
+        resolveAlert(core, {
+          alert_id: i.alert_id,
+          reason_code: i.reason_code,
+          ...(i.note === undefined ? {} : { note: i.note }),
+        }),
+      reopen: (i) => reopenAlert(core, { alert_id: i.alert_id }),
+    },
+
+    opsCases: {
+      async act(i) {
+        if (i.actor.kind !== 'operator') return err({ code: 'not_operator' });
+        const found = await getCaseDetail(db, i.case_id);
+        if (found === null) return err({ code: 'not_found' });
+        if (i.action === 'diagnose') {
+          if (found.allowed_actions.length === 0) return err({ code: 'wrong_state' });
+          await diagnoseCase(core, { case_id: i.case_id, actor: i.actor });
+        } else {
+          const r = await resolveRecoveryCase(recoveryDeps, {
+            case_id: i.case_id,
+            action: i.action,
+            ...(i.credit_ms === undefined ? {} : { credit_ms: i.credit_ms }),
+            by: i.actor,
+            reason: i.reason,
+          });
+          if (!r.ok) return r;
+        }
+        const after = await getCaseDetail(db, i.case_id);
+        return after === null ? err({ code: 'not_found' }) : ok(after);
+      },
+      async detail(actor, case_id) {
+        if (actor.kind !== 'operator') return null;
+        return getCaseDetail(db, case_id, { with_message: true });
+      },
+    },
+
+    async opsHealth(actor) {
+      if (actor.kind !== 'operator') return null;
+      let h: Awaited<ReturnType<Engine['health']>> | null = null;
+      try {
+        h = await engine.health();
+      } catch {
+        h = null;
+      }
+      let out: { open: boolean; blocked_by: string | null } | null = null;
+      try {
+        const s = outbound === null ? null : await outbound.status();
+        out = s === null ? null : { open: s.open, blocked_by: s.blocked_by };
+      } catch {
+        out = null;
+      }
+      return {
+        app: h === null ? 'unknown' : 'up',
+        maintenance: h?.maintenance ?? false,
+        db: h?.db ?? false,
+        environment,
+        switch_on: h?.maintenance === true ? null : await engine.outboundSwitchOn(actor),
+        outbound: out,
+        last_pass_at: h?.last_pass_at ?? null,
+        now: clock.now().toISOString(),
+      };
+    },
 
     async health() {
       // CO-7b: the health check stays green so the host does not restart-loop, and says why.
@@ -3751,6 +4061,9 @@ export const securityDeps: SecurityDeps = {
   },
   get trusted_proxies() {
     return getApp().security.trusted_proxies ?? 0;
+  },
+  get exposure() {
+    return getApp().security.exposure;
   },
 };
 

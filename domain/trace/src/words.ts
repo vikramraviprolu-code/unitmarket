@@ -16,7 +16,12 @@ const BASE: Record<string, readonly [string, string]> = {
     'The access time for the item was set up.',
     'The access time for the item changed.',
   ],
+  alert_events: ['A check was acknowledged or closed.', 'A record about a check changed.'],
   alerts: ['A check was raised for the team.', 'A check raised for the team changed.'],
+  api_exposure: [
+    'An API group was closed or opened for partners.',
+    'An API group was closed or opened for partners.',
+  ],
   api_keys: ['An API key was created.', 'An API key changed.'],
   approvals: [
     'The buyer was asked to approve the purchase.',
@@ -57,7 +62,7 @@ const BASE: Record<string, readonly [string, string]> = {
   recovery_actions: ['A step was taken on a help case.', 'A step on a help case changed.'],
   recovery_cases: ['A help case was opened.', 'A help case changed.'],
   refund_requests: ['A refund was requested.', 'The refund moved on.'],
-  rule_settings: ['A business rule setting was added.', 'A business rule setting changed.'],
+  rule_settings: ['A business rule setting was stored.', 'A business rule setting changed.'],
   safety_switches: ['A safety switch was set up.', 'A safety switch was changed.'],
   webhook_events: ['PayPal sent a notice.', 'A PayPal notice was handled.'],
 };

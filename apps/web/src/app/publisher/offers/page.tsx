@@ -38,6 +38,8 @@ import {
 import { CREATE_LINK } from '../../../lib/publisher-e1-copy';
 import { OfferCover } from './OfferCover';
 import '../pk-offers.css';
+import { readSellerPerformance } from '../../../composition/seller';
+import { OfferPerformance } from '../../../ui/seller/OfferPerformance';
 
 export const metadata: Metadata = { title: 'Your offers' };
 
@@ -53,6 +55,7 @@ export default async function PublisherOffers({
   if (actor?.kind !== 'publisher') redirect('/signin?next=/publisher/offers');
   const view = await (await app()).engine.offers.list(actor);
   if (view === null) redirect('/signin?next=/publisher/offers');
+  const performance = (await readSellerPerformance(actor)) ?? [];
   const active = parseOfferFilter((await searchParams).status);
   const counts = filterCounts(view.offers);
   const shown = filterOffers(view.offers, active);
@@ -165,6 +168,7 @@ export default async function PublisherOffers({
           )}
         </>
       )}
+      {view.offers.length === 0 ? null : <OfferPerformance rows={performance} />}
     </>
   );
 }

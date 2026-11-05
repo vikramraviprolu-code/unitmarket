@@ -87,7 +87,21 @@ export const TRACKED_TABLES: readonly TrackedTable[] = [
     'updated_at',
     'ord:entitlement_id',
   ),
+  // INT-AL (migration 0025): the state history of an alert. Append-only; the note is only ever a sha256.
+  t('alert_events', ['alert_id', 'kind', 'reason_code', 'note_sha256'], [], 'at', 'ord:alert_id', [
+    'id',
+    'alert_id',
+    'kind',
+    'reason_code',
+    'note_sha256',
+    'at',
+    'created_at',
+    'updated_at',
+  ]),
   t('alerts', ['kind', 'order_id', 'unit_id'], ['detail'], 'created_at', 'ord:order_id'),
+  // INT-CTL (migration 0026): which API groups partners may call. A control row, changed in place; the changer is only
+  // ever a sha256, and the reason is a code from a closed list.
+  t('api_exposure', ['enabled', 'changed_at', 'reason_code'], ['changed_by'], 'changed_at', 'plat'),
   t('api_keys', ['key_kind', 'scopes', 'revoked_at'], [], 'created_at', 'key:id'),
   t(
     'approvals',

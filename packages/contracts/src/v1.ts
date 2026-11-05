@@ -20,6 +20,7 @@ import { NoMatchReasonSchema, QuoteSchema } from './quote';
 import { CaseViewSchema } from './recovery';
 import { TxnExportSchema, TxnLinePageSchema, TxnQueryMapSchema } from './txn-query';
 import { AGENT_ROUTES } from './v1-agent';
+import { ALERT_ROUTES } from './v1-alerts';
 import { TRACE_ROUTES } from './v1-trace';
 
 // ---------- error envelope and pagination ----------
@@ -1086,6 +1087,7 @@ export const V1_ROUTES: readonly RouteDoc[] = [
     errors: [404],
   },
   ...AGENT_ROUTES,
+  ...ALERT_ROUTES,
   ...TRACE_ROUTES,
 ];
 

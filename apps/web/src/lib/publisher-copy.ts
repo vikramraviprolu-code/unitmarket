@@ -7,16 +7,16 @@ export type PublisherStatus = 'applied' | 'active' | 'suspended';
 
 /** The publisher personas: the sign-in id, the publisher row it maps to (by slug) and its label. */
 export const PUBLISHER_PERSONAS = [
-  { id: 'publisher-harbour-ledger', slug: 'harbour-ledger', label: 'Harbour Ledger (publisher)' },
+  { id: 'publisher-harbour-ledger', slug: 'harbour-ledger', label: 'Harbour Ledger (seller)' },
   {
     id: 'publisher-quayside-gazette',
     slug: 'quayside-gazette',
-    label: 'Quayside Gazette (publisher)',
+    label: 'Quayside Gazette (seller)',
   },
   {
     id: 'publisher-northfield-quarterly',
     slug: 'northfield-quarterly',
-    label: 'Northfield Quarterly (publisher)',
+    label: 'Northfield Quarterly (seller)',
   },
 ] as const;
 
@@ -45,8 +45,8 @@ export const PUBLISHER_PASSCODE_HINT =
 
 // INT-UI0 owns this rename in the nav and the tabs (decision V2); SEL renames the page copy.
 export const PUBLISHER_NAV_LABEL = 'Seller';
-export const PUBLISHER_HEADING = 'Publisher home';
-export const PUBLISHER_LEDE = 'This page shows your own publisher account. It is read only.';
+export const PUBLISHER_HEADING = 'Seller home';
+export const PUBLISHER_LEDE = 'This page shows your own seller account. It is read only.';
 export const LABEL_NAME = 'Name';
 export const LABEL_STATUS = 'Status';
 export const LABEL_OFFERS = 'Offers live';

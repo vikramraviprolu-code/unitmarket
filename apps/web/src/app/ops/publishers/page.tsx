@@ -1,13 +1,12 @@
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { app } from '../../../server/access';
+import { readOpsPublishers } from '../../../composition/ops-sellers';
 import { currentActor } from '../../../server/session';
 import { EnvLabel, envText } from '../../../ui/EnvLabel';
 import { Chip, PageHeader, StatTile } from '../../../ui/publisher/kit';
-import { StatusBanner } from '../../../ui/StatusBanner';
 import { SectionNav } from '../../../ui/SectionNav';
-import { OPS_PUBLISHERS_SECTIONS } from '../../../lib/ops-copy';
+import { OPS_PUBLISHERS_SECTIONS, maskedMerchant } from '../../../lib/ops-copy';
 import { formatMinor } from '../../../lib/format';
 import { COL_AWAITING } from '../../../lib/pending-copy';
 import {
@@ -24,8 +23,6 @@ import {
   NONE_CELL,
   NO_PAYMENTS,
   OPS_LINK_PAYEE_REQUESTS,
-  PUBLISHERS_MFA_BODY,
-  PUBLISHERS_MFA_LINK,
   PUBLISHERS_BACK_LINK,
   PUBLISHERS_EMPTY,
   PUBLISHERS_HEADING,
@@ -120,51 +117,21 @@ function PublisherTermsLine({
   );
 }
 
-function MfaNeeded() {
-  return (
-    <>
-      <h1>{PUBLISHERS_HEADING}</h1>
-      <StatusBanner tone="warn">
-        <span data-testid="publishers-mfa-needed">{PUBLISHERS_MFA_BODY}</span>{' '}
-        <Link href="/signin?next=/ops/publishers">{PUBLISHERS_MFA_LINK}</Link>
-      </StatusBanner>
-    </>
-  );
-}
-
 // PUB-D (S7): the operator's view of the publishers. Operator with the second factor only; the engine
 // answers an error to any other session. It shows counts and sums of stored rows and the last 4 of the
 // payee account; it names no buyer. The suspend form posts to the route, which checks everything again.
 export default async function OpsPublishers() {
   const actor = await currentActor();
-  // An operator without the authenticator code is told why, not sent to the sign in page unexplained.
-  if (actor?.kind === 'operator' && !actor.mfa) return <MfaNeeded />;
   if (actor?.kind !== 'operator') redirect('/signin?next=/ops/publishers');
-  const r = await (await app()).engine.opsPublishers.list(actor);
-  if (!r.ok) {
-    if (r.error.code === 'mfa_required') return <MfaNeeded />;
-    redirect('/signin?next=/ops/publishers');
-  }
-  const { environment, awaiting } = r.value;
-  const publishers = r.value.publishers.filter((p) => p.status !== 'applied');
-  const ap = await (await app()).engine.opsApplicants.list(actor);
-  if (!ap.ok) {
-    if (ap.error.code === 'mfa_required') return <MfaNeeded />;
-    redirect('/signin?next=/ops/publishers');
-  }
-  const applicants = ap.value.applicants;
+  // INT-OPS-A / OPS-A.7: an operator without the authenticator code reads the queue; the buttons are off.
+  const read = await readOpsPublishers(actor);
+  if (read === null) redirect('/signin?next=/ops/publishers');
+  const { environment, awaiting, applicants, mfa } = read;
+  const publishers = read.publishers.filter((p) => p.status !== 'applied');
   // AGREE-1: the seeded, read only publisher terms record, by publisher. An applicant has none.
-  const ag = await (await app()).engine.opsAgreements.list(actor);
-  if (!ag.ok) {
-    if (ag.error.code === 'mfa_required') return <MfaNeeded />;
-    redirect('/signin?next=/ops/publishers');
-  }
-  const agreementOf = new Map(ag.value.agreements.map((a) => [a.publisher_id, a]));
-  // POB-P1: who can sign in, from the invite and account tables (the demo publishers are not listed).
-  const access = await (await app()).engine.opsPublisherAccess.list(actor);
-  // The three calls above already passed the second factor check, so any refusal here is a plain sign in.
-  if (!access.ok) redirect('/signin?next=/ops/publishers');
-  const accessRows = access.value.rows.filter((x) => x.status !== 'applied');
+  const agreementOf = new Map(read.agreements.map((a) => [a.publisher_id, a]));
+  // POB-P1: who can sign in (the demo publishers are not listed). Empty for an operator without the code.
+  const accessRows = read.access.filter((x) => x.status !== 'applied');
   const waitingLinks = accessRows.filter((x) => x.link?.state === 'requested');
   const tiles = publisherTiles(publishers, applicants);
   return (
@@ -241,7 +208,11 @@ export default async function OpsPublishers() {
                     <>
                       <p className="muted">{APPROVE_HINT}</p>
                       <p className="muted">{REJECT_HINT}</p>
-                      <DecideApplicantForm publisherId={a.publisher_id} name={a.display_name} />
+                      <DecideApplicantForm
+                        publisherId={a.publisher_id}
+                        name={a.display_name}
+                        hasCode={mfa}
+                      />
                     </>
                   ) : null}
                 </section>
@@ -251,7 +222,7 @@ export default async function OpsPublishers() {
         )}
         <div className="pk-panel pk-add">
           <h3>{ADD_HEADING}</h3>
-          <AddApplicantForm />
+          <AddApplicantForm hasCode={mfa} />
         </div>
       </section>
       <section
@@ -352,7 +323,9 @@ export default async function OpsPublishers() {
                 </div>
                 <dl className="pk-facts">
                   <dt>{LABEL_PAYEE}</dt>
-                  <dd>{payeeText(payee)}</dd>
+                  <dd>
+                    <span className="mono">{maskedMerchant(p.payee_last4)}</span> {payeeText(payee)}
+                  </dd>
                   <dt>{LABEL_SETTLEMENT}</dt>
                   <dd data-testid="publisher-row-settlement">{p.settlement.sentence}</dd>
                   <dt>{LABEL_OFFERS}</dt>
@@ -425,6 +398,7 @@ export default async function OpsPublishers() {
                       publisherId={p.publisher_id}
                       name={p.display_name}
                       suspended={p.status === 'suspended'}
+                      hasCode={mfa}
                     />
                   </details>
                 )}

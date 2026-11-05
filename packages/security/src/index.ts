@@ -43,7 +43,16 @@ export {
 export type { OperatorSignIn, TotpVerdict } from './totp';
 export { securityHeaders } from './headers';
 export { DEFAULT_RATES, takeToken } from './rate';
-export { AUTH_RULES, checkEntry, formatInventory, parseRouteMeta, pathFromFile } from './inventory';
+export {
+  AUTH_RULES,
+  FAIL_SAFE_WITHOUT_MFA_ROUTES,
+  checkEntry,
+  formatInventory,
+  parseRouteMeta,
+  pathFromFile,
+} from './inventory';
+// INT-CTL: which API groups partners may call.
+export { MAX_EXPOSURE_CACHE_MS, createExposureReader } from './exposure';
 export {
   ACCOUNT_FAILURE_MEMORY_MS,
   ACCOUNT_LOCK_BASE_MS,

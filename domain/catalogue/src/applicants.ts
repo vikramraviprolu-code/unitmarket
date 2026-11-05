@@ -240,9 +240,9 @@ export async function decideApplicant(
   }
 }
 
-/** The applicants waiting or turned down, oldest first. Null for any actor that is not an operator with MFA. */
+/** The applicants waiting or turned down, oldest first. Null for any actor that is not an operator (a read: no code needed, OPS-A.7). */
 export async function listApplicants(db: Database, operator: Actor): Promise<Applicant[] | null> {
-  if (operator.kind !== 'operator' || !operator.mfa) return null;
+  if (operator.kind !== 'operator') return null;
   const r = await db.query<{
     id: string;
     slug: string;

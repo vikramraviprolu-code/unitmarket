@@ -119,9 +119,9 @@ describe('an insert writes one event', () => {
     });
   });
 
-  it('the world wrote one event per inserted row (the publishers step also inserts pub_2) and the migration seven', async () => {
+  it('the world wrote one event per inserted row (the publishers step also inserts pub_2) and the migration 21', async () => {
     const inserts = STEPS.filter((s) => s.insert).length + 1;
-    expect(await countEvents(db)).toBe(inserts + 7);
+    expect(await countEvents(db)).toBe(inserts + 21);
   });
 });
 
@@ -153,8 +153,13 @@ describe('an update of a copied column writes [old, new]', () => {
         expect(e.body.cols).toEqual({});
       } else {
         expect(e.body.cols[s.update!.col]).toEqual([s.update!.before, s.update!.after]);
-        // The switch update also sets the hashed reason and changed_by; every other step touches no hashed column.
-        const hashedKeys = s.table === 'safety_switches' ? ['changed_by', 'reason'] : [];
+        // The switch update also sets the hashed reason and changed_by; an api_exposure update sets the hashed changed_by; every other step touches no hashed column.
+        const hashedKeys =
+          s.table === 'safety_switches'
+            ? ['changed_by', 'reason']
+            : s.table === 'api_exposure'
+              ? ['changed_by']
+              : [];
         expect(Object.keys(e.body.hashed).sort()).toEqual(hashedKeys);
       }
     });
@@ -380,6 +385,12 @@ describe('reset and column changes', () => {
       expect(
         (await d.query<{ n: number }>('SELECT count(*)::int AS n FROM trace_tracked')).rows[0]!.n,
       ).toBe(TRACKED_TABLES.length);
+      // Every lane's rows are back, 0023's and each later seed function's (alert_events is 0025's own).
+      expect(
+        (
+          await d.query<{ t: string }>('SELECT table_name AS t FROM trace_tracked ORDER BY 1')
+        ).rows.map((r) => r.t),
+      ).toEqual(TRACKED_TABLES.map((t) => t.table).sort());
       await as(d, ctx()).query(
         `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ('alr_r2', 'k', '{"reason":"r2"}', '${T}', '${T}')`,
       );

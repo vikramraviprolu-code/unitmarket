@@ -16,12 +16,13 @@ import {
   applicantErrorText,
   decisionReasonLabel,
 } from '../../../lib/ops-applicants-copy';
+import { OPS_NEEDS_CODE } from '../../../lib/ops-copy';
 import { ErrorState } from '../../../ui/ErrorState';
 import { InviteCodePanel } from './InviteCodePanel';
 
 // PUB-E2: the add form and the answer form of the Applicants section. They only carry what the operator
 // typed; the routes check everything again (operator, second factor, CSRF, shape, status rules).
-export function AddApplicantForm() {
+export function AddApplicantForm({ hasCode }: { hasCode: boolean }) {
   const router = useRouter();
   const [slug, setSlug] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -104,12 +105,17 @@ export function AddApplicantForm() {
           type="button"
           className="btn btn-primary"
           disabled={
-            busy || reason.trim().length < 3 || slug.length < 3 || displayName.trim().length < 2
+            !hasCode ||
+            busy ||
+            reason.trim().length < 3 ||
+            slug.length < 3 ||
+            displayName.trim().length < 2
           }
           onClick={() => void add()}
         >
           {ADD_BUTTON}
         </button>
+        {hasCode ? null : <span className="muted"> {OPS_NEEDS_CODE}</span>}
       </div>
       <div aria-live="polite">{done}</div>
       {error ? <ErrorState title="Not saved">{error}</ErrorState> : null}
@@ -117,7 +123,15 @@ export function AddApplicantForm() {
   );
 }
 
-export function DecideApplicantForm({ publisherId, name }: { publisherId: string; name: string }) {
+export function DecideApplicantForm({
+  publisherId,
+  name,
+  hasCode,
+}: {
+  publisherId: string;
+  name: string;
+  hasCode: boolean;
+}) {
   const router = useRouter();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -184,7 +198,7 @@ export function DecideApplicantForm({ publisherId, name }: { publisherId: string
         <button
           type="button"
           className="btn btn-primary"
-          disabled={busy || reason.trim().length < 3}
+          disabled={!hasCode || busy || reason.trim().length < 3}
           onClick={() => void decide('approve')}
         >
           {APPROVE_BUTTON}
@@ -192,11 +206,12 @@ export function DecideApplicantForm({ publisherId, name }: { publisherId: string
         <button
           type="button"
           className="btn"
-          disabled={busy || reason.trim().length < 3}
+          disabled={!hasCode || busy || reason.trim().length < 3}
           onClick={() => void decide('reject')}
         >
           {REJECT_BUTTON}
         </button>
+        {hasCode ? null : <span className="muted"> {OPS_NEEDS_CODE}</span>}
       </div>
       <div aria-live="polite">{done}</div>
       {error ? <ErrorState title="Not saved">{error}</ErrorState> : null}

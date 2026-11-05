@@ -115,9 +115,17 @@ export async function exportSql(db: SqlExecutor, options: ExportOptions): Promis
 
 // Rows the migrations seed. A fresh database holds only these, all stamped with the epoch; the
 // import replaces them with the exported rows.
-const SEED_TABLES = ['corridors', 'access_policies', 'safety_switches', 'fx_rates'] as const;
+// INT-CTL (migration 0026): api_exposure holds one seeded row per API group, lifted and refilled like safety_switches.
+const SEED_TABLES = [
+  'corridors',
+  'access_policies',
+  'safety_switches',
+  'api_exposure',
+  'fx_rates',
+] as const;
 const SEED_EPOCH = '1970-01-01T00:00:00Z';
 const SEED_DELETE_GUARD = 'safety_switches_no_delete';
+const EXPOSURE_DELETE_GUARD = 'api_exposure_no_delete';
 // MC2-L4: fx_rates has no created_at; its migration rows are the ones marked source = 'seed', so any other row
 // means the database is not fresh. The table is append-only, so its delete guard is lifted for the seed
 // delete alone, like the safety switch guard.
@@ -228,12 +236,15 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
     await tx.exec('DELETE FROM trace_heads');
     await tx.exec(`ALTER TABLE trace_events ENABLE TRIGGER ${quote(TRACE_EVENTS_GUARD)}`);
     await tx.exec(`ALTER TABLE safety_switches DISABLE TRIGGER ${quote(SEED_DELETE_GUARD)}`);
+    await tx.exec(`ALTER TABLE api_exposure DISABLE TRIGGER ${quote(EXPOSURE_DELETE_GUARD)}`);
     await tx.exec(`ALTER TABLE fx_rates DISABLE TRIGGER ${quote(FX_DELETE_GUARD)}`);
     for (const t of [...order].reverse()) {
       if ((SEED_TABLES as readonly string[]).includes(t)) await tx.exec(`DELETE FROM ${quote(t)}`);
     }
     // The fx_rates delete guard is back on as soon as its seed rows are gone, before anything is loaded.
     await tx.exec(`ALTER TABLE fx_rates ENABLE TRIGGER ${quote(FX_DELETE_GUARD)}`);
+    // The same for the API exposure guard: lifted for the seed delete alone.
+    await tx.exec(`ALTER TABLE api_exposure ENABLE TRIGGER ${quote(EXPOSURE_DELETE_GUARD)}`);
     for (const s of parsed.statements) {
       await tx.query(
         `INSERT INTO ${quote(s.table)} OVERRIDING SYSTEM VALUE SELECT * FROM jsonb_populate_recordset(NULL::${quote(s.table)}, $1::jsonb)`,

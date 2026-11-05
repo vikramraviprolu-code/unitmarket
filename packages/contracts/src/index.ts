@@ -23,6 +23,10 @@ export * from './deps';
 // API-W0 (principals, v1 contracts).
 export * from './principal';
 export * from './v1';
+// INT-AL (alerts, needs-you, cases; the gate reasons; the operator pages).
+export * from './v1-alerts';
+export * from './gate';
+export * from './ops-pages';
 export * from './v1-trace';
 // API-B (agent spending caps).
 export * from './mandates';
@@ -31,3 +35,6 @@ export * from './txn-query';
 export * from './trace';
 // BR-1 (configurable business rules).
 export * from './rules';
+// INT-CTL (API exposure registry, the pasted cloud status).
+export * from './api-exposure';
+export * from './cloud-status';

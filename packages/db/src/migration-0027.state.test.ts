@@ -231,26 +231,30 @@ describe('the reseed wrapper', () => {
     try {
       for (const f of readdirSync(join(MIGRATIONS_ROOT, 'common')))
         cpSync(join(MIGRATIONS_ROOT, 'common', f), join(dir, f));
+      // Every number from 0023 to 0027 is taken now, so the probe shares 0026 and sorts after it by name; its
+      // functions carry their own label, so they never collide with another lane's.
+      const num = '0026';
+      const label = 'zzprobe';
       writeFileSync(
-        join(dir, '0025_zz_probe_lane.sql'),
+        join(dir, `${num}_zz_probe_lane.sql`),
         `CREATE TABLE probe_lane (id ums_id PRIMARY KEY, created_at timestamptz NOT NULL);
-CREATE FUNCTION trace_tracked_seed_0025() RETURNS void LANGUAGE sql AS $fn$
+CREATE FUNCTION trace_tracked_seed_${label}() RETURNS void LANGUAGE sql AS $fn$
   INSERT INTO trace_tracked (table_name, columns, hashed_columns, digest_columns, time_column, chain_expr) VALUES
     ('probe_lane', ARRAY['id'], ARRAY[]::text[], ARRAY[]::text[], 'created_at', 'plat')
   ;
 $fn$;
-CREATE FUNCTION trace_tracked_reseed_0025() RETURNS trigger LANGUAGE plpgsql AS $fn$
-BEGIN PERFORM trace_tracked_seed_0025(); RETURN NULL; END;
+CREATE FUNCTION trace_tracked_reseed_${label}() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN PERFORM trace_tracked_seed_${label}(); RETURN NULL; END;
 $fn$;
-CREATE TRIGGER trace_tracked_reseed_0025 AFTER TRUNCATE ON trace_tracked
-  FOR EACH STATEMENT EXECUTE FUNCTION trace_tracked_reseed_0025();
-SELECT trace_tracked_seed_0025();
+CREATE TRIGGER trace_tracked_reseed_${label} AFTER TRUNCATE ON trace_tracked
+  FOR EACH STATEMENT EXECUTE FUNCTION trace_tracked_reseed_${label}();
+SELECT trace_tracked_seed_${label}();
 `,
       );
       const d = await openDatabase({ kind: 'pglite-memory' });
       toClose.push(d);
       const applied = await applyMigrations(d, clock, dir);
-      expect(applied).toContain('0025_zz_probe_lane');
+      expect(applied).toContain(`${num}_zz_probe_lane`);
       expect(applied).toContain('0027_rule_settings');
       expect(await trackedNames(d)).toEqual(
         expect.arrayContaining(['probe_lane', 'rule_settings']),

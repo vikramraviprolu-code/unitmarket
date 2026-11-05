@@ -89,7 +89,23 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/v1/webhook-subscriptions/route.ts': () => import('./app/api/v1/webhook-subscriptions/route'),
   'api/library/[id]/link/route.ts': () => import('./app/api/library/[id]/link/route'),
   'api/library/route.ts': () => import('./app/api/library/route'),
+  'api/ops/api-exposure/[group]/off/route.ts': () =>
+    import('./app/api/ops/api-exposure/[group]/off/route'),
+  'api/ops/api-exposure/[group]/on/route.ts': () =>
+    import('./app/api/ops/api-exposure/[group]/on/route'),
+  'api/ops/switches/[name]/off/route.ts': () => import('./app/api/ops/switches/[name]/off/route'),
+  'api/ops/switches/[name]/on/route.ts': () => import('./app/api/ops/switches/[name]/on/route'),
   'api/ops/agent-buy/route.ts': () => import('./app/api/ops/agent-buy/route'),
+  'api/ops/alerts/[id]/acknowledge/route.ts': () =>
+    import('./app/api/ops/alerts/[id]/acknowledge/route'),
+  'api/ops/alerts/[id]/reopen/route.ts': () => import('./app/api/ops/alerts/[id]/reopen/route'),
+  'api/ops/alerts/[id]/resolve/route.ts': () => import('./app/api/ops/alerts/[id]/resolve/route'),
+  'api/ops/cases/[id]/actions/route.ts': () => import('./app/api/ops/cases/[id]/actions/route'),
+  'api/v1/ops/alerts/[id]/route.ts': () => import('./app/api/v1/ops/alerts/[id]/route'),
+  'api/v1/ops/alerts/route.ts': () => import('./app/api/v1/ops/alerts/route'),
+  'api/v1/ops/cases/[id]/route.ts': () => import('./app/api/v1/ops/cases/[id]/route'),
+  'api/v1/ops/cases/route.ts': () => import('./app/api/v1/ops/cases/route'),
+  'api/v1/ops/needs-you/route.ts': () => import('./app/api/v1/ops/needs-you/route'),
   'api/ops/rules/route.ts': () => import('./app/api/ops/rules/route'),
   'api/ops/start/route.ts': () => import('./app/api/ops/start/route'),
   'api/ops/stop/route.ts': () => import('./app/api/ops/stop/route'),
@@ -120,6 +136,7 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/publisher/terms/accept/route.ts': () => import('./app/api/publisher/terms/accept/route'),
   'api/ops/payee-decisions/route.ts': () => import('./app/api/ops/payee-decisions/route'),
   'api/publisher/export/route.ts': () => import('./app/api/publisher/export/route'),
+  'api/publisher/sales/export/route.ts': () => import('./app/api/publisher/sales/export/route'),
   'api/publisher/offers/create/route.ts': () => import('./app/api/publisher/offers/create/route'),
   'api/publisher/offers/revise/route.ts': () => import('./app/api/publisher/offers/revise/route'),
   'api/publisher/offers/withdraw/route.ts': () =>

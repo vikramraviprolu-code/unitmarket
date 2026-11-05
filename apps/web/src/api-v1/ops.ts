@@ -34,7 +34,8 @@ export async function overview(a: App, ctx: Ctx): Result<unknown> {
       orders: s.orders,
       operations: s.operations,
       alerts: s.alerts,
-      invariants: s.invariants,
+      // The v1 shape is unchanged: `rows` (INT-OPS-A) is for the operator pages only.
+      invariants: s.invariants.map((v) => ({ id: v.id, ok: v.ok, detail: v.detail })),
       jobs: s.jobs,
     },
   };

@@ -72,11 +72,13 @@ describe('TR0.1 enums', () => {
 });
 
 describe('TR0.1 the golden allow-list', () => {
-  it('names the 28 tracked tables (27 of the spec and rule_settings, BR-2), once each, in name order', () => {
+  it('names the 30 tracked tables (27 of the spec, alert_events of INT-AL, rule_settings of BR-2 and api_exposure of INT-CTL), once each, in name order', () => {
     expect(TRACKED_TABLES.map((t) => t.table)).toEqual([
       'access_events',
       'access_windows',
+      'alert_events',
       'alerts',
+      'api_exposure',
       'api_keys',
       'approvals',
       'audit_log',
@@ -195,10 +197,11 @@ describe('TR0.1 the golden allow-list', () => {
     expect(everything).not.toContain('transition_log');
   });
 
-  it('gives a frozen digest column list to the nine append-only tables and to no other', () => {
+  it('gives a frozen digest column list to the ten append-only tables and to no other', () => {
     const withDigest = TRACKED_TABLES.filter((t) => t.digest.length > 0).map((t) => t.table);
     expect(withDigest).toEqual([
       'access_events',
+      'alert_events',
       'audit_log',
       'ledger_entries',
       'payee_decisions',
@@ -229,7 +232,7 @@ describe('TR0.1 the golden allow-list', () => {
 
 describe('TR0.1 the migration writes exactly the golden list', () => {
   it('trace_tracked seed rows equal TRACKED_TABLES, column by column', () => {
-    const seeded = seedRowsOfMigration();
+    const seeded = seedRowsOfMigration().sort((a, b) => (a.table < b.table ? -1 : 1));
     expect(seeded).toEqual(
       [...TRACKED_TABLES]
         .sort((a, b) => (a.table < b.table ? -1 : a.table > b.table ? 1 : 0))

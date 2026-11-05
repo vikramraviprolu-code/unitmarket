@@ -138,7 +138,7 @@ export interface Step {
   subject?: Partial<
     Pick<EventRow, 'order_id' | 'unit_id' | 'mandate_ref' | 'publisher_id' | 'buyer_id'>
   >;
-  /** Absent for the seven migration-seeded safety switches. */
+  /** Absent for the migration-seeded safety switches and API groups. */
   insert?: (db: SqlExecutor) => Promise<void>;
   /** Copied columns the insert event must hold as [null, value]. */
   insertCols?: Record<string, unknown>;
@@ -725,6 +725,28 @@ export const STEPS: Step[] = [
     },
   },
   {
+    // INT-AL (migration 0025): the state history of an alert; append-only, so no update step.
+    table: 'alert_events',
+    id: 'ale_1',
+    chain: 'ord:ord_1',
+    subject: { order_id: 'ord_1', unit_id: null },
+    insert: (db) =>
+      ins(db, 'alert_events', {
+        id: 'ale_1',
+        alert_id: 'alr_1',
+        kind: 'resolved',
+        reason_code: 'fixed_upstream',
+        note_sha256: HASH,
+        at: T,
+      }),
+    insertCols: {
+      alert_id: 'alr_1',
+      kind: 'resolved',
+      reason_code: 'fixed_upstream',
+      note_sha256: HASH,
+    },
+  },
+  {
     table: 'audit_log',
     id: 'aud_1',
     chain: 'plat',
@@ -853,6 +875,18 @@ export const STEPS: Step[] = [
       col: 'on',
       before: false,
       after: true,
+    },
+  },
+  {
+    // INT-CTL (migration 0026): the 14 API groups are seeded on; the world turns one off.
+    table: 'api_exposure',
+    id: 'orders',
+    chain: 'plat',
+    update: {
+      sql: `UPDATE api_exposure SET enabled = false, changed_by = 'opr_test', changed_at = '${T2}', reason_code = 'incident', updated_at = '${T2}' WHERE group_name = 'orders'`,
+      col: 'enabled',
+      before: true,
+      after: false,
     },
   },
   {
