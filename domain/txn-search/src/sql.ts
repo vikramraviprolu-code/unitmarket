@@ -108,19 +108,57 @@ function groupSql(group: StatusGroup, stale: () => string): string {
 }
 
 /**
+ * The shortcut for the plain Needs attention list (no filter but the scope pin, the sort and the cursor).
+ * The page is the first `limit` lines of the union of the two attention sets in the sort order, and each set
+ * holds every line of the page that belongs to it, so each set is cut to `limit` lines before the union.
+ * A line that belongs to both sets is counted once (UNION, not UNION ALL), so the page is never short.
+ * `pin` and `bound` are the scope and the cursor position written on orders `o` and order_units `u`.
+ */
+export interface AttentionCut {
+  pin: string | null;
+  bound: string | null;
+  dir: 'ASC' | 'DESC';
+  /** The bound parameter holding the page size plus one. */
+  limit: string;
+}
+
+/**
  * "Needs attention" as a list of unit ids that the partial indexes orders_attention and order_units_problem
  * answer. `= ANY (ARRAY(subquery))` runs the subquery once, first; the planner then starts from those few
- * ids and looks up each line by its key, instead of joining the whole list and filtering.
+ * ids and looks up each line by its key, instead of joining the whole list and filtering. With `cut`, only
+ * the lines of the requested page come back (see AttentionCut); without it, every attention line does.
  */
-function attentionIn(stale: () => string): string {
+function attentionIn(stale: () => string, cut?: AttentionCut): string {
   const a = STATUS_GROUPS.attention;
-  return `txn_rows.unit_id = ANY (ARRAY(
-    SELECT u.id FROM order_units u WHERE ${inLit('u.status', a.unit)}
-    UNION ALL
-    SELECT u.id FROM order_units u WHERE u.status = 'pending' AND u.updated_at < ${stale()}
+  const unitRule = `${inLit('u.status', a.unit)} OR (u.status = 'pending' AND u.updated_at < ${stale()})`;
+  const orderRule = inLit('o.status', a.order);
+  if (cut === undefined) {
+    return `txn_rows.unit_id = ANY (ARRAY(
+    SELECT u.id FROM order_units u
+     WHERE ${unitRule}
     UNION ALL
     SELECT u.id FROM order_units u
-     WHERE u.order_id = ANY (ARRAY(SELECT o.id FROM orders o WHERE ${inLit('o.status', a.order)}))
+     WHERE u.order_id = ANY (ARRAY(SELECT o.id FROM orders o WHERE ${orderRule}))
+  ))`;
+  }
+  const d = cut.dir;
+  const extra = [cut.pin, cut.bound]
+    .filter((x): x is string => x !== null)
+    .map((x) => ` AND ${x}`)
+    .join('');
+  const key = `o.created_at ${d}, o.id ${d}, u.id ${d}`;
+  return `txn_rows.unit_id = ANY (ARRAY(
+    SELECT x.id FROM (
+      (SELECT u.id, o.created_at AS c, o.id AS oid FROM order_units u JOIN orders o ON o.id = u.order_id
+        WHERE (${unitRule})${extra}
+        ORDER BY ${key} LIMIT ${cut.limit})
+      UNION
+      (SELECT u.id, o.created_at AS c, o.id AS oid FROM orders o JOIN order_units u ON u.order_id = o.id
+        WHERE ${orderRule}${extra}
+        ORDER BY ${key} LIMIT ${cut.limit})
+    ) x
+    ORDER BY x.c ${d}, x.oid ${d}, x.id ${d}
+    LIMIT ${cut.limit}
   ))`;
 }
 
@@ -175,8 +213,14 @@ export function buildTxnSql(scoped: ScopedQuery, ctx: SearchContext): BuiltSql {
   const where: string[] = [];
 
   // The pin first: nothing a client sends can remove it.
-  if (scope.kind === 'buyer') where.push(`buyer_id = ${bind(scope.buyer_id)}`);
-  if (scope.kind === 'publisher') where.push(`publisher_id = ${bind(scope.publisher_id)}`);
+  const pinParam =
+    scope.kind === 'buyer'
+      ? bind(scope.buyer_id)
+      : scope.kind === 'publisher'
+        ? bind(scope.publisher_id)
+        : null;
+  if (scope.kind === 'buyer') where.push(`buyer_id = ${pinParam}`);
+  if (scope.kind === 'publisher') where.push(`publisher_id = ${pinParam}`);
   const opaque = scope.kind === 'operator' && scope.opaque_ids_only;
 
   if (q.from !== undefined)
@@ -187,12 +231,6 @@ export function buildTxnSql(scoped: ScopedQuery, ctx: SearchContext): BuiltSql {
   if (q.currency !== undefined)
     where.push(`currency IN (${q.currency.map((c) => bind(c)).join(', ')})`);
 
-  if (q.status !== undefined) {
-    const parts = q.status.map((g) =>
-      g === 'attention' ? attentionIn(stale) : `(${groupSql(g, stale)})`,
-    );
-    where.push(`(${parts.join(' OR ')})`);
-  }
   if (q.refund !== undefined) {
     const parts = q.refund.map((r) => {
       switch (r) {
@@ -277,7 +315,7 @@ export function buildTxnSql(scoped: ScopedQuery, ctx: SearchContext): BuiltSql {
   const sort: TxnSort = q.sort ?? 'newest';
   const dir = q.dir ?? 'desc';
   const op = dir === 'desc' ? '<' : '>';
-  const upper = dir.toUpperCase();
+  const upper = dir === 'desc' ? ('DESC' as const) : ('ASC' as const);
   const sortExpr =
     sort === 'newest'
       ? 'txn_rows.created_at'
@@ -290,17 +328,54 @@ export function buildTxnSql(scoped: ScopedQuery, ctx: SearchContext): BuiltSql {
     sort === 'newest'
       ? `txn_rows.created_at ${upper}, txn_rows.order_id ${upper}, txn_rows.unit_id ${upper}`
       : `${sortExpr} ${upper}, txn_rows.unit_id ${upper}`;
+  // The same position written on orders `o` and order_units `u`, for the Needs attention shortcut.
+  let boundOU: string | null = null;
   if (q.cursor !== undefined) {
     const c = decodeCursor(q.cursor, { sort, h: ctx.h });
     const id = bind(c.id);
-    where.push(
-      sort === 'newest'
-        ? `(txn_rows.created_at, txn_rows.order_id, txn_rows.unit_id) ${op} (${bind(c.k)}::timestamptz, (SELECT x.order_id FROM order_units x WHERE x.id = ${id}), ${id})`
-        : `(${sortExpr}, txn_rows.unit_id) ${op} (${bind(c.k)}::int, ${id})`,
-    );
+    if (sort === 'newest') {
+      const at = `${bind(c.k)}::timestamptz`;
+      const orderOf = `(SELECT x.order_id FROM order_units x WHERE x.id = ${id})`;
+      where.push(
+        `(txn_rows.created_at, txn_rows.order_id, txn_rows.unit_id) ${op} (${at}, ${orderOf}, ${id})`,
+      );
+      boundOU = `(o.created_at, o.id, u.id) ${op} (${at}, ${orderOf}, ${id})`;
+    } else {
+      where.push(`(${sortExpr}, txn_rows.unit_id) ${op} (${bind(c.k)}::int, ${id})`);
+    }
   }
 
   const limit = q.limit ?? DEFAULT_LIMIT;
+  const limitParam = bind(limit + 1);
+
+  // The status filter. A list that asks only for Needs attention, with no other filter, takes the shortcut:
+  // the ids of the page come straight from the two attention sets (see AttentionCut). Any other filter would
+  // have to run on the cut lines, so those queries read every attention line instead.
+  if (q.status !== undefined) {
+    const PAGING_KEYS = new Set(['status', 'sort', 'dir', 'limit', 'cursor']);
+    const plain =
+      sort === 'newest' &&
+      q.status.length === 1 &&
+      q.status[0] === 'attention' &&
+      Object.entries(q).every(([k, v]) => v === undefined || PAGING_KEYS.has(k));
+    const cut: AttentionCut | undefined = plain
+      ? {
+          pin:
+            scope.kind === 'buyer'
+              ? `o.buyer_id = ${pinParam}`
+              : scope.kind === 'publisher'
+                ? `u.publisher_id = ${pinParam}`
+                : null,
+          bound: boundOU,
+          dir: upper,
+          limit: limitParam,
+        }
+      : undefined;
+    const parts = q.status.map((g) =>
+      g === 'attention' ? attentionIn(stale, cut) : `(${groupSql(g, stale)})`,
+    );
+    where.push(`(${parts.join(' OR ')})`);
+  }
   const columns = scope.kind === 'publisher' ? SELLER_COLUMNS : ALL_COLUMNS;
   // Two steps in one statement. The inner step finds the ids of the page: it names only the columns the
   // filters and the sort need, so Postgres drops every other view column (titles, refund, case, alert and
@@ -313,7 +388,7 @@ export function buildTxnSql(scoped: ScopedQuery, ctx: SearchContext): BuiltSql {
      FROM txn_rows
     ${where.length > 0 ? `WHERE ${where.join('\n      AND ')}` : ''}
     ORDER BY ${orderBy}
-    LIMIT ${bind(limit + 1)}
+    LIMIT ${limitParam}
  ))
  ORDER BY ${orderBy}`;
   return { text, params, limit, sort, dir };

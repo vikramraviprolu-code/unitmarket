@@ -24,6 +24,8 @@ type P = Actor | Principal;
 const BUYER: P = { kind: 'buyer', buyer_id: 'b1' };
 const PUBLISHER: P = { kind: 'publisher', publisher_id: 'p1' };
 const OPERATOR: P = { kind: 'operator', operator_id: 'op_1', mfa: true };
+// What toActor() makes of an operator API key: an operator Actor without MFA.
+const OPERATOR_NO_MFA: P = { kind: 'operator', operator_id: 'op_1', mfa: false };
 const AGENT: P = { kind: 'agent', key_id: 'key_b2', buyer_id: 'b2', mandate_id: 'man_b2' };
 const CLIENT_BUYER: P = {
   kind: 'api_client',
@@ -264,6 +266,14 @@ describe('operator keys and sessions (SR0.2)', () => {
     expect(await units(CLIENT_OPERATOR, { seller: 'Harbour Markets' })).toEqual([]);
     expect(await units(CLIENT_OPERATOR, { seller: 'harbour' })).toEqual([]);
     expect((await units(CLIENT_OPERATOR, { seller: 'p1' })).sort()).toEqual(['u1', 'u3', 'u5a']);
+  });
+  it('an operator Actor without MFA (an operator API key through toActor) matches buyer and seller by id only', async () => {
+    expect(await units(OPERATOR_NO_MFA, { buyer: 'Ada Buyer' })).toEqual([]);
+    expect(await units(OPERATOR_NO_MFA, { buyer: 'ada' })).toEqual([]);
+    expect((await units(OPERATOR_NO_MFA, { buyer: 'b2' })).sort()).toEqual(['u3', 'u4']);
+    expect(await units(OPERATOR_NO_MFA, { seller: 'Harbour Markets' })).toEqual([]);
+    expect(await units(OPERATOR_NO_MFA, { seller: 'harbour' })).toEqual([]);
+    expect((await units(OPERATOR_NO_MFA, { seller: 'p1' })).sort()).toEqual(['u1', 'u3', 'u5a']);
   });
   it('an operator sees every environment and may filter on flags', async () => {
     expect((await units(OPERATOR, { environment: 'dryrun' })).length).toBeGreaterThan(5);
