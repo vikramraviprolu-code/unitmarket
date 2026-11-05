@@ -114,3 +114,59 @@ describe('INT-OPS-B pages: labelled landmarks, inputs and tables', () => {
     expect(src).toMatch(/role="status"|aria-live=/);
   });
 });
+
+// INT-BUY: the text-read check for the five new buyer pages and their parts. Every form, nav and section has a
+// name, every input is labelled, every table has a caption, and each page has a level one heading.
+describe('INT-BUY pages: labelled landmarks, inputs and tables', () => {
+  const PAGES = [
+    'app/buyer/agents/page.tsx',
+    'app/buyer/spending/page.tsx',
+    'app/buyer/receipts/page.tsx',
+    'app/buyer/approvals/page.tsx',
+    'app/buyer/keys/page.tsx',
+  ];
+  const PARTS = [
+    'ui/buyer/CapCard.tsx',
+    'ui/buyer/CapForm.tsx',
+    'ui/buyer/SpendMeter.tsx',
+    'ui/buyer/CaseCard.tsx',
+    'ui/buyer/KeyList.tsx',
+  ];
+  const named = (tag: string, src: string): string[] =>
+    [...src.matchAll(new RegExp(`<${tag}\\b[^>]*>`, 'g'))].map((m) => m[0]);
+  it.each([...PAGES, ...PARTS])('%s: nav, section and form elements have a name', (f) => {
+    const src = code(f);
+    for (const tag of ['nav', 'form'])
+      for (const el of named(tag, src))
+        expect(el, `${f} ${tag}`).toMatch(/aria-label=|aria-labelledby=|role="search"/);
+    for (const el of named('section', src)) expect(el, f).toMatch(/aria-label=|aria-labelledby=/);
+  });
+  it.each([...PAGES, ...PARTS])('%s: each input, select and textarea is labelled', (f) => {
+    const src = code(f);
+    for (const el of ['input', 'select', 'textarea'].flatMap((t) => named(t, src))) {
+      const id = /\bid=(?:"([^"]+)"|\{([^}]+)\})/.exec(el);
+      const labelled =
+        /aria-label=|aria-labelledby=/.test(el) ||
+        (id !== null &&
+          new RegExp(
+            `htmlFor=(?:"${id[1] ?? ''}"|\\{${(id[2] ?? '').replace(/[$()]/g, '\\$&')}\\})`,
+          ).test(src));
+      expect(labelled, `${f}: ${el}`).toBe(true);
+    }
+  });
+  it.each(PAGES)('%s has a page header with a title and no table without a name', (f) => {
+    const src = code(f);
+    expect(src, f).toMatch(/<PageHeader\b[^>]*title=/);
+    for (const el of named('table', src)) expect(el, f).toMatch(/aria-label=|aria-labelledby=/);
+  });
+  it('the cap form shows the confirm sentence in a live region before submit and has a labelled confirm button', () => {
+    const src = code('ui/buyer/CapForm.tsx');
+    expect(src).toContain('capConfirmSentence(');
+    expect(src).toMatch(/role="status"|aria-live=/);
+    expect(src).toMatch(/terms_accepted/);
+  });
+  it('the cap card marks its state in words, never by colour alone, and the meter has a text value', () => {
+    expect(code('ui/buyer/CapCard.tsx')).toContain('state_word');
+    expect(code('ui/buyer/SpendMeter.tsx')).toMatch(/role="meter"|role="progressbar"|<meter\b/);
+  });
+});

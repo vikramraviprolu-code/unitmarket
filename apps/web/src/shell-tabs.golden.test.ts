@@ -31,8 +31,8 @@ describe('tabs per persona (spec UI0.1)', () => {
       ['Home', '/buyer', true],
       ['Find', '/discover', true],
       ['Library', '/library', true],
-      ['Spending', '/buyer/spending', false],
-      ['Agents', '/buyer/agents', false],
+      ['Spending', '/buyer/spending', true],
+      ['Agents', '/buyer/agents', true],
     ]);
   });
   it('seller: URLs keep /publisher, the labels say Seller words', () => {
