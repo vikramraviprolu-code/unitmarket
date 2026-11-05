@@ -125,6 +125,7 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
     import('./app/api/ops/publishers/applicants/decision/route'),
   'api/ops/payee-decisions/route.ts': () => import('./app/api/ops/payee-decisions/route'),
   'api/publisher/export/route.ts': () => import('./app/api/publisher/export/route'),
+  'api/publisher/sales/export/route.ts': () => import('./app/api/publisher/sales/export/route'),
   'api/publisher/offers/create/route.ts': () => import('./app/api/publisher/offers/create/route'),
   'api/publisher/offers/revise/route.ts': () => import('./app/api/publisher/offers/revise/route'),
   'api/publisher/offers/withdraw/route.ts': () =>

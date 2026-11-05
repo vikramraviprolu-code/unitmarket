@@ -39,6 +39,9 @@ import {
   EXPORT_STATEMENT_LABEL,
 } from '../../../lib/publisher-e1-copy';
 
+import { readSellerMoney } from '../../../composition/seller';
+import { moneyView } from '../../../lib/seller-money-view';
+
 export const metadata: Metadata = { title: 'Statement' };
 
 // PUB-C, S5: the statement of the signed-in publisher, one block per currency. The page reads no
@@ -49,6 +52,11 @@ export default async function PublisherStatement() {
   if (actor?.kind !== 'publisher') redirect('/signin?next=/publisher/statement');
   const statement = await (await app()).engine.publisherStatement(actor);
   if (statement === null) redirect('/signin?next=/publisher/statement');
+  // INT-SEL (SEL.5): "modelled" comes from the stored environment of the block, through moneyView, never typed here.
+  const money = await readSellerMoney(actor);
+  const labels = new Map(
+    (money === null ? [] : moneyView(money).blocks).map((m) => [m.key, m] as const),
+  );
   return (
     <>
       <PageHeader
@@ -96,10 +104,19 @@ export default async function PublisherStatement() {
             id={`statement-${b.currency}-${b.environment}`}
             className="pk-panel pk-block"
             data-testid="statement-block"
+            aria-labelledby={`statement-h-${b.currency}-${b.environment}`}
           >
-            <h2>
+            <h2 id={`statement-h-${b.currency}-${b.environment}`}>
               {b.currency} <EnvChip environment={b.environment} />
             </h2>
+            {labels.get(`${b.currency}-${b.environment}`)?.label == null ? null : (
+              <p className="pk-help">
+                <Chip tone="info" testId="statement-modelled">
+                  {labels.get(`${b.currency}-${b.environment}`)?.label}
+                </Chip>{' '}
+                {labels.get(`${b.currency}-${b.environment}`)?.note}
+              </p>
+            )}
             <p className="pk-settle" data-testid="settlement-sentence">
               <span className="pk-settle-label">{SETTLEMENT_HEADING}</span>
               {b.settlement.sentence}
