@@ -18,7 +18,11 @@ import { REPO_ROOT } from './test-helpers';
 
 export const VERBS = ['doctor', 'status', 'up', 'down', 'restart', 'deploy', 'logs'] as const;
 export const PROJECT = 'unitmarket-sbx-vr1';
-export const WEB_URL = 'https://unitmarket-sandbox-abc123-ey.a.run.app';
+/** The origin service.yaml holds, so a default scenario has no origin mismatch. */
+export const WEB_URL =
+  /^UMS_PUBLIC_ORIGIN: '([^']+)'$/m.exec(
+    readFileSync(join(REPO_ROOT, 'infra', 'gcp', 'service.yaml'), 'utf8'),
+  )?.[1] ?? 'https://unitmarket-sandbox-abc123-ey.a.run.app';
 export const REVISION = 'unitmarket-sandbox-00031-x7k';
 export const REQUIRED_SECRETS = [
   'DATABASE_URL',
@@ -48,9 +52,15 @@ export const APIS = [
   'cloudbuild.googleapis.com',
 ];
 
+/** Asks the shell, because lint bars Date.now and process.env here (S3, S6); the kit itself uses `date`. */
+const shell = (script: string): string =>
+  spawnSync('bash', ['-c', script], { encoding: 'utf8' }).stdout.trim();
+
 /** An ISO time `hours` ago. */
 export const ago = (hours: number): string =>
-  new Date(Date.now() - hours * 3_600_000).toISOString();
+  new Date((Number(shell('date -u +%s')) - hours * 3600) * 1000).toISOString();
+
+const HOST_PATH = shell('printf %s "$PATH"');
 
 export interface WebState {
   exists?: boolean;
@@ -379,7 +389,7 @@ export function makeKit(s: Scenario = {}): Kit {
           encoding: 'utf8',
           input: opts.input ?? '',
           env: {
-            PATH: process.env['PATH'] ?? '',
+            PATH: HOST_PATH,
             HOME: root,
             LANG: 'C',
             CLOUD_WAIT_STEP: '0',

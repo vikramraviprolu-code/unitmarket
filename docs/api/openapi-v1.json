@@ -4781,7 +4781,7 @@
     },
     "/api/v1/status": {
       "get": {
-        "summary": "Is the service up, and in which environment. Public; the same body as /healthz.",
+        "summary": "Is the service up, in which environment. Adds revision and db. Public.",
         "security": [],
         "parameters": [],
         "responses": {
@@ -4803,6 +4803,19 @@
                         "sandbox"
                       ]
                     },
+                    "revision": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "db": {
+                      "type": "string",
+                      "enum": [
+                        "up",
+                        "closed"
+                      ]
+                    },
                     "maintenance": {
                       "type": "boolean",
                       "const": true
@@ -4810,7 +4823,9 @@
                   },
                   "required": [
                     "ok",
-                    "environment"
+                    "environment",
+                    "revision",
+                    "db"
                   ],
                   "additionalProperties": false
                 }

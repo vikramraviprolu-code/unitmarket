@@ -148,7 +148,8 @@ describe('--dry-run on every verb only reads', () => {
         const k = makeKit(s);
         const before = JSON.stringify(k.read('web.json')) + k.read('sql_policy');
         const r = k.run([...argsOf(verb).filter((a) => a !== '--yes'), '--dry-run']);
-        expect([0, 2], `${verb}: ${r.out}`).toContain(r.status);
+        // status exits 1 for a stack that is down; every other verb is 0 (done) or 2 (refused)
+        expect(verb === 'status' ? [0, 1] : [0, 2], `${verb}: ${r.out}`).toContain(r.status);
         for (const c of k.gcloud()) expect(isRead(c), c).toBe(true);
         expect(k.curl()).toEqual([]);
         expect(JSON.stringify(k.read('web.json')) + k.read('sql_policy')).toBe(before);

@@ -556,11 +556,16 @@ export const OpsSwitchesSchema = z
       .strict(),
   })
   .strict();
-/** The same body as /healthz. */
+/**
+ * Is the service up (INT-CL1). `revision` is the Cloud Run revision name, null anywhere else; `db` is
+ * "up" when the database is open and "closed" in maintenance mode. Nothing here is a secret.
+ */
 export const StatusSchema = z
   .object({
     ok: z.literal(true),
     environment: EnvironmentLabelSchema,
+    revision: z.string().nullable(),
+    db: z.enum(['up', 'closed']),
     maintenance: z.literal(true).optional(),
   })
   .strict();
@@ -989,7 +994,7 @@ export const V1_ROUTES: readonly RouteDoc[] = [
   {
     method: 'GET',
     path: '/api/v1/status',
-    summary: 'Is the service up, and in which environment. Public; the same body as /healthz.',
+    summary: 'Is the service up, in which environment. Adds revision and db. Public.',
     auth: 'public',
     scopes: [],
     input: { in: 'none' },

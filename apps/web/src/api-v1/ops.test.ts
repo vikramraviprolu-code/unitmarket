@@ -31,7 +31,13 @@ const app = (over: Record<string, unknown> = {}): App =>
   ({
     engine: {
       opsSnapshot: async (a: Actor) => (a.kind === 'operator' ? snap : null),
-      health: async () => ({ ok: true, environment: 'dryrun', maintenance: false }),
+      health: async () => ({
+        ok: true,
+        environment: 'dryrun',
+        revision: null,
+        db: true,
+        maintenance: false,
+      }),
       ...over,
     },
     db: { query: async () => ({ rows: [] }) },
@@ -90,11 +96,22 @@ describe('operator functions', () => {
 
 describe('status', () => {
   it('healthy: 200 with the environment, and the maintenance flag only when set', async () => {
-    expect(await status(app())).toEqual({ status: 200, body: { ok: true, environment: 'dryrun' } });
-    const m = app({ health: async () => ({ ok: true, environment: 'dryrun', maintenance: true }) });
+    // INT-CL1: the body also carries revision and db, so the stub health answer carries them too.
+    const h = { ok: true, environment: 'dryrun', revision: 'r-00001-abc', db: true };
+    expect(await status(app({ health: async () => ({ ...h, maintenance: false }) }))).toEqual({
+      status: 200,
+      body: { ok: true, environment: 'dryrun', revision: 'r-00001-abc', db: 'up' },
+    });
+    const m = app({ health: async () => ({ ...h, db: false, maintenance: true }) });
     expect(await status(m)).toEqual({
       status: 200,
-      body: { ok: true, environment: 'dryrun', maintenance: true },
+      body: {
+        ok: true,
+        environment: 'dryrun',
+        revision: 'r-00001-abc',
+        db: 'closed',
+        maintenance: true,
+      },
     });
   });
   it('unhealthy: 503 unhealthy', async () => {

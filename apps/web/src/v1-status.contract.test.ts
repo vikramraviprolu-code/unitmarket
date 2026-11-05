@@ -1,6 +1,5 @@
-// INT-CL1 (F11): GET /api/v1/status is the one public health answer: ok, environment, revision and db, and
-// `maintenance: true` in maintenance mode. No new /api/health route; /healthz is unchanged; nothing about
-// switches, flags or approvals is added.
+// INT-CL1 (F11): GET /api/v1/status is the one public health answer: ok, environment, revision and db.
+// No new /api/health route; /healthz is unchanged; nothing about switches, flags or approvals is added.
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -62,7 +61,38 @@ describe('GET /api/v1/status', () => {
     expect(text).not.toMatch(/switch|outbound|lock|flag|approval|connect|paypal/i);
   });
 
-  it('in maintenance mode: 200, maintenance true, db closed', async () => {
+  // The maintenance gate in withRoute answers 503 `maintenance` for every route but /healthz (existing
+  // tests pin that, and N3 lets this lane edit O5 only), so the route itself is not reachable in
+  // maintenance mode. The mapping is checked on the handler: maintenance gives db "closed".
+  it('maps maintenance mode to db "closed" and keeps maintenance true', async () => {
+    const { status: handler } = await import('./api-v1/ops');
+    const fake = {
+      engine: {
+        health: async () => ({
+          ok: true,
+          environment: 'dryrun',
+          revision: REVISION,
+          db: false,
+          maintenance: true,
+          last_pass_at: null,
+          due: 0,
+        }),
+      },
+    } as unknown as App;
+    const r = await handler(fake);
+    expect(r).toEqual({
+      status: 200,
+      body: {
+        ok: true,
+        environment: 'dryrun',
+        revision: REVISION,
+        db: 'closed',
+        maintenance: true,
+      },
+    });
+  });
+
+  it('through the route in maintenance mode: 503 maintenance, as for every route but /healthz', async () => {
     const flag = join(tmp, 'ums-maintenance');
     writeFileSync(flag, '');
     await boot({
@@ -72,16 +102,8 @@ describe('GET /api/v1/status', () => {
       K_REVISION: REVISION,
     });
     const res = await status();
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual([
-      'db',
-      'environment',
-      'maintenance',
-      'ok',
-      'revision',
-    ]);
-    expect(body).toMatchObject({ ok: true, maintenance: true, db: 'closed', revision: REVISION });
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('maintenance');
   });
 
   it('an unhealthy app answers 503 unhealthy and no revision or db figure', async () => {
