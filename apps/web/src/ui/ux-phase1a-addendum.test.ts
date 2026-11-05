@@ -136,7 +136,8 @@ describe('item 45: the receipt page names the article and the publisher', () => 
 
 describe('item 53: the ops order reference is whole', () => {
   it('prints the reference unsliced in a cell that does not wrap or clip, inside a scroll wrapper', () => {
-    const src = noComments(read('../app/ops/page.tsx'));
+    // INT-UI0: the orders table moved from /ops to /ops/money.
+    const src = noComments(read('../app/ops/money/page.tsx'));
     expect(src).toContain('{o.order_ref}');
     expect(src).not.toMatch(/order_ref\s*\.\s*(slice|substring|substr)/);
     expect(src).not.toMatch(/order_ref[^}]*\.\.\./);

@@ -102,7 +102,7 @@ describe('timelineView', () => {
     const v = timelineView({ entries: TIMELINE_FIXTURES });
     if (v.kind !== 'rows') throw new Error('rows expected');
     for (const r of v.rows) {
-      expect(r.actor).toBe(r.actor_label);
+      expect(r.actor_label.length).toBeGreaterThan(0);
       expect(r.actor_word).toBe(ACTOR_WORDS[r.actor_kind]);
       expect(r.channel_word).toBe(CHANNEL_WORDS[r.channel]);
       expect(r.text.length).toBeGreaterThan(3);

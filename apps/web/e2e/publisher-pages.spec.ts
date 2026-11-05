@@ -25,7 +25,7 @@ test('the publisher home shows the signed in publisher only, from stored data', 
   await expect(page.getByTestId('publisher-offers')).toHaveText(/^\d+ offers? (is|are) live\.$/);
   await expect(page.getByTestId('publisher-payee')).toContainText('Account on file ending');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('link', { name: 'Publisher' })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Seller' })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'Find articles' })).toHaveCount(0);
   await expect(page.getByTestId('env-label').first()).toContainText('Dry run');
   await ctx.close();

@@ -215,7 +215,36 @@ test.describe.serial('operator shell', () => {
       await expect(op.page.getByRole('heading', { level: 1 }).first()).toBeVisible();
     }
   });
+  // Evidence for the PR: light (Bright Market) and dark (Deep Harbour) screenshots of each tab at desktop and
+  // phone width. The PNGs go to the ignored test-results folder; the evidence copies are committed under docs/evidence/.
+  test('screenshots of every operator tab', async ({ baseURL }, testInfo) => {
+    await shoot(op.page, baseURL, testInfo.outputPath.bind(testInfo), 'operator', [...OPS_TABS]);
+  });
 });
+
+/** One screenshot per skin and width for each path. */
+async function shoot(
+  page: Page,
+  baseURL: string | undefined,
+  out: (name: string) => string,
+  persona: string,
+  paths: readonly string[],
+): Promise<void> {
+  for (const [skin] of [['market'], ['harbour']] as const) {
+    await page
+      .context()
+      .addCookies([{ name: 'um_skin', value: skin, url: baseURL ?? 'http://localhost:3100' }]);
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const path of paths) {
+        await page.goto(path);
+        await page.waitForLoadState('networkidle');
+        const name = `${persona}${path.replace(/\//g, '-')}-${skin}-${width}.png`;
+        await page.screenshot({ path: out(name) });
+      }
+    }
+  }
+}
 
 test.describe('refusals', () => {
   test('anonymous, buyer and seller sessions land on sign-in for every operator tab', async ({
@@ -289,6 +318,19 @@ test.describe('refusals', () => {
     await expect(buyer.getByRole('navigation', { name: 'Seller pages', exact: true })).toHaveCount(
       0,
     );
+    await buyer.context().close();
+  });
+
+  test('screenshots of the seller and buyer tabs', async ({ browser, baseURL }, testInfo) => {
+    const seller = await sellerPage(browser);
+    await shoot(seller.page, baseURL, testInfo.outputPath.bind(testInfo), 'seller', SELLER_TABS);
+    await seller.ctx.close();
+    const buyer = await buyerPage(browser, 'a');
+    await shoot(buyer, baseURL, testInfo.outputPath.bind(testInfo), 'buyer', [
+      '/buyer',
+      '/discover',
+      '/library',
+    ]);
     await buyer.context().close();
   });
 });

@@ -135,3 +135,24 @@ describe('the root layout and the nav', () => {
     expect(code('lib/nav.ts')).toContain("href: '/publisher'");
   });
 });
+
+describe('Ref (UI0.4) and Timeline (UI0.6), read as text', () => {
+  it('Ref copies the whole reference through copyText and announces the result politely', () => {
+    const src = code('ui/Ref.tsx');
+    expect(src).toContain("'use client'");
+    expect(src).toContain('copyText(value)');
+    expect(src).toContain('navigator.clipboard.writeText(text)');
+    expect(src).toMatch(/role="status"/);
+    expect(src).toMatch(/<button type="button"/);
+    // The short form is for the eye; a screen reader gets the whole reference.
+    expect(src).toMatch(/aria-hidden="true"/);
+    expect(src).toContain('visually-hidden');
+  });
+  it('Timeline paints the view and decides nothing: an ordered list, no script', () => {
+    const src = code('ui/Timeline.tsx');
+    expect(src).toContain('<ol');
+    expect(src).toContain('aria-label={label}');
+    expect(src).toMatch(/role="alert"/);
+    expect(src).not.toMatch(/useState|useEffect|'use client'|fetch\(|\.sort\(/);
+  });
+});

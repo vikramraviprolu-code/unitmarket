@@ -48,6 +48,26 @@ export const UnitStatusSchema = z.enum([
   'reversed',
 ]);
 export type UnitStatus = z.infer<typeof UnitStatusSchema>;
+/**
+ * The states of a refund request (UI0.5). `refund_requests.state` has no database CHECK (migration 0004
+ * line 220), so this list is read from the values domain/payments/src/refunds.ts writes: the OPEN and
+ * IN_FLIGHT sets (lines 75 and 78) name 'requested', 'sent', 'unknown', 'pending' and 'unresolved'; the
+ * insert writes 'requested' (283 to 284); 'cancelled' (342, 916), 'failed' (527, 916, 1163, 1233), 'sent'
+ * (711), 'pending' (753), 'rejected' (771), 'unknown' (786), 'completed' (909) and 'unresolved' (1233) are
+ * the updates. Additive: no existing schema reads it.
+ */
+export const REFUND_REQUEST_STATES = [
+  'requested',
+  'sent',
+  'unknown',
+  'pending',
+  'unresolved',
+  'completed',
+  'failed',
+  'cancelled',
+  'rejected',
+] as const;
+export type RefundRequestState = (typeof REFUND_REQUEST_STATES)[number];
 export const MoneyStateSchema = z.enum([
   'pending',
   'captured',

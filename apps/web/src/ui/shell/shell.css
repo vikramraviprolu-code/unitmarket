@@ -1,0 +1,179 @@
+/* INT-UI0 shell: tokens only, so it follows Bright Market and Deep Harbour. Targets are at least 44px. The top
+   tabs wrap onto as many rows as they need and never scroll sideways. Under 640px the top tabs are replaced by
+   a fixed bottom bar. The shell is not sticky: the site header is, and two sticky bars would cover the page. */
+.shell {
+  background: var(--bg);
+  border-bottom: 1px solid var(--card-border);
+  margin-bottom: var(--space);
+}
+.shell-inner {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 8px var(--space) 4px;
+}
+.shell-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.shell-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.shell-tabs ul,
+.shell-subtabs ul,
+.shell-phonebar ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shell-tabs a,
+.shell-subtabs a,
+.shell-phonebar a {
+  display: inline-block;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+  background: var(--surface);
+  color: var(--accent);
+  font-family: var(--display);
+  font-weight: 600;
+  line-height: 42px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.shell-tabs a:hover,
+.shell-subtabs a:hover,
+.shell-phonebar a:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.shell-tabs a:focus-visible,
+.shell-subtabs a:focus-visible,
+.shell-phonebar a:focus-visible,
+.shell-crumbs a:focus-visible,
+.shell-search input:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+/* The current page is told by colour and by shape (a filled pill), and by aria-current for a screen reader. */
+.shell-tabs a[aria-current='page'],
+.shell-phonebar a[aria-current='page'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.shell-subtabs {
+  flex: 1 1 100%;
+  order: 3;
+}
+.shell-subtabs a {
+  min-height: 44px;
+  font-weight: 500;
+}
+.shell-subtabs a[aria-current='page'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+.shell-search {
+  flex: 0 1 220px;
+  margin: 0;
+}
+.shell-search input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.shell-crumbrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.shell-crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+/* Links keep the 44px target of every nav link; the current page, which is not a link, sits on the same line. */
+.shell-crumbs li {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.shell-crumbs li + li::before {
+  content: '\203A';
+  margin-right: 8px;
+}
+.shell-crumbs li[aria-current='page'] {
+  padding: 0 12px 0 0;
+  color: var(--text);
+  font-weight: 600;
+}
+.shell-crumbs a {
+  color: var(--accent);
+}
+.shell-phonebar {
+  display: none;
+}
+@media (max-width: 640px) {
+  .shell-tabs {
+    display: none;
+  }
+  .shell-search {
+    flex: 1 1 100%;
+  }
+  .shell-phonebar {
+    display: flex;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .shell-phonebar ul {
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+  .shell-phonebar li {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .shell-phonebar a {
+    display: block;
+    min-height: 44px;
+    padding: 0 4px;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    font-size: 0.85rem;
+  }
+  /* Room for the bar, so the end of the page and the footer are not hidden behind it. */
+  body:has(.shell-phonebar) .site-footer {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+}

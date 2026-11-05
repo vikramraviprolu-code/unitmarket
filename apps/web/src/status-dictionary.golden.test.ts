@@ -42,7 +42,10 @@ describe('REFUND_REQUEST_STATES comes from the code that writes them', () => {
   for (const m of src.matchAll(/UPDATE refund_requests SET[^`"']*?state = '([a-z_]+)'/g))
     written.add(m[1]!);
   for (const m of src.matchAll(/VALUES \([^)]*'([a-z_]+)', NULL/g)) written.add(m[1]!);
-  for (const m of src.matchAll(/\? '([a-z_]+)' : '([a-z_]+)'/g)) {
+  // A state chosen at run time: the two words of the ternary inside the parameter list of that UPDATE.
+  for (const m of src.matchAll(
+    /UPDATE refund_requests SET state = \$\d[^\]]*?\? '([a-z_]+)' : '([a-z_]+)'/g,
+  )) {
     written.add(m[1]!);
     written.add(m[2]!);
   }
