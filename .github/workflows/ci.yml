@@ -7,12 +7,14 @@
 #
 # TODO (dependency request, lane 17): branch coverage gate on money modules (MAINT-6, 90 percent)
 # needs @vitest/coverage-v8, which is not on the D-4 list. Add a `coverage` step once approved.
-# TODO (SUP-6): gitleaks on full history. Run `gitleaks git --no-banner --redact` locally and paste
-# the output into the PR until a pinned, reviewed install step is approved for CI.
+# SUP-6: the `gitleaks` job scans the full history on every pull request (CI-3). It builds gitleaks
+# with `go install` at a pinned version; the Go module proxy checks it against the public checksum
+# database, so only GitHub's own actions and no token are involved.
 # TODO(pin): actions are pinned by tag (v4). Pin each to a full commit SHA once it can be verified
 # against the upstream repository, which is not possible offline. Verification step, per action:
 #   git ls-remote https://github.com/actions/checkout refs/tags/v4 refs/tags/v4^{}
 #   git ls-remote https://github.com/actions/setup-node refs/tags/v4 refs/tags/v4^{}
+#   git ls-remote https://github.com/actions/setup-go refs/tags/v5 refs/tags/v5^{}
 # Take the dereferenced (^{}) SHA when present, replace `@v4` with `@<sha> # v4`, and re-run CI.
 name: ci
 
@@ -106,7 +108,25 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: echo "UMS_TEST_PG_BIN=$(ls -d /usr/lib/postgresql/*/bin | sort -V | tail -1)" >> "$GITHUB_ENV"
+      # Without the binaries every suite would skip and the job would pass with nothing tested.
+      - run: test -x "$UMS_TEST_PG_BIN/initdb"
       - run: pnpm vitest run --maxWorkers=2 pg. postgres mvp-c-pg migration-0017
+
+  # Secret scan of the full history with the repository's .gitleaks.toml and .gitleaksignore.
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+      - run: go install github.com/zricethezav/gitleaks/v8@v8.28.0
+      - run: '"$(go env GOPATH)/bin/gitleaks" git --no-banner --redact --exit-code 1 .'
 
   mutation:
     if: github.event_name == 'workflow_dispatch'
