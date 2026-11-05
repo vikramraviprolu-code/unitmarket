@@ -2057,6 +2057,24 @@ const CLOUD_CASES: CloudCase[] = [
     'no-delete',
   ],
   ['delete in cloud.sh', 'cloud.sh', append('gcloud secrets delete X'), 'no-delete'],
+  [
+    'delete inside a message helper, command substitution',
+    LIB,
+    append('say "$(gcloud run services delete x --quiet)"'),
+    'no-delete',
+  ],
+  [
+    'delete inside a message helper, backticks',
+    LIB,
+    append('echo "`gcloud run services delete x`"'),
+    'no-delete',
+  ],
+  [
+    'delete inside a die helper, substitution after text',
+    LIB,
+    append('die_fail "failed: $(gcloud sql instances delete x)"'),
+    'no-delete',
+  ],
   ['git delete branch', LIB, append('git branch --delete x'), 'no-delete'],
   [
     'deletion protection off',
@@ -2173,6 +2191,11 @@ describe('INT-CL1 guard rules (F1, F2, F3)', () => {
     ],
     ['echo text that says delete', LIB, append('echo "this kit never runs a delete"')],
     ['a die message that says delete', LIB, append('die_refuse "refusing to delete anything"')],
+    [
+      'an escaped substitution in a message is only text',
+      LIB,
+      append('say "never run \\$(gcloud delete)"'),
+    ],
   ];
   it.each(ACCEPTED_CLOUD)('accepts: %s', (_name, file, edit) => {
     const r = runGuard(GUARD, edited(file, edit));

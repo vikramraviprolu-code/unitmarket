@@ -519,10 +519,11 @@ function main() {
         fail('literal-project', `${f}:${s.no} sets a gcloud default`);
       // INT-CL1: nothing in the kit deletes. The quoted text of a message (echo, printf, die, say, warn) is not a
       // statement, so a message may say the word; anything else with the word fails, a variable holding it included.
+      // A quoted string that holds a command substitution ($( or a backtick) is not stripped: it runs.
       if (
         /\bdelete\b/.test(
           s.text.replace(
-            /\b(?:echo|printf|die|die_[a-z]+|say|warn)\s+(?:-[A-Za-z]+\s+)*(?:"(?:[^"\\]|\\.)*"|'[^']*')/g,
+            /\b(?:echo|printf|die|die_[a-z]+|say|warn)\s+(?:-[A-Za-z]+\s+)*(?:"(?:(?!\$\(|`)(?:[^"\\]|\\.))*"|'[^']*')/g,
             '',
           ),
         )
