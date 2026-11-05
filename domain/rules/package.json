@@ -11,5 +11,9 @@
   },
   "dependencies": {
     "@umsbx/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@umsbx/db": "workspace:*",
+    "@umsbx/runtime": "workspace:*"
   }
 }

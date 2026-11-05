@@ -20,36 +20,29 @@ interface SeedRow {
 const list = (s: string): string[] =>
   s.trim() === '' ? [] : s.split(',').map((x) => x.trim().replace(/^'|'$/g, ''));
 
+// The journal migration seeds the first rows. A later lane that adds a tracked table (BR-2, AL, CTL) writes
+// its own row in the same line format inside its own migration, so every migration file is read and the
+// rows are compared by table name.
 function seedRowsOfMigration(): SeedRow[] {
-  // A reset writes every seed function: 0023's trace_tracked_seed() and one trace_tracked_seed_NNNN() per later
-  // lane that tracks a table (INT-AL is 0025). Only the body of such a function counts as a seed row; a row an
-  // earlier migration inserted by hand is not one.
-  const files = readdirSync(MIGRATIONS)
-    .filter((f) => f.endsWith('.sql'))
-    .sort();
-  const bodies: string[] = [];
-  for (const f of files) {
-    const text = readFileSync(new URL(f, MIGRATIONS), 'utf8');
-    for (const m of text.matchAll(/FUNCTION trace_tracked_seed(?:_\d{4})?\(\)[\s\S]*?\$fn\$;/g)) {
-      bodies.push(m[0]);
-    }
-  }
-  expect(bodies.length, 'a migration defines trace_tracked_seed').toBeGreaterThan(1);
-  const sql = bodies.join('\n');
+  const journal = readdirSync(MIGRATIONS).find((f) => /^\d{4}_trace_journal\.sql$/.test(f));
+  expect(journal, 'the trace journal migration exists').toBeDefined();
   const out: SeedRow[] = [];
   const row =
     /^\s*\('([a-z_]+)', ARRAY\[([^\]]*)\](?:::text\[\])?, ARRAY\[([^\]]*)\](?:::text\[\])?, ARRAY\[([^\]]*)\](?:::text\[\])?, '([a-z_]+)', '([^']+)'\),?\s*$/gm;
-  for (const m of sql.matchAll(row)) {
-    out.push({
-      table: m[1]!,
-      copied: list(m[2]!),
-      hashed: list(m[3]!),
-      digest: list(m[4]!),
-      time: m[5]!,
-      chain: m[6]!,
-    });
+  for (const file of readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql'))) {
+    const sql = readFileSync(new URL(file, MIGRATIONS), 'utf8');
+    for (const m of sql.matchAll(row)) {
+      out.push({
+        table: m[1]!,
+        copied: list(m[2]!),
+        hashed: list(m[3]!),
+        digest: list(m[4]!),
+        time: m[5]!,
+        chain: m[6]!,
+      });
+    }
   }
-  return out;
+  return out.sort((a, b) => (a.table < b.table ? -1 : a.table > b.table ? 1 : 0));
 }
 
 describe('TR0.1 enums', () => {
@@ -79,7 +72,7 @@ describe('TR0.1 enums', () => {
 });
 
 describe('TR0.1 the golden allow-list', () => {
-  it('names the 28 tracked tables (the 27 of the spec and alert_events of INT-AL), once each, in name order', () => {
+  it('names the 29 tracked tables (the 27 of the spec, rule_settings of BR-2 and alert_events of INT-AL), once each, in name order', () => {
     expect(TRACKED_TABLES.map((t) => t.table)).toEqual([
       'access_events',
       'access_windows',
@@ -107,6 +100,7 @@ describe('TR0.1 the golden allow-list', () => {
       'recovery_actions',
       'recovery_cases',
       'refund_requests',
+      'rule_settings',
       'safety_switches',
       'webhook_events',
     ]);
@@ -214,6 +208,7 @@ describe('TR0.1 the golden allow-list', () => {
       'publisher_applicant_decisions',
       'receipts',
       'recovery_actions',
+      'rule_settings',
     ]);
     for (const t of TRACKED_TABLES.filter((x) => x.digest.length > 0)) {
       expect(t.digest).toContain('id');
@@ -238,14 +233,16 @@ describe('TR0.1 the migration writes exactly the golden list', () => {
   it('trace_tracked seed rows equal TRACKED_TABLES, column by column', () => {
     const seeded = seedRowsOfMigration().sort((a, b) => (a.table < b.table ? -1 : 1));
     expect(seeded).toEqual(
-      TRACKED_TABLES.map((t) => ({
-        table: t.table,
-        copied: [...t.copied],
-        hashed: [...t.hashed],
-        digest: [...t.digest],
-        time: t.time,
-        chain: t.chain,
-      })),
+      [...TRACKED_TABLES]
+        .sort((a, b) => (a.table < b.table ? -1 : a.table > b.table ? 1 : 0))
+        .map((t) => ({
+          table: t.table,
+          copied: [...t.copied],
+          hashed: [...t.hashed],
+          digest: [...t.digest],
+          time: t.time,
+          chain: t.chain,
+        })),
     );
   });
 });

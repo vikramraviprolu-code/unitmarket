@@ -268,9 +268,13 @@ describe('OpenAPI 3.1 document', () => {
     const text = JSON.stringify(doc);
     expect(text).not.toMatch(/https?:\/\//);
     // Allowed (API-A): the path of the inbound webhook, and the Engine's own field and switch names
-    // paypal_fee_minor and paypal_outbound. No host, no value.
+    // paypal_fee_minor and paypal_outbound. INT-TR1 adds the journal actor kind "paypal" (an enum member of
+    // the timeline entry, which UI0's TimelineActorKind mirrors). No host, no value.
     expect(
-      text.replaceAll('/api/webhooks/paypal', '').replace(/paypal_(fee_minor|outbound)/g, ''),
+      text
+        .replaceAll('/api/webhooks/paypal', '')
+        .replaceAll('"paypal"', '')
+        .replace(/paypal_(fee_minor|outbound)/g, ''),
     ).not.toMatch(/paypal/i);
     expect(text).not.toMatch(/umk_[0-9a-z]{26}_/);
   });

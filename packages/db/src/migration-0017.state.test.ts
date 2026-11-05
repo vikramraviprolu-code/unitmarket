@@ -248,6 +248,8 @@ describe('migration 0017', () => {
               'trace_tracked',
               // INT-AL (migration 0025): alert states.
               'alert_events',
+              // BR-2 (migration 0027): rule settings.
+              'rule_settings',
             ].includes(t),
         ),
       ).toEqual(['fx_rates']);

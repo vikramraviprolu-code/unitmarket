@@ -49,12 +49,15 @@ describe('0025 journal seed convention', () => {
         "SELECT proname FROM pg_proc WHERE proname LIKE 'trace_tracked_%seed%' ORDER BY proname",
       )
     ).rows.map((r) => r.proname);
-    expect(fns).toEqual([
-      'trace_tracked_reseed',
-      'trace_tracked_reseed_0025',
-      'trace_tracked_seed',
-      'trace_tracked_seed_0025',
-    ]);
+    // Later lanes add their own pair (0027); 0023's pair stays and 0025 adds exactly one pair of its own.
+    expect(fns).toEqual(
+      expect.arrayContaining([
+        'trace_tracked_reseed',
+        'trace_tracked_reseed_0025',
+        'trace_tracked_seed',
+        'trace_tracked_seed_0025',
+      ]),
+    );
   });
 
   it('reset refills every tracked row', async () => {

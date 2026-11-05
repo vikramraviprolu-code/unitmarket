@@ -1,6 +1,7 @@
 // INT-TR0 / TR0.4: restore. A logical export of a journaled database loads into a freshly migrated one
 // with the journal intact: same events, no duplicate (chain_key, seq), the migration's own backfill rows
 // replaced by the exported ones, and nothing written twice by the capture triggers.
+import { TRACKED_TABLES } from '@umsbx/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   exportSql,
@@ -106,7 +107,7 @@ describe('export, import, verify', () => {
       }
       expect(await tablesInDependencyOrder(target)).toContain('trace_tracked');
       const tracked = await target.query('SELECT count(*)::int AS n FROM trace_tracked');
-      expect(tracked.rows[0]).toEqual({ n: 28 });
+      expect(tracked.rows[0]).toEqual({ n: TRACKED_TABLES.length });
       expect((await verifyTrace(target)).findings).toEqual([]);
     } finally {
       await s.close();
