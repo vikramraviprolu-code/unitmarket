@@ -312,6 +312,8 @@ export {
   txnCsv,
 } from '@umsbx/txn-search';
 export type { FindResult } from '@umsbx/txn-search';
+// INT-SEL: the sentences of the journal steps, for the seller sale page (read only).
+export { WORDS as TRACE_WORDS } from '@umsbx/trace';
 // INT-OPS-B: the in-process journal verifier of TR0, for the Invariants tile (read only).
 export { formatTraceFinding, verifyTrace } from '@umsbx/db';
 export { filterLibrary, isPlainLibraryQuery, parseLibraryQuery } from '@umsbx/library';
