@@ -27,6 +27,8 @@ Items: SR0.1 to SR0.5, 12 points. Decision V5 (decision-log row, next free id at
 
 The check runs on the raw key set before values are parsed, so a bad value never hides a refusal (finding 5b).
 
+The refused-field column of the table below is exported as data (added 5 Nov for OPS-B B1 and GA): `REFUSED_FIELDS: Readonly<Record<'buyer' | 'agent' | 'publisher' | 'operator_key' | 'operator', readonly string[]>>` in `packages/contracts/src/txn-query.ts`. `scopeQuery` reads it rather than holding its own list, and `txn-query.golden.test.ts` asserts it equals the table. The `api_client` rows resolve to their owner's entry.
+
 | Principal | Pinned | Refused with 400 `field_not_allowed` (any value) |
 |---|---|---|
 | buyer session | `buyer_id = self` | `buyer`, `environment`, `flags` |
