@@ -19,14 +19,18 @@ export const routeMeta: RouteMeta = {
   risk: 'medium',
 };
 
-export const GET = withRoute(routeMeta, TxnQueryMapSchema, async ({ actor, input }): Promise<HttpResult<unknown>> => {
-  if (actor.kind !== 'buyer')
-    return { status: 403, code: 'forbidden', message: 'This account cannot do that.' };
-  try {
-    return { status: 200, body: await readSpendingExport(actor.buyer_id, input) };
-  } catch (e) {
-    const refused = searchRefusal(e);
-    if (refused !== null) return refused;
-    throw e;
-  }
-})(securityDeps);
+export const GET = withRoute(
+  routeMeta,
+  TxnQueryMapSchema,
+  async ({ actor, input }): Promise<HttpResult<unknown>> => {
+    if (actor.kind !== 'buyer')
+      return { status: 403, code: 'forbidden', message: 'This account cannot do that.' };
+    try {
+      return { status: 200, body: await readSpendingExport(actor.buyer_id, input) };
+    } catch (e) {
+      const refused = searchRefusal(e);
+      if (refused !== null) return refused;
+      throw e;
+    }
+  },
+)(securityDeps);
