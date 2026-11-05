@@ -1,0 +1,480 @@
+{
+  "_about": "INT-GA / GA.3: fifty phrased queries with their expected chips (and the fields that must be dropped), written by hand in commit 1. now is the injected clock; sellers is the catalogue list the context carries. Run on the scripted model only.",
+  "now": "2026-11-05T12:00:00.000Z",
+  "sellers": [
+    "Harbour Ledger",
+    "Quayside Gazette"
+  ],
+  "cases": [
+    {
+      "id": "q01",
+      "role": "buyer",
+      "text": "stuck orders",
+      "chips": {
+        "status": "attention"
+      }
+    },
+    {
+      "id": "q02",
+      "role": "buyer",
+      "text": "orders on hold since 1 Nov",
+      "chips": {
+        "status": "attention",
+        "from": "2026-11-01"
+      }
+    },
+    {
+      "id": "q03",
+      "role": "buyer",
+      "text": "where I asked for my money back",
+      "chips": {
+        "refund": "requested"
+      }
+    },
+    {
+      "id": "q04",
+      "role": "buyer",
+      "text": "things bought by my agent this month",
+      "chips": {
+        "channel": "agent",
+        "from": "2026-11-01",
+        "to": "2026-11-05"
+      }
+    },
+    {
+      "id": "q05",
+      "role": "buyer",
+      "text": "orders I placed myself today",
+      "chips": {
+        "channel": "human",
+        "from": "2026-11-05",
+        "to": "2026-11-05"
+      }
+    },
+    {
+      "id": "q06",
+      "role": "buyer",
+      "text": "payments that went wrong yesterday",
+      "chips": {
+        "status": "failed",
+        "from": "2026-11-04",
+        "to": "2026-11-04"
+      }
+    },
+    {
+      "id": "q07",
+      "role": "buyer",
+      "text": "orders that did not go through",
+      "chips": {
+        "status": "failed"
+      }
+    },
+    {
+      "id": "q08",
+      "role": "operator",
+      "text": "disputed orders over $10",
+      "chips": {
+        "case": "open",
+        "min_minor": "1000",
+        "currency": "USD"
+      }
+    },
+    {
+      "id": "q09",
+      "role": "operator",
+      "text": "complaint orders from Harbour Ledger",
+      "chips": {
+        "case": "open",
+        "seller": "Harbour Ledger"
+      }
+    },
+    {
+      "id": "q10",
+      "role": "buyer",
+      "text": "purchases in pounds last week",
+      "chips": {
+        "currency": "GBP",
+        "from": "2026-10-29",
+        "to": "2026-11-05"
+      }
+    },
+    {
+      "id": "q11",
+      "role": "buyer",
+      "text": "my biggest purchases",
+      "chips": {
+        "sort": "amount",
+        "dir": "desc"
+      }
+    },
+    {
+      "id": "q12",
+      "role": "buyer",
+      "text": "cheapest orders this month",
+      "chips": {
+        "sort": "amount",
+        "dir": "asc",
+        "from": "2026-11-01",
+        "to": "2026-11-05"
+      }
+    },
+    {
+      "id": "q13",
+      "role": "operator",
+      "text": "sandbox orders that need attention",
+      "chips": {
+        "environment": "sandbox",
+        "status": "attention"
+      }
+    },
+    {
+      "id": "q14",
+      "role": "operator",
+      "text": "flagged orders today",
+      "chips": {
+        "flags": "alert",
+        "from": "2026-11-05",
+        "to": "2026-11-05"
+      }
+    },
+    {
+      "id": "q15",
+      "role": "operator",
+      "text": "orders with an unknown operation",
+      "chips": {
+        "flags": "unknown_op"
+      }
+    },
+    {
+      "id": "q16",
+      "role": "publisher",
+      "text": "my sales still waiting",
+      "chips": {
+        "status": "in_progress"
+      }
+    },
+    {
+      "id": "q17",
+      "role": "publisher",
+      "text": "disputed sales last month",
+      "chips": {
+        "case": "open",
+        "from": "2026-10-01",
+        "to": "2026-10-31"
+      }
+    },
+    {
+      "id": "q18",
+      "role": "publisher",
+      "text": "sales by an agent over £1",
+      "chips": {
+        "channel": "agent",
+        "min_minor": "100",
+        "currency": "GBP"
+      }
+    },
+    {
+      "id": "q19",
+      "role": "buyer",
+      "text": "orders in dollars under $2",
+      "chips": {
+        "currency": "USD",
+        "max_minor": "200"
+      }
+    },
+    {
+      "id": "q20",
+      "role": "buyer",
+      "text": "refunded orders from Quayside Gazette",
+      "chips": {
+        "status": "refunded",
+        "seller": "Quayside Gazette"
+      }
+    },
+    {
+      "id": "q21",
+      "role": "operator",
+      "text": "orders from bob@example.org that are stuck",
+      "chips": {
+        "buyer": "bob@example.org",
+        "status": "attention"
+      }
+    },
+    {
+      "id": "q22",
+      "role": "operator",
+      "text": "buyer Carol Jones money back",
+      "chips": {
+        "buyer": "Carol Jones",
+        "refund": "requested"
+      }
+    },
+    {
+      "id": "q23",
+      "role": "buyer",
+      "text": "buyer Dan Evans orders",
+      "chips": {},
+      "dropped": [
+        "buyer"
+      ]
+    },
+    {
+      "id": "q24",
+      "role": "publisher",
+      "text": "buyer Erin Moss",
+      "chips": {},
+      "dropped": [
+        "buyer"
+      ]
+    },
+    {
+      "id": "q25",
+      "role": "publisher",
+      "text": "sales for seller Quayside Gazette",
+      "chips": {},
+      "dropped": [
+        "seller"
+      ]
+    },
+    {
+      "id": "q26",
+      "role": "operator",
+      "text": "seller Quayside Gazette failed",
+      "chips": {
+        "seller": "Quayside Gazette",
+        "status": "failed"
+      }
+    },
+    {
+      "id": "q27",
+      "role": "buyer",
+      "text": "order ord_abc123xyz",
+      "chips": {
+        "ref": "ord_abc123xyz"
+      }
+    },
+    {
+      "id": "q28",
+      "role": "operator",
+      "text": "capture 5O190127TN364715T",
+      "chips": {
+        "ref": "5O190127TN364715T"
+      }
+    },
+    {
+      "id": "q29",
+      "role": "buyer",
+      "text": "capture 5O190127TN364715T",
+      "chips": {},
+      "dropped": [
+        "ref"
+      ]
+    },
+    {
+      "id": "q30",
+      "role": "buyer",
+      "text": "orders 99887766",
+      "chips": {},
+      "dropped": [
+        "number"
+      ]
+    },
+    {
+      "id": "q31",
+      "role": "operator",
+      "text": "partly refunded orders over 20p",
+      "chips": {
+        "status": "part_refunded",
+        "min_minor": "20",
+        "currency": "GBP"
+      }
+    },
+    {
+      "id": "q32",
+      "role": "operator",
+      "text": "full refund in euros",
+      "chips": {
+        "refund": "full",
+        "currency": "EUR"
+      }
+    },
+    {
+      "id": "q33",
+      "role": "buyer",
+      "text": "no case and paid",
+      "chips": {
+        "case": "none",
+        "status": "paid"
+      }
+    },
+    {
+      "id": "q34",
+      "role": "operator",
+      "text": "abandoned orders newest first",
+      "chips": {
+        "status": "failed",
+        "sort": "newest",
+        "dir": "desc"
+      }
+    },
+    {
+      "id": "q35",
+      "role": "operator",
+      "text": "oldest first failed orders",
+      "chips": {
+        "sort": "newest",
+        "dir": "asc",
+        "status": "failed"
+      }
+    },
+    {
+      "id": "q36",
+      "role": "buyer",
+      "text": "orders by hand last 7 days",
+      "chips": {
+        "channel": "human",
+        "from": "2026-10-29",
+        "to": "2026-11-05"
+      }
+    },
+    {
+      "id": "q37",
+      "role": "operator",
+      "text": "dry run orders today",
+      "chips": {
+        "environment": "dryrun",
+        "from": "2026-11-05",
+        "to": "2026-11-05"
+      }
+    },
+    {
+      "id": "q38",
+      "role": "buyer",
+      "text": "dry run orders today",
+      "chips": {
+        "from": "2026-11-05",
+        "to": "2026-11-05"
+      },
+      "dropped": [
+        "environment"
+      ]
+    },
+    {
+      "id": "q39",
+      "role": "publisher",
+      "text": "flagged sales",
+      "chips": {},
+      "dropped": [
+        "flags"
+      ]
+    },
+    {
+      "id": "q40",
+      "role": "operator",
+      "text": "mismatched orders",
+      "chips": {
+        "flags": "mismatch"
+      }
+    },
+    {
+      "id": "q41",
+      "role": "operator",
+      "text": "orders with a mismatch",
+      "chips": {
+        "status": "attention"
+      }
+    },
+    {
+      "id": "q42",
+      "role": "buyer",
+      "text": "orders between $1 and $3 this month",
+      "chips": {
+        "min_minor": "100",
+        "max_minor": "300",
+        "currency": "USD",
+        "from": "2026-11-01",
+        "to": "2026-11-05"
+      }
+    },
+    {
+      "id": "q43",
+      "role": "buyer",
+      "text": "since 15 Oct over 10p",
+      "chips": {
+        "from": "2026-10-15",
+        "min_minor": "10",
+        "currency": "GBP"
+      }
+    },
+    {
+      "id": "q44",
+      "role": "operator",
+      "text": "resolved cases last month",
+      "chips": {
+        "case": "resolved",
+        "from": "2026-10-01",
+        "to": "2026-10-31"
+      }
+    },
+    {
+      "id": "q45",
+      "role": "buyer",
+      "text": "refund requested yesterday",
+      "chips": {
+        "refund": "requested",
+        "from": "2026-11-04",
+        "to": "2026-11-04"
+      }
+    },
+    {
+      "id": "q46",
+      "role": "publisher",
+      "text": "paid sales today over $1",
+      "chips": {
+        "status": "paid",
+        "from": "2026-11-05",
+        "to": "2026-11-05",
+        "min_minor": "100",
+        "currency": "USD"
+      }
+    },
+    {
+      "id": "q47",
+      "role": "buyer",
+      "text": "what is stuck from Harbour Ledger",
+      "chips": {
+        "status": "attention",
+        "seller": "Harbour Ledger"
+      }
+    },
+    {
+      "id": "q48",
+      "role": "operator",
+      "text": "orders made by the agent on hold",
+      "chips": {
+        "channel": "agent",
+        "status": "attention"
+      }
+    },
+    {
+      "id": "q49",
+      "role": "buyer",
+      "text": "declined payments in sterling",
+      "chips": {
+        "status": "failed",
+        "currency": "GBP"
+      }
+    },
+    {
+      "id": "q50",
+      "role": "operator",
+      "text": "largest refunded orders since 1 Oct",
+      "chips": {
+        "sort": "amount",
+        "dir": "desc",
+        "status": "refunded",
+        "from": "2026-10-01"
+      }
+    }
+  ]
+}
