@@ -321,6 +321,13 @@ export { formatTraceFinding, verifyTrace } from '@umsbx/db';
 export { filterLibrary, isPlainLibraryQuery, parseLibraryQuery } from '@umsbx/library';
 // INT-OPS-C: the operator cap revoke, for the Agents and API tab module.
 export { revokeMandateAsOperator } from '@umsbx/mandates';
+// INT-GA: the assist code (plain-words search, the explain panel) and AL's catalogue, for the assist composition module.
+// GA-L5: the model port itself reaches it as App.model.
+export { assistQuery, explainOrder, orderFixIds } from '@umsbx/assist';
+export type { AssistAnswer, AssistRole, ExplainAnswer } from '@umsbx/assist';
+export { ALERT_KINDS, severityOf } from '@umsbx/alerts';
+// INT-GA FU-1: the explain panel of the order page spends a token of the route's own rate bucket.
+export { takeToken } from '@umsbx/security';
 export type { LibraryFacts, LibraryQuery } from '@umsbx/library';
 import {
   DEFAULT_RATES,
@@ -832,6 +839,11 @@ export interface App {
    * UMS_AI_ADAPTER=claude, a key is set and the app is not in maintenance.
    */
   readonly model_id: string;
+  /**
+   * INT-GA (GA-L5): the model port the app built (chooseModel): scripted, or the Claude adapter behind the caps and
+   * the paypal_outbound kill switch. The assist reads (the assist composition module) use it.
+   */
+  readonly model: ModelPort;
   /** API-C: where MVP 1 webhook deliveries go. It records each request and opens no socket. */
   readonly webhook_sink: InProcessSink;
   /** API-C: one webhook delivery pass (the job loop calls it each pass; tests call it directly). */
@@ -3780,6 +3792,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     security,
     outbound,
     model_id: model.model_id,
+    model,
     webhook_sink,
     deliverWebhooks: async (o) => {
       // CO-7b: no database in maintenance mode, so nothing to deliver.
@@ -3803,7 +3816,28 @@ function buildApp(config: Config, opts: AppOptions): App {
       // the loop is told not to recover again. With the lock, recovery belongs to the leader: the
       // loop runs it at the start of each leadership term, so a process that is not the leader never
       // takes over operations of the live one.
-      if (!led) await recoverOnStartup(paymentsDeps);
+      // FIX-BOOT-RECOVERY (INT-E2E B3): it writes under the same journal context as the loop's own
+      // recovery (packages/jobs/src/loop.ts): system, on the job channel, job `recovery`.
+      if (!led)
+        await withTraceContext(
+          {
+            id: `ctx_job_${ids.nonce()}_boot`,
+            at: clock.now().toISOString(),
+            channel: 'job',
+            actor_kind: 'system',
+            actor_id: null,
+            on_behalf_of: null,
+            mandate_id: null,
+            mfa: false,
+            req_id: null,
+            ip_hash: null,
+            ua_family: null,
+            api_key_id: null,
+            job: 'recovery',
+            tool: null,
+          },
+          () => recoverOnStartup(paymentsDeps),
+        );
       // One loop per approval (ASM-67): `loop` above is the only one this app starts.
       let running: { stop(): Promise<void> };
       try {

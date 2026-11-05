@@ -1,7 +1,27 @@
 export const PACKAGE_NAME = '@umsbx/model' as const;
-export { AGENT_TOOLS, BRIEF_SYSTEM, COMPOSE_SYSTEM } from './prompts';
-export { BriefParseOutputSchema, ComposeOutputSchema } from './schemas';
-export type { BriefParseOutput, ComposeInput, ComposeOutput } from './schemas';
+export {
+  AGENT_TOOLS,
+  BRIEF_SYSTEM,
+  COMPOSE_SYSTEM,
+  EXPLAIN_SYSTEM,
+  TXN_QUERY_SYSTEM,
+} from './prompts';
+export {
+  BriefParseOutputSchema,
+  ComposeOutputSchema,
+  ExplainInputSchema,
+  ExplainOutputSchema,
+  TxnQueryAnswerSchema,
+} from './schemas';
+export type {
+  BriefParseOutput,
+  ComposeInput,
+  ComposeOutput,
+  ExplainInput,
+  ExplainOutput,
+} from './schemas';
+// INT-GA: the scripted answers of the two assist purposes.
+export { answerExplain, answerTxnQuery } from './scripted-assist';
 export { parseBrief } from './parse-brief';
 export { composePack } from './compose';
 export { dispatchTool, sanitiseModelOutput } from './tools';
