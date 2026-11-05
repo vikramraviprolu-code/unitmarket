@@ -146,7 +146,8 @@ const CASES: [string, () => Promise<void>][] = [
       expect(res.status).toBe(200);
       const v1 = StatusSchema.parse(await res.json());
       const old = await rig.old(h['healthz']!, null, { url: '/healthz' });
-      expect(v1).toEqual(await old.json());
+      // INT-CL1 (F11): the /healthz body plus `revision` (null off Cloud Run) and `db`; the assertion is moved, not weakened.
+      expect(v1).toEqual({ ...(await old.json()), revision: null, db: 'up' });
       // Public: it answers with a key too, and says nothing about switches.
       expect(JSON.stringify(v1)).not.toMatch(/switch|outbound|lock/);
     },
