@@ -1,17 +1,15 @@
 // INT-BUY / BUY.10 e2e (offline, dry run): the buyer journeys B1 to B6 of the buyer Home design, on the pages this lane
 // builds. A fresh buyer pays one offer (tide-tables), leaves an approval open on another
-// (ferry-timetables), makes an agent key and gives it a cap, and checks each screen. Every light and dark screenshot
-// is written to the int-buy folder when UM_SHOT_DIR is set.
+// (ferry-timetables), makes an agent key and gives it a cap, and checks each screen. Light and dark screenshots go to the
+// test output folder (test-results), which git ignores.
 import { test, expect } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 import { askPrice, expectDryRun, payWithScenario, toApproval } from './support';
 
-const SHOT_DIR = process.env['UM_SHOT_DIR'];
-async function shot(page: Page, name: string): Promise<void> {
-  if (SHOT_DIR === undefined) return;
+async function shot(page: Page, name: string, info: TestInfo): Promise<void> {
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
-    await page.screenshot({ path: `${SHOT_DIR}/${name}-${scheme}.png`, fullPage: true });
+    await page.screenshot({ path: info.outputPath(`${name}-${scheme}.png`), fullPage: true });
   }
   await page.emulateMedia({ colorScheme: 'light' });
 }
@@ -45,6 +43,7 @@ test.describe('buyer journeys B1 to B6', () => {
   });
 
   test('B1: find and pay, then the order page says Open now and a step list', async () => {
+    const testInfo = test.info();
     await payWithScenario(page, {
       offer: 'tide-tables',
       scenario: 'happy',
@@ -53,10 +52,11 @@ test.describe('buyer journeys B1 to B6', () => {
     await expect(page.getByTestId('milestones')).toContainText('Done: Approved');
     await expect(page.getByTestId('milestones')).toContainText('Done: Paid');
     await expectDryRun(page);
-    await shot(page, 'order');
+    await shot(page, 'order', testInfo);
   });
 
   test('B2: Home puts what to continue reading first and shows the spend sections in order', async () => {
+    const testInfo = test.info();
     await page.goto('/buyer');
     const home = page.getByTestId('buyer-home');
     await expect(home).toBeVisible();
@@ -68,14 +68,15 @@ test.describe('buyer journeys B1 to B6', () => {
       'Recent spending',
     ]);
     await expect(page.getByTestId('home-continue_reading')).toContainText(/tide/i);
-    await shot(page, 'home');
+    await shot(page, 'home', testInfo);
   });
 
   test('B3: Spending lists the purchase, and Receipts has the order ref, PayPal order id and seller', async () => {
+    const testInfo = test.info();
     await page.goto('/buyer/spending');
     await expect(page.getByRole('heading', { level: 1, name: 'Spending' })).toBeVisible();
     await expect(page.getByTestId('spending-table')).toContainText(/tide/i);
-    await shot(page, 'spending');
+    await shot(page, 'spending', testInfo);
     await page.goto('/buyer/receipts');
     const row = page.getByTestId('receipt-row').first();
     await expect(row).toContainText('Harbour');
@@ -83,24 +84,26 @@ test.describe('buyer journeys B1 to B6', () => {
       'href',
       /\/receipts\/.+/,
     );
-    await shot(page, 'receipts');
+    await shot(page, 'receipts', testInfo);
   });
 
   test('B4: make an agent key, copy it once, give it a cap with a confirm sentence', async () => {
+    const testInfo = test.info();
     await page.goto('/buyer/keys');
     await page.getByLabel('What kind of key').selectOption({ label: 'Agent key' });
     await page.getByRole('button', { name: 'Make key' }).click();
     const once = page.getByTestId('key-once');
     await expect(once).toBeVisible();
     await expect(page.getByTestId('key-secret')).not.toBeEmpty();
-    await shot(page, 'keys');
+    await shot(page, 'keys', testInfo);
     await page.getByRole('button', { name: /Done, I copied it/ }).click();
     await expect(page.getByTestId('key-secret')).toHaveCount(0);
     await page.reload();
     await expect(page.getByTestId('key-secret')).toHaveCount(0);
 
     await page.goto('/buyer/agents');
-    const end = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+    const served = new Date((await page.request.get('/healthz')).headers()['date'] ?? '');
+    const end = new Date(served.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
     await page.getByLabel(/Money cap/).fill('5.00');
     await page.getByLabel(/Number of purchases/).fill('10');
     await page.getByLabel('Ends on').fill(end);
@@ -110,17 +113,18 @@ test.describe('buyer journeys B1 to B6', () => {
     );
     await page.getByTestId('cap-form').getByRole('button').last().click();
     await expect(page.getByTestId('cap-card').first()).toContainText('Open');
-    await shot(page, 'agents');
+    await shot(page, 'agents', testInfo);
   });
 
   test('B5: an open approval shows on Home and in the approvals inbox, and opens the approve page', async () => {
+    const testInfo = test.info();
     await askPrice(page, { offer: 'ferry-timetables' });
     await toApproval(page);
     await page.goto('/buyer');
     await expect(page.getByTestId('home-needs_ok')).toContainText('Ends in');
     await page.goto('/buyer/approvals');
     expect(await page.getByTestId('approval-row').count()).toBeGreaterThan(0);
-    await shot(page, 'approvals');
+    await shot(page, 'approvals', testInfo);
     await page.getByTestId('approval-row').first().getByRole('link').click();
     await expect(page).toHaveURL(/\/approve\//);
     await expect(page.getByRole('heading', { name: 'Approve your purchase' })).toBeVisible();
