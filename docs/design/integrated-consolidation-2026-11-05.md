@@ -34,6 +34,26 @@ Specs updated: `int-tr0-journal.md` (D-097), `int-sr0-search-base.md` (D-098), `
 
 TR0's capture triggers must exist before any later migration writes a tracked table, so 0024 to 0027 must merge after 0023. BR-1 (registry and resolver) has no migration. A BR lane that needs a decision row takes D-101 or later from section 1. No lane may renumber an earlier migration.
 
+### Adding a tracked table in a later migration (journal seed convention)
+
+TR0's 0023 owns `trace_tracked_seed()`, `trace_tracked_reseed()` and the trigger `trace_tracked_reseed`. No later migration renames, replaces or drops any of them, and no later migration uses a shared or fixed name such as `trace_tracked_seed_0023`. A migration `NNNN` that adds tracked tables creates only names that carry its own number:
+
+```sql
+CREATE FUNCTION trace_tracked_seed_NNNN() RETURNS void LANGUAGE sql AS $fn$
+  INSERT INTO trace_tracked (table_name, columns, hashed_columns, digest_columns, time_column, chain_expr)
+  VALUES (...);                                   -- only this migration's tables
+$fn$;
+CREATE FUNCTION trace_tracked_reseed_NNNN() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN PERFORM trace_tracked_seed_NNNN(); RETURN NULL; END;
+$fn$;
+CREATE TRIGGER trace_tracked_reseed_NNNN AFTER TRUNCATE ON trace_tracked
+  FOR EACH STATEMENT EXECUTE FUNCTION trace_tracked_reseed_NNNN();
+SELECT trace_tracked_seed_NNNN();
+-- then the capture trigger on each new table, as 0023 attaches it
+```
+
+Postgres fires the AFTER TRUNCATE triggers in name order, so a reset refills 0023's rows first and then each later migration's rows. Each lane's tests must include: (1) a fresh database migrates from empty to head with no "already exists" error; (2) after a reset (`ums.allow_reset`), `trace_tracked` holds every 0023 row plus this migration's rows; (3) `trace:verify` reports ok and 0 unattributed after seeded writes. Applies to AL (0025), CTL (0026), BR-2 (0027) and every later lane.
+
 ## 3. Owner decisions folded in (5 Nov)
 
 1. **Consolidation pass and CI fix.** Done here, and PR #9 (tests in 4 shards, 30-minute timeout, four more offline checks).

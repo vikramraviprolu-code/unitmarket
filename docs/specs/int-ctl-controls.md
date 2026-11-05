@@ -129,6 +129,7 @@ Mutation (CTL.2, CTL.3 and CTL.5 are L): `pnpm mutation --require-targets --targ
 - R2-3: the exposure routes get CTL.3's role refusals too: buyer, seller, bearer and operator key.
 - R2-4: the switch routes use the rate rule 10 per minute per actor.
 - R2-5: the gate re-runs the CTL.4 golden after SR1 and TR1 merge.
+- N-J1 (journal seed convention, binding): `api_exposure` is a tracked table. Migration 0026 follows `consolidation.md` section 2 "Adding a tracked table in a later migration": it creates only `trace_tracked_seed_0026()`, `trace_tracked_reseed_0026()` and the trigger `trace_tracked_reseed_0026`, never renames or replaces 0023's functions, and its tests prove a fresh migrate to head, a reset that refills every tracked row, and `trace:verify` ok with 0 unattributed. Paste the TRACE-PERF line in the PR.
 
 ## Do not
 
