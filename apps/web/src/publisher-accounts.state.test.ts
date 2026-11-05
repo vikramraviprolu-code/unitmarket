@@ -149,15 +149,13 @@ describe('approval shows the code once', () => {
     const a = await approve();
     expect(a.code).toMatch(CODE);
     const row = (
-      await q<{ created_at: unknown; expires_at: unknown }>(
+      await q<{ created_at: Date; expires_at: Date }>(
         'SELECT created_at, expires_at FROM publisher_invites WHERE publisher_id = $1',
         [a.id],
       )
     )[0]!;
-    expect(Date.parse(String(row.expires_at)) - Date.parse(String(row.created_at))).toBe(
-      7 * 86_400_000,
-    );
-    expect(Date.parse(a.expires_at)).toBe(Date.parse(String(row.expires_at)));
+    expect(row.expires_at.getTime() - row.created_at.getTime()).toBe(7 * 86_400_000);
+    expect(Date.parse(a.expires_at)).toBe(row.expires_at.getTime());
   });
 
   it('no second read shows it: the list, the next call, the database and the audit log do not hold it', async () => {
@@ -610,7 +608,7 @@ describe('issue and reset by an operator', () => {
     expect(g.status).toBe(200);
     const invite = g.json['invite'] as { code: string };
     expect(invite.code).toMatch(CODE);
-    expect(await app.engine.actorFromCookie(p.cookie)).toEqual({ kind: 'system' });
+    expect(await app.engine.actorFromCookie(p.cookie)).toBeNull();
     expect(
       (
         await got(

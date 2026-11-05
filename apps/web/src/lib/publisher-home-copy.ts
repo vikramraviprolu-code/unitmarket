@@ -70,7 +70,12 @@ export function termsChip(a: { terms_version: string } | null): ChipView {
     : { tone: 'good', label: `Accepted ${a.terms_version}` };
 }
 
-export function termsDetail(a: { accepted_at: string }): string {
+export function termsDetail(a: {
+  accepted_at: string;
+  method?: 'seeded_demo' | 'publisher_accepted';
+}): string {
+  // POB-P1: a click through record is the publisher's own act, not a demo record.
+  if (a.method === 'publisher_accepted') return `On ${dayText(a.accepted_at)}.`;
   return `On ${dayText(a.accepted_at)}, demo record.`;
 }
 

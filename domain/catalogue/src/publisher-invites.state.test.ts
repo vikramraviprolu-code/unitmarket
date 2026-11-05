@@ -109,7 +109,8 @@ describe('approving an applicant', () => {
         [a.id],
       )
     ).map((r) => r.action);
-    expect(actions).toEqual([
+    // one clock instant for all three, so compare as a set
+    expect([...actions].sort()).toEqual([
       'publisher.applicant_added',
       'publisher.applicant_approved',
       'publisher.invite_issued',

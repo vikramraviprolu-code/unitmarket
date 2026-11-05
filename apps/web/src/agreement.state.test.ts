@@ -105,10 +105,16 @@ describe('no write path for a publisher', () => {
     expect(Object.keys(app.engine.opsAgreements)).toEqual(['list']);
   });
 
-  it('no route directory for agreements exists', () => {
+  it('no route directory for agreements exists, except the one click through of POB-P1', () => {
     const routes = files(join(__dirname, 'app')).filter((f) => /route\.ts$/.test(f));
-    for (const f of routes)
-      expect(f.slice(join(__dirname, 'app').length)).not.toMatch(/agree|terms|accept/i);
+    const own = routes.filter((f) =>
+      /agree|terms|accept/i.test(f.slice(join(__dirname, 'app').length)),
+    );
+    // POB-P1 (D-089): the publisher accepts the terms with a real action. That is the one route; it writes
+    // through the engine (publisherAccounts.acceptTerms), never by naming the table.
+    expect(own.map((f) => f.slice(join(__dirname, 'app').length).replaceAll('\\', '/'))).toEqual([
+      '/api/publisher/terms/accept/route.ts',
+    ]);
   });
 });
 

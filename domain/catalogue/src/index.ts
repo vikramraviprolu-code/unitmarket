@@ -77,5 +77,44 @@ export type { StatusDeps, StatusError, StatusErrorCode } from './status';
 export { DEMO_AUDIT_REASON, DEMO_MAX_MINOR, DEMO_MIN_MINOR, applyDemoPrices } from './demo-prices';
 export type { DemoRevision } from './demo-prices';
 export { VISIT_GAP_MS, touchVisit } from './visits';
-export { listAgreements, ownAgreement, seedAgreements } from './agreements';
-export type { Agreement, SeedAgreementsInput } from './agreements';
+export { acceptTerms, listAgreements, ownAgreement, seedAgreements } from './agreements';
+export type {
+  Agreement,
+  SeedAgreementsInput,
+  TermsDeps,
+  TermsError,
+  TermsErrorCode,
+} from './agreements';
+export {
+  INVITE_ALPHABET,
+  INVITE_CODE_LENGTH,
+  INVITE_TTL_MS,
+  hashInviteCode,
+  inviteCodeFromNonce,
+  issueInvite,
+  listPublisherAccess,
+  normalizeInviteCode,
+  resetPublisherSignIn,
+} from './publisher-invites';
+export type {
+  InviteDeps,
+  InviteError,
+  InviteErrorCode,
+  InviteState,
+  IssuedInvite,
+  PublisherAccessRow,
+} from './publisher-invites';
+export {
+  decidePaypalLink,
+  maskEmail,
+  normalizePaypalEmail,
+  ownPaypalLink,
+  requestPaypalLink,
+} from './paypal-link';
+export type {
+  LinkDeps,
+  LinkError,
+  LinkErrorCode,
+  PaypalLinkState,
+  PaypalLinkView,
+} from './paypal-link';

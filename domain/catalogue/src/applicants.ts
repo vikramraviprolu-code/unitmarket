@@ -8,6 +8,8 @@
 // of applicant row and nothing else (no account, no payee, no offer, no sign in).
 import { err, ok } from '@umsbx/contracts';
 import type { Actor, CoreDeps, Database, Id, Result, SqlExecutor } from '@umsbx/contracts';
+import { issueInviteIn } from './publisher-invites';
+import type { IssuedInvite } from './publisher-invites';
 
 export type ApplicantDeps = Pick<CoreDeps, 'db' | 'clock' | 'ids' | 'audit'>;
 
@@ -161,7 +163,7 @@ export async function decideApplicant(
   deps: ApplicantDeps,
   operator: Actor,
   input: { publisher_id: Id; decision: 'approve' | 'reject'; reason: string },
-): Promise<Result<{ state: 'active' | 'rejected' }, ApplicantError>> {
+): Promise<Result<{ state: 'active' | 'rejected'; invite?: IssuedInvite }, ApplicantError>> {
   const g = gate(operator);
   if (g !== null) return g;
   const reason = reasonOf(input.reason);
@@ -221,7 +223,16 @@ export async function decideApplicant(
         reason,
         detail: { from: 'applied', to: approve ? 'active' : 'applied' },
       });
-      return ok({ state: approve ? ('active' as const) : ('rejected' as const) });
+      // POB-P1 (D-089): approval shows the operator a one time invite code, in the same transaction.
+      if (approve) {
+        const invite = await issueInviteIn(tx, deps, operator, {
+          publisher_id: input.publisher_id,
+          reason,
+          via: 'approval',
+        });
+        return ok({ state: 'active' as const, invite });
+      }
+      return ok({ state: 'rejected' as const });
     });
   } catch (e) {
     if (e instanceof Refused) return fail(e.code);

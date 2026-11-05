@@ -248,6 +248,10 @@ describe('migration 0017', () => {
               'trace_tracked',
               // BR-2 (migration 0027): rule settings.
               'rule_settings',
+              // POB-P1 (migration 0028): publisher accounts, invites and PayPal links.
+              'publisher_accounts',
+              'publisher_invites',
+              'publisher_paypal_links',
             ].includes(t),
         ),
       ).toEqual(['fx_rates']);

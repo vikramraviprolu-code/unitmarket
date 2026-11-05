@@ -44,8 +44,8 @@ const invite = (
 ) =>
   d.query(
     `INSERT INTO publisher_invites
-       (id, publisher_id, code_hash, expires_at, used_at, voided_at, created_by, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 'opr_vikram', $7)`,
+       (id, publisher_id, code_hash, expires_at, used_at, voided_at, created_by, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, 'opr_vikram', $7, $7)`,
     [id, publisher_id, code_hash, '2026-11-12T10:00:00Z', o.used ?? null, o.voided ?? null, T],
   );
 const link = (
@@ -162,6 +162,7 @@ describe('migration 0028', () => {
         'expires_at',
         'id',
         'publisher_id',
+        'updated_at',
         'used_at',
         'voided_at',
       ].sort(),

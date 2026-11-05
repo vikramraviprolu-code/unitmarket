@@ -30,8 +30,8 @@ async function world(r: TestRig, o: { status?: string; code?: string; ttl?: numb
     [id, `acct-pub-${String(n)}`, `Acct Pub ${String(n)}`, o.status ?? 'active', at],
   );
   await r.db.query(
-    `INSERT INTO publisher_invites (id, publisher_id, code_hash, expires_at, used_at, voided_at, created_by, created_at)
-     VALUES ($1, $2, $3, $4, NULL, NULL, 'opr_vikram', $5)`,
+    `INSERT INTO publisher_invites (id, publisher_id, code_hash, expires_at, used_at, voided_at, created_by, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, NULL, NULL, 'opr_vikram', $5, $5)`,
     [
       `aud_inv${String(n)}`,
       id,

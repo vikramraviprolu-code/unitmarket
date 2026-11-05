@@ -1182,7 +1182,11 @@ const FRAMEWORK = ['next', 'next/*', 'react', 'react/*', 'react-dom', 'react-dom
 const DRIVERS = ['pg', 'pg/*', '@electric-sql/*', 'zod', 'zod/*', 'node:*'];
 
 const HELPERS = ['test-fixtures.ts', 'world.ts', 'support.ts'];
-const HASH_ONLY = { delivery: ['link-token.ts', 'store-pg.ts'], rules: ['digest.ts'] };
+const HASH_ONLY = {
+  delivery: ['link-token.ts', 'store-pg.ts'],
+  rules: ['digest.ts'],
+  catalogue: ['publisher-invites.ts'],
+};
 const HASH_HELPERS = { delivery: ['world.ts'] };
 const packageEntries = [
   // Z2/Z3 domain: pure TypeScript. Contracts and sibling domain modules only (S1).

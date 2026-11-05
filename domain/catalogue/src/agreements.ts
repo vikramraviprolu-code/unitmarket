@@ -2,7 +2,10 @@
 // publisher and terms version: terms_version, accepted_at, a demo label and the method seeded_demo. The
 // boot seed is the only writer. There is no click-through and no publisher write; the functions here read
 // the rows (a publisher its own, the operator with the second factor all). An applicant has no row.
-import type { Actor, Clock, Database, Ids } from '@umsbx/contracts';
+// POB-P1 adds the click through: a publisher who claimed an account accepts the current version with a real
+// action (acceptTerms), method publisher_accepted, labelled with their username.
+import { err, ok } from '@umsbx/contracts';
+import type { Actor, Clock, CoreDeps, Database, Ids, Result } from '@umsbx/contracts';
 import { takeSeedLock } from './seed-lock';
 
 export interface Agreement {
@@ -10,7 +13,7 @@ export interface Agreement {
   terms_version: string;
   accepted_at: string;
   accepted_by_label: string;
-  method: 'seeded_demo';
+  method: 'seeded_demo' | 'publisher_accepted';
 }
 
 export interface SeedAgreementsInput {
@@ -34,7 +37,7 @@ const toAgreement = (r: Row): Agreement => ({
   terms_version: r.terms_version,
   accepted_at: iso(r.accepted_at),
   accepted_by_label: r.accepted_by_label,
-  method: 'seeded_demo',
+  method: r.method === 'publisher_accepted' ? 'publisher_accepted' : 'seeded_demo',
 });
 
 /**
@@ -92,4 +95,61 @@ export async function listAgreements(db: Database, operator: Actor): Promise<Agr
   if (operator.kind !== 'operator' || !operator.mfa) return null;
   const r = await db.query<Row>(`${LATEST} ORDER BY publisher_id, accepted_at DESC, id DESC`);
   return r.rows.map(toAgreement);
+}
+
+export type TermsDeps = Pick<CoreDeps, 'db' | 'clock' | 'ids' | 'audit'>;
+export type TermsErrorCode = 'not_publisher' | 'no_account' | 'invalid_input' | 'already_accepted';
+export interface TermsError {
+  code: TermsErrorCode;
+}
+const isUniqueViolation = (e: unknown): boolean =>
+  typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '23505';
+
+/**
+ * The publisher accepts a version of the publisher terms. Needs a claimed account (the label is the username),
+ * so a demo persona is refused. One record per publisher and version; a later version is a new row and the old
+ * one stays. The version is the caller's (the web app's current version), 1 to 40 characters.
+ */
+export async function acceptTerms(
+  deps: TermsDeps,
+  actor: Actor,
+  input: { terms_version: string },
+): Promise<Result<{ terms_version: string; accepted_at: string }, TermsError>> {
+  if (actor.kind !== 'publisher') return err({ code: 'not_publisher' });
+  const version = typeof input.terms_version === 'string' ? input.terms_version.trim() : '';
+  if (version.length < 1 || version.length > 40) return err({ code: 'invalid_input' });
+  const at = deps.clock.now().toISOString();
+  const publisher_id = actor.publisher_id;
+  return deps.db.transaction(async (tx) => {
+    const acct = await tx.query<{ username: string }>(
+      'SELECT username FROM publisher_accounts WHERE publisher_id = $1 FOR UPDATE',
+      [publisher_id],
+    );
+    const username = acct.rows[0]?.username;
+    if (username === undefined) return err({ code: 'no_account' as const });
+    const have = await tx.query(
+      'SELECT 1 FROM publisher_agreements WHERE publisher_id = $1 AND terms_version = $2',
+      [publisher_id, version],
+    );
+    if (have.rows.length > 0) return err({ code: 'already_accepted' as const });
+    try {
+      await tx.query(
+        `INSERT INTO publisher_agreements
+           (id, publisher_id, terms_version, accepted_at, accepted_by_label, method, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, 'publisher_accepted', $4, $4)`,
+        [deps.ids.next('aud'), publisher_id, version, at, username],
+      );
+    } catch (e) {
+      if (isUniqueViolation(e)) return err({ code: 'already_accepted' as const });
+      throw e;
+    }
+    await deps.audit.record(tx, {
+      actor,
+      action: 'publisher.terms_accepted',
+      target: publisher_id,
+      reason: null,
+      detail: { terms_version: version },
+    });
+    return ok({ terms_version: version, accepted_at: at });
+  });
 }

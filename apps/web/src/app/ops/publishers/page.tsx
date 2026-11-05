@@ -70,8 +70,23 @@ import {
   publisherTiles,
   reasonGivenText,
 } from '../../../lib/ops-publishers-view';
+import {
+  ACCESS_DEMO_NOTE,
+  ACCESS_EMPTY,
+  ACCESS_HEADING,
+  ACCESS_ISSUE_HINT,
+  ACCESS_LEDE,
+  ACCESS_RESET_HINT,
+  LINKS_HEADING,
+  LINKS_LEDE,
+  accessAccountText,
+  accessInviteText,
+  accessLinkText,
+  accessTermsText,
+} from '../../../lib/publisher-accounts-copy';
 import { StatusForm } from './StatusForm';
 import { AddApplicantForm, DecideApplicantForm } from './ApplicantForms';
+import { AccessForm, VerifyLinkForm } from './AccessForms';
 
 export const metadata: Metadata = { title: 'Publishers' };
 
@@ -79,7 +94,12 @@ export const metadata: Metadata = { title: 'Publishers' };
 function PublisherTermsLine({
   agreement,
 }: {
-  agreement: { accepted_at: string; terms_version: string; accepted_by_label: string } | null;
+  agreement: {
+    accepted_at: string;
+    terms_version: string;
+    accepted_by_label: string;
+    method?: 'seeded_demo' | 'publisher_accepted';
+  } | null;
 }) {
   if (agreement === null)
     return (
@@ -140,6 +160,12 @@ export default async function OpsPublishers() {
     redirect('/signin?next=/ops/publishers');
   }
   const agreementOf = new Map(ag.value.agreements.map((a) => [a.publisher_id, a]));
+  // POB-P1: who can sign in, from the invite and account tables (the demo publishers are not listed).
+  const access = await (await app()).engine.opsPublisherAccess.list(actor);
+  // The three calls above already passed the second factor check, so any refusal here is a plain sign in.
+  if (!access.ok) redirect('/signin?next=/ops/publishers');
+  const accessRows = access.value.rows.filter((x) => x.status !== 'applied');
+  const waitingLinks = accessRows.filter((x) => x.link?.state === 'requested');
   const tiles = publisherTiles(publishers, applicants);
   return (
     <>
@@ -227,6 +253,70 @@ export default async function OpsPublishers() {
           <h3>{ADD_HEADING}</h3>
           <AddApplicantForm />
         </div>
+      </section>
+      <section
+        className="pk-section"
+        id="ops-pub-access"
+        aria-labelledby="access-heading"
+        data-testid="publisher-access"
+      >
+        <h2 id="access-heading">{ACCESS_HEADING}</h2>
+        <p>{ACCESS_LEDE}</p>
+        <p className="muted">{ACCESS_DEMO_NOTE}</p>
+        {accessRows.length === 0 ? (
+          <p className="muted" data-testid="access-empty">
+            {ACCESS_EMPTY}
+          </p>
+        ) : (
+          <div className="pk-stack">
+            {accessRows.map((x) => (
+              <section
+                key={x.publisher_id}
+                className="pk-panel"
+                aria-labelledby={`access-${x.publisher_id}-h`}
+                data-testid="access-row"
+              >
+                <div className="pk-item-head">
+                  <h3 id={`access-${x.publisher_id}-h`}>{x.display_name}</h3>
+                  <div className="pk-chips">
+                    <Chip tone={publisherStatusTone(x.status as 'active' | 'suspended')}>
+                      {statusText(x.status as 'active' | 'suspended')}
+                    </Chip>
+                  </div>
+                </div>
+                <ul>
+                  <li data-testid="access-account">{accessAccountText(x.username)}</li>
+                  <li data-testid="access-invite">
+                    {accessInviteText(x.invite, x.invite_expires_at)}
+                  </li>
+                  <li>{accessTermsText(x.terms)}</li>
+                  <li>{accessLinkText(x.link)}</li>
+                </ul>
+                <p className="muted">
+                  {x.username === null ? ACCESS_ISSUE_HINT : ACCESS_RESET_HINT}
+                </p>
+                {x.username === null && x.status !== 'active' ? null : (
+                  <AccessForm
+                    publisherId={x.publisher_id}
+                    name={x.display_name}
+                    hasAccount={x.username !== null}
+                    hasInvite={x.invite === 'live' || x.invite === 'expired'}
+                  />
+                )}
+              </section>
+            ))}
+          </div>
+        )}
+        <h3>{LINKS_HEADING}</h3>
+        <p>{LINKS_LEDE}</p>
+        {waitingLinks.map((x) => (
+          <section key={x.publisher_id} className="pk-panel" data-testid="link-row">
+            <p>
+              {x.display_name}: {accessLinkText(x.link)}
+            </p>
+            <VerifyLinkForm publisherId={x.publisher_id} name={x.display_name} />
+          </section>
+        ))}
       </section>
       {publishers.length === 0 ? (
         <p className="muted" id="ops-pub-list" data-testid="publishers-empty">

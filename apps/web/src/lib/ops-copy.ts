@@ -124,6 +124,7 @@ export const OPS_CONTROLS_SECTIONS: OpsSection[] = [
 export const OPS_PUBLISHERS_SECTIONS: OpsSection[] = [
   { id: 'ops-pub-summary', label: 'Summary' },
   { id: 'ops-pub-applicants', label: 'Applicants' },
+  { id: 'ops-pub-access', label: 'Sign in access' },
   { id: 'ops-pub-list', label: 'Publishers' },
 ];
 

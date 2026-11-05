@@ -50,8 +50,8 @@ async function world(
     [id, `adv-pub-${String(n)}`, `Adv Pub ${String(n)}`, at],
   );
   await r.db.query(
-    `INSERT INTO publisher_invites (id, publisher_id, code_hash, expires_at, used_at, voided_at, created_by, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 'opr_vikram', $7)`,
+    `INSERT INTO publisher_invites (id, publisher_id, code_hash, expires_at, used_at, voided_at, created_by, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, 'opr_vikram', $7, $7)`,
     [
       `aud_adv${String(n)}`,
       id,
@@ -66,8 +66,8 @@ async function world(
 }
 const claim = (r: Rig, code: string, username: string, ip_hash = 'ip-1', password = PW) =>
   claimPublisherAccount(r.deps, { code, username, password, ip_hash });
-const accounts = async (r: Rig): Promise<number> =>
-  (await r.db.query('SELECT 1 FROM publisher_accounts')).rows.length;
+const accounts = async (r: Rig, id: string): Promise<number> =>
+  (await r.db.query('SELECT 1 FROM publisher_accounts WHERE publisher_id = $1', [id])).rows.length;
 
 describe('one answer for every bad code', () => {
   it('a wrong code, an expired one, a used one and a voided one are all invalid_code and create nothing', async () => {
@@ -92,7 +92,7 @@ describe('one answer for every bad code', () => {
       ok: false,
       code: 'invalid_code',
     });
-    for (const x of [wrong, expired, used, voided]) expect(await accounts(x.r)).toBe(0);
+    for (const x of [wrong, expired, used, voided]) expect(await accounts(x.r, x.id)).toBe(0);
   });
 
   it('the expiry is exact: valid just before, invalid at the second', async () => {
@@ -114,8 +114,8 @@ describe('one answer for every bad code', () => {
       r.clock.now().toISOString(),
     ]);
     await r.db.query(
-      `INSERT INTO publisher_invites (id, publisher_id, code_hash, expires_at, used_at, voided_at, created_by, created_at)
-       VALUES ('aud_newer', $1, $2, $3, NULL, NULL, 'opr_vikram', $4)`,
+      `INSERT INTO publisher_invites (id, publisher_id, code_hash, expires_at, used_at, voided_at, created_by, created_at, updated_at)
+       VALUES ('aud_newer', $1, $2, $3, NULL, NULL, 'opr_vikram', $4, $4)`,
       [
         id,
         hashInviteCode('NEWERCDE2345'),
@@ -128,13 +128,13 @@ describe('one answer for every bad code', () => {
   });
 
   it('a code cannot be used by two racing claims: one account results', async () => {
-    const { r, code } = await world();
+    const { r, id, code } = await world();
     const [a, b] = await Promise.all([
       claim(r, code, 'racer.one', 'ip-a'),
       claim(r, code, 'racer.two', 'ip-b'),
     ]);
     expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
-    expect(await accounts(r)).toBe(1);
+    expect(await accounts(r, id)).toBe(1);
   });
 });
 
@@ -209,7 +209,7 @@ describe('equal work', () => {
 
 describe('brute force', () => {
   it('ten tries from one address lock it out, even for the right code; another address is unaffected', async () => {
-    const { r, code } = await world();
+    const { r, id, code } = await world();
     for (let i = 0; i < PUBLISHER_CLAIM_RATE.limit; i++)
       expect(
         await claim(r, 'ZZZZZZZZZZZ' + String(i % 10), `guess.${String(i)}`, 'ip-evil'),
@@ -223,7 +223,7 @@ describe('brute force', () => {
       code: 'rate_limited',
     });
     expect(hashes).toHaveLength(0); // refused before any scrypt work
-    expect(await accounts(r)).toBe(0);
+    expect(await accounts(r, id)).toBe(0);
     expect((await claim(r, code, 'late.owner', 'ip-honest')).ok).toBe(true);
   });
 

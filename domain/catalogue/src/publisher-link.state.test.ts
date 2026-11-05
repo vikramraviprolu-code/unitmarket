@@ -261,6 +261,7 @@ describe('acceptTerms', () => {
       error: { code: 'already_accepted' },
     });
     // a later version is a new row and the old one stays
+    w.clock.advance(1000);
     expect((await acceptTerms(w.deps(), p.actor, { terms_version: 'v2' })).ok).toBe(true);
     expect((await ownAgreement(w.db, p.actor))!.terms_version).toBe('v2');
     expect(
