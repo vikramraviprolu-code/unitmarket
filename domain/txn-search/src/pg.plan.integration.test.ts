@@ -159,7 +159,12 @@ describe.skipIf(!pgBinConfigured())('txn_rows plan and speed on real Postgres (S
 
 async function seed(db: Db): Promise<void> {
   // One simple-query string: one connection, one implicit transaction, a temp table that lives inside it.
+  // The first statement is the journal's own bulk-load mode (TR0, the one `importSql` uses): the capture
+  // trigger returns early, so the 100,000 lines are not journaled. Journaled, this seed takes more than ten
+  // minutes (one hash chain, one event per row) and would measure the journal, not the search. The journal's
+  // own cost is the TRACE-PERF line of TR0. This database is throwaway and is never verified with trace:verify.
   await db.exec(`
+SELECT set_config('ums.trace', '{"mode":"restore"}', true);
 CREATE TEMP TABLE seed_src AS
 SELECT g AS i,
        CASE WHEN g % 100 = 0 THEN 1 WHEN g % 97 = 0 THEN 2 WHEN g % 53 = 0 THEN 3 WHEN g % 41 = 0 THEN 4 ELSE 0 END AS k,
