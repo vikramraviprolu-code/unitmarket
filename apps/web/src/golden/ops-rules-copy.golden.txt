@@ -1,0 +1,40 @@
+title: Business rules
+lede: The limits that decide how long a buyer can ask for a refund, how long access lasts and how long an agent mandate can run. A change applies to new sales only.
+links: Add a setting | See the history | Explain an order | Download the history as CSV | Back to business rules
+rule refund.request_window: Refund window | How long after access starts a buyer may ask for a refund.
+rule access.window: Access window | How long a buyer can read or keep what they bought. It is never shorter than the refund window.
+rule mandate.max_days: Mandate length | The longest an agent mandate may run.
+scope platform: Everyone
+scope category: A category
+scope seller: One seller
+scope buyer: One buyer
+days: 0 days | 1 day | 30 days
+range: 0 to 30 days | 1 to 90 days
+columns: Rule | Now | Safe range | Can be set for | Seller overrides | Buyer overrides | Last change
+default: Platform default
+no change: No change yet. The platform default applies.
+last change: 2026-11-05 12:00 UTC by opr_vikram: Pilot window
+last change hidden: 2026-11-05 12:00 UTC: Pilot window
+impact: Applies to new sales from 2026-11-05 12:00 UTC. Sales already approved keep their terms.
+impact blank: Applies to new sales from the start time you choose. Sales already approved keep their terms.
+mfa: Changing a rule needs your authenticator code. Sign in with it before you add a setting.
+form: Add a business rule setting | Rule | Applies to | Seller or buyer id | Value in days | Starts | Ends | Reason | Save setting
+form hints: Only for one seller or one buyer. Copy the id from their page. | Leave empty for no end. | Say why in a few words. It is kept in the history.
+saved: Saved. It applies to new sales from the start time.
+history: History of settings | No settings match. | Showing the newest 200. Narrow the filter or download the CSV. | That filter is not valid. Clear it and try again.
+history columns: Added | Rule | Applies to | Value | Starts | Ends | Added by | Reason
+filters: Rule | Applies to | Added by | Apply filter | Clear filter
+until open: No end
+hidden operator: Hidden without your authenticator code
+explain: Explain an order | Enter an order id to see the terms it was approved under. | Order id | Show terms
+explain old: Approved before terms were recorded
+explain columns: Term | Value | Where it came from
+explain facts: Rules version | Digest
+source default: Platform default
+source linked:refund.request_window: Raised to match the refund window
+source platform:rls_1: Platform setting
+source seller:pub_1@rls_2: Seller setting (pub_1)
+source buyer:buy_1@rls_3: Buyer setting (buy_1)
+source category:cat_1@rls_4: Category setting (cat_1)
+source agreement:agr_1@rls_5: Agreement setting (agr_1)
+source surprise: Recorded as surprise

@@ -179,8 +179,11 @@ describe('section tabs (source)', () => {
       'buyers',
       'money/orders',
       'money/problems',
+      // BR-6: the rules list, form, history and explain pages each hold one table or one form.
+      'rules',
     ];
-    expect(found.length).toBe(17);
+    // BR-6: count 17 to 21, pages added: /ops/rules, /ops/rules/new, /ops/rules/history, /ops/rules/explain.
+    expect(found.length).toBe(21);
     for (const p of found)
       if (!SINGLE_SECTION.some((s) => p.includes(`/ops/${s}/`)))
         expect(readFileSync(p, 'utf8'), p).toContain('<SectionNav');

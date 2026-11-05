@@ -82,6 +82,11 @@ describe('the active tab', () => {
     ['operator', '/ops/payee-requests', 'sellers'],
     ['operator', '/ops/controls', 'controls'],
     ['operator', '/ops/evals', 'controls'],
+    // BR-6: the Business rules pages are a Controls section
+    ['operator', '/ops/rules', 'controls'],
+    ['operator', '/ops/rules/new', 'controls'],
+    ['operator', '/ops/rules/history', 'controls'],
+    ['operator', '/ops/rules/explain?order=ord_1', 'controls'],
     ['operator', '/ops/buyers', 'buyers'],
     ['buyer', '/buyer', 'home'],
     ['buyer', '/discover', 'find'],
@@ -117,19 +122,35 @@ describe('section tabs under Sellers and Controls (spec: old URLs keep working)'
       false,
     ]);
   });
-  it('Controls lists Switches and gate, Evals, and (INT-OPS-B) Activity and Invariants', () => {
+  it('Controls lists Switches and gate, Evals, (INT-OPS-B) Activity and Invariants, and (BR-6) Business rules', () => {
     expect(subTabsFor('operator', '/ops/evals')).toEqual([
       { label: 'Switches and gate', href: '/ops/controls', current: false },
       { label: 'Evals', href: '/ops/evals', current: true },
       { label: 'Activity', href: '/ops/controls/activity', current: false },
       { label: 'Invariants', href: '/ops/controls/invariants', current: false },
+      { label: 'Business rules', href: '/ops/rules', current: false },
     ]);
     expect(subTabsFor('operator', '/ops/controls/activity')?.map((s) => s.current)).toEqual([
       false,
       false,
       true,
       false,
+      false,
     ]);
+    expect(subTabsFor('operator', '/ops/rules')?.map((s) => s.current)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      true,
+    ]);
+  });
+  it('the Business rules pages below the list show the Controls section tabs with none marked', () => {
+    for (const p of ['/ops/rules/new', '/ops/rules/history', '/ops/rules/explain?order=ord_1']) {
+      const subs = subTabsFor('operator', p);
+      expect(subs?.map((s) => s.label)).toContain('Business rules');
+      expect(subs?.some((s) => s.current)).toBe(false);
+    }
   });
   it('Money lists Overview and (INT-OPS-B) Transactions', () => {
     expect(subTabsFor('operator', '/ops/money/transactions')).toEqual([
