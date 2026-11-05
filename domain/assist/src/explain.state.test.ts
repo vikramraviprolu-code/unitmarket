@@ -163,6 +163,23 @@ describe('the answer (F4)', () => {
 
   it.each([
     ['an error answer', { kind: 'error', reason: 'x' }],
+    [
+      'an error answer that still carries texts',
+      {
+        kind: 'error',
+        reason: 'x',
+        output: { what_happened: 'w', safe_now: 's', action_id: 'frozen_order' },
+      },
+    ],
+    [
+      'an array that carries the text fields',
+      {
+        kind: 'ok',
+        output: Object.assign([], { what_happened: 'w', safe_now: 's', action_id: 'frozen_order' }),
+        input_tokens: 0,
+        output_tokens: 0,
+      },
+    ],
     ['a non-object', { kind: 'ok', output: 'free text', input_tokens: 0, output_tokens: 0 }],
     [
       'missing texts',

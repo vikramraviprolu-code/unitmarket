@@ -155,3 +155,46 @@ describe('seller names', () => {
     expect(parseRules('harbour ledgers', NOW, buyer).chips).toEqual({});
   });
 });
+
+describe('every month name and every amount word (mutation hardening)', () => {
+  const MONTHS: [string, string][] = [
+    ['jan', '01'],
+    ['january', '01'],
+    ['feb', '02'],
+    ['february', '02'],
+    ['mar', '03'],
+    ['march', '03'],
+    ['apr', '04'],
+    ['april', '04'],
+    ['may', '05'],
+    ['jun', '06'],
+    ['june', '06'],
+    ['jul', '07'],
+    ['july', '07'],
+    ['aug', '08'],
+    ['august', '08'],
+    ['sep', '09'],
+    ['sept', '09'],
+    ['september', '09'],
+    ['oct', '10'],
+    ['october', '10'],
+    ['nov', '11'],
+    ['november', '11'],
+    ['dec', '12'],
+    ['december', '12'],
+  ];
+  it.each(MONTHS)('"since 2 %s" is month %s', (word, mm) => {
+    const year = mm === '12' ? '2025' : '2026';
+    expect(parseRules(`since 2 ${word}`, NOW, buyer).chips).toEqual({ from: `${year}-${mm}-02` });
+  });
+  it.each([
+    ['over 5c', { min_minor: '5', currency: 'USD' }],
+    ['over 2 dollars', { min_minor: '200', currency: 'USD' }],
+    ['over 3 pound', { min_minor: '300', currency: 'GBP' }],
+    ['under 4 euro', { max_minor: '400', currency: 'EUR' }],
+    ['over 7', { min_minor: '700' }],
+    ['between $1 and $3', { min_minor: '100', max_minor: '300', currency: 'USD' }],
+  ])('"%s"', (text, chips) => {
+    expect(parseRules(text, NOW, buyer).chips).toEqual(chips);
+  });
+});
