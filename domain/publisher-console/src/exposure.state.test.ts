@@ -189,9 +189,11 @@ describe('publisherExposure', () => {
     ]);
   });
 
-  it('answers null to every actor but an operator with the second factor', async () => {
+  it('answers an operator without the code the same rows (INT-OPS-A OPS-A.7), and null to everyone else', async () => {
+    expect(
+      await publisherExposure(w.db, { kind: 'operator', operator_id: 'opr_x', mfa: false }, AT, CTX),
+    ).toEqual(await publisherExposure(w.db, OP, AT, CTX));
     for (const actor of [
-      { kind: 'operator', operator_id: 'opr_x', mfa: false },
       { kind: 'publisher', publisher_id: 'pub_1' },
       { kind: 'buyer', buyer_id: 'buy_1' },
       { kind: 'system' },

@@ -211,6 +211,14 @@ describe('decidePayeeRequest in dry-run mode', () => {
 });
 
 describe('listOpenRequests', () => {
+  it('answers an operator without the code (INT-OPS-A OPS-A.7), and still refuses a buyer', async () => {
+    await ask('NOCODEQUEUE01');
+    const plain = await listOpenRequests(w.db, { kind: 'operator', operator_id: 'opr_x', mfa: false });
+    const withCode = await listOpenRequests(w.db, w.opMfa);
+    expect(plain).toEqual(withCode);
+    expect(await listOpenRequests(w.db, w.buyer)).toEqual({ ok: false, error: { code: 'not_operator' } });
+  });
+
   it('lists only requests without a decision, with the last 4 and never the full id', async () => {
     const id = await ask('LISTED0000005');
     const r = await listOpenRequests(w.db, w.opMfa);
