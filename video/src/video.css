@@ -1,0 +1,159 @@
+/* Video-only additions on top of cards.css. */
+#root {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.slide {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.cam {
+  position: absolute;
+  inset: 0;
+  padding: 96px 120px;
+  display: flex;
+  flex-direction: column;
+  transform-origin: 100% 100%;
+}
+
+/* Screen recordings: a light stage, a top line with the label, the footage framed below. */
+.rec {
+  padding: 0;
+}
+.rec-top {
+  position: absolute;
+  left: 160px;
+  right: 160px;
+  top: 52px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.rec-top .kicker {
+  margin: 0;
+  font-size: 26px;
+}
+.rec-top .chip {
+  font-size: 24px;
+}
+video.framed {
+  position: absolute;
+  left: 160px;
+  top: 128px;
+  width: 1600px;
+  height: 900px;
+  object-fit: cover;
+  border-radius: 18px;
+  box-shadow:
+    0 24px 60px rgba(15, 20, 36, 0.22),
+    0 0 0 1px var(--line);
+  background: #fff;
+}
+
+/* Lower thirds over the footage */
+.lt {
+  position: absolute;
+  left: 200px;
+  bottom: 92px;
+  max-width: 900px;
+  background: rgba(15, 20, 36, 0.92);
+  color: #e6e8f2;
+  border-radius: 18px;
+  padding: 22px 30px;
+  font-size: 26px;
+  line-height: 1.35;
+  box-shadow: 0 16px 40px rgba(15, 20, 36, 0.3);
+}
+.lt b {
+  display: block;
+  color: #fff;
+  font-size: 30px;
+  margin-bottom: 4px;
+}
+.lt-real {
+  border-left: 8px solid #32d583;
+}
+
+/* Terminal for the agent story */
+.term {
+  margin-top: 40px;
+  background: #0f1424;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(15, 20, 36, 0.25);
+  flex: 1;
+  max-height: 640px;
+}
+.term-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 24px;
+  background: #1b2238;
+}
+.term-bar i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #3a4360;
+}
+.term-bar span {
+  margin-left: 14px;
+  color: #8b93b0;
+  font-size: 20px;
+}
+.term-body {
+  padding: 22px 30px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 22px;
+  line-height: 1.52;
+}
+.tl {
+  white-space: nowrap;
+  color: #c7cce0;
+}
+.tl.c {
+  color: #ffffff;
+}
+.tl.c::before {
+  content: '$ ';
+  color: #6b8cff;
+}
+.tl .who {
+  display: inline-block;
+  width: 120px;
+  color: #9fb3ff;
+}
+.tl.o {
+  padding-left: 154px;
+  color: #9aa3c0;
+}
+.tl.ok {
+  color: #6ce9a6;
+}
+.tl.warn {
+  color: #fec84b;
+}
+.tl.stop {
+  color: #ff8a80;
+  font-weight: 700;
+}
+.corner {
+  position: absolute;
+  bottom: 40px;
+  right: 120px;
+}
+.cam .two {
+  margin-bottom: 64px;
+}
+.band {
+  font-size: 32px;
+  gap: 32px;
+}
+.band span {
+  white-space: nowrap;
+}

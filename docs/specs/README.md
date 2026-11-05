@@ -168,3 +168,16 @@ The settlement per block and the one settlement sentence on S1, S5, S6 and S7 me
 | `repo-compliance.md`                | Repo compliance: licence, dependency licence audit, README                 | L2       | yes         |
 | `overnight-plan.md`                 | Overnight plan, 30 to 31 Oct 2026: lanes, file ownership, order and checks | SPECS-ON | plan        |
 | `README.md`                         | This index                                                                 | DOCS-C2  | this branch |
+
+## Business rules (UNI-80, D-096)
+
+Design: `docs/business-rules/configurable-rules-design.md` (PR #8). Order: BR-1, then BR-2 and BR-10, then BR-3, then BR-4 and BR-6.
+
+| File                           | Title                                       | Lane  | Merged |
+| ------------------------------ | ------------------------------------------- | ----- | ------ |
+| `br-1-rules-registry.md`       | Rule registry and pure terms resolver       | BR-1  | no     |
+| `br-2-rules-settings-store.md` | Rule settings table and operator write path | BR-2  | no     |
+| `br-3-terms-snapshot.md`       | Resolved terms frozen into the approval     | BR-3  | no     |
+| `br-4-refund-window.md`        | Refund deadline from the frozen terms       | BR-4  | no     |
+| `br-6-rules-screens.md`        | Operator "Business rules" screens           | BR-6  | no     |
+| `br-10-rules-drift-check.md`   | Registry and reference stay in step         | BR-10 | no     |

@@ -1,0 +1,127 @@
+WEBVTT
+
+00:00:00.500 --> 00:00:03.337
+An AI agent buys a seven-cent article.
+
+00:00:03.337 --> 00:00:08.265
+Paying for it through PayPal today costs forty-nine cents in fees.
+
+00:00:08.665 --> 00:00:13.465
+And a reader who wants one article is asked to buy a whole subscription.
+
+00:00:13.465 --> 00:00:15.598
+So small purchases never happen.
+
+00:00:16.498 --> 00:00:17.992
+UnitMarket fixes that.
+
+00:00:17.992 --> 00:00:22.813
+Buy just what you need, let agents pay in cents, and let PayPal settle.
+
+00:00:23.913 --> 00:00:25.296
+Here is the working app.
+
+00:00:25.296 --> 00:00:28.350
+A reader says what they need, and what they will pay.
+
+00:00:29.013 --> 00:00:35.605
+The app searches only authorised offers, and proposes a pack within budget, here from two publishers.
+
+00:00:34.513 --> 00:00:37.546
+Nothing is charged until the reader approves.
+
+00:00:37.546 --> 00:00:42.129
+The price is frozen, and each publisher gets its own PayPal payment.
+
+00:00:41.713 --> 00:00:45.143
+This take runs in dry run, on a pretend PayPal.
+
+00:00:45.143 --> 00:00:50.908
+The same code made real PayPal sandbox payments on the twenty-ninth of October.
+
+00:00:51.313 --> 00:00:54.875
+Access opens only after the payment is verified.
+
+00:00:54.875 --> 00:00:56.582
+Receipt, library, done.
+
+00:00:59.613 --> 00:01:01.908
+Now hand that power to an agent.
+
+00:01:01.908 --> 00:01:05.279
+Through our API, the buyer sets a one-time cap:
+
+00:01:05.279 --> 00:01:07.718
+five dollars, and three purchases.
+
+00:01:07.718 --> 00:01:12.021
+An operator, with a second factor, switches agent buying on.
+
+00:01:12.021 --> 00:01:15.464
+The agent buys on its own, and the cap stops it.
+
+00:01:16.764 --> 00:01:19.377
+Agents buy in five to ten cent pieces.
+
+00:01:19.377 --> 00:01:25.084
+Here are ten thousand simulated trades, from a hundred agents and forty publishers.
+
+00:01:26.584 --> 00:01:32.943
+Paid one by one, the fees come to four thousand nine hundred dollars, six times what was bought.
+
+00:01:32.943 --> 00:01:37.977
+Our ledger nets the trades into a hundred and ninety-eight PayPal movements:
+
+00:01:37.977 --> 00:01:42.283
+eighty-three dollars, fifty-nine times cheaper at today's prices.
+
+00:01:42.283 --> 00:01:45.528
+At a micro-settlement price we propose to PayPal:
+
+00:01:45.528 --> 00:01:46.787
+twenty-one dollars.
+
+00:01:48.187 --> 00:01:50.832
+Pillars one and two are consolidation.
+
+00:01:52.732 --> 00:01:55.752
+Buyers who want the same unit share one payment:
+
+00:01:55.752 --> 00:01:59.400
+ten thousand payments become two hundred and thirty-three.
+
+00:01:59.400 --> 00:02:03.867
+Small publishers pool on a topic to fill bundles none could fill alone:
+
+00:02:03.867 --> 00:02:08.711
+thirty-three of thirty-three, and they earn, instead of losing money to fees.
+
+00:02:10.111 --> 00:02:10.787
+Behind it:
+
+00:02:10.787 --> 00:02:20.863
+two repositories, three hundred and thirty-five thousand lines of TypeScript, more than fourteen thousand tests, and eighty-one merged pull requests.
+
+00:02:21.663 --> 00:02:26.911
+Four roles, ten buyer personas, forty content domains, tested end to end.
+
+00:02:27.711 --> 00:02:31.295
+UnitMarket does the matching. PayPal stays the rails.
+
+00:02:32.095 --> 00:02:33.898
+Every scene is labelled:
+
+00:02:33.898 --> 00:02:37.428
+real sandbox, dry run, simulation, or proposal.
+
+00:02:38.628 --> 00:02:42.641
+Group the demand. Group the supply. Make cents worth paying.
+
+00:02:42.641 --> 00:02:47.725
+That is a ride-hailing model for payments, and PayPal does not offer it yet.
+
+00:02:47.725 --> 00:02:48.996
+We built the proof.
+
+00:02:50.196 --> 00:02:53.737
+UnitMarket. PayPal settles. We make cents worth paying.
