@@ -7,16 +7,20 @@ test.describe('operator order page', () => {
   test('opens from Transactions, shows seq anchors, and keeps the evidence button off without the code', async ({
     browser,
   }) => {
-    // Own order, so the file runs alone as well as after the journeys.
-    const buyer = await buyerPage(browser, 'b');
-    await payWithScenario(buyer, { offer: 'tide-tables', scenario: 'happy' });
-    await buyer.context().close();
     const ctx = await browser.newContext();
     const op = await ctx.newPage();
     await op.goto('/signin?next=/ops/money/transactions');
     await op.getByLabel('Who are you testing as?').selectOption('operator');
     await op.getByLabel('Demo passcode').fill(PASSCODE);
     await op.getByRole('button', { name: 'Sign in' }).click();
+    await expect(op.getByTestId('txn-status')).not.toHaveText('Loading transactions.');
+    if ((await op.locator('a[href^="/ops/money/orders/"]').count()) === 0) {
+      // Run alone, with no earlier order: buy one as buyer b. Earlier specs normally leave orders, which is the usual path.
+      const buyer = await buyerPage(browser, 'b');
+      await payWithScenario(buyer, { offer: 'tide-tables', scenario: 'happy' });
+      await buyer.context().close();
+      await op.reload();
+    }
     const first = op.locator('a[href^="/ops/money/orders/"]').first();
     await expect(first).toBeVisible();
     await first.click();

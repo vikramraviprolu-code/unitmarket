@@ -227,9 +227,12 @@ test.describe('operator publishers page (PUB-D)', () => {
     // INT-OPS-A / OPS-A.7: the queue is readable without the code; the buttons say what is missing.
     await expect(view.getByTestId('payee-mfa-needed')).toHaveCount(0);
     await expect(view.getByRole('heading', { level: 1 })).toBeVisible();
-    // Earlier tests in this file close every request, so the queue can be empty; a row, when there is one, says what is missing.
-    if ((await view.getByTestId('payee-queue-row').count()) > 0)
-      await expect(view.getByText('needs your authenticator code').first()).toBeVisible();
+    await expect(view).toHaveURL(/\/ops\/payee-requests/);
+    // The payee queue can be empty here, but the publishers list always has a status form per seller. The form sits in a
+    // closed details element, so it is in the page but not shown until the summary is opened.
+    await view.waitForLoadState('networkidle');
+    await view.goto('/ops/publishers');
+    await expect(view.getByText('needs your authenticator code').first()).toBeAttached();
     await ctx.close();
 
     for (const path of ['/ops', '/ops/publishers', '/ops/payee-requests']) {
