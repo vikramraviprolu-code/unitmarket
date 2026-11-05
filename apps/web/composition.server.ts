@@ -275,11 +275,14 @@ export {
   principalKey,
   queryHash,
   quickFind,
+  scopeQuery,
   seedViewsWorld,
   sellerLine,
   txnCsv,
 } from '@umsbx/txn-search';
 export type { FindResult } from '@umsbx/txn-search';
+// INT-OPS-B: the in-process journal verifier of TR0, for the Invariants tile (read only).
+export { formatTraceFinding, verifyTrace } from '@umsbx/db';
 export { filterLibrary, isPlainLibraryQuery, parseLibraryQuery } from '@umsbx/library';
 export type { LibraryFacts, LibraryQuery } from '@umsbx/library';
 import {

@@ -126,13 +126,26 @@ const SELLERS_SUB: readonly [string, string][] = [
 const CONTROLS_SUB: readonly [string, string][] = [
   ['Switches and gate', '/ops/controls'],
   ['Evals', '/ops/evals'],
+  ['Activity', '/ops/controls/activity'],
+  ['Invariants', '/ops/controls/invariants'],
+];
+const MONEY_SUB: readonly [string, string][] = [
+  ['Overview', '/ops/money'],
+  ['Transactions', '/ops/money/transactions'],
 ];
 
 /** The section tabs of the Sellers and Controls tabs; null on every other page. */
 export function subTabsFor(persona: ShellPersona, rawPath: string): SubTab[] | null {
   if (persona !== 'operator') return null;
   const tab = activeTabId('operator', rawPath);
-  const list = tab === 'sellers' ? SELLERS_SUB : tab === 'controls' ? CONTROLS_SUB : null;
+  const list =
+    tab === 'sellers'
+      ? SELLERS_SUB
+      : tab === 'controls'
+        ? CONTROLS_SUB
+        : tab === 'money'
+          ? MONEY_SUB
+          : null;
   if (list === null) return null;
   const path = cleanPath(rawPath);
   return list.map(([label, href]) => ({ label, href, current: path === href }));

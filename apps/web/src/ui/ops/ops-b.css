@@ -1,0 +1,169 @@
+/* INT-OPS-B: the filter bar, the Transactions and Activity tables, quick-find results and the verify tile.
+   Colours come from the skin tokens only, so both looks work. */
+.fb {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+.fb ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fb-views a,
+.fb-chip a {
+  color: inherit;
+}
+.fb-views a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+  text-decoration: none;
+}
+.fb-views a[aria-current='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.fb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 2px 6px 2px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow-wrap: anywhere;
+}
+.fb-chip a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  text-decoration: underline;
+}
+.fb-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+}
+.fb-add > div {
+  display: grid;
+  gap: 4px;
+}
+.fb-add select,
+.fb-add input {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.fb-problem {
+  margin: 0;
+  color: var(--warn);
+}
+.txn-note {
+  margin: 8px 0;
+  color: var(--muted);
+}
+.txn-pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0 0;
+}
+.txn-flags {
+  display: block;
+  color: var(--muted);
+}
+
+/* Quick-find results sit under the search field of the operator shell. */
+.shell-search {
+  position: relative;
+}
+.qf-results {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  box-sizing: border-box;
+  width: min(420px, 92vw);
+  max-height: 70vh;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+  background: var(--surface);
+  color: var(--text);
+}
+.qf-results h2 {
+  margin: 8px 0 4px;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.qf-results ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.qf-results a {
+  display: block;
+  padding: 8px 6px;
+  min-height: 44px;
+  box-sizing: border-box;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 6px;
+}
+.qf-results a:hover,
+.qf-results a:focus-visible,
+.qf-results li[data-first='true'] a {
+  background: var(--accent-soft);
+}
+.qf-detail {
+  display: block;
+  color: var(--muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.vt-lines {
+  margin: 8px 0;
+  padding-left: 18px;
+}
+.vt-lines li {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9rem;
+}
+.vt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* The verified mark under a timeline. */
+.tl-mark {
+  margin: 8px 0 0;
+  font-weight: 600;
+}
+.tl-mark-broken {
+  color: var(--warn);
+}

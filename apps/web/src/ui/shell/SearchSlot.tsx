@@ -1,10 +1,14 @@
 'use client';
 import { useEffect, useRef } from 'react';
+import { showsQuickFind } from '../../lib/quick-find-view';
+import type { ShellPersona } from '../../lib/shell-tabs';
+import { QuickFind } from '../ops/QuickFind';
 
-// INT-UI0 / UI0.1: a search field the keyboard can reach with "/". It takes focus and does nothing else: no
-// request, no navigation. Search itself arrives with OPS-B, which gives the form something to submit. A slash
-// typed into a field, a text area, a menu or an editable region stays a slash.
-export function SearchSlot() {
+// INT-UI0 / UI0.1: a search field the keyboard can reach with "/". It takes focus. A slash typed into a field, a
+// text area, a menu or an editable region stays a slash. INT-OPS-B / OPS-B.3 (B6): in the operator shell the
+// field is quick-find (ui/ops/QuickFind.tsx); the buyer and seller shells keep the inert field below, which
+// makes no request and goes nowhere.
+export function SearchSlot({ persona }: { persona: ShellPersona }) {
   const field = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -25,6 +29,7 @@ export function SearchSlot() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+  if (showsQuickFind(persona)) return <QuickFind inputRef={field} />;
   return (
     <form
       className="shell-search"
