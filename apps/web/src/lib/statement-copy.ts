@@ -8,7 +8,7 @@ import { formatMinor } from './format';
 
 export const NAV_SALES = 'Sales';
 export const NAV_STATEMENT = 'Statement';
-export const NAV_HOME = 'Publisher home';
+export const NAV_HOME = 'Seller home';
 
 export const SALES_HEADING = 'Sales';
 export const SALES_LEDE =

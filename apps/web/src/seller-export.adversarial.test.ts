@@ -119,7 +119,9 @@ describe('refusals', () => {
     ]) {
       const res = await get(sA, `?${q}`);
       expect(res.status, q).toBe(400);
-      expect(((await res.json()) as { code: string }).code, q).toBe('field_not_allowed');
+      expect(((await res.json()) as { error: { code: string } }).error.code, q).toBe(
+        'field_not_allowed',
+      );
     }
   });
 

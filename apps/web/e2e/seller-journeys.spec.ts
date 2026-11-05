@@ -142,21 +142,18 @@ test('S5 an offer page has price history and sales, and another seller cannot op
 }) => {
   await harbour.goto('/publisher/offers');
   await harbour
-    .getByRole('link', { name: /Edit|View/ })
+    .getByRole('link', { name: /^Change / })
     .first()
     .click();
   await expect(harbour.getByTestId('offer-history')).toBeVisible();
   await expect(harbour.getByTestId('offer-sales')).toBeVisible();
   const res = await quayside.goto(saleHref);
   expect(res?.status()).toBe(404);
+  const other = await quayside.locator('main').innerText();
   const unknown = await quayside.goto('/publisher/sales/unt_does_not_exist');
   expect(unknown?.status()).toBe(404);
-  expect(await quayside.content()).toBe(
-    await (async () => {
-      await quayside.goto(saleHref);
-      return quayside.content();
-    })(),
-  );
+  // The page does not say which of the two it was.
+  expect(await quayside.locator('main').innerText()).toBe(other);
   for (const skin of ['market', 'harbour']) {
     await harbour
       .context()

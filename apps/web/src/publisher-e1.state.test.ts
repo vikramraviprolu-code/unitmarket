@@ -162,7 +162,8 @@ describe('engine.publisherRefunds', () => {
     expect(src).toContain('engine.publisherRefunds(actor)');
     expect(src).toContain('REFUNDS_HEADING');
     expect(src).toContain('refunds-table');
-    expect(src).toContain('EXPORT_SALES_HREF');
+    // INT-SEL (SEL.2): the sales file now comes from the seller sales export route.
+    expect(src).toContain('SALES_EXPORT_HREF');
   });
 });
 
