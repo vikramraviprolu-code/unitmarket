@@ -187,16 +187,15 @@ export function sellerLine(r: TxnRow, now: Date): TxnLine {
 
 /**
  * An operator line. `identity` false (an operator key, or a session without MFA): order refs, amounts, states,
- * flags and opaque ids. `identity` true adds the buyer and seller names and the PayPal ids. Call sites go
- * through `withOpsIdentity` in apps/web, the one place that decides.
+ * flags and opaque ids, but never the buyer id or the agent key id (C3, FIX-B4: no /api/v1/ops/* answer
+ * carries buyer identity). `identity` true adds those two, the buyer and seller names and the PayPal ids. Call
+ * sites go through `withOpsIdentity` in apps/web, the one place that decides.
  */
 export function opsLine(r: TxnRow, now: Date, identity: boolean): TxnLine {
   const line: TxnLine = {
     ...base(r, now),
     order_total_minor: int(r['order_total_minor']),
-    agent_key_id: orNull(r['agent_key_id']),
     publisher_id: text(r['publisher_id']),
-    buyer_id: text(r['buyer_id']),
     mandate_id: orNull(r['mandate_id']),
     alert_count: int(r['alert_count']),
     has_unknown_op: r['has_unknown_op'] === true,
@@ -205,6 +204,8 @@ export function opsLine(r: TxnRow, now: Date, identity: boolean): TxnLine {
   if (!identity) return line;
   return {
     ...line,
+    buyer_id: text(r['buyer_id']),
+    agent_key_id: orNull(r['agent_key_id']),
     seller_name: text(r['seller_name']),
     seller_slug: text(r['seller_slug']),
     buyer_display_name: text(r['buyer_display_name']),
@@ -237,15 +238,21 @@ const COMMON = [
 
 /**
  * The CSV text of lines. The seller file has the last 6 of the order ref and no buyer column. The operator
- * file has opaque ids, plus the names and PayPal ids when `identity` is true. Every cell goes through csvCell.
+ * file has opaque ids (no buyer id), plus the buyer id, the names and the PayPal ids when `identity` is true. Every cell goes through csvCell.
  */
 export function txnCsv(kind: CsvKind, lines: readonly TxnLine[], identity = false): string {
   const header: string[] = [...COMMON];
   if (kind === 'seller') header[1] = 'order_ref_last6';
-  if (kind === 'ops')
-    header.push('unit_id', 'buyer_id', 'publisher_id', 'alerts', 'unknown_operation');
+  if (kind === 'ops') header.push('unit_id', 'publisher_id', 'alerts', 'unknown_operation');
   if (kind === 'ops' && identity)
-    header.push('buyer_name', 'seller_name', 'provider_order_id', 'capture_id', 'refund_id');
+    header.push(
+      'buyer_id',
+      'buyer_name',
+      'seller_name',
+      'provider_order_id',
+      'capture_id',
+      'refund_id',
+    );
   let out = csvLine(header);
   for (const l of lines) {
     const row: (string | number | null)[] = [
@@ -265,13 +272,13 @@ export function txnCsv(kind: CsvKind, lines: readonly TxnLine[], identity = fals
     if (kind === 'ops') {
       row.push(
         l.unit_id,
-        l.buyer_id ?? null,
         l.publisher_id ?? null,
         l.alert_count ?? 0,
         l.has_unknown_op === true ? 'yes' : 'no',
       );
       if (identity)
         row.push(
+          l.buyer_id ?? null,
           l.buyer_display_name ?? null,
           l.seller_name ?? null,
           l.provider_order_id ?? null,
