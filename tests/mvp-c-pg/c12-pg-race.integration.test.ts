@@ -44,7 +44,16 @@ describe.skipIf(!PG_ON)('PG-2 races on real Postgres', () => {
 
   const invariants = async (rig: CRig) => {
     const all = await checkInvariants(rig.app.db);
-    expect(all.map((v) => v.id)).toEqual(['INV1', 'INV2', 'INV3', 'INV4', 'INV5', 'INV6', 'INV7']);
+    expect(all.map((v) => v.id)).toEqual([
+      'INV1',
+      'INV2',
+      'INV3',
+      'INV4',
+      'INV5',
+      'INV6',
+      'INV7',
+      'INV8',
+    ]);
     expect(all.filter((v) => !v.ok)).toEqual([]);
   };
   const count = (rig: CRig, sql: string, p: unknown[] = []) => rig.count(sql, p);

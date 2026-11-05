@@ -63,7 +63,16 @@ describe('INV7 holds', () => {
   it('is in the report, after INV6, with a detail line', async () => {
     w = await makeWorld();
     const r = await report();
-    expect(r.map((x) => x.id)).toEqual(['INV1', 'INV2', 'INV3', 'INV4', 'INV5', 'INV6', 'INV7']);
+    expect(r.map((x) => x.id)).toEqual([
+      'INV1',
+      'INV2',
+      'INV3',
+      'INV4',
+      'INV5',
+      'INV6',
+      'INV7',
+      'INV8',
+    ]);
     const last = r[6]!;
     expect(last.ok).toBe(true);
     expect(last.detail).toMatch(/publisher/i);
