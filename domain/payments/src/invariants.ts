@@ -20,19 +20,35 @@ import { AccessPolicySchema } from '@umsbx/contracts';
 import type { AccessEvent, AccessEventKind, Id, LedgerEntry, SqlExecutor } from '@umsbx/contracts';
 import { publisherBalances } from '@umsbx/ledger';
 
+/** INT-OPS-A / OPS-A.6: a row that breaks an invariant, by table and id. `detail` shows five of them; `rows` has all. */
+export interface InvariantRow {
+  table: string;
+  id: string;
+}
 type Result = {
   id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7' | 'INV8';
   ok: boolean;
   detail: string;
+  rows: InvariantRow[];
 };
 const SHOWN = 5;
 
-const describe = (title: string, bad: string[]): string =>
+/** One violation: the sentence of `detail` and the row it is about. */
+interface Bad extends InvariantRow {
+  text: string;
+  /** Other rows the same violation is about (a capture on two units names both units). */
+  also?: InvariantRow[];
+}
+const bad_ = (table: string, id: string, text: string): Bad => ({ table, id, text });
+const describe = (title: string, bad: Bad[]): string =>
   bad.length === 0
     ? `${title}: holds`
-    : `${title}: ${bad.length} violation${bad.length === 1 ? '' : 's'}: ${bad.slice(0, SHOWN).join('; ')}${
-        bad.length > SHOWN ? '; ...' : ''
-      }`;
+    : `${title}: ${bad.length} violation${bad.length === 1 ? '' : 's'}: ${bad
+        .slice(0, SHOWN)
+        .map((b) => b.text)
+        .join('; ')}${bad.length > SHOWN ? '; ...' : ''}`;
+const rowsOf = (bad: Bad[]): InvariantRow[] =>
+  bad.flatMap((b) => [{ table: b.table, id: b.id }, ...(b.also ?? [])]);
 
 async function inv1(db: SqlExecutor): Promise<Result> {
   const rows = await db.query<Record<string, unknown>>(
@@ -44,7 +60,7 @@ async function inv1(db: SqlExecutor): Promise<Result> {
       GROUP BY u.id, u.amount_minor, u.refunded_minor, u.captured_verified_at
       ORDER BY u.id`,
   );
-  const bad: string[] = [];
+  const bad: Bad[] = [];
   for (const r of rows.rows) {
     const id = r['id'] as string;
     const sale = Number(r['sale']);
@@ -54,17 +70,32 @@ async function inv1(db: SqlExecutor): Promise<Result> {
     const refunded = Number(r['refunded_minor']);
     if (r['verified'] === true) {
       if (sales !== 1 || sale !== amount) {
-        bad.push(`unit ${id}: ${sales} sale entries totalling ${sale}, captured amount ${amount}`);
+        bad.push(
+          bad_(
+            'order_units',
+            id,
+            `unit ${id}: ${sales} sale entries totalling ${sale}, captured amount ${amount}`,
+          ),
+        );
       } else if (refund !== refunded || sale - refund !== amount - refunded) {
-        bad.push(`unit ${id}: ledger refunds ${refund}, unit says ${refunded}`);
+        bad.push(
+          bad_('order_units', id, `unit ${id}: ledger refunds ${refund}, unit says ${refunded}`),
+        );
       }
     } else if (sales > 0 || refund > 0) {
-      bad.push(`unit ${id}: not verified but the ledger has sale ${sale} and refund ${refund}`);
+      bad.push(
+        bad_(
+          'order_units',
+          id,
+          `unit ${id}: not verified but the ledger has sale ${sale} and refund ${refund}`,
+        ),
+      );
     }
   }
   return {
     id: 'INV1',
     ok: bad.length === 0,
+    rows: rowsOf(bad),
     detail: describe('ledger sale minus refunds equals the verified amount per unit', bad),
   };
 }
@@ -77,10 +108,11 @@ async function inv2(db: SqlExecutor): Promise<Result> {
                  AND u.status IN ('captured_verified', 'partially_refunded', 'reversal_suspected'))
       ORDER BY e.id`,
   );
-  const bad = rows.rows.map((r) => `item ${r.id} of unit ${r.unit_id}`);
+  const bad = rows.rows.map((r) => bad_('entitlements', r.id, `item ${r.id} of unit ${r.unit_id}`));
   return {
     id: 'INV2',
     ok: bad.length === 0,
+    rows: rowsOf(bad),
     detail: describe('every available item has a verified capture', bad),
   };
 }
@@ -96,13 +128,18 @@ async function inv3(db: SqlExecutor): Promise<Result> {
       ORDER BY u.id`,
   );
   const bad = rows.rows.map((r) =>
-    Number(r.items) === 0
-      ? `unit ${r.id}: captured, no items`
-      : `unit ${r.id}: captured, ${Number(r.open)} item(s) not paid`,
+    bad_(
+      'order_units',
+      r.id,
+      Number(r.items) === 0
+        ? `unit ${r.id}: captured, no items`
+        : `unit ${r.id}: captured, ${Number(r.open)} item(s) not paid`,
+    ),
   );
   return {
     id: 'INV3',
     ok: bad.length === 0,
+    rows: rowsOf(bad),
     detail: describe('no captured unit without its paid items', bad),
   };
 }
@@ -112,7 +149,7 @@ async function inv4(db: SqlExecutor): Promise<Result> {
     `SELECT e.id, e.policy, w.started_at, w.base_ends_at, w.ends_at, w.credit_ms
        FROM access_windows w JOIN entitlements e ON e.id = w.entitlement_id ORDER BY e.id`,
   );
-  const bad: string[] = [];
+  const bad: Bad[] = [];
   const iso = (v: unknown): string | null =>
     v === null || v === undefined ? null : new Date(v as string | Date).toISOString();
   for (const w of windows.rows) {
@@ -147,12 +184,19 @@ async function inv4(db: SqlExecutor): Promise<Result> {
       expected.started_at !== iso(w['started_at']) ||
       expected.credit_ms !== Number(w['credit_ms'])
     ) {
-      bad.push(`item ${id}: stored end ${iso(w['ends_at'])}, log gives ${expected.ends_at}`);
+      bad.push(
+        bad_(
+          'entitlements',
+          id,
+          `item ${id}: stored end ${iso(w['ends_at'])}, log gives ${expected.ends_at}`,
+        ),
+      );
     }
   }
   return {
     id: 'INV4',
     ok: bad.length === 0,
+    rows: rowsOf(bad),
     detail: describe('every window end equals the end the event log gives', bad),
   };
 }
@@ -167,7 +211,9 @@ async function inv5(db: SqlExecutor): Promise<Result> {
                           AND p.state = 'failed' AND p.failure_reason = 'window_expired')
       ORDER BY o.id`,
   );
-  const bad = rows.rows.map((r) => `order ${r.id} is ${r.status} and nothing polls it`);
+  const bad = rows.rows.map((r) =>
+    bad_('orders', r.id, `order ${r.id} is ${r.status} and nothing polls it`),
+  );
   // Per PayPal order, for a pack (a single order has one, and the order check above covers it).
   const perPo = await db.query<{ id: string; order_id: string; state: string }>(
     `SELECT p.id, p.order_id, p.state FROM provider_orders p
@@ -179,11 +225,18 @@ async function inv5(db: SqlExecutor): Promise<Result> {
       ORDER BY p.order_id, p.id`,
   );
   for (const r of perPo.rows) {
-    bad.push(`provider order ${r.id} of order ${r.order_id} is ${r.state} and nothing polls it`);
+    bad.push(
+      bad_(
+        'provider_orders',
+        r.id,
+        `provider order ${r.id} of order ${r.order_id} is ${r.state} and nothing polls it`,
+      ),
+    );
   }
   return {
     id: 'INV5',
     ok: bad.length === 0,
+    rows: rowsOf(bad),
     detail: describe('every order in flight has an operation that is polled', bad),
   };
 }
@@ -197,10 +250,13 @@ async function inv6(db: SqlExecutor): Promise<Result> {
                            AND p.state IN ('sent', 'unknown'))
       ORDER BY r.id`,
   );
-  const bad = rows.rows.map((r) => `refund request ${r.id} is ${r.state} and nothing polls it`);
+  const bad = rows.rows.map((r) =>
+    bad_('refund_requests', r.id, `refund request ${r.id} is ${r.state} and nothing polls it`),
+  );
   return {
     id: 'INV6',
     ok: bad.length === 0,
+    rows: rowsOf(bad),
     detail: describe('every open refund request has an operation that is polled', bad),
   };
 }
@@ -259,7 +315,7 @@ async function inv7(db: SqlExecutor): Promise<Result> {
   for (const r of units.rows) {
     expected.set(JSON.stringify([r.publisher_id, r.currency]), Number(r.expected));
   }
-  const bad: string[] = [];
+  const bad: Bad[] = [];
   const keys = [...new Set([...net.keys(), ...expected.keys()])].sort();
   for (const key of keys) {
     const [publisher, currency] = JSON.parse(key) as [string, string];
@@ -267,7 +323,11 @@ async function inv7(db: SqlExecutor): Promise<Result> {
     const owed = expected.get(key) ?? 0;
     if (ledger !== owed) {
       bad.push(
-        `publisher ${publisher} (${currency}): ledger net ${ledger}, verified captured minus refunded ${owed}, difference ${ledger - owed}`,
+        bad_(
+          'publishers',
+          publisher,
+          `publisher ${publisher} (${currency}): ledger net ${ledger}, verified captured minus refunded ${owed}, difference ${ledger - owed}`,
+        ),
       );
     }
   }
@@ -276,10 +336,24 @@ async function inv7(db: SqlExecutor): Promise<Result> {
     `SELECT capture_id, count(*) AS units FROM order_units WHERE capture_id IS NOT NULL
       GROUP BY capture_id HAVING count(*) > 1 ORDER BY capture_id`,
   );
-  for (const r of shared.rows) bad.push(`capture ${r.capture_id} is on ${Number(r.units)} units`);
+  for (const r of shared.rows) {
+    const text = `capture ${r.capture_id} is on ${Number(r.units)} units`;
+    const units = await db.query<{ id: string }>(
+      'SELECT id FROM order_units WHERE capture_id = $1 ORDER BY id',
+      [r.capture_id],
+    );
+    // One violation with one row per unit, so each unit resolves to its own order.
+    const [first, ...rest] = units.rows;
+    if (first !== undefined)
+      bad.push({
+        ...bad_('order_units', first.id, text),
+        also: rest.map((u) => ({ table: 'order_units', id: u.id })),
+      });
+  }
   return {
     id: 'INV7',
     ok: bad.length === 0,
+    rows: rowsOf(bad),
     detail: describe(
       'per publisher, ledger net equals verified captured minus refunded, and a capture belongs to one unit',
       bad,
@@ -303,7 +377,10 @@ async function inv8(db: SqlExecutor): Promise<Result> {
       GROUP BY u.id, up.seller_minor, up.fee_minor, u.captured_verified_at
       ORDER BY u.id`,
   );
-  const bad: string[] = [];
+  const bad: Bad[] = [];
+  const add = (id: string, text: string): void => {
+    bad.push(bad_('order_units', id, text));
+  };
   for (const r of rows.rows) {
     const id = r['id'] as string;
     const sale = Number(r['sale']);
@@ -311,17 +388,19 @@ async function inv8(db: SqlExecutor): Promise<Result> {
     const payable = Number(r['payable']);
     if (r['verified'] !== true) {
       if (fee > 0 || payable > 0)
-        bad.push(`unit ${id}: not verified but the ledger has fee ${fee} and payable ${payable}`);
+        add(id, `unit ${id}: not verified but the ledger has fee ${fee} and payable ${payable}`);
       continue;
     }
     if (sale !== fee + payable) {
-      bad.push(`unit ${id}: sale ${sale}, fee ${fee} plus payable ${payable}`);
+      add(id, `unit ${id}: sale ${sale}, fee ${fee} plus payable ${payable}`);
     } else if (fee !== Number(r['fee_minor']) || payable !== Number(r['seller_minor'])) {
-      bad.push(
+      add(
+        id,
         `unit ${id}: fee ${fee} and payable ${payable}, parts say ${String(r['fee_minor'])} and ${String(r['seller_minor'])}`,
       );
     } else if (Number(r['refund']) !== Number(r['fee_rev']) + Number(r['payable_rev'])) {
-      bad.push(
+      add(
+        id,
         `unit ${id}: refunds ${Number(r['refund'])}, fee reversals ${Number(r['fee_rev'])} plus payable reversals ${Number(r['payable_rev'])}`,
       );
     }
@@ -329,6 +408,7 @@ async function inv8(db: SqlExecutor): Promise<Result> {
   return {
     id: 'INV8',
     ok: bad.length === 0,
+    rows: rowsOf(bad),
     detail: describe(
       'per unit, sale equals fee plus payable, and refunds equal their reversals',
       bad,

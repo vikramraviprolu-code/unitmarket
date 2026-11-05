@@ -10,7 +10,9 @@ export type ApprovalError = {
     | 'consent_missing'
     | 'not_owner'
     | 'too_many_items'
-    | 'too_many_publishers';
+    | 'too_many_publishers'
+    // BR-3: the business rules could not be resolved to values inside their safe range.
+    | 'terms_invalid';
 };
 
 export type VerifyError =

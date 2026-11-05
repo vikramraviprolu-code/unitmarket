@@ -31,7 +31,6 @@ const MODULES = [
 const PAGES: Record<string, (typeof MODULES)[number]> = {
   'ops/page.tsx': 'ops-home',
   'ops/money/page.tsx': 'ops-money',
-  'ops/buyers/page.tsx': 'ops-buyers',
   'ops/sellers/page.tsx': 'ops-sellers',
   'ops/agents/page.tsx': 'ops-agents',
   'ops/controls/page.tsx': 'ops-controls',
@@ -45,8 +44,9 @@ describe('the eight modules exist', () => {
     const files = readdirSync(join(here, 'composition')).sort();
     expect(files).toEqual(MODULES.map((m) => `${m}.ts`).sort());
   });
-  it('ops-buyers and ops-agents start empty: no read, no import', () => {
-    for (const m of ['ops-buyers', 'ops-agents']) {
+  // INT-OPS-A built the Buyers reads, so ops-buyers is no longer empty; only ops-agents still is.
+  it('ops-agents starts empty: no read, no import', () => {
+    for (const m of ['ops-agents']) {
       const src = strip(read(join(here, 'composition', `${m}.ts`)));
       expect(importsOf(src), m).toEqual([]);
       expect(src.replace(/\s+/g, ' ').trim(), m).toBe('export {};');
