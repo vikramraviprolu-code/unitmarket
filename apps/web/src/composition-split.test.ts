@@ -48,11 +48,13 @@ describe('the eight modules exist', () => {
     const files = readdirSync(join(here, 'composition')).sort();
     expect(files).toEqual(MODULES.map((m) => `${m}.ts`).sort());
   });
-  // INT-OPS-A built the Buyers reads and INT-OPS-C the Agents and API reads, so no module is empty any more.
-  it('no module is empty', () => {
+  // INT-OPS-A built the Buyers reads and INT-CTL (CTL.7) gives ops-agents its first read, the API exposure rows,
+  // so no module is empty any more: each one exports at least one read.
+  it('no module is empty: each exports at least one read', () => {
     for (const m of MODULES) {
       const src = strip(read(join(here, 'composition', `${m}.ts`)));
       expect(src.replace(/\s+/g, ' ').trim(), m).not.toBe('export {};');
+      expect(src, m).toMatch(/export (async )?(function|const)/);
     }
   });
 });
@@ -104,8 +106,8 @@ describe('a module reads through the one door and nothing else', () => {
     'ops-home',
     'ops-money',
     'ops-sellers',
-    'ops-controls',
     'ops-agents',
+    'ops-controls',
     'buyer',
     'seller',
   ])('%s', (m) => {

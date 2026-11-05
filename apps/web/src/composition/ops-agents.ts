@@ -4,6 +4,8 @@
 // Every read names its columns. A webhook URL is cut to its host here, inside the read, so its path and query never
 // reach the page (C1, N-C3); the signing secret and a key's secret hash are never selected.
 // The two writes are the operator revokes (C3, C4); the routes import them from here (C7).
+// INT-CTL (CTL.7) adds the API exposure rows. They come from the api_exposure table, never from the journal, and
+// only an operator gets them.
 import type { Actor } from '@umsbx/contracts';
 import { revokeKeyAsOperator } from '@umsbx/security';
 import { apiKeyDeps, app, createApiV1, revokeMandateAsOperator } from '../server/access';
@@ -16,6 +18,11 @@ import {
   webhookHost,
 } from '../lib/ops-agents-view';
 import type { CapRow, KeyRow, RawCap, RawKey, RevokeReason } from '../lib/ops-agents-view';
+import type { ExposureRow } from '../server/access';
+
+export async function readExposure(actor: Actor): Promise<ExposureRow[] | null> {
+  return (await app()).engine.readApiExposure(actor);
+}
 
 /** The most rows each list of the page shows, newest first. */
 export const AGENTS_LIST_CAP = 200;

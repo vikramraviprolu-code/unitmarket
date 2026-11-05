@@ -1,15 +1,17 @@
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { currentActor } from '../../../server/session';
-import { readOpsControls } from '../../../composition/ops-controls';
+import { mintKeys, readAppStatus, readOpsControls } from '../../../composition/ops-controls';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { gateLines } from '../../../lib/gate-lines';
-import { Chip, PageHeader, Section } from '../../../ui/publisher/kit';
-import {
-  OPS_HOME_HEADING_SWITCHES,
-  OPS_HOME_SWITCHES_LEDE,
-  switchView,
-} from '../../../lib/ops-home-copy';
+import { PageHeader, Section } from '../../../ui/publisher/kit';
+import { OPS_HOME_HEADING_SWITCHES, OPS_HOME_SWITCHES_LEDE } from '../../../lib/ops-home-copy';
+import { GatewayPanel } from '../../../ui/ops/GatewayPanel';
+import { ServicesPanel } from '../../../ui/ops/ServicesPanel';
+import { SwitchList } from '../../../ui/ops/SwitchList';
+import { gatewayView } from '../../../lib/gateway-view';
+import { switchLines } from '../../../lib/switches-view';
+import { KillControls } from '../KillControls';
 import { SectionNav } from '../../../ui/SectionNav';
 import { OPS_CONTROLS_SECTIONS } from '../../../lib/ops-copy';
 import '../pk-opshome.css';
@@ -24,32 +26,22 @@ export default async function OpsControls() {
   const read = await readOpsControls(actor);
   if (read === null) redirect('/signin?next=/ops/controls');
   const { snap, flagOff } = read;
+  const appStatus = await readAppStatus();
+  const lines = switchLines(snap.switches, flagOff);
+  const keys = await mintKeys(lines.length);
+  const gateway = gatewayView({ mode: snap.gate.mode, locks: snap.gate.outbound?.locks ?? null });
   return (
     <>
       <PageHeader
         title="Controls"
         aside={<EnvLabel environment={snap.environment} />}
-        lede="The safety switches and the outbound approval gate. Read only here: the stop button is on Home."
+        lede="The safety switches, the outbound approval gate, the gateway locks and the services. Turning a switch off needs no authenticator code; turning one on does."
       />
       <SectionNav label="Sections of this page" items={OPS_CONTROLS_SECTIONS} />
 
       <Section title={OPS_HOME_HEADING_SWITCHES} id="ops-switches">
         <p className="oh-lede">{OPS_HOME_SWITCHES_LEDE}</p>
-        <ul className="oh-grid" aria-label="Safety switches">
-          {Object.entries(snap.switches).map(([name, on]) => {
-            const v = switchView(name, on, flagOff);
-            return (
-              <li key={name}>
-                <div className="pk-panel oh-switch" data-testid={`ops-switch-${name}`}>
-                  <p className="oh-switch-name">{v.label}</p>
-                  <p className="oh-code">{v.name}</p>
-                  <Chip tone={v.chip.tone}>{v.chip.text}</Chip>
-                  {v.hint ? <p className="oh-hint">{v.hint}</p> : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <SwitchList lines={lines} keys={keys} />
       </Section>
 
       <Section title="Outbound approval gate" id="ops-gate-section">
@@ -60,6 +52,20 @@ export default async function OpsControls() {
             ))}
           </ul>
         </div>
+      </Section>
+
+      <Section title="Gateway locks" id="ops-gateway">
+        <GatewayPanel view={gateway} />
+        <KillControls
+          outboundOn={snap.kill_switch.outbound_on}
+          hasCode={actor.mfa === true}
+          activeScope={snap.kill_switch.active_scope}
+          flagOff={flagOff}
+        />
+      </Section>
+
+      <Section title="Services" id="ops-services">
+        <ServicesPanel app={appStatus} />
       </Section>
     </>
   );

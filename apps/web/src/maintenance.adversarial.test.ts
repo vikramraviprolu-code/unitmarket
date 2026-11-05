@@ -75,6 +75,10 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/applications/route.ts': () => import('./app/api/applications/route'),
   'api/approvals/route.ts': () => import('./app/api/approvals/route'),
   'api/briefs/route.ts': () => import('./app/api/briefs/route'),
+  'api/buyer/mandates/[id]/revoke/route.ts': () =>
+    import('./app/api/buyer/mandates/[id]/revoke/route'),
+  'api/buyer/mandates/route.ts': () => import('./app/api/buyer/mandates/route'),
+  'api/buyer/orders/export/route.ts': () => import('./app/api/buyer/orders/export/route'),
   'api/cases/route.ts': () => import('./app/api/cases/route'),
   'api/discover/route.ts': () => import('./app/api/discover/route'),
   'api/v1/api-keys/[id]/route.ts': () => import('./app/api/v1/api-keys/[id]/route'),
@@ -89,6 +93,12 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/v1/webhook-subscriptions/route.ts': () => import('./app/api/v1/webhook-subscriptions/route'),
   'api/library/[id]/link/route.ts': () => import('./app/api/library/[id]/link/route'),
   'api/library/route.ts': () => import('./app/api/library/route'),
+  'api/ops/api-exposure/[group]/off/route.ts': () =>
+    import('./app/api/ops/api-exposure/[group]/off/route'),
+  'api/ops/api-exposure/[group]/on/route.ts': () =>
+    import('./app/api/ops/api-exposure/[group]/on/route'),
+  'api/ops/switches/[name]/off/route.ts': () => import('./app/api/ops/switches/[name]/off/route'),
+  'api/ops/switches/[name]/on/route.ts': () => import('./app/api/ops/switches/[name]/on/route'),
   'api/ops/agent-buy/route.ts': () => import('./app/api/ops/agent-buy/route'),
   'api/ops/api-keys/[id]/revoke/route.ts': () => import('./app/api/ops/api-keys/[id]/revoke/route'),
   'api/ops/mandates/[id]/revoke/route.ts': () => import('./app/api/ops/mandates/[id]/revoke/route'),
