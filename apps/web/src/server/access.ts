@@ -15,6 +15,8 @@ export type {
   Engine,
   LibraryEntry,
   OfferPage,
+  OpsFee,
+  OpsPayouts,
   OpsSnapshot,
   OrderView,
   PackStep,

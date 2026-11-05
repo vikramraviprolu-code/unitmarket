@@ -15,7 +15,9 @@ const block = (over: Partial<StatementBlock> = {}): StatementBlock => ({
   paypal_fee_minor: null,
   money: null,
   settlement: { mode: 'direct', sentence: 'x' },
-  lines: [{ at: '2026-11-05T10:00:00.000Z', order_ref6: 'abc123', kind: 'sale', amount_minor: 500 }],
+  lines: [
+    { at: '2026-11-05T10:00:00.000Z', order_ref6: 'abc123', kind: 'sale', amount_minor: 500 },
+  ],
   ...over,
 });
 const statement = (blocks: StatementBlock[]): PublisherStatement => ({
@@ -28,7 +30,9 @@ const statement = (blocks: StatementBlock[]): PublisherStatement => ({
 
 describe('statementCsv money rows', () => {
   it('a block without a money block gives the rows it always gave', () => {
-    const rows = statementCsv(statement([block()])).trim().split('\r\n');
+    const rows = statementCsv(statement([block()]))
+      .trim()
+      .split('\r\n');
     expect(rows.map((r) => r.split(',')[2])).toEqual([
       'kind',
       'sale',
@@ -42,7 +46,13 @@ describe('statementCsv money rows', () => {
     const csv = statementCsv(
       statement([
         block({
-          money: { fee_minor: 40, owed_minor: 360, paid_out_minor: 300, adjustment_minor: 25, net_minor: 35 },
+          money: {
+            fee_minor: 40,
+            owed_minor: 360,
+            paid_out_minor: 300,
+            adjustment_minor: 25,
+            net_minor: 35,
+          },
         }),
       ]),
     );

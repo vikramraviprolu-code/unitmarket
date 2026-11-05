@@ -92,6 +92,15 @@ export function statementCsv(statement: PublisherStatement): string {
     out += row(null, null, 'total_net', b.net_minor);
     if (b.paypal_fee_minor !== null && b.environment !== 'dryrun')
       out += row(null, null, 'total_paypal_fee', b.paypal_fee_minor);
+    // POB-M1: the fee on top, what is owed, what was paid out, the open adjustments and the next payout, in the block's own
+    // currency. A block sold before the fee existed has none and gives the rows it always gave.
+    if (b.money !== null) {
+      out += row(null, null, 'total_fee_on_top', b.money.fee_minor);
+      out += row(null, null, 'total_owed', b.money.owed_minor);
+      out += row(null, null, 'total_paid_out', b.money.paid_out_minor);
+      out += row(null, null, 'total_open_adjustments', b.money.adjustment_minor);
+      out += row(null, null, 'total_next_payout', b.money.net_minor);
+    }
   }
   return out;
 }

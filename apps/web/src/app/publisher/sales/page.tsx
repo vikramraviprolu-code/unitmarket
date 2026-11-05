@@ -30,6 +30,7 @@ import {
   splitSales,
 } from '../../../lib/statement-copy';
 import { DownloadCsv } from '../DownloadCsv';
+import { MoneyBlock } from '../MoneyBlock';
 import { Details, EnvChip, TableScroll } from '../pk-sales-parts';
 import { HOW_MADE_SUMMARY, totalsTiles, unitStatusTone } from '../../../lib/publisher-sales-view';
 import {
@@ -131,6 +132,9 @@ export default async function PublisherSales() {
                     />
                   ))}
                 </div>
+                {t.money !== null ? (
+                  <MoneyBlock money={t.money} currency={t.currency} testId="sales-money" />
+                ) : null}
               </div>
             ))}
           </div>

@@ -31,6 +31,7 @@ import {
   visibleLines,
 } from '../../../lib/statement-copy';
 import { DownloadCsv } from '../DownloadCsv';
+import { MoneyBlock } from '../MoneyBlock';
 import { Details, EnvChip, TableScroll } from '../pk-sales-parts';
 import { STATEMENT_FILE_SUMMARY, ledgerKindTone } from '../../../lib/publisher-sales-view';
 import {
@@ -112,6 +113,9 @@ export default async function PublisherStatement() {
               />
               <StatTile label={LINE_LABEL.net} value={formatMinor(b.net_minor, b.currency)} />
             </div>
+            {b.money !== null ? (
+              <MoneyBlock money={b.money} currency={b.currency} testId="statement-money" />
+            ) : null}
             <details className="pk-figs" data-testid="statement-figures">
               <summary>{FIGURES_SUMMARY}</summary>
               <dl className="pk-facts">

@@ -5,7 +5,7 @@
 //
 // This is the one place the rule lives: `applyFee` is the function every caller uses, and `FeePolicy` is the port the web
 // import (POB-I1) calls at publish. Pure functions here; the setting itself is a row (fee_settings), read and written below.
-import { FEE_BPS_MAX, err, ok } from '@umsbx/contracts';
+import { FEE_BPS_MAX, FeeBpsSchema, err, ok } from '@umsbx/contracts';
 import type { Actor, CoreDeps, Id, Result, SqlExecutor } from '@umsbx/contracts';
 
 export { FEE_BPS_MAX };
@@ -142,10 +142,9 @@ export async function setFee(
 ): Promise<Result<{ id: Id; fee_bps: number }, FeeError>> {
   if (i.actor.kind !== 'operator') return fail('not_operator');
   if (i.actor.mfa !== true) return fail('mfa_required');
-  const bps = i.fee_bps;
-  if (typeof bps !== 'number' || !Number.isSafeInteger(bps) || bps < 0 || bps > FEE_BPS_MAX) {
-    return fail('fee_invalid');
-  }
+  const parsed = FeeBpsSchema.safeParse(i.fee_bps);
+  if (!parsed.success || !Number.isSafeInteger(parsed.data)) return fail('fee_invalid');
+  const bps = parsed.data;
   const reason = typeof i.reason === 'string' ? i.reason.trim() : '';
   if (reason.length < 3 || reason.length > 200) return fail('reason_invalid');
   const actor = i.actor;

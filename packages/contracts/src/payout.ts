@@ -7,6 +7,9 @@ import type { EnvironmentLabel, Id, Money } from './primitives';
 /** The fee on top is 0 to 30 percent of the publisher's price: 3000 basis points at most (spec POB-M1, review of 4 Nov). */
 export const FEE_BPS_MAX = 3000;
 
+/** The fee on top as the setting stores it: a whole number of basis points from 0 to 3000 (0 to 30 percent). */
+export const FeeBpsSchema = z.number().int().min(0).max(FEE_BPS_MAX);
+
 /** One payout is at most this many minor units (a database CHECK); a larger sum is cut into several payouts. */
 export const PAYOUT_MAX_MINOR = 100_000_000;
 
