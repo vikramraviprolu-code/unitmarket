@@ -25,6 +25,8 @@ const MODULES = [
   'ops-controls',
   'buyer',
   'seller',
+  // BR-6: the reads of the Business rules pages.
+  'ops-rules',
 ] as const;
 
 /** Page file (under src/app) to the one module it may import. Pages another lane builds are listed too. */
@@ -40,7 +42,7 @@ const PAGES: Record<string, (typeof MODULES)[number]> = {
   'ops/controls/page.tsx': 'ops-controls',
 };
 
-describe('the eight modules exist', () => {
+describe('the nine modules exist', () => {
   it.each(MODULES)('src/composition/%s.ts', (m) => {
     expect(existsSync(join(here, 'composition', `${m}.ts`))).toBe(true);
   });

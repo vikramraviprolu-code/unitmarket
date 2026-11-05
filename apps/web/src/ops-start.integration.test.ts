@@ -190,8 +190,12 @@ describe('section tabs (source)', () => {
       'buyers',
       'money/orders',
       'money/problems',
+      // BR-6: the rules list, form, history and explain pages each hold one table or one form.
+      'rules',
     ];
-    expect(found.length).toBe(22);
+    // BR-6: 18 to 22 (/ops/rules, /ops/rules/new, /ops/rules/history, /ops/rules/explain). INT-OPS-C: 22 to 26
+    // (/ops/buyers/[id], /ops/sellers/[id], /ops/agents, /ops/money/ledger).
+    expect(found.length).toBe(26);
     for (const p of found)
       if (!SINGLE_SECTION.some((s) => p.includes(`/ops/${s}/`)))
         expect(readFileSync(p, 'utf8'), p).toContain('<SectionNav');

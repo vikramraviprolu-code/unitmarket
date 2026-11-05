@@ -77,7 +77,7 @@ const under = (path: string, base: string): boolean => path === base || path.sta
 /**
  * Which tab a path belongs to, or null. Home matches its own URL only, so /ops is not a prefix of every
  * operator page. Pages kept at their old URLs belong to a tab: /ops/publishers and /ops/payee-requests to
- * Sellers, /ops/evals to Controls.
+ * Sellers, /ops/evals to Controls. BR-6: /ops/rules and the pages below it belong to Controls.
  */
 export function activeTabId(persona: ShellPersona, rawPath: string): string | null {
   const path = cleanPath(rawPath);
@@ -93,7 +93,8 @@ export function activeTabId(persona: ShellPersona, rawPath: string): string | nu
         return 'sellers';
       if (under(path, '/ops/money')) return 'money';
       if (under(path, '/ops/agents')) return 'agents';
-      if (under(path, '/ops/controls') || under(path, '/ops/evals')) return 'controls';
+      if (under(path, '/ops/controls') || under(path, '/ops/evals') || under(path, '/ops/rules'))
+        return 'controls';
       return null;
     case 'buyer':
       if (path === '/buyer') return 'home';
@@ -129,6 +130,7 @@ const CONTROLS_SUB: readonly [string, string][] = [
   ['Evals', '/ops/evals'],
   ['Activity', '/ops/controls/activity'],
   ['Invariants', '/ops/controls/invariants'],
+  ['Business rules', '/ops/rules'],
 ];
 const MONEY_SUB: readonly [string, string][] = [
   ['Overview', '/ops/money'],
