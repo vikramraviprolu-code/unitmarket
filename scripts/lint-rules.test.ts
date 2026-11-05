@@ -1144,6 +1144,7 @@ describe('named exemptions (D-015)', () => {
     expect(flat).toEqual(
       [
         'apps/web/src/server/singleton.ts -> no-restricted-syntax,sbx/no-global-alias',
+        'packages/obs/src/trace-store.ts -> no-restricted-syntax,sbx/no-global-alias',
         'apps/web/src/instrumentation.ts -> no-restricted-properties,sbx/no-global-alias',
         // BU-2 (the unseal): the one apps file that may name the three sealed identifiers.
         'apps/web/src/server/outbound.server.ts -> sbx/sealed-transport',

@@ -1455,6 +1455,12 @@ export const NAMED_EXEMPTIONS = [
     off: ['sbx/no-global-alias', 'no-restricted-syntax'],
   },
   {
+    files: ['packages/obs/src/trace-store.ts'],
+    reason:
+      'process-wide trace context store shared by bundle copies (globalThis Symbol key, reads only its own key)',
+    off: ['sbx/no-global-alias', 'no-restricted-syntax'],
+  },
+  {
     files: ['apps/web/src/instrumentation.ts'],
     reason: 'reads the framework flag NEXT_RUNTIME, which is not application configuration',
     off: ['no-restricted-properties', 'sbx/no-global-alias'],
