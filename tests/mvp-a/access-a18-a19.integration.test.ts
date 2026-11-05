@@ -85,7 +85,7 @@ describe('A-19 history_stays', () => {
     const w = await makeWorld();
     await buy(w, BUYER_A, 'tide-tables', 'keep_retrieve');
     await buy(w, BUYER_A, 'ferry-timetables', 'online_read');
-    w.td.clock.advance(5 * DAY + HOUR);
+    w.td.clock.advance(7 * DAY + HOUR);
     await sweepWindows(w.td, { max_items: 50 });
     const lib = await getLibrary(w.td.db, { buyer_id: 'buy_A', now: w.td.clock.now() });
     expect(lib).toHaveLength(2);

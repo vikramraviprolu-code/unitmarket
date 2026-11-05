@@ -7,7 +7,6 @@ import { applyReadback, loadOrderView, onBuyerReturn, readApplyGates } from './i
 import type { ApplyGates } from './index';
 import {
   BUYER_A,
-  FIVE_DAYS_MS,
   approved,
   count,
   makeWorld,
@@ -126,7 +125,7 @@ describe('a matching read unlocks once', () => {
     expect((await loadOrderView(w.db, a.order_id)).items[0]!.window.started_at).toBe(started);
   });
 
-  it('the window ends five days after the moment of verification', async () => {
+  it('the window ends seven days (D-096, BR-3) after the moment of verification', async () => {
     w = await makeWorld();
     const a = await sentCapture();
     w.clock.advance(600_000);
@@ -134,7 +133,7 @@ describe('a matching read unlocks once', () => {
     const v = await loadOrderView(w.db, a.order_id);
     expect(
       Date.parse(v.items[0]!.window.ends_at!) - Date.parse(v.items[0]!.window.started_at!),
-    ).toBe(FIVE_DAYS_MS);
+    ).toBe(7 * 86_400_000);
     expect(Date.parse(v.items[0]!.window.started_at!)).toBe(w.clock.now().getTime());
   });
 
