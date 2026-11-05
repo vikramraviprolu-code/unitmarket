@@ -24,8 +24,14 @@ const doc = JSON.parse(readFileSync(join(here, 'queries.json'), 'utf8')) as {
   cases: Case[];
 };
 const repo = join(here, '..', '..', '..');
-const SCRIPTED = readFileSync(join(repo, 'packages/model/src/scripted-assist.ts'), 'utf8').toLowerCase();
-const WORDS = readFileSync(join(repo, 'packages/contracts/src/assist-words.ts'), 'utf8').toLowerCase();
+const SCRIPTED = readFileSync(
+  join(repo, 'packages/model/src/scripted-assist.ts'),
+  'utf8',
+).toLowerCase();
+const WORDS = readFileSync(
+  join(repo, 'packages/contracts/src/assist-words.ts'),
+  'utf8',
+).toLowerCase();
 
 const sameSet = (a: readonly string[], b: readonly string[]) =>
   JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
@@ -57,7 +63,9 @@ describe('GA.3 query eval (scripted model)', () => {
 });
 
 describe('no overlap: the scripted answers are rules, not a lookup (R2-2)', () => {
-  const phrases = doc.cases.map((c) => c.text.toLowerCase()).filter((t) => t.split(/\s+/).length >= 3);
+  const phrases = doc.cases
+    .map((c) => c.text.toLowerCase())
+    .filter((t) => t.split(/\s+/).length >= 3);
   const refs = doc.cases
     .flatMap((c) => [c.text, ...Object.values(c.chips)])
     .flatMap((t) => t.match(/\bord_[a-z0-9_]+\b|\b(?=[A-Z0-9]*\d)[A-Z0-9]{10,30}\b/gi) ?? []);

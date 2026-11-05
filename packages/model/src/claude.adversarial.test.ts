@@ -233,13 +233,24 @@ describe('GA: txn_query and explain_order through the Claude adapter', () => {
     system: '',
     input,
   });
-  const goodExplain = { what_happened: 'Unclear capture.', safe_now: 'Wait.', action_id: 'payment_unresolved' };
+  const goodExplain = {
+    what_happened: 'Unclear capture.',
+    safe_now: 'Wait.',
+    action_id: 'payment_unresolved',
+  };
 
   it('a well-formed txn_query answer is used, and the system prompt is TXN_QUERY_SYSTEM', async () => {
     const { model, send } = build(envelope({ status: 'attention', channel: 'agent' }));
     const r = await model.complete(txn('stuck by my agent'));
-    expect(r).toMatchObject({ kind: 'ok', output: { status: 'attention', channel: 'agent' }, served_model: 'claude-haiku-5-5' });
-    const body = JSON.parse(send.mock.calls[0]![0] as string) as { system: string; messages: { content: string }[] };
+    expect(r).toMatchObject({
+      kind: 'ok',
+      output: { status: 'attention', channel: 'agent' },
+      served_model: 'claude-haiku-5-5',
+    });
+    const body = JSON.parse(send.mock.calls[0]![0] as string) as {
+      system: string;
+      messages: { content: string }[];
+    };
     expect(body.system).toBe(TXN_QUERY_SYSTEM);
     expect(JSON.parse(body.messages[0]!.content)).toEqual({ rest: 'stuck by my agent' });
   });
@@ -256,7 +267,26 @@ describe('GA: txn_query and explain_order through the Claude adapter', () => {
     ['an unknown field', { status: 'paid', password: 'x' }],
     ['a long value', { q: 'x'.repeat(101) }],
     ['a non-string value', { min_minor: 500 }],
-    ['too many keys', Object.fromEntries(['from', 'to', 'min_minor', 'max_minor', 'currency', 'status', 'refund', 'case', 'buyer', 'seller', 'q', 'ref', 'channel'].map((k) => [k, 'x']))],
+    [
+      'too many keys',
+      Object.fromEntries(
+        [
+          'from',
+          'to',
+          'min_minor',
+          'max_minor',
+          'currency',
+          'status',
+          'refund',
+          'case',
+          'buyer',
+          'seller',
+          'q',
+          'ref',
+          'channel',
+        ].map((k) => [k, 'x']),
+      ),
+    ],
     ['an array', ['status', 'paid']],
   ])('txn_query: %s falls back to the scripted answer', async (_n, output) => {
     const { model, send } = build(envelope(output));
@@ -284,9 +314,24 @@ describe('GA: txn_query and explain_order through the Claude adapter', () => {
     ['txn_query over 500 characters', txn('x'.repeat(501)), null],
     ['explain with order_ref', explain({ ...projection, order_ref: 'ord_x' }), null],
     ['explain with buyer', explain({ ...projection, buyer: 'Alice' }), null],
-    ['explain with an entry actor_id', explain({ ...projection, entries: [{ ...projection.entries[0], actor_id: 'buy_1' }] }), null],
-    ['explain with an entry at', explain({ ...projection, entries: [{ ...projection.entries[0], at: '2026-11-05T10:00:00Z' }] }), null],
-    ['explain with an entry amount', explain({ ...projection, entries: [{ ...projection.entries[0], amount: 500 }] }), null],
+    [
+      'explain with an entry actor_id',
+      explain({ ...projection, entries: [{ ...projection.entries[0], actor_id: 'buy_1' }] }),
+      null,
+    ],
+    [
+      'explain with an entry at',
+      explain({
+        ...projection,
+        entries: [{ ...projection.entries[0], at: '2026-11-05T10:00:00Z' }],
+      }),
+      null,
+    ],
+    [
+      'explain with an entry amount',
+      explain({ ...projection, entries: [{ ...projection.entries[0], amount: 500 }] }),
+      null,
+    ],
   ])('%s is refused before the wire is called', async (_n, req, input) => {
     const { model, send } = build(envelope({ status: 'paid' }));
     await model.complete(input === null ? req : { ...req, input });
@@ -302,8 +347,14 @@ describe('GA: txn_query and explain_order through the Claude adapter', () => {
       fallback: createScriptedModel(),
       live: async () => true,
     });
-    expect(await model.complete(txn('stuck'))).toMatchObject({ kind: 'ok', served_model: 'scripted-v1' });
-    expect(await model.complete(explain(projection))).toMatchObject({ kind: 'ok', served_model: 'scripted-v1' });
+    expect(await model.complete(txn('stuck'))).toMatchObject({
+      kind: 'ok',
+      served_model: 'scripted-v1',
+    });
+    expect(await model.complete(explain(projection))).toMatchObject({
+      kind: 'ok',
+      served_model: 'scripted-v1',
+    });
     expect(send).not.toHaveBeenCalled();
   });
 

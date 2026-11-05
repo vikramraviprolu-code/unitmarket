@@ -12,7 +12,7 @@ import { withTraceContext } from '@umsbx/obs';
 import type { Actor, ModelRequest, TraceContext } from '@umsbx/contracts';
 import { bootA } from './api-v1/a-support';
 import type { ARig, Sess } from './api-v1/a-support';
-import { HARBOUR_TIDE, QUAY_MARKET, runPack } from './composite-support';
+import { HARBOUR_FERRY, HARBOUR_TIDE, QUAY_MARKET, runPack } from './composite-support';
 import { call } from './support';
 import { explainPanelView } from './lib/explain-view';
 
@@ -64,7 +64,7 @@ beforeAll(async () => {
   buyer = await rig.session(rig.buyerA);
   seller = await rig.session(rig.harbour);
   const a = await runPack(rig.app, rig.buyerA, [HARBOUR_TIDE, QUAY_MARKET], ['happy']);
-  const b = await runPack(rig.app, rig.buyerA, [HARBOUR_TIDE], ['happy']);
+  const b = await runPack(rig.app, rig.buyerA, [HARBOUR_FERRY], ['happy']);
   attentionRef = a.order_ref;
   paidRef = b.order_ref;
   const q = <T extends Record<string, unknown>>(s: string, p: unknown[] = []) =>
@@ -115,35 +115,51 @@ describe('the port request is the projection only, on an MFA session too', () =>
   it.each([
     ['with the second factor', () => op],
     ['without it', () => noMfa],
-  ])('%s: a deep scan finds only the seven entry fields, alert kinds and fix ids', async (_n, who) => {
-    const spy = vi.spyOn(rig.app.model, 'complete');
-    await read(who(), attentionRef);
-    expect(spy).toHaveBeenCalledTimes(1);
-    const req = spy.mock.calls[0]![0] as ModelRequest;
-    expect(req.purpose).toBe('explain_order');
-    const keys = new Set<string>();
-    const walk = (v: unknown): void => {
-      if (Array.isArray(v)) v.forEach(walk);
-      else if (typeof v === 'object' && v !== null)
-        for (const [k, x] of Object.entries(v)) {
-          keys.add(k);
-          walk(x);
-        }
-    };
-    walk(req.input);
-    expect([...keys].sort()).toEqual(
-      ['entries', 'alert_kinds', 'fix_ids', 'seq', 'event_type', 'words_key', 'actor_kind', 'channel', 'state_from', 'state_to'].sort(),
-    );
-    const sent = JSON.stringify(req);
-    for (const s of secrets) expect(sent, s).not.toContain(s);
-    expect((req.input as { alert_kinds: string[] }).alert_kinds).toEqual(['payment_unresolved']);
-    spy.mockRestore();
-  });
+  ])(
+    '%s: a deep scan finds only the seven entry fields, alert kinds and fix ids',
+    async (_n, who) => {
+      const spy = vi.spyOn(rig.app.model, 'complete');
+      await read(who(), attentionRef);
+      expect(spy).toHaveBeenCalledTimes(1);
+      const req = spy.mock.calls[0]![0] as ModelRequest;
+      expect(req.purpose).toBe('explain_order');
+      const keys = new Set<string>();
+      const walk = (v: unknown): void => {
+        if (Array.isArray(v)) v.forEach(walk);
+        else if (typeof v === 'object' && v !== null)
+          for (const [k, x] of Object.entries(v)) {
+            keys.add(k);
+            walk(x);
+          }
+      };
+      walk(req.input);
+      expect([...keys].sort()).toEqual(
+        [
+          'entries',
+          'alert_kinds',
+          'fix_ids',
+          'seq',
+          'event_type',
+          'words_key',
+          'actor_kind',
+          'channel',
+          'state_from',
+          'state_to',
+        ].sort(),
+      );
+      const sent = JSON.stringify(req);
+      for (const s of secrets) expect(sent, s).not.toContain(s);
+      expect((req.input as { alert_kinds: string[] }).alert_kinds).toEqual(['payment_unresolved']);
+      spy.mockRestore();
+    },
+  );
 });
 
 describe('the answer', () => {
   const inject = (output: unknown) =>
-    vi.spyOn(rig.app.model, 'complete').mockResolvedValue({ kind: 'ok', output, input_tokens: 0, output_tokens: 0 });
+    vi
+      .spyOn(rig.app.model, 'complete')
+      .mockResolvedValue({ kind: 'ok', output, input_tokens: 0, output_tokens: 0 });
 
   it('scripted: the action is the alert on the order, and the button links to its fix page', async () => {
     const e = (await read(op, attentionRef)).explain!;
@@ -161,7 +177,11 @@ describe('the answer', () => {
 
   it('injected HTML is answered as text, and over-long text is cut at 400', async () => {
     const html = '<script>alert(1)</script>';
-    const spy = inject({ what_happened: html + 'a'.repeat(900), safe_now: 'b'.repeat(500), action_id: 'none' });
+    const spy = inject({
+      what_happened: html + 'a'.repeat(900),
+      safe_now: 'b'.repeat(500),
+      action_id: 'none',
+    });
     const e = (await read(op, attentionRef)).explain!;
     expect(e.what_happened.startsWith(html)).toBe(true);
     expect(e.what_happened).toHaveLength(400);
@@ -190,9 +210,12 @@ describe('who may ask', () => {
   });
 
   it('the text is not logged', async () => {
-    const spy = vi
-      .spyOn(rig.app.model, 'complete')
-      .mockResolvedValue({ kind: 'ok', output: { what_happened: 'okapicanary', safe_now: 'tapircanary', action_id: 'none' }, input_tokens: 0, output_tokens: 0 });
+    const spy = vi.spyOn(rig.app.model, 'complete').mockResolvedValue({
+      kind: 'ok',
+      output: { what_happened: 'okapicanary', safe_now: 'tapircanary', action_id: 'none' },
+      input_tokens: 0,
+      output_tokens: 0,
+    });
     await read(op, attentionRef);
     spy.mockRestore();
     const all = lines.join('\n');
@@ -219,20 +242,32 @@ describe('the panel and the page, read as text', () => {
   });
   it('the view: the href goes through next-path, a bad route or anchor gives no button, text is cut', () => {
     const fixes = { frozen_order: { route: '/ops/money', anchor: 'ops-orders' } };
-    expect(explainPanelView({ what_happened: 'a', safe_now: 'b', action_id: 'frozen_order' }, fixes).button?.href).toBe(
-      '/ops/money#ops-orders',
-    );
     expect(
-      explainPanelView({ what_happened: 'a', safe_now: 'b', action_id: 'frozen_order' }, {
-        frozen_order: { route: '//evil.example', anchor: 'x' },
-      }).button,
+      explainPanelView({ what_happened: 'a', safe_now: 'b', action_id: 'frozen_order' }, fixes)
+        .button?.href,
+    ).toBe('/ops/money#ops-orders');
+    expect(
+      explainPanelView(
+        { what_happened: 'a', safe_now: 'b', action_id: 'frozen_order' },
+        {
+          frozen_order: { route: '//evil.example', anchor: 'x' },
+        },
+      ).button,
     ).toBeNull();
     expect(
-      explainPanelView({ what_happened: 'a', safe_now: 'b', action_id: 'frozen_order' }, {
-        frozen_order: { route: '/ops/money', anchor: 'x" onclick="y' },
-      }).button,
+      explainPanelView(
+        { what_happened: 'a', safe_now: 'b', action_id: 'frozen_order' },
+        {
+          frozen_order: { route: '/ops/money', anchor: 'x" onclick="y' },
+        },
+      ).button,
     ).toBeNull();
-    expect(explainPanelView({ what_happened: 'a', safe_now: 'b', action_id: 'none' }, fixes).button).toBeNull();
-    expect(explainPanelView({ what_happened: 'z'.repeat(500), safe_now: 'b', action_id: 'none' }, fixes).what_happened).toHaveLength(400);
+    expect(
+      explainPanelView({ what_happened: 'a', safe_now: 'b', action_id: 'none' }, fixes).button,
+    ).toBeNull();
+    expect(
+      explainPanelView({ what_happened: 'z'.repeat(500), safe_now: 'b', action_id: 'none' }, fixes)
+        .what_happened,
+    ).toHaveLength(400);
   });
 });

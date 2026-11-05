@@ -28,8 +28,14 @@ describe('ports schemas', () => {
       'webhook_enabled',
     ]);
   });
-  it('ModelPurpose has two values', () => {
-    expect([...ModelPurposeSchema.options]).toEqual(['brief_parse', 'pack_compose']);
+  // INT-GA adds txn_query and explain_order, additively.
+  it('ModelPurpose has four values', () => {
+    expect([...ModelPurposeSchema.options]).toEqual([
+      'brief_parse',
+      'pack_compose',
+      'txn_query',
+      'explain_order',
+    ]);
   });
   it('ModelResponse is a discriminated union', () => {
     expect(

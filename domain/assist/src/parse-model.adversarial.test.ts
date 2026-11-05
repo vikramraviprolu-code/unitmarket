@@ -34,19 +34,31 @@ const DIGITS = '1234567';
 describe('personal data is taken out before the model sees anything', () => {
   const text = `stuck orders for ${EMAIL} ${ORDER_REF} capture ${CAPTURE} card ${DIGITS} buyer Alice Smith with money back`;
 
-  it.each(['buyer', 'publisher', 'operator'] as const)('as %s: the request holds only the scrubbed rest', async (role) => {
-    const { port, seen } = spyPort({});
-    await assistQuery(text, NOW, ctx(role), port);
-    expect(seen).toHaveLength(1);
-    const sent = JSON.stringify(seen[0]);
-    for (const secret of [EMAIL, ORDER_REF, CAPTURE, DIGITS, 'Alice', 'Smith', 'alice', 'example.com'])
-      expect(sent).not.toContain(secret);
-    expect(seen[0]!.purpose).toBe('txn_query');
-    expect(Object.keys(seen[0]!.input as object)).toEqual(['rest']);
-    const rest = (seen[0]!.input as { rest: string }).rest;
-    expect(rest).toContain('stuck');
-    expect(rest).toContain('money back');
-  });
+  it.each(['buyer', 'publisher', 'operator'] as const)(
+    'as %s: the request holds only the scrubbed rest',
+    async (role) => {
+      const { port, seen } = spyPort({});
+      await assistQuery(text, NOW, ctx(role), port);
+      expect(seen).toHaveLength(1);
+      const sent = JSON.stringify(seen[0]);
+      for (const secret of [
+        EMAIL,
+        ORDER_REF,
+        CAPTURE,
+        DIGITS,
+        'Alice',
+        'Smith',
+        'alice',
+        'example.com',
+      ])
+        expect(sent).not.toContain(secret);
+      expect(seen[0]!.purpose).toBe('txn_query');
+      expect(Object.keys(seen[0]!.input as object)).toEqual(['rest']);
+      const rest = (seen[0]!.input as { rest: string }).rest;
+      expect(rest).toContain('stuck');
+      expect(rest).toContain('money back');
+    },
+  );
 
   it('the display ref form (an ellipsis and six characters) is a ref too', () => {
     const r = parseRules('where is …X9ABCD', NOW, ctx('buyer'));
@@ -120,7 +132,10 @@ describe('the four checks on the model answer, in order', () => {
   });
 
   it('1. an error answer or a throw is nothing, never a crash', async () => {
-    const err: ModelPort = { model_id: 'e', complete: async () => ({ kind: 'error', reason: 'x' }) };
+    const err: ModelPort = {
+      model_id: 'e',
+      complete: async () => ({ kind: 'error', reason: 'x' }),
+    };
     const boom: ModelPort = {
       model_id: 'b',
       complete: async () => {
@@ -146,7 +161,12 @@ describe('the four checks on the model answer, in order', () => {
   });
 
   it('3. invalid values are dropped; valid ones keep their string form', async () => {
-    const { port } = spyPort({ status: 'bogus', from: '2026-13-01', channel: 'agent', min_minor: '250' });
+    const { port } = spyPort({
+      status: 'bogus',
+      from: '2026-13-01',
+      channel: 'agent',
+      min_minor: '250',
+    });
     const r = await parseWithModel('anything', port, ctx('operator'));
     expect(r.chips).toEqual({ channel: 'agent', min_minor: '250' });
     expect(r.dropped.sort()).toEqual(['from', 'status']);

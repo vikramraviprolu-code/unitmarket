@@ -92,11 +92,19 @@ describe('the port request holds only the scrubbed rest', () => {
   });
 
   it('model output that is not a string map is dropped whole', async () => {
-    const spy = vi
-      .spyOn(rig.app.model, 'complete')
-      .mockResolvedValue({ kind: 'ok', output: ['status', 'paid'], input_tokens: 0, output_tokens: 0 });
+    const spy = vi.spyOn(rig.app.model, 'complete').mockResolvedValue({
+      kind: 'ok',
+      output: ['status', 'paid'],
+      input_tokens: 0,
+      output_tokens: 0,
+    });
     expect((await answer(op, 'stuck')).chips).toEqual({});
-    spy.mockResolvedValue({ kind: 'ok', output: { status: 7 }, input_tokens: 0, output_tokens: 0 } as ModelResponse);
+    spy.mockResolvedValue({
+      kind: 'ok',
+      output: { status: 7 },
+      input_tokens: 0,
+      output_tokens: 0,
+    } as ModelResponse);
     expect((await answer(op, 'stuck')).chips).toEqual({});
     spy.mockRestore();
   });
@@ -104,9 +112,12 @@ describe('the port request holds only the scrubbed rest', () => {
 
 describe('role scope', () => {
   it('"Show buyer X\'s orders" from a buyer: chips scoped to self, buyer dropped, never a 400', async () => {
-    const spy = vi
-      .spyOn(rig.app.model, 'complete')
-      .mockResolvedValue({ kind: 'ok', output: { buyer: 'Xavier Quill' }, input_tokens: 0, output_tokens: 0 });
+    const spy = vi.spyOn(rig.app.model, 'complete').mockResolvedValue({
+      kind: 'ok',
+      output: { buyer: 'Xavier Quill' },
+      input_tokens: 0,
+      output_tokens: 0,
+    });
     const r = await ask(buyer, "Show buyer Xavier Quill's orders");
     expect(r.status).toBe(200);
     const a = (await r.json()) as Answer;
@@ -154,7 +165,8 @@ describe('the switches and the wrapper', () => {
   it('the 21st call in a minute gets 429', async () => {
     const fresh = await rig.session(rig.buyerB);
     const codes: number[] = [];
-    for (let i = 0; i < 21; i += 1) codes.push((await ask(fresh, `paid orders ${i % 2 === 0 ? 'today' : 'yesterday'}`)).status);
+    for (let i = 0; i < 21; i += 1)
+      codes.push((await ask(fresh, `paid orders ${i % 2 === 0 ? 'today' : 'yesterday'}`)).status);
     expect(codes.slice(0, 20).every((c) => c === 200)).toBe(true);
     expect(codes[20]).toBe(429);
   });

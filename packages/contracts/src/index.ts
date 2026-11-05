@@ -38,3 +38,4 @@ export * from './rules';
 // INT-CTL (API exposure registry, the pasted cloud status).
 export * from './api-exposure';
 export * from './cloud-status';
+export * from './assist-words';

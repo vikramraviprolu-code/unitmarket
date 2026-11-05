@@ -1,10 +1,7 @@
 {
   "_about": "INT-GA / GA.3: fifty phrased queries with their expected chips (and the fields that must be dropped), written by hand in commit 1. now is the injected clock; sellers is the catalogue list the context carries. Run on the scripted model only.",
   "now": "2026-11-05T12:00:00.000Z",
-  "sellers": [
-    "Harbour Ledger",
-    "Quayside Gazette"
-  ],
+  "sellers": ["Harbour Ledger", "Quayside Gazette"],
   "cases": [
     {
       "id": "q01",
@@ -214,27 +211,21 @@
       "role": "buyer",
       "text": "buyer Dan Evans orders",
       "chips": {},
-      "dropped": [
-        "buyer"
-      ]
+      "dropped": ["buyer"]
     },
     {
       "id": "q24",
       "role": "publisher",
       "text": "buyer Erin Moss",
       "chips": {},
-      "dropped": [
-        "buyer"
-      ]
+      "dropped": ["buyer"]
     },
     {
       "id": "q25",
       "role": "publisher",
       "text": "sales for seller Quayside Gazette",
       "chips": {},
-      "dropped": [
-        "seller"
-      ]
+      "dropped": ["seller"]
     },
     {
       "id": "q26",
@@ -266,18 +257,14 @@
       "role": "buyer",
       "text": "capture 5O190127TN364715T",
       "chips": {},
-      "dropped": [
-        "ref"
-      ]
+      "dropped": ["ref"]
     },
     {
       "id": "q30",
       "role": "buyer",
       "text": "orders 99887766",
       "chips": {},
-      "dropped": [
-        "number"
-      ]
+      "dropped": ["number"]
     },
     {
       "id": "q31",
@@ -355,18 +342,14 @@
         "from": "2026-11-05",
         "to": "2026-11-05"
       },
-      "dropped": [
-        "environment"
-      ]
+      "dropped": ["environment"]
     },
     {
       "id": "q39",
       "role": "publisher",
       "text": "flagged sales",
       "chips": {},
-      "dropped": [
-        "flags"
-      ]
+      "dropped": ["flags"]
     },
     {
       "id": "q40",

@@ -34,12 +34,22 @@ describe('askView', () => {
 
 describe('askHref', () => {
   it('merges the proposed chips into the current URL map; the proposal wins on the same field', () => {
-    expect(askHref(buyerCtx, '/buyer/spending', { status: 'paid', currency: 'USD' }, { status: 'attention' })).toBe(
-      '/buyer/spending?currency=USD&status=attention',
-    );
+    expect(
+      askHref(
+        buyerCtx,
+        '/buyer/spending',
+        { status: 'paid', currency: 'USD' },
+        { status: 'attention' },
+      ),
+    ).toBe('/buyer/spending?currency=USD&status=attention');
   });
   it('drops refused, invalid and cursor fields', () => {
-    const href = askHref(buyerCtx, '/b', { cursor: 'abc' }, { buyer: 'x', status: 'bogus', from: '2026-11-01' });
+    const href = askHref(
+      buyerCtx,
+      '/b',
+      { cursor: 'abc' },
+      { buyer: 'x', status: 'bogus', from: '2026-11-01' },
+    );
     expect(href).toBe('/b?from=2026-11-01');
   });
 });
@@ -56,7 +66,8 @@ describe('who may ask', () => {
 });
 
 describe('the box, read as text', () => {
-  const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const strip = (s: string) =>
+    s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
   const box = strip(readFileSync(join(here, 'ui/AskBox.tsx'), 'utf8'));
   const bar = strip(readFileSync(join(here, 'ui/FilterBar.tsx'), 'utf8'));
   it('FilterBar hosts AskBox for the transaction bar only', () => {

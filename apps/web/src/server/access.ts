@@ -42,3 +42,13 @@ export {
   sellerLine,
   txnCsv,
 } from '../../composition.server';
+// INT-GA: the assist code and AL's catalogue, for the assist composition module (src/composition/assist.ts).
+export {
+  ALERT_KINDS,
+  assistQuery,
+  explainOrder,
+  orderFixIds,
+  scopeQuery,
+  severityOf,
+} from '../../composition.server';
+export type { AssistAnswer, AssistRole, ExplainAnswer } from '../../composition.server';

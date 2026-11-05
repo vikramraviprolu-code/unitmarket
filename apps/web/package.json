@@ -18,6 +18,7 @@
     "@umsbx/access-clock": "workspace:*",
     "@umsbx/alerts": "workspace:*",
     "@umsbx/approval": "workspace:*",
+    "@umsbx/assist": "workspace:*",
     "@umsbx/catalogue": "workspace:*",
     "@umsbx/config": "workspace:*",
     "@umsbx/contracts": "workspace:*",

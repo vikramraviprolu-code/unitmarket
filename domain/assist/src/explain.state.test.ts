@@ -79,7 +79,12 @@ const keysDeep = (v: unknown, out: Set<string> = new Set()): Set<string> => {
 describe('the projection (F7)', () => {
   it('a deep scan of the request finds only the seven entry fields, alert kinds and fix ids, on an MFA view', async () => {
     const { port, seen } = spyPort(good);
-    await explainOrder([mfaEntry(1), mfaEntry(2, { state_to: 'captured_verified' })], ['payment_unresolved'], FIX, port);
+    await explainOrder(
+      [mfaEntry(1), mfaEntry(2, { state_to: 'captured_verified' })],
+      ['payment_unresolved'],
+      FIX,
+      port,
+    );
     expect(seen).toHaveLength(1);
     expect(seen[0]!.purpose).toBe('explain_order');
     expect([...keysDeep(seen[0]!.input)].sort()).toEqual(
@@ -145,7 +150,11 @@ describe('the answer (F4)', () => {
   });
 
   it('over-long text is cut at 400 characters', async () => {
-    const { port } = spyPort({ ...good, what_happened: 'a'.repeat(1000), safe_now: 'b'.repeat(401) });
+    const { port } = spyPort({
+      ...good,
+      what_happened: 'a'.repeat(1000),
+      safe_now: 'b'.repeat(401),
+    });
     const r = await explainOrder([mfaEntry(1)], [], FIX, port);
     expect(EXPLAIN_TEXT_MAX).toBe(400);
     expect(r.what_happened).toHaveLength(400);
@@ -155,7 +164,10 @@ describe('the answer (F4)', () => {
   it.each([
     ['an error answer', { kind: 'error', reason: 'x' }],
     ['a non-object', { kind: 'ok', output: 'free text', input_tokens: 0, output_tokens: 0 }],
-    ['missing texts', { kind: 'ok', output: { action_id: 'frozen_order' }, input_tokens: 0, output_tokens: 0 }],
+    [
+      'missing texts',
+      { kind: 'ok', output: { action_id: 'frozen_order' }, input_tokens: 0, output_tokens: 0 },
+    ],
   ])('%s gives the safe fallback with no action', async (_n, answer) => {
     const port: ModelPort = { model_id: 'x', complete: async () => answer as ModelResponse };
     const r = await explainOrder([mfaEntry(1)], ['frozen_order'], FIX, port);

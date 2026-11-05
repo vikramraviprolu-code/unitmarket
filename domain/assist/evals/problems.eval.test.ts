@@ -22,7 +22,19 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 const doc = JSON.parse(readFileSync(join(here, 'problems.json'), 'utf8')) as { cases: Case[] };
 
 // The kinds with a fix in the catalogue, as the composition derives them. Every kind has one today.
-const withFix = ALERT_KINDS.filter((k) => describeAlert(k, k === 'refund_unresolved' ? 'refund_outcome_unknown_x' : k === 'mandate_near_cap' ? 'cap90_x' : k === 'webhook_failing' ? 'webhook_failing_x' : 'x')?.fix !== undefined);
+const withFix = ALERT_KINDS.filter(
+  (k) =>
+    describeAlert(
+      k,
+      k === 'refund_unresolved'
+        ? 'refund_outcome_unknown_x'
+        : k === 'mandate_near_cap'
+          ? 'cap90_x'
+          : k === 'webhook_failing'
+            ? 'webhook_failing_x'
+            : 'x',
+    )?.fix !== undefined,
+);
 const FIX_IDS = orderFixIds(withFix, severityOf);
 
 /** An entry list in the projected shape, turned back into the operator entry explainOrder takes. */
@@ -49,12 +61,13 @@ describe('GA.5 explain eval (scripted model)', () => {
   it('every alert kind has a fix and is held by at least two cases', () => {
     expect(FIX_IDS.sort()).toEqual([...ALERT_KINDS].sort());
     for (const k of ALERT_KINDS)
-      expect(doc.cases.filter((c) => c.alert_kinds.includes(k)).length, k).toBeGreaterThanOrEqual(2);
+      expect(doc.cases.filter((c) => c.alert_kinds.includes(k)).length, k).toBeGreaterThanOrEqual(
+        2,
+      );
   });
 
   it('every expected action is a fix id or none', () => {
-    for (const c of doc.cases)
-      expect([...FIX_IDS, 'none'], c.id).toContain(c.expect_action_id);
+    for (const c of doc.cases) expect([...FIX_IDS, 'none'], c.id).toContain(c.expect_action_id);
   });
 
   it('the safe action is right on at least 27 of 30', async () => {
@@ -64,7 +77,10 @@ describe('GA.5 explain eval (scripted model)', () => {
     for (const c of doc.cases) {
       const r = await explainOrder(asEntries(c.entries), c.alert_kinds, ordered, model);
       if (r.action_id === c.expect_action_id) right += 1;
-      else console.log(`GA.5 miss ${c.id} (${c.note}): want ${c.expect_action_id}, got ${r.action_id}`);
+      else
+        console.log(
+          `GA.5 miss ${c.id} (${c.note}): want ${c.expect_action_id}, got ${r.action_id}`,
+        );
       expect(r.what_happened.length).toBeGreaterThan(0);
       expect(r.safe_now.length).toBeGreaterThan(0);
     }

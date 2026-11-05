@@ -49,7 +49,11 @@ const CASES: [string, AssistContext, Record<string, string>][] = [
     buyer,
     { status: 'paid', from: '2026-11-01', to: '2026-11-05', max_minor: '300', currency: 'GBP' },
   ],
-  ['orders with no refund yesterday', buyer, { refund: 'none', from: '2026-11-04', to: '2026-11-04' }],
+  [
+    'orders with no refund yesterday',
+    buyer,
+    { refund: 'none', from: '2026-11-04', to: '2026-11-04' },
+  ],
   ['last 3 days', buyer, { from: '2026-11-02', to: '2026-11-05' }],
   ['last month', operator, { from: '2026-10-01', to: '2026-10-31' }],
   ['my sales from Harbour Ledger since 1 Nov', publisher, { from: '2026-11-01' }],
