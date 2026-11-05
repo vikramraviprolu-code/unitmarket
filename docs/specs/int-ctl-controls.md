@@ -2,7 +2,7 @@
 
 Task: One Controls tab for the PayPal gateway, services and feature switches, and an operator-set registry of which API groups partners may call.
 Package: `apps/web` (Controls tab, Agents and API › Exposure, session routes, MCP route), `packages/security` (exposure check, fail-safe list), `packages/db` (migration, restore seed list), `packages/contracts` (group list, cloud status schema). Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
-Items: CTL.1 to CTL.7, 20 points: CTL.3 "should" (V3 approved), the rest "must". Needs CL1, UI0, TR0 and AL merged (AL moves `BLOCKED_BY` to `packages/contracts/src/gate.ts`). Sources: operator items 16 to 18; cloud plan items 12, 13; API guide E1 to E4. Includes `int-wave2-conventions.md`. Round 2: fixes F1 to F14 of `ctl-scorecard.md`.
+Items: CTL.1 to CTL.7, 20 points: CTL.3 "should" (V3 approved), the rest "must". Needs CL1, UI0, TR0 and AL merged (AL moves `BLOCKED_BY` to `packages/contracts/src/gate.ts`). Sources: operator items 16 to 18; cloud plan items 12, 13; API guide E1 to E4. Includes `int-wave2-conventions.md`. Round 2 passed 11/12 (`ctl-scorecard.md`); build notes R2-1 to R2-5 below.
 
 ## Goal
 
@@ -114,6 +114,14 @@ The decision row states the trade-off: an operator session without the authentic
 | a11y | `apps/web/src/flow-a11y.state.test.ts` | `corepack pnpm vitest run apps/web/src/flow-a11y.state.test.ts` | The text-read check passes for `/ops/controls` and `/ops/agents/exposure` |
 
 Mutation (CTL.2, CTL.3 and CTL.5 are L): `pnpm mutation --require-targets --targets packages/security/src/exposure.ts,apps/web/src/lib/services-view.ts,apps/web/src/app/api/ops/switches/[name]/on/route.ts,apps/web/src/app/api/v1/mcp/dispatch.ts --test-cmd "corepack pnpm vitest run packages/security/src/exposure.adversarial.test.ts apps/web/src/services-paste.adversarial.test.ts apps/web/src/ops-switches.adversarial.test.ts apps/web/src/app/api/v1/mcp/exposure.state.test.ts" --threshold 80`. C4 to C7 apply. The `route.ts` change is also covered by the existing route-wrapper suites, which must stay green.
+
+## Build notes (round 2, binding)
+
+- R2-1: `api_exposure.changed_by` goes in the `trace_tracked` row's `hashed_columns` (as TR0 does for `safety_switches.changed_by`). The CTL.7 row-equals-journal test compares it by sha256.
+- R2-2: the CTL.4 golden asserts that the SQL CHECK lists equal `API_GROUPS` and the reason codes.
+- R2-3: the exposure routes get CTL.3's role refusals too: buyer, seller, bearer and operator key.
+- R2-4: the switch routes use the rate rule 10 per minute per actor.
+- R2-5: the gate re-runs the CTL.4 golden after SR1 and TR1 merge.
 
 ## Do not
 
