@@ -257,6 +257,7 @@ describe('migration 0017', () => {
               'payouts',
               'payout_items',
               'adjustment_settlements',
+              'payout_adjustment_sources',
               // INT-CTL (migration 0026): the seeded API exposure rows.
               'api_exposure',
             ].includes(t),

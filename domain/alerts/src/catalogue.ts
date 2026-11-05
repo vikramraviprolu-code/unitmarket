@@ -238,11 +238,13 @@ const ENTRIES: Record<CatalogueKind, Entry> = {
   payout_failed: {
     severity: 'high',
     title: 'Payout failed',
-    prefixes: ['payout_failed_', 'unit_too_large_'],
+    prefixes: ['payout_failed_', 'unit_too_large_', 'payout_refused_'],
     cause: (reason) =>
       reason.startsWith('unit_too_large_')
         ? 'One sale is larger than the largest single payout, so it cannot be paid out as it is.'
-        : 'The provider refused a payout. Its sales are held for 24 hours and then paid again.',
+        : reason.startsWith('payout_refused_')
+          ? 'A payout is waiting and was not sent: the publisher cannot be paid right now (not active, the shared account, or the payee changed). It is sent when that is put right.'
+          : 'The provider refused a payout. Its sales are held for 24 hours and then paid again.',
     fix: MONEY_PAYOUTS,
     runbook:
       'Read the failure reason on the payout, check the payee of the publisher, and let the next pass pay again after the hold.',

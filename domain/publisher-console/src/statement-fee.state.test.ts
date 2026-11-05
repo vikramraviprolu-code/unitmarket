@@ -61,7 +61,7 @@ async function payout(
   id: string,
   publisher: string,
   items: { u: Sold; minor: number }[],
-  state: 'due' | 'sent' | 'confirmed' | 'failed' | 'cancelled',
+  state: 'due' | 'sending' | 'sent' | 'confirmed' | 'failed' | 'cancelled',
   o: { currency?: string; environment?: string; settled?: { entry: string; minor: number }[] } = {},
 ) {
   const settled = o.settled ?? [];
@@ -109,6 +109,7 @@ async function payout(
     return;
   }
   await step('sending', ", sending_at = '2026-10-22T10:00:00.000Z'");
+  if (state === 'sending') return;
   if (state === 'failed')
     await step('failed', ", failure_reason = 'x', failed_at = '2026-10-22T10:00:00.000Z'");
   else await step(state, `, provider_ref = 'DRYRUN-umsP-${id}'`);

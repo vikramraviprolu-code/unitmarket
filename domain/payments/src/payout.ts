@@ -150,7 +150,7 @@ export async function onRefundBooked(
       [i.unit_id],
     )
   ).rows[0]!.currency;
-  await appendLedgerEntry(tx, d, {
+  const adjustment = await appendLedgerEntry(tx, d, {
     unit_id: i.unit_id,
     capture_id: i.capture_id,
     kind: 'payout_adjustment',
@@ -158,6 +158,15 @@ export async function onRefundBooked(
     refund_id: i.refund_id,
     ref_entry_id: refundRow?.id ?? null,
   });
+  // Review B1: remember which payout this adjustment was booked against. It is owed back only if that payout goes out;
+  // if it fails the unit is paid again from the ledger net, which already has the payable reversal.
+  const entry_id = adjustment.ok ? adjustment.value.id : adjustment.error.existing_entry_id;
+  const at = d.clock.now().toISOString();
+  await tx.query(
+    `INSERT INTO payout_adjustment_sources (adjustment_entry_id, payout_id, created_at, updated_at)
+     VALUES ($1, $2, $3, $3) ON CONFLICT DO NOTHING`,
+    [entry_id, live.id, at],
+  );
   await raiseAlert(tx, d, {
     kind: 'payout_adjustment',
     order_id: i.order_id,
@@ -244,7 +253,12 @@ interface OpenAdjustment {
   open_minor: number;
 }
 
-/** Payout adjustments of a publisher and currency not yet used up by a live settlement, oldest first. */
+/**
+ * Payout adjustments of a publisher and currency not yet used up by a live settlement, oldest first. An adjustment whose
+ * source payout failed, was cancelled or is still sending is left out (review B1): the unit of a failed payout is paid
+ * again from a ledger net that already has the reversal, and one still sending is not settled yet. An adjustment with
+ * no source row (booked before the link existed) counts.
+ */
 async function openAdjustments(
   tx: SqlExecutor,
   d: PayoutDeps,
@@ -258,6 +272,8 @@ async function openAdjustments(
        FROM ledger_entries l
        JOIN order_units u ON u.id = l.unit_id
       WHERE l.kind = 'payout_adjustment' AND u.publisher_id = $1 AND l.currency = $2 AND l.environment = $3
+        AND NOT EXISTS (SELECT 1 FROM payout_adjustment_sources s JOIN payouts sp ON sp.id = s.payout_id
+                         WHERE s.adjustment_entry_id = l.id AND sp.state IN ('sending', 'failed', 'cancelled'))
       ORDER BY l.created_at, l.id`,
     [publisher_id, currency, d.environment],
   );
@@ -468,14 +484,47 @@ async function prepare(d: PayoutDeps, id: Id): Promise<Prepared | 'refused' | 'g
     ).rows[0];
     if (p === undefined || (p.state !== 'due' && p.state !== 'sending')) return 'gone';
     // LEGACY STUB until POB-P1: the stored merchant id of an active publisher whose payee is not the shared account.
-    const ok = (
-      await tx.query(
-        `SELECT 1 FROM publishers
-          WHERE id = $1 AND status = 'active' AND NOT payee_shared AND paypal_merchant_id = $2 AND payee_verified_at IS NOT NULL`,
-        [p.publisher_id, p.payee_merchant_id],
+    const pub = (
+      await tx.query<{
+        status: string;
+        payee_shared: boolean;
+        paypal_merchant_id: string | null;
+        payee_verified_at: unknown;
+      }>(
+        'SELECT status, payee_shared, paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
+        [p.publisher_id],
       )
-    ).rows;
-    if (ok.length === 0) return 'refused';
+    ).rows[0];
+    const why =
+      pub === undefined || pub.status !== 'active'
+        ? 'inactive'
+        : pub.payee_shared
+          ? 'shared'
+          : pub.paypal_merchant_id === null || pub.payee_verified_at === null
+            ? 'no_payee'
+            : pub.paypal_merchant_id !== p.payee_merchant_id
+              ? 'payee_changed'
+              : null;
+    if (why !== null) {
+      // Review M1: the payout stays where it is and an operator is told, once for each payout and reason.
+      const first = (
+        await tx.query<{ order_unit_id: string; order_id: string }>(
+          `SELECT i.order_unit_id, u.order_id FROM payout_items i JOIN order_units u ON u.id = i.order_unit_id
+            WHERE i.payout_id = $1 ORDER BY i.order_unit_id LIMIT 1`,
+          [id],
+        )
+      ).rows[0];
+      if (first !== undefined) {
+        await raiseAlert(tx, d, {
+          kind: 'payout_failed',
+          order_id: first.order_id,
+          unit_id: first.order_unit_id,
+          reason: `payout_refused_${id}_${why}`,
+          detail: { payout_id: id, why },
+        });
+      }
+      return 'refused';
+    }
     if (p.state === 'due') {
       const at = d.clock.now().toISOString();
       await tx.query(

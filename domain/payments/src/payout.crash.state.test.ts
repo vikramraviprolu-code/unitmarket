@@ -300,7 +300,8 @@ describe('a refund while the payout is in flight, then the payout fails (review 
     // nothing is netted twice: no settlement was made, and running again changes nothing
     expect(await w.rows('SELECT 1 FROM adjustment_settlements')).toEqual([]);
     expect(await pass(port)).toMatchObject({ created: 0, sent: 0, expired: 0 });
-    expect(port.executed.map((x) => x.amount.minor)).toEqual([300]);
+    // the rejected 400 and the one send of 300: the unit is never paid 200 or twice
+    expect(port.executed.map((x) => x.amount.minor)).toEqual([400, 300]);
   });
 
   it('a refund after the payout was sent is linked to it and is netted from the next payout', async () => {

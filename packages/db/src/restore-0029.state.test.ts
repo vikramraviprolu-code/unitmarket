@@ -72,6 +72,17 @@ async function unit(d: Db, publisher = 'pub_b'): Promise<string> {
     captured_verified_at: T,
     mismatch_reason: null,
   });
+  await ins(d, 'ledger_entries', {
+    id: `led_b${n}`,
+    unit_id: `unt_b${n}`,
+    capture_id: `CAPB${n}`,
+    kind: 'sale',
+    amount_minor: 400,
+    currency: 'USD',
+    refund_id: null,
+    ref_entry_id: null,
+    environment: 'dryrun',
+  });
   return `unt_b${n}`;
 }
 async function payout(

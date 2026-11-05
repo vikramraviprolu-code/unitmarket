@@ -220,6 +220,12 @@ CREATE INDEX payouts_publisher ON payouts (publisher_id, currency, state);
 --   sent -> confirmed               failed -> cancelled
 CREATE FUNCTION ums_payout_insert_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  -- A restore (importSql, in one transaction, with the journal's restore setting) loads payouts in the state they were
+  -- backed up in: sent, confirmed, failed or cancelled. Every other check of the table (CHECKs, keys, the amount check
+  -- at commit) still applies.
+  IF nullif(current_setting('ums.trace', true), '')::jsonb ->> 'mode' = 'restore' THEN
+    RETURN NEW;
+  END IF;
   IF NEW.state = 'due' AND NEW.sending_at IS NULL AND NEW.failed_at IS NULL
      AND NEW.provider_ref IS NULL AND NEW.failure_reason IS NULL THEN
     RETURN NEW;
@@ -343,7 +349,25 @@ CREATE TRIGGER adjustment_settlements_no_delete BEFORE DELETE ON adjustment_sett
 CREATE TRIGGER adjustment_settlements_no_truncate BEFORE TRUNCATE ON adjustment_settlements
   FOR EACH STATEMENT EXECUTE FUNCTION ums_deny_truncate();
 
--- The amount of a payout equals its items minus its live settlements, checked when the transaction commits (the rows
+-- ------------------------------------------------------------------------------------------------
+-- 7b. payout_adjustment_sources: the payout a refund was booked against (review B1). An adjustment (a payout_adjustment
+-- ledger row) is owed back only if that payout really went out. If it fails, its unit is paid again from the ledger net,
+-- which already has the payable reversal, so the adjustment would be taken twice: a failed or cancelled source voids it,
+-- and while the source is still sending it is not netted. No foreign key to the ledger (like the settlements).
+
+CREATE TABLE payout_adjustment_sources (
+  adjustment_entry_id ums_id PRIMARY KEY,
+  payout_id ums_id NOT NULL REFERENCES payouts (id),
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+CREATE INDEX payout_adjustment_sources_payout ON payout_adjustment_sources (payout_id);
+CREATE TRIGGER payout_adjustment_sources_append_only BEFORE UPDATE OR DELETE ON payout_adjustment_sources
+  FOR EACH ROW EXECUTE FUNCTION ums_deny_mutation();
+CREATE TRIGGER payout_adjustment_sources_no_truncate BEFORE TRUNCATE ON payout_adjustment_sources
+  FOR EACH STATEMENT EXECUTE FUNCTION ums_deny_truncate();
+
+-- The amount of a payout equals its items minus its settlements, checked when the transaction commits (the rows
 -- are inserted after the payout in the same transaction). Items are never edited, so this holds for the life of the row.
 CREATE FUNCTION ums_payout_amount_check() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -351,7 +375,9 @@ DECLARE
   settled numeric;
 BEGIN
   SELECT coalesce(sum(seller_minor), 0) INTO items FROM payout_items WHERE payout_id = NEW.id;
-  SELECT coalesce(sum(amount_minor), 0) INTO settled FROM adjustment_settlements WHERE payout_id = NEW.id AND live;
+  -- All settlements, live or released: a settlement is only ever released (when its payout is cancelled), never changed
+  -- or removed, so the sum at creation is the sum for the life of the row (and a restore of a cancelled payout holds).
+  SELECT coalesce(sum(amount_minor), 0) INTO settled FROM adjustment_settlements WHERE payout_id = NEW.id;
   IF NEW.amount_minor <> items - settled THEN
     RAISE EXCEPTION 'payout % is % but its items are % less settlements %', NEW.id, NEW.amount_minor, items, settled;
   END IF;

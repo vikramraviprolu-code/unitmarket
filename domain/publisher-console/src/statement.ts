@@ -207,7 +207,6 @@ async function moneyFor(db: SqlExecutor, publisher_id: string): Promise<Map<stri
     fee_rev: string | number;
     payable: string | number;
     payable_rev: string | number;
-    adjustment: string | number;
     payable_rows: string | number;
   }>(
     `SELECT l.currency, l.environment,
@@ -215,11 +214,21 @@ async function moneyFor(db: SqlExecutor, publisher_id: string): Promise<Map<stri
             coalesce(sum(l.amount_minor) FILTER (WHERE l.kind = 'fee_reversal'), 0) AS fee_rev,
             coalesce(sum(l.amount_minor) FILTER (WHERE l.kind = 'payable'), 0) AS payable,
             coalesce(sum(l.amount_minor) FILTER (WHERE l.kind = 'payable_reversal'), 0) AS payable_rev,
-            coalesce(sum(l.amount_minor) FILTER (WHERE l.kind = 'payout_adjustment'), 0) AS adjustment,
             count(*) FILTER (WHERE l.kind = 'payable') AS payable_rows
        FROM ledger_entries l JOIN order_units u ON u.id = l.unit_id
       WHERE u.publisher_id = $1
         AND l.kind IN ('fee', 'payable', 'fee_reversal', 'payable_reversal', 'payout_adjustment')
+      GROUP BY l.currency, l.environment`,
+    [publisher_id],
+  );
+  // Open adjustments, review B1: only those whose source payout went out (sent or confirmed) or has no source row. One whose
+  // payout failed or was cancelled is void (its unit is paid again from the reduced ledger net); one still sending waits.
+  const adjusted = await db.query<{ currency: string; environment: string; n: string | number }>(
+    `SELECT l.currency, l.environment, coalesce(sum(l.amount_minor), 0) AS n
+       FROM ledger_entries l JOIN order_units u ON u.id = l.unit_id
+      WHERE u.publisher_id = $1 AND l.kind = 'payout_adjustment'
+        AND NOT EXISTS (SELECT 1 FROM payout_adjustment_sources s JOIN payouts sp ON sp.id = s.payout_id
+                         WHERE s.adjustment_entry_id = l.id AND sp.state IN ('sending', 'failed', 'cancelled'))
       GROUP BY l.currency, l.environment`,
     [publisher_id],
   );
@@ -256,12 +265,13 @@ async function moneyFor(db: SqlExecutor, publisher_id: string): Promise<Map<stri
     new Map(rows.map((r) => [moneyKey(r.currency, r.environment), Number(r.n)]));
   const paidBy = by(paid.rows);
   const settledBy = by(settled.rows);
+  const adjustedBy = by(adjusted.rows);
   const unpaidBy = by(unpaid.rows);
   const out = new Map<string, BlockMoney>();
   for (const r of ledger.rows) {
     if (Number(r.payable_rows) === 0) continue;
     const key = moneyKey(r.currency, r.environment);
-    const adjustment = Number(r.adjustment) - (settledBy.get(key) ?? 0);
+    const adjustment = (adjustedBy.get(key) ?? 0) - (settledBy.get(key) ?? 0);
     out.set(key, {
       fee_minor: Number(r.fee) - Number(r.fee_rev),
       owed_minor: Number(r.payable) - Number(r.payable_rev),
