@@ -602,6 +602,32 @@ describe('payout_items and adjustment_settlements', () => {
   it('items and settlements never change otherwise and are never removed', async () => {
     const d = await fresh();
     await due(d, 'pay_i4');
+    const u = await unit(d, 400);
+    await d.transaction(async (tx) => {
+      const t = tx as unknown as Db;
+      await ins(t, 'payouts', {
+        id: 'pay_i6',
+        publisher_id: 'pub_m',
+        currency: 'USD',
+        amount_minor: 300,
+        state: 'due',
+        environment: 'dryrun',
+        idempotency_key: 'umsP-pay_i6',
+        payee_merchant_id: 'MERCHM',
+      });
+      await ins(t, 'payout_items', {
+        payout_id: 'pay_i6',
+        order_unit_id: u.unit_id,
+        seller_minor: 360,
+        live: true,
+      });
+      await ins(t, 'adjustment_settlements', {
+        payout_id: 'pay_i6',
+        adjustment_entry_id: 'led_z',
+        amount_minor: 60,
+        live: true,
+      });
+    });
     await expect(d.query('UPDATE payout_items SET seller_minor = 1')).rejects.toThrow();
     await expect(d.query("UPDATE payout_items SET order_unit_id = 'unt_zzz'")).rejects.toThrow();
     await expect(d.query('DELETE FROM payout_items')).rejects.toThrow();

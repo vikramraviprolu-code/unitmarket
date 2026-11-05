@@ -207,6 +207,7 @@ describe('POST /api/ops/fee', () => {
   });
 });
 
-async function actorOf(_s: Session) {
+async function actorOf(s: Session) {
+  void s;
   return { kind: 'operator' as const, operator_id: 'vikram', mfa: true };
 }

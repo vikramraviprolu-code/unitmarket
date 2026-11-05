@@ -143,7 +143,16 @@ describe('a payout the provider refused', () => {
     const alerts = await w.rows<{ unit_id: string; detail: { reason: string } }>(
       "SELECT unit_id, detail FROM alerts WHERE kind = 'payout_failed'",
     );
-    expect(alerts).toEqual([{ unit_id: unit, detail: { reason: `payout_failed_${first.id}` } }]);
+    expect(alerts).toEqual([
+      {
+        unit_id: unit,
+        detail: {
+          reason: `payout_failed_${first.id}`,
+          payout_id: first.id,
+          failure_reason: 'payee_unreachable',
+        },
+      },
+    ]);
     port.mode = 'accept';
     w.tick(PAYOUT_RETRY_AFTER_MS - 1000);
     expect(await pass(port)).toMatchObject({ created: 0, sent: 0, expired: 0 });
@@ -189,6 +198,7 @@ describe('a payout the provider refused', () => {
     const port = spyPort(w, 'reject');
     await pass(port);
     port.mode = 'accept';
+    w.tick(1000);
     await refund(w.deps, unit, 100);
     expect((await payoutRows(w)).map((p) => p.state)).toEqual(['cancelled']);
     expect(

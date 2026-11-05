@@ -121,7 +121,8 @@ describe('a matching read unlocks once', () => {
     const again = await reapply(w, a.order_id);
     expect(again.unlocked).toEqual([]);
     expect(again.order_status).toBe('paid');
-    expect(await count(w, 'ledger_entries')).toBe(2);
+    // POB-M1: the sale, the PayPal fee and the payable row (the publisher share, fee 0 here) of the one capture.
+    expect(await count(w, 'ledger_entries')).toBe(3);
     expect(await count(w, 'receipts')).toBe(1);
     expect((await loadOrderView(w.db, a.order_id)).items[0]!.window.started_at).toBe(started);
   });

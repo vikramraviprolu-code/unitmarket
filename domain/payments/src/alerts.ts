@@ -22,7 +22,11 @@ export type AlertKind =
   | 'partial_composite'
   | 'refund_unbooked'
   | 'refund_failed'
-  | 'refund_unresolved';
+  | 'refund_unresolved'
+  // POB-M1: a refund was booked after the publisher's share of that sale was paid out (a payout_adjustment row, taken
+  // off the next payout), and a payout the provider refused.
+  | 'payout_adjustment'
+  | 'payout_failed';
 
 export async function raiseAlert(
   tx: SqlExecutor,

@@ -64,7 +64,7 @@ const req: PayoutSendRequest = {
   environment: 'dryrun',
 };
 const fakePort = () => {
-  const send = vi.fn((_r: PayoutSendRequest) =>
+  const send = vi.fn<PayoutPort['send']>(() =>
     Promise.resolve({ kind: 'accepted' as const, provider_ref: 'R1', status: 'sent' as const }),
   );
   return { port: { send } as PayoutPort, send };

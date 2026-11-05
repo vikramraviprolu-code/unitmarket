@@ -113,7 +113,11 @@ async function payout(
     await step('failed', ", failure_reason = 'x', failed_at = '2026-10-22T10:00:00.000Z'");
   else await step(state, `, provider_ref = 'DRYRUN-umsP-${id}'`);
 }
-const money = async (actor = P1, currency = 'USD', environment: 'dryrun' | 'sandbox' = 'dryrun') =>
+const money = async (
+  actor: typeof P1 | typeof P2 = P1,
+  currency = 'USD',
+  environment: 'dryrun' | 'sandbox' = 'dryrun',
+) =>
   (await statementFor(w.db, actor, CTX)).blocks.find(
     (b) => b.currency === currency && b.environment === environment,
   )!.money;
@@ -251,7 +255,7 @@ describe('the money block of the statement', () => {
     const theirs = await statementFor(w.db, P2, CTX);
     expect(JSON.stringify(theirs)).not.toContain('pub_1');
     expect(mine.blocks.length).toBeGreaterThan(0);
-    const none = await statementFor(w.db, { kind: 'buyer', buyer_id: 'buy_1' }, CTX);
+    const none = await statementFor(w.db, { kind: 'buyer', buyer_id: 'buy_1' } as never, CTX);
     expect(none.blocks).toEqual([]);
   });
 

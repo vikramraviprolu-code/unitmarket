@@ -248,6 +248,13 @@ describe('migration 0017', () => {
               'trace_tracked',
               // BR-2 (migration 0027): rule settings.
               'rule_settings',
+              // POB-M1 (migration 0029): the fee on top and the payouts.
+              'fee_settings',
+              'offer_price_parts',
+              'order_unit_parts',
+              'payouts',
+              'payout_items',
+              'adjustment_settlements',
             ].includes(t),
         ),
       ).toEqual(['fx_rates']);

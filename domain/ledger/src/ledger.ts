@@ -55,8 +55,23 @@ function toEntry(r: Row): LedgerEntry {
   });
 }
 
-// Only refund and commission_reversal rows carry a refund id (one row per refund id).
-const CARRIES_REFUND_ID = new Set<string>(['refund', 'commission_reversal']);
+// The kinds that belong to one refund carry its id (one row per refund id): refund, commission_reversal and, since POB-M1,
+// the two reversals of the fee split and the payout adjustment. Every other kind carries none.
+const CARRIES_REFUND_ID = new Set<string>([
+  'refund',
+  'commission_reversal',
+  'fee_reversal',
+  'payable_reversal',
+  'payout_adjustment',
+]);
+// POB-M1: the new kinds are money facts; a row of 0 is never written.
+const NEVER_ZERO = new Set<string>([
+  'fee',
+  'payable',
+  'fee_reversal',
+  'payable_reversal',
+  'payout_adjustment',
+]);
 
 export async function appendLedgerEntry(
   tx: SqlExecutor,
@@ -74,7 +89,10 @@ export async function appendLedgerEntry(
   if (!CARRIES_REFUND_ID.has(input.kind) && input.refund_id !== null) {
     throw new LedgerRuleError(`refund_id must be null for kind ${input.kind}`);
   }
-  if ((input.kind === 'refund' || input.kind === 'reversal') && input.amount.minor === 0) {
+  if (
+    (input.kind === 'refund' || input.kind === 'reversal' || NEVER_ZERO.has(input.kind)) &&
+    input.amount.minor === 0
+  ) {
     throw new LedgerRuleError(`a ${input.kind} of zero is not a money fact`);
   }
 
@@ -151,6 +169,23 @@ export async function appendLedgerEntry(
     }
   }
 
+  if (input.kind === 'fee_reversal' || input.kind === 'payable_reversal') {
+    const base = input.kind === 'fee_reversal' ? 'fee' : 'payable';
+    const sums = (
+      await tx.query<{ base: string; done: string }>(
+        `SELECT coalesce(sum(amount_minor) FILTER (WHERE kind = $2), 0) AS base,
+                coalesce(sum(amount_minor) FILTER (WHERE kind = $3), 0) AS done
+           FROM ledger_entries WHERE capture_id = $1`,
+        [input.capture_id, base, input.kind],
+      )
+    ).rows[0]!;
+    if (Number(sums.done) + input.amount.minor > Number(sums.base)) {
+      throw new LedgerRuleError(
+        `${input.kind} of ${String(input.amount.minor)} would exceed the ${base} of ${sums.base} (already reversed ${sums.done}) for capture ${input.capture_id}`,
+      );
+    }
+  }
+
   const id = d.ids.next('led');
   const now = d.clock.now().toISOString();
   const inserted = await tx.query<{ id: string }>(
@@ -187,7 +222,8 @@ export async function appendLedgerEntry(
 }
 
 const KIND_RANK = `CASE l.kind WHEN 'sale' THEN 0 WHEN 'paypal_fee' THEN 1 WHEN 'platform_fee' THEN 2
-  WHEN 'refund' THEN 3 WHEN 'reversal' THEN 4 ELSE 5 END`;
+  WHEN 'refund' THEN 3 WHEN 'reversal' THEN 4 WHEN 'commission_reversal' THEN 5 WHEN 'fee' THEN 6
+  WHEN 'payable' THEN 7 WHEN 'fee_reversal' THEN 8 WHEN 'payable_reversal' THEN 9 ELSE 10 END`;
 
 // Rows in booking order: created_at, then kind (sale first), then refund id, then id.
 export async function listLedger(

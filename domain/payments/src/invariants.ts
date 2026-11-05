@@ -12,13 +12,16 @@
 //        an operation of its own, so a pack cannot hide an unpolled PayPal order behind a polled one;
 //   INV6 every open refund request (sent, unknown, pending) has a refund or refund read-back
 //        operation that is `sent` or `unknown`. A request nobody polls can stay open forever.
+//   INV8 (POB-M1) per unit that has a parts row, the sale equals the fee plus the payable (and both equal the parts), and the
+//        refunds equal the fee reversals plus the payable reversals. A unit sold before the fee existed has neither and is
+//        not judged.
 import { computeWindow } from '@umsbx/access-clock';
 import { AccessPolicySchema } from '@umsbx/contracts';
 import type { AccessEvent, AccessEventKind, Id, LedgerEntry, SqlExecutor } from '@umsbx/contracts';
 import { publisherBalances } from '@umsbx/ledger';
 
 type Result = {
-  id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7';
+  id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7' | 'INV8';
   ok: boolean;
   detail: string;
 };
@@ -284,6 +287,55 @@ async function inv7(db: SqlExecutor): Promise<Result> {
   };
 }
 
+async function inv8(db: SqlExecutor): Promise<Result> {
+  const rows = await db.query<Record<string, unknown>>(
+    `SELECT u.id, up.seller_minor, up.fee_minor,
+            (u.captured_verified_at IS NOT NULL) AS verified,
+            COALESCE(sum(l.amount_minor) FILTER (WHERE l.kind = 'sale'), 0) AS sale,
+            COALESCE(sum(l.amount_minor) FILTER (WHERE l.kind = 'fee'), 0) AS fee,
+            COALESCE(sum(l.amount_minor) FILTER (WHERE l.kind = 'payable'), 0) AS payable,
+            COALESCE(sum(l.amount_minor) FILTER (WHERE l.kind = 'refund'), 0) AS refund,
+            COALESCE(sum(l.amount_minor) FILTER (WHERE l.kind = 'fee_reversal'), 0) AS fee_rev,
+            COALESCE(sum(l.amount_minor) FILTER (WHERE l.kind = 'payable_reversal'), 0) AS payable_rev
+       FROM order_units u
+       JOIN order_unit_parts up ON up.unit_id = u.id
+       LEFT JOIN ledger_entries l ON l.unit_id = u.id
+      GROUP BY u.id, up.seller_minor, up.fee_minor, u.captured_verified_at
+      ORDER BY u.id`,
+  );
+  const bad: string[] = [];
+  for (const r of rows.rows) {
+    const id = r['id'] as string;
+    const sale = Number(r['sale']);
+    const fee = Number(r['fee']);
+    const payable = Number(r['payable']);
+    if (r['verified'] !== true) {
+      if (fee > 0 || payable > 0)
+        bad.push(`unit ${id}: not verified but the ledger has fee ${fee} and payable ${payable}`);
+      continue;
+    }
+    if (sale !== fee + payable) {
+      bad.push(`unit ${id}: sale ${sale}, fee ${fee} plus payable ${payable}`);
+    } else if (fee !== Number(r['fee_minor']) || payable !== Number(r['seller_minor'])) {
+      bad.push(
+        `unit ${id}: fee ${fee} and payable ${payable}, parts say ${String(r['fee_minor'])} and ${String(r['seller_minor'])}`,
+      );
+    } else if (Number(r['refund']) !== Number(r['fee_rev']) + Number(r['payable_rev'])) {
+      bad.push(
+        `unit ${id}: refunds ${Number(r['refund'])}, fee reversals ${Number(r['fee_rev'])} plus payable reversals ${Number(r['payable_rev'])}`,
+      );
+    }
+  }
+  return {
+    id: 'INV8',
+    ok: bad.length === 0,
+    detail: describe(
+      'per unit, sale equals fee plus payable, and refunds equal their reversals',
+      bad,
+    ),
+  };
+}
+
 export async function checkInvariants(db: SqlExecutor): Promise<Result[]> {
   return [
     await inv1(db),
@@ -293,5 +345,6 @@ export async function checkInvariants(db: SqlExecutor): Promise<Result[]> {
     await inv5(db),
     await inv6(db),
     await inv7(db),
+    await inv8(db),
   ];
 }

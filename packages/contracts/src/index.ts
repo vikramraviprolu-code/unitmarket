@@ -31,3 +31,5 @@ export * from './txn-query';
 export * from './trace';
 // BR-1 (configurable business rules).
 export * from './rules';
+// POB-M1 (fee on top, payout to publishers).
+export * from './payout';

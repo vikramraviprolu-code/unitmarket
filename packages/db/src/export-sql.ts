@@ -115,14 +115,26 @@ export async function exportSql(db: SqlExecutor, options: ExportOptions): Promis
 
 // Rows the migrations seed. A fresh database holds only these, all stamped with the epoch; the
 // import replaces them with the exported rows.
-const SEED_TABLES = ['corridors', 'access_policies', 'safety_switches', 'fx_rates'] as const;
+const SEED_TABLES = [
+  'corridors',
+  'access_policies',
+  'safety_switches',
+  'fx_rates',
+  'fee_settings',
+] as const;
 const SEED_EPOCH = '1970-01-01T00:00:00Z';
 const SEED_DELETE_GUARD = 'safety_switches_no_delete';
 // MC2-L4: fx_rates has no created_at; its migration rows are the ones marked source = 'seed', so any other row
 // means the database is not fresh. The table is append-only, so its delete guard is lifted for the seed
 // delete alone, like the safety switch guard.
-const NOT_SEED_ROW: Record<string, string> = { fx_rates: "source <> 'seed'" };
+// POB-M1 (migration 0029): fee_settings is the same kind of table; its migration row is the one set by 'seed', and its append-only
+// guard is lifted for the seed delete alone.
+const NOT_SEED_ROW: Record<string, string> = {
+  fx_rates: "source <> 'seed'",
+  fee_settings: "set_by <> 'seed'",
+};
 const FX_DELETE_GUARD = 'fx_rates_append_only';
+const FEE_DELETE_GUARD = 'fee_settings_append_only';
 
 // One export statement is exactly: PREFIX(table) + the doubled-quote JSON literal + SUFFIX. It is
 // checked with a fixed prefix and suffix and one linear scan for a lone quote, never with a pattern
@@ -229,11 +241,13 @@ export async function importSql(db: Database, sql: string): Promise<Record<strin
     await tx.exec(`ALTER TABLE trace_events ENABLE TRIGGER ${quote(TRACE_EVENTS_GUARD)}`);
     await tx.exec(`ALTER TABLE safety_switches DISABLE TRIGGER ${quote(SEED_DELETE_GUARD)}`);
     await tx.exec(`ALTER TABLE fx_rates DISABLE TRIGGER ${quote(FX_DELETE_GUARD)}`);
+    await tx.exec(`ALTER TABLE fee_settings DISABLE TRIGGER ${quote(FEE_DELETE_GUARD)}`);
     for (const t of [...order].reverse()) {
       if ((SEED_TABLES as readonly string[]).includes(t)) await tx.exec(`DELETE FROM ${quote(t)}`);
     }
     // The fx_rates delete guard is back on as soon as its seed rows are gone, before anything is loaded.
     await tx.exec(`ALTER TABLE fx_rates ENABLE TRIGGER ${quote(FX_DELETE_GUARD)}`);
+    await tx.exec(`ALTER TABLE fee_settings ENABLE TRIGGER ${quote(FEE_DELETE_GUARD)}`);
     for (const s of parsed.statements) {
       await tx.query(
         `INSERT INTO ${quote(s.table)} OVERRIDING SYSTEM VALUE SELECT * FROM jsonb_populate_recordset(NULL::${quote(s.table)}, $1::jsonb)`,

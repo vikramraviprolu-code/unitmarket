@@ -79,3 +79,23 @@ export type { DemoRevision } from './demo-prices';
 export { VISIT_GAP_MS, touchVisit } from './visits';
 export { listAgreements, ownAgreement, seedAgreements } from './agreements';
 export type { Agreement, SeedAgreementsInput } from './agreements';
+// POB-M1 (D-089): the fee on top. One function, one port, the setting and the parts of an offer version.
+export {
+  FEE_BPS_MAX,
+  applyFee,
+  currentFee,
+  fixedFeePolicy,
+  listFeeHistory,
+  loadFeePolicy,
+  recordOfferParts,
+  setFee,
+} from './fee';
+export type {
+  FeeDeps,
+  FeeError,
+  FeeErrorCode,
+  FeeParts,
+  FeePolicy,
+  FeeSetting,
+  FeeSplit,
+} from './fee';

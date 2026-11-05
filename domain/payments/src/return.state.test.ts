@@ -85,7 +85,9 @@ describe('the verified journey', () => {
     const ledger = await w.rows<{ kind: string; amount_minor: number; capture_id: string }>(
       'SELECT kind, amount_minor, capture_id FROM ledger_entries ORDER BY kind',
     );
+    // POB-M1: beside the sale and the PayPal fee, the payable row (the publisher share; this offer has no fee on top).
     expect(ledger).toEqual([
+      { kind: 'payable', amount_minor: 400, capture_id: u.capture_id },
       { kind: 'paypal_fee', amount_minor: 45, capture_id: u.capture_id },
       { kind: 'sale', amount_minor: 400, capture_id: u.capture_id },
     ]);

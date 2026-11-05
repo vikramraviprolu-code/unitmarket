@@ -441,6 +441,7 @@ describe('a refund after the payout was created but before it was sent', () => {
     await pass(null); // created, due, not sent
     const first = (await payoutRows(w))[0]!;
     expect(first.state).toBe('due');
+    w.tick(1000); // the new payout is made at a later instant than the one that is cancelled
     const rec = recording(w);
     const r = await requestRefund(rec.deps, {
       unit_id: unit,
@@ -625,6 +626,7 @@ describe('a refund after the payout was sent', () => {
     await atEnd(w, unitB, 1000);
     await pass(null); // B's payout is created due: 400 minus the 100 adjustment
     expect((await payoutRows(w)).at(-1)).toMatchObject({ amount_minor: 300, state: 'due' });
+    w.tick(1000);
     await refund(unitB, 200); // refunded before it was sent: that payout is cancelled
     const settlements = await w.rows<{ live: boolean }>('SELECT live FROM adjustment_settlements');
     expect(settlements.every((x) => !x.live)).toBe(true);
