@@ -4,6 +4,10 @@
 import type { Actor } from '@umsbx/contracts';
 import { app } from '../server/access';
 import type { OpsSnapshot } from '../server/access';
+import { healthLights } from '../lib/ops-health-view';
+import type { HealthLight } from '../lib/ops-health-view';
+import { bellCounts, orderAnchor } from '../lib/ops-alerts-view';
+import type { AlertActionKind, BellCounts } from '../lib/ops-alerts-view';
 
 export type OperatorActor = Extract<Actor, { kind: 'operator' }>;
 
@@ -43,4 +47,39 @@ export async function readCaseQueue(
 }
 export async function readCaseDetail(actor: OperatorActor, id: string) {
   return (await app()).engine.opsCases.detail(actor, id);
+}
+
+// INT-OPS-A / OPS-A.1: the four lights of Home. The facts are read by the engine (health check, stored switch,
+// lock block, last job pass, injected clock); the rule that turns them into words is lib/ops-health-view.ts.
+export async function readHomeLights(actor: Actor): Promise<HealthLight[]> {
+  const h = await (await app()).engine.opsHealth(actor);
+  if (h === null) return [];
+  return healthLights(h);
+}
+
+// INT-OPS-A / OPS-A.2: the shell bell. Open alerts by severity, from AL's needs-you rows; it shows nothing else.
+export async function readBellCounts(): Promise<BellCounts> {
+  return bellCounts(await readNeedsYou());
+}
+
+// INT-OPS-A / OPS-A.3: one alert for its page: AL's detail, one single-use key per action (the browser cannot make
+// one), and the anchor of the order timeline entry whose source is this alert. Null for a non operator and for an
+// unknown alert. The timeline is read with the session's own second factor, so no identity is gained here.
+export interface AlertPageRead {
+  detail: NonNullable<Awaited<ReturnType<Reads['alert']>>>;
+  order_anchor: string | null;
+  keys: Record<AlertActionKind, string>;
+}
+export async function readAlertPage(actor: Actor, id: string): Promise<AlertPageRead | null> {
+  if (actor.kind !== 'operator') return null;
+  const a = await app();
+  const detail = await a.engine.opsReads.alert(id);
+  if (detail === null) return null;
+  let anchor: string | null = null;
+  if (detail.order_ref !== null) {
+    const tl = await a.trace.opsTimeline({ order_ref: detail.order_ref, mfa: actor.mfa === true });
+    anchor = tl === null ? null : orderAnchor(tl.entries, id);
+  }
+  const n = a.engine.newKey;
+  return { detail, order_anchor: anchor, keys: { acknowledge: n(), resolve: n(), reopen: n() } };
 }

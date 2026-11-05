@@ -340,6 +340,7 @@ import {
   opsTimeline,
   sellerTimeline,
   verifyJournal,
+  WORDS,
 } from '@umsbx/trace';
 import type { AgentFacade, BuyerFacade, OpsFacade, SellerFacade } from './src/api-v1/facades';
 import {
@@ -387,6 +388,8 @@ import {
 } from './src/server/refund';
 import type { RefundFacade, RefundOverview, RefundUnitView } from './src/server/refund';
 export type { RefundOverview, RefundUnitView };
+// INT-OPS-A: the read shapes of the alert, case and needs-you pages, for the pure view modules in apps/web/src/lib.
+export type { AlertDetail, AlertList, NeedsYouRow, CaseDetail, CaseQueue };
 
 type Env = Record<string, string | undefined>;
 export interface AppOptions {
@@ -578,6 +581,8 @@ export interface ApprovalView {
   currency: string;
   environment: EnvironmentLabel;
   content_hash: string;
+  /** BR-3: the days of access frozen in the approval (5 for an approval stored before the terms existed). */
+  access_days: number;
   items: {
     article_id: Id;
     title: string;
@@ -678,7 +683,13 @@ export interface OpsSnapshot {
   orders: { order_ref: string; status: string; total_minor: number; currency: string }[];
   operations: { state: string; count: number }[];
   alerts: { kind: string; created_at: string }[];
-  invariants: { id: string; ok: boolean; detail: string }[];
+  /** `rows` (INT-OPS-A) is every row that breaks the invariant, by table and id; `detail` still shows five. */
+  invariants: {
+    id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7';
+    ok: boolean;
+    detail: string;
+    rows: { table: string; id: string }[];
+  }[];
   /** The paypal_outbound switch (the kill switch) and the budget left under the active approval. */
   kill_switch: {
     outbound_on: boolean;
@@ -830,6 +841,8 @@ export function traceReads(db: SqlExecutor) {
     evidencePack: (o: Parameters<typeof evidencePack>[1]) => evidencePack(db, o),
     evidenceHtml,
     verifyJournal: () => verifyJournal(db),
+    /** The words of every journal step, for the order page (OPS-A.4). */
+    words: WORDS,
   };
 }
 export type TraceReads = ReturnType<typeof traceReads>;
@@ -1146,6 +1159,20 @@ export interface Engine {
   >;
   /** The stored paypal_outbound switch, read now (no cache), or null when it cannot be read. For an operator only. */
   outboundSwitchOn(actor: Actor): Promise<boolean | null>;
+  /**
+   * INT-OPS-A OPS-A.1: the facts behind the four health lights of operator Home, read now: the health check, the
+   * stored switch, the lock block, the last job pass and the injected clock. Null for anyone but an operator.
+   */
+  opsHealth(actor: Actor): Promise<{
+    app: 'up' | 'unknown';
+    maintenance: boolean;
+    db: boolean;
+    environment: EnvironmentLabel;
+    switch_on: boolean | null;
+    outbound: { open: boolean; blocked_by: string | null } | null;
+    last_pass_at: string | null;
+    now: string;
+  } | null>;
   health(): Promise<{
     ok: boolean;
     environment: EnvironmentLabel;
@@ -1172,7 +1199,7 @@ export interface Engine {
   /**
    * PUB-A2: where a publisher gets paid. `view` is the S6 page data (last 4 only, newest request first);
    * `request` stores a change request and changes nothing else; `openRequests` and `decide` are the
-   * operator side and need the second factor. A verify is refused with `owner_command_required` when
+   * operator side: any operator reads the queue (INT-OPS-A), and `decide` needs the second factor. A verify is refused with `owner_command_required` when
    * the app runs in sandbox mode (D-062). The whole merchant id is never returned by any method.
    */
   payee: {
@@ -2648,6 +2675,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         currency: string;
         publishers?: { publisher_id: string; amount_minor: number }[];
         settlement?: { payments: number };
+        terms?: { values: { 'access.window': number } };
       };
       const items: ApprovalView['items'] = [];
       const itemPublisher: string[] = [];
@@ -2688,6 +2716,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         currency: snap.currency,
         environment: row.environment,
         content_hash: row.content_hash,
+        access_days: snap.terms?.values['access.window'] ?? 5,
         items,
         blocks,
         settlement: snap.settlement === undefined ? null : { payments: snap.settlement.payments },
@@ -3197,6 +3226,7 @@ function buildApp(config: Config, opts: AppOptions): App {
           id: v.id,
           ok: v.ok,
           detail: v.detail,
+          rows: v.rows,
         })),
         kill_switch: {
           outbound_on: outboundSwitch?.on === true,
@@ -3418,7 +3448,6 @@ function buildApp(config: Config, opts: AppOptions): App {
     opsPublishers: {
       async list(actor) {
         if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
-        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
         const publishers = await publisherExposure(db, actor, clock.now().toISOString(), {
           own_merchant_id: config.own_merchant_id,
           environment,
@@ -3459,7 +3488,6 @@ function buildApp(config: Config, opts: AppOptions): App {
     opsApplicants: {
       async list(actor) {
         if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
-        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
         const applicants = await listApplicants(db, actor);
         if (applicants === null) return { ok: false, error: { code: 'not_operator' } };
         return { ok: true, value: { applicants } };
@@ -3513,7 +3541,6 @@ function buildApp(config: Config, opts: AppOptions): App {
     opsAgreements: {
       async list(actor) {
         if (actor.kind !== 'operator') return { ok: false, error: { code: 'not_operator' } };
-        if (!actor.mfa) return { ok: false, error: { code: 'mfa_required' } };
         const agreements = await listAgreements(db, actor);
         if (agreements === null) return { ok: false, error: { code: 'not_operator' } };
         return { ok: true, value: { agreements } };
@@ -3577,6 +3604,33 @@ function buildApp(config: Config, opts: AppOptions): App {
         if (actor.kind !== 'operator') return null;
         return getCaseDetail(db, case_id, { with_message: true });
       },
+    },
+
+    async opsHealth(actor) {
+      if (actor.kind !== 'operator') return null;
+      let h: Awaited<ReturnType<Engine['health']>> | null = null;
+      try {
+        h = await engine.health();
+      } catch {
+        h = null;
+      }
+      let out: { open: boolean; blocked_by: string | null } | null = null;
+      try {
+        const s = outbound === null ? null : await outbound.status();
+        out = s === null ? null : { open: s.open, blocked_by: s.blocked_by };
+      } catch {
+        out = null;
+      }
+      return {
+        app: h === null ? 'unknown' : 'up',
+        maintenance: h?.maintenance ?? false,
+        db: h?.db ?? false,
+        environment,
+        switch_on: h?.maintenance === true ? null : await engine.outboundSwitchOn(actor),
+        outbound: out,
+        last_pass_at: h?.last_pass_at ?? null,
+        now: clock.now().toISOString(),
+      };
     },
 
     async health() {

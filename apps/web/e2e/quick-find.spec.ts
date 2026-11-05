@@ -80,6 +80,9 @@ test.describe.serial('quick-find', () => {
 
   test('"/" then a short ref then Enter opens the order page', async () => {
     await op.page.goto('/ops');
+    // The "/" listener is added when the shell hydrates (a useEffect in SearchSlot). Home is heavier since INT-OPS-A,
+    // so a key pressed straight after goto can land before it exists. Wait for the page to settle first.
+    await op.page.waitForLoadState('networkidle');
     await op.page.keyboard.press('/');
     const field = op.page.getByTestId('shell-search-input');
     await expect(field).toBeFocused();

@@ -247,3 +247,35 @@ export const CONSENT = { terms: true, identity_share: true } as const;
 export const BUYER_A = { kind: 'buyer', buyer_id: 'buy_A' } as const;
 export const BUYER_B = { kind: 'buyer', buyer_id: 'buy_B' } as const;
 export { HASH };
+
+// BR-3: one stored rule setting, inserted directly (the BR-2 store has its own tests). Effective from the
+// harness start time unless told otherwise. A direct insert can hold a value the store would refuse, which
+// the resolver-failure test needs.
+export interface RuleSeed {
+  id: string;
+  rule_key: 'refund.request_window' | 'access.window' | 'mandate.max_days';
+  scope_kind: 'platform' | 'seller' | 'buyer' | 'category';
+  scope_id: string | null;
+  value: number;
+  effective_from?: string;
+  effective_until?: string | null;
+}
+
+export async function setRule(db: SqlExecutor, r: RuleSeed): Promise<void> {
+  // rule_settings is append-only and has no updated_at, so this does not use `ins`.
+  await db.query(
+    `INSERT INTO rule_settings (id, rule_key, scope_kind, scope_id, value, effective_from, effective_until,
+                                set_by, reason, approved_by, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'opr_test', 'test setting', NULL, $8)`,
+    [
+      r.id,
+      r.rule_key,
+      r.scope_kind,
+      r.scope_id,
+      r.value,
+      r.effective_from ?? T0,
+      r.effective_until ?? null,
+      T0,
+    ],
+  );
+}

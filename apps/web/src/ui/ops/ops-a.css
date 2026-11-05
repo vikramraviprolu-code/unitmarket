@@ -1,0 +1,102 @@
+/* INT-OPS-A: health lights, alert list and detail, case queue and card, order and Problems pages, and the shell
+   bell. Colours come from the skin tokens only, so both looks work. */
+.ola-lights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+.ola-light {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card, 8px);
+  background: var(--surface);
+}
+.ola-light-label {
+  font-size: 0.875rem;
+  color: var(--text-muted, inherit);
+}
+.ola-needs {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+.ola-needs li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card, 8px);
+}
+.ola-needs a,
+.ola-row-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.ola-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 0 0 12px;
+}
+.ola-toolbar ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ola-toolbar a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+  text-decoration: none;
+  color: inherit;
+}
+.ola-toolbar a[aria-current='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.ola-actions {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+}
+.ola-action {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card, 8px);
+}
+.ola-hint {
+  color: var(--text-muted, inherit);
+  font-size: 0.875rem;
+}
+.ola-history {
+  margin: 0;
+  padding-left: 20px;
+}
+.ola-timeline-target:target {
+  outline: 2px solid var(--accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ola-light {
+    transition: border-color 0.15s;
+  }
+}
