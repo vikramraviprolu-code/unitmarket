@@ -97,7 +97,10 @@ Critical path: TR0 then TR1 then OPS-A, and SR0 then SR1 then OPS-B then BUY and
 
 ## 7. Known risks
 
-- **CI time.** PR #9's first run proves the 4-shard split. If one shard still nears 30 minutes, the fix is 6 shards, not a longer timeout.
+- **CI time.** After TR0 a shard took 25 of 30 minutes. The CI-2 PR moves to 6 shards, adds `check:business-rules` (BR-10 gate) and a `postgres` job that runs the real-Postgres suites (TR0 N5). Rule: add shards, never raise the timeout. Only the architect thread edits `ci.yml`.
+- **Journal bypass (TR0 N1).** Any SQL session can set `ums.trace` to restore mode and write without a journal row. `trace:verify` reports it as drift, so it is detected, not prevented. TR1 adds a named adversarial case for it (a restore-mode `orders.status` edit is reported as `drift orders <id> status`). Prevention (a separate database role for restore) is post-12-Nov backlog, because every app connection uses one role today.
+- **Journal cost (TR0 N2).** A tracked write costs about 2.5x to 3x as much with the journal. Every lane that adds tracked writes (SR0, AL, BR-2, CTL) pastes the `TRACE-PERF` line in its PR. The gate refuses a PR whose journaled p95 passes 3x plain p95 on the runner.
+- **`SELECT fn()` writes (TR0 N4).** Such a write would be unattributed; INV-T2 lists it. No lane may add a SQL function that writes tracked rows.
 - **gitleaks.** It cannot run in thread sandboxes. Each PR's author pastes local output, or the gate notes it is missing.
 - **Known failing case** `due.reread.state.test.ts:55` (`it.fails`) stays as is; E2E must not count on it.
 - **Stacked branches.** SR0 is stacked on TR0. If TR0 changes after review, SR0 rebases before its gate.

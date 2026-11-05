@@ -42,14 +42,16 @@ jobs:
       - run: pnpm typecheck
 
   # The six suites take over 20 minutes on one 2-core runner (restore and C-11 alone take about 4), so
-  # every PR was cancelled at the timeout with all tests passing. Four shards by file, each with room.
+  # every PR was cancelled at the timeout with all tests passing. Shards by file, each with room. Four
+  # shards reached 25 of 30 minutes once the journal (TR0) landed, so there are six. Add shards; do not
+  # raise the timeout.
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,7 +61,7 @@ jobs:
           node-version-file: .nvmrc
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test --shard=${{ matrix.shard }}/4
+      - run: pnpm test --shard=${{ matrix.shard }}/6
 
   checks:
     runs-on: ubuntu-latest
@@ -83,9 +85,28 @@ jobs:
       - run: pnpm check:hosting
       - run: pnpm check:hosting-gcp
       - run: pnpm check:licences
+      - run: pnpm check:business-rules
       - run: pnpm check:provenance
       # SUP-2: zero high or critical in production dependencies, or a dated waiver in the gate report.
       - run: pnpm audit --prod
+
+  # Real-Postgres suites (PG-2: races, locks, sessions, boot) skip without UMS_TEST_PG_BIN. The runner
+  # image ships PostgreSQL; each suite starts its own throwaway cluster from these binaries on a local
+  # socket. No network, no secret, no PayPal.
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: echo "UMS_TEST_PG_BIN=$(ls -d /usr/lib/postgresql/*/bin | sort -V | tail -1)" >> "$GITHUB_ENV"
+      - run: pnpm vitest run --maxWorkers=2 pg. postgres mvp-c-pg migration-0017
 
   mutation:
     if: github.event_name == 'workflow_dispatch'
