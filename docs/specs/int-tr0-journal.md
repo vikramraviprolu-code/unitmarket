@@ -2,7 +2,7 @@
 
 Task: Record every change to a money, delivery, agent-cap or control row in one append-only, hash-chained journal, with who, when and from where.
 Package: `packages/db` (migration, wrapper, verifier, export/import), `packages/contracts` (new `trace.ts`), `packages/obs` (context store), the entry points listed below. Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate thread.
-Items: TR0.1 to TR0.6, 20 points (plan section 5). Decision V1, logged as D-094. Round 2 answers `tr0-scorecard.md` F1 to F15.
+Items: TR0.1 to TR0.6, 20 points (plan section 5). Decision V1, logged as D-097 (registry in consolidation.md; D-094 is PR #6). Round 2 answers `tr0-scorecard.md` F1 to F15.
 
 ## Goal
 
@@ -113,7 +113,7 @@ Changed:
 - `scripts/lib/safety-cli-main.mjs`, `scripts/lib/privacy-main.mjs`, `scripts/lib/accounts-cli-main.mjs`
 - `apps/web/composition.server.ts` (wire `withTraceDb`, plus the two seed blocks)
 - `package.json` (`trace:verify` script)
-- `docs/decision-log.md` (D-094 for V1)
+- `docs/decision-log.md` (D-097 for V1)
 
 ## Acceptance tests (commit 1: tests only, run red)
 

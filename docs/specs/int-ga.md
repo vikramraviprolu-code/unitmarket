@@ -2,11 +2,11 @@
 
 Task: Two GenAI features on the existing model port, built and tested on the scripted model.
 Package: new `domain/assist` (`@umsbx/assist`), `packages/contracts` (two model purposes, assist word table), `packages/model` (scripted rules and prompts), `apps/web` (two routes, ask box, explain panel). Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
-Items: GA.1 to GA.5, 10 points, cut "should". Needs SR0, TR1, AL, OPS-A, OPS-B, BUY and SEL merged (the ask box sits in OPS-B's `FilterBar`, which BUY.4 and SEL.2 place on the buyer and seller pages; `buyer.ts` and `seller.ts` are BUY and SEL files). Decision V8 (scripted model now; the live model only on Vikram's yes). Source: search proposal section 7, features 1 and 2. Includes `int-wave2-conventions.md`. Round 2 passed 10/12 (`ga-scorecard.md`); build notes R2-1 to R2-5 below override the text above where they differ.
+Items: GA.1 to GA.5, 10 points, cut "should". Needs SR0, TR1, AL, OPS-A, OPS-B, BUY and SEL merged (the ask box sits in OPS-B's `FilterBar`, which BUY.4 and SEL.2 place on the buyer and seller pages; `buyer.ts` and `seller.ts` are BUY and SEL files). Decision V8 (scripted model now; the live model only on Vikram's yes). Source: search proposal section 7, features 1 and 2. Includes `int-wave2-conventions.md`. Round 2 passed 10/12 (`ga-scorecard.md`); build notes R2-1 to R2-5 and GA-L1 to GA-L7 (decision 5, live Claude, decision row D-100) below override the text above where they differ.
 
 ## Model boundary (V8, F9, F15)
 
-- `packages/model/src/claude.ts` is **unchanged**. Its `check()` returns null for any purpose other than `brief_parse` and `pack_compose`, so `txn_query` and `explain_order` are always served by the scripted model, even with `UMS_AI_ADAPTER=claude`. Turning them on for Claude is a later lane after V8 is yes. So GA makes no network call and no `model_spend` write.
+- Superseded by GA-L1 to GA-L7 (decision 5): `claude.ts` now serves both purposes, with scripted fallback. Original text: `packages/model/src/claude.ts` is **unchanged**. Its `check()` returns null for any purpose other than `brief_parse` and `pack_compose`, so `txn_query` and `explain_order` are always served by the scripted model, even with `UMS_AI_ADAPTER=claude`. Turning them on for Claude is a later lane after V8 is yes. So GA makes no network call and no `model_spend` write.
 - `ai_enabled` off: GA keeps working on rules plus the scripted model, and does not refuse. This differs from discovery, which refuses when `ai_enabled` is off; GA may, because neither path reaches a network or spends. The Claude adapter's own live switch is `paypal_outbound` (`composition.server.ts:1418`), not `ai_enabled`, and GA does not touch it.
 - `domain/assist` imports only `@umsbx/contracts` (S1). It never imports `@umsbx/model` in production code.
 
@@ -84,7 +84,7 @@ Changed:
 - `apps/web/src/app/ops/money/orders/[ref]/page.tsx` (panel)
 - `apps/web/composition.server.ts` (re-export lines only, R2-4), new composition module `assist.ts`, composition modules `ops-money.ts`, `buyer.ts`, `seller.ts`
 
-`packages/model/src/claude.ts` is unchanged.
+`packages/model/src/claude.ts`, `packages/model/src/schemas.ts` and `claude.adversarial.test.ts` change under GA-L1, GA-L2 and GA-L6; `composition.server.ts` gains the one `App` field of GA-L5.
 
 ## Acceptance tests (commit 1: tests and eval data only, run red)
 
@@ -106,9 +106,10 @@ No L item. The model boundary is covered by the adversarial files above. C4 to C
 - R2-3: order refs and provider ids are placed in SR0's `ref` field, not `q` (`q` is the title match).
 - R2-4: `assistDeps()` lives in `apps/web/src/composition/assist.ts`, not in `composition.server.ts` (UI0.7 allows only re-exports there). `composition.server.ts` gains re-export lines only: `createScriptedModel` from `@umsbx/model` and AL's catalogue. `assist.ts` uses the scripted port directly; this is the same behaviour as the app port, because `claude.ts` never serves these purposes. If a needed value cannot be reached by a re-export, stop and report.
 - R2-5: `REFUSED_FIELDS` comes from OPS-B fix B1. If it is absent at build, stop and report.
+- GA-L1 to GA-L7 (decision 5, 5 Nov, live Claude with the $2 per day cap) are in `consolidation.md` section 4 and are binding. In short: `check()` accepts `txn_query` as exactly `{rest}` (max 500 chars) and `explain_order` as a strict projection schema with `fix_ids`; answers are schema-checked and fall back to scripted; the two system prompts are used; caps and the `paypal_outbound` kill switch are unchanged; the port reaches GA as `App.model`, replacing R2-4's scripted re-export; tests use a fake wire only; decision row D-100.
 
 ## Do not
 
-Send transaction data, names, emails, refs or ids to the model; let model output run a query without the user seeing the chips; import `@umsbx/model` in `domain/assist` production code; change `claude.ts`; render model text as HTML; add a dependency; edit AL's catalogue.
+Send transaction data, names, emails, refs or ids to the model; let model output run a query without the user seeing the chips; import `@umsbx/model` in `domain/assist` production code; change `claude.ts` beyond GA-L1 to GA-L3; call the live model in any test or in CI; change the spend caps or the kill switch; render model text as HTML; add a dependency; edit AL's catalogue.
 
 Branch: `feat/int-ga`. Commit: `feat(assist): plain-words search and explain panel (INT-GA)`.

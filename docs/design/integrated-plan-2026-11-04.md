@@ -505,3 +505,7 @@ Each becomes a decision-log row at merge (next free id, from D-094).
 - Rubric: `/mnt/project-files/integrated-design/specs/int-rubric.md`
 - Lane specs: `/mnt/project-files/integrated-design/specs/int-*.md` (also pushed to the sandbox branch `claude/project-thread-evdj7o`, folder `docs/specs/`)
 - Inputs: `/mnt/project-files/operator-ux/`, `/mnt/project-files/ux-audit/`, `/mnt/project-files/search-and-genai/`, `/mnt/project-files/cloud-ops/`
+
+## Owner decisions, 5 Nov 2026 01:06Z
+
+Vikram approved the six recommendations. Their effect on this plan is in `integrated-consolidation-2026-11-05.md`: decision-id and migration registries (D-094 PR #6, D-095 CL1, D-096 business rules with the 7-day refund window and the 10% fee, D-097 TR0, D-098 SR0, D-099 BUY, D-100 GA live Claude), the GA amendment for live Claude under the $2 per day cap, shared-file merge rules, and the build waves to the PayPal sandbox sitting on 9 or 10 Nov.

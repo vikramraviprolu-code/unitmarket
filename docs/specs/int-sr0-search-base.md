@@ -2,7 +2,7 @@
 
 Task: One transaction filter contract with role rules, plus the indexes and the read view it runs on.
 Package: `packages/contracts` (`txn-query.ts`), `packages/db` (migration), new `domain/txn-search` (`@umsbx/txn-search`). Builder: Sonnet 5.5 high. Reviewer: Opus 5.5 gate.
-Items: SR0.1 to SR0.5, 12 points. Decision V5 (decision-log row, next free id at merge, planned D-095). Source: search proposal sections 4 and 6, without `pg_trgm`. Round 2 answers `sr0-scorecard.md` findings 1 to 10. TR0 merges first.
+Items: SR0.1 to SR0.5, 12 points. Decision V5 (decision-log row, next free id at merge, planned D-098). Source: search proposal sections 4 and 6, without `pg_trgm`. Round 2 answers `sr0-scorecard.md` findings 1 to 10. TR0 merges first.
 
 ## Goal
 
