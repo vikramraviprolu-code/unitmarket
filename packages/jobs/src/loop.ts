@@ -27,6 +27,8 @@ import { sealDue, sealPreviousDay } from '@umsbx/trace';
 import { DEFAULT_CALL_GAP_MS, moneyCalls, pollAllowance, rateLimited } from './budget';
 import type { CallBudget, CallQuota } from './budget';
 import { recordPass } from './health';
+import { createImportWorker } from './imports';
+import type { ImportRunner } from './imports';
 
 /** A leader lease as the loop needs it. @umsbx/db's AdvisoryLease fits this shape. */
 export interface LeaderLease {
@@ -93,8 +95,14 @@ export function startLoop(
      * logged as jobs.loop.deliver_failed and does not fail the pass.
      */
     deliver?: () => Promise<unknown>;
+    /**
+     * POB-I1: the web import. `recover` runs once at the start of the loop (or of a leadership term); a worker
+     * runs `runNext` OFF the pass, kicked after every pass and by kickImports(), so a long batch never holds up
+     * the payments work. The import has its own may-fetch check, so it is kicked while the outbound switch is off.
+     */
+    imports?: ImportRunner;
   },
-): { stop(): Promise<void> } {
+): { stop(): Promise<void>; kickImports(): void } {
   let stopped = false;
   let term: LeaderLease | null = null;
   const leading = (): boolean => o.leader === undefined || (term !== null && term.held());
@@ -116,6 +124,8 @@ export function startLoop(
       }
       wake = done;
     });
+
+  const importWorker = o.imports === undefined ? null : createImportWorker(o.imports, d.log);
 
   const sandbox = d.environment === 'sandbox';
   if (sandbox) {
@@ -213,6 +223,13 @@ export function startLoop(
 
   /** Recovery and passes for as long as this process may run them (the whole life without a leader). */
   const body = async (): Promise<void> => {
+    if (o.imports !== undefined) {
+      try {
+        await o.imports.recover();
+      } catch (e) {
+        fail('jobs.loop.imports_recover_failed', e);
+      }
+    }
     // Recovery runs once per process, or once per leadership term: a caller that has already run it
     // (composition's startJobs, no leader) passes recover_on_start: false. Run twice, it would take
     // over operations of a live pass.
@@ -294,6 +311,7 @@ export function startLoop(
               fail('jobs.loop.deliver_failed', e);
             }
           }
+          importWorker?.kick();
           recordPass(d, d.clock.now().toISOString());
           // With the allowance spent, overdue polling work must not wake the loop every 100 ms: the
           // pass only does money work, which is looked for at the slow rhythm.
@@ -361,6 +379,10 @@ export function startLoop(
       stopped = true;
       wake?.();
       await running;
+      await importWorker?.stop();
+    },
+    kickImports(): void {
+      importWorker?.kick();
     },
   };
 }

@@ -80,7 +80,7 @@ import {
   setSwitch,
 } from '@umsbx/safety';
 import type { ResumeCoreError } from '@umsbx/safety';
-import { createEcbFetch, createModelHttps, guard } from '@umsbx/transport';
+import { createEcbFetch, createFeedFetcher, createModelHttps, guard } from '@umsbx/transport';
 import type { Wire } from '@umsbx/transport';
 import {
   EXPECTED_CERT_PINS,
@@ -133,8 +133,28 @@ import {
   listAgreements,
   ownAgreement,
   seedAgreements,
+  // POB-I1: the web import.
+  ZERO_FEE_POLICY,
+  checkDomain as importCheckDomain,
+  editItem as importEditItem,
+  getBatch as importGetBatch,
+  listBatches as importListBatches,
+  listDomains as importListDomains,
+  publishBatch as importPublishBatch,
+  recoverImports,
+  requestDomain as importRequestDomain,
+  runNextBatch as importRunNext,
+  startVerifiedImport,
 } from '@umsbx/catalogue';
 import type {
+  BatchView as ImportBatchView,
+  DomainView as ImportDomainView,
+  ImportDeps,
+  ImportError,
+  ImportFeePolicy,
+  ImportFetcherPort,
+  ItemView as ImportItemView,
+  PublishSummary as ImportPublishSummary,
   Agreement,
   Applicant,
   ApplicantError,
@@ -413,6 +433,16 @@ export interface AppOptions {
    * packages/model/test-data/claude-eval-result.json. Refused unless NODE_ENV is test.
    */
   test_claude_eval_file?: string;
+  /**
+   * POB-I1 (tests): the fetcher of the web import, standing in for the guarded transport fetcher. No socket is
+   * opened. Refused unless NODE_ENV=test; in tests without it the import is off.
+   */
+  test_import_fetcher?: ImportFetcherPort;
+  /**
+   * POB-I1: the fee shown at review on top of the publisher's price (the ImportFeePolicy port of the web
+   * import). Default: no fee. The coordinator wires the real policy after the fee lane merges.
+   */
+  import_fee?: ImportFeePolicy;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1135,6 +1165,55 @@ export interface Engine {
    */
   refund: RefundFacade;
   /**
+   * POB-I1 (D-089, J7 to J9): the web import. A publisher proves a domain (`addDomain` gives the token once,
+   * `checkDomain` looks for it on the two fixed paths), `begin` proves it again and queues a batch, a
+   * background run (the job loop, or `runPending` in tests) reads the source into a staging list, `review`
+   * lists it with the buyer price through the fee port, `edit` changes the title, the price and whether the
+   * item is hidden in one step, and `publish` makes articles and offers of the chosen items. Every method
+   * works for the signed-in publisher only. Nothing is fetched from a host that is not the verified domain.
+   */
+  webImport: {
+    domains(actor: Actor): Promise<{ domains: ImportDomainView[] } | null>;
+    addDomain(i: {
+      actor: Actor;
+      host: string;
+    }): Promise<
+      Result<{ host: string; state: 'pending' | 'verified'; token: string | null }, ImportError>
+    >;
+    checkDomain(i: {
+      actor: Actor;
+      host: string;
+    }): Promise<Result<{ host: string; state: 'verified' }, ImportError>>;
+    begin(i: {
+      actor: Actor;
+      source_url: string;
+    }): Promise<Result<{ batch_id: string }, ImportError>>;
+    batches(
+      actor: Actor,
+    ): Promise<{ batches: ImportBatchView[]; environment: EnvironmentLabel } | null>;
+    review(i: { actor: Actor; batch_id: string }): Promise<{
+      batch: ImportBatchView;
+      items: ImportItemView[];
+      environment: EnvironmentLabel;
+      offer_max_minor: number;
+    } | null>;
+    edit(i: {
+      actor: Actor;
+      item_id: string;
+      title?: string;
+      price_minor?: number;
+      hidden?: boolean;
+    }): Promise<Result<{ item: ImportItemView }, ImportError>>;
+    publish(i: {
+      actor: Actor;
+      batch_id: string;
+      attestation: boolean;
+      item_ids?: string[];
+    }): Promise<Result<ImportPublishSummary, ImportError>>;
+    /** Runs the queued batches now (tests; the job loop does the same in the background). */
+    runPending(): Promise<{ ran: number }>;
+  };
+  /**
    * PUB-A2: where a publisher gets paid. `view` is the S6 page data (last 4 only, newest request first);
    * `request` stores a change request and changes nothing else; `openRequests` and `decide` are the
    * operator side and need the second factor. A verify is refused with `owner_command_required` when
@@ -1529,6 +1608,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       throw new Error('boot refused: test_claude_eval_file outside NODE_ENV=test');
     if (opts.test_fx_fetch !== undefined)
       throw new Error('boot refused: test_fx_fetch outside NODE_ENV=test');
+    if (opts.test_import_fetcher !== undefined)
+      throw new Error('boot refused: test_import_fetcher outside NODE_ENV=test');
   }
   const environment = envLabel(config);
   const clock: Clock = systemClock();
@@ -1918,6 +1999,26 @@ function buildApp(config: Config, opts: AppOptions): App {
     executeRefund: (i) => executeRefund(paymentsDeps, i),
     cancelRefund: (i) => cancelRefundRequest(paymentsDeps, i.refund_request_id, i.actor),
   });
+  // POB-I1: the web import. The fetcher is the guarded transport fetcher outside tests (one fixed rule: the
+  // caller names the one host of each call, the publisher's verified domain) and the test double in tests; in
+  // tests without a double, and in maintenance, the import is off. The may-fetch check is asked before EVERY
+  // fetch: the paypal_outbound switch (one stop ends every outbound call) and maintenance.
+  const importDeps: ImportDeps = {
+    db,
+    clock,
+    ids,
+    audit,
+    offer_max_minor: config.offer_max_minor,
+    fetcher:
+      opts.test_import_fetcher ??
+      (config.node_env !== 'test' && !maintenance ? createFeedFetcher() : null),
+    mayFetch: async () => !maintenance && (await switches.isOn('paypal_outbound')),
+    get fee() {
+      return opts.import_fee ?? ZERO_FEE_POLICY;
+    },
+  };
+  let kickImports: () => void = () => undefined;
+
   // One pass of the loop's sweep: end access windows, then turn alerts into cases.
   const sweepAll = async (x: { max_items: number }): Promise<{ ended: number }> => {
     const swept = await sweepWindows(core, x);
@@ -3211,6 +3312,38 @@ function buildApp(config: Config, opts: AppOptions): App {
 
     refund: refundFacade,
 
+    webImport: {
+      async domains(actor) {
+        const d = await importListDomains(db, actor);
+        return d === null ? null : { domains: d };
+      },
+      addDomain: ({ actor, host }) => importRequestDomain(importDeps, actor, { host }),
+      checkDomain: ({ actor, host }) => importCheckDomain(importDeps, actor, { host }),
+      async begin({ actor, source_url }) {
+        const r = await startVerifiedImport(importDeps, actor, { source_url });
+        if (r.ok) kickImports();
+        return r;
+      },
+      async batches(actor) {
+        const b = await importListBatches(db, actor);
+        return b === null ? null : { batches: b, environment };
+      },
+      async review({ actor, batch_id }) {
+        const v = await importGetBatch(importDeps, actor, batch_id);
+        return v === null ? null : { ...v, environment, offer_max_minor: config.offer_max_minor };
+      },
+      edit: ({ actor, ...i }) => importEditItem(importDeps, actor, i),
+      publish: ({ actor, ...i }) => importPublishBatch(importDeps, actor, i),
+      async runPending() {
+        let ran = 0;
+        for (let n = 0; n < 20; n += 1) {
+          if (!(await importRunNext(importDeps)).ran) break;
+          ran += 1;
+        }
+        return { ran };
+      },
+    },
+
     payee: {
       async view(actor) {
         const v = await payeeView(db, actor);
@@ -3491,7 +3624,7 @@ function buildApp(config: Config, opts: AppOptions): App {
       // takes over operations of the live one.
       if (!led) await recoverOnStartup(paymentsDeps);
       // One loop per approval (ASM-67): `loop` above is the only one this app starts.
-      let running: { stop(): Promise<void> };
+      let running: { stop(): Promise<void>; kickImports(): void };
       try {
         running = startLoop(
           { ...loopDeps, sweepWindows: sweepAll },
@@ -3500,6 +3633,12 @@ function buildApp(config: Config, opts: AppOptions): App {
             max_items: 100,
             recover_on_start: led,
             deliver: () => deliverWebhooks({ max_items: 100 }),
+            // POB-I1: boot recovery marks queued and running batches interrupted; the worker runs the
+            // queued ones off the pass.
+            imports: {
+              recover: () => recoverImports(importDeps),
+              runNext: async () => ({ ran: (await importRunNext(importDeps)).ran }),
+            },
             ...(led
               ? {
                   leader: { tryAcquire: () => lockOf(LEADER_LOCK_KEY) },
@@ -3521,11 +3660,13 @@ function buildApp(config: Config, opts: AppOptions): App {
           level: 'error',
           fields: { error: e instanceof Error ? e.message : 'unknown' },
         });
-        running = { stop: async () => undefined };
+        running = { stop: async () => undefined, kickImports: () => undefined };
       }
+      kickImports = () => running.kickImports();
       loop = {
         stop: async () => {
           loop = null;
+          kickImports = () => undefined;
           await running.stop();
         },
       };

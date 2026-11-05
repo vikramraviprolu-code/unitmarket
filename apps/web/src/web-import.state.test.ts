@@ -229,7 +229,7 @@ describe('answers for the review findings', () => {
     w.web.pages[WELL_KNOWN_URL] = { refuse: 'bad_status' };
     const r = await w.post('begin', harbour(w), { source_url: SOURCE_URL });
     expect(r.status).toBe(409);
-    const body = await json<{ code: string; message: string }>(r);
+    const body = (await json<{ error: { code: string; message: string } }>(r)).error;
     expect(body.code).toBe('proof_lost');
     expect(body.message).toBe(copy.importErrorText('proof_lost'));
     expect((await w.app.db.query('SELECT 1 FROM import_batches')).rows).toEqual([]);
@@ -254,10 +254,13 @@ describe('answers for the review findings', () => {
     await w.app.db.query(`UPDATE safety_switches SET "on" = false WHERE name = 'paypal_outbound'`);
     const r = await w.post('begin', harbour(w), { source_url: SOURCE_URL });
     expect(r.status).toBe(409);
-    expect((await json<{ code: string }>(r)).code).toBe('paused');
+    expect((await json<{ error: { code: string } }>(r)).error.code).toBe('paused');
     expect(w.web.calls).toHaveLength(0);
-    const c = await w.post('check', harbour(w), { host: SHOP_HOST });
+    // a domain that is still pending cannot be checked while paused (a verified one needs no fetch)
+    await w.post('domains', harbour(w), { host: 'other.pub-one.invalid' });
+    const c = await w.post('check', harbour(w), { host: 'other.pub-one.invalid' });
     expect(c.status).toBe(409);
+    expect(w.web.calls).toHaveLength(0);
   });
 
   it('a switch turned off while a batch is queued ends its run as interrupted (paused), with nothing fetched', async () => {
@@ -282,7 +285,7 @@ describe('answers for the review findings', () => {
     expect(a.status).toBe(200); // asking for a token is harmless
     const c = await w.post('check', harbour(w), { host: SHOP_HOST });
     expect(c.status).toBe(503);
-    expect((await json<{ code: string }>(c)).code).toBe('import_off');
+    expect((await json<{ error: { code: string } }>(c)).error.code).toBe('import_off');
     await w.app.db.query(
       `UPDATE publisher_domains SET state = 'verified', verified_at = created_at`,
     );
@@ -365,17 +368,17 @@ describe('refusals at the door', () => {
       { article_id: 'art_x' },
     ]) {
       const r = await w.post('items', harbour(w), { item_id: t.id, title: 'x', ...extra });
-      expect(r.status).toBe(400);
+      expect(r.status).toBe(422);
     }
     expect(
       (await w.post('begin', harbour(w), { source_url: SOURCE_URL, host: 'other.invalid' })).status,
-    ).toBe(400);
+    ).toBe(422);
     expect(
       (await w.post('publish', harbour(w), { batch_id: id, attestation: true, price: 1 })).status,
-    ).toBe(400);
+    ).toBe(422);
     expect(
       (await w.post('domains', harbour(w), { host: SHOP_HOST, publisher_id: 'x' })).status,
-    ).toBe(400);
+    ).toBe(422);
     const unchanged = await json<Status>(await w.get(`?batch=${id}`, harbour(w)));
     expect(unchanged.items.find((i) => i.id === t.id)!.title).toBe('Tide notes for winter');
   });
@@ -383,14 +386,16 @@ describe('refusals at the door', () => {
   it('a body that is not what the field says is 400: wrong types, huge text, no attestation field', async () => {
     const w = await boot();
     await verifyShopOverHttp(w);
-    expect((await w.post('begin', harbour(w), { source_url: 5 })).status).toBe(400);
-    expect((await w.post('begin', harbour(w), { source_url: 'x'.repeat(3000) })).status).toBe(400);
-    expect((await w.post('domains', harbour(w), { host: ['a'] })).status).toBe(400);
-    expect((await w.post('publish', harbour(w), { batch_id: 'imb_x' })).status).toBe(400);
+    expect((await w.post('begin', harbour(w), { source_url: 5 })).status).toBe(422);
+    // 3000 characters are over the 2560 byte body cap of the route: refused before the shape is read.
+    expect((await w.post('begin', harbour(w), { source_url: 'x'.repeat(3000) })).status).toBe(413);
+    expect((await w.post('begin', harbour(w), { source_url: 'x'.repeat(2100) })).status).toBe(422);
+    expect((await w.post('domains', harbour(w), { host: ['a'] })).status).toBe(422);
+    expect((await w.post('publish', harbour(w), { batch_id: 'imb_x' })).status).toBe(422);
     expect(
       (await w.post('publish', harbour(w), { batch_id: 'imb_x', attestation: 'yes' })).status,
-    ).toBe(400);
-    expect((await w.post('items', harbour(w), { item_id: 'imi_x' })).status).toBe(400);
+    ).toBe(422);
+    expect((await w.post('items', harbour(w), { item_id: 'imi_x' })).status).toBe(422);
   });
 
   it('a domain that is not verified, and an address that is not https, are refused with a fixed answer and no fetch', async () => {
@@ -400,12 +405,12 @@ describe('refusals at the door', () => {
       source_url: 'https://elsewhere.invalid/catalogue',
     });
     expect(a.status).toBe(403);
-    expect((await json<{ code: string }>(a)).code).toBe('domain_not_verified');
+    expect((await json<{ error: { code: string } }>(a)).error.code).toBe('domain_not_verified');
     const b = await w.post('begin', harbour(w), {
       source_url: 'http://shop.pub-one.invalid/catalogue',
     });
     expect(b.status).toBe(422);
-    expect((await json<{ code: string }>(b)).code).toBe('invalid_address');
+    expect((await json<{ error: { code: string } }>(b)).error.code).toBe('invalid_address');
     const c = await w.post('begin', harbour(w), {
       source_url: 'https://169.254.169.254/computeMetadata/v1/',
     });
@@ -418,7 +423,7 @@ describe('refusals at the door', () => {
     await begun(w);
     const r = await w.post('begin', harbour(w), { source_url: SOURCE_URL });
     expect(r.status).toBe(409);
-    expect((await json<{ code: string }>(r)).code).toBe('import_active');
+    expect((await json<{ error: { code: string } }>(r)).error.code).toBe('import_active');
   });
 
   it('another publisher gets 404 for my batch and for my item, the same as for an id that does not exist', async () => {
@@ -442,7 +447,7 @@ describe('refusals at the door', () => {
     const before = (await w.app.db.query('SELECT 1 FROM articles')).rows.length;
     const r = await w.post('publish', harbour(w), { batch_id: id, attestation: false });
     expect(r.status).toBe(422);
-    expect((await json<{ code: string }>(r)).code).toBe('attestation_required');
+    expect((await json<{ error: { code: string } }>(r)).error.code).toBe('attestation_required');
     expect((await w.app.db.query('SELECT 1 FROM articles')).rows.length).toBe(before);
     const ok = await w.post('publish', harbour(w), {
       batch_id: id,
