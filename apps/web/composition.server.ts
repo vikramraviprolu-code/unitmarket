@@ -700,7 +700,7 @@ export interface OpsSnapshot {
   alerts: { kind: string; created_at: string }[];
   /** `rows` (INT-OPS-A) is every row that breaks the invariant, by table and id; `detail` still shows five. */
   invariants: {
-    id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7';
+    id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7' | 'INV8';
     ok: boolean;
     detail: string;
     rows: { table: string; id: string }[];
