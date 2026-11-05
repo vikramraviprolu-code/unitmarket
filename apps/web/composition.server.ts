@@ -284,6 +284,7 @@ export {
   PAYEE_DIRECT_SENTENCE,
   SETTLEMENT_SENTENCE,
   UNIT_STATUS_TEXT,
+  csvLine,
   salesTotals,
   settlementMode,
 } from '@umsbx/publisher-console';
