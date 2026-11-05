@@ -5304,7 +5304,7 @@
     },
     "/api/v1/ops/transactions": {
       "get": {
-        "summary": "Every purchased item with filters and four saved views (view=needs_attention, refunds_today, agent_purchases, sandbox_only). Order refs, amounts, states, flags and opaque ids only: no buyer or seller name and no provider order id.",
+        "summary": "Every purchased item with filters and four saved views (view=needs_attention, refunds_today, agent_purchases, sandbox_only). Order refs, amounts, states, flags and opaque ids only: no buyer id, agent key id, buyer or seller name, or provider order id.",
         "security": [
           {
             "bearerKey": [
