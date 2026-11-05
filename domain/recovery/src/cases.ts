@@ -407,7 +407,7 @@ async function policyOf(tx: SqlExecutor, entitlement_id: string): Promise<Access
 
 export async function diagnose(
   d: CoreDeps,
-  i: { case_id: Id },
+  i: { case_id: Id; actor?: Actor },
 ): Promise<{
   evidence: AccessEvent[];
   window: WindowState | null;
@@ -436,7 +436,7 @@ export async function diagnose(
         await addAction(tx, d, {
           case_id: c.id,
           action: 'diagnosed',
-          actor: { kind: 'system' },
+          actor: i.actor ?? { kind: 'system' },
           detail: { events: evidence.length, order_status },
         });
       }

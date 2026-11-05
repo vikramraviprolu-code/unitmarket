@@ -1,9 +1,10 @@
 // The gate block of /ops as plain lines (BU-2). One pure function builds the text the operator reads,
 // so a golden test pins it and the page only renders the lines. It carries no value: lock states are
-// yes or NO, the scope is a name, and the Wire self-check is four facts. No import: a plain data file.
+// yes or NO, the scope is a name, and the Wire self-check is four facts. A plain data file; its one import
+// is a type, derived from the BLOCKED_BY const of the contracts (INT-AL).
+import type { BlockedBy } from '@umsbx/contracts';
 
-/** Which reason a request is answered with while the locks are not all open. */
-export type BlockedBy = 'connect_off' | 'kill_switch' | 'no_approval' | 'budget' | 'egress';
+export type { BlockedBy };
 
 /** The five locks of docs/design/mvpb-unseal-and-mvpc-offline.md section 2, read now. */
 export interface LockView {
