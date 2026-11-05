@@ -1,0 +1,108 @@
+[
+  {
+    "title": "Buyer issues an agent key",
+    "cmd": "POST /api/v1/api-keys  {key_kind: \"agent\", scopes: [catalogue:read, agent:buy]}",
+    "out": {
+      "status": 201,
+      "id": "key_3c24p2r5xvptqws0rgne1ggxq8",
+      "key_kind": "agent",
+      "scopes": [
+        "agent:buy",
+        "catalogue:read"
+      ],
+      "token": "<hidden>"
+    }
+  },
+  {
+    "title": "Buyer sets a one-time cap: $5.00 and 3 purchases",
+    "cmd": "POST /api/v1/mandates  {max_total_minor: 500, max_count: 3}",
+    "out": {
+      "status": 201,
+      "id": "man_6mwn1x2ecg4jfz34q7pk2j89kb",
+      "currency": "USD",
+      "max_total_minor": 500,
+      "max_count": 3,
+      "remaining_total_minor": 500,
+      "remaining_count": 3
+    }
+  },
+  {
+    "title": "Agent tries to buy before an operator allows agent buying",
+    "cmd": "mcp buy_unit  tide-tables",
+    "out": {
+      "status": "agent_buy_disabled",
+      "message": "Agent buying is switched off right now."
+    }
+  },
+  {
+    "title": "Operator with a second factor turns agent buying on",
+    "cmd": "POST /api/ops/agent-buy  {on: true}   (operator signed in with authenticator code)",
+    "out": {
+      "mfa": true,
+      "agent_buy_on": true
+    }
+  },
+  {
+    "title": "Agent lists its tools over MCP",
+    "cmd": "mcp tools/list",
+    "out": [
+      "search_catalogue",
+      "get_offer",
+      "propose_pack",
+      "open_unit",
+      "check_budget",
+      "buy_unit"
+    ]
+  },
+  {
+    "title": "Agent reads its budget",
+    "cmd": "mcp check_budget",
+    "out": {
+      "status": "active",
+      "currency": "USD",
+      "remaining_total_minor": 500,
+      "remaining_count": 3
+    }
+  },
+  {
+    "title": "Agent buys unit 1",
+    "cmd": "mcp buy_unit  tide-tables",
+    "out": {
+      "status": "bought",
+      "title": "Reading a tide table in ten minutes",
+      "environment": "dryrun",
+      "remaining_total_minor": 400,
+      "remaining_count": 2
+    }
+  },
+  {
+    "title": "Agent buys unit 2",
+    "cmd": "mcp buy_unit  ferry-timetables",
+    "out": {
+      "status": "bought",
+      "title": "Why ferry timetables slip in winter",
+      "environment": "dryrun",
+      "remaining_total_minor": 275,
+      "remaining_count": 1
+    }
+  },
+  {
+    "title": "Agent buys unit 3",
+    "cmd": "mcp buy_unit  harbour-fees",
+    "out": {
+      "status": "bought",
+      "title": "What a small harbour charges and why",
+      "environment": "dryrun",
+      "remaining_total_minor": 25,
+      "remaining_count": 0
+    }
+  },
+  {
+    "title": "The cap says stop",
+    "cmd": "mcp buy_unit  knot-notebook",
+    "out": {
+      "status": "cap_exhausted",
+      "isError": true
+    }
+  }
+]

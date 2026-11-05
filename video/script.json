@@ -1,0 +1,97 @@
+[
+  {
+    "id": "b01",
+    "scene": "problem",
+    "text": "An AI agent buys a seven-cent article. Paying for it through PayPal today costs forty-nine cents in fees."
+  },
+  {
+    "id": "b02",
+    "scene": "problem",
+    "text": "And a reader who wants one article is asked to buy a whole subscription. So small purchases never happen."
+  },
+  {
+    "id": "b03",
+    "scene": "title",
+    "text": "UnitMarket fixes that. Buy just what you need, let agents pay in cents, and let PayPal settle."
+  },
+  {
+    "id": "b04",
+    "scene": "journey",
+    "text": "Here is the working app. A reader says what they need, and what they will pay."
+  },
+  {
+    "id": "b05",
+    "scene": "journey",
+    "text": "The app searches only authorised offers, and proposes a pack within budget, here from two publishers."
+  },
+  {
+    "id": "b06",
+    "scene": "journey",
+    "text": "Nothing is charged until the reader approves. The price is frozen, and each publisher gets its own PayPal payment."
+  },
+  {
+    "id": "b07",
+    "scene": "journey",
+    "text": "This take runs in dry run, on a pretend PayPal. The same code made real PayPal sandbox payments on the twenty-ninth of October."
+  },
+  {
+    "id": "b08",
+    "scene": "journey",
+    "text": "Access opens only after the payment is verified. Receipt, library, done."
+  },
+  {
+    "id": "b09",
+    "scene": "agent",
+    "text": "Now hand that power to an agent. Through our API, the buyer sets a one-time cap: five dollars, and three purchases. An operator, with a second factor, switches agent buying on. The agent buys on its own, and the cap stops it."
+  },
+  {
+    "id": "b10",
+    "scene": "market",
+    "text": "Agents buy in five to ten cent pieces. Here are ten thousand simulated trades, from a hundred agents and forty publishers."
+  },
+  {
+    "id": "b11",
+    "scene": "fees",
+    "text": "Paid one by one, the fees come to four thousand nine hundred dollars, six times what was bought. Our ledger nets the trades into a hundred and ninety-eight PayPal movements: eighty-three dollars, fifty-nine times cheaper at today's prices. At a micro-settlement price we propose to PayPal: twenty-one dollars."
+  },
+  {
+    "id": "b12",
+    "scene": "poolsrec",
+    "text": "Pillars one and two are consolidation."
+  },
+  {
+    "id": "b13",
+    "scene": "pools",
+    "text": "Buyers who want the same unit share one payment: ten thousand payments become two hundred and thirty-three. Small publishers pool on a topic to fill bundles none could fill alone: thirty-three of thirty-three, and they earn, instead of losing money to fees."
+  },
+  {
+    "id": "b14",
+    "scene": "built",
+    "text": "Behind it: two repositories, three hundred and thirty-five thousand lines of TypeScript, more than fourteen thousand tests, and eighty-one merged pull requests."
+  },
+  {
+    "id": "b15",
+    "scene": "personas",
+    "text": "Four roles, ten buyer personas, forty content domains, tested end to end."
+  },
+  {
+    "id": "b16",
+    "scene": "arch",
+    "text": "UnitMarket does the matching. PayPal stays the rails."
+  },
+  {
+    "id": "b16b",
+    "scene": "truth",
+    "text": "Every scene is labelled: real sandbox, dry run, simulation, or proposal."
+  },
+  {
+    "id": "b17",
+    "scene": "pillars",
+    "text": "Group the demand. Group the supply. Make cents worth paying. That is a ride-hailing model for payments, and PayPal does not offer it yet. We built the proof."
+  },
+  {
+    "id": "b18",
+    "scene": "end",
+    "text": "UnitMarket. PayPal settles. We make cents worth paying."
+  }
+]
