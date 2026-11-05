@@ -423,7 +423,7 @@ Cut marks: **M** = must, before 12 Nov. **S** = should, before 12 Nov if the pac
 | SR0 Search base | 0 | 5 | 12 | 12 | | Sonnet 5.5 high | Spec passed 11/12; build stacks on TR0 |
 | UI0 Shell | 0 | 7 | 12 | 12 | | Sonnet 5.5 medium | Spec passed 11/12; building |
 | CL1 Cloud kit | 0 | 11 | 21 | 21 | | Sonnet 5.5 high | Spec passed 12/12 (round 3); ready to build |
-| SIM-U2 Headline (SIM) | 0 | 1 | 1 | 1 | | Sonnet 5.5 medium | Spec passed 12/12; building |
+| SIM-U2 Headline (SIM) | 0 | 1 | 1 | 1 | | Sonnet 5.5 medium | Merged 5 Nov: simulation PR #80 (abfb80e), gate 11/12 (gitleaks could not run) |
 | TR1 Timeline | 1 | 6 | 14 | 14 | | Sonnet 5.5 high | Spec passed 11/12; waits on TR0, UI0 |
 | AL Alerts and cases | 1 | 8 | 18 | 18 | | Sonnet 5.5 high | Spec passed 10/12; waits on TR0, UI0 |
 | SR1 Search APIs | 1 | 7 | 17 | 17 | | Sonnet 5.5 high | Spec passed 11/12; stacks on SR0 |
