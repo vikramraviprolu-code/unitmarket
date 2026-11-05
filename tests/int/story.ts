@@ -605,7 +605,7 @@ step(
       expect(await count(rig.app, `SELECT count(*) AS c FROM ${t}`), `${t} after the refusal`).toBe(
         before[t],
       );
-    // B2 ruling: the only new journal rows are one approvals insert and the request's audit_log rows
+    // B2 ruling: the only new journal rows are one approvals insert and the request's two audit_log rows
     // (approval.requested and api.request), all written by the agent.
     const added = (
       await rig.app.db.query<{
@@ -627,11 +627,9 @@ step(
     ]);
     const audit = added.filter((e) => e.source_table === 'audit_log');
     expect(audit.every((e) => e.event_type === 'audit_log.created')).toBe(true);
-    expect([...new Set(audit.map((e) => e.action))].sort()).toEqual([
-      'api.request',
-      'approval.requested',
-    ]);
-    expect(added).toHaveLength(1 + audit.length);
+    // Exactly two audit_log rows: one approval.requested and one api.request (PR #42 gate follow-up).
+    expect(audit.map((e) => e.action).sort()).toEqual(['api.request', 'approval.requested']);
+    expect(added).toHaveLength(3);
     // B5: the refused agent approval is not the buyer's to act on, so it is not in the pending approvals.
     const refused = added.find((e) => e.source_table === 'approvals')!.source_id;
     const { readPendingApprovals } = await import('../../apps/web/src/composition/buyer');
@@ -1055,7 +1053,7 @@ export function printTable(lines: TableLine[]): string {
       (l) =>
         `| ${String(l.step)} | ${l.view} | ${l.marker} | ${l.found} | ${l.actor_kind} | ${l.channel} | ${l.mfa} |`,
     ),
-    '| 11 | none | no new `orders`, `order_units`, `mandate_reservations`, `ledger_entries` or `provider_calls` row; only one `approvals` insert and its `audit_log` rows; the refused approval is not pending for the buyer | checked in S11 | agent | mcp; api | false |',
+    '| 11 | none | no new `orders`, `order_units`, `mandate_reservations`, `ledger_entries` or `provider_calls` row; only one `approvals` insert and exactly two `audit_log` rows; the refused approval is not pending for the buyer | checked in S11 | agent | mcp; api | false |',
   ].join('\n');
 }
 
