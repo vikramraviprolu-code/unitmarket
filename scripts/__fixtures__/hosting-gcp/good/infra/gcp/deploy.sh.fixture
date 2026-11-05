@@ -33,7 +33,9 @@ TAG="$3"
 command -v gcloud >/dev/null 2>&1 || die "gcloud is not installed"
 command -v git >/dev/null 2>&1 || die "git is not installed"
 ACTIVE_ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null || true)"
-[ -n "$ACTIVE_ACCOUNT" ] || die "gcloud has no active account; sign in first, then run this again"
+# D-099: a proxy-injected token need not have an entry in gcloud's credential store.
+# Presence is not proof of validity: the required GCP lookups below still fail closed.
+[ -n "${CLOUDSDK_AUTH_ACCESS_TOKEN:-}" ] || [ -n "$ACTIVE_ACCOUNT" ] || die "gcloud has neither an access token nor an active account; configure credentials first"
 unset ACTIVE_ACCOUNT
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

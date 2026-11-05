@@ -102,18 +102,15 @@ function run(
     'bash',
     [
       '-c',
-      'PATH="$0:$PATH"; exec bash "$@"',
+      'PATH="$0:$PATH"; export CLOUDSDK_AUTH_ACCESS_TOKEN="$1"; shift; exec bash "$@"',
       stub,
+      credentials.token ?? '',
       join(repo, 'infra', 'gcp', script),
       'ums-test-project',
       'europe-west3',
       't1',
     ],
-    {
-      cwd: repo,
-      encoding: 'utf8',
-      env: { ...process.env, CLOUDSDK_AUTH_ACCESS_TOKEN: credentials.token ?? '' },
-    },
+    { cwd: repo, encoding: 'utf8' },
   );
   const calls = readFileSync(join(stub, 'calls.txt'), 'utf8').split('\n').filter(Boolean);
   return {

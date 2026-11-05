@@ -1647,7 +1647,14 @@ describe('check-hosting-gcp', () => {
   const tokenGuard = '[ -n "${CLOUDSDK_AUTH_ACCESS_TOKEN:-}" ] || ' + accountGuard;
 
   it('D-099 accepts token-or-account preflight in deploy.sh', () => {
-    const dir = mutate('deploy.sh', accountGuard, tokenGuard);
+    const dir = materialize('hosting-gcp/good');
+    expect(readKit(dir, 'deploy.sh')).toContain(tokenGuard);
+    const r = runGuard(GUARD, dir);
+    expect(r.status, r.out).toBe(0);
+  });
+
+  it('still accepts the original account-only deploy preflight', () => {
+    const dir = mutate('deploy.sh', tokenGuard, accountGuard);
     const r = runGuard(GUARD, dir);
     expect(r.status, r.out).toBe(0);
   });
@@ -1657,7 +1664,7 @@ describe('check-hosting-gcp', () => {
     ['unconditional token bypass', 'true || ' + tokenGuard],
     ['missing account fallback', '[ -n "${CLOUDSDK_AUTH_ACCESS_TOKEN:-}" ] || die'],
   ])('D-099 refuses %s', (_name, replacement) => {
-    const dir = mutate('deploy.sh', accountGuard, replacement);
+    const dir = mutate('deploy.sh', tokenGuard, replacement);
     const r = runGuard(GUARD, dir);
     expect(r.status, r.out).toBe(1);
     expect(r.out).toContain('account-guard');
@@ -1671,7 +1678,11 @@ describe('check-hosting-gcp', () => {
   });
 
   it('D-099 refuses printing the access token', () => {
-    const dir = mutate('deploy.sh', accountGuard, 'echo "$CLOUDSDK_AUTH_ACCESS_TOKEN"\n' + tokenGuard);
+    const dir = mutate(
+      'deploy.sh',
+      tokenGuard,
+      'echo "$CLOUDSDK_AUTH_ACCESS_TOKEN"\n' + tokenGuard,
+    );
     const r = runGuard(GUARD, dir);
     expect(r.status, r.out).toBe(1);
     expect(r.out).toContain('print-secret');
