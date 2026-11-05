@@ -41,7 +41,7 @@ const STUB = `#!/usr/bin/env bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 printf '%s\\n' "$*" >> "$DIR/calls.txt"
 case "$1 $2 $3" in
-  "auth list "*) echo "tester" ;;
+  "auth list "*) if [ ! -f "$DIR/no-account" ]; then echo "tester"; fi ;;
   "secrets versions list")
     if grep -qxF "$4" "$DIR/fail.txt"; then exit 1; fi
     if grep -qxF "$4" "$DIR/has.txt"; then echo "1"; fi ;;
@@ -85,8 +85,14 @@ function setup(): { repo: string; stub: string } {
   return { repo, stub };
 }
 
-function run(script: string, has: string[], fail: string[] = []): Run {
+function run(
+  script: string,
+  has: string[],
+  fail: string[] = [],
+  credentials: { account?: boolean; token?: string } = {},
+): Run {
   const { repo, stub } = setup();
+  if (credentials.account === false) writeFileSync(join(stub, 'no-account'), '');
   writeFileSync(join(stub, 'has.txt'), has.join('\n') + '\n');
   writeFileSync(join(stub, 'fail.txt'), fail.join('\n') + '\n');
   writeFileSync(join(stub, 'calls.txt'), '');
@@ -103,7 +109,11 @@ function run(script: string, has: string[], fail: string[] = []): Run {
       'europe-west3',
       't1',
     ],
-    { cwd: repo, encoding: 'utf8' },
+    {
+      cwd: repo,
+      encoding: 'utf8',
+      env: { ...process.env, CLOUDSDK_AUTH_ACCESS_TOKEN: credentials.token ?? '' },
+    },
   );
   const calls = readFileSync(join(stub, 'calls.txt'), 'utf8').split('\n').filter(Boolean);
   return {
@@ -119,6 +129,33 @@ const secretsOf = (deploy: string | undefined): string[] =>
   (/--set-secrets=(\S+)/.exec(deploy ?? '')?.[1] ?? '').split(',').filter(Boolean);
 
 describe('INFRA-A deploy.sh against a stub gcloud', () => {
+  it('D-099 accepts token-only credentials without exposing the token', () => {
+    const token = 'synthetic-token-for-test';
+    const r = run('deploy.sh', REQUIRED, [], { account: false, token });
+    expect(r.status, r.out).toBe(0);
+    expect(r.deploy).toBeDefined();
+    expect(r.out).not.toContain(token);
+    expect(r.calls.join('\n')).not.toContain(token);
+  });
+
+  it.each([{}, { token: '' }])('refuses absent credentials: %j', (credentials) => {
+    const r = run('deploy.sh', REQUIRED, [], { ...credentials, account: false });
+    expect(r.status).toBe(1);
+    expect(r.deploy).toBeUndefined();
+    expect(r.calls.every((c) => c.startsWith('auth list '))).toBe(true);
+  });
+
+  it('a token does not bypass a failed required-secret lookup', () => {
+    const r = run('deploy.sh', REQUIRED, ['DATABASE_URL'], {
+      account: false,
+      token: 'synthetic-token-for-test',
+    });
+    expect(r.status).toBe(1);
+    expect(r.calls.some((c) => c.startsWith('secrets versions list DATABASE_URL '))).toBe(true);
+    expect(r.deploy).toBeUndefined();
+    expect(r.out).not.toContain('synthetic-token-for-test');
+  });
+
   it('no optional secret has a value: the deploy still runs and maps only the eleven required', () => {
     const r = run('deploy.sh', REQUIRED);
     expect(r.status, r.out).toBe(0);
