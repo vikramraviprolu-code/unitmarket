@@ -8,7 +8,7 @@ export {
   createApiV1,
   securityDeps,
 } from '../../composition.server';
-export type { ApiV1 } from '../../composition.server';
+export type { ApiV1, ExposureRow } from '../../composition.server';
 export type {
   AlertDetail,
   AlertList,

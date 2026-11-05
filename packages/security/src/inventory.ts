@@ -231,10 +231,16 @@ export function checkHandlers(source: string, method: string | undefined): strin
 }
 
 /**
- * fail_safe_without_mfa lifts the MFA rule of an operator POST (BU-2). Exactly one route may carry
- * it: the stop button, which can only turn the outbound switch off.
+ * fail_safe_without_mfa lifts the MFA rule of an operator POST (BU-2). Exactly three routes may carry it, each
+ * one able only to reduce what the system may do: the stop button, which turns the outbound switch off, the
+ * switch off route, and the API exposure off route (INT-CTL, F2). Every `.../on` path needs the authenticator code.
+ * route.ts reads this list for its build-time check and `pnpm check:routes` reads it for the static check.
  */
-export const FAIL_SAFE_WITHOUT_MFA_ROUTES: readonly string[] = ['/api/ops/stop'];
+export const FAIL_SAFE_WITHOUT_MFA_ROUTES: readonly string[] = [
+  '/api/ops/stop',
+  '/api/ops/switches/[name]/off',
+  '/api/ops/api-exposure/[group]/off',
+];
 
 // The rules one meta must meet. `where` names the meta in a message when a file holds several.
 function metaProblems(meta: Partial<RouteMeta>, relativeToApp: string): string[] {

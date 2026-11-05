@@ -115,6 +115,63 @@ describe('INT-OPS-B pages: labelled landmarks, inputs and tables', () => {
   });
 });
 
+// INT-CTL: the text-read check for /ops/controls (its new panels) and /ops/agents/exposure. Every landmark and
+// form has a name, every input is labelled, the exposure table has a caption and column headers, each toggle is a
+// real button whose name says the group, and a state is never carried by colour alone.
+describe('INT-CTL pages: labelled landmarks, inputs and tables', () => {
+  const FILES = [
+    'app/ops/controls/page.tsx',
+    'app/ops/agents/exposure/page.tsx',
+    'ui/ops/GatewayPanel.tsx',
+    'ui/ops/ServicesPanel.tsx',
+    'ui/ops/SwitchList.tsx',
+    'ui/ops/ExposureTable.tsx',
+  ];
+  const named = (tag: string, src: string): string[] =>
+    [...src.matchAll(new RegExp(`<${tag}\\b[^>]*>`, 'g'))].map((m) => m[0]);
+  it.each(FILES)('%s: nav, section and form elements have a name', (f) => {
+    const src = code(f);
+    for (const tag of ['nav', 'form']) {
+      for (const el of named(tag, src))
+        expect(el, `${f} ${tag}`).toMatch(/aria-label=|aria-labelledby=|role="search"/);
+    }
+    for (const el of named('section', src)) expect(el, f).toMatch(/aria-label=|aria-labelledby=/);
+  });
+  it.each(FILES)('%s: each input, select and textarea is labelled', (f) => {
+    const src = code(f);
+    const fields = ['input', 'select', 'textarea'].flatMap((t) => named(t, src));
+    for (const el of fields) {
+      const id = /\bid=(?:"([^"]+)"|\{([^}]+)\})/.exec(el);
+      const labelled =
+        /aria-label=|aria-labelledby=/.test(el) ||
+        (id !== null &&
+          new RegExp(
+            `htmlFor=(?:"${id[1] ?? ''}"|\\{${(id[2] ?? '').replace(/[$()]/g, '\\$&')}\\})`,
+          ).test(src));
+      expect(labelled, `${f}: ${el}`).toBe(true);
+    }
+  });
+  it('the exposure table has a caption or a name and column headers; the page a level one heading', () => {
+    const t = code('ui/ops/ExposureTable.tsx');
+    expect(t).toMatch(/<caption|<table[^>]*aria-label=/);
+    expect(t).toMatch(/<th scope="col"/);
+    expect(code('app/ops/agents/exposure/page.tsx')).toMatch(/<PageHeader\b[^>]*title=/);
+  });
+  it('each toggle is a button whose name carries the group, and the state is written in words', () => {
+    for (const f of ['ui/ops/ExposureTable.tsx', 'ui/ops/SwitchList.tsx']) {
+      const src = code(f);
+      for (const el of named('button', src)) expect(el, `${f} ${el}`).toMatch(/aria-label=|>\s*\S/);
+      expect(src, f).toMatch(/aria-label=\{`?[^}]*\$\{/);
+    }
+    expect(code('ui/ops/ExposureTable.tsx')).toMatch(/role="status"|aria-live=/);
+  });
+  it('the services panel pastes into a labelled textarea and shows the refusal in a status region', () => {
+    const src = code('ui/ops/ServicesPanel.tsx');
+    expect(src).toMatch(/<textarea[^>]*(aria-label=|id=)/);
+    expect(src).toMatch(/role="status"|role="alert"|aria-live=/);
+  });
+});
+
 // INT-SEL: the text-read check for the seller pages SEL changes or adds and their parts. Every table has a
 // caption, every nav, section and form a name, every input a label, and the current view is marked.
 describe('INT-SEL pages: labelled landmarks, inputs and tables', () => {

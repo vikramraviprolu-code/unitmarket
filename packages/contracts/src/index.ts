@@ -35,3 +35,6 @@ export * from './txn-query';
 export * from './trace';
 // BR-1 (configurable business rules).
 export * from './rules';
+// INT-CTL (API exposure registry, the pasted cloud status).
+export * from './api-exposure';
+export * from './cloud-status';
