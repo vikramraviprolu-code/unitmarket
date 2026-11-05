@@ -104,7 +104,13 @@ describe('pages S4 and S5', () => {
 
   it.each(pages)('%s reads no request parameter, so no id can come from the client', (p) => {
     const src = read(p).replace(/\/\/.*$/gm, '');
-    expect(src).not.toMatch(/searchParams|params|headers\(|cookies\(/);
+    // INT-SEL (SEL.2): the Sales page reads the view, the filters and the cursor from the address, and nothing
+    // else. A seller or publisher id is refused by the role check and never read from it.
+    if (p.endsWith('sales/page.tsx')) {
+      expect(src).not.toMatch(/\bparams\b|headers\(|cookies\(|publisher_id|publisher_slug/);
+    } else {
+      expect(src).not.toMatch(/searchParams|params|headers\(|cookies\(/);
+    }
     expect(src).toMatch(/currentActor\(\)/);
     expect(src).toMatch(/actor\?\.kind !== 'publisher'\) redirect\('\/signin\?next=\/publisher\//);
   });

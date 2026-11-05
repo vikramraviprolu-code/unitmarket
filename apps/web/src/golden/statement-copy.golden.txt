@@ -1,4 +1,4 @@
-nav: Sales | Statement | Publisher home
+nav: Sales | Statement | Seller home
 sales heading: Sales
 sales lede: One line for each unit you sold. Every figure is read from a stored record.
 sales empty title: No sales yet.

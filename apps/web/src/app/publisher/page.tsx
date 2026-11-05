@@ -53,6 +53,10 @@ import {
 } from '../../lib/publisher-home-copy';
 import { formatDateTime, formatMinor } from '../../lib/format';
 import { LINK_PUBLISHER_TERMS } from '../../lib/agreement-copy';
+import { readSellerHome, readSellerSetup } from '../../composition/seller';
+import { homeView } from '../../lib/seller-home-view';
+import { AgentShare } from '../../ui/seller/AgentShare';
+import { SetupPath } from '../../ui/seller/SetupPath';
 
 export const metadata: Metadata = { title: 'Publisher' };
 
@@ -75,6 +79,10 @@ export default async function PublisherHome() {
     statement === null ? [] : salesTotals(statement.blocks),
     a.environment,
   );
+  // INT-SEL (SEL.3, SEL.4): this week, the agent share, the top offers, and the setup path until it is done.
+  const setup = await readSellerSetup(actor);
+  const sel = await readSellerHome(actor);
+  const hv = sel === null ? null : homeView(sel);
   const status = statusChip(home.status);
   const payee = payeeChip(home.payee);
   const terms = termsChip(agreement);
@@ -162,6 +170,47 @@ export default async function PublisherHome() {
           {OTHER_CURRENCIES_NOTE}
         </p>
       ) : null}
+      {setup === null || setup.done ? null : <SetupPath steps={setup.steps} />}
+      {hv === null ? null : (
+        <>
+          <section aria-labelledby="week-h" className="pk-section" data-testid="seller-week">
+            <h2 id="week-h">This week</h2>
+            {hv.week.kind === 'empty' ? (
+              <p className="muted">{hv.week.text}</p>
+            ) : (
+              <>
+                <p className="pk-tile-value">{hv.week.units_text}</p>
+                <p>
+                  Net <strong data-testid="seller-week-net">{hv.week.net_text}</strong>
+                </p>
+                <p className="muted">
+                  Gross {hv.week.gross_text}, refunds and reversals {hv.week.refunds_text}.
+                </p>
+                <p className="muted">{hv.week.note}</p>
+              </>
+            )}
+            <p data-testid="seller-needs-you">{hv.needs_you.text}</p>
+          </section>
+          <AgentShare view={hv.agent} />
+          <section aria-labelledby="top-h" className="pk-section" data-testid="seller-top-offers">
+            <h2 id="top-h">Top offers, last 30 days</h2>
+            {hv.top.length === 0 ? (
+              <p className="muted">{hv.top_empty}</p>
+            ) : (
+              <>
+                <ol>
+                  {hv.top.map((t) => (
+                    <li key={t.offer_id}>
+                      <Link href={t.href}>{t.title}</Link>: {t.units_text}, net {t.net_text}
+                    </li>
+                  ))}
+                </ol>
+                <p className="muted">{hv.top_note}</p>
+              </>
+            )}
+          </section>
+        </>
+      )}
       <Section title={ACCOUNT_HEADING} id="account">
         <div className="pk-panel">
           <dl className="pk-facts">
