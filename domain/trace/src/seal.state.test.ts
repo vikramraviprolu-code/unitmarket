@@ -4,8 +4,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { verifyTrace } from '@umsbx/db';
 import { sealPreviousDay } from './index';
-import { CTX, as, freshDb, seedWorld, ins, HASH } from './test-support';
-import type { Db } from './test-support';
+import { CTX, as, freshDb, seedWorld, ins, HASH } from './support';
+import type { Db } from './support';
 
 let db: Db;
 const clockAt = (iso: string) => ({ now: () => new Date(iso) });

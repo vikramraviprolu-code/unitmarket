@@ -5,8 +5,8 @@ import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { evidencePack, sealPreviousDay, SOURCE_ROW_TABLES } from './index';
 import type { EvidencePack } from './index';
-import { CANARY, CTX, as, freshDb, ins, scan, seedWorld } from './test-support';
-import type { Db } from './test-support';
+import { CANARY, CTX, as, freshDb, ins, scan, seedWorld } from './support';
+import type { Db } from './support';
 
 const sha = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
 
@@ -21,8 +21,7 @@ export function checkPack(p: EvidencePack): string | null {
     const c = JSON.parse(e.canon) as { prev_hash: string; seq: number; chain_key: string };
     if (c.chain_key !== p.chain.key || c.seq !== e.seq)
       return `canon names another row at seq ${e.seq}`;
-    if (e.seq === 1 ? c.prev_hash !== prev : c.prev_hash !== prev)
-      return `prev_hash differs at seq ${e.seq}`;
+    if (c.prev_hash !== prev) return `prev_hash differs at seq ${e.seq}`;
     prev = e.row_hash;
   }
   if (p.chain.from_seq !== 1) return 'chain does not start at seq 1';
@@ -108,8 +107,8 @@ describe('tamper', () => {
     expect(checkPack(c)).toMatch(/seq gap/);
     const d = structuredClone(p);
     d.events[1]!.canon = d.events[1]!.canon.replace(
-      /"prev_hash":"[a-f0-9]{64}"/,
-      `"prev_hash":"${'1'.repeat(64)}"`,
+      /"prev_hash": ?"[a-f0-9]{64}"/,
+      `"prev_hash": "${'1'.repeat(64)}"`,
     );
     d.events[1]!.row_hash = sha(d.events[1]!.canon);
     expect(checkPack(d)).toMatch(/prev_hash differs/);

@@ -2,8 +2,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { wordsFor } from './words';
 import { buyerTimeline, opsTimeline } from './index';
-import { CTX, as, freshDb, seedWorld, day } from './test-support';
-import type { Db, World } from './test-support';
+import { CTX, as, freshDb, seedWorld, day } from './support';
+import type { Db, World } from './support';
 
 let db: Db;
 let w: World;

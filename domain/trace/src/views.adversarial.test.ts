@@ -4,8 +4,8 @@
 // no identity; the session answer with it does.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buyerTimeline, operatorView, opsTimeline, sellerTimeline } from './index';
-import { CANARY, freshDb, scan, seedWorld } from './test-support';
-import type { Db, World } from './test-support';
+import { CANARY, freshDb, scan, seedWorld } from './support';
+import type { Db, World } from './support';
 
 let db: Db;
 let w: World;
@@ -142,7 +142,7 @@ describe('operator view', () => {
       'buy_1',
       'buy_2',
       CANARY.buyerName,
-      'PPORDER_pub_a',
+      'PPORDERAAAA1234',
       'CAPA',
       'CAPB',
       'RFD_A',
@@ -157,7 +157,7 @@ describe('operator view', () => {
       expect(text, bad).not.toContain(bad);
     }
     // provider ids appear as "…" and the last four characters
-    expect(text).toContain('…ub_a');
+    expect(text).toContain('…1234');
     const hasJob = t.entries.some((e) => e.job === 'pass');
     expect(hasJob).toBe(true);
     const tool = t.entries.find((e) => e.tool === 'buy');
@@ -171,7 +171,7 @@ describe('operator view', () => {
   it('the session answer with MFA adds actor ids, provider ids, request id, an eight character address prefix, family, key and mfa', async () => {
     const t = (await opsTimeline(db, { order_ref: w.order_ref, mfa: true }))!;
     const text = scan(t);
-    for (const want of ['buy_1', 'PPORDER_pub_a', 'CAPA', 'RFD_A', 'req_t1', 'key_wxyz1234'])
+    for (const want of ['buy_1', 'PPORDERAAAA1234', 'CAPA', 'RFD_A', 'req_t1', 'key_wxyz1234'])
       expect(text, want).toContain(want);
     expect(text).toContain('cccccccc');
     expect(text).not.toContain('c'.repeat(9));

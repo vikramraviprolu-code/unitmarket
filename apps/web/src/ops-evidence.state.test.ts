@@ -2,7 +2,7 @@
 // need an operator session WITH the second factor. The HTML lists the same events as the JSON and holds no
 // buyer id outside the canon text.
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { bootStartRig } from './ops-start-support';
+import { NOW, bootStartRig } from './ops-start-support';
 import type { StartRig } from './ops-start-support';
 import { call } from './support';
 import type { Session } from './support';
@@ -19,6 +19,9 @@ let plain: Session;
 let unit = '';
 
 beforeAll(async () => {
+  // The authenticator code is computed for NOW, as the other operator tests do.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
   rig = await bootStartRig();
   json = await import('./app/api/ops/units/[id]/evidence/route');
   html = await import('./app/api/ops/units/[id]/evidence.html/route');
@@ -35,7 +38,7 @@ beforeAll(async () => {
     [T],
   );
   await q(
-    `INSERT INTO approvals (id, buyer_id, snapshot, content_hash, nonce, expires_at, used_at, environment, created_at, updated_at) VALUES ('apr_ev','buy_ev','{}',$2,'n','2026-11-04T09:30:00Z',NULL,'dryrun',$1,$1)`,
+    `INSERT INTO approvals (id, buyer_id, snapshot, content_hash, nonce, expires_at, used_at, environment, created_at, updated_at) VALUES ('apr_ev','buy_ev','{}',$2,'n','2026-11-04T09:15:00Z',NULL,'dryrun',$1,$1)`,
     [T, 'a'.repeat(64)],
   );
   await q(
@@ -43,7 +46,7 @@ beforeAll(async () => {
     [T, 'a'.repeat(64)],
   );
   await q(
-    `INSERT INTO order_units (id, order_id, publisher_id, reference_id, payee_merchant_id, amount_minor, platform_fee_minor, capture_id, status, refunded_minor, created_at, updated_at) VALUES ('unt_ev','ord_ev','pub_ev','rid_ev','MEV',500,0,'CAPEV','captured_verified',0,$1,$1)`,
+    `INSERT INTO order_units (id, order_id, publisher_id, reference_id, payee_merchant_id, amount_minor, platform_fee_minor, capture_id, status, refunded_minor, captured_verified_at, created_at, updated_at) VALUES ('unt_ev','ord_ev','pub_ev','rid_ev','MEV',500,0,'CAPEV','captured_verified',0,$1,$1,$1)`,
     [T],
   );
   unit = 'unt_ev';

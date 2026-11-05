@@ -2,8 +2,8 @@
 // writes no journal row, and trace:verify reports it as drift. TR1 does not try to block it.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { verifyTrace } from '@umsbx/db';
-import { freshDb, seedWorld } from './test-support';
-import type { Db } from './test-support';
+import { freshDb, seedWorld } from './support';
+import type { Db } from './support';
 
 let db: Db;
 beforeAll(async () => {

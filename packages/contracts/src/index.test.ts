@@ -200,6 +200,14 @@ const EXPECTED_EXPORTS: string[] = [
   'WebhookSubscriptionCreatedSchema',
   'WebhookDeliveryViewSchema',
   'eventAudience',
+  // INT-TR1: timelines, verify route
+  'SellerUnitParamSchema',
+  'TimelineEntrySchema',
+  'TimelineAnswerSchema',
+  'OpsTimelineEntrySchema',
+  'OpsTimelineAnswerSchema',
+  'TraceVerifySchema',
+  'TRACE_ROUTES',
 ];
 
 type Def = {

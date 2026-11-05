@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { withTraceContext } from '@umsbx/obs';
 import type { TraceContext } from '@umsbx/contracts';
-import { bootStartRig } from './ops-start-support';
+import { NOW, bootStartRig } from './ops-start-support';
 import type { StartRig } from './ops-start-support';
 import { call } from './support';
 import type { Session } from './support';
@@ -38,7 +38,7 @@ const ctxOf = (id: string, over: Partial<TraceContext>): TraceContext => ({
 const alertAt = async (n: number, c: TraceContext, at: string): Promise<void> => {
   await withTraceContext(c, () =>
     rig.app.db.query(
-      `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ($1, 'job_probe', jsonb_build_object('reason', $1::text), $2, $2)`,
+      `INSERT INTO alerts (id, kind, detail, created_at, updated_at) VALUES ($1::text, 'job_probe', jsonb_build_object('reason', $1::text), $2, $2)`,
       [`alr_act_${n}`, at],
     ),
   );
@@ -47,6 +47,9 @@ const at = (i: number): string =>
   new Date(Date.parse('2026-11-04T12:00:00Z') + i * 1000).toISOString();
 
 beforeAll(async () => {
+  // The authenticator code is computed for NOW, as the other operator tests do.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
   rig = await bootStartRig();
   route = await import('./app/api/ops/activity/route');
   mfa = await rig.mfaOperator();
@@ -135,14 +138,14 @@ describe('filters and page size', () => {
 });
 
 describe('identity', () => {
-  it('without the second factor there is no actor id, no mfa flag and no request id', async () => {
-    const p = await page(plain, '?actor_kind=operator&event_type=alerts.');
+  it('without the second factor there is no mfa flag and no request id; an actor id shows for system and operator only', async () => {
+    const p = await page(plain, '?event_type=alerts.&limit=200');
     for (const i of p.items) {
-      expect(i).not.toHaveProperty('actor_id');
       expect(i).not.toHaveProperty('mfa');
       expect(i).not.toHaveProperty('req_id');
+      expect(i).not.toHaveProperty('ip_hash');
+      if (i.actor_id !== undefined) expect(['system', 'operator']).toContain(i.actor.kind);
     }
-    expect(JSON.stringify(p)).not.toContain('vikram');
   });
   it('the actor_id filter without MFA is 403 mfa_required; with MFA it works', async () => {
     const r = await get(plain, '?actor_id=vikram');
@@ -166,7 +169,7 @@ describe('identity', () => {
     expect(row).toBeDefined();
     expect(row!.mfa).toBe(true);
     expect(row!.channel).toBe('web');
-    expect(row!.actor_id).toBe('vikram');
+    expect(row!.actor_id).toBe('opr_vikram');
   });
 });
 

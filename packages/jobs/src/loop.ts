@@ -23,6 +23,7 @@
 import { nextDueAt, recoverOnStartup, runDue } from '@umsbx/payments';
 import type { PaymentsDeps, TraceContext } from '@umsbx/contracts';
 import { withTraceContext } from '@umsbx/obs';
+import { sealDue, sealPreviousDay } from '@umsbx/trace';
 import { DEFAULT_CALL_GAP_MS, moneyCalls, pollAllowance, rateLimited } from './budget';
 import type { CallBudget, CallQuota } from './budget';
 import { recordPass } from './health';
@@ -194,6 +195,22 @@ export function startLoop(
     };
   };
 
+  // INT-TR1: the first pass at or after 00:05 UTC seals the previous UTC day, once. The seal is not a provider
+  // call, so it runs while the outbound switch is off. It has its own context (system, job, seal); a failure
+  // is logged and never fails the pass.
+  let sealChecked = '';
+  const sealStep = async (): Promise<void> => {
+    if (!sealDue(d.clock)) return;
+    const today = d.clock.now().toISOString().slice(0, 10);
+    if (sealChecked === today) return;
+    try {
+      await withTraceContext(jobContext('seal'), () => sealPreviousDay(d.db, d.clock));
+      sealChecked = today;
+    } catch (e) {
+      fail('jobs.loop.seal_failed', e);
+    }
+  };
+
   /** Recovery and passes for as long as this process may run them (the whole life without a leader). */
   const body = async (): Promise<void> => {
     // Recovery runs once per process, or once per leadership term: a caller that has already run it
@@ -294,6 +311,7 @@ export function startLoop(
         }
       });
       if (stopped || !leading()) break;
+      await sealStep();
       await sleep(delay);
     }
   };

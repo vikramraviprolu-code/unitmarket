@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import {
+  OpsTimelineAnswerSchema,
   TimelineAnswerSchema,
   TimelineEntrySchema,
   TraceVerifySchema,
@@ -70,7 +71,13 @@ const get = (
   params: Record<string, string> | undefined,
   tok: string | null,
 ) => rig.v1(h[name]!, tok, { url, ...(params ? { params } : {}) });
-const body = async (r: Response) => (await r.json()) as Record<string, unknown>;
+// The support code differs per request by design; every other part of a 404 must be the same.
+const body = async (r: Response) => {
+  const b = (await r.json()) as { error: Record<string, unknown> };
+  const { support_code: _drop, ...error } = b.error;
+  void _drop;
+  return { error };
+};
 
 describe('buyer timeline', () => {
   it('matches the schema for a buyer key and an agent key, and carries no operator context', async () => {
@@ -157,7 +164,7 @@ describe('operator routes', () => {
   it('the ops timeline answers for an ops key, identity free', async () => {
     const r = await get('ops', `/api/v1/ops/orders/${ref}/timeline`, { ref }, opsTok);
     expect(r.status).toBe(200);
-    const t = TimelineAnswerSchema.parse(await r.json());
+    const t = OpsTimelineAnswerSchema.parse(await r.json());
     expect(t.entries.length).toBeGreaterThan(0);
     expect(JSON.stringify(t)).not.toMatch(/buy_|pub_|req_|ip_hash|api_key_id|persona:/);
     expect(
