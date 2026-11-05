@@ -50,7 +50,12 @@ function world(
     child: () => log,
   };
   const d = {
-    db: { query: vi.fn(), exec: vi.fn(), transaction: vi.fn(), dialect: 'pglite' },
+    db: {
+      query: vi.fn().mockResolvedValue({ rows: [] }),
+      exec: vi.fn(),
+      transaction: vi.fn(),
+      dialect: 'pglite',
+    },
     clock,
     ids: { next: () => 'x', nonce: () => 'n' },
     log,

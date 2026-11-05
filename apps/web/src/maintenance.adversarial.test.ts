@@ -87,6 +87,12 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/ops/rules/route.ts': () => import('./app/api/ops/rules/route'),
   'api/ops/start/route.ts': () => import('./app/api/ops/start/route'),
   'api/ops/stop/route.ts': () => import('./app/api/ops/stop/route'),
+  'api/ops/activity/route.ts': () => import('./app/api/ops/activity/route'),
+  'api/ops/orders/[ref]/timeline/route.ts': () =>
+    import('./app/api/ops/orders/[ref]/timeline/route'),
+  'api/ops/units/[id]/evidence/route.ts': () => import('./app/api/ops/units/[id]/evidence/route'),
+  'api/ops/units/[id]/evidence.html/route.ts': () =>
+    import('./app/api/ops/units/[id]/evidence.html/route'),
   'api/orders/[ref]/cancel/route.ts': () => import('./app/api/orders/[ref]/cancel/route'),
   'api/orders/[ref]/checkout/route.ts': () => import('./app/api/orders/[ref]/checkout/route'),
   'api/orders/[ref]/route.ts': () => import('./app/api/orders/[ref]/route'),
@@ -117,6 +123,12 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/v1/library/route.ts': () => import('./app/api/v1/library/route'),
   'api/v1/offers/[id]/route.ts': () => import('./app/api/v1/offers/[id]/route'),
   'api/v1/ops/orders/[ref]/route.ts': () => import('./app/api/v1/ops/orders/[ref]/route'),
+  'api/v1/ops/orders/[ref]/timeline/route.ts': () =>
+    import('./app/api/v1/ops/orders/[ref]/timeline/route'),
+  'api/v1/ops/trace/verify/route.ts': () => import('./app/api/v1/ops/trace/verify/route'),
+  'api/v1/orders/[ref]/timeline/route.ts': () => import('./app/api/v1/orders/[ref]/timeline/route'),
+  'api/v1/seller/sales/[unit]/timeline/route.ts': () =>
+    import('./app/api/v1/seller/sales/[unit]/timeline/route'),
   'api/v1/ops/overview/route.ts': () => import('./app/api/v1/ops/overview/route'),
   'api/v1/ops/reconciler/route.ts': () => import('./app/api/v1/ops/reconciler/route'),
   'api/v1/ops/switches/route.ts': () => import('./app/api/v1/ops/switches/route'),
