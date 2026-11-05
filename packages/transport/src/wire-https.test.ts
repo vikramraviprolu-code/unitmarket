@@ -488,9 +488,11 @@ describe('the production network call lives in exactly one file', () => {
   // third file cannot join without a test change that a reviewer sees. It carries no PayPal call.
   // MC2-L4 (D-085): the ECB exchange-rate fetch is the third, named the same way. It is not a payment API
   // and carries no PayPal call either.
-  it('only the production Wire file, the Claude egress file and the ECB rate fetch import node:https in non-test package code', () => {
+  // FEED (POB-I1): the guarded fetcher for a publisher's own verified web address is the fourth.
+  it('only the production Wire file, the Claude egress file, the ECB rate fetch and the feed fetcher import node:https in non-test package code', () => {
     const hits = prod.filter((f) => /from\s+['"](?:node:)?https['"]/.test(code(f)));
     expect(hits.map(rel).sort()).toEqual([
+      'packages/transport/src/feed-fetch.ts',
       'packages/transport/src/fx-ecb.ts',
       'packages/transport/src/model-https.ts',
       `packages/transport/src/${MODULE}.ts`,
@@ -500,7 +502,8 @@ describe('the production network call lives in exactly one file', () => {
     const hits = prod
       .filter((f) => rel(f).startsWith('packages/transport/src/'))
       .filter((f) => /(^|[^.\w$])fetch\s*\(|globalThis\s*\.\s*fetch\s*\(/m.test(code(f)));
-    expect(hits.map(rel)).toEqual([]);
+    // FEED: feed-fetch.ts names its interface method `fetch(`; that one line is the only exemption.
+    expect(hits.map(rel)).toEqual(['packages/transport/src/feed-fetch.ts']);
   });
   it('the production Wire file reads the global fetch only to compare it, never to call it', () => {
     const src = code(join(REPO, `packages/transport/src/${MODULE}.ts`));
