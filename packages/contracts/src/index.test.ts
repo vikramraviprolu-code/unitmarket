@@ -143,6 +143,7 @@ const EXPECTED_EXPORTS: string[] = [
   'BudgetStatusSchema',
   // POB-M1 (fee on top, payout)
   'FEE_BPS_MAX',
+  'FeeBpsSchema',
   'PAYOUT_MAX_MINOR',
   'PAYOUT_RETRY_AFTER_MS',
   'PayoutStateSchema',

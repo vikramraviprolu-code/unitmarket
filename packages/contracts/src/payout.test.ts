@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   FEE_BPS_MAX,
+  FeeBpsSchema,
   IdPrefixSchema,
   LedgerEntryInputSchema,
   LedgerKindSchema,
@@ -15,6 +16,22 @@ describe('payout contract (POB-M1)', () => {
     expect(FEE_BPS_MAX).toBe(3000);
     expect(PAYOUT_MAX_MINOR).toBe(100_000_000);
     expect(PAYOUT_RETRY_AFTER_MS).toBe(24 * 3_600_000);
+  });
+  it('FeeBpsSchema is a whole number from 0 to 3000', () => {
+    for (const ok of [0, 1, 750, 1000, 3000]) expect(FeeBpsSchema.safeParse(ok).success).toBe(true);
+    for (const bad of [
+      -1,
+      3001,
+      10_000,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      '1000',
+      null,
+      undefined,
+    ]) {
+      expect(FeeBpsSchema.safeParse(bad).success).toBe(false);
+    }
   });
   it('has six payout states, sending between due and sent', () => {
     expect([...PayoutStateSchema.options]).toEqual([
