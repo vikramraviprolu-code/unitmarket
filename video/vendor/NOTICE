@@ -1,0 +1,8 @@
+gsap.min.js is GSAP 3.14.2 by GreenSock (https://gsap.com), copied unchanged from the npm
+package gsap@3.14.2 (dist/gsap.min.js).
+
+GSAP is NOT covered by this repository's Apache-2.0 licence. It is distributed under the
+GSAP Standard "no charge" licence: https://gsap.com/standard-license
+
+It is vendored only so the demo video renders without a network connection. It is not a
+dependency of any workspace package and is never shipped in the application.

@@ -151,17 +151,17 @@ Every scene is labelled:
 real sandbox, dry run, simulation, or proposal.
 
 39
-00:02:38,628 --> 00:02:42,641
+00:02:38,628 --> 00:02:42,492
 Group the demand. Group the supply. Make cents worth paying.
 
 40
-00:02:42,641 --> 00:02:47,725
-That is a ride-hailing model for payments, and PayPal does not offer it yet.
+00:02:42,492 --> 00:02:47,580
+That is a ride-hailing model for payments, and we want to build it with PayPal.
 
 41
-00:02:47,725 --> 00:02:48,996
+00:02:47,580 --> 00:02:48,804
 We built the proof.
 
 42
-00:02:50,196 --> 00:02:53,737
+00:02:50,004 --> 00:02:53,545
 UnitMarket. PayPal settles. We make cents worth paying.
