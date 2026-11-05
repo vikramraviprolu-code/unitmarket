@@ -25,3 +25,5 @@ export * from './principal';
 export * from './v1';
 // API-B (agent spending caps).
 export * from './mandates';
+// BR-1 (configurable business rules).
+export * from './rules';
