@@ -1039,6 +1039,8 @@ export interface Engine {
   health(): Promise<{
     ok: boolean;
     environment: EnvironmentLabel;
+    /** The Cloud Run revision name (K_REVISION), or null off Cloud Run. */
+    revision: string | null;
     db: boolean;
     /** True in maintenance mode: the app is up, the database is deliberately not open (CO-7b). */
     maintenance: boolean;
@@ -3344,11 +3346,20 @@ function buildApp(config: Config, opts: AppOptions): App {
     async health() {
       // CO-7b: the health check stays green so the host does not restart-loop, and says why.
       if (maintenance)
-        return { ok: true, environment, db: false, maintenance: true, last_pass_at: null, due: 0 };
+        return {
+          ok: true,
+          environment,
+          revision: config.revision,
+          db: false,
+          maintenance: true,
+          last_pass_at: null,
+          due: 0,
+        };
       const h = await jobsHealth(core);
       return {
         ok: h.db,
         environment,
+        revision: config.revision,
         db: h.db,
         maintenance: false,
         last_pass_at: h.last_pass_at,

@@ -1657,6 +1657,9 @@ export default tseslint.config(
       'docs/design/**',
       // Written by next build; not ours to lint or format (L4).
       'apps/web/next-env.d.ts',
+      // The demo video project: offline render tooling outside the workspace, never imported or
+      // shipped (video/README.md). Its capture scripts drive a local browser and HTTP on purpose.
+      'video/**',
     ],
   },
   // Review 4 H1: an inline eslint-disable comment would switch off any guard above, so none is

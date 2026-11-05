@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { REPO_ROOT, materialize, runGuard } from './test-helpers';
@@ -9,6 +9,7 @@ import { REPO_ROOT, materialize, runGuard } from './test-helpers';
 const GUARD = 'check-hosting-gcp.mjs';
 const KIT = [
   'Dockerfile',
+  'cloud.sh',
   'deploy-offline.sh',
   'deploy.sh',
   'monitoring.sh',
@@ -16,6 +17,8 @@ const KIT = [
   'service.yaml',
   'set-secret.sh',
   'setup.sh',
+  'stack.env',
+  'lib/cloud-lib.sh',
 ];
 const SCRIPTS = KIT.filter((f) => f.endsWith('.sh'));
 
@@ -1943,7 +1946,312 @@ describe('check-hosting-gcp', () => {
     expect(pkg.scripts['ci']).toContain('corepack pnpm check:hosting &&');
   });
 
-  it('the kit directory holds exactly the reviewed files', () => {
-    expect(readdirSync(join(REPO_ROOT, 'infra', 'gcp')).sort()).toEqual([...KIT].sort());
+  it('the kit directory holds exactly the reviewed files, and the one subfolder lib', () => {
+    const top = KIT.filter((f) => !f.includes('/'));
+    expect(readdirSync(join(REPO_ROOT, 'infra', 'gcp')).sort()).toEqual([...top, 'lib'].sort());
+    expect(readdirSync(join(REPO_ROOT, 'infra', 'gcp', 'lib'))).toEqual(['cloud-lib.sh']);
+  });
+});
+
+// ---- INT-CL1: the cloud kit (cloud.sh, stack.env, lib/cloud-lib.sh) -------------------------------------
+// Each case is the clean kit with one change. Appended lines go after the last line of the file.
+type Edit = (text: string) => string;
+const append =
+  (...lines: string[]): Edit =>
+  (t) =>
+    `${t.replace(/\n+$/, '')}\n${lines.join('\n')}\n`;
+const dropLines =
+  (re: RegExp): Edit =>
+  (t) =>
+    t
+      .split('\n')
+      .filter((l) => !re.test(l))
+      .join('\n');
+function edited(file: string, edit: Edit): string {
+  const dir = materialize('hosting-gcp/good');
+  const path = join(dir, 'infra', 'gcp', file);
+  writeFileSync(path, edit(readFileSync(path, 'utf8')));
+  return dir;
+}
+const LIB = 'lib/cloud-lib.sh';
+const UPDATE = 'gcloud run services update "$SERVICE" --region="$REGION" --project="$PROJECT_ID"';
+const PAY = 'UMS_PAYPAL_CONNECT';
+const FLAG_OFF = `--update-env-vars=${PAY}=off`;
+const PAYPAL_SANDBOX_HOST = ['api-m', 'sandbox', 'paypal', 'com'].join('.');
+
+type CloudCase = [name: string, file: string, edit: Edit, rule: string];
+const CLOUD_CASES: CloudCase[] = [
+  // env-flags: exactly the flag-off token, in lib/cloud-lib.sh only
+  ['env flag on', LIB, append(`${UPDATE} --update-env-vars=${PAY}=on`), 'env-flags'],
+  ['env flag UMS_MODE', LIB, append(`${UPDATE} --update-env-vars=UMS_MODE=x`), 'env-flags'],
+  [
+    'env flag off plus UMS_MODE',
+    LIB,
+    append(`${UPDATE} --update-env-vars=${PAY}=off,UMS_MODE=x`),
+    'env-flags',
+  ],
+  ['env flag removed', LIB, append(`${UPDATE} --remove-env-vars=${PAY}`), 'env-flags'],
+  ['env flags cleared', LIB, append(`${UPDATE} --clear-env-vars`), 'env-flags'],
+  [
+    'env flag from a variable',
+    LIB,
+    append(`${UPDATE} --update-env-vars=${PAY}=\${ON}`),
+    'env-flags',
+  ],
+  [
+    'env flag split after the equals sign',
+    LIB,
+    append(`${UPDATE} --update-env-vars=${PAY}= \\`, '  off'),
+    'env-flags',
+  ],
+  [
+    'env flag split before the name',
+    LIB,
+    append(`${UPDATE} --update-env-vars= \\`, `  ${PAY}=off`),
+    'env-flags',
+  ],
+  ['env flag set (not update)', LIB, append(`${UPDATE} --set-env-vars=${PAY}=off`), 'env-flags'],
+  ['flag-off token in cloud.sh', 'cloud.sh', append(`${UPDATE} ${FLAG_OFF}`), 'env-flags'],
+  ['flag-off token in deploy.sh', 'deploy.sh', append(`${UPDATE} ${FLAG_OFF}`), 'env-flags'],
+  ['flag-off token in setup.sh', 'setup.sh', append(`${UPDATE} ${FLAG_OFF}`), 'env-flags'],
+  // paypal-connect: kept, no exception for any helper
+  [
+    'a helper that turns the connection on',
+    LIB,
+    append(`connect_on() { ${UPDATE} --update-env-vars=${PAY}=on; }`),
+    'paypal-connect',
+  ],
+  ['connection on in cloud.sh', 'cloud.sh', append(`${PAY}=on`), 'paypal-connect'],
+  // min and max instances: lib only, min 0 or 1, max 1
+  ['min instances 2 in lib', LIB, append(`${UPDATE} --min-instances=2`), 'min-instances'],
+  ['min instances 3, space form', LIB, append(`${UPDATE} --min-instances 3`), 'min-instances'],
+  ['max instances 2 in lib', LIB, append(`${UPDATE} --max-instances=2`), 'max-instances'],
+  ['max instances 0 in lib', LIB, append(`${UPDATE} --max-instances=0`), 'max-instances'],
+  ['min instances in cloud.sh', 'cloud.sh', append(`${UPDATE} --min-instances=1`), 'min-instances'],
+  ['max instances in cloud.sh', 'cloud.sh', append(`${UPDATE} --max-instances=1`), 'max-instances'],
+  ['min instances in setup.sh', 'setup.sh', append(`${UPDATE} --min-instances=1`), 'min-instances'],
+  ['cpu throttling in lib', LIB, append(`${UPDATE} --cpu-throttling`), 'cpu-throttling'],
+  [
+    'no cpu throttling in cloud.sh',
+    'cloud.sh',
+    append(`${UPDATE} --no-cpu-throttling`),
+    'cpu-throttling',
+  ],
+  ['scaling stays barred in lib', LIB, append(`${UPDATE} --scaling=0`), 'scaling'],
+  // literal-project: doctor prints the config lines and never runs them
+  ['config set in lib', LIB, append('gcloud config set project some-project'), 'literal-project'],
+  ['config set in cloud.sh', 'cloud.sh', append('gcloud config set account x'), 'literal-project'],
+  // no-delete
+  ['delete a service', LIB, append('gcloud run services delete "$SERVICE"'), 'no-delete'],
+  ['delete a database', LIB, append('gcloud sql instances delete "$SQL_INSTANCE"'), 'no-delete'],
+  [
+    'delete hidden in a variable',
+    LIB,
+    append('VERB=delete', 'gcloud run services "$VERB" "$SERVICE"'),
+    'no-delete',
+  ],
+  [
+    'delete hidden in a quoted variable',
+    LIB,
+    append('VERB="delete"', 'gcloud run services "$VERB" "$SERVICE"'),
+    'no-delete',
+  ],
+  ['delete in cloud.sh', 'cloud.sh', append('gcloud secrets delete X'), 'no-delete'],
+  [
+    'delete inside a message helper, command substitution',
+    LIB,
+    append('say "$(gcloud run services delete x --quiet)"'),
+    'no-delete',
+  ],
+  [
+    'delete inside a message helper, backticks',
+    LIB,
+    append('echo "`gcloud run services delete x`"'),
+    'no-delete',
+  ],
+  [
+    'delete inside a die helper, substitution after text',
+    LIB,
+    append('die_fail "failed: $(gcloud sql instances delete x)"'),
+    'no-delete',
+  ],
+  ['git delete branch', LIB, append('git branch --delete x'), 'no-delete'],
+  [
+    'deletion protection off',
+    LIB,
+    append('gcloud sql instances patch x --no-deletion-protection'),
+    'sql-protection',
+  ],
+  // the deploy stays in deploy.sh
+  ['a run deploy in lib', LIB, append('gcloud run deploy "$SERVICE" --image=x'), 'deploy-shape'],
+  [
+    'a run deploy in cloud.sh',
+    'cloud.sh',
+    append('gcloud run deploy "$SERVICE" --image=x'),
+    'deploy-shape',
+  ],
+  ['auto-deploy from source', LIB, append(`${UPDATE} --source=.`), 'auto-deploy'],
+  // the per-file rules apply to the new files (F1)
+  ['a tab in cloud.sh', 'cloud.sh', append('echo\ta'), 'bytes'],
+  ['a CR in lib', LIB, append('echo a\r'), 'bytes'],
+  ['a non-ASCII byte in stack.env', 'stack.env', append('# caf\u00e9'), 'bytes'],
+  ['the word live in lib', LIB, append('# the live URL'), 'live-value'],
+  ['the word live in cloud.sh', 'cloud.sh', append('# the live URL'), 'live-value'],
+  ['the word live in stack.env', 'stack.env', append('# live'), 'live-value'],
+  ['no strict mode in cloud.sh', 'cloud.sh', dropLines(/^set -euo pipefail$/), 'strict-mode'],
+  ['no strict mode in lib', LIB, dropLines(/^set -euo pipefail$/), 'strict-mode'],
+  [
+    'no shebang in lib',
+    LIB,
+    (t) => t.replace(/^#!\/usr\/bin\/env bash\n/, '# lib\n'),
+    'strict-mode',
+  ],
+  ['tracing in lib', LIB, append('set -x'), 'print-secret'],
+  [
+    'no account guard in cloud.sh',
+    'cloud.sh',
+    dropLines(/^\[ -n "\$ACTIVE_ACCOUNT" \] \|\| die/),
+    'account-guard',
+  ],
+  [
+    'no account guard in lib',
+    LIB,
+    dropLines(/^\s*\[ -n "\$ACTIVE_ACCOUNT" \] \|\| die/),
+    'account-guard',
+  ],
+  [
+    'a secret read in lib',
+    LIB,
+    append('gcloud secrets versions access latest --secret=X'),
+    'secret-read',
+  ],
+  ['a sign-in in cloud.sh', 'cloud.sh', append('gcloud auth login'), 'login'],
+  ['a printed value in lib', LIB, append('echo "$MY_VALUE"'), 'print-secret'],
+  ['a secret literal in lib', LIB, append('UMS_SESSION_SECRET=abc'), 'secret-literal'],
+  ['a payment host in lib', LIB, append(`curl https://${PAYPAL_SANDBOX_HOST}/x`), 'paypal-host'],
+  ['an email address in stack.env', 'stack.env', append('# a@b.example'), 'literal-value'],
+  // kit-files: the guard reads that one subfolder and nothing else
+  ['cloud.sh removed', 'cloud.sh', () => '', 'kit-files'],
+  ['stack.env removed', 'stack.env', () => '', 'kit-files'],
+  ['lib/cloud-lib.sh removed', LIB, () => '', 'kit-files'],
+];
+// A case whose edit is "make the file vanish" removes it instead of emptying it.
+const REMOVE = new Set(['cloud.sh removed', 'stack.env removed', 'lib/cloud-lib.sh removed']);
+
+describe('INT-CL1 guard rules (F1, F2, F3)', () => {
+  it('has no duplicate case name', () => {
+    const names = CLOUD_CASES.map((c) => c[0]);
+    expect(new Set(names).size).toBe(names.length);
+    expect(CLOUD_CASES.length).toBeGreaterThanOrEqual(50);
+  });
+
+  it.each(CLOUD_CASES)('refuses: %s', (name, file, edit, rule) => {
+    let dir: string;
+    if (REMOVE.has(name)) {
+      dir = materialize('hosting-gcp/good');
+      rmSync(join(dir, 'infra', 'gcp', file));
+    } else dir = edited(file, edit);
+    const r = runGuard(GUARD, dir);
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain(`hosting-gcp: FAIL ${rule}`);
+    expect(r.out).not.toContain('hosting-gcp ok');
+  });
+
+  it('refuses an extra file or folder next to the reviewed ones', () => {
+    for (const rel of ['cloud2.sh', join('lib', 'extra.sh'), join('other', 'x.sh')]) {
+      const dir = materialize('hosting-gcp/good');
+      mkdirSync(join(dir, 'infra', 'gcp', rel, '..'), { recursive: true });
+      writeFileSync(join(dir, 'infra', 'gcp', rel), '#!/usr/bin/env bash\nset -euo pipefail\n');
+      const r = runGuard(GUARD, dir);
+      expect(r.status, rel).toBe(1);
+      expect(r.out, rel).toContain('hosting-gcp: FAIL kit-files');
+    }
+  });
+
+  const ACCEPTED_CLOUD: Array<[name: string, file: string, edit: Edit]> = [
+    ['the flag-off token in lib', LIB, append(`${UPDATE} ${FLAG_OFF}`)],
+    [
+      'the flag-off token, quoted position, in lib',
+      LIB,
+      append(`mutate gcloud run services update x ${FLAG_OFF} --quiet`),
+    ],
+    ['min instances 0 in lib', LIB, append(`${UPDATE} --min-instances=0`)],
+    ['min instances 1 in lib', LIB, append(`${UPDATE} --min-instances=1`)],
+    ['max instances 1 in lib', LIB, append(`${UPDATE} --max-instances=1`)],
+    ['no cpu throttling in lib', LIB, append(`${UPDATE} --no-cpu-throttling`)],
+    [
+      'ingress internal and all in lib',
+      LIB,
+      append(`${UPDATE} --ingress=internal`, `${UPDATE} --ingress=all`),
+    ],
+    [
+      'a sql patch in lib',
+      LIB,
+      append('gcloud sql instances patch "$SQL_INSTANCE" --activation-policy=NEVER --quiet'),
+    ],
+    ['echo text that says delete', LIB, append('echo "this kit never runs a delete"')],
+    ['a die message that says delete', LIB, append('die_refuse "refusing to delete anything"')],
+    [
+      'an escaped substitution in a message is only text',
+      LIB,
+      append('say "never run \\$(gcloud delete)"'),
+    ],
+  ];
+  it.each(ACCEPTED_CLOUD)('accepts: %s', (_name, file, edit) => {
+    const r = runGuard(GUARD, edited(file, edit));
+    expect(r.out).toContain('hosting-gcp ok');
+    expect(r.status).toBe(0);
+  });
+
+  it('the real kit passes, and holds the flag-off token and no flag-on token anywhere', () => {
+    const r = runGuard(GUARD);
+    expect(r.out).toContain('hosting-gcp ok');
+    const lib = readFileSync(join(REPO_ROOT, 'infra', 'gcp', LIB), 'utf8');
+    expect(lib).toContain(FLAG_OFF);
+    for (const f of KIT) {
+      const t = readFileSync(join(REPO_ROOT, 'infra', 'gcp', f), 'utf8');
+      expect(t, f).not.toMatch(new RegExp(`${PAY}\\s*=\\s*["']?(?!off\\b)\\w`));
+    }
+  });
+
+  it('stack.env equals the literals of the four reviewed scripts (F12)', () => {
+    const read = (f: string) => readFileSync(join(REPO_ROOT, 'infra', 'gcp', f), 'utf8');
+    const stack = Object.fromEntries(
+      read('stack.env')
+        .split('\n')
+        .filter((l) => l !== '' && !l.startsWith('#'))
+        .map((l) => l.split('=') as [string, string]),
+    );
+    expect(Object.keys(stack).sort()).toEqual(
+      ['AR_REPO', 'OFFLINE_SERVICE', 'PROJECT_ID', 'REGION', 'SERVICE', 'SQL_INSTANCE'].sort(),
+    );
+    const lit = (file: string, name: string): string =>
+      read(file).match(new RegExp(`^${name}="([^"]*)"$`, 'm'))?.[1] ??
+      `<missing ${name} in ${file}>`;
+    expect(stack['SERVICE']).toBe(lit('deploy.sh', 'SERVICE'));
+    expect(stack['SERVICE']).toBe(lit('monitoring.sh', 'SERVICE'));
+    expect(stack['OFFLINE_SERVICE']).toBe(lit('deploy-offline.sh', 'SERVICE'));
+    expect(stack['SQL_INSTANCE']).toBe(lit('deploy.sh', 'SQL_INSTANCE'));
+    expect(stack['SQL_INSTANCE']).toBe(lit('setup.sh', 'SQL_INSTANCE'));
+    for (const f of ['deploy.sh', 'deploy-offline.sh', 'setup.sh'])
+      expect(stack['AR_REPO'], f).toBe(lit(f, 'AR_REPO'));
+    expect(stack['PROJECT_ID']).toBe('unitmarket-sbx-vr1');
+    expect(stack['REGION']).toBe('europe-west3');
+    expect(read('stack.env')).not.toMatch(/--project|--region/);
+  });
+
+  it('the four reviewed deploy scripts do not read stack.env (they are unchanged)', () => {
+    for (const f of ['deploy.sh', 'deploy-offline.sh', 'setup.sh', 'monitoring.sh'])
+      expect(readFileSync(join(REPO_ROOT, 'infra', 'gcp', f), 'utf8'), f).not.toContain(
+        'stack.env',
+      );
+  });
+
+  it('package.json defines the seven cloud scripts and ci still runs the guard', () => {
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(Object.keys(pkg.scripts).filter((k) => k.startsWith('cloud:'))).toHaveLength(7);
+    expect(pkg.scripts['ci']).toContain('corepack pnpm check:hosting-gcp');
   });
 });

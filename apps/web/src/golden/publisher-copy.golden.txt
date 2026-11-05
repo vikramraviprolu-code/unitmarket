@@ -1,4 +1,4 @@
-nav: Publisher
+nav: Seller
 heading: Publisher home
 lede: This page shows your own publisher account. It is read only.
 labels: Name | Status | Offers live | Payee account on file | Settlement

@@ -268,10 +268,17 @@ describe('an empty database', () => {
 });
 
 describe('the page', () => {
-  const src = readFileSync(new URL('./app/ops/page.tsx', import.meta.url), 'utf8');
+  // INT-UI0: the totals moved from /ops to /ops/money, and the read (the helper and the engine convert) moved
+  // to that tab's composition module. Both files are checked.
+  const src = readFileSync(new URL('./composition/ops-money.ts', import.meta.url), 'utf8');
+  const page = readFileSync(new URL('./app/ops/money/page.tsx', import.meta.url), 'utf8');
   it('uses the one shared helper and the engine convert, and no rate of its own', () => {
     expect(src).toContain('opsReportingView(');
     expect(src).toContain('engine.fx');
     expect(src).not.toMatch(/fx_rates|eur_usd|eur_gbp|@umsbx\/fx/);
+    expect(page).not.toMatch(/fx_rates|eur_usd|eur_gbp|@umsbx\/fx/);
+  });
+  it('the page shows the totals through ReportingTotals', () => {
+    expect(page).toContain('<ReportingTotals view={reporting} />');
   });
 });

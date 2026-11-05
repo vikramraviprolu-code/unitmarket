@@ -12,3 +12,7 @@ apps/web/next-env.d.ts
 .swarm
 ruvector.db
 docs/api/openapi-v1.json
+# Demo video: vendored GSAP, generated composition, binary assets
+video/vendor
+video/index.html
+video/assets

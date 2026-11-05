@@ -1,0 +1,41 @@
+{
+  "checked_at": "2026-11-04T22:40:00Z",
+  "project": "unitmarket-sbx-vr1",
+  "services": [
+    {
+      "name": "web",
+      "state": "up",
+      "revision": "unitmarket-sandbox-00031-x7k",
+      "url": "https://unitmarket-sandbox-abc123-ey.a.run.app",
+      "last_changed_at": "2026-11-04T20:00:00Z",
+      "last_error": null
+    },
+    {
+      "name": "job_loop",
+      "state": "up",
+      "runs_in": "web",
+      "last_changed_at": "2026-11-04T20:00:00Z",
+      "last_error": null
+    },
+    {
+      "name": "database",
+      "state": "up",
+      "tier": "db-g1-small",
+      "newest_backup_at": "2026-11-04T03:00:00Z",
+      "last_changed_at": "2026-11-04T19:00:00Z",
+      "last_error": null
+    },
+    {
+      "name": "offline_judge",
+      "state": "absent",
+      "last_error": null
+    },
+    {
+      "name": "paypal_gateway",
+      "state": "off",
+      "flag": "off",
+      "approval_ref_set": true,
+      "last_changed_at": "2026-11-04T20:00:00Z"
+    }
+  ]
+}

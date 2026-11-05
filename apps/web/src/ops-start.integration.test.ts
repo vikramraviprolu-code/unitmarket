@@ -8,10 +8,13 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  OPS_CONTROLS_SECTIONS,
   OPS_EVALS_SECTIONS,
   OPS_HOME_SECTIONS,
+  OPS_MONEY_SECTIONS,
   OPS_PAYEE_SECTIONS,
   OPS_PUBLISHERS_SECTIONS,
+  OPS_SELLERS_SECTIONS,
 } from './lib/ops-copy';
 import type { OpsSection } from './lib/ops-copy';
 
@@ -51,8 +54,13 @@ describe('/ops Kill switch block (source)', () => {
 
   it('WEB-POLISH-2: the flag state reaches the badges and the start sentence, and Stop uses the shared words', () => {
     expect(page).toContain("switchChip('paypal_outbound', snap.kill_switch.outbound_on, flagOff)");
-    expect(page).toContain('switchView(name, on, flagOff)');
-    expect(page).toContain("const flagOff = snap.gate.mode === 'sandbox' && !snap.gate.connect;");
+    // INT-UI0: the switch badges moved to /ops/controls, and the flagOff read moved to the tab modules.
+    expect(read('controls/page.tsx')).toContain('switchView(name, on, flagOff)');
+    for (const m of ['ops-home', 'ops-controls'])
+      expect(
+        readFileSync(join(import.meta.dirname, 'composition', `${m}.ts`), 'utf8'),
+        m,
+      ).toContain("snap.gate.mode === 'sandbox' && !snap.gate.connect");
     expect(page).toContain('flagOff={flagOff}');
     expect(kill).toContain('startDoneText(started.calls_left, showFlagLine)');
     expect(read('StopButton.tsx')).toContain('OPS_STOP_DONE');
@@ -107,6 +115,10 @@ describe('/ops Kill switch block (source)', () => {
 describe('section tabs (source)', () => {
   const pages: [string, string, string, OpsSection[]][] = [
     ['/ops', 'page.tsx', 'OPS_HOME_SECTIONS', OPS_HOME_SECTIONS],
+    // INT-UI0: the blocks that moved off /ops, each page with its own tab bar.
+    ['/ops/money', 'money/page.tsx', 'OPS_MONEY_SECTIONS', OPS_MONEY_SECTIONS],
+    ['/ops/sellers', 'sellers/page.tsx', 'OPS_SELLERS_SECTIONS', OPS_SELLERS_SECTIONS],
+    ['/ops/controls', 'controls/page.tsx', 'OPS_CONTROLS_SECTIONS', OPS_CONTROLS_SECTIONS],
     ['/ops/publishers', 'publishers/page.tsx', 'OPS_PUBLISHERS_SECTIONS', OPS_PUBLISHERS_SECTIONS],
     ['/ops/payee-requests', 'payee-requests/page.tsx', 'OPS_PAYEE_SECTIONS', OPS_PAYEE_SECTIONS],
     ['/ops/evals', 'evals/page.tsx', 'OPS_EVALS_SECTIONS', OPS_EVALS_SECTIONS],
@@ -131,17 +143,20 @@ describe('section tabs (source)', () => {
     },
   );
 
+  // INT-UI0: the other ids of the old /ops moved to /ops/money, /ops/controls and /ops/sellers (lib/shell-moves.ts).
   it('/ops has the sections it names, in this order', () => {
-    expect(OPS_HOME_SECTIONS.map((s) => s.id)).toEqual([
-      'ops-switches',
-      'ops-kill',
-      'ops-gate-section',
+    expect(OPS_HOME_SECTIONS.map((s) => s.id)).toEqual(['ops-kill', 'ops-alerts', 'ops-moved']);
+  });
+  it('the moved sections keep their ids on the new pages, in their old order', () => {
+    expect(OPS_MONEY_SECTIONS.map((s) => s.id)).toEqual([
       'ops-refunds',
       'ops-orders',
+      'ops-totals',
       'ops-states',
-      'ops-alerts',
       'ops-invariants',
     ]);
+    expect(OPS_CONTROLS_SECTIONS.map((s) => s.id)).toEqual(['ops-switches', 'ops-gate-section']);
+    expect(OPS_SELLERS_SECTIONS.map((s) => s.id)).toContain('ops-shared-payee');
   });
 
   it('no operator page is left out: every page.tsx under /ops has the tab bar', () => {
@@ -154,7 +169,7 @@ describe('section tabs (source)', () => {
       }
     };
     walk(OPS_DIR);
-    expect(found.length).toBe(4);
+    expect(found.length).toBe(7);
     for (const p of found) expect(readFileSync(p, 'utf8'), p).toContain('<SectionNav');
   });
 });
