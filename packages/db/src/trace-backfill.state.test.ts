@@ -39,16 +39,25 @@ const idCol = (table: string): string =>
 
 beforeAll(async () => {
   beforeDir = mkdtempSync(join(tmpdir(), 'umsbx-trace-before-'));
-  for (const f of readdirSync(COMMON))
-    if (!JOURNAL.test(f)) cpSync(join(COMMON, f), join(beforeDir, f));
+  // The database as it stood before the journal: every migration numbered below it. A later migration that
+  // joins the journal (BR-2's rule_settings) needs trace_tracked, so it runs with the journal, not before it.
+  const journalFile = readdirSync(COMMON).find((f) => JOURNAL.test(f))!;
+  for (const f of readdirSync(COMMON).filter((x) => x < journalFile))
+    cpSync(join(COMMON, f), join(beforeDir, f));
   db = await openDatabase({ kind: 'pglite-memory' });
   await applyMigrations(db, { now: () => new Date(T) }, beforeDir);
   expect((await db.query("SELECT to_regclass('trace_events') AS t")).rows[0]).toEqual({ t: null });
   // The world as it stood before the journal: a plain database, no context.
-  for (const s of STEPS) if (s.insert) await s.insert(db);
-  for (const s of STEPS) if (s.update) await db.query(s.update.sql, s.update.params);
-  rowsBefore = {};
+  // Only the tables that existed then; a table created after the journal has no rows to import.
+  const existed: typeof STEPS = [];
   for (const s of STEPS) {
+    const t = await db.query<{ t: string | null }>('SELECT to_regclass($1)::text AS t', [s.table]);
+    if (t.rows[0]!.t !== null) existed.push(s);
+  }
+  for (const s of existed) if (s.insert) await s.insert(db);
+  for (const s of existed) if (s.update) await db.query(s.update.sql, s.update.params);
+  rowsBefore = {};
+  for (const s of existed) {
     const col = idCol(s.table);
     rowsBefore[s.table] = (
       await db.query<{ id: string }>(`SELECT ${col} AS id FROM ${s.table} ORDER BY ${col}`)

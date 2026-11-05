@@ -113,6 +113,9 @@ importers:
       '@umsbx/recovery':
         specifier: workspace:*
         version: link:../../domain/recovery
+      '@umsbx/rules':
+        specifier: workspace:*
+        version: link:../../domain/rules
       '@umsbx/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -432,6 +435,13 @@ importers:
       '@umsbx/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+    devDependencies:
+      '@umsbx/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@umsbx/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
 
   domain/txn-search:
     dependencies:

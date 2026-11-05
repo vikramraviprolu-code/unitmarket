@@ -918,6 +918,38 @@ export const STEPS: Step[] = [
     insertCols: { decision: 'approved', operator_id: 'opr_test' },
     insertHashed: ['reason'],
   },
+  {
+    table: 'rule_settings',
+    id: 'rls_1',
+    chain: 'plat',
+    insert: (db) =>
+      ins(
+        db,
+        'rule_settings',
+        {
+          id: 'rls_1',
+          rule_key: 'refund.request_window',
+          scope_kind: 'platform',
+          scope_id: null,
+          value: 14,
+          effective_from: '2026-11-05T00:00:00Z',
+          effective_until: null,
+          set_by: 'opr_test',
+          reason: 'CANARY-RULE-REASON',
+          approved_by: null,
+          created_at: T,
+        },
+        false,
+      ),
+    insertCols: {
+      rule_key: 'refund.request_window',
+      scope_kind: 'platform',
+      scope_id: null,
+      value: 14,
+      set_by: 'opr_test',
+    },
+    insertHashed: ['reason'],
+  },
 ];
 
 /** Every canary string the world writes into a free-text or jsonb detail column. */
@@ -937,6 +969,7 @@ export const CANARIES = [
   'CANARY-PAYEE-REASON',
   'CANARY-PAYEE-NOTE',
   'CANARY-APPLICANT-REASON',
+  'CANARY-RULE-REASON',
 ] as const;
 
 /** Runs every insert of the world in order, under one context. Returns the database the app would see. */

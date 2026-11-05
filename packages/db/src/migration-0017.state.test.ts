@@ -246,6 +246,8 @@ describe('migration 0017', () => {
               'trace_heads',
               'trace_seals',
               'trace_tracked',
+              // BR-2 (migration 0027): rule settings.
+              'rule_settings',
             ].includes(t),
         ),
       ).toEqual(['fx_rates']);
