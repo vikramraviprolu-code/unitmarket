@@ -9,6 +9,12 @@ export const LEDGER_KINDS = [
   'refund',
   'reversal',
   'commission_reversal',
+  // POB 0029: the fee and payout split kinds.
+  'fee',
+  'payable',
+  'fee_reversal',
+  'payable_reversal',
+  'payout_adjustment',
 ] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
@@ -19,6 +25,11 @@ export const LEDGER_KIND_WORD: Record<LedgerKind, string> = {
   refund: 'Refunds',
   reversal: 'Reversals',
   commission_reversal: 'Commission reversals',
+  fee: 'Fees',
+  payable: 'Payable to sellers',
+  fee_reversal: 'Fee reversals',
+  payable_reversal: 'Payable reversals',
+  payout_adjustment: 'Payout adjustments',
 };
 
 export interface LedgerQuery {
