@@ -43,6 +43,9 @@ async function refund(unit_id: string, minor: number | null) {
     amount: minor === null ? null : usd(minor),
     reason: 'goodwill',
     actor: OPERATOR,
+    // BR-4: a payout waits for the access window, which is at least the refund window, so a refund here is
+    // after the sale's refund deadline and needs an operator's stated reason. Inside the window it is ignored.
+    override_reason: 'refund after the payout (test)',
   });
   if (!r.ok) throw new Error(`refused: ${r.error.code}`);
   const e = await executeRefund(w.deps, { refund_request_id: r.value.refund_request_id });
@@ -358,6 +361,7 @@ describe('what keeps a sale from being paid', () => {
       amount: usd(100),
       reason: 'x',
       actor: OPERATOR,
+      override_reason: 'refund after the window (BR-4 test)', // past the access window, so past the refund deadline
     });
     if (!r.ok) throw new Error('refused');
     const port = spyPort(w);
@@ -450,6 +454,7 @@ describe('a refund after the payout was created but before it was sent', () => {
       amount: usd(100),
       reason: 'x',
       actor: OPERATOR,
+      override_reason: 'refund after the window (BR-4 test)', // past the access window, so past the refund deadline
     });
     if (!r.ok) throw new Error('refused');
     // an open request does not cancel anything yet; the booking does
