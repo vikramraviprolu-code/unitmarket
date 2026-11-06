@@ -676,9 +676,18 @@ describe('delete', () => {
     for (const v of [A_NAME, A_SUBJECT, A_BRIEF]) expect(rcText).not.toContain(v);
     expect(sha(rcText)).toBe(rc.rows[0]!.sha256);
 
-    // Money invariants INV1 to INV7 all hold after the delete.
+    // Money invariants INV1 to INV8 all hold after the delete.
     const all = await checkInvariants(db);
-    expect(all.map((x) => x.id)).toEqual(['INV1', 'INV2', 'INV3', 'INV4', 'INV5', 'INV6', 'INV7']);
+    expect(all.map((x) => x.id)).toEqual([
+      'INV1',
+      'INV2',
+      'INV3',
+      'INV4',
+      'INV5',
+      'INV6',
+      'INV7',
+      'INV8',
+    ]);
     expect(await failingInvariants(db)).toEqual([]);
 
     // The operator saw which database object it touched, by id and counts, and no personal value.

@@ -616,7 +616,7 @@
     },
     {
       "id": "p18",
-      "note": "agent pack partly paid",
+      "note": "refund after payout, cap info too",
       "entries": [
         {
           "seq": 1,
@@ -646,8 +646,8 @@
           "state_to": "paid_partial"
         }
       ],
-      "alert_kinds": ["partial_composite", "mandate_near_cap"],
-      "expect_action_id": "partial_composite"
+      "alert_kinds": ["payout_adjustment", "mandate_near_cap"],
+      "expect_action_id": "payout_adjustment"
     },
     {
       "id": "p19",
@@ -786,8 +786,8 @@
           "state_to": "failed"
         }
       ],
-      "alert_kinds": ["refund_failed", "partial_composite"],
-      "expect_action_id": "refund_failed"
+      "alert_kinds": ["payout_failed", "partial_composite"],
+      "expect_action_id": "payout_failed"
     },
     {
       "id": "p23",
@@ -926,8 +926,8 @@
           "state_to": "awaiting_buyer"
         }
       ],
-      "alert_kinds": ["mandate_near_cap", "mandate_near_cap"],
-      "expect_action_id": "mandate_near_cap"
+      "alert_kinds": ["payout_adjustment", "payout_adjustment"],
+      "expect_action_id": "payout_adjustment"
     },
     {
       "id": "p27",
@@ -957,7 +957,7 @@
     },
     {
       "id": "p28",
-      "note": "medium beats info",
+      "note": "high beats info",
       "entries": [
         {
           "seq": 1,
@@ -978,8 +978,8 @@
           "state_to": "awaiting_buyer"
         }
       ],
-      "alert_kinds": ["webhook_failing", "reversal_hint"],
-      "expect_action_id": "webhook_failing"
+      "alert_kinds": ["payout_failed", "reversal_hint"],
+      "expect_action_id": "payout_failed"
     },
     {
       "id": "p29",

@@ -9,7 +9,7 @@
 import { markAccessReady } from '@umsbx/access-clock';
 import { checkReadiness } from '@umsbx/delivery';
 import { applyMoneyEvent } from '@umsbx/entitlements';
-import { appendLedgerEntry } from '@umsbx/ledger';
+import { appendLedgerEntry, bookSaleParts } from '@umsbx/ledger';
 import { issueReceiptIfChanged } from '@umsbx/receipts';
 import { ApprovalSnapshotSchema } from '@umsbx/contracts';
 import type { CoreDeps, Id, OrderRead, PaymentsDeps, SqlExecutor } from '@umsbx/contracts';
@@ -471,6 +471,12 @@ async function verify(
     ref_entry_id: null,
   });
   const sale_id = sale.ok ? sale.value.id : sale.error.existing_entry_id;
+  // POB-M1: the fee and the publisher share, beside the gross sale (nothing for a unit sold before the fee existed).
+  await bookSaleParts(tx, d, {
+    unit_id: unit.id,
+    capture_id: cap.capture_id,
+    sale_entry_id: sale_id,
+  });
   if (sale.ok && d.outbox !== undefined) {
     // API-C: a new sale entry means a new sale; a replay finds the old entry and writes no event.
     await d.outbox.append(tx, {

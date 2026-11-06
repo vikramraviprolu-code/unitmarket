@@ -32,7 +32,11 @@ const withFix = ALERT_KINDS.filter(
           ? 'cap90_x'
           : k === 'webhook_failing'
             ? 'webhook_failing_x'
-            : 'x',
+            : k === 'payout_adjustment'
+              ? 'adjust_x'
+              : k === 'payout_failed'
+                ? 'payout_failed_x'
+                : 'x',
     )?.fix !== undefined,
 );
 const FIX_IDS = orderFixIds(withFix, severityOf);
