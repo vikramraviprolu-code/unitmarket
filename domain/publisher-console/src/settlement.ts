@@ -44,6 +44,13 @@ export const NOTHING_SOLD_SENTENCE = 'Nothing sold yet.';
 export const COMMISSION_LINE = 'No commission in this demo.';
 
 /**
+ * POB-M1 (D-089): shown instead of COMMISSION_LINE once a statement holds a sale with a fee. The fee is added on top of the
+ * publisher's price and paid by the customer; the publisher is owed their own price. D-051: no italics, no dashes.
+ */
+export const FEE_ON_TOP_LINE =
+  'UnitMarket adds its fee on top of your price. The customer pays the fee, so you are owed your full price.';
+
+/**
  * The mode follows this order: a dry run moved nothing; with no merchant id there is no account; the
  * shared flag, or a merchant id equal to the owner's, means the owner's account; anything else is the
  * publisher's own account. "Paid" words appear in the direct mode only.

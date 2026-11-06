@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Harbour Notes</title>
+    <language>en</language>
+    <item>
+      <guid>post-1</guid>
+      <title>Winter moorings</title>
+      <description>Where to tie up in winter.</description>
+      <content:encoded><![CDATA[<p>Use the inner pontoon.</p><p>The outer one floods at spring tide.</p>]]></content:encoded>
+      <pubDate>Thu, 01 Oct 2026 09:00:00 GMT</pubDate>
+      <category>moorings</category>
+    </item>
+    <item>
+      <guid>post-2</guid>
+      <title>Harbour fees explained</title>
+      <description>Fees are due on arrival and are charged per metre.</description>
+    </item>
+    <item>
+      <guid>post-3</guid>
+      <title>Quay walk</title>
+      <link>https://shop.pub-one.invalid/a/quay-walk</link>
+    </item>
+    <item>
+      <guid>post-4</guid>
+      <title>Elsewhere</title>
+      <link>https://elsewhere.invalid/a/story</link>
+    </item>
+  </channel>
+</rss>

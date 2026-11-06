@@ -15,18 +15,25 @@
 // unreadable or blocked order), and waking at once only reads it again. Such a pass sleeps up to
 // max_sleep_ms. A future due time is still waited for, and a pass that did something still comes
 // back after MIN_SLEEP_MS.
+// POB-M1: with a `payouts` option each pass also runs one payout pass (create the payouts that are due, send them), after the
+// windows are swept and before webhooks are delivered, in its own try/catch (a failure is logged as jobs.loop.payouts_failed).
+// With the paypal_outbound switch off the pass gets NO port: due payouts are still created and none is sent. Otherwise the
+// port is wrapped with the lease guard, so a lost lease answers `blocked` and the provider is never reached. A configured
+// port of null (no payout port in this mode) behaves like the switch being off.
 // PG-2 (D-049): with a `leader` election (Postgres only) the body runs only while this process holds
 // the lease. Without the lease the loop retries the election every few seconds and runs nothing, not
 // even recovery. Recovery runs once per leadership term. A lease that is lost ends the term at once:
 // no new pass starts, and a pass already running can no longer reach the provider (its calls answer
 // `blocked`), so a successor never works beside a predecessor's tail. stop() gives the lease back.
-import { nextDueAt, recoverOnStartup, runDue } from '@umsbx/payments';
-import type { PaymentsDeps, TraceContext } from '@umsbx/contracts';
+import { nextDueAt, recoverOnStartup, runDue, runPayoutPass } from '@umsbx/payments';
+import type { PaymentsDeps, PayoutPort, TraceContext } from '@umsbx/contracts';
 import { withTraceContext } from '@umsbx/obs';
 import { sealDue, sealPreviousDay } from '@umsbx/trace';
 import { DEFAULT_CALL_GAP_MS, moneyCalls, pollAllowance, rateLimited } from './budget';
 import type { CallBudget, CallQuota } from './budget';
 import { recordPass } from './health';
+import { createImportWorker } from './imports';
+import type { ImportRunner } from './imports';
 
 /** A leader lease as the loop needs it. @umsbx/db's AdvisoryLease fits this shape. */
 export interface LeaderLease {
@@ -61,6 +68,16 @@ function ledBy<T extends object>(port: T, leading: () => boolean): T {
   });
 }
 
+/** The payout port behind the same lease guard: once the lease is gone every send answers `blocked` and nothing is sent. */
+function ledPayoutPort(port: PayoutPort, leading: () => boolean): PayoutPort {
+  return {
+    send: (req) =>
+      leading()
+        ? port.send(req)
+        : Promise.resolve({ kind: 'blocked' as const, by: 'lease' as const }),
+  };
+}
+
 /** A pass that finds more due work runs again soon, but never spins. */
 const MIN_SLEEP_MS = 100;
 /** A paid order is re-read at most this often in sandbox mode (ASM-52) ... */
@@ -93,8 +110,19 @@ export function startLoop(
      * logged as jobs.loop.deliver_failed and does not fail the pass.
      */
     deliver?: () => Promise<unknown>;
+    /**
+     * POB-I1: the web import. `recover` runs once at the start of the loop (or of a leadership term); a worker
+     * runs `runNext` OFF the pass, kicked after every pass and by kickImports(), so a long batch never holds up
+     * the payments work. The import has its own may-fetch check, so it is kicked while the outbound switch is off.
+     */
+    imports?: ImportRunner;
+    /**
+     * POB-M1: one payout pass per loop pass. `port` is the only way money goes out (the dry run in this lane); null means
+     * this mode has no payout port, so payouts are created and not sent.
+     */
+    payouts?: { port: PayoutPort | null };
   },
-): { stop(): Promise<void> } {
+): { stop(): Promise<void>; kickImports(): void } {
   let stopped = false;
   let term: LeaderLease | null = null;
   const leading = (): boolean => o.leader === undefined || (term !== null && term.held());
@@ -195,6 +223,20 @@ export function startLoop(
     };
   };
 
+  // POB-I1: the import runner, under its own journal context (system, job channel). The worker's chain may be
+  // started from a request or from a pass; the run it makes is neither, so it never takes their context.
+  const importWorker =
+    o.imports === undefined
+      ? null
+      : createImportWorker(
+          {
+            recover: () =>
+              withTraceContext(jobContext('import_recovery'), () => o.imports!.recover()),
+            runNext: () => withTraceContext(jobContext('import'), () => o.imports!.runNext()),
+          },
+          d.log,
+        );
+
   // INT-TR1: the first pass at or after 00:05 UTC seals the previous UTC day, once. The seal is not a provider
   // call, so it runs while the outbound switch is off. It has its own context (system, job, seal); a failure
   // is logged and never fails the pass.
@@ -213,6 +255,13 @@ export function startLoop(
 
   /** Recovery and passes for as long as this process may run them (the whole life without a leader). */
   const body = async (): Promise<void> => {
+    if (importWorker !== null) {
+      try {
+        await importWorker.recover();
+      } catch (e) {
+        fail('jobs.loop.imports_recover_failed', e);
+      }
+    }
     // Recovery runs once per process, or once per leadership term: a caller that has already run it
     // (composition's startJobs, no leader) passes recover_on_start: false. Run twice, it would take
     // over operations of a live pass.
@@ -287,6 +336,15 @@ export function startLoop(
             }
           }
           await d.sweepWindows({ max_items: o.max_items });
+          if (o.payouts !== undefined) {
+            try {
+              const port =
+                paused || o.payouts.port === null ? null : ledPayoutPort(o.payouts.port, leading);
+              await runPayoutPass(d, port, { max_items: o.max_items });
+            } catch (e) {
+              fail('jobs.loop.payouts_failed', e);
+            }
+          }
           if (o.deliver !== undefined) {
             try {
               await o.deliver();
@@ -294,6 +352,7 @@ export function startLoop(
               fail('jobs.loop.deliver_failed', e);
             }
           }
+          importWorker?.kick();
           recordPass(d, d.clock.now().toISOString());
           // With the allowance spent, overdue polling work must not wake the loop every 100 ms: the
           // pass only does money work, which is looked for at the slow rhythm.
@@ -361,6 +420,10 @@ export function startLoop(
       stopped = true;
       wake?.();
       await running;
+      await importWorker?.stop();
+    },
+    kickImports(): void {
+      importWorker?.kick();
     },
   };
 }

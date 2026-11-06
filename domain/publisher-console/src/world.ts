@@ -191,7 +191,12 @@ export async function makeWorld(): Promise<World> {
           [unit_id],
         )
       ).rows[0]!;
-      const isRefundKind = kind === 'refund' || kind === 'commission_reversal';
+      const isRefundKind =
+        kind === 'refund' ||
+        kind === 'commission_reversal' ||
+        kind === 'fee_reversal' ||
+        kind === 'payable_reversal' ||
+        kind === 'payout_adjustment';
       await insert('ledger_entries', {
         id: `led_${unit_id}_${kind}_${over.refund_id ?? minor}`,
         unit_id,

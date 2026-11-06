@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Harbour Shop</title>
+<meta property="og:title" content="Harbour Shop">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","@id":"https://shop.pub-one.invalid/a/tides","headline":"Tide notes for winter","description":"Short notes on winter tides.","articleBody":"Low water is at dawn. High water follows six hours later. Plan the crossing.","inLanguage":"en","keywords":"tides, harbour","datePublished":"2026-09-30T08:00:00Z","offers":{"@type":"Offer","price":"1.50","priceCurrency":"USD"}},
+ {"@type":"NewsArticle","@id":"https://shop.pub-one.invalid/a/ferry","headline":"Ferry timetable","articleBody":"The ferry runs hourly from the quay, first boat at seven.","datePublished":"2026-10-02T08:00:00Z"},
+ {"@type":"Product","@id":"https://shop.pub-one.invalid/p/chart","name":"Harbour chart print","description":"A printable chart of the harbour.","image":"https://shop.pub-one.invalid/img/chart.png","offers":{"@type":"Offer","price":"4.50","priceCurrency":"USD"}},
+ {"@type":"Product","@id":"https://shop.pub-one.invalid/p/knots","name":"Knot poster","image":["https://shop.pub-one.invalid/img/knots.jpg"],"offers":[{"@type":"Offer","price":"12","priceCurrency":"EUR"}]},
+ {"@type":"Product","@id":"https://shop.pub-one.invalid/p/cdn","name":"Lighthouse photo","image":"https://cdn.other.invalid/x.png","offers":{"@type":"Offer","price":"3","priceCurrency":"USD"}},
+ {"@type":"Product","@id":"https://shop.pub-one.invalid/p/noimage","name":"Mug","offers":{"@type":"Offer","price":"5","priceCurrency":"USD"}}
+]}
+</script>
+</head>
+<body><h1>Harbour Shop</h1></body>
+</html>

@@ -3,7 +3,7 @@
 // through the engine at the latest stored rate (MC2-L7). These are the reads /ops made before, unchanged.
 import type { Actor } from '@umsbx/contracts';
 import { app } from '../server/access';
-import type { OpsSnapshot } from '../server/access';
+import type { OpsFee, OpsPayouts, OpsSnapshot } from '../server/access';
 import { opsReportingView } from '../lib/ops-reporting-view';
 import { orderPageView } from '../lib/ops-order-view';
 import type { OrderPageView } from '../lib/ops-order-view';
@@ -21,6 +21,10 @@ export interface OpsMoneyRead {
   snap: OpsSnapshot;
   refundKeys: string[];
   reporting: ReturnType<typeof opsReportingView>;
+  /** POB-M1: payouts to publishers, and the fee on top with its one single-use Idempotency-Key (made on the server). */
+  payouts: OpsPayouts;
+  fee: OpsFee;
+  feeKey: string;
 }
 
 export async function readOpsMoney(actor: OperatorActor): Promise<OpsMoneyRead | null> {
@@ -32,7 +36,10 @@ export async function readOpsMoney(actor: OperatorActor): Promise<OpsMoneyRead |
     convert: a.engine.fx.convert,
     rates: await a.engine.fx.getRates(),
   });
-  return { snap, refundKeys, reporting };
+  const payouts = await a.engine.opsPayouts(actor);
+  const fee = await a.engine.opsFee.get(actor);
+  if (payouts === null || fee === null) return null;
+  return { snap, refundKeys, reporting, payouts, fee, feeKey: a.engine.newKey() };
 }
 
 // INT-OPS-B / OPS-B.2: the props of the Transactions page, and nothing else. The list itself comes from

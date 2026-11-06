@@ -6,7 +6,10 @@
 import { err, ok } from '@umsbx/contracts';
 import type { Actor, CoreDeps, Database, Id, Result } from '@umsbx/contracts';
 
-export type LinkDeps = Pick<CoreDeps, 'db' | 'clock' | 'ids' | 'audit'>;
+// POB-G: `environment` is optional. Only 'dryrun' touches the payee columns of the publisher (see decidePaypalLink);
+// a caller that does not say leaves them alone, which is the safe side.
+export type LinkDeps = Pick<CoreDeps, 'db' | 'clock' | 'ids' | 'audit'> &
+  Partial<Pick<CoreDeps, 'environment'>>;
 export type LinkErrorCode =
   | 'not_publisher'
   | 'no_account'
@@ -116,6 +119,13 @@ export async function requestPaypalLink(
         return ok({ state: 'requested' as const });
       }
       const at = deps.clock.now().toISOString();
+      // POB-G: a changed address needs a new operator check (P1), so in dry run the publisher is not buyable until then.
+      // The synthetic label stays: it is not an account. Sandbox mode never reaches these columns from here.
+      if (row !== undefined && deps.environment === 'dryrun')
+        await tx.query(
+          'UPDATE publishers SET payee_verified_at = NULL, updated_at = $2 WHERE id = $1 AND payee_verified_at IS NOT NULL',
+          [publisher_id, at],
+        );
       if (row === undefined)
         await tx.query(
           `INSERT INTO publisher_paypal_links
@@ -183,6 +193,18 @@ export async function decidePaypalLink(
           WHERE publisher_id = $1`,
         [input.publisher_id, operator.operator_id, at],
       );
+      // POB-G (journey J6 to J10): in dry run the verified link makes the publisher buyable, in the same transaction. The
+      // payee is the synthetic label the boot seed gives existing publishers (an id the buy path needs, not an account);
+      // a merchant id the publisher already has is kept. Sandbox mode invents nothing: no merchant id, no verification
+      // stamp, so the approval check (publisher_unverified) stays as it was until a real id exists.
+      if (deps.environment === 'dryrun')
+        await tx.query(
+          `UPDATE publishers
+              SET paypal_merchant_id = coalesce(paypal_merchant_id, 'DRYRUN' || upper(left(md5(slug), 7))),
+                  payee_verified_at = $2, updated_at = $2
+            WHERE id = $1 AND status = 'active' AND NOT payee_shared`,
+          [input.publisher_id, at],
+        );
       await deps.audit.record(tx, {
         actor: operator,
         action: 'publisher.paypal_link_verified',

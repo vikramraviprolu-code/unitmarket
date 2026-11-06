@@ -8,7 +8,10 @@ import type { BlockedBy, OpsPage } from '@umsbx/contracts';
 export type Severity = 'critical' | 'high' | 'medium' | 'info';
 export type MoneyRule = 'unit_amount' | 'order_total' | 'refund_amount';
 
-/** Every kind the list can show: the 12 that payments and recovery raise and the 2 the sweep raises. */
+/**
+ * Every kind the list can show: the 12 that payments and recovery raise, the 2 the sweep raises and the 2 the payout
+ * raises (POB-M1: a refund booked after the publisher share was paid out, and a payout the provider refused).
+ */
 export const ALERT_KINDS = [
   'frozen_order',
   'create_rejected',
@@ -24,6 +27,8 @@ export const ALERT_KINDS = [
   'refund_unresolved',
   'mandate_near_cap',
   'webhook_failing',
+  'payout_adjustment',
+  'payout_failed',
 ] as const;
 export type CatalogueKind = (typeof ALERT_KINDS)[number];
 
@@ -60,6 +65,7 @@ const MONEY_REFUNDS: Fix = { route: '/ops/money', anchor: 'ops-refunds' };
 const HOME_ALERTS: Fix = { route: '/ops', anchor: 'ops-alerts' };
 const CONTROLS_GATE: Fix = { route: '/ops/controls', anchor: 'ops-gate-section' };
 const CONTROLS_SWITCHES: Fix = { route: '/ops/controls', anchor: 'ops-switches' };
+const MONEY_PAYOUTS: Fix = { route: '/ops/money', anchor: 'ops-payouts' };
 
 const ENTRIES: Record<CatalogueKind, Entry> = {
   frozen_order: {
@@ -217,6 +223,32 @@ const ENTRIES: Record<CatalogueKind, Entry> = {
     runbook:
       'Ask the owner to check their receiving address; the alert clears when a delivery goes through.',
     money: null,
+  },
+  payout_adjustment: {
+    severity: 'high',
+    title: 'Refund after payout',
+    prefixes: ['adjust_'],
+    cause: () =>
+      'A refund was booked after the publisher share of this sale was already paid out. The amount is held as an adjustment and taken off their next payout.',
+    fix: MONEY_PAYOUTS,
+    runbook:
+      'Check the payout of this sale and the publisher statement; the next payout nets the adjustment by itself, so resolve this when you have seen it.',
+    money: 'refund_amount',
+  },
+  payout_failed: {
+    severity: 'high',
+    title: 'Payout failed',
+    prefixes: ['payout_failed_', 'unit_too_large_', 'payout_refused_'],
+    cause: (reason) =>
+      reason.startsWith('unit_too_large_')
+        ? 'One sale is larger than the largest single payout, so it cannot be paid out as it is.'
+        : reason.startsWith('payout_refused_')
+          ? 'A payout was not sent: the publisher cannot be paid right now. If they are not active or use the shared account it waits and is sent when that is put right. If their PayPal address changed or is no longer verified, the payout is cancelled and the sale is paid out again to the verified address once there is one.'
+          : 'The provider refused a payout. Its sales are held for 24 hours and then paid again.',
+    fix: MONEY_PAYOUTS,
+    runbook:
+      'Read the failure reason on the payout, check the payee of the publisher, and let the next pass pay again after the hold.',
+    money: 'unit_amount',
   },
 };
 

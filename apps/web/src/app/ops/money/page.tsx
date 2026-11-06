@@ -20,6 +20,17 @@ import { SectionNav } from '../../../ui/SectionNav';
 import { OPS_REPORTING_HEADING, OPS_REPORTING_LEDE } from '../../../lib/ops-reporting-view';
 import { OPS_MONEY_SECTIONS } from '../../../lib/ops-copy';
 import { ratesText } from '../../../lib/ops-money-view';
+import {
+  FEE_HEADING,
+  FEE_HISTORY_HEADING,
+  FEE_LEDE,
+  FEE_NO_MFA,
+  PAYOUTS_HEADING,
+  bpsToPercentText,
+  feeCurrentText,
+} from '../../../lib/payout-copy';
+import { FeeForm } from '../FeeForm';
+import { PayoutsPanel } from '../PayoutsPanel';
 import Link from 'next/link';
 import { invariantLink, operationLink } from '../../../lib/ops-invariants-view';
 import { RefundPanel } from '../RefundPanel';
@@ -37,7 +48,7 @@ export default async function OpsMoney() {
   if (actor?.kind !== 'operator') redirect('/signin?next=/ops/money');
   const read = await readOpsMoney(actor);
   if (read === null) redirect('/signin?next=/ops/money');
-  const { snap, refundKeys, reporting } = read;
+  const { snap, refundKeys, reporting, payouts, fee, feeKey } = read;
   // INT-OPS-C / OPS-C.4: totals per environment, currency and kind, the reconciler and today's rates.
   const kinds = await readMoneyTotals(actor);
   const invariants = invariantsSummary(snap.invariants);
@@ -230,6 +241,34 @@ export default async function OpsMoney() {
             })}
           </ul>
         </div>
+      </Section>
+
+      <Section title={PAYOUTS_HEADING} id="ops-payouts">
+        <PayoutsPanel view={payouts} />
+      </Section>
+
+      <Section title={FEE_HEADING} id="ops-fee">
+        <p className="oh-lede">{FEE_LEDE}</p>
+        <p data-testid="ops-fee-current">{feeCurrentText(fee.fee_bps)}</p>
+        {actor.mfa ? (
+          <FeeForm currentBps={fee.fee_bps} idemKey={feeKey} />
+        ) : (
+          <p className="pk-panel" data-testid="fee-no-mfa">
+            {FEE_NO_MFA}
+          </p>
+        )}
+        {fee.history.length > 1 ? (
+          <details>
+            <summary>{FEE_HISTORY_HEADING}</summary>
+            <ul className="oh-list">
+              {fee.history.map((h) => (
+                <li key={h.id}>
+                  {bpsToPercentText(h.fee_bps)} percent, {h.set_at.slice(0, 10)}: {h.reason}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </Section>
     </>
   );

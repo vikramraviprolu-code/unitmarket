@@ -1643,6 +1643,51 @@ const INFRA_A_ACCEPTED: [name: string, file: string, find: string, replace: stri
 ];
 
 describe('check-hosting-gcp', () => {
+  const accountGuard = '[ -n "$ACTIVE_ACCOUNT" ] || die';
+  const tokenGuard = '[ -n "${CLOUDSDK_AUTH_ACCESS_TOKEN:-}" ] || ' + accountGuard;
+
+  it('D-099 accepts token-or-account preflight in deploy.sh', () => {
+    const dir = materialize('hosting-gcp/good');
+    expect(readKit(dir, 'deploy.sh')).toContain(tokenGuard);
+    const r = runGuard(GUARD, dir);
+    expect(r.status, r.out).toBe(0);
+  });
+
+  it('still accepts the original account-only deploy preflight', () => {
+    const dir = mutate('deploy.sh', tokenGuard, accountGuard);
+    const r = runGuard(GUARD, dir);
+    expect(r.status, r.out).toBe(0);
+  });
+
+  it.each([
+    ['reversed token condition', tokenGuard.replace('[ -n "${', '[ -z "${')],
+    ['unconditional token bypass', 'true || ' + tokenGuard],
+    ['missing account fallback', '[ -n "${CLOUDSDK_AUTH_ACCESS_TOKEN:-}" ] || die'],
+  ])('D-099 refuses %s', (_name, replacement) => {
+    const dir = mutate('deploy.sh', tokenGuard, replacement);
+    const r = runGuard(GUARD, dir);
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain('account-guard');
+  });
+
+  it('does not extend token preflight to secret-writing scripts', () => {
+    const dir = mutate('set-secret.sh', accountGuard, tokenGuard);
+    const r = runGuard(GUARD, dir);
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain('account-guard');
+  });
+
+  it('D-099 refuses printing the access token', () => {
+    const dir = mutate(
+      'deploy.sh',
+      tokenGuard,
+      'echo "$CLOUDSDK_AUTH_ACCESS_TOKEN"\n' + tokenGuard,
+    );
+    const r = runGuard(GUARD, dir);
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain('print-secret');
+  });
+
   it('passes on the good fixture', () => {
     const r = runGuard(GUARD, materialize('hosting-gcp/good'));
     expect(r.out).toContain('hosting-gcp ok');
