@@ -59,3 +59,10 @@ export {
   createEcbFetch,
 } from './fx-ecb';
 export type { EcbErrorKind, EcbFetchResult, EcbRates } from './fx-ecb';
+// FEED (POB-I1, D-089): the one egress for a publisher's own verified web address. Only the production factory,
+// the limits and the types; the guards and the internal builder stay inside the package. The caller names the
+// host each call may reach; nothing is configured.
+export { FEED_DEADLINE_MS, FEED_MAX_BYTES } from './feed-guard';
+export type { FeedKind, FeedRefusal } from './feed-guard';
+export { createFeedFetcher, isFeedHostName } from './feed-fetch';
+export type { FeedFetcher, FeedFetchResult, FetchOptions } from './feed-fetch';

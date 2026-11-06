@@ -32,6 +32,8 @@ import { sealDue, sealPreviousDay } from '@umsbx/trace';
 import { DEFAULT_CALL_GAP_MS, moneyCalls, pollAllowance, rateLimited } from './budget';
 import type { CallBudget, CallQuota } from './budget';
 import { recordPass } from './health';
+import { createImportWorker } from './imports';
+import type { ImportRunner } from './imports';
 
 /** A leader lease as the loop needs it. @umsbx/db's AdvisoryLease fits this shape. */
 export interface LeaderLease {
@@ -109,12 +111,18 @@ export function startLoop(
      */
     deliver?: () => Promise<unknown>;
     /**
+     * POB-I1: the web import. `recover` runs once at the start of the loop (or of a leadership term); a worker
+     * runs `runNext` OFF the pass, kicked after every pass and by kickImports(), so a long batch never holds up
+     * the payments work. The import has its own may-fetch check, so it is kicked while the outbound switch is off.
+     */
+    imports?: ImportRunner;
+    /**
      * POB-M1: one payout pass per loop pass. `port` is the only way money goes out (the dry run in this lane); null means
      * this mode has no payout port, so payouts are created and not sent.
      */
     payouts?: { port: PayoutPort | null };
   },
-): { stop(): Promise<void> } {
+): { stop(): Promise<void>; kickImports(): void } {
   let stopped = false;
   let term: LeaderLease | null = null;
   const leading = (): boolean => o.leader === undefined || (term !== null && term.held());
@@ -215,6 +223,20 @@ export function startLoop(
     };
   };
 
+  // POB-I1: the import runner, under its own journal context (system, job channel). The worker's chain may be
+  // started from a request or from a pass; the run it makes is neither, so it never takes their context.
+  const importWorker =
+    o.imports === undefined
+      ? null
+      : createImportWorker(
+          {
+            recover: () =>
+              withTraceContext(jobContext('import_recovery'), () => o.imports!.recover()),
+            runNext: () => withTraceContext(jobContext('import'), () => o.imports!.runNext()),
+          },
+          d.log,
+        );
+
   // INT-TR1: the first pass at or after 00:05 UTC seals the previous UTC day, once. The seal is not a provider
   // call, so it runs while the outbound switch is off. It has its own context (system, job, seal); a failure
   // is logged and never fails the pass.
@@ -233,6 +255,13 @@ export function startLoop(
 
   /** Recovery and passes for as long as this process may run them (the whole life without a leader). */
   const body = async (): Promise<void> => {
+    if (importWorker !== null) {
+      try {
+        await importWorker.recover();
+      } catch (e) {
+        fail('jobs.loop.imports_recover_failed', e);
+      }
+    }
     // Recovery runs once per process, or once per leadership term: a caller that has already run it
     // (composition's startJobs, no leader) passes recover_on_start: false. Run twice, it would take
     // over operations of a live pass.
@@ -323,6 +352,7 @@ export function startLoop(
               fail('jobs.loop.deliver_failed', e);
             }
           }
+          importWorker?.kick();
           recordPass(d, d.clock.now().toISOString());
           // With the allowance spent, overdue polling work must not wake the loop every 100 ms: the
           // pass only does money work, which is looked for at the slow rhythm.
@@ -390,6 +420,10 @@ export function startLoop(
       stopped = true;
       wake?.();
       await running;
+      await importWorker?.stop();
+    },
+    kickImports(): void {
+      importWorker?.kick();
     },
   };
 }

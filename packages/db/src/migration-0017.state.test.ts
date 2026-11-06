@@ -250,6 +250,10 @@ describe('migration 0017', () => {
               'alert_events',
               // BR-2 (migration 0027): rule settings.
               'rule_settings',
+              // POB-I1 (migration 0030): the web import.
+              'publisher_domains',
+              'import_batches',
+              'import_items',
               // POB-M1 (migration 0029): the fee on top and the payouts.
               'fee_settings',
               'offer_price_parts',

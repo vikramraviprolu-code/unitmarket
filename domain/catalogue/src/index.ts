@@ -138,3 +138,32 @@ export type {
   FeeSetting,
   FeeSplit,
 } from './fee';
+
+// POB-I1 (D-089): the web import. A publisher proves a domain, begins an import, a background run stages the
+// items, the publisher reviews and publishes. The fetcher and the fee are ports; nothing here opens a socket.
+export { MAX_DOMAINS_PER_PUBLISHER, checkDomain, listDomains, requestDomain } from './domain-proof';
+export type { DomainView } from './domain-proof';
+export { ZERO_FEE_POLICY, buyerPriceOf } from './import-fee';
+export type { ImportFeePolicy } from './import-fee';
+export {
+  BATCH_DEADLINE_MS,
+  IMAGE_MAX_BYTES,
+  MAX_BATCH_ITEMS,
+  editItem,
+  getBatch,
+  listBatches,
+  recoverImports,
+  runNextBatch,
+  startVerifiedImport,
+} from './import-stage';
+export type { BatchView, EditInput, ItemView } from './import-stage';
+export { publishBatch } from './import-publish';
+export type { PublishSummary } from './import-publish';
+export type {
+  ImportDeps,
+  ImportError,
+  ImportErrorCode,
+  ImportFetchOptions,
+  ImportFetchOutcome,
+  ImportFetcherPort,
+} from './import-types';
