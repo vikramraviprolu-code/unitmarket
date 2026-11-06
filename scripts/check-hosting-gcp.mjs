@@ -533,11 +533,19 @@ function main() {
         if (m[2] !== '"' && m[2] !== '$')
           fail('literal-project', `${f}:${s.no} gives --${m[1]} a literal value`);
     }
+    // D-099 permits token credentials only in the sandbox deployer. Keep the account
+    // fallback and exact fail-closed condition; other scripts still need an account.
+    const accountGuard = /^\[ -n "\$ACTIVE_ACCOUNT" \] \|\| die/m.test(files[f]);
+    const tokenOrAccountGuard =
+      f === 'deploy.sh' &&
+      /^\[ -n "\$\{CLOUDSDK_AUTH_ACCESS_TOKEN:-\}" \] \|\| \[ -n "\$ACTIVE_ACCOUNT" \] \|\| die/m.test(
+        files[f],
+      );
     if (
       !/gcloud auth list --filter=status:ACTIVE/.test(files[f]) ||
-      !/^\[ -n "\$ACTIVE_ACCOUNT" \] \|\| die/m.test(files[f])
+      !(accountGuard || tokenOrAccountGuard)
     )
-      fail('account-guard', `${f} must refuse to run when gcloud has no active account`);
+      fail('account-guard', `${f} must refuse to run without its supported credentials`);
   }
   if (files['set-secret.sh']) {
     const t = files['set-secret.sh'];
