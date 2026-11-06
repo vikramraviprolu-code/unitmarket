@@ -46,7 +46,12 @@ case "$1 $2 $3" in
     if grep -qxF "$4" "$DIR/fail.txt"; then exit 1; fi
     if grep -qxF "$4" "$DIR/has.txt"; then echo "1"; fi ;;
   "sql instances describe") echo "RUNNABLE" ;;
-  "artifacts docker images") exit 0 ;;
+  "artifacts docker images") if [ -f "$DIR/no-image" ]; then exit 1; fi ;;
+  "builds submit "*)
+    for a in "$@"; do
+      case "$a" in --config=*) cp "\${a#*=}" "$DIR/build-config.out" ;; esac
+    done
+    if [ -f "$DIR/build-fails" ]; then exit 1; fi ;;
   "run deploy "*)
     for a in "$@"; do
       case "$a" in --env-vars-file=*) cp "\${a#*=}" "$DIR/envfile.out" ;; esac
@@ -62,6 +67,7 @@ interface Run {
   calls: string[];
   deploy: string | undefined;
   envFile: string;
+  buildConfig: string;
 }
 
 function setup(): { repo: string; stub: string } {
@@ -90,13 +96,17 @@ function run(
   has: string[],
   fail: string[] = [],
   credentials: { account?: boolean; token?: string } = {},
+  build: { imageExists?: boolean; fails?: boolean } = {},
 ): Run {
   const { repo, stub } = setup();
   if (credentials.account === false) writeFileSync(join(stub, 'no-account'), '');
+  if (build.imageExists === false) writeFileSync(join(stub, 'no-image'), '');
+  if (build.fails) writeFileSync(join(stub, 'build-fails'), '');
   writeFileSync(join(stub, 'has.txt'), has.join('\n') + '\n');
   writeFileSync(join(stub, 'fail.txt'), fail.join('\n') + '\n');
   writeFileSync(join(stub, 'calls.txt'), '');
   writeFileSync(join(stub, 'envfile.out'), '');
+  writeFileSync(join(stub, 'build-config.out'), '');
   // The stub directory goes first on PATH; $0 of the wrapper is that directory.
   const r = spawnSync(
     'bash',
@@ -119,6 +129,7 @@ function run(
     calls,
     deploy: calls.find((c) => c.startsWith('run deploy ')),
     envFile: readFileSync(join(stub, 'envfile.out'), 'utf8'),
+    buildConfig: readFileSync(join(stub, 'build-config.out'), 'utf8'),
   };
 }
 
@@ -126,6 +137,44 @@ const secretsOf = (deploy: string | undefined): string[] =>
   (/--set-secrets=(\S+)/.exec(deploy ?? '')?.[1] ?? '').split(',').filter(Boolean);
 
 describe('INFRA-A deploy.sh against a stub gcloud', () => {
+  it('D-099 builds with the restricted builder and Cloud Logging before deploying as the runtime', () => {
+    const r = run(
+      'deploy.sh',
+      REQUIRED,
+      [],
+      { account: false, token: 'synthetic-token-for-test' },
+      { imageExists: false },
+    );
+    expect(r.status, r.out).toBe(0);
+    expect(r.buildConfig).toContain(
+      'serviceAccount: projects/ums-test-project/serviceAccounts/ums-builder@ums-test-project.iam.gserviceaccount.com',
+    );
+    expect(r.buildConfig).toContain('options:\n  logging: CLOUD_LOGGING_ONLY');
+    const build = r.calls.find((c) => c.startsWith('builds submit '));
+    expect(build).toContain('--suppress-logs');
+    expect(build).not.toContain('--async');
+    expect(r.calls.indexOf(build!)).toBeLessThan(r.calls.indexOf(r.deploy!));
+    expect(r.deploy).toContain(
+      '--service-account=ums-runtime@ums-test-project.iam.gserviceaccount.com',
+    );
+    expect(r.envFile).toContain("UMS_PAYPAL_CONNECT: 'off'");
+    expect(r.buildConfig + r.out + r.calls.join('\n')).not.toContain('synthetic-token-for-test');
+  });
+
+  it('D-099 a failed build stops before deploying or reading a service URL', () => {
+    const r = run('deploy.sh', REQUIRED, [], {}, { imageExists: false, fails: true });
+    expect(r.status).toBe(1);
+    expect(r.calls.filter((c) => c.startsWith('builds submit '))).toHaveLength(1);
+    expect(r.calls.some((c) => c.startsWith('run '))).toBe(false);
+  });
+
+  it('D-099 an existing tagged image is reused without submitting a build', () => {
+    const r = run('deploy.sh', REQUIRED);
+    expect(r.status, r.out).toBe(0);
+    expect(r.calls.some((c) => c.startsWith('builds submit '))).toBe(false);
+    expect(r.deploy).toBeDefined();
+  });
+
   it('D-099 accepts token-only credentials without exposing the token', () => {
     const token = 'synthetic-token-for-test';
     const r = run('deploy.sh', REQUIRED, [], { account: false, token });
