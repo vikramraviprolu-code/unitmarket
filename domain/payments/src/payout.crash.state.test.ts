@@ -307,19 +307,18 @@ describe('the payee', () => {
     expect(await liveItems(p.id)).toEqual([{ n: 1 }]);
     await w.rows(REPLACED);
     const port = spyPort(w);
-    expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 });
+    const rec = recording(w);
+    expect(await pass(port, rec.deps)).toMatchObject({ sent: 0, refused: 1 });
     expect(port.calls).toHaveLength(0);
     expect((await payoutRows(w)).map((x) => [x.id, x.state])).toEqual([[p.id, 'cancelled']]);
     expect(await liveItems(p.id)).toEqual([{ n: 0 }]);
     const reasons = (await refusalAlerts()).map((x) => x.detail.reason);
     expect(reasons).toEqual([`payout_refused_${p.id}_no_payee`]);
-    // the cancel is audited with the reason only: no address anywhere in the audit rows or the alerts
-    const audited = await w.rows<{ reason: string }>(
-      "SELECT reason FROM audit_log WHERE action = 'payout.cancelled' AND target = $1",
-      [p.id],
-    );
-    expect(audited).toEqual([{ reason: 'no_payee' }]);
-    expect(JSON.stringify(await w.rows('SELECT * FROM audit_log'))).not.toContain('example.test');
+    // the cancel is audited with the reason only: no address anywhere in the audit entries or the alerts
+    expect(
+      rec.audits.filter((e) => e.action === 'payout.cancelled').map((e) => [e.target, e.reason]),
+    ).toEqual([[p.id, 'no_payee']]);
+    expect(JSON.stringify(rec.audits)).not.toContain('example.test');
     expect(JSON.stringify(await w.rows('SELECT * FROM alerts'))).not.toContain('example.test');
     // nothing to pay until a verified address exists, and no second alert
     expect(await pass(port)).toMatchObject({ created: 0, sent: 0, refused: 0 });

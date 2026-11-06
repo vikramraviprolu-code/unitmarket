@@ -243,7 +243,7 @@ const ENTRIES: Record<CatalogueKind, Entry> = {
       reason.startsWith('unit_too_large_')
         ? 'One sale is larger than the largest single payout, so it cannot be paid out as it is.'
         : reason.startsWith('payout_refused_')
-          ? 'A payout is waiting and was not sent: the publisher cannot be paid right now (not active, the shared account, or the payee changed). It is sent when that is put right.'
+          ? 'A payout was not sent: the publisher cannot be paid right now. If they are not active or use the shared account it waits and is sent when that is put right. If their PayPal address changed or is no longer verified, the payout is cancelled and the sale is paid out again to the verified address once there is one.'
           : 'The provider refused a payout. Its sales are held for 24 hours and then paid again.',
     fix: MONEY_PAYOUTS,
     runbook:

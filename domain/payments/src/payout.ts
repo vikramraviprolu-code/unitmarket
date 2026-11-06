@@ -487,26 +487,27 @@ async function prepare(d: PayoutDeps, id: Id): Promise<Prepared | 'refused' | 'g
     if (p === undefined || (p.state !== 'due' && p.state !== 'sending')) return 'gone';
     // The verified PayPal address of an active publisher whose payee is not the shared account, as it is now.
     const pub = (
-      await tx.query<{
-        status: string;
-        payee_shared: boolean;
-        link_email: string | null;
-      }>(
-        `SELECT p.status, p.payee_shared, l.paypal_email AS link_email
-           FROM publishers p
-           LEFT JOIN publisher_paypal_links l ON l.publisher_id = p.id AND l.state = 'verified'
-          WHERE p.id = $1`,
+      await tx.query<{ status: string; payee_shared: boolean }>(
+        'SELECT status, payee_shared FROM publishers WHERE id = $1',
         [p.publisher_id],
       )
     ).rows[0];
+    // Locked for share, so an address change that is being verified or replaced right now finishes first (or waits for us).
+    const link_email =
+      (
+        await tx.query<{ paypal_email: string }>(
+          `SELECT paypal_email FROM publisher_paypal_links WHERE publisher_id = $1 AND state = 'verified' FOR SHARE`,
+          [p.publisher_id],
+        )
+      ).rows[0]?.paypal_email ?? null;
     const why =
       pub === undefined || pub.status !== 'active'
         ? 'inactive'
         : pub.payee_shared
           ? 'shared'
-          : pub.link_email === null
+          : link_email === null
             ? 'no_payee'
-            : pub.link_email !== p.payee_merchant_id
+            : link_email !== p.payee_merchant_id
               ? 'payee_changed'
               : null;
     if (why !== null) {
@@ -527,6 +528,12 @@ async function prepare(d: PayoutDeps, id: Id): Promise<Prepared | 'refused' | 'g
           detail: { payout_id: id, why },
         });
       }
+      // POB-G review: a payout made to an address that is no longer the publisher's verified one will never be sent, and
+      // while it stays `due` its units are held (live items), so the new address could never be paid. Cancel it here, in
+      // this transaction: the units are free and a later pass pays them to the verified address, once one exists. A payout
+      // in `sending` is never cancelled (the provider may already hold it). `inactive` and `shared` stay an operator decision.
+      if ((why === 'payee_changed' || why === 'no_payee') && p.state === 'due')
+        await cancelPayoutTx(tx, d, id, why);
       return 'refused';
     }
     if (p.state === 'due') {

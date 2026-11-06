@@ -202,7 +202,7 @@ export async function decidePaypalLink(
           `UPDATE publishers
               SET paypal_merchant_id = coalesce(paypal_merchant_id, 'DRYRUN' || upper(left(md5(slug), 7))),
                   payee_verified_at = $2, updated_at = $2
-            WHERE id = $1`,
+            WHERE id = $1 AND status = 'active' AND NOT payee_shared`,
           [input.publisher_id, at],
         );
       await deps.audit.record(tx, {
