@@ -13,6 +13,7 @@ import {
 } from './paypal-link';
 import { offersWorld } from './write-support';
 import type { OffersWorld } from './write-support';
+import type { LinkDeps } from './paypal-link';
 import type { Actor } from '@umsbx/contracts';
 
 const HASH = 'scrypt:16384:8:1:00112233445566778899aabbccddeeff:' + 'a'.repeat(64);
@@ -310,7 +311,7 @@ describe('the verified link makes the publisher buyable (dry run only)', () => {
     )[0]!;
   const dry = () => ({ ...w.deps(), environment: 'dryrun' as const });
   const sbx = () => ({ ...w.deps(), environment: 'sandbox' as const });
-  const verify = (deps: ReturnType<typeof dry>, id: string, email = 'seller@example.com') =>
+  const verify = (deps: LinkDeps, id: string, email = 'seller@example.com') =>
     decidePaypalLink(deps, w.operator, {
       publisher_id: id,
       email_retyped: email,
