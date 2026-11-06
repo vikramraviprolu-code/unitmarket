@@ -2,7 +2,7 @@
 // basis points), the parts of an offer and of a unit, five new ledger kinds, payouts with a guarded state machine,
 // their items and the netting settlements. Tolerates later migrations: it never checks an exact list.
 import { readFileSync, readdirSync } from 'node:fs';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { Database } from '@umsbx/contracts';
 import { migrate, openDatabase } from './index';
 
@@ -10,8 +10,11 @@ const T = '2026-11-05T10:00:00Z';
 const clock = { now: () => new Date(T) };
 type Db = Database & { close(): Promise<void> };
 const toClose: Db[] = [];
-afterAll(async () => {
-  for (const d of toClose) await d.close();
+// Every test opens its own database and none is shared, so each is closed as soon as its test ends. Held open until
+// the end of the file, the 32 in-memory databases peaked at about 1.4 GiB, which a CI runner could not carry beside
+// the other database tests of its shard.
+afterEach(async () => {
+  for (const d of toClose.splice(0)) await d.close();
 });
 
 let n = 0;
