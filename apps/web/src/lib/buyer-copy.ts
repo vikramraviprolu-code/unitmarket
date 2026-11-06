@@ -192,6 +192,8 @@ export type RefundWindowView =
   | { state: 'open'; deadline: string }
   | { state: 'ended'; deadline: string }
   | { state: 'none' }
+  /** Operator panel only: past the deadline, but the buyer's refund case was opened in time, so no override is needed. */
+  | { state: 'asked_in_time'; deadline: string }
   /** The sale's terms could not be read: no date is shown, and the operator needs a reason to refund. */
   | { state: 'unknown' };
 
@@ -210,6 +212,7 @@ export function refundWindowLine(v: RefundWindowView): string | null {
     case 'open':
       return `Refunds can be requested until ${formatDateTime(v.deadline)}`;
     case 'ended':
+    case 'asked_in_time':
       return REFUND_PERIOD_ENDED;
     case 'none':
     case 'unknown':

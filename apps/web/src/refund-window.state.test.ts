@@ -162,3 +162,28 @@ describe('the deadline the pages read', () => {
     ).toBeNull();
   });
 });
+
+describe('the operator panel agrees with the server about a buyer who asked in time', () => {
+  it('shows asked_in_time for an old sale with an unsettled refund case opened inside the window', async () => {
+    const unit = await buy(w, { offer: 'harbour-fees', option: 'online_read', who: 'B' });
+    await age(unit, 30);
+    const opened = new Date(w.app.security.clock.now().getTime() - 25 * DAY).toISOString();
+    await w.app.db.query(
+      `INSERT INTO recovery_cases (id, kind, state, order_id, entitlement_id, buyer_id, opened_by, sla_due_at, credit_ms, buyer_message, created_at, updated_at)
+       SELECT 'cas_asked1', 'refund_requested', 'open', id, $2, buyer_id, 'buyer', $3::timestamptz, 0, 'asked', $3::timestamptz, $3::timestamptz
+         FROM orders WHERE id = $1`,
+      [unit.order_id, unit.entitlement_id, opened],
+    );
+    const o = (await w.app.engine.opsSnapshot({
+      kind: 'operator',
+      operator_id: 'opr_vikram',
+      mfa: true,
+    }))!.refunds!;
+    expect(o.units.find((x) => x.unit_id === unit.unit_id)!.refund_window.state).toBe(
+      'asked_in_time',
+    );
+    // and the server agrees: no override reason is needed
+    const res = await postRefund(w, w.op, body(unit));
+    expect(res.status).toBe(200);
+  });
+});

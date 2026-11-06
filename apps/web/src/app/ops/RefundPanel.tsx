@@ -218,9 +218,11 @@ function UnitCard({
           ? `Refund period ends ${formatDateTime(unit.refund_window.deadline)}.`
           : unit.refund_window.state === 'ended'
             ? `Refund period ended ${formatDateTime(unit.refund_window.deadline)}. A refund now needs an override reason.`
-            : unit.refund_window.state === 'unknown'
-              ? 'The refund deadline could not be read. A refund now needs an override reason.'
-              : 'This sale has no refund deadline.'}
+            : unit.refund_window.state === 'asked_in_time'
+              ? `Refund period ended ${formatDateTime(unit.refund_window.deadline)}, but the buyer asked in time. No override reason is needed.`
+              : unit.refund_window.state === 'unknown'
+                ? 'The refund deadline could not be read. A refund now needs an override reason.'
+                : 'This sale has no refund deadline.'}
       </p>
       {unit.frozen ? (
         <p className="banner banner-warn">

@@ -19,7 +19,7 @@
 import { applyMoneyEvent } from '@umsbx/entitlements';
 import { appendLedgerEntry, LedgerRuleError } from '@umsbx/ledger';
 import { issueReceiptIfChanged } from '@umsbx/receipts';
-import { refundWindowOpen, unitRefundWindows } from '@umsbx/rules';
+import { judgedAt, refundWindowOpen, unitRefundWindows } from '@umsbx/rules';
 import {
   IdSchema,
   OrderReadSchema,
@@ -205,8 +205,6 @@ async function frozenForUnit(
 // ---------------------------------------------------------------------------------------------
 // The refund window (BR-4)
 
-// Cases that count as "the buyer asked in time": a refund_requested case nobody has settled yet.
-const UNSETTLED_CASE = "('open', 'diagnosing', 'refund_pending')";
 const OVERRIDE_MIN = 3;
 const OVERRIDE_MAX = 200;
 
@@ -226,27 +224,10 @@ interface WindowFacts {
  */
 async function windowFacts(tx: SqlExecutor, unit: UnitFacts, now: string): Promise<WindowFacts> {
   const own = (await unitRefundWindows(tx, { unit_id: unit.id }))[0];
-  if (own === undefined || own.unreadable)
+  if (own === undefined || own.unreadable) {
     return { unreadable: true, deadline: null, judged_at: now };
-  if (own.deadline === null) return { unreadable: false, deadline: null, judged_at: now };
-  const asked = (
-    await tx.query<{ at: Date | string | null }>(
-      `SELECT min(c.created_at) AS at FROM recovery_cases c
-        WHERE c.kind = 'refund_requested' AND c.state IN ${UNSETTLED_CASE}
-          AND ((c.entitlement_id IS NOT NULL
-                AND c.entitlement_id IN (SELECT id FROM entitlements WHERE unit_id = $1))
-            OR (c.entitlement_id IS NULL AND c.order_id = $2))`,
-      [unit.id, unit.order_id],
-    )
-  ).rows[0]?.at;
-  return {
-    unreadable: false,
-    deadline: own.deadline,
-    judged_at:
-      asked === null || asked === undefined
-        ? now
-        : (asked instanceof Date ? asked : new Date(asked)).toISOString(),
-  };
+  }
+  return { unreadable: false, deadline: own.deadline, judged_at: judgedAt(own, now) };
 }
 
 /** An override reason is a string of 3 to 200 characters once trimmed; anything else is no override. */

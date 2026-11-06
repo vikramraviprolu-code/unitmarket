@@ -2,15 +2,24 @@
 // app that touches @umsbx/rules (Z1): pages and routes get a RefundWindowView through the engine and never
 // compute a date. The deadline is the access start (else the verified capture) plus the refund window frozen
 // in the sale's approval snapshot; the words for it are in src/lib/buyer-copy.ts.
-import { unitRefundWindows } from '@umsbx/rules';
+import { judgedAt, unitRefundWindows } from '@umsbx/rules';
 import type { UnitRefundWindow } from '@umsbx/rules';
 import { IdSchema } from '@umsbx/contracts';
 import type { Actor, Database, Id } from '@umsbx/contracts';
 import { refundWindowView } from './src/lib/buyer-copy';
 import type { RefundWindowView } from './src/lib/buyer-copy';
 
-const viewOf = (w: UnitRefundWindow, now: string): RefundWindowView =>
-  w.unreadable ? { state: 'unknown' } : refundWindowView(w.deadline, now);
+// The operator's panel judges the window as requestRefund does: at the buyer's refund case when there is one.
+// Past the deadline with a case opened in time, the panel says so and asks for no override reason.
+const viewOf = (w: UnitRefundWindow, now: string): RefundWindowView => {
+  if (w.unreadable) return { state: 'unknown' };
+  const asked = refundWindowView(w.deadline, judgedAt(w, now));
+  const today = refundWindowView(w.deadline, now);
+  if (asked.state === 'open' && today.state === 'ended') {
+    return { state: 'asked_in_time', deadline: asked.deadline };
+  }
+  return asked;
+};
 
 /** The window of each captured unit, by unit id (the operator's refund list). A unit not listed has none. */
 export async function refundWindowsOfUnits(
