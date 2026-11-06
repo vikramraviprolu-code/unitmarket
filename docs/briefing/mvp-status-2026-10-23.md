@@ -14,7 +14,7 @@ Status date: 23 Oct 2026. Prepared by the coordinating assistant at the owner's 
 
 | Date (2026)  | Milestone                                                                                                                                                                                    |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 18 Oct       | planning document becomes the single planning document                                                                                                                                             |
+| 18 Oct       | planning document becomes the single planning document                                                                                                                                       |
 | 19 Oct       | Simulation track starts: scaffold, import rules, payment port, contracts                                                                                                                     |
 | 20 Oct       | Simulation complete: web app, scenario matrix, adversarial suite, mutation checks, 90-day history, browser journeys                                                                          |
 | 21 Oct       | Sandbox repository created, separate from the simulation (D-001). Design baseline, corridors order, dependency list, no-connection rule decided                                              |
