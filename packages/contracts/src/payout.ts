@@ -38,7 +38,7 @@ export interface PayoutSendRequest {
   /** `umsP-<payout id>`: stored on the row and the same on every resend. */
   idempotency_key: string;
   publisher_id: Id;
-  /** The payee stored on the payout when it was created (a legacy merchant id until the verified PayPal link of POB-P1). */
+  /** The payee stored on the payout when it was created: the publisher's verified PayPal address (publisher_paypal_links). */
   payee_merchant_id: string;
   amount: Money;
   environment: EnvironmentLabel;

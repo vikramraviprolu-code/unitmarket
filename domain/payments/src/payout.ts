@@ -14,9 +14,11 @@
 //  - A failed payout holds its units for 24 hours (PAYOUT_RETRY_AFTER_MS), then it is cancelled with an audit row and the units
 //    are paid again in the same pass.
 //
-// Payee: LEGACY STUB until POB-P1 lands. The payee is the publisher's stored merchant id (publishers.paypal_merchant_id); a
-// publisher with `payee_shared` (the shared owner account) or who is not active is refused, at creation and again at send.
-// When POB-P1 merges, the payee becomes the verified publisher_paypal_links address (follow-up after both merge).
+// Payee (POB-G, decision A3 of the journey spec): the publisher's own PayPal Business address, the one an operator verified
+// (publisher_paypal_links, state `verified`). It is read when the payout is created and stored on the payout, and read again
+// at send: no verified link is `no_payee`, a link that now holds another address is `payee_changed`, and the payout is
+// refused in both. The old stub column (publishers.paypal_merchant_id) is not a payee any more; it still serves the buy path.
+// A publisher with `payee_shared` (the shared owner account) or who is not active is refused, at creation and again at send.
 import { PAYOUT_MAX_MINOR, PAYOUT_RETRY_AFTER_MS } from '@umsbx/contracts';
 import type {
   CoreDeps,
@@ -208,10 +210,11 @@ async function dueUnits(db: SqlExecutor, d: PayoutDeps, only: Id[] | null): Prom
   }>(
     `SELECT u.id AS unit_id, u.order_id, u.publisher_id, o.currency, pay.net AS net_minor,
             to_char(win.max_end AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ends_at,
-            p.paypal_merchant_id AS payee_merchant_id
+            l.paypal_email AS payee_merchant_id
        FROM order_units u
        JOIN orders o ON o.id = u.order_id
        JOIN publishers p ON p.id = u.publisher_id
+       JOIN publisher_paypal_links l ON l.publisher_id = p.id AND l.state = 'verified'
        JOIN order_unit_parts up ON up.unit_id = u.id
        CROSS JOIN LATERAL (
          SELECT count(*) AS n,
@@ -230,7 +233,6 @@ async function dueUnits(db: SqlExecutor, d: PayoutDeps, only: Id[] | null): Prom
         AND win.n > 0 AND win.n = win.done
         AND pay.net > 0 AND pay.reversals = 0
         AND p.status = 'active' AND NOT p.payee_shared
-        AND p.paypal_merchant_id IS NOT NULL AND p.payee_verified_at IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM refund_requests rr WHERE rr.unit_id = u.id AND rr.state IN ${OPEN_REFUND})
         AND NOT EXISTS (SELECT 1 FROM payout_items i WHERE i.order_unit_id = u.id AND i.live)
         ${only === null ? '' : 'AND u.id = ANY($3::text[])'}
@@ -483,15 +485,17 @@ async function prepare(d: PayoutDeps, id: Id): Promise<Prepared | 'refused' | 'g
       )
     ).rows[0];
     if (p === undefined || (p.state !== 'due' && p.state !== 'sending')) return 'gone';
-    // LEGACY STUB until POB-P1: the stored merchant id of an active publisher whose payee is not the shared account.
+    // The verified PayPal address of an active publisher whose payee is not the shared account, as it is now.
     const pub = (
       await tx.query<{
         status: string;
         payee_shared: boolean;
-        paypal_merchant_id: string | null;
-        payee_verified_at: unknown;
+        link_email: string | null;
       }>(
-        'SELECT status, payee_shared, paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
+        `SELECT p.status, p.payee_shared, l.paypal_email AS link_email
+           FROM publishers p
+           LEFT JOIN publisher_paypal_links l ON l.publisher_id = p.id AND l.state = 'verified'
+          WHERE p.id = $1`,
         [p.publisher_id],
       )
     ).rows[0];
@@ -500,9 +504,9 @@ async function prepare(d: PayoutDeps, id: Id): Promise<Prepared | 'refused' | 'g
         ? 'inactive'
         : pub.payee_shared
           ? 'shared'
-          : pub.paypal_merchant_id === null || pub.payee_verified_at === null
+          : pub.link_email === null
             ? 'no_payee'
-            : pub.paypal_merchant_id !== p.payee_merchant_id
+            : pub.link_email !== p.payee_merchant_id
               ? 'payee_changed'
               : null;
     if (why !== null) {
