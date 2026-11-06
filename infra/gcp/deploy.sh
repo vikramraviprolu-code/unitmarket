@@ -107,8 +107,12 @@ steps:
     args: ["build", "-f", "infra/gcp/Dockerfile", "-t", "${IMAGE}", "."]
 images:
   - "${IMAGE}"
+serviceAccount: projects/${PROJECT_ID}/serviceAccounts/ums-builder@${PROJECT_ID}.iam.gserviceaccount.com
+options:
+  logging: CLOUD_LOGGING_ONLY
 CONFIG
-  gcloud builds submit "$REPO_ROOT" --config="$BUILD_CONFIG" --project="$PROJECT_ID"
+  # D-099: use the restricted builder; keep waiting for success without needing log-reader access.
+  gcloud builds submit "$REPO_ROOT" --config="$BUILD_CONFIG" --project="$PROJECT_ID" --suppress-logs
 fi
 
 SECRET_FLAGS=""
