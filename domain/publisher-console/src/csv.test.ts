@@ -118,6 +118,7 @@ const block = (env: 'dryrun' | 'sandbox'): PublisherStatement['blocks'][number] 
   reversals_minor: 0,
   net_minor: 400,
   paypal_fee_minor: 29,
+  money: null,
   settlement: { mode: 'dryrun', sentence: 'x' } as never,
   lines: [
     { at: '2026-10-22T10:01:00.000Z', order_ref6: 'abc001', kind: 'sale', amount_minor: 500 },

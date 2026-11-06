@@ -5,7 +5,8 @@ import { transactions } from '../../../../../api-v1/ops';
 import { app, securityDeps } from '../../../../../server/access';
 
 // INT-SR1 (SR1.3): see src/api-v1/ops.ts. An operator key (ops:read): order refs, amounts, states, flags and
-// opaque ids only. No buyer or seller name and no PayPal id, whatever the key asks for.
+// opaque ids only. No buyer id or agent key id (C3, FIX-B4), no buyer or seller name and no PayPal id,
+// whatever the key asks for.
 export const routeMeta: RouteMeta = {
   path: '/api/v1/ops/transactions',
   method: 'GET',

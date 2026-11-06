@@ -8,7 +8,7 @@ buttons: Send application | Sending
 confirm title: Application received
 confirm body: Keep this reference. It is the only way to check your application.
 confirm reference label: Your reference
-confirm next: The operator will review it. You cannot sign in until the owners have set that up for you.
+confirm next: The operator will review it. If you are approved, an operator gives you an invite code to claim your account.
 confirm link: Check the status of this application
 status title: Application status
 status lede: Enter the reference you were given when you applied.
@@ -16,7 +16,7 @@ status form: Reference | Check status
 status no reference: Enter your reference to see where your application stands.
 status back: Back to the application form
 state pending: Waiting for review | tone info
-state approved: Approved. Sign in is not automatic; the owners decide whether to set it up. | tone good
+state approved: Approved. An operator will give you an invite code to claim your account. | tone good
 state rejected: Not approved | tone bad
 state unavailable: Not available | tone neutral
 state unknown: We do not have that reference | tone neutral

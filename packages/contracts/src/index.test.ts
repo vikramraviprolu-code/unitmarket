@@ -180,6 +180,12 @@ const EXPECTED_EXPORTS: string[] = [
   'MandateCreateRequestSchema',
   'MandateViewSchema',
   'BudgetStatusSchema',
+  // POB-M1 (fee on top, payout)
+  'FEE_BPS_MAX',
+  'FeeBpsSchema',
+  'PAYOUT_MAX_MINOR',
+  'PAYOUT_RETRY_AFTER_MS',
+  'PayoutStateSchema',
   // BR-1 (configurable business rules)
   'RuleScopeKindSchema',
   'RULE_KEYS',
@@ -261,6 +267,9 @@ const EXPECTED_EXPORTS: string[] = [
   'TxnLinePageSchema',
   'TxnLineSchema',
   'TxnQueryMapSchema',
+  // INT-GA: the shared word table of the plain-words search
+  'ASSIST_SYNONYMS',
+  'ASSIST_SORT_DIR',
 ];
 
 type Def = {

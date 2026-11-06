@@ -27,8 +27,8 @@ const MFA: Actor = { kind: 'operator', operator_id: 'opr_vikram', mfa: true };
 const PLAIN: Actor = { kind: 'operator', operator_id: 'opr_demo', mfa: false };
 
 describe('the map', () => {
-  it('has a Problems URL for every invariant id, INV1 to INV7, and no other', () => {
-    expect(INVARIANT_IDS).toEqual(['INV1', 'INV2', 'INV3', 'INV4', 'INV5', 'INV6', 'INV7']);
+  it('has a Problems URL for every invariant id, INV1 to INV8, and no other', () => {
+    expect(INVARIANT_IDS).toEqual(['INV1', 'INV2', 'INV3', 'INV4', 'INV5', 'INV6', 'INV7', 'INV8']);
     expect(Object.keys(INVARIANT_PROBLEMS_URL).sort()).toEqual([...INVARIANT_IDS].sort());
     for (const id of INVARIANT_IDS)
       expect(INVARIANT_PROBLEMS_URL[id]).toBe(`/ops/money/problems?inv=${id}`);
@@ -52,7 +52,7 @@ describe('the map', () => {
   it('reads the query: one id or one state, anything else is the overview', () => {
     expect(parseProblemsQuery({ inv: 'INV3' })).toEqual({ kind: 'inv', id: 'INV3' });
     expect(parseProblemsQuery({ op: 'unknown' })).toEqual({ kind: 'op', state: 'unknown' });
-    expect(parseProblemsQuery({ inv: 'INV8' })).toEqual({ kind: 'none' });
+    expect(parseProblemsQuery({ inv: 'INV9' })).toEqual({ kind: 'none' });
     expect(parseProblemsQuery({ op: 'weird' })).toEqual({ kind: 'none' });
     expect(parseProblemsQuery({})).toEqual({ kind: 'none' });
     expect(parseProblemsQuery({ inv: ['INV2', 'INV3'] })).toEqual({ kind: 'inv', id: 'INV2' });

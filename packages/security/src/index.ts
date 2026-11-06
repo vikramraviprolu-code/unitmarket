@@ -78,6 +78,16 @@ export type {
   PolicyVerdict,
   ResetResult,
 } from './accounts';
+export {
+  INVITE_ALPHABET,
+  PUBLISHER_CLAIM_RATE,
+  checkClaim,
+  claimPublisherAccount,
+  hashInviteCode,
+  normalizeInviteCode,
+  verifyPublisherLogin,
+} from './publisher-accounts';
+export type { ClaimCheck, ClaimResult, PublisherLoginResult } from './publisher-accounts';
 export { runResetPassword } from './accounts-cli';
 export type { ResetCliError, ResetCliResult } from './accounts-cli';
 export {

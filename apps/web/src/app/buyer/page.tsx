@@ -12,12 +12,20 @@ import {
   BUYER_TITLE,
   HELP_PASSWORD_TITLE,
 } from '../../lib/account-copy';
+import { currentActor } from '../../server/session';
+import { homeAudience } from '../../lib/buyer-home-view';
+import { BuyerHome } from './BuyerHome';
 import '../auth.css';
 
 export const metadata: Metadata = { title: BUYER_TITLE };
 
 // ID-ACCOUNTS: what a buyer needs, in plain words, and the two ways in. Public, no data read, no script.
-export default function BuyerPage() {
+// INT-BUY / BUY.5: a signed-in buyer gets Home in this place. A signed-out visitor, a seller or an operator still
+// gets the public text below, unchanged (build note N4).
+export default async function BuyerPage() {
+  const actor = await currentActor();
+  if (homeAudience(actor?.kind ?? null) === 'home' && actor?.kind === 'buyer')
+    return <BuyerHome buyer_id={actor.buyer_id} />;
   return (
     <div className="auth-wrap-wide" data-testid="buyer-page">
       <header className="auth-head">

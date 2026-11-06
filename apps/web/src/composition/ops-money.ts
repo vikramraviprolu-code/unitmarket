@@ -3,11 +3,14 @@
 // through the engine at the latest stored rate (MC2-L7). These are the reads /ops made before, unchanged.
 import type { Actor } from '@umsbx/contracts';
 import { app } from '../server/access';
-import type { OpsSnapshot } from '../server/access';
+import type { OpsFee, OpsPayouts, OpsSnapshot } from '../server/access';
 import { opsReportingView } from '../lib/ops-reporting-view';
 import { orderPageView } from '../lib/ops-order-view';
 import type { OrderPageView } from '../lib/ops-order-view';
 import { INVARIANT_IDS, invariantLink, operationLink } from '../lib/ops-invariants-view';
+import { explainPanelView } from '../lib/explain-view';
+import type { ExplainPanelView, ExplainPausedView } from '../lib/explain-view';
+import { explainForOrderPage } from './assist';
 import type { InvariantId, OperationState, ProblemsQuery } from '../lib/ops-invariants-view';
 
 type OperatorActor = Extract<Actor, { kind: 'operator' }>;
@@ -16,6 +19,10 @@ export interface OpsMoneyRead {
   snap: OpsSnapshot;
   refundKeys: string[];
   reporting: ReturnType<typeof opsReportingView>;
+  /** POB-M1: payouts to publishers, and the fee on top with its one single-use Idempotency-Key (made on the server). */
+  payouts: OpsPayouts;
+  fee: OpsFee;
+  feeKey: string;
 }
 
 export async function readOpsMoney(actor: OperatorActor): Promise<OpsMoneyRead | null> {
@@ -27,7 +34,10 @@ export async function readOpsMoney(actor: OperatorActor): Promise<OpsMoneyRead |
     convert: a.engine.fx.convert,
     rates: await a.engine.fx.getRates(),
   });
-  return { snap, refundKeys, reporting };
+  const payouts = await a.engine.opsPayouts(actor);
+  const fee = await a.engine.opsFee.get(actor);
+  if (payouts === null || fee === null) return null;
+  return { snap, refundKeys, reporting, payouts, fee, feeKey: a.engine.newKey() };
 }
 
 // INT-OPS-B / OPS-B.2: the props of the Transactions page, and nothing else. The list itself comes from
@@ -119,6 +129,20 @@ export async function readOrderPage(actor: Actor, ref: string): Promise<OrderPag
     alerts,
     mfa,
   });
+}
+
+// INT-GA / GA.4: the explain panel of the order page. Null unless the order's status group is `attention` (then the
+// model is not asked) or for anyone but an operator. Built from assist.ts, which reaches the model as App.model. FU-1: the
+// page keeps one answer for each order and set of inputs and spends the route's rate bucket, so a reload is free; with
+// the bucket empty it answers { paused: true }.
+export async function readOrderExplain(
+  actor: Actor,
+  ref: string,
+): Promise<ExplainPanelView | ExplainPausedView | null> {
+  const r = await explainForOrderPage(actor, ref);
+  if (r === 'paused') return { paused: true };
+  if (r === null || r === 'not_found') return null;
+  return explainPanelView(r.answer, r.fixes);
 }
 
 // INT-OPS-A / OPS-A.6: the Problems page. What is behind a failing invariant (the orders its rows lead to) or an

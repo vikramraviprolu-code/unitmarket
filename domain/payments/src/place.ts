@@ -12,6 +12,7 @@ import type {
   OrderStatus,
   PaymentsDeps,
   Result,
+  SqlExecutor,
 } from '@umsbx/contracts';
 import { poRefFor } from './composite';
 import { requestIdFor } from './keys';
@@ -33,6 +34,55 @@ const violatesActiveEntitlement = (e: unknown): boolean =>
 const ACTIVE_INDEX = 'entitlements_one_active_per_buyer_article';
 const HELD =
   "money_state IN ('pending', 'captured', 'unknown') AND access_state IN ('locked', 'available')";
+
+// POB-M1 (D-089): the split of a unit's price into the publisher's share and the fee, copied from the offer versions in the
+// snapshot at the moment the order is created, so a later fee change never alters a sale. An offer with no parts row (every
+// offer listed before the fee existed) is all publisher share, fee 0: the numbers every quote and approval read do not move.
+// The parts of an item must add up to the price in the snapshot; a row that does not is a data fault and rolls the order back.
+async function copyUnitParts(
+  tx: SqlExecutor,
+  unit_id: Id,
+  items: { offer_id: string; offer_version: string; option: string; amount_minor: number }[],
+  at: string,
+): Promise<void> {
+  const found = await tx.query<{
+    offer_id: string;
+    offer_version: string;
+    option: string;
+    seller_minor: number | string;
+    fee_minor: number | string;
+  }>(
+    `SELECT offer_id, offer_version, option, seller_minor, fee_minor FROM offer_price_parts
+      WHERE (offer_id, offer_version, option) IN (SELECT * FROM unnest($1::text[], $2::text[], $3::text[]))`,
+    [items.map((x) => x.offer_id), items.map((x) => x.offer_version), items.map((x) => x.option)],
+  );
+  let seller = 0;
+  let fee = 0;
+  for (const item of items) {
+    const row = found.rows.find(
+      (r) =>
+        r.offer_id === item.offer_id &&
+        r.offer_version === item.offer_version &&
+        r.option === item.option,
+    );
+    if (row === undefined) {
+      seller += item.amount_minor;
+      continue;
+    }
+    if (Number(row.seller_minor) + Number(row.fee_minor) !== item.amount_minor) {
+      throw new Error(
+        `the parts of offer ${item.offer_id} do not add up to the price in the approval`,
+      );
+    }
+    seller += Number(row.seller_minor);
+    fee += Number(row.fee_minor);
+  }
+  await tx.query(
+    `INSERT INTO order_unit_parts (unit_id, seller_minor, fee_minor, tax_minor, created_at, updated_at)
+     VALUES ($1, $2, $3, 0, $4, $4)`,
+    [unit_id, seller, fee, at],
+  );
+}
 
 export async function placeOrder(
   d: PaymentsDeps,
@@ -216,6 +266,7 @@ export async function placeOrder(
             .sort((a, b) =>
               a.article_id < b.article_id ? -1 : a.article_id > b.article_id ? 1 : 0,
             );
+          await copyUnitParts(tx, unit_id, items, at);
           await createPendingEntitlements(tx, d, {
             buyer_id: approval.buyer_id,
             unit_id,

@@ -1,0 +1,72 @@
+/* INT-BUY: the cap cards, spend meters and case card. Colours come from the skin tokens only, so both looks work. */
+.cap-list {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cap-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.cap-card h3 {
+  margin: 0;
+}
+.cap-state {
+  font-weight: 600;
+}
+.spend-meter {
+  display: grid;
+  gap: 4px;
+}
+.spend-meter meter {
+  width: 100%;
+  height: 14px;
+}
+.cap-form {
+  display: grid;
+  gap: 12px;
+  max-width: 480px;
+}
+.cap-form label {
+  display: grid;
+  gap: 4px;
+}
+.cap-confirm {
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-card);
+  background: var(--accent-soft);
+}
+.case-card ol {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+.case-card li[aria-current='step'] {
+  font-weight: 600;
+}
+.home-section {
+  margin: 0 0 24px;
+}
+.home-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.key-once {
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-card);
+  background: var(--accent-soft);
+  word-break: break-all;
+}

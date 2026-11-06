@@ -3,6 +3,7 @@
 // and would send them to "Sign in first"). Every signed in actor gets a sign out control.
 import { ACCOUNT_NAV_LABEL } from './account-copy';
 import { PUBLISHER_NAV_LABEL } from './publisher-copy';
+import { RULES_TITLE } from './ops-rules-copy';
 
 export const SIGN_OUT_LABEL = 'Sign out';
 
@@ -30,7 +31,14 @@ export function navItems(kind: NavActorKind): { items: NavItem[]; sign_out: bool
     case 'publisher':
       return { items: [{ label: PUBLISHER_NAV_LABEL, href: '/publisher' }, HELP], sign_out: true };
     case 'operator':
-      return { items: [{ label: 'Operations', href: '/ops' }, HELP], sign_out: true };
+      return {
+        items: [
+          { label: 'Operations', href: '/ops' },
+          { label: RULES_TITLE, href: '/ops/rules' },
+          HELP,
+        ],
+        sign_out: true,
+      };
     default:
       return { items: [FIND, HELP, { label: 'Sign in', href: '/signin' }], sign_out: false };
   }

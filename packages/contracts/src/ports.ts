@@ -64,6 +64,8 @@ export const IdPrefixSchema = z.enum([
   'ale',
   // BR-2: one stored rule setting.
   'rls',
+  // POB-M1: one payout to a publisher.
+  'pay',
 ]);
 export type IdPrefix = z.infer<typeof IdPrefixSchema>;
 export interface Ids {
@@ -173,7 +175,13 @@ export interface ContentStore {
 }
 
 // ---------- Model ----------
-export const ModelPurposeSchema = z.enum(['brief_parse', 'pack_compose']);
+// INT-GA: txn_query (plain words to filters) and explain_order (the explain panel) are added, additively.
+export const ModelPurposeSchema = z.enum([
+  'brief_parse',
+  'pack_compose',
+  'txn_query',
+  'explain_order',
+]);
 export type ModelPurpose = z.infer<typeof ModelPurposeSchema>;
 export const ModelRequestSchema = z
   .object({ purpose: ModelPurposeSchema, system: z.string(), input: z.unknown() })

@@ -15,13 +15,18 @@
 // unreadable or blocked order), and waking at once only reads it again. Such a pass sleeps up to
 // max_sleep_ms. A future due time is still waited for, and a pass that did something still comes
 // back after MIN_SLEEP_MS.
+// POB-M1: with a `payouts` option each pass also runs one payout pass (create the payouts that are due, send them), after the
+// windows are swept and before webhooks are delivered, in its own try/catch (a failure is logged as jobs.loop.payouts_failed).
+// With the paypal_outbound switch off the pass gets NO port: due payouts are still created and none is sent. Otherwise the
+// port is wrapped with the lease guard, so a lost lease answers `blocked` and the provider is never reached. A configured
+// port of null (no payout port in this mode) behaves like the switch being off.
 // PG-2 (D-049): with a `leader` election (Postgres only) the body runs only while this process holds
 // the lease. Without the lease the loop retries the election every few seconds and runs nothing, not
 // even recovery. Recovery runs once per leadership term. A lease that is lost ends the term at once:
 // no new pass starts, and a pass already running can no longer reach the provider (its calls answer
 // `blocked`), so a successor never works beside a predecessor's tail. stop() gives the lease back.
-import { nextDueAt, recoverOnStartup, runDue } from '@umsbx/payments';
-import type { PaymentsDeps, TraceContext } from '@umsbx/contracts';
+import { nextDueAt, recoverOnStartup, runDue, runPayoutPass } from '@umsbx/payments';
+import type { PaymentsDeps, PayoutPort, TraceContext } from '@umsbx/contracts';
 import { withTraceContext } from '@umsbx/obs';
 import { sealDue, sealPreviousDay } from '@umsbx/trace';
 import { DEFAULT_CALL_GAP_MS, moneyCalls, pollAllowance, rateLimited } from './budget';
@@ -63,6 +68,16 @@ function ledBy<T extends object>(port: T, leading: () => boolean): T {
   });
 }
 
+/** The payout port behind the same lease guard: once the lease is gone every send answers `blocked` and nothing is sent. */
+function ledPayoutPort(port: PayoutPort, leading: () => boolean): PayoutPort {
+  return {
+    send: (req) =>
+      leading()
+        ? port.send(req)
+        : Promise.resolve({ kind: 'blocked' as const, by: 'lease' as const }),
+  };
+}
+
 /** A pass that finds more due work runs again soon, but never spins. */
 const MIN_SLEEP_MS = 100;
 /** A paid order is re-read at most this often in sandbox mode (ASM-52) ... */
@@ -101,6 +116,11 @@ export function startLoop(
      * the payments work. The import has its own may-fetch check, so it is kicked while the outbound switch is off.
      */
     imports?: ImportRunner;
+    /**
+     * POB-M1: one payout pass per loop pass. `port` is the only way money goes out (the dry run in this lane); null means
+     * this mode has no payout port, so payouts are created and not sent.
+     */
+    payouts?: { port: PayoutPort | null };
   },
 ): { stop(): Promise<void>; kickImports(): void } {
   let stopped = false;
@@ -316,6 +336,15 @@ export function startLoop(
             }
           }
           await d.sweepWindows({ max_items: o.max_items });
+          if (o.payouts !== undefined) {
+            try {
+              const port =
+                paused || o.payouts.port === null ? null : ledPayoutPort(o.payouts.port, leading);
+              await runPayoutPass(d, port, { max_items: o.max_items });
+            } catch (e) {
+              fail('jobs.loop.payouts_failed', e);
+            }
+          }
           if (o.deliver !== undefined) {
             try {
               await o.deliver();

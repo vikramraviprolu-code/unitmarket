@@ -254,6 +254,18 @@ describe('migration 0017', () => {
               'publisher_domains',
               'import_batches',
               'import_items',
+              // POB-M1 (migration 0029): the fee on top and the payouts.
+              'fee_settings',
+              'offer_price_parts',
+              'order_unit_parts',
+              'payouts',
+              'payout_items',
+              'adjustment_settlements',
+              'payout_adjustment_sources',
+              // POB-P1 (migration 0028): publisher accounts, invites and PayPal links.
+              'publisher_accounts',
+              'publisher_invites',
+              'publisher_paypal_links',
               // INT-CTL (migration 0026): the seeded API exposure rows.
               'api_exposure',
             ].includes(t),
