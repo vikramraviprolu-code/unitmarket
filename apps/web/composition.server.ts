@@ -368,6 +368,8 @@ export { WORDS as TRACE_WORDS } from '@umsbx/trace';
 // INT-OPS-B: the in-process journal verifier of TR0, for the Invariants tile (read only).
 export { formatTraceFinding, verifyTrace } from '@umsbx/db';
 export { filterLibrary, isPlainLibraryQuery, parseLibraryQuery } from '@umsbx/library';
+// INT-OPS-C: the operator cap revoke, for the Agents and API tab module.
+export { revokeMandateAsOperator } from '@umsbx/mandates';
 // INT-GA: the assist code (plain-words search, the explain panel) and AL's catalogue, for the assist composition module.
 // GA-L5: the model port itself reaches it as App.model.
 export { assistQuery, explainOrder, orderFixIds } from '@umsbx/assist';

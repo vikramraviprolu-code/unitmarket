@@ -100,6 +100,8 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/ops/switches/[name]/off/route.ts': () => import('./app/api/ops/switches/[name]/off/route'),
   'api/ops/switches/[name]/on/route.ts': () => import('./app/api/ops/switches/[name]/on/route'),
   'api/ops/agent-buy/route.ts': () => import('./app/api/ops/agent-buy/route'),
+  'api/ops/api-keys/[id]/revoke/route.ts': () => import('./app/api/ops/api-keys/[id]/revoke/route'),
+  'api/ops/mandates/[id]/revoke/route.ts': () => import('./app/api/ops/mandates/[id]/revoke/route'),
   'api/ops/alerts/[id]/acknowledge/route.ts': () =>
     import('./app/api/ops/alerts/[id]/acknowledge/route'),
   'api/ops/alerts/[id]/reopen/route.ts': () => import('./app/api/ops/alerts/[id]/reopen/route'),

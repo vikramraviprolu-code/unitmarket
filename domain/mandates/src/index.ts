@@ -6,5 +6,20 @@ export { ASK_BUYER_TEXT, MAX_AMOUNT_MINOR, evaluate, remainingOf } from './budge
 export type { MandateRow, RefusalReason, Verdict } from './budget';
 export { attachOrder, commit, release, reserve, settleHeld } from './reserve';
 export type { MandateDeps, ReserveError, ReserveInput } from './reserve';
-export { MAX_MANDATE_DAYS, checkBudget, createMandate, getMandate, revokeMandate } from './store';
-export type { BudgetResult, CreateError, CreateMandateInput, MandateView } from './store';
+export {
+  MAX_MANDATE_DAYS,
+  OPERATOR_REVOKE_REASONS,
+  checkBudget,
+  createMandate,
+  getMandate,
+  revokeMandate,
+  revokeMandateAsOperator,
+} from './store';
+export type {
+  BudgetResult,
+  CreateError,
+  CreateMandateInput,
+  MandateView,
+  OperatorRevokeError,
+  OperatorRevokeReason,
+} from './store';
