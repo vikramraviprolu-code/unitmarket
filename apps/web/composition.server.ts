@@ -138,7 +138,8 @@ import {
   ownAgreement,
   seedAgreements,
   // POB-I1: the web import.
-  ZERO_FEE_POLICY,
+  UNREADABLE_FEE_POLICY,
+  importFeeFrom,
   checkDomain as importCheckDomain,
   editItem as importEditItem,
   getBatch as importGetBatch,
@@ -2294,9 +2295,14 @@ function buildApp(config: Config, opts: AppOptions): App {
       opts.test_import_fetcher ??
       (config.node_env !== 'test' && !maintenance ? createFeedFetcher() : null),
     mayFetch: async () => !maintenance && (await switches.isOn('paypal_outbound')),
+    // POB-G (D-096): the fee in force. A test may inject a fixed policy (AppOptions.import_fee). Otherwise the setting is
+    // read each time (review, edit, publish), so a changed rate shows at the next call with no restart. When the setting
+    // cannot be read the loader throws: the review shows no buyer price and publish answers fee_unavailable (fail closed).
+    // `fee` is the fixed policy a caller without the loader would use; it is never a silent zero for the real app.
     get fee() {
-      return opts.import_fee ?? ZERO_FEE_POLICY;
+      return opts.import_fee ?? UNREADABLE_FEE_POLICY;
     },
+    loadFee: async () => opts.import_fee ?? importFeeFrom(await loadFeePolicy(db)),
   };
   let kickImports: () => void = () => undefined;
 

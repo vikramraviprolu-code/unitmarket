@@ -143,7 +143,13 @@ export type {
 // items, the publisher reviews and publishes. The fetcher and the fee are ports; nothing here opens a socket.
 export { MAX_DOMAINS_PER_PUBLISHER, checkDomain, listDomains, requestDomain } from './domain-proof';
 export type { DomainView } from './domain-proof';
-export { ZERO_FEE_POLICY, buyerPriceOf } from './import-fee';
+export {
+  UNREADABLE_FEE_POLICY,
+  ZERO_FEE_POLICY,
+  buyerPriceOf,
+  importFeeFrom,
+  resolveImportFee,
+} from './import-fee';
 export type { ImportFeePolicy } from './import-fee';
 export {
   BATCH_DEADLINE_MS,

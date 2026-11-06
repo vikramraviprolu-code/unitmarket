@@ -2,15 +2,21 @@
 // through the existing publisher offer path: the article (with the hosted copy made at staging), offer
 // version 1 live, the authorisation row and an audit row. The attestation of rights is asked once per batch.
 //
-// The price is the publisher's own (set at review) and obeys the same bounds as any offer price, 1 to the
-// offer cap. An item with no price stays staged ("needs a price"). The fee of the buyer is not written here:
-// the offer carries the publisher price, and the fee is decided at the quote by the fee lane.
+// The price set at review is the publisher's own and obeys the same bounds as any offer price, 1 to the offer
+// cap. An item with no price stays staged ("needs a price"). POB-G (D-089 item 3, D-096 item 2): the offer is
+// listed at the BUYER price, the publisher's price plus the fee in force, and the split is recorded in the same
+// transaction as the offer (recordOfferParts), so the sale carries it to the ledger (POB-M1). The rate is read
+// once for the batch (`loadFee`); a fee that cannot be read refuses the publish before anything is written
+// (fail closed: never a price listed without its fee). A buyer price over the offer cap is `bad_price`.
 //
-// Each offer carries both access options (keep and read online) at the publisher's price, so a buyer gets the
+// Each offer carries both access options (keep and read online) at the buyer price, so a buyer gets the
 // copy UnitMarket hosts. An item whose transaction fails stays staged and is counted; the others go on.
 import { IdSchema, err, ok } from '@umsbx/contracts';
 import type { Actor, Result } from '@umsbx/contracts';
-import { PUB_ATTEST_1, checkPrice, createOfferInTx } from './write';
+import { buyerPriceOf, resolveImportFee } from './import-fee';
+import type { ImportFeePolicy } from './import-fee';
+import { PUB_ATTEST_1, checkPrice, createOfferInTx, offerCurrencyFor } from './write';
+import type { FeeParts } from './fee';
 import type { ImportDeps, ImportError, ImportErrorCode } from './import-types';
 
 export interface PublishSummary {
@@ -47,16 +53,11 @@ export async function publishBatch(
   if (pub.rows[0]?.status !== 'active') return fail('publisher_not_active');
   if (b.state === 'queued' || b.state === 'running') return fail('batch_not_ready');
 
-  // The attestation of rights: ticked once per batch, then remembered.
-  if (b.attested_at == null) {
-    if (input.attestation !== true) return fail('attestation_required');
-    const at = deps.clock.now().toISOString();
-    await deps.db.query(
-      `UPDATE import_batches SET attested_at = $2, attestation_version = $3, updated_at = $2
-        WHERE id = $1 AND attested_at IS NULL`,
-      [input.batch_id, at, PUB_ATTEST_1],
-    );
-  }
+  // The rate in force, read once for the batch; the currency is the one of the publisher's corridor.
+  const policy = await resolveImportFee(deps);
+  if (policy === null) return fail('fee_unavailable');
+  const currency = await offerCurrencyFor(deps.db, actor);
+  if (currency === null) return fail('no_corridor');
 
   const wanted =
     input.item_ids === undefined
@@ -77,6 +78,26 @@ export async function publishBatch(
           [input.batch_id, actor.publisher_id, wanted],
         );
 
+  // A fee the policy cannot give for a price about to be listed refuses the whole publish, before the attestation is
+  // recorded or anything is written (a price is never listed without its fee).
+  for (const row of staged.rows) {
+    if (row.price_minor == null) continue;
+    const price = Number(row.price_minor);
+    if (checkPrice(price, deps.offer_max_minor).ok && partsOf(policy, price, currency) === null)
+      return fail('fee_unavailable');
+  }
+
+  // The attestation of rights: ticked once per batch, then remembered.
+  if (b.attested_at == null) {
+    if (input.attestation !== true) return fail('attestation_required');
+    const at = deps.clock.now().toISOString();
+    await deps.db.query(
+      `UPDATE import_batches SET attested_at = $2, attestation_version = $3, updated_at = $2
+        WHERE id = $1 AND attested_at IS NULL`,
+      [input.batch_id, at, PUB_ATTEST_1],
+    );
+  }
+
   const summary: PublishSummary = { published: 0, needs_price: 0, bad_price: 0, failed: 0 };
   for (const row of staged.rows) {
     const price = row.price_minor == null ? null : Number(row.price_minor);
@@ -88,8 +109,18 @@ export async function publishBatch(
       summary.bad_price += 1;
       continue;
     }
+    const parts = partsOf(policy, price, currency);
+    if (parts === null) {
+      // Answered fine in the check above and not now: a policy that changes its mind. Nothing is written for it.
+      summary.failed += 1;
+      continue;
+    }
+    if (!checkPrice(parts.buyer_minor, deps.offer_max_minor).ok) {
+      summary.bad_price += 1;
+      continue;
+    }
     try {
-      const done = await publishOne(deps, actor, row.id as string, price);
+      const done = await publishOne(deps, actor, row.id as string, parts);
       if (done) summary.published += 1;
     } catch {
       summary.failed += 1;
@@ -112,7 +143,7 @@ async function publishOne(
   deps: ImportDeps,
   actor: Extract<Actor, { kind: 'publisher' }>,
   item_id: string,
-  price: number,
+  parts: FeeParts,
 ): Promise<boolean> {
   return deps.db.transaction(async (tx) => {
     const cur = await tx.query<Row>(
@@ -149,14 +180,39 @@ async function publishOne(
         `web_import:${actor.publisher_id}`,
       ],
     );
-    const made = await createOfferInTx(deps, tx, actor, article_id, [
-      { option: 'keep_retrieve', price_minor: price },
-      { option: 'online_read', price_minor: price },
-    ]);
+    const made = await createOfferInTx(
+      deps,
+      tx,
+      actor,
+      article_id,
+      [
+        { option: 'keep_retrieve', price_minor: parts.buyer_minor },
+        { option: 'online_read', price_minor: parts.buyer_minor },
+      ],
+      parts,
+    );
     await tx.query(
       `UPDATE import_items SET state = 'published', article_id = $2, offer_id = $3, updated_at = $4 WHERE id = $1`,
       [item_id, article_id, made.offer_id, at],
     );
     return true;
   });
+}
+
+/**
+ * The split of one publisher price through the policy, or null when the policy gives no usable answer (it throws, answers
+ * something that is not a whole fee, or charges a fee without naming its rate). Fee 0 with no rate records rate 0.
+ */
+function partsOf(policy: ImportFeePolicy, seller_minor: number, currency: string): FeeParts | null {
+  const priced = buyerPriceOf(policy, seller_minor, currency);
+  if (priced === null) return null;
+  const fee_bps = policy.fee_bps ?? (priced.fee_minor === 0 ? 0 : null);
+  if (fee_bps === null || !Number.isSafeInteger(fee_bps) || fee_bps < 0) return null;
+  return {
+    seller_minor,
+    fee_minor: priced.fee_minor,
+    buyer_minor: priced.buyer_minor,
+    fee_bps,
+    tax_minor: 0,
+  };
 }

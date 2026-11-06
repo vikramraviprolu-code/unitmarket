@@ -4,12 +4,15 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { PAYOUT_RETRY_AFTER_MS } from '@umsbx/contracts';
 import { executeRefund, requestRefund, runPayoutPass } from './index';
-import { OPERATOR, makeWorld, paid } from './ops/support';
+import { OPERATOR, paid } from './ops/support';
 import type { OpsWorld } from './ops/support';
 import {
+  PAYEE_EMAIL,
   atEnd,
   itemsOf,
   ledgerKinds,
+  linkPayee,
+  makePayoutWorld,
   pastWindow,
   payoutRows,
   recording,
@@ -37,7 +40,7 @@ async function refund(deps: typeof w.deps, unit_id: string, minor: number | null
 
 describe('sending is committed before the port is called', () => {
   it('the stored state is sending while the port works, and sent afterwards', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     const port = spyPort(w);
@@ -52,7 +55,7 @@ describe('sending is committed before the port is called', () => {
 
 describe('a send that does not return', () => {
   it('crash after the provider got it, then a refund, then a restart: one payout, one executed send, the same key', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
     await pastWindow(w);
@@ -82,7 +85,7 @@ describe('a send that does not return', () => {
   });
 
   it('a throw before the provider got it is the same: still sending, resent with the same key', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     const port = spyPort(w, 'throw_before_execute');
@@ -95,7 +98,7 @@ describe('a send that does not return', () => {
   });
 
   it('a blocked answer (switch off, lease lost) changes nothing and is tried again', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     const port = spyPort(w, 'blocked');
@@ -110,7 +113,7 @@ describe('a send that does not return', () => {
   });
 
   it('a payout in sending is never replaced by a second payout for the same unit', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     const port = spyPort(w, 'throw_after_execute');
@@ -121,7 +124,7 @@ describe('a send that does not return', () => {
   });
 
   it('while sending, only a sent or confirmed or failed answer moves it on; the database refuses a cancel', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     await pass(spyPort(w, 'throw_after_execute'));
@@ -133,7 +136,7 @@ describe('a send that does not return', () => {
 
 describe('a payout the provider refused', () => {
   it('goes failed with the reason, tells an operator, and holds its units for 24 hours', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
     await pastWindow(w);
@@ -162,7 +165,7 @@ describe('a payout the provider refused', () => {
   });
 
   it('after 24 hours it is cancelled with an audit row and the same pass pays the units again', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     const port = spyPort(w, 'reject');
@@ -192,7 +195,7 @@ describe('a payout the provider refused', () => {
   });
 
   it('a refund while the payout is failed cancels it, books no adjustment, and the smaller amount is paid after the hold', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
     await pastWindow(w);
@@ -213,7 +216,7 @@ describe('a payout the provider refused', () => {
 
 describe('the payee', () => {
   it('a publisher whose payee is the shared owner account is not paid out, at creation', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     await w.rows("UPDATE publishers SET payee_shared = true WHERE id = 'pub_1'");
@@ -225,7 +228,7 @@ describe('the payee', () => {
   });
 
   it('a publisher who is not active is not paid out, at creation', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     await w.rows("UPDATE publishers SET status = 'suspended' WHERE id = 'pub_1'");
@@ -235,7 +238,7 @@ describe('the payee', () => {
   });
 
   it('a payout created while the publisher was fine is refused at send when they are not: the port is not called', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     await pass(null);
@@ -243,21 +246,179 @@ describe('the payee', () => {
     for (const sql of [
       "UPDATE publishers SET payee_shared = true WHERE id = 'pub_1'",
       "UPDATE publishers SET payee_shared = false, status = 'suspended' WHERE id = 'pub_1'",
-      "UPDATE publishers SET status = 'active', paypal_merchant_id = 'MERCHNEW' WHERE id = 'pub_1'",
-      "UPDATE publishers SET paypal_merchant_id = NULL WHERE id = 'pub_1'",
     ]) {
+      // POB-G: these two stay an operator decision: the payout waits as it is. A payee that changed is the next tests.
       await w.rows(sql);
       expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 });
       expect(port.calls).toHaveLength(0);
       expect((await payoutRows(w)).map((p) => p.state)).toEqual(['due']);
     }
-    await w.rows("UPDATE publishers SET paypal_merchant_id = 'MERCH1' WHERE id = 'pub_1'");
+    await w.rows("UPDATE publishers SET status = 'active' WHERE id = 'pub_1'");
     expect(await pass(port)).toMatchObject({ sent: 1, refused: 0 });
-    expect(port.calls[0]!.payee_merchant_id).toBe('MERCH1');
+    expect(port.calls[0]!.payee_merchant_id).toBe(PAYEE_EMAIL.pub_1);
+  });
+
+  it('POB-G: no verified PayPal link, no payout: not at creation, and the stub merchant id column is not a payee', async () => {
+    w = await makePayoutWorld();
+    await paid(w);
+    await pastWindow(w);
+    // the legacy column still holds a verified merchant id (MERCH1); it must not be used
+    expect(
+      (
+        await w.rows<{ paypal_merchant_id: string }>(
+          "SELECT paypal_merchant_id FROM publishers WHERE id = 'pub_1'",
+        )
+      )[0],
+    ).toEqual({ paypal_merchant_id: 'MERCH1' });
+    await w.rows("DELETE FROM publisher_paypal_links WHERE publisher_id = 'pub_1'");
+    const port = spyPort(w);
+    expect(await pass(port)).toMatchObject({ created: 0, sent: 0 });
+    expect(await payoutRows(w)).toEqual([]);
+    await w.rows(
+      `INSERT INTO publisher_paypal_links (publisher_id, paypal_email, state, verified_by, verified_at, created_at, updated_at)
+       VALUES ('pub_1', 'asked@example.test', 'requested', NULL, NULL, now(), now())`,
+    );
+    expect(await pass(port)).toMatchObject({ created: 0, sent: 0 }); // requested is not verified
+    await linkPayee(w, 'pub_1', 'asked@example.test');
+    expect(await pass(port)).toMatchObject({ created: 1, sent: 1 });
+    expect(port.calls[0]!.payee_merchant_id).toBe('asked@example.test');
+    expect((await payoutRows(w))[0]!.payee_merchant_id).toBe('asked@example.test');
+  });
+
+  const REPLACED =
+    "UPDATE publisher_paypal_links SET paypal_email = 'moved@example.test', state = 'requested', verified_by = NULL, verified_at = NULL WHERE publisher_id = 'pub_1'";
+  const liveItems = (payout_id: string) =>
+    w.rows<{ n: number }>(
+      'SELECT count(*)::int AS n FROM payout_items WHERE payout_id = $1 AND live',
+      [payout_id],
+    );
+  const refusalAlerts = () =>
+    w.rows<{ detail: { reason: string } }>(
+      "SELECT detail FROM alerts WHERE kind = 'payout_failed' ORDER BY detail ->> 'reason'",
+    );
+
+  it('POB-G: a due payout whose address was replaced and not yet checked is cancelled, frees its units, tells an operator once, sends nothing', async () => {
+    w = await makePayoutWorld();
+    await paid(w);
+    await pastWindow(w);
+    await pass(null);
+    const p = (await payoutRows(w))[0]!;
+    expect(p.payee_merchant_id).toBe(PAYEE_EMAIL.pub_1);
+    expect(await liveItems(p.id)).toEqual([{ n: 1 }]);
+    await w.rows(REPLACED);
+    const port = spyPort(w);
+    const rec = recording(w);
+    expect(await pass(port, rec.deps)).toMatchObject({ sent: 0, refused: 1 });
+    expect(port.calls).toHaveLength(0);
+    expect((await payoutRows(w)).map((x) => [x.id, x.state])).toEqual([[p.id, 'cancelled']]);
+    expect(await liveItems(p.id)).toEqual([{ n: 0 }]);
+    const reasons = (await refusalAlerts()).map((x) => x.detail.reason);
+    expect(reasons).toEqual([`payout_refused_${p.id}_no_payee`]);
+    // the cancel is audited with the reason only: no address anywhere in the audit entries or the alerts
+    expect(
+      rec.audits.filter((e) => e.action === 'payout.cancelled').map((e) => [e.target, e.reason]),
+    ).toEqual([[p.id, 'no_payee']]);
+    expect(JSON.stringify(rec.audits)).not.toContain('example.test');
+    expect(JSON.stringify(await w.rows('SELECT * FROM alerts'))).not.toContain('example.test');
+    // nothing to pay until a verified address exists, and no second alert
+    expect(await pass(port)).toMatchObject({ created: 0, sent: 0, refused: 0 });
+    expect(await refusalAlerts()).toHaveLength(1);
+  });
+
+  it('POB-G: once the operator verifies the new address the same units are paid to it, once, with the same amount and netting', async () => {
+    w = await makePayoutWorld();
+    const a = await paid(w, { offers: ['ofr_1'] });
+    const unitA = await unitIdOf(w, a.order_id);
+    w.tick(30 * 60_000);
+    const c = await paid(w, { buyer_id: 'buy_B', offers: ['ofr_2'] });
+    const unitC = await unitIdOf(w, c.order_id);
+    const port = spyPort(w);
+    await atEnd(w, unitA, 1000);
+    await pass(port); // p1 pays unit A to the first address
+    await refund(w.deps, unitA, 100); // an adjustment of 100 against p1
+    await atEnd(w, unitC, 1000);
+    await pass(null); // p2 pays unit C minus the adjustment, due
+    const p2 = (await payoutRows(w)).at(-1)!;
+    const settled = () =>
+      w.rows<{ n: number }>(
+        'SELECT coalesce(sum(amount_minor), 0)::int AS n FROM adjustment_settlements WHERE live',
+      );
+    expect(p2.state).toBe('due');
+    expect(await settled()).toEqual([{ n: 100 }]);
+    const items = await itemsOf(w, p2.id);
+
+    await w.rows(REPLACED);
+    expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 });
+    expect((await payoutRows(w)).at(-1)).toMatchObject({ id: p2.id, state: 'cancelled' });
+    expect(await settled()).toEqual([{ n: 0 }]); // the netting was released with the cancel
+    expect(port.calls).toHaveLength(1); // only p1, to the first address
+
+    w.tick(60_000);
+    await linkPayee(w, 'pub_1', 'moved@example.test'); // the operator checks the new address
+    expect(await pass(port)).toMatchObject({ created: 1, sent: 1, refused: 0 });
+    const rows = await payoutRows(w);
+    expect(rows.map((x) => x.state)).toEqual(['sent', 'cancelled', 'sent']);
+    const p3 = rows.at(-1)!;
+    expect(p3).toMatchObject({
+      amount_minor: p2.amount_minor,
+      payee_merchant_id: 'moved@example.test',
+    });
+    expect(await itemsOf(w, p3.id)).toEqual(items);
+    expect(await settled()).toEqual([{ n: 100 }]);
+    expect(port.calls.map((x) => x.payee_merchant_id)).toEqual([
+      PAYEE_EMAIL.pub_1,
+      'moved@example.test',
+    ]);
+    expect(await pass(port)).toMatchObject({ created: 0, sent: 0 }); // paid once
+  });
+
+  it('POB-G: a changed address that was verified again is payee_changed: the due payout is cancelled and repaid to the new address', async () => {
+    w = await makePayoutWorld();
+    await paid(w);
+    await pastWindow(w);
+    await pass(null);
+    const p = (await payoutRows(w))[0]!;
+    await linkPayee(w, 'pub_1', 'moved@example.test');
+    const port = spyPort(w);
+    expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 });
+    expect(port.calls).toHaveLength(0);
+    expect((await payoutRows(w))[0]).toMatchObject({ id: p.id, state: 'cancelled' });
+    expect((await refusalAlerts()).map((x) => x.detail.reason)).toEqual([
+      `payout_refused_${p.id}_payee_changed`,
+    ]);
+    // the cancelled payout keeps the address it was made for; the next pass pays the units to the new one
+    expect((await payoutRows(w))[0]!.payee_merchant_id).toBe(PAYEE_EMAIL.pub_1);
+    expect(await pass(port)).toMatchObject({ created: 1, sent: 1 });
+    expect(port.calls.map((x) => x.payee_merchant_id)).toEqual(['moved@example.test']);
+  });
+
+  it('POB-G: a payout already in sending is refused when the address changed, and is not cancelled (the provider may hold it)', async () => {
+    w = await makePayoutWorld();
+    await paid(w);
+    await pastWindow(w);
+    const port = spyPort(w, 'throw_after_execute');
+    await pass(port);
+    const p = (await payoutRows(w))[0]!;
+    expect(p.state).toBe('sending');
+    await linkPayee(w, 'pub_1', 'moved@example.test');
+    expect(await pass(port, w.restart())).toMatchObject({ sent: 0, refused: 1 });
+    expect(port.calls).toHaveLength(1);
+    expect((await payoutRows(w)).map((x) => [x.id, x.state])).toEqual([[p.id, 'sending']]);
+    expect(await liveItems(p.id)).toEqual([{ n: 1 }]);
+    expect(
+      await w.rows("SELECT 1 FROM audit_log WHERE action = 'payout.cancelled' AND target = $1", [
+        p.id,
+      ]),
+    ).toEqual([]);
+    // and the same with no verified address at all
+    await w.rows(REPLACED);
+    expect(await pass(port, w.restart())).toMatchObject({ sent: 0, refused: 1 });
+    expect((await payoutRows(w)).map((x) => x.state)).toEqual(['sending']);
+    expect(port.calls).toHaveLength(1);
   });
 
   it('a payout already in sending is checked again before it is resent', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     const port = spyPort(w, 'throw_after_execute');
@@ -276,7 +437,7 @@ describe('a refund while the payout is in flight, then the payout fails (review 
     );
 
   it('refund during sending, a rejected resend, 24 hours, cancel: the unit is paid again exactly 300, once', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
     await pastWindow(w);
@@ -305,7 +466,7 @@ describe('a refund while the payout is in flight, then the payout fails (review 
   });
 
   it('a refund after the payout was sent is linked to it and is netted from the next payout', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
     await pastWindow(w);
@@ -316,7 +477,7 @@ describe('a refund while the payout is in flight, then the payout fails (review 
   });
 
   it('an adjustment booked while its payout is still sending is not netted until that payout has gone out', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w, { offers: ['ofr_1'] });
     const unitA = await unitIdOf(w, a.order_id);
     w.tick(30 * 60_000);
@@ -339,7 +500,7 @@ describe('a refund while the payout is in flight, then the payout fails (review 
 
 describe('a payout refused at send tells an operator (review M1)', () => {
   it('raises one payout_failed alert for each payout and reason, and not again on the next pass', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
     await pastWindow(w);
@@ -356,12 +517,8 @@ describe('a payout refused at send tells an operator (review M1)', () => {
         "UPDATE publishers SET payee_shared = false, status = 'suspended' WHERE id = 'pub_1'",
         'inactive',
       ],
-      [
-        "UPDATE publishers SET status = 'active', paypal_merchant_id = 'MERCHNEW' WHERE id = 'pub_1'",
-        'payee_changed',
-      ],
-      ["UPDATE publishers SET paypal_merchant_id = NULL WHERE id = 'pub_1'", 'no_payee'],
     ];
+    // POB-G: a changed or unverified address cancels a due payout, so it can raise its alert only once (tests above).
     for (const [i, [sql, code]] of steps.entries()) {
       await w.rows(sql);
       expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 });

@@ -9,7 +9,9 @@ import type {
   PayoutSendRequest,
   PayoutSendResult,
 } from '@umsbx/contracts';
+import { makeWorld } from './ops/support';
 import type { OpsWorld } from './ops/support';
+import type { WorldOptions } from './support';
 
 /**
  * Gives an offer (keep_retrieve, version 1) a fee split: seller plus fee equal its listed price. Call it before
@@ -180,4 +182,29 @@ export async function unitIdOf(w: OpsWorld, order_id: Id, publisher_id?: string)
     publisher_id === undefined ? [order_id] : [order_id, publisher_id],
   );
   return r[0]!.id;
+}
+
+/** The verified PayPal address of the publishers of the test world (POB-G: the payee of a payout is this address). */
+export const PAYEE_EMAIL: Record<string, string> = {
+  pub_1: 'pub1.payee@example.test',
+  pub_2: 'pub2.payee@example.test',
+};
+
+/** A verified publisher_paypal_links row, as an operator check leaves it. */
+export async function linkPayee(w: OpsWorld, publisher_id: Id, email: string): Promise<void> {
+  const at = w.clock.now().toISOString();
+  await w.rows(
+    `INSERT INTO publisher_paypal_links (publisher_id, paypal_email, state, verified_by, verified_at, created_at, updated_at)
+     VALUES ($1, $2, 'verified', 'opr_test', $3, $3, $3)
+     ON CONFLICT (publisher_id) DO UPDATE
+       SET paypal_email = EXCLUDED.paypal_email, state = 'verified', verified_by = 'opr_test', verified_at = $3, updated_at = $3`,
+    [publisher_id, email, at],
+  );
+}
+
+/** The payments test world with both publishers linked to a verified PayPal address, as a claimed publisher would be. */
+export async function makePayoutWorld(opts: WorldOptions = {}): Promise<OpsWorld> {
+  const w = await makeWorld(opts);
+  for (const [id, email] of Object.entries(PAYEE_EMAIL)) await linkPayee(w, id, email);
+  return w;
 }

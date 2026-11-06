@@ -11,6 +11,7 @@ vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 const NOW = Date.parse('2026-11-05T12:00:00.000Z');
 const DAY = 86_400_000;
+const HARBOUR_EMAIL = 'harbour.payments@example.test';
 let app: App;
 let actor: Actor;
 let actorB: Actor;
@@ -26,6 +27,13 @@ beforeAll(async () => {
     `SELECT id FROM buyers WHERE auth_subject = 'persona:buyer-b'`,
   );
   actorB = { kind: 'buyer', buyer_id: b.rows[0]!.id };
+  // POB-G: a payout goes to the verified PayPal link of the publisher, and a demo publisher has none until one is checked.
+  const at = new Date(NOW).toISOString();
+  await app.db.query(
+    `INSERT INTO publisher_paypal_links (publisher_id, paypal_email, state, verified_by, verified_at, created_at, updated_at)
+     SELECT id, $2, 'verified', 'opr_test', $1, $1, $1 FROM publishers WHERE slug = 'harbour-ledger'`,
+    [at, HARBOUR_EMAIL],
+  );
 });
 afterAll(async () => {
   await app.close();
@@ -109,7 +117,7 @@ describe('Engine.runPayouts', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ environment: 'dryrun', state: 'confirmed' });
     expect(rows[0]!.provider_ref).toMatch(/^DRYRUN-umsP-pay_/);
-    expect(rows[0]!.payee_merchant_id).toMatch(/^DRYRUN/); // the synthetic dry run payee, never a real account
+    expect(rows[0]!.payee_merchant_id).toBe(HARBOUR_EMAIL); // the verified PayPal link, not the stub merchant id
     expect(await app.engine.runPayouts()).toMatchObject({ created: 0, sent: 0 });
     expect((await payouts()).rows).toHaveLength(1);
     expect(order.order_id).toBeTruthy();
@@ -152,6 +160,7 @@ describe('Engine.opsPayouts', () => {
     });
     expect(view!.rows[0]!.publisher_name).toBeTruthy();
     expect(JSON.stringify(view)).not.toMatch(/DRYRUN[A-Z0-9]{5,}/); // no payee id on the page
+    expect(JSON.stringify(view)).not.toContain(HARBOUR_EMAIL); // and no address either
     expect(await app.engine.opsPayouts(actor)).toBeNull();
     expect(await app.engine.opsPayouts({ kind: 'publisher', publisher_id: 'pub_x' })).toBeNull();
     expect(await app.engine.opsPayouts({ kind: 'system' })).toBeNull();
