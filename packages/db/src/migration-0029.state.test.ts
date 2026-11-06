@@ -11,8 +11,8 @@ const clock = { now: () => new Date(T) };
 type Db = Database & { close(): Promise<void> };
 const toClose: Db[] = [];
 // Every test opens its own database and none is shared, so each is closed as soon as its test ends. Held open until
-// the end of the file, the 32 in-memory databases peaked at about 1.4 GiB, which a CI runner could not carry beside
-// the other database tests of its shard.
+// the end of the file, the 32 in-memory databases were all alive at once (several GiB at peak in one Linux
+// measurement), a likely cause of the CI runner running out of memory beside the other database tests of its shard.
 afterEach(async () => {
   for (const d of toClose.splice(0)) await d.close();
 });
