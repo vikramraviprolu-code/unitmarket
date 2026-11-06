@@ -15,6 +15,7 @@ operator, refunds_off: 503 refunds_paused: Refunds paused. Nothing was refunded.
 operator, not_captured: 409 not_captured: This payment has no captured money left to refund. Nothing was refunded.
 operator, over_refund: 409 over_refund: That is more than is left to refund on this payment. Nothing was refunded. Check the amount left and try again.
 operator, refund_in_flight: 409 refund_in_flight: A refund request is already open for this payment. Wait for it to finish, or withdraw it, then try again. Nothing new was requested.
+operator, refund_window_closed: 409 refund_window_closed: This sale's refund period has ended. Nothing was refunded. To refund it anyway, give a reason (3 to 200 characters) and send again. The reason is kept in the audit log.
 operator, unit_frozen: 409 unit_frozen: This payment is frozen: a refund list from PayPal did not add up and a person must look. Nothing can be refunded until the flag is cleared. The buyer's access is unchanged.
 operator, refund_failed: 409 refund_failed: The refund was not made: PayPal holds less than that, or did not complete it. A person has been alerted. Nothing was refunded.
 operator, refund_rejected: 409 refund_rejected: PayPal refused this refund. Nothing was refunded.

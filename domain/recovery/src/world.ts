@@ -39,6 +39,11 @@ export interface ItemOptions {
   title?: string;
   /** write bytes into content_blobs so a link can be issued; default true */
   content?: boolean;
+  /**
+   * The approval snapshot stored for the order (BR-4 reads its terms). Default: a version 1 marker, a sale
+   * approved before the terms were recorded, which has no refund deadline.
+   */
+  snapshot?: unknown;
 }
 export interface Item {
   n: number;
@@ -198,7 +203,7 @@ export async function makeWorld(seed = 'w'): Promise<World> {
       await insert('approvals', {
         id: `apr_${n}`,
         buyer_id,
-        snapshot: '{}',
+        snapshot: JSON.stringify(o.snapshot ?? { snapshot_version: '1' }),
         content_hash: HASH,
         nonce: `nonce${n}`,
         expires_at: new Date(clock.now().getTime() + 15 * 60_000).toISOString(),

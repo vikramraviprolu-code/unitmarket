@@ -13,7 +13,8 @@
     "@umsbx/access-clock": "workspace:*",
     "@umsbx/contracts": "workspace:*",
     "@umsbx/delivery": "workspace:*",
-    "@umsbx/entitlements": "workspace:*"
+    "@umsbx/entitlements": "workspace:*",
+    "@umsbx/rules": "workspace:*"
   },
   "devDependencies": {
     "@umsbx/db": "workspace:*",

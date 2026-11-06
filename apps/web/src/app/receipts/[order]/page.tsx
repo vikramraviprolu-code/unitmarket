@@ -4,6 +4,7 @@ import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { optionLabel, formatMinor, formatDateTime } from '../../../lib/format';
+import { refundWindowLine } from '../../../lib/buyer-copy';
 
 export const metadata: Metadata = { title: 'Receipt' };
 
@@ -13,6 +14,10 @@ export default async function ReceiptPage({ params }: { params: Promise<{ order:
   if (actor?.kind !== 'buyer') redirect(`/signin?next=${encodeURIComponent(`/receipts/${order}`)}`);
   const r = await (await app()).engine.buyerReceipt({ order_id: order, actor });
   if (r === null) notFound();
+  // BR-4: the refund deadline of this sale, from its frozen terms. No line for a sale without one.
+  const refundLine = refundWindowLine(
+    (await (await app()).engine.refundWindow({ actor, order_id: order })) ?? { state: 'none' },
+  );
   const cur = r.snapshot.currency;
   return (
     <>
@@ -49,6 +54,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ order:
       <p>
         Total: <strong>{formatMinor(r.snapshot.total_minor, cur)}</strong>
       </p>
+      {refundLine !== null ? <p data-testid="receipt-refund-window">{refundLine}</p> : null}
       {r.refunds.length > 0 ? (
         <section aria-labelledby="receipt-refunds-heading">
           <h2 id="receipt-refunds-heading">Refunds</h2>
