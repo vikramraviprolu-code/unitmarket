@@ -201,6 +201,8 @@ const ERRORS: Record<string, string> = {
   invalid_price: 'Enter a price like 2.50, above zero and within the limit.',
   attestation_required: 'Confirm that you have the right to sell this content before publishing.',
   batch_not_ready: 'This import is still running. Publish when it has finished.',
+  fee_unavailable:
+    'We cannot read the platform fee right now, so nothing was published. Try again in a few minutes.',
 };
 
 /** The sentence for an error code; a code we do not know gets the general one. */
@@ -227,6 +229,7 @@ export function importStatusOf(code: string): ImportStatus {
     case 'not_editable':
       return 409;
     case 'import_off':
+    case 'fee_unavailable':
       return 503;
     default:
       return 422;

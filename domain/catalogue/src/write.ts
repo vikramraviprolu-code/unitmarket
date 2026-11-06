@@ -17,6 +17,8 @@
 // authorised offer, and an uncommitted insert is invisible to it. With the share lock, a concurrent
 // write of the article bytes waits for this commit and then finds the offer (PUB-A1 review note).
 import { IdSchema, OfferOptionSchema, RightsSchema, err, ok } from '@umsbx/contracts';
+import { recordOfferParts } from './fee';
+import type { FeeParts } from './fee';
 import type {
   AccessOption,
   Actor,
@@ -570,6 +572,11 @@ export async function createOfferInTx(
   actor: Extract<Actor, { kind: 'publisher' }>,
   article_id: Id,
   options: PriceInput[],
+  /**
+   * POB-G: the split of the listed price when the caller adds a fee on top (the web import). Every option is listed at
+   * `parts.buyer_minor` and its parts are recorded in this transaction, after the offer row. Absent: no parts row, as before.
+   */
+  parts?: FeeParts,
 ): Promise<{ offer_id: Id; version: string }> {
   const pub = await tx.query<{ slug: string; status: string; country: string }>(
     'SELECT slug, status, country FROM publishers WHERE id = $1',
@@ -640,6 +647,17 @@ export async function createOfferInTx(
   } catch (e) {
     if (isUniqueViolation(e)) throw new Refused('conflict');
     throw e;
+  }
+  if (parts !== undefined) {
+    for (const o of built) {
+      if (o.price_minor !== parts.buyer_minor) throw new Refused('invalid_price');
+      await recordOfferParts(tx, deps, {
+        offer_id,
+        offer_version: '1',
+        option: o.option,
+        parts,
+      });
+    }
   }
   await tx.query(
     `INSERT INTO publisher_authorisations (id, offer_id, offer_version, authorised_by, at, created_at, updated_at, attestation_version)

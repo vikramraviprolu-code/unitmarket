@@ -29,8 +29,13 @@ export type ImportDeps = Pick<CoreDeps, 'db' | 'clock' | 'ids' | 'audit'> & {
    * a throw ends it as failed.
    */
   mayFetch: () => Promise<boolean>;
-  /** The buyer price shown at review is the publisher price plus this fee. Never stored. */
+  /** The buyer price shown at review is the publisher price plus this fee. Never stored on an item. */
   fee: ImportFeePolicy;
+  /**
+   * POB-G: reads the fee setting each time it is called (composition wires the fee lane here). When present it is used
+   * instead of `fee`; when it throws the review shows no buyer price and publish answers fee_unavailable.
+   */
+  loadFee?: () => Promise<ImportFeePolicy>;
 };
 
 export type ImportErrorCode =
@@ -54,7 +59,8 @@ export type ImportErrorCode =
   | 'invalid_title'
   | 'invalid_price'
   | 'attestation_required'
-  | 'batch_not_ready';
+  | 'batch_not_ready'
+  | 'fee_unavailable';
 
 export interface ImportError {
   code: ImportErrorCode;

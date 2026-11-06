@@ -24,7 +24,7 @@ import { sanitiseFeedText } from './feed-parse';
 import { extractSource } from './extract-structured';
 import type { Candidate } from './extract-structured';
 import { fetchChecked, sha256Hex, sha256Text } from './import-fetch';
-import { buyerPriceOf } from './import-fee';
+import { UNREADABLE_FEE_POLICY, buyerPriceOf, resolveImportFee } from './import-fee';
 import type { ImportDeps, ImportError, ImportErrorCode } from './import-types';
 
 export const BATCH_DEADLINE_MS = 120_000;
@@ -677,7 +677,7 @@ export async function listBatches(db: ImportDeps['db'], actor: Actor): Promise<B
  * actor that is not a publisher: the three look the same.
  */
 export async function getBatch(
-  deps: Pick<ImportDeps, 'db' | 'fee'>,
+  deps: Pick<ImportDeps, 'db' | 'fee' | 'loadFee'>,
   actor: Actor,
   batch_id: string,
 ): Promise<{ batch: BatchView; items: ItemView[] } | null> {
@@ -692,7 +692,8 @@ export async function getBatch(
     `SELECT ${ITEM_COLS} FROM import_items WHERE batch_id = $1 AND publisher_id = $2 ORDER BY created_at, source_key, id`,
     [batch_id, actor.publisher_id],
   );
-  return { batch: toBatch(row), items: items.rows.map((r) => toItem(r, deps.fee)) };
+  const fee = (await resolveImportFee(deps)) ?? UNREADABLE_FEE_POLICY;
+  return { batch: toBatch(row), items: items.rows.map((r) => toItem(r, fee)) };
 }
 
 export interface EditInput {
@@ -708,7 +709,7 @@ export interface EditInput {
  * read. A refused or published item is not_editable; another publisher's item is not_found.
  */
 export async function editItem(
-  deps: Pick<ImportDeps, 'db' | 'clock' | 'audit' | 'fee' | 'offer_max_minor'>,
+  deps: Pick<ImportDeps, 'db' | 'clock' | 'audit' | 'fee' | 'loadFee' | 'offer_max_minor'>,
   actor: Actor,
   input: EditInput,
 ): Promise<Result<{ item: ItemView }, ImportError>> {
@@ -732,6 +733,8 @@ export async function editItem(
       return fail('invalid_price');
   }
   if (hidden !== undefined && typeof hidden !== 'boolean') return fail('invalid_input');
+  // Read before the transaction opens: the setting is read on the database, never inside the item's transaction.
+  const fee = (await resolveImportFee(deps)) ?? UNREADABLE_FEE_POLICY;
   return deps.db.transaction(async (tx): Promise<Result<{ item: ItemView }, ImportError>> => {
     const cur = await tx.query<Row>(
       `SELECT ${ITEM_COLS}, batch_id FROM import_items WHERE id = $1 AND publisher_id = $2 FOR UPDATE`,
@@ -766,6 +769,6 @@ export async function editItem(
         hidden: hidden ?? null,
       },
     });
-    return ok({ item: toItem(upd.rows[0]!, deps.fee) });
+    return ok({ item: toItem(upd.rows[0]!, fee) });
   });
 }
