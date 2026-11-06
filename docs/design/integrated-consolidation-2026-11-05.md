@@ -132,5 +132,5 @@ Critical path: TR0 then TR1 then OPS-A, and SR0 then SR1 then OPS-B then BUY and
 - **Journal cost (TR0 N2).** A tracked write costs about 2.5x to 3x as much with the journal. Every lane that adds tracked writes (SR0, AL, BR-2, CTL) pastes the `TRACE-PERF` line in its PR. The gate refuses a PR whose journaled p95 passes 3x plain p95 on the runner.
 - **`SELECT fn()` writes (TR0 N4).** Such a write would be unattributed; INV-T2 lists it. No lane may add a SQL function that writes tracked rows.
 - **gitleaks.** It cannot run in thread sandboxes. Each PR's author pastes local output, or the gate notes it is missing.
-- **Known failing case** `due.reread.state.test.ts:55` (`it.fails`) stays as is; E2E must not count on it.
+- **Former known failing case `due.reread.state.test.ts` (`it.fails`) is a normal passing test since UNI-75.
 - **Stacked branches.** SR0 is stacked on TR0. If TR0 changes after review, SR0 rebases before its gate.
