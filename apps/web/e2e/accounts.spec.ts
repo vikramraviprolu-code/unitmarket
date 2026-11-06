@@ -242,7 +242,7 @@ test.describe('role pages', () => {
     await page.goto('/signin/operator');
     await expect(page.getByText(/Leave the name and code empty/)).toBeVisible();
     await page.goto('/help/password');
-    await expect(page.getByText('unitmarket@raviprolu.com').first()).toBeVisible();
+    await expect(page.getByText('contact@unitmarket.example').first()).toBeVisible();
     await close();
   });
 

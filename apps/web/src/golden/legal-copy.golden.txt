@@ -42,11 +42,11 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/privacy | text: The note is kept as a permanent audit record, so it cannot be changed or deleted, and the privacy export and deletion script does not cover it. Please do not put a phone number, a personal address, a password or payment details in it. An email address in the note is stored only in hashed form.
 /legal/privacy | text: No account is created by an application. The operator reviews it, and signing in for a publisher is set up separately by the owners.
 /legal/privacy | heading: Buyer accounts
-/legal/privacy | text: A buyer can make an account. We store the username, the display name and the country you give, and a hash of your password. We never store the password itself, and we do not ask for or keep an email address. Making an account also records that you accepted the Terms and this notice. When the operator deletes your data on request, your account and your sign in are removed, and the username can be used again. If you lose your password there is no reset link: the operator sets a new one on request, at unitmarket@raviprolu.com.
+/legal/privacy | text: A buyer can make an account. We store the username, the display name and the country you give, and a hash of your password. We never store the password itself, and we do not ask for or keep an email address. Making an account also records that you accepted the Terms and this notice. When the operator deletes your data on request, your account and your sign in are removed, and the username can be used again. If you lose your password there is no reset link: the operator sets a new one on request, at contact@unitmarket.example.
 /legal/privacy | heading: What we do not do
 /legal/privacy | text: There is no advertising, no tracking scripts and no third-party fonts on this site. This site does not load scripts, fonts or images from other sites.
 /legal/privacy | heading: Contact
-/legal/privacy | text: You can reach the team at unitmarket@raviprolu.com.
+/legal/privacy | text: You can reach the team at contact@unitmarket.example.
 /legal/refunds | title: Refund policy
 /legal/refunds | updated: Drafted 30 October 2026
 /legal/refunds | heading: About this policy
@@ -94,7 +94,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/publisher-terms | text: UnitMarket uses no payout mechanism. It does not call any PayPal payout service.
 /legal/publisher-terms | text: Each publisher has a statement page. It adds up the stored records of each payment: sales, refunds and reversals. The PayPal fee is shown beside them when PayPal reported it, and is not subtracted.
 /legal/publisher-terms | heading: Contact
-/legal/publisher-terms | text: You can reach the team at unitmarket@raviprolu.com.
+/legal/publisher-terms | text: You can reach the team at contact@unitmarket.example.
 /legal/publisher-terms | heading: Governing law
 /legal/publisher-terms | text: No governing law or court is named in this demo, because no company has been set up yet.
 /legal/publisher-terms | heading: Sandbox disclaimer

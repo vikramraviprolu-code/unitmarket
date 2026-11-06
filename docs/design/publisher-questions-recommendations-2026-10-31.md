@@ -249,7 +249,7 @@ Fri 6 Nov (item 12), money path and payee freeze Mon 2 Nov (item 31), team submi
 
   Sandbox fees may differ; the app shows only the fee PayPal reports in `seller_receivable_breakdown`.
 
-- (d) Why not UnitMarket setting the exact price (the original Bible rule): publishers lose control and the console loses its main
+- (d) Why not UnitMarket setting the exact price (the original planning document rule): publishers lose control and the console loses its main
   job. Why not no floor: under about 0.60 USD most of a sale goes to the fixed fee.
 - (e) BUILT. A corridor floor is S (`min_charge_minor` already exists in the corridor schema, UNVERIFIED value). A fee estimate in
   the editor conflicts with the copy rule "money figures only from stored rows"; put the table in the README instead unless the

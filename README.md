@@ -162,8 +162,8 @@ In that simulation, ten thousand agent trades of 5 to 10 cents cost about $4,926
 
 These are decisions for the owner, Vikram. They are listed here so they are not missed; delete this section once each is done.
 
-- `[OWNER CALL: contact email]` The legal and account copy, its golden files and tests, and a few docs carry the owner's contact address. Keep it, or replace it with a project address, before the repository goes public.
-- `[OWNER CALL: Bible mentions]` Several docs mention the private planning document by name. Keep, reword or remove them before the repository goes public.
+- `[DONE UNI-83: contact email]` Legal and account copy now use the placeholder `contact@unitmarket.example`. Replace it with a real project mailbox (copy sources, golden files, tests) before submission.
+- `[DONE UNI-83: planning document mentions]` Mentions of the private planning document are reworded to plain "planning document".
 - `[OWNER CALL: make public]` Only the owner flips the repository to public, after `docs/public-release-checklist.md` is done and a last gitleaks run on the final `main` is clean. Then add the licence to the repository About box.
 
 ## Legal and data

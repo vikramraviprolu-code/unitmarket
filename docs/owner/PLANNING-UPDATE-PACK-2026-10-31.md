@@ -1,9 +1,9 @@
-# Bible update pack, 23 Oct to 31 Oct 2026
+# Planning update pack, 23 Oct to 31 Oct 2026
 
-This is a pack to paste, not the Bible itself. The UnitMarket Build Bible is a private document that Vikram holds; it is not in
-this repository and no agent can open or edit it. Vikram copies the blocks below into the matching Bible sections. Every line
+This is a pack to paste, not the planning document itself. The planning document is private and held by Vikram; it is not in
+this repository and no agent can open or edit it. Vikram copies the blocks below into the matching planning document sections. Every line
 names its requirement id from `docs/REQUIREMENTS-REGISTER.md`, its decision row in `docs/decision-log.md`, or its item in
-`docs/owner/DECISIONS-FOR-VIKRAM.md` (written DV-n), so the Bible can point back to the repository.
+`docs/owner/DECISIONS-FOR-VIKRAM.md` (written DV-n), so the planning document can point back to the repository.
 
 Written on 31 Oct 2026 (lane DOCS-C2, docs only) against `origin/main` at `7869114`. The base is the briefing of 23 Oct
 (`docs/briefing/mvp-status-2026-10-23.md`). Nothing here was run against PayPal, Google Cloud or a hosted URL. Simulation, fixture
@@ -11,7 +11,7 @@ and dry run results prove the modelled cases only, not PayPal compatibility.
 
 ## 1. Scope
 
-Paste under the Bible's scope section.
+Paste under the planning document's scope section.
 
 Added to scope since 23 Oct:
 
@@ -43,7 +43,7 @@ Out of scope or on hold:
 
 ## 2. Owners
 
-Paste under the Bible's owners section.
+Paste under the planning document's owners section.
 
 | Role                            | Who                                                       | Source                                  |
 | ------------------------------- | --------------------------------------------------------- | --------------------------------------- |
@@ -60,7 +60,7 @@ Paste under the Bible's owners section.
 
 ## 3. Dates
 
-Paste under the Bible's dates section. All dates 2026 unless stated.
+Paste under the planning document's dates section. All dates 2026 unless stated.
 
 | Date                     | What                                                             | Source               |
 | ------------------------ | ---------------------------------------------------------------- | -------------------- |
@@ -80,7 +80,7 @@ Paste under the Bible's dates section. All dates 2026 unless stated.
 
 ## 4. Requirements
 
-Paste under the Bible's requirements section. Counts from `docs/REQUIREMENTS-REGISTER.md`.
+Paste under the planning document's requirements section. Counts from `docs/REQUIREMENTS-REGISTER.md`.
 
 | Part                                        | Rows | built and merged | partial | not built | human only | deferred |
 | ------------------------------------------- | ---- | ---------------- | ------- | --------- | ---------- | -------- |
@@ -106,7 +106,7 @@ Requirements still open, by family:
 
 ## 5. Risks
 
-Paste under the Bible's risks section.
+Paste under the planning document's risks section.
 
 | Risk                                                                                      | Ids                    | Mitigation today                                                            |
 | ----------------------------------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------- |
@@ -125,7 +125,7 @@ Paste under the Bible's risks section.
 
 ## 6. Decisions
 
-Paste under the Bible's decisions section. One line per row of `docs/decision-log.md` since the briefing; the log is the record.
+Paste under the planning document's decisions section. One line per row of `docs/decision-log.md` since the briefing; the log is the record.
 
 | Row   | Date   | One line                                                                                      |
 | ----- | ------ | --------------------------------------------------------------------------------------------- |
@@ -168,7 +168,7 @@ Paste under the Bible's decisions section. One line per row of `docs/decision-lo
 
 D-032 is an approval reference used by D-034; it has no row of its own in the log.
 
-Owner decisions still open, to record in the Bible once taken: DV-28 and DV-30 (Quayside own account and its approval row),
+Owner decisions still open, to record in the planning document once taken: DV-28 and DV-30 (Quayside own account and its approval row),
 assumption 30 (mismatch counted on the sales page), assumption 32 (approval window gap), assumption 36 (withdrawn offer page),
 assumption 35 (entry paths memo), DV-55 (axe-core under D-008), assumption 13 (sharp LGPL), and a new row before the app stays
 live for judging without the race tests (D-045).

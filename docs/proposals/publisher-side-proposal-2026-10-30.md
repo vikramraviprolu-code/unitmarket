@@ -7,7 +7,7 @@ PayPal compatibility.
 
 ## 1. What the original requirements said, and how SBX ended up without a publisher side
 
-Original plan (simulation repository, Build Bible Rev 11 as transcribed in `docs/dev/01-mvp-requirements.md`):
+Original plan (simulation repository, planning document Rev 11 as transcribed in `docs/dev/01-mvp-requirements.md`):
 
 - PAY-01 Supply: in = two labelled sample publishers as separate sandbox merchants, 8 to 10 articles, an approved price
   range, a terms version, a rights log. Out = real publisher integration, publisher onboarding UI, scraping.
@@ -18,7 +18,7 @@ Original plan (simulation repository, Build Bible Rev 11 as transcribed in `docs
   (proposal); line floor USD 1.
 - "What the demo cannot prove": that publishers authorise unit sales, and that platform-fee consent works outside the sandbox.
 
-So the Bible put a publisher onboarding UI and a seller dashboard explicitly OUT of the MVP, but required two separate
+So the planning document put a publisher onboarding UI and a seller dashboard explicitly OUT of the MVP, but required two separate
 sandbox merchants. The simulation nevertheless built a seller side (screens S1 to S7 in `docs/specs/sim/sim-app-ui.md`
 section 6: dashboard with payout panel, catalogue, offer editor with version history, publish, sales, ledger, refunds;
 `packages/core/app/seller.ts`: a publisher sees and changes only its own resources; its payout panel said "Simulated
@@ -326,5 +326,5 @@ operator with the authenticator for payee verification on the hosted app; deploy
 
 Could not verify: whether b1 works in this sandbox app (spike step 16 never ran); refund and read permissions for a third-party
 capture; the meaning of the "401" sentence in the partner docs for sandbox; the "20 agreed requirements" list cited in
-`docs/briefing/mvp-status-2026-10-23.md` section 8 (no source file found in either repository); the Build Bible itself (private)
+`docs/briefing/mvp-status-2026-10-23.md` section 8 (no source file found in either repository); the planning document itself (private)
 beyond the repository transcriptions.
