@@ -48,15 +48,22 @@ describe('re-read and the kill switch (B-L5)', () => {
     expect(w.paypal.count('get')).toBe(base);
   });
 
-  // KNOWN GAP (reported, not fixed here: nextDueAt has no clock, a fix changes its signature in
-  // due.ts). A paid order whose 7 days passed with no re-read keeps a past next_at, so nextDueAt
-  // returns a time in the past forever and the job loop wakes every 100 ms (no provider call, one
-  // read-only query per wake). it.fails turns green-to-red when the gap is fixed.
-  it.fails('nextDueAt is null once the 7 days passed unread (known gap)', async () => {
+  // UNI-75: a paid order whose 7 days passed unread has nothing left to read, so nextDueAt must
+  // not return a past time (the job loop would wake every 100 ms). The caller passes the clock.
+  it('nextDueAt is null once the 7 days passed unread', async () => {
     w = await makeWorld();
     await paid(w);
     w.tick(7 * DAY + H);
-    expect(await nextDueAt(w.db)).toBeNull();
+    expect(await nextDueAt(w.db, undefined, w.deps.clock.now().toISOString())).toBeNull();
+  });
+
+  it('nextDueAt still returns the owed read inside the 7 days, also when a clock is passed', async () => {
+    w = await makeWorld();
+    await paid(w);
+    w.tick(2 * H);
+    const at = await nextDueAt(w.db, undefined, w.deps.clock.now().toISOString());
+    expect(at).not.toBeNull();
+    expect(Date.parse(at!)).toBeLessThan(Date.parse(w.deps.clock.now().toISOString()));
   });
 });
 
