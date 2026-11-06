@@ -12,6 +12,8 @@ import { explainPanelView } from '../lib/explain-view';
 import type { ExplainPanelView, ExplainPausedView } from '../lib/explain-view';
 import { explainForOrderPage } from './assist';
 import type { InvariantId, OperationState, ProblemsQuery } from '../lib/ops-invariants-view';
+import { kindWord, ledgerHref, parseLedgerQuery } from '../lib/ops-money-view';
+import { shownId } from '../lib/ops-entity-view';
 
 type OperatorActor = Extract<Actor, { kind: 'operator' }>;
 
@@ -276,6 +278,138 @@ export async function readProblems(actor: Actor, q: ProblemsQuery): Promise<Prob
       state,
       count: counts.get(state) ?? 0,
       href: operationLink(state) ?? '/ops/money/problems',
+    })),
+  };
+}
+
+// INT-OPS-C / OPS-C.4: totals per environment, currency and ledger kind, each with the label of its stored
+// environment and the link to its ledger list; the reconciler state (the job health read); today's stored rates.
+// A total never adds a dryrun row to a sandbox row (C6). Read only, and open to an operator without the code: it
+// names no person.
+const envWord = (e: string): 'Dry run' | 'Sandbox' => (e === 'sandbox' ? 'Sandbox' : 'Dry run');
+
+export interface MoneyTotal {
+  environment: 'dryrun' | 'sandbox';
+  label: 'Dry run' | 'Sandbox';
+  currency: string;
+  kind: string;
+  kind_word: string;
+  total_minor: number;
+  count: number;
+  href: string;
+}
+
+export interface MoneyTotalsRead {
+  totals: MoneyTotal[];
+  reconciler: { last_pass_at: string | null; due: number };
+  rates: Awaited<ReturnType<Awaited<ReturnType<typeof app>>['engine']['fx']['getRates']>>;
+}
+
+export async function readMoneyTotals(actor: Actor): Promise<MoneyTotalsRead | null> {
+  if (actor.kind !== 'operator') return null;
+  const a = await app();
+  const rows = await a.db.query<{
+    environment: 'dryrun' | 'sandbox';
+    currency: string;
+    kind: string;
+    s: string | number;
+    c: string | number;
+  }>(
+    `SELECT environment, currency, kind, sum(amount_minor) AS s, count(*) AS c
+       FROM ledger_entries GROUP BY environment, currency, kind ORDER BY environment, currency, kind`,
+  );
+  const h = await a.engine.health();
+  return {
+    totals: rows.rows.map((r) => ({
+      environment: r.environment,
+      label: envWord(r.environment),
+      currency: r.currency,
+      kind: r.kind,
+      kind_word: kindWord(r.kind),
+      total_minor: Number(r.s),
+      count: Number(r.c),
+      href: ledgerHref(r.environment, r.currency, r.kind),
+    })),
+    reconciler: { last_pass_at: h.last_pass_at, due: h.due },
+    rates: await a.engine.fx.getRates(),
+  };
+}
+
+/** The most lines the ledger list shows; the total still counts every row. */
+export const LEDGER_LIST_CAP = 500;
+
+export interface LedgerListRead {
+  environment: 'dryrun' | 'sandbox';
+  label: 'Dry run' | 'Sandbox';
+  currency: string;
+  kind: string;
+  kind_word: string;
+  mfa: boolean;
+  total_minor: number;
+  count: number;
+  capped: boolean;
+  lines: {
+    id: string;
+    order_ref: string;
+    order_href: string;
+    amount_minor: number;
+    capture: string | null;
+    refund: string | null;
+    created_at: string;
+  }[];
+}
+
+/** One total's lines. Without the second factor capture_id and refund_id show as their last four. */
+export async function readLedgerList(
+  actor: Actor,
+  raw: Record<string, unknown>,
+): Promise<LedgerListRead | null> {
+  if (actor.kind !== 'operator') return null;
+  const q = parseLedgerQuery(raw);
+  if (q === null) return null;
+  const mfa = actor.mfa === true;
+  const a = await app();
+  const p = [q.environment, q.currency, q.kind];
+  const sum = (
+    await a.db.query<{ s: string | number | null; c: string | number }>(
+      `SELECT sum(amount_minor) AS s, count(*) AS c FROM ledger_entries
+        WHERE environment = $1 AND currency = $2 AND kind = $3`,
+      p,
+    )
+  ).rows[0];
+  const lines = await a.db.query<{
+    id: string;
+    order_ref: string;
+    amount_minor: string | number;
+    capture_id: string;
+    refund_id: string | null;
+    created_at: string | Date;
+  }>(
+    `SELECT l.id, o.order_ref, l.amount_minor, l.capture_id, l.refund_id, l.created_at
+       FROM ledger_entries l JOIN order_units u ON u.id = l.unit_id JOIN orders o ON o.id = u.order_id
+      WHERE l.environment = $1 AND l.currency = $2 AND l.kind = $3
+      ORDER BY l.created_at DESC, l.id LIMIT $4`,
+    [...p, LEDGER_LIST_CAP],
+  );
+  const count = Number(sum?.c ?? 0);
+  return {
+    environment: q.environment,
+    label: envWord(q.environment),
+    currency: q.currency,
+    kind: q.kind,
+    kind_word: kindWord(q.kind),
+    mfa,
+    total_minor: Number(sum?.s ?? 0),
+    count,
+    capped: count > LEDGER_LIST_CAP,
+    lines: lines.rows.map((l) => ({
+      id: l.id,
+      order_ref: l.order_ref,
+      order_href: orderLink(l.order_ref),
+      amount_minor: Number(l.amount_minor),
+      capture: shownId(l.capture_id, mfa),
+      refund: shownId(l.refund_id, mfa),
+      created_at: new Date(l.created_at).toISOString(),
     })),
   };
 }

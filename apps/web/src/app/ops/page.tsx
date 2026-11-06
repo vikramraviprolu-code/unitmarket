@@ -2,7 +2,14 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { currentActor } from '../../server/session';
-import { readHomeLights, readNeedsYou, readOpsHome } from '../../composition/ops-home';
+import {
+  readHomeLights,
+  readMoneyFlow,
+  readNeedsYou,
+  readOpsHome,
+} from '../../composition/ops-home';
+import { MoneyFlow } from '../../ui/ops/MoneyFlow';
+import { MONEY_FLOW_HEADING, MONEY_FLOW_LEDE } from '../../lib/money-flow-view';
 import { HealthLights } from '../../ui/ops/HealthLights';
 import { EnvLabel } from '../../ui/EnvLabel';
 import { formatDateTime } from '../../lib/format';
@@ -51,6 +58,7 @@ export default async function Ops() {
   const { snap, flagOff } = read;
   const lights = await readHomeLights(actor);
   const needsYou = await readNeedsYou();
+  const flow = await readMoneyFlow(actor);
   const killChip = switchChip('paypal_outbound', snap.kill_switch.outbound_on, flagOff);
   return (
     <>
@@ -61,6 +69,12 @@ export default async function Ops() {
       />
       <SectionNav label="Sections of this page" items={OPS_HOME_SECTIONS} />
       <HealthLights lights={lights} />
+      {flow === null ? null : (
+        <Section title={MONEY_FLOW_HEADING} id="ops-money-flow">
+          <p className="oh-lede">{MONEY_FLOW_LEDE}</p>
+          <MoneyFlow view={flow} />
+        </Section>
+      )}
       <Section title="Needs you" id="ops-needs-you">
         {needsYou.length === 0 ? (
           <p className="oh-empty" data-testid="needs-you-empty">

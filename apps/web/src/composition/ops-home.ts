@@ -8,6 +8,8 @@ import { healthLights } from '../lib/ops-health-view';
 import type { HealthLight } from '../lib/ops-health-view';
 import { bellCounts, orderAnchor } from '../lib/ops-alerts-view';
 import type { AlertActionKind, BellCounts } from '../lib/ops-alerts-view';
+import { flowWindow, moneyFlowView } from '../lib/money-flow-view';
+import type { MoneyFlowView } from '../lib/money-flow-view';
 
 export type OperatorActor = Extract<Actor, { kind: 'operator' }>;
 
@@ -82,4 +84,43 @@ export async function readAlertPage(actor: Actor, id: string): Promise<AlertPage
   }
   const n = a.engine.newKey;
   return { detail, order_anchor: anchor, keys: { acknowledge: n(), resolve: n(), reopen: n() } };
+}
+
+// INT-OPS-C / OPS-C.5: the money-flow strip. Counts for the 24 hours ending at the injected `now` (after the start,
+// up to and including now), and the two stuck counts. One rule per stage, as the spec table says. Counts only: no
+// person, so an operator without the code sees it too.
+const FLOW_SQL = `SELECT
+  (SELECT count(*) FROM briefs WHERE created_at > $1 AND created_at <= $2) AS find,
+  (SELECT count(*) FROM quotes WHERE created_at > $1 AND created_at <= $2) AS quote,
+  (SELECT count(*) FROM approvals WHERE used_at > $1 AND used_at <= $2) AS approve,
+  (SELECT count(*) FROM order_units WHERE captured_verified_at > $1 AND captured_verified_at <= $2) AS pay,
+  (SELECT count(*) FROM access_events WHERE kind = 'access_ready' AND at > $1 AND at <= $2) AS unlock,
+  (SELECT count(*) FROM refund_requests WHERE state = 'completed' AND updated_at > $1 AND updated_at <= $2) AS refund,
+  (SELECT count(*) FROM operations WHERE state = 'sent' AND lease_until < $2) AS stuck_sent,
+  (SELECT count(*) FROM operations WHERE state = 'unknown' AND reconcile_until < $2) AS stuck_unknown`;
+
+export async function readMoneyFlow(
+  actor: Actor,
+): Promise<(MoneyFlowView & { now: string }) | null> {
+  if (actor.kind !== 'operator') return null;
+  const a = await app();
+  const now = a.security.clock.now().toISOString();
+  const w = flowWindow(now);
+  const r = (await a.db.query<Record<string, string | number>>(FLOW_SQL, [w.from, w.to])).rows[0]!;
+  const n = (k: string): number => Number(r[k] ?? 0);
+  return {
+    ...moneyFlowView({
+      counts: {
+        find: n('find'),
+        quote: n('quote'),
+        approve: n('approve'),
+        pay: n('pay'),
+        unlock: n('unlock'),
+        refund: n('refund'),
+      },
+      stuck: { sent: n('stuck_sent'), unknown: n('stuck_unknown') },
+      window: w,
+    }),
+    now,
+  };
 }

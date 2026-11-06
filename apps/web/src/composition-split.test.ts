@@ -37,6 +37,10 @@ const PAGES: Record<string, (typeof MODULES)[number]> = {
   'ops/money/page.tsx': 'ops-money',
   'ops/sellers/page.tsx': 'ops-sellers',
   'ops/agents/page.tsx': 'ops-agents',
+  // INT-OPS-C: the detail pages of the Buyers, Sellers and Money tabs.
+  'ops/buyers/[id]/page.tsx': 'ops-buyers',
+  'ops/sellers/[id]/page.tsx': 'ops-sellers',
+  'ops/money/ledger/page.tsx': 'ops-money',
   'ops/controls/page.tsx': 'ops-controls',
 };
 
@@ -61,12 +65,16 @@ describe('the ten modules exist', () => {
 
 describe('a page imports only its own tab module', () => {
   const existing = Object.entries(PAGES).filter(([f]) => existsSync(join(here, 'app', f)));
-  it('covers the four pages this lane builds', () => {
+  it('covers the pages UI0 and OPS-C built', () => {
     expect(existing.map(([f]) => f).sort()).toEqual(
       [
+        'ops/agents/page.tsx',
+        'ops/buyers/[id]/page.tsx',
         'ops/controls/page.tsx',
+        'ops/money/ledger/page.tsx',
         'ops/money/page.tsx',
         'ops/page.tsx',
+        'ops/sellers/[id]/page.tsx',
         'ops/sellers/page.tsx',
       ].sort(),
     );
