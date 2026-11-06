@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { listAuthorisedOffers } from './read';
 import { listOwnOffers } from './write';
-import { ZERO_FEE_POLICY, buyerPriceOf } from './import-fee';
+import { fixedFeePolicy } from './fee';
+import { ZERO_FEE_POLICY, buyerPriceOf, importFeeFrom } from './import-fee';
 import { editItem, getBatch, runNextBatch, startVerifiedImport } from './import-stage';
 import { publishBatch } from './import-publish';
 import {
@@ -403,9 +404,11 @@ describe('publishBatch', () => {
     });
   });
 
-  it('the fee is not stored and does not change the offer: the offer carries the publisher price', async () => {
+  it('the listed price is the buyer price: publisher price plus the fee in force, the split recorded beside it', async () => {
+    // POB-G: this test said "the offer carries the publisher price" while the fee lane was not built. The fee lane
+    // (POB-M1) has landed and D-096 (2) confirms the fee on top, so the offer now carries the buyer price.
     const { w, id } = await staged();
-    w.fee.policy = { feeFor: (m) => Math.round(m * 0.1) };
+    w.fee.policy = importFeeFrom(fixedFeePolicy(1000));
     const view = await getBatch(w.idep(), w.harbour, id);
     expect(view!.items.find((i) => i.source_key.endsWith('/a/tides'))).toMatchObject({
       price_minor: 150,
@@ -420,13 +423,182 @@ describe('publishBatch', () => {
         [t.offer_id],
       )
     ).rows[0]!;
-    expect(o.options.map((x) => x.price_minor)).toEqual([150, 150]);
+    expect(o.options.map((x) => x.price_minor)).toEqual([165, 165]);
     const after = await getBatch(w.idep(), w.harbour, id);
     expect(after!.items.find((i) => i.source_key.endsWith('/a/tides'))).toMatchObject({
       state: 'published',
       price_minor: 150,
       buyer_price_minor: 165,
     });
+  });
+});
+
+describe('publish records the parts of the offer (POB-G, gap 2)', () => {
+  const partsOf = async (w: ImportWorld, offer_id: string) =>
+    (
+      await w.db.query<{
+        option: string;
+        seller_minor: string | number;
+        fee_minor: string | number;
+        tax_minor: string | number;
+        fee_bps: number;
+      }>(
+        `SELECT option, seller_minor, fee_minor, tax_minor, fee_bps FROM offer_price_parts
+          WHERE offer_id = $1 AND offer_version = '1' ORDER BY option`,
+        [offer_id],
+      )
+    ).rows.map((r) => ({
+      option: r.option,
+      seller_minor: Number(r.seller_minor),
+      fee_minor: Number(r.fee_minor),
+      tax_minor: Number(r.tax_minor),
+      fee_bps: r.fee_bps,
+    }));
+
+  it('10 percent: both options list the buyer price and carry parts that add up to it', async () => {
+    const { w, id } = await staged();
+    w.fee.policy = importFeeFrom(fixedFeePolicy(1000));
+    const r = await publishBatch(w.idep(), w.harbour, { batch_id: id, attestation: true });
+    expect(r.ok && r.value.published).toBe(2);
+    const rows = await itemRows(w.db, id);
+    const chart = byKey(rows, '/p/chart');
+    const offer = (
+      await w.db.query<{ options: { option: string; price_minor: number }[] }>(
+        'SELECT options FROM offers WHERE id = $1',
+        [chart.offer_id],
+      )
+    ).rows[0]!;
+    expect(offer.options.map((o) => [o.option, o.price_minor])).toEqual([
+      ['keep_retrieve', 495],
+      ['online_read', 495],
+    ]);
+    expect(await partsOf(w, chart.offer_id!)).toEqual([
+      { option: 'keep_retrieve', seller_minor: 450, fee_minor: 45, tax_minor: 0, fee_bps: 1000 },
+      { option: 'online_read', seller_minor: 450, fee_minor: 45, tax_minor: 0, fee_bps: 1000 },
+    ]);
+    // the audit row names the listed (buyer) prices
+    const audit = await w.db.query<{ detail: { new_prices: string } }>(
+      `SELECT detail FROM audit_log WHERE action = 'offer.created' AND target = $1`,
+      [chart.offer_id],
+    );
+    expect(audit.rows[0]!.detail.new_prices).toBe('keep_retrieve=495,online_read=495');
+  });
+
+  it('fee 0 still records parts: seller equals the listed price, fee 0', async () => {
+    const { w, id } = await staged();
+    await publishBatch(w.idep(), w.harbour, { batch_id: id, attestation: true });
+    const tides = byKey(await itemRows(w.db, id), '/a/tides');
+    expect(await partsOf(w, tides.offer_id!)).toEqual([
+      { option: 'keep_retrieve', seller_minor: 150, fee_minor: 0, tax_minor: 0, fee_bps: 0 },
+      { option: 'online_read', seller_minor: 150, fee_minor: 0, tax_minor: 0, fee_bps: 0 },
+    ]);
+  });
+
+  it('the rate is read once for the batch from the loader, and a later setting does not change a published offer', async () => {
+    const { w, id } = await staged();
+    let rate = 1000;
+    let loads = 0;
+    const loadFee = async () => {
+      loads += 1;
+      return importFeeFrom(fixedFeePolicy(rate));
+    };
+    await publishBatch(w.idep({ loadFee }), w.harbour, {
+      batch_id: id,
+      attestation: true,
+      item_ids: [byKey(await itemRows(w.db, id), '/p/chart').id],
+    });
+    expect(loads).toBe(1);
+    rate = 2000;
+    await publishBatch(w.idep({ loadFee }), w.harbour, { batch_id: id, attestation: true });
+    const rows = await itemRows(w.db, id);
+    expect((await partsOf(w, byKey(rows, '/p/chart').offer_id!))[0]).toMatchObject({
+      fee_minor: 45,
+      fee_bps: 1000,
+    });
+    expect((await partsOf(w, byKey(rows, '/a/tides').offer_id!))[0]).toMatchObject({
+      fee_minor: 30,
+      fee_bps: 2000,
+    });
+  });
+
+  it('a fee that cannot be read refuses the publish (fail closed): nothing is written, the items stay staged', async () => {
+    const { w, id } = await staged();
+    const loadFee = async (): Promise<never> => {
+      throw new Error('fee_settings unreadable');
+    };
+    const r = await publishBatch(w.idep({ loadFee }), w.harbour, {
+      batch_id: id,
+      attestation: true,
+    });
+    expect(r).toEqual({ ok: false, error: { code: 'fee_unavailable' } });
+    expect(
+      await countOf(w.db, "SELECT count(*) AS c FROM import_items WHERE state = 'published'"),
+    ).toBe(0);
+    expect(await countOf(w.db, 'SELECT count(*) AS c FROM offer_price_parts')).toBe(0);
+  });
+
+  it('a policy whose answer is not a whole fee, or has a fee but no rate, refuses the publish', async () => {
+    for (const policy of [
+      { feeFor: () => 1.5, fee_bps: 1000 },
+      { feeFor: () => -1, fee_bps: 1000 },
+      { feeFor: (m: number) => Math.round(m * 0.1) }, // a fee with no rate to record
+    ]) {
+      const { w, id } = await staged();
+      w.fee.policy = policy;
+      const offers = await countOf(w.db, 'SELECT count(*) AS c FROM offers');
+      const r = await publishBatch(w.idep(), w.harbour, { batch_id: id, attestation: true });
+      expect(r).toEqual({ ok: false, error: { code: 'fee_unavailable' } });
+      expect(await countOf(w.db, 'SELECT count(*) AS c FROM offers')).toBe(offers);
+      expect(await countOf(w.db, 'SELECT count(*) AS c FROM offer_price_parts')).toBe(0);
+    }
+  });
+
+  it('a buyer price over the offer cap is bad_price and the item stays staged', async () => {
+    const { w, id } = await staged();
+    w.fee.policy = importFeeFrom(fixedFeePolicy(1000));
+    // the publisher prices (150, 450) alone: 150 fits a cap of 160, but the buyer price 165 does not
+    const r = await publishBatch(w.idep({ offer_max_minor: 160 }), w.harbour, {
+      batch_id: id,
+      attestation: true,
+    });
+    expect(r).toEqual({
+      ok: true,
+      value: { published: 0, needs_price: 2, bad_price: 2, failed: 0 },
+    });
+    expect(await countOf(w.db, 'SELECT count(*) AS c FROM offer_price_parts')).toBe(0);
+    expect(byKey(await itemRows(w.db, id), '/a/tides').state).toBe('staged');
+  });
+});
+
+describe('the fee at review comes from the loader (POB-G, gap 1)', () => {
+  it('the review shows the fee of the loaded policy, read each time', async () => {
+    const { w, id } = await staged();
+    let rate = 1000;
+    const loadFee = async () => importFeeFrom(fixedFeePolicy(rate));
+    const tides = async () =>
+      (await getBatch(w.idep({ loadFee }), w.harbour, id))!.items.find((i) =>
+        i.source_key.endsWith('/a/tides'),
+      );
+    expect(await tides()).toMatchObject({ fee_minor: 15, buyer_price_minor: 165 });
+    rate = 500;
+    expect(await tides()).toMatchObject({ fee_minor: 8, buyer_price_minor: 158 });
+  });
+
+  it('an unreadable fee shows the publisher price and no buyer price; the page does not break', async () => {
+    const { w, id } = await staged();
+    const loadFee = async (): Promise<never> => {
+      throw new Error('fee_settings unreadable');
+    };
+    const view = await getBatch(w.idep({ loadFee }), w.harbour, id);
+    const tides = view!.items.find((i) => i.source_key.endsWith('/a/tides'))!;
+    expect(tides).toMatchObject({ price_minor: 150, fee_minor: null, buyer_price_minor: null });
+  });
+
+  it('importFeeFrom keeps the rate and the fee of a FeePolicy', () => {
+    const p = importFeeFrom(fixedFeePolicy(1000));
+    expect(p.fee_bps).toBe(1000);
+    expect(p.feeFor(150, 'USD')).toBe(15);
+    expect(p.feeFor(5, 'USD')).toBe(1);
   });
 });
 

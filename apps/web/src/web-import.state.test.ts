@@ -129,10 +129,11 @@ describe('the whole path over the routes (J7 to J9)', () => {
     expect(s.environment).toBe('dryrun');
     expect(s.items).toHaveLength(6);
     const tides = s.items.find((i) => i.source_key.endsWith('/a/tides'))!;
+    // POB-G: the review shows the fee in force (10 percent, seeded by the fee lane), no longer a zero default
     expect(tides).toMatchObject({
       price_minor: 150,
-      fee_minor: 0,
-      buyer_price_minor: 150,
+      fee_minor: 15,
+      buyer_price_minor: 165,
       state: 'staged',
     });
     // edit and hide in one call
@@ -192,13 +193,34 @@ describe('the whole path over the routes (J7 to J9)', () => {
 });
 
 describe('the fee port is wired through AppOptions.import_fee', () => {
-  it('the default is no fee: the buyer price is the publisher price', async () => {
+  it('POB-G: the default is the fee in force (10 percent, seeded): the buyer price is the publisher price plus it', async () => {
     const w = await boot();
     const { status } = await ran(w);
-    for (const i of status.items.filter((x) => x.price_minor !== null)) {
-      expect(i.fee_minor).toBe(0);
-      expect(i.buyer_price_minor).toBe(i.price_minor);
+    const priced = status.items.filter((x) => x.price_minor !== null);
+    expect(priced.length).toBeGreaterThan(0);
+    for (const i of priced) {
+      expect(i.fee_minor).toBe(Math.round(i.price_minor! * 0.1));
+      expect(i.buyer_price_minor).toBe(i.price_minor! + i.fee_minor!);
     }
+    expect(status.items.find((i) => i.source_key.endsWith('/a/tides'))).toMatchObject({
+      fee_minor: 15,
+      buyer_price_minor: 165,
+    });
+  });
+  it('POB-G: a changed setting shows at the next review, with no restart', async () => {
+    const w = await boot();
+    const { id } = await ran(w);
+    const set = await w.app.engine.opsFee.set({
+      actor: { kind: 'operator', operator_id: 'opr_vikram', mfa: true },
+      fee_bps: 500,
+      reason: 'Test of the import review',
+    });
+    expect(set.ok).toBe(true);
+    const s = await json<Status>(await w.get(`?batch=${id}`, harbour(w)));
+    expect(s.items.find((i) => i.source_key.endsWith('/a/tides'))).toMatchObject({
+      fee_minor: 8,
+      buyer_price_minor: 158,
+    });
   });
   it('an injected policy adds its fee on top of the publisher price', async () => {
     const asked: [number, string][] = [];
@@ -518,6 +540,7 @@ describe('what the answers say', () => {
       'invalid_price',
       'attestation_required',
       'batch_not_ready',
+      'fee_unavailable',
     ];
     for (const code of codes) {
       const t = copy.importErrorText(code);
@@ -526,6 +549,9 @@ describe('what the answers say', () => {
       expect(t.length, code).toBeLessThan(200);
     }
     expect(copy.importErrorText('something_new')).toBe(copy.importErrorText('invalid_input'));
+    // POB-G: a fee that cannot be read has its own words and answers 503 (try again later), not the general 422
+    expect(copy.importErrorText('fee_unavailable')).not.toBe(copy.importErrorText('invalid_input'));
+    expect(copy.importStatusOf('fee_unavailable')).toBe(503);
   });
 
   it('every exported string of the copy file follows the rules (D-051)', () => {
