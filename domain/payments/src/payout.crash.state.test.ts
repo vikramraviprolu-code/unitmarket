@@ -246,17 +246,14 @@ describe('the payee', () => {
     for (const sql of [
       "UPDATE publishers SET payee_shared = true WHERE id = 'pub_1'",
       "UPDATE publishers SET payee_shared = false, status = 'suspended' WHERE id = 'pub_1'",
-      // POB-G: the payee is the verified PayPal link. A new address that was verified again is a changed payee ...
-      "UPDATE publishers SET status = 'active' WHERE id = 'pub_1'; UPDATE publisher_paypal_links SET paypal_email = 'changed@example.test' WHERE publisher_id = 'pub_1'",
-      // ... and an address that is no longer verified is no payee at all.
-      "UPDATE publisher_paypal_links SET state = 'requested', verified_by = NULL, verified_at = NULL WHERE publisher_id = 'pub_1'",
     ]) {
-      for (const one of sql.split('; ')) await w.rows(one);
+      // POB-G: these two stay an operator decision: the payout waits as it is. A payee that changed is the next tests.
+      await w.rows(sql);
       expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 });
       expect(port.calls).toHaveLength(0);
       expect((await payoutRows(w)).map((p) => p.state)).toEqual(['due']);
     }
-    await linkPayee(w, 'pub_1', PAYEE_EMAIL.pub_1!);
+    await w.rows("UPDATE publishers SET status = 'active' WHERE id = 'pub_1'");
     expect(await pass(port)).toMatchObject({ sent: 1, refused: 0 });
     expect(port.calls[0]!.payee_merchant_id).toBe(PAYEE_EMAIL.pub_1);
   });
@@ -288,18 +285,137 @@ describe('the payee', () => {
     expect((await payoutRows(w))[0]!.payee_merchant_id).toBe('asked@example.test');
   });
 
-  it('POB-G: the address is read at send time; a payout made to an old address is not sent to the new one', async () => {
+  const REPLACED =
+    "UPDATE publisher_paypal_links SET paypal_email = 'moved@example.test', state = 'requested', verified_by = NULL, verified_at = NULL WHERE publisher_id = 'pub_1'";
+  const liveItems = (payout_id: string) =>
+    w.rows<{ n: number }>(
+      'SELECT count(*)::int AS n FROM payout_items WHERE payout_id = $1 AND live',
+      [payout_id],
+    );
+  const refusalAlerts = () =>
+    w.rows<{ detail: { reason: string } }>(
+      "SELECT detail FROM alerts WHERE kind = 'payout_failed' ORDER BY detail ->> 'reason'",
+    );
+
+  it('POB-G: a due payout whose address was replaced and not yet checked is cancelled, frees its units, tells an operator once, sends nothing', async () => {
     w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     await pass(null);
-    expect((await payoutRows(w))[0]!.payee_merchant_id).toBe(PAYEE_EMAIL.pub_1);
+    const p = (await payoutRows(w))[0]!;
+    expect(p.payee_merchant_id).toBe(PAYEE_EMAIL.pub_1);
+    expect(await liveItems(p.id)).toEqual([{ n: 1 }]);
+    await w.rows(REPLACED);
+    const port = spyPort(w);
+    expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 });
+    expect(port.calls).toHaveLength(0);
+    expect((await payoutRows(w)).map((x) => [x.id, x.state])).toEqual([[p.id, 'cancelled']]);
+    expect(await liveItems(p.id)).toEqual([{ n: 0 }]);
+    const reasons = (await refusalAlerts()).map((x) => x.detail.reason);
+    expect(reasons).toEqual([`payout_refused_${p.id}_no_payee`]);
+    // the cancel is audited with the reason only: no address anywhere in the audit rows or the alerts
+    const audited = await w.rows<{ reason: string }>(
+      "SELECT reason FROM audit_log WHERE action = 'payout.cancelled' AND target = $1",
+      [p.id],
+    );
+    expect(audited).toEqual([{ reason: 'no_payee' }]);
+    expect(JSON.stringify(await w.rows('SELECT * FROM audit_log'))).not.toContain('example.test');
+    expect(JSON.stringify(await w.rows('SELECT * FROM alerts'))).not.toContain('example.test');
+    // nothing to pay until a verified address exists, and no second alert
+    expect(await pass(port)).toMatchObject({ created: 0, sent: 0, refused: 0 });
+    expect(await refusalAlerts()).toHaveLength(1);
+  });
+
+  it('POB-G: once the operator verifies the new address the same units are paid to it, once, with the same amount and netting', async () => {
+    w = await makePayoutWorld();
+    const a = await paid(w, { offers: ['ofr_1'] });
+    const unitA = await unitIdOf(w, a.order_id);
+    w.tick(30 * 60_000);
+    const c = await paid(w, { buyer_id: 'buy_B', offers: ['ofr_2'] });
+    const unitC = await unitIdOf(w, c.order_id);
+    const port = spyPort(w);
+    await atEnd(w, unitA, 1000);
+    await pass(port); // p1 pays unit A to the first address
+    await refund(w.deps, unitA, 100); // an adjustment of 100 against p1
+    await atEnd(w, unitC, 1000);
+    await pass(null); // p2 pays unit C minus the adjustment, due
+    const p2 = (await payoutRows(w)).at(-1)!;
+    const settled = () =>
+      w.rows<{ n: number }>(
+        'SELECT coalesce(sum(amount_minor), 0)::int AS n FROM adjustment_settlements WHERE live',
+      );
+    expect(p2.state).toBe('due');
+    expect(await settled()).toEqual([{ n: 100 }]);
+    const items = await itemsOf(w, p2.id);
+
+    await w.rows(REPLACED);
+    expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 });
+    expect((await payoutRows(w)).at(-1)).toMatchObject({ id: p2.id, state: 'cancelled' });
+    expect(await settled()).toEqual([{ n: 0 }]); // the netting was released with the cancel
+    expect(port.calls).toHaveLength(1); // only p1, to the first address
+
+    w.tick(60_000);
+    await linkPayee(w, 'pub_1', 'moved@example.test'); // the operator checks the new address
+    expect(await pass(port)).toMatchObject({ created: 1, sent: 1, refused: 0 });
+    const rows = await payoutRows(w);
+    expect(rows.map((x) => x.state)).toEqual(['sent', 'cancelled', 'sent']);
+    const p3 = rows.at(-1)!;
+    expect(p3).toMatchObject({
+      amount_minor: p2.amount_minor,
+      payee_merchant_id: 'moved@example.test',
+    });
+    expect(await itemsOf(w, p3.id)).toEqual(items);
+    expect(await settled()).toEqual([{ n: 100 }]);
+    expect(port.calls.map((x) => x.payee_merchant_id)).toEqual([
+      PAYEE_EMAIL.pub_1,
+      'moved@example.test',
+    ]);
+    expect(await pass(port)).toMatchObject({ created: 0, sent: 0 }); // paid once
+  });
+
+  it('POB-G: a changed address that was verified again is payee_changed: the due payout is cancelled and repaid to the new address', async () => {
+    w = await makePayoutWorld();
+    await paid(w);
+    await pastWindow(w);
+    await pass(null);
+    const p = (await payoutRows(w))[0]!;
     await linkPayee(w, 'pub_1', 'moved@example.test');
     const port = spyPort(w);
     expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 });
     expect(port.calls).toHaveLength(0);
-    // the unchanged payee is still on the row: the new address does not rewrite it
+    expect((await payoutRows(w))[0]).toMatchObject({ id: p.id, state: 'cancelled' });
+    expect((await refusalAlerts()).map((x) => x.detail.reason)).toEqual([
+      `payout_refused_${p.id}_payee_changed`,
+    ]);
+    // the cancelled payout keeps the address it was made for; the next pass pays the units to the new one
     expect((await payoutRows(w))[0]!.payee_merchant_id).toBe(PAYEE_EMAIL.pub_1);
+    expect(await pass(port)).toMatchObject({ created: 1, sent: 1 });
+    expect(port.calls.map((x) => x.payee_merchant_id)).toEqual(['moved@example.test']);
+  });
+
+  it('POB-G: a payout already in sending is refused when the address changed, and is not cancelled (the provider may hold it)', async () => {
+    w = await makePayoutWorld();
+    await paid(w);
+    await pastWindow(w);
+    const port = spyPort(w, 'throw_after_execute');
+    await pass(port);
+    const p = (await payoutRows(w))[0]!;
+    expect(p.state).toBe('sending');
+    await linkPayee(w, 'pub_1', 'moved@example.test');
+    expect(await pass(port, w.restart())).toMatchObject({ sent: 0, refused: 1 });
+    expect(port.calls).toHaveLength(1);
+    expect((await payoutRows(w)).map((x) => [x.id, x.state])).toEqual([[p.id, 'sending']]);
+    expect(await liveItems(p.id)).toEqual([{ n: 1 }]);
+    expect(
+      await w.rows("SELECT 1 FROM audit_log WHERE action = 'payout.cancelled' AND target = $1", [
+        p.id,
+      ]),
+    ).toEqual([]);
+    // and the same with no verified address at all
+    await w.rows(REPLACED);
+    expect(await pass(port, w.restart())).toMatchObject({ sent: 0, refused: 1 });
+    expect((await payoutRows(w)).map((x) => x.state)).toEqual(['sending']);
+    expect(port.calls).toHaveLength(1);
   });
 
   it('a payout already in sending is checked again before it is resent', async () => {
@@ -402,17 +518,10 @@ describe('a payout refused at send tells an operator (review M1)', () => {
         "UPDATE publishers SET payee_shared = false, status = 'suspended' WHERE id = 'pub_1'",
         'inactive',
       ],
-      [
-        "UPDATE publishers SET status = 'active' WHERE id = 'pub_1'; UPDATE publisher_paypal_links SET paypal_email = 'changed@example.test' WHERE publisher_id = 'pub_1'",
-        'payee_changed',
-      ],
-      [
-        "UPDATE publisher_paypal_links SET state = 'requested', verified_by = NULL, verified_at = NULL WHERE publisher_id = 'pub_1'",
-        'no_payee',
-      ],
     ];
+    // POB-G: a changed or unverified address cancels a due payout, so it can raise its alert only once (tests above).
     for (const [i, [sql, code]] of steps.entries()) {
-      for (const one of sql.split('; ')) await w.rows(one);
+      await w.rows(sql);
       expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 });
       expect(await pass(port)).toMatchObject({ sent: 0, refused: 1 }); // again: no second alert
       expect(await alerts()).toHaveLength(i + 1);
