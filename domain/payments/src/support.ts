@@ -372,6 +372,8 @@ export interface World {
     offers?: string[];
     option?: 'keep_retrieve' | 'online_read';
   }): Promise<ApprovalGranted>;
+  /** POB-M1: true while the calling async flow is inside a database transaction (a port call must not be). */
+  inTx(): boolean;
   /** Place the order and run beginCheckout through the given functions. */
   rows<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
   close(): Promise<void>;
@@ -544,6 +546,7 @@ export async function makeWorld(opts: WorldOptions = {}): Promise<World> {
     content,
     switches,
     insert,
+    inTx: () => als.getStore() === true,
     async approval(o = {}) {
       const buyer_id = o.buyer_id ?? 'buy_A';
       const offers = o.offers ?? ['ofr_1'];

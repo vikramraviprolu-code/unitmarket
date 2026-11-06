@@ -36,5 +36,19 @@ export { recoverOnStartup } from './recover';
 export { cancelRefundRequest, executeRefund, requestRefund, suspectReversal } from './refunds';
 export type { OpsAlertKind } from './refunds';
 export { checkInvariants } from './invariants';
+// POB-M1 (D-089): the payout to a publisher, dry run only.
+export {
+  cancelPayoutTx,
+  createDuePayouts,
+  expireFailedPayouts,
+  listPayouts,
+  payoutCounts,
+  payoutKey,
+  runPayoutPass,
+  sendPayouts,
+} from './payout';
+export type { PayoutCounts, PayoutListRow, PayoutPassOptions } from './payout';
+export { createDryRunPayoutPort } from './payout-dryrun';
+export type { DryRunPayoutPort } from './payout-dryrun';
 export { handleWebhook } from './webhooks';
 export type { WebhookInput, WebhookResponse } from './webhooks';

@@ -2,7 +2,7 @@
 // for the sales page: the same ledger rows, the same sums, so the two pages show the same numbers by
 // construction. Pure; the PayPal fee is carried beside the net and is never subtracted from it.
 import type { EnvironmentLabel } from '@umsbx/contracts';
-import type { StatementBlock } from './statement';
+import type { BlockMoney, StatementBlock } from './statement';
 
 export interface SalesTotal {
   currency: string;
@@ -16,6 +16,8 @@ export interface SalesTotal {
   net_minor: number;
   /** Observed fee rows; null when none are stored. Shown beside the net only. */
   paypal_fee_minor: number | null;
+  /** POB-M1: the same money block as the statement (fee on top, owed, paid out, adjustments, next payout). */
+  money: BlockMoney | null;
 }
 
 export function salesTotals(blocks: readonly StatementBlock[]): SalesTotal[] {
@@ -28,5 +30,6 @@ export function salesTotals(blocks: readonly StatementBlock[]): SalesTotal[] {
     reversals_minor: b.reversals_minor,
     net_minor: b.net_minor,
     paypal_fee_minor: b.paypal_fee_minor,
+    money: b.money,
   }));
 }

@@ -30,6 +30,7 @@ import {
   splitSales,
 } from '../../../lib/statement-copy';
 import { DownloadCsv } from '../DownloadCsv';
+import { MoneyBlock } from '../MoneyBlock';
 import { FilterBar } from '../../../ui/FilterBar';
 import { barState, queryString } from '../../../lib/filter-bar-view';
 import { readSellerSales } from '../../../composition/seller';
@@ -177,6 +178,9 @@ export default async function PublisherSales({
                     />
                   ))}
                 </div>
+                {t.money !== null ? (
+                  <MoneyBlock money={t.money} currency={t.currency} testId="sales-money" />
+                ) : null}
               </div>
             ))}
           </div>

@@ -118,3 +118,23 @@ export type {
   PaypalLinkState,
   PaypalLinkView,
 } from './paypal-link';
+// POB-M1 (D-089): the fee on top. One function, one port, the setting and the parts of an offer version.
+export {
+  FEE_BPS_MAX,
+  applyFee,
+  currentFee,
+  fixedFeePolicy,
+  listFeeHistory,
+  loadFeePolicy,
+  recordOfferParts,
+  setFee,
+} from './fee';
+export type {
+  FeeDeps,
+  FeeError,
+  FeeErrorCode,
+  FeeParts,
+  FeePolicy,
+  FeeSetting,
+  FeeSplit,
+} from './fee';

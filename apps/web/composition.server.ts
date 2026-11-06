@@ -39,6 +39,8 @@ import type {
   OutboundRequest,
   PayPalPort,
   PaymentsDeps,
+  PayoutPort,
+  PayoutState,
   Receipt,
   Rights,
   Result,
@@ -135,6 +137,11 @@ import {
   listAgreements,
   ownAgreement,
   seedAgreements,
+  // POB-M1 (D-089): the fee on top.
+  currentFee,
+  listFeeHistory,
+  loadFeePolicy,
+  setFee,
   acceptTerms,
   decidePaypalLink,
   issueInvite,
@@ -144,6 +151,9 @@ import {
   resetPublisherSignIn,
 } from '@umsbx/catalogue';
 import type {
+  FeeError,
+  FeePolicy,
+  FeeSetting,
   Agreement,
   Applicant,
   ApplicantError,
@@ -257,8 +267,13 @@ import {
   SELLER_ACCEPTANCE_REASON,
   pendingReasonKind,
   pendingReasonLabel,
+  // POB-M1 (D-089): the payout to publishers, dry run only.
+  createDryRunPayoutPort,
+  listPayouts,
+  payoutCounts,
+  runPayoutPass,
 } from '@umsbx/payments';
-import type { OrderHold } from '@umsbx/payments';
+import type { OrderHold, PayoutCounts, PayoutListRow } from '@umsbx/payments';
 import {
   health as jobsHealth,
   LEADER_LOCK_KEY,
@@ -713,7 +728,7 @@ export interface OpsSnapshot {
   alerts: { kind: string; created_at: string }[];
   /** `rows` (INT-OPS-A) is every row that breaks the invariant, by table and id; `detail` still shows five. */
   invariants: {
-    id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7';
+    id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7' | 'INV8';
     ok: boolean;
     detail: string;
     rows: { table: string; id: string }[];
@@ -906,6 +921,16 @@ export type SignUpResult =
       reason?: PasswordRefusal;
     };
 
+/** POB-M1: what Operations shows about payouts. Payee ids are not part of it. */
+export interface OpsPayouts {
+  environment: EnvironmentLabel;
+  counts: Record<PayoutState, number>;
+  rows: PayoutListRow[];
+}
+/** POB-M1: the fee in force and its history, newest first. */
+export interface OpsFee extends FeeSetting {
+  history: FeeSetting[];
+}
 /** INT-CTL: one api_exposure row as the exposure screen reads it (the screen words it; see lib/exposure-view.ts). */
 export interface ExposureRow {
   group_name: ApiGroup;
@@ -1194,6 +1219,27 @@ export interface Engine {
   rules: {
     activeRows(ctx: RulesContext, at: string): Promise<RuleSettingRow[]>;
   };
+  /**
+   * POB-M1 (D-089): one payout pass now (create what is due, send it). The same rule as the job loop: with the
+   * paypal_outbound switch off no port is given, so payouts are created and none is sent. Rejects with MaintenanceError in
+   * maintenance mode. In dry run the only port is the dry run; in sandbox mode there is no payout port in this lane.
+   */
+  runPayouts(): Promise<PayoutCounts>;
+  /** POB-M1: the payouts for Operations, newest first, and how many are in each state. Null for anyone but an operator. */
+  opsPayouts(actor: Actor): Promise<OpsPayouts | null>;
+  /**
+   * POB-M1: the platform fee on top. `get` is for an operator; `set` needs the second factor (the domain checks again).
+   * `feePolicy` is the rate in force now, for the publish step (POB-I1): the listed price is the buyer price.
+   */
+  opsFee: {
+    get(actor: Actor): Promise<OpsFee | null>;
+    set(i: {
+      actor: Actor;
+      fee_bps: unknown;
+      reason: unknown;
+    }): Promise<Result<{ id: Id; fee_bps: number }, FeeError>>;
+  };
+  feePolicy(): Promise<FeePolicy>;
   /** AI-B: the operator evals page. Null for anyone but an operator. Runs the scripted model only. */
   evalsSummary(actor: Actor): Promise<EvalsSummary | null>;
   /**
@@ -2109,6 +2155,9 @@ function buildApp(config: Config, opts: AppOptions): App {
   });
   const agent: AgentDeps = { ...core, model };
   const paymentsDeps: PaymentsDeps = { ...core, paypal, content };
+  // POB-M1: the only payout port of this lane is the dry run, and only in dry run mode: a sandbox payout is never pretended,
+  // so in sandbox mode payouts are created `due` and nothing sends them (a real sandbox payout is a separate lane and approval).
+  const payoutPort: PayoutPort | null = environment === 'dryrun' ? createDryRunPayoutPort() : null;
   // API-B: what the mandate store needs. The outbox is the one of /api/v1: an event commits with its change.
   const mandateDeps: MandateDeps = {
     clock,
@@ -2731,6 +2780,30 @@ function buildApp(config: Config, opts: AppOptions): App {
     rules: {
       activeRows: (ctx, at) => activeRows(db, ctx, at),
     },
+
+    async runPayouts() {
+      if (maintenance) throw new MaintenanceError();
+      await open();
+      // The loop's rule: switch off, no port. In sandbox mode the lane has no payout port at all.
+      const on = payoutPort !== null && (await switches.isOn('paypal_outbound'));
+      return runPayoutPass(core, on ? payoutPort : null, { max_items: 100 });
+    },
+
+    async opsPayouts(actor) {
+      if (actor.kind !== 'operator') return null;
+      return { environment, counts: await payoutCounts(db), rows: await listPayouts(db, 50) };
+    },
+
+    opsFee: {
+      async get(actor) {
+        if (actor.kind !== 'operator') return null;
+        const now = await currentFee(db);
+        return { ...now, history: await listFeeHistory(db, 20) };
+      },
+      set: (i) => setFee(core, i),
+    },
+
+    feePolicy: () => loadFeePolicy(db),
 
     async setAgentBuy({ actor, on, reason }) {
       if (actor.kind !== 'operator') return err('operator_required');
@@ -4001,6 +4074,7 @@ function buildApp(config: Config, opts: AppOptions): App {
             max_items: 100,
             recover_on_start: led,
             deliver: () => deliverWebhooks({ max_items: 100 }),
+            payouts: { port: payoutPort },
             ...(led
               ? {
                   leader: { tryAcquire: () => lockOf(LEADER_LOCK_KEY) },
