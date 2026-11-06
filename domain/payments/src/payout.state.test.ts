@@ -9,12 +9,14 @@ import {
   runPayoutPass,
   suspectReversal,
 } from './index';
-import { OPERATOR, awaiting, makeWorld, paid } from './ops/support';
+import { OPERATOR, awaiting, paid } from './ops/support';
 import type { OpsWorld } from './ops/support';
 import {
+  PAYEE_EMAIL,
   atEnd,
   itemsOf,
   ledgerKinds,
+  makePayoutWorld,
   pastWindow,
   payoutRows,
   priced,
@@ -55,7 +57,7 @@ const alertsOf = (kind: string) =>
 
 describe('the split at capture', () => {
   it('a fee 40 on a 400 offer: the sale stays 400, the fee row is 40, the payable row is 360, parts are copied', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
@@ -82,7 +84,7 @@ describe('the split at capture', () => {
   });
 
   it('an offer with no fee parts still gets parts and a payable row equal to the sale', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
     const kinds = await ledgerKinds(w, unit);
@@ -98,7 +100,7 @@ describe('the split at capture', () => {
   });
 
   it('a pack of two publishers copies the parts of each unit', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     await priced(w, 'ofr_3', 350, 50);
     const a = await paid(w, { offers: ['ofr_1', 'ofr_3'] });
@@ -114,7 +116,7 @@ describe('the split at capture', () => {
   });
 
   it('a unit gets the sum of the parts of its items (two offers of one publisher)', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     await priced(w, 'ofr_2', 350, 50);
     await paid(w, { offers: ['ofr_1', 'ofr_2'] });
@@ -130,7 +132,7 @@ describe('the split at capture', () => {
   });
 
   it('a later insert for another offer version or a fee change cannot alter a sale already made', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     await paid(w);
     await expect(
@@ -144,7 +146,7 @@ describe('the split at capture', () => {
 
 describe('when a payout is due', () => {
   it('not inside the window: nothing is created before the window has ended', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
@@ -157,8 +159,8 @@ describe('when a payout is due', () => {
     expect(port.calls).toHaveLength(0);
   });
 
-  it('after the window it is due: one payout of the publisher share, sent once to the stored payee', async () => {
-    w = await makeWorld();
+  it('after the window it is due: one payout of the publisher share, sent once to the verified PayPal address of the publisher', async () => {
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     await paid(w);
     const port = spyPort(w);
@@ -172,7 +174,7 @@ describe('when a payout is due', () => {
       amount_minor: 360,
       state: 'sent',
       environment: 'dryrun',
-      payee_merchant_id: 'MERCH1',
+      payee_merchant_id: PAYEE_EMAIL.pub_1,
       provider_ref: `SPY-umsP-${rows[0]!.id}`,
     });
     expect(rows[0]!.idempotency_key).toBe(`umsP-${rows[0]!.id}`);
@@ -182,7 +184,7 @@ describe('when a payout is due', () => {
       payout_id: rows[0]!.id,
       idempotency_key: `umsP-${rows[0]!.id}`,
       publisher_id: 'pub_1',
-      payee_merchant_id: 'MERCH1',
+      payee_merchant_id: PAYEE_EMAIL.pub_1,
       amount: { currency: 'USD', minor: 360 },
       environment: 'dryrun',
     });
@@ -200,7 +202,7 @@ describe('when a payout is due', () => {
   });
 
   it('a confirming provider puts the payout straight to confirmed', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     await pass(spyPort(w, 'confirm'));
@@ -208,7 +210,7 @@ describe('when a payout is due', () => {
   });
 
   it('the exact end of the window is due, one millisecond before it is not', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
     const port = spyPort(w);
@@ -219,7 +221,7 @@ describe('when a payout is due', () => {
   });
 
   it('one payout per publisher: a pack of two publishers makes two payouts', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     await priced(w, 'ofr_3', 350, 50);
     await paid(w, { offers: ['ofr_1', 'ofr_3'] });
@@ -233,7 +235,7 @@ describe('when a payout is due', () => {
   });
 
   it('several sales of one publisher and currency make one payout with one item each', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     await priced(w, 'ofr_2', 350, 50);
     await paid(w, { offers: ['ofr_1'] });
@@ -247,7 +249,7 @@ describe('when a payout is due', () => {
   });
 
   it('a sale whose window ends later is paid in a later payout', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w, { offers: ['ofr_1'] });
     w.tick(30 * 60_000);
     const b = await paid(w, { buyer_id: 'buy_B', offers: ['ofr_2'] });
@@ -260,7 +262,7 @@ describe('when a payout is due', () => {
   });
 
   it('running the pass again changes nothing: one payout, one send, one key', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     await paid(w);
     await pastWindow(w);
@@ -275,7 +277,7 @@ describe('when a payout is due', () => {
   });
 
   it('two passes at once still make one payout', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     const port = spyPort(w);
@@ -286,7 +288,7 @@ describe('when a payout is due', () => {
   });
 
   it('a payout is cut at the ceiling: sales that do not fit together go in separate payouts', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     for (const [i, offer] of (['ofr_1', 'ofr_2'] as const).entries()) {
       await paid(w, { buyer_id: i === 0 ? 'buy_A' : 'buy_B', offers: [offer] });
     }
@@ -302,7 +304,7 @@ describe('when a payout is due', () => {
   });
 
   it('with a ceiling that fits both, they share one payout', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w, { offers: ['ofr_1'] });
     await paid(w, { buyer_id: 'buy_B', offers: ['ofr_2'] });
     await pastWindow(w);
@@ -311,7 +313,7 @@ describe('when a payout is due', () => {
   });
 
   it('without a port the payouts are created due and nothing is sent', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     expect(await pass(null)).toMatchObject({ created: 1, sent: 0 });
@@ -322,7 +324,7 @@ describe('when a payout is due', () => {
   });
 
   it('audits the creation and the sending', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     const rec = recording(w);
@@ -334,20 +336,20 @@ describe('when a payout is due', () => {
       currency: 'USD',
       publisher_id: 'pub_1',
     });
-    expect(JSON.stringify(rec.audits)).not.toMatch(/MERCH1/); // the payee is not copied into the audit trail
+    expect(JSON.stringify(rec.audits)).not.toContain(PAYEE_EMAIL.pub_1!); // the payee is not copied into the audit trail
   });
 });
 
 describe('what keeps a sale from being paid', () => {
   it('a sale that was never captured and verified', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await awaiting(w);
     await pastWindow(w);
     expect(await pass(spyPort(w))).toMatchObject({ created: 0 });
   });
 
   it('an open refund request holds the payout until the request is settled', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
     await pastWindow(w);
@@ -365,7 +367,7 @@ describe('what keeps a sale from being paid', () => {
   });
 
   it('a unit refunded in full is never paid', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     await refund(await unitIdOf(w, a.order_id), null);
     await pastWindow(w);
@@ -374,7 +376,7 @@ describe('what keeps a sale from being paid', () => {
   });
 
   it('a unit under a suspected reversal is not paid', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     const cap = (await w.captureIds(a.order_id))[0]!;
     await suspectReversal(w.deps, { capture_id: cap, source: 'manual' });
@@ -383,7 +385,7 @@ describe('what keeps a sale from being paid', () => {
   });
 
   it('a window that never started is not a window that ended', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await w.rows(
       "UPDATE access_windows SET state = 'not_started', started_at = NULL, base_ends_at = NULL, ends_at = NULL",
@@ -393,7 +395,7 @@ describe('what keeps a sale from being paid', () => {
   });
 
   it('a unit of another environment is left to its own app', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await paid(w);
     await pastWindow(w);
     const other = { ...w.deps, environment: 'sandbox' as const };
@@ -403,7 +405,7 @@ describe('what keeps a sale from being paid', () => {
 
 describe('a refund inside the window', () => {
   it('a full refund: no payout, and the ledger holds the three reversals', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
@@ -419,7 +421,7 @@ describe('a refund inside the window', () => {
   });
 
   it('a partial refund: the payout is the payable left, 270 of 360 after a 100 refund', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     const a = await paid(w);
     await refund(await unitIdOf(w, a.order_id), 100);
@@ -433,7 +435,7 @@ describe('a refund inside the window', () => {
 
 describe('a refund after the payout was created but before it was sent', () => {
   it('cancels the payout, frees its units, and the next pass pays the smaller amount', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
@@ -466,7 +468,7 @@ describe('a refund after the payout was created but before it was sent', () => {
   });
 
   it('a full refund then leaves no payout at all', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     await pastWindow(w);
     await pass(null);
@@ -478,7 +480,7 @@ describe('a refund after the payout was created but before it was sent', () => {
 
 describe('a refund after the payout was sent', () => {
   it('books a payout adjustment for the publisher share of the refund and raises an alert; the payout stays', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 360, 40);
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
@@ -503,7 +505,7 @@ describe('a refund after the payout was sent', () => {
   });
 
   it('a second refund of the same unit books a second adjustment, and a replay books none', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
     await pastWindow(w);
@@ -521,7 +523,7 @@ describe('a refund after the payout was sent', () => {
   });
 
   it('a refund that is only the fee reverses no payable and books no adjustment', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     await priced(w, 'ofr_1', 99, 301, 3000); // an unusual split: the fee is most of the price
     const a = await paid(w);
     const unit = await unitIdOf(w, a.order_id);
@@ -535,7 +537,7 @@ describe('a refund after the payout was sent', () => {
   });
 
   it('A paid then refunded, B earned: the next payout is netted, never negative, and is not sent', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w, { offers: ['ofr_1'] }); // A: 400 payable
     const unitA = await unitIdOf(w, a.order_id);
     w.tick(30 * 60_000);
@@ -565,7 +567,7 @@ describe('a refund after the payout was sent', () => {
   });
 
   it('an adjustment larger than the next payout is used in part and the rest waits for the next sale', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w, { offers: ['ofr_1'] });
     const unitA = await unitIdOf(w, a.order_id);
     w.tick(30 * 60_000);
@@ -590,7 +592,7 @@ describe('a refund after the payout was sent', () => {
   });
 
   it('the payout amount always equals its items minus its live settlements', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w, { offers: ['ofr_1'] });
     const unitA = await unitIdOf(w, a.order_id);
     w.tick(30 * 60_000);
@@ -613,7 +615,7 @@ describe('a refund after the payout was sent', () => {
   });
 
   it('cancelling a due payout gives back the adjustments it had used', async () => {
-    w = await makeWorld();
+    w = await makePayoutWorld();
     const a = await paid(w, { offers: ['ofr_1'] });
     const unitA = await unitIdOf(w, a.order_id);
     w.tick(30 * 60_000);
