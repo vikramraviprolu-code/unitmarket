@@ -111,6 +111,7 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/v1/ops/cases/route.ts': () => import('./app/api/v1/ops/cases/route'),
   'api/v1/ops/needs-you/route.ts': () => import('./app/api/v1/ops/needs-you/route'),
   'api/ops/rules/route.ts': () => import('./app/api/ops/rules/route'),
+  'api/ops/fee/route.ts': () => import('./app/api/ops/fee/route'),
   'api/ops/rules/export/route.ts': () => import('./app/api/ops/rules/export/route'),
   'api/ops/start/route.ts': () => import('./app/api/ops/start/route'),
   'api/ops/stop/route.ts': () => import('./app/api/ops/stop/route'),
@@ -148,6 +149,14 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/publisher/offers/revise/route.ts': () => import('./app/api/publisher/offers/revise/route'),
   'api/publisher/offers/withdraw/route.ts': () =>
     import('./app/api/publisher/offers/withdraw/route'),
+  // POB-I1: the web import.
+  'api/publisher/import/begin/route.ts': () => import('./app/api/publisher/import/begin/route'),
+  'api/publisher/import/domains/check/route.ts': () =>
+    import('./app/api/publisher/import/domains/check/route'),
+  'api/publisher/import/domains/route.ts': () => import('./app/api/publisher/import/domains/route'),
+  'api/publisher/import/items/route.ts': () => import('./app/api/publisher/import/items/route'),
+  'api/publisher/import/publish/route.ts': () => import('./app/api/publisher/import/publish/route'),
+  'api/publisher/import/status/route.ts': () => import('./app/api/publisher/import/status/route'),
   'api/publisher/payee-requests/route.ts': () => import('./app/api/publisher/payee-requests/route'),
   'api/session/route.ts': () => import('./app/api/session/route'),
   'api/session/signout/route.ts': () => import('./app/api/session/signout/route'),

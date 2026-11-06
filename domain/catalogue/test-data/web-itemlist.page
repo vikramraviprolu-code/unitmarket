@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>List</title>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"ItemList","itemListElement":[
+ {"@type":"ListItem","position":1,"url":"https://shop.pub-one.invalid/a/quay-walk"},
+ {"@type":"ListItem","position":2,"item":{"@type":"Article","@id":"https://shop.pub-one.invalid/a/inline","headline":"Inline entry","articleBody":"This entry carries its own text inside the list."}},
+ {"@type":"ListItem","position":3,"url":"https://elsewhere.invalid/a/other"},
+ {"@type":"ListItem","position":4,"item":"https://shop.pub-one.invalid/p/chart-page"}
+]}
+</script></head><body></body></html>

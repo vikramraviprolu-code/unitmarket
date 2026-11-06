@@ -8,6 +8,14 @@ export const LedgerKindSchema = z.enum([
   'refund',
   'reversal',
   'commission_reversal',
+  // POB-M1 (D-089): the split of a sale. `fee` and `payable` are booked once per capture and add up to the sale;
+  // a refund books `fee_reversal` and `payable_reversal` (one each per refund id) that add up to the refund;
+  // `payout_adjustment` records the publisher share of a refund booked after that share was already paid out.
+  'fee',
+  'payable',
+  'fee_reversal',
+  'payable_reversal',
+  'payout_adjustment',
 ]);
 export type LedgerKind = z.infer<typeof LedgerKindSchema>;
 

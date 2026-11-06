@@ -73,6 +73,9 @@ export default async function PublisherOffers({
           <>
             <EnvLabel environment={view.environment} />
             {create}
+            <Link className="btn" href="/publisher/import">
+              Add from your website
+            </Link>
           </>
         }
       />

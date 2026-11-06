@@ -1,9 +1,18 @@
 // INT-OPS-A / OPS-A.6 (A3): the map from Money to the Problems page. A failing invariant links to
-// /ops/money/problems?inv=INV1..INV7 and an operation state tile links to ?op=<state>. The ids and the states are
+// /ops/money/problems?inv=INV1..INV8 and an operation state tile links to ?op=<state>. The ids and the states are
 // closed lists here, checked against the real ones in the test, so a link never carries a value the page cannot read.
 import { OperationStateSchema } from '@umsbx/contracts';
 
-export const INVARIANT_IDS = ['INV1', 'INV2', 'INV3', 'INV4', 'INV5', 'INV6', 'INV7'] as const;
+export const INVARIANT_IDS = [
+  'INV1',
+  'INV2',
+  'INV3',
+  'INV4',
+  'INV5',
+  'INV6',
+  'INV7',
+  'INV8',
+] as const;
 export type InvariantId = (typeof INVARIANT_IDS)[number];
 export type OperationState = (typeof OperationStateSchema.options)[number];
 
@@ -20,7 +29,7 @@ const isInvariant = (id: string): id is InvariantId =>
 const isOperation = (s: string): s is OperationState =>
   (OperationStateSchema.options as readonly string[]).includes(s);
 
-/** A link for a failing invariant only; null when it holds or the id is not one of the seven. */
+/** A link for a failing invariant only; null when it holds or the id is not one of the eight. */
 export const invariantLink = (id: string, ok: boolean): string | null =>
   ok || !isInvariant(id) ? null : INVARIANT_PROBLEMS_URL[id];
 
@@ -52,6 +61,7 @@ export const INVARIANT_WORDS: Record<InvariantId, string> = {
   INV5: 'Every order in flight has an operation that is polled',
   INV6: 'Every open refund request has an operation that is polled',
   INV7: 'Per seller, the ledger matches captured minus refunded money',
+  INV8: 'Per unit, the sale equals the fee plus the publisher share, and refunds equal their reversals',
 };
 export const OPERATION_WORDS: Record<OperationState, string> = {
   prepared: 'Prepared',

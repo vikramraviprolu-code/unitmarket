@@ -5,6 +5,7 @@ export { UNIT_STATUS_TEXT, salesFor } from './sales';
 export type { PublisherActor, SaleItem, SaleRow, UnitStatus } from './sales';
 export { buildStatement, statementFor } from './statement';
 export type {
+  BlockMoney,
   PublisherStatement,
   StatementBlock,
   StatementContext,
@@ -15,6 +16,7 @@ export type {
 } from './statement';
 export {
   COMMISSION_LINE,
+  FEE_ON_TOP_LINE,
   NOTHING_SOLD_SENTENCE,
   PAYEE_DIRECT_SENTENCE,
   SETTLEMENT_SENTENCE,

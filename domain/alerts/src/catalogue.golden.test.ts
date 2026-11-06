@@ -19,15 +19,17 @@ const OLD_KINDS = [
   'refund_unresolved',
 ];
 const NEW_KINDS = ['mandate_near_cap', 'webhook_failing'];
+// POB-M1: the payout raises two kinds, so an operator sees a refund after payout and a refused payout with a title.
+const PAYOUT_KINDS = ['payout_adjustment', 'payout_failed'];
 const SEVERITIES = ['critical', 'high', 'medium', 'info'];
 const MONEY = ['unit_amount', 'order_total', 'refund_amount'];
 
 describe('alert catalogue (AL.2)', () => {
-  it('maps the 12 old kinds and the 2 new kinds, and nothing else', () => {
-    expect([...ALERT_KINDS].sort()).toEqual([...OLD_KINDS, ...NEW_KINDS].sort());
+  it('maps the 12 old kinds, the 2 new kinds and the 2 payout kinds, and nothing else', () => {
+    expect([...ALERT_KINDS].sort()).toEqual([...OLD_KINDS, ...NEW_KINDS, ...PAYOUT_KINDS].sort());
   });
 
-  it.each([...OLD_KINDS, ...NEW_KINDS])(
+  it.each([...OLD_KINDS, ...NEW_KINDS, ...PAYOUT_KINDS])(
     '%s has severity, title, cause, fix link, runbook and money rule',
     (kind) => {
       const reason =
@@ -37,7 +39,11 @@ describe('alert catalogue (AL.2)', () => {
             ? 'webhook_failing_wsb_1_wdl_1'
             : kind === 'refund_unresolved'
               ? 'refund_outcome_unknown_rfr_1'
-              : 'x';
+              : kind === 'payout_adjustment'
+                ? 'adjust_rfr_1'
+                : kind === 'payout_failed'
+                  ? 'payout_failed_pay_1'
+                  : 'x';
       const e = describeAlert(kind, reason, {});
       expect(e).not.toBeNull();
       expect(SEVERITIES).toContain(e!.severity);
@@ -73,6 +79,25 @@ describe('alert catalogue (AL.2)', () => {
     const b = describeAlert('refund_unresolved', 'cannot_book_re_1', {})!;
     const c = describeAlert('refund_unresolved', 'ledger_rule_re_1', {})!;
     expect(new Set([a.cause, b.cause, c.cause]).size).toBe(3);
+  });
+
+  it('the payout kinds point at the payouts section and carry money', () => {
+    const a = describeAlert('payout_adjustment', 'adjust_rfr_1', {})!;
+    expect(a.fix).toEqual({ route: '/ops/money', anchor: 'ops-payouts' });
+    expect(a.money_at_risk).toBe('refund_amount');
+    const f = describeAlert('payout_failed', 'payout_failed_pay_1', {})!;
+    expect(f.fix).toEqual({ route: '/ops/money', anchor: 'ops-payouts' });
+    expect(f.severity).toBe('high');
+    // a sale above the largest payout is the same kind with its own cause
+    const big = describeAlert('payout_failed', 'unit_too_large_unt_1', {})!;
+    expect(big.cause).not.toBe(f.cause);
+    // review M1: a payout we did not send because the publisher cannot be paid now has its own cause
+    const refused = describeAlert('payout_failed', 'payout_refused_pay_1_shared', {})!;
+    expect(refused.cause).not.toBe(f.cause);
+    expect(refused.cause).not.toBe(big.cause);
+    expect(refused.fix).toEqual({ route: '/ops/money', anchor: 'ops-payouts' });
+    expect(describeAlert('payout_adjustment', 'made_up_reason', {})).toBeNull();
+    expect(describeAlert('payout_failed', 'made_up_reason', {})).toBeNull();
   });
 
   it('a fake kind or a fake reason prefix is not mapped', () => {

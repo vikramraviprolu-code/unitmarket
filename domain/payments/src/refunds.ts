@@ -17,9 +17,16 @@
 // Adapted from AIC_Hackathon_UnitMarket packages/core/payments/reconcile.ts (refund and reversal
 // steps) at a36ddc03fd0b962000f686291c145b50ee337f90. Owned by SBX lane 05b.
 import { applyMoneyEvent } from '@umsbx/entitlements';
-import { appendLedgerEntry, LedgerRuleError } from '@umsbx/ledger';
+import {
+  appendLedgerEntry,
+  bookRefundParts,
+  getUnitParts,
+  LedgerRuleError,
+  splitRefund,
+} from '@umsbx/ledger';
 import { issueReceiptIfChanged } from '@umsbx/receipts';
 import { judgedAt, refundWindowOpen, unitRefundWindows } from '@umsbx/rules';
+import { onRefundBooked } from './payout';
 import {
   IdSchema,
   OrderReadSchema,
@@ -1076,6 +1083,32 @@ async function bookEntry(
     return { result: 'refused', full: false };
   }
   if (!added.ok) return { result: 'replay', full: false }; // booked before: a replay changes nothing
+  // POB-M1: the refund reverses the fee and the publisher share in proportion (the parts sum to the refund). A rule of the
+  // ledger that refuses the parts is reported and does not stop the refund from being booked or the payout from reacting.
+  let payable_minor = 0;
+  const parts = await getUnitParts(tx, unit.id);
+  if (parts !== null) {
+    const split = splitRefund(parts, refunded, amount.minor);
+    payable_minor = split.payable_minor;
+    try {
+      await bookRefundParts(tx, d, {
+        unit_id: unit.id,
+        capture_id: unit.capture_id,
+        refund_id,
+        ref_entry_id: sale?.id ?? null,
+        split,
+      });
+    } catch (e) {
+      if (!(e instanceof LedgerRuleError)) throw e;
+      await raiseOpsAlert(tx, d, {
+        kind: 'refund_unresolved',
+        order_id: unit.order_id,
+        unit_id: unit.id,
+        reason: `ledger_rule_split_${refund_id}`,
+        detail: { rule: e.message.slice(0, 200) },
+      });
+    }
+  }
   const total = refunded + amount.minor;
   const full = total >= unit.amount_minor;
   await tx.query(
@@ -1096,6 +1129,14 @@ async function bookEntry(
       },
     });
   }
+  // POB-M1: a payout that has not gone out is cancelled and paid again smaller; one that has is netted (an adjustment).
+  await onRefundBooked(tx, d, {
+    unit_id: unit.id,
+    order_id: unit.order_id,
+    capture_id: unit.capture_id,
+    refund_id,
+    payable_minor,
+  });
   return { result: 'booked', full };
 }
 

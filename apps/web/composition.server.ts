@@ -39,6 +39,8 @@ import type {
   OutboundRequest,
   PayPalPort,
   PaymentsDeps,
+  PayoutPort,
+  PayoutState,
   Receipt,
   Rights,
   Result,
@@ -82,7 +84,7 @@ import {
   setSwitch,
 } from '@umsbx/safety';
 import type { ResumeCoreError } from '@umsbx/safety';
-import { createEcbFetch, createModelHttps, guard } from '@umsbx/transport';
+import { createEcbFetch, createFeedFetcher, createModelHttps, guard } from '@umsbx/transport';
 import type { Wire } from '@umsbx/transport';
 import {
   EXPECTED_CERT_PINS,
@@ -135,6 +137,24 @@ import {
   listAgreements,
   ownAgreement,
   seedAgreements,
+  // POB-I1: the web import.
+  UNREADABLE_FEE_POLICY,
+  importFeeFrom,
+  checkDomain as importCheckDomain,
+  editItem as importEditItem,
+  getBatch as importGetBatch,
+  listBatches as importListBatches,
+  listDomains as importListDomains,
+  publishBatch as importPublishBatch,
+  recoverImports,
+  requestDomain as importRequestDomain,
+  runNextBatch as importRunNext,
+  startVerifiedImport,
+  // POB-M1 (D-089): the fee on top.
+  currentFee,
+  listFeeHistory,
+  loadFeePolicy,
+  setFee,
   acceptTerms,
   decidePaypalLink,
   issueInvite,
@@ -144,6 +164,17 @@ import {
   resetPublisherSignIn,
 } from '@umsbx/catalogue';
 import type {
+  BatchView as ImportBatchView,
+  DomainView as ImportDomainView,
+  ImportDeps,
+  ImportError,
+  ImportFeePolicy,
+  ImportFetcherPort,
+  ItemView as ImportItemView,
+  PublishSummary as ImportPublishSummary,
+  FeeError,
+  FeePolicy,
+  FeeSetting,
   Agreement,
   Applicant,
   ApplicantError,
@@ -257,8 +288,13 @@ import {
   SELLER_ACCEPTANCE_REASON,
   pendingReasonKind,
   pendingReasonLabel,
+  // POB-M1 (D-089): the payout to publishers, dry run only.
+  createDryRunPayoutPort,
+  listPayouts,
+  payoutCounts,
+  runPayoutPass,
 } from '@umsbx/payments';
-import type { OrderHold } from '@umsbx/payments';
+import type { OrderHold, PayoutCounts, PayoutListRow } from '@umsbx/payments';
 import {
   health as jobsHealth,
   LEADER_LOCK_KEY,
@@ -477,6 +513,16 @@ export interface AppOptions {
    * packages/model/test-data/claude-eval-result.json. Refused unless NODE_ENV is test.
    */
   test_claude_eval_file?: string;
+  /**
+   * POB-I1 (tests): the fetcher of the web import, standing in for the guarded transport fetcher. No socket is
+   * opened. Refused unless NODE_ENV=test; in tests without it the import is off.
+   */
+  test_import_fetcher?: ImportFetcherPort;
+  /**
+   * POB-I1: the fee shown at review on top of the publisher's price (the ImportFeePolicy port of the web
+   * import). Default: no fee. The coordinator wires the real policy after the fee lane merges.
+   */
+  import_fee?: ImportFeePolicy;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -716,7 +762,7 @@ export interface OpsSnapshot {
   alerts: { kind: string; created_at: string }[];
   /** `rows` (INT-OPS-A) is every row that breaks the invariant, by table and id; `detail` still shows five. */
   invariants: {
-    id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7';
+    id: 'INV1' | 'INV2' | 'INV3' | 'INV4' | 'INV5' | 'INV6' | 'INV7' | 'INV8';
     ok: boolean;
     detail: string;
     rows: { table: string; id: string }[];
@@ -909,6 +955,16 @@ export type SignUpResult =
       reason?: PasswordRefusal;
     };
 
+/** POB-M1: what Operations shows about payouts. Payee ids are not part of it. */
+export interface OpsPayouts {
+  environment: EnvironmentLabel;
+  counts: Record<PayoutState, number>;
+  rows: PayoutListRow[];
+}
+/** POB-M1: the fee in force and its history, newest first. */
+export interface OpsFee extends FeeSetting {
+  history: FeeSetting[];
+}
 /** INT-CTL: one api_exposure row as the exposure screen reads it (the screen words it; see lib/exposure-view.ts). */
 export interface ExposureRow {
   group_name: ApiGroup;
@@ -1199,6 +1255,27 @@ export interface Engine {
   rules: {
     activeRows(ctx: RulesContext, at: string): Promise<RuleSettingRow[]>;
   };
+  /**
+   * POB-M1 (D-089): one payout pass now (create what is due, send it). The same rule as the job loop: with the
+   * paypal_outbound switch off no port is given, so payouts are created and none is sent. Rejects with MaintenanceError in
+   * maintenance mode. In dry run the only port is the dry run; in sandbox mode there is no payout port in this lane.
+   */
+  runPayouts(): Promise<PayoutCounts>;
+  /** POB-M1: the payouts for Operations, newest first, and how many are in each state. Null for anyone but an operator. */
+  opsPayouts(actor: Actor): Promise<OpsPayouts | null>;
+  /**
+   * POB-M1: the platform fee on top. `get` is for an operator; `set` needs the second factor (the domain checks again).
+   * `feePolicy` is the rate in force now, for the publish step (POB-I1): the listed price is the buyer price.
+   */
+  opsFee: {
+    get(actor: Actor): Promise<OpsFee | null>;
+    set(i: {
+      actor: Actor;
+      fee_bps: unknown;
+      reason: unknown;
+    }): Promise<Result<{ id: Id; fee_bps: number }, FeeError>>;
+  };
+  feePolicy(): Promise<FeePolicy>;
   /** AI-B: the operator evals page. Null for anyone but an operator. Runs the scripted model only. */
   evalsSummary(actor: Actor): Promise<EvalsSummary | null>;
   /**
@@ -1274,6 +1351,55 @@ export interface Engine {
     entitlement_id?: Id;
     order_id?: Id;
   }): Promise<RefundWindowView | null>;
+  /**
+   * POB-I1 (D-089, J7 to J9): the web import. A publisher proves a domain (`addDomain` gives the token once,
+   * `checkDomain` looks for it on the two fixed paths), `begin` proves it again and queues a batch, a
+   * background run (the job loop, or `runPending` in tests) reads the source into a staging list, `review`
+   * lists it with the buyer price through the fee port, `edit` changes the title, the price and whether the
+   * item is hidden in one step, and `publish` makes articles and offers of the chosen items. Every method
+   * works for the signed-in publisher only. Nothing is fetched from a host that is not the verified domain.
+   */
+  webImport: {
+    domains(actor: Actor): Promise<{ domains: ImportDomainView[] } | null>;
+    addDomain(i: {
+      actor: Actor;
+      host: string;
+    }): Promise<
+      Result<{ host: string; state: 'pending' | 'verified'; token: string | null }, ImportError>
+    >;
+    checkDomain(i: {
+      actor: Actor;
+      host: string;
+    }): Promise<Result<{ host: string; state: 'verified' }, ImportError>>;
+    begin(i: {
+      actor: Actor;
+      source_url: string;
+    }): Promise<Result<{ batch_id: string }, ImportError>>;
+    batches(
+      actor: Actor,
+    ): Promise<{ batches: ImportBatchView[]; environment: EnvironmentLabel } | null>;
+    review(i: { actor: Actor; batch_id: string }): Promise<{
+      batch: ImportBatchView;
+      items: ImportItemView[];
+      environment: EnvironmentLabel;
+      offer_max_minor: number;
+    } | null>;
+    edit(i: {
+      actor: Actor;
+      item_id: string;
+      title?: string;
+      price_minor?: number;
+      hidden?: boolean;
+    }): Promise<Result<{ item: ImportItemView }, ImportError>>;
+    publish(i: {
+      actor: Actor;
+      batch_id: string;
+      attestation: boolean;
+      item_ids?: string[];
+    }): Promise<Result<ImportPublishSummary, ImportError>>;
+    /** Runs the queued batches now (tests; the job loop does the same in the background). */
+    runPending(): Promise<{ ran: number }>;
+  };
   /**
    * PUB-A2: where a publisher gets paid. `view` is the S6 page data (last 4 only, newest request first);
    * `request` stores a change request and changes nothing else; `openRequests` and `decide` are the
@@ -1767,6 +1893,8 @@ function buildApp(config: Config, opts: AppOptions): App {
       throw new Error('boot refused: test_claude_eval_file outside NODE_ENV=test');
     if (opts.test_fx_fetch !== undefined)
       throw new Error('boot refused: test_fx_fetch outside NODE_ENV=test');
+    if (opts.test_import_fetcher !== undefined)
+      throw new Error('boot refused: test_import_fetcher outside NODE_ENV=test');
   }
   const environment = envLabel(config);
   const clock: Clock = systemClock();
@@ -2123,6 +2251,9 @@ function buildApp(config: Config, opts: AppOptions): App {
   });
   const agent: AgentDeps = { ...core, model };
   const paymentsDeps: PaymentsDeps = { ...core, paypal, content };
+  // POB-M1: the only payout port of this lane is the dry run, and only in dry run mode: a sandbox payout is never pretended,
+  // so in sandbox mode payouts are created `due` and nothing sends them (a real sandbox payout is a separate lane and approval).
+  const payoutPort: PayoutPort | null = environment === 'dryrun' ? createDryRunPayoutPort() : null;
   // API-B: what the mandate store needs. The outbox is the one of /api/v1: an event commits with its change.
   const mandateDeps: MandateDeps = {
     clock,
@@ -2164,6 +2295,31 @@ function buildApp(config: Config, opts: AppOptions): App {
     executeRefund: (i) => executeRefund(paymentsDeps, i),
     cancelRefund: (i) => cancelRefundRequest(paymentsDeps, i.refund_request_id, i.actor),
   });
+  // POB-I1: the web import. The fetcher is the guarded transport fetcher outside tests (one fixed rule: the
+  // caller names the one host of each call, the publisher's verified domain) and the test double in tests; in
+  // tests without a double, and in maintenance, the import is off. The may-fetch check is asked before EVERY
+  // fetch: the paypal_outbound switch (one stop ends every outbound call) and maintenance.
+  const importDeps: ImportDeps = {
+    db,
+    clock,
+    ids,
+    audit,
+    offer_max_minor: config.offer_max_minor,
+    fetcher:
+      opts.test_import_fetcher ??
+      (config.node_env !== 'test' && !maintenance ? createFeedFetcher() : null),
+    mayFetch: async () => !maintenance && (await switches.isOn('paypal_outbound')),
+    // POB-G (D-096): the fee in force. A test may inject a fixed policy (AppOptions.import_fee). Otherwise the setting is
+    // read each time (review, edit, publish), so a changed rate shows at the next call with no restart. When the setting
+    // cannot be read the loader throws: the review shows no buyer price and publish answers fee_unavailable (fail closed).
+    // `fee` is the fixed policy a caller without the loader would use; it is never a silent zero for the real app.
+    get fee() {
+      return opts.import_fee ?? UNREADABLE_FEE_POLICY;
+    },
+    loadFee: async () => opts.import_fee ?? importFeeFrom(await loadFeePolicy(db)),
+  };
+  let kickImports: () => void = () => undefined;
+
   // One pass of the loop's sweep: end access windows, then turn alerts into cases.
   const sweepAll = async (x: { max_items: number }): Promise<{ ended: number }> => {
     const swept = await sweepWindows(core, x);
@@ -2745,6 +2901,30 @@ function buildApp(config: Config, opts: AppOptions): App {
     rules: {
       activeRows: (ctx, at) => activeRows(db, ctx, at),
     },
+
+    async runPayouts() {
+      if (maintenance) throw new MaintenanceError();
+      await open();
+      // The loop's rule: switch off, no port. In sandbox mode the lane has no payout port at all.
+      const on = payoutPort !== null && (await switches.isOn('paypal_outbound'));
+      return runPayoutPass(core, on ? payoutPort : null, { max_items: 100 });
+    },
+
+    async opsPayouts(actor) {
+      if (actor.kind !== 'operator') return null;
+      return { environment, counts: await payoutCounts(db), rows: await listPayouts(db, 50) };
+    },
+
+    opsFee: {
+      async get(actor) {
+        if (actor.kind !== 'operator') return null;
+        const now = await currentFee(db);
+        return { ...now, history: await listFeeHistory(db, 20) };
+      },
+      set: (i) => setFee(core, i),
+    },
+
+    feePolicy: () => loadFeePolicy(db),
 
     async setAgentBuy({ actor, on, reason }) {
       if (actor.kind !== 'operator') return err('operator_required');
@@ -3568,6 +3748,37 @@ function buildApp(config: Config, opts: AppOptions): App {
     refund: refundFacade,
 
     refundWindow: (i) => buyerRefundWindow(db, clock.now().toISOString(), i),
+    webImport: {
+      async domains(actor) {
+        const d = await importListDomains(db, actor);
+        return d === null ? null : { domains: d };
+      },
+      addDomain: ({ actor, host }) => importRequestDomain(importDeps, actor, { host }),
+      checkDomain: ({ actor, host }) => importCheckDomain(importDeps, actor, { host }),
+      async begin({ actor, source_url }) {
+        const r = await startVerifiedImport(importDeps, actor, { source_url });
+        if (r.ok) kickImports();
+        return r;
+      },
+      async batches(actor) {
+        const b = await importListBatches(db, actor);
+        return b === null ? null : { batches: b, environment };
+      },
+      async review({ actor, batch_id }) {
+        const v = await importGetBatch(importDeps, actor, batch_id);
+        return v === null ? null : { ...v, environment, offer_max_minor: config.offer_max_minor };
+      },
+      edit: ({ actor, ...i }) => importEditItem(importDeps, actor, i),
+      publish: ({ actor, ...i }) => importPublishBatch(importDeps, actor, i),
+      async runPending() {
+        let ran = 0;
+        for (let n = 0; n < 20; n += 1) {
+          if (!(await importRunNext(importDeps)).ran) break;
+          ran += 1;
+        }
+        return { ran };
+      },
+    },
 
     payee: {
       async view(actor) {
@@ -4016,7 +4227,7 @@ function buildApp(config: Config, opts: AppOptions): App {
           () => recoverOnStartup(paymentsDeps),
         );
       // One loop per approval (ASM-67): `loop` above is the only one this app starts.
-      let running: { stop(): Promise<void> };
+      let running: { stop(): Promise<void>; kickImports(): void };
       try {
         running = startLoop(
           { ...loopDeps, sweepWindows: sweepAll },
@@ -4025,6 +4236,13 @@ function buildApp(config: Config, opts: AppOptions): App {
             max_items: 100,
             recover_on_start: led,
             deliver: () => deliverWebhooks({ max_items: 100 }),
+            // POB-I1: boot recovery marks queued and running batches interrupted; the worker runs the
+            // queued ones off the pass.
+            imports: {
+              recover: () => recoverImports(importDeps),
+              runNext: async () => ({ ran: (await importRunNext(importDeps)).ran }),
+            },
+            payouts: { port: payoutPort },
             ...(led
               ? {
                   leader: { tryAcquire: () => lockOf(LEADER_LOCK_KEY) },
@@ -4046,11 +4264,13 @@ function buildApp(config: Config, opts: AppOptions): App {
           level: 'error',
           fields: { error: e instanceof Error ? e.message : 'unknown' },
         });
-        running = { stop: async () => undefined };
+        running = { stop: async () => undefined, kickImports: () => undefined };
       }
+      kickImports = () => running.kickImports();
       loop = {
         stop: async () => {
           loop = null;
+          kickImports = () => undefined;
           await running.stop();
         },
       };

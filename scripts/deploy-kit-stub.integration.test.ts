@@ -41,12 +41,17 @@ const STUB = `#!/usr/bin/env bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 printf '%s\\n' "$*" >> "$DIR/calls.txt"
 case "$1 $2 $3" in
-  "auth list "*) echo "tester" ;;
+  "auth list "*) if [ ! -f "$DIR/no-account" ]; then echo "tester"; fi ;;
   "secrets versions list")
     if grep -qxF "$4" "$DIR/fail.txt"; then exit 1; fi
     if grep -qxF "$4" "$DIR/has.txt"; then echo "1"; fi ;;
   "sql instances describe") echo "RUNNABLE" ;;
-  "artifacts docker images") exit 0 ;;
+  "artifacts docker images") if [ -f "$DIR/no-image" ]; then exit 1; fi ;;
+  "builds submit "*)
+    for a in "$@"; do
+      case "$a" in --config=*) cp "\${a#*=}" "$DIR/build-config.out" ;; esac
+    done
+    if [ -f "$DIR/build-fails" ]; then exit 1; fi ;;
   "run deploy "*)
     for a in "$@"; do
       case "$a" in --env-vars-file=*) cp "\${a#*=}" "$DIR/envfile.out" ;; esac
@@ -62,6 +67,7 @@ interface Run {
   calls: string[];
   deploy: string | undefined;
   envFile: string;
+  buildConfig: string;
 }
 
 function setup(): { repo: string; stub: string } {
@@ -85,19 +91,30 @@ function setup(): { repo: string; stub: string } {
   return { repo, stub };
 }
 
-function run(script: string, has: string[], fail: string[] = []): Run {
+function run(
+  script: string,
+  has: string[],
+  fail: string[] = [],
+  credentials: { account?: boolean; token?: string } = {},
+  build: { imageExists?: boolean; fails?: boolean } = {},
+): Run {
   const { repo, stub } = setup();
+  if (credentials.account === false) writeFileSync(join(stub, 'no-account'), '');
+  if (build.imageExists === false) writeFileSync(join(stub, 'no-image'), '');
+  if (build.fails) writeFileSync(join(stub, 'build-fails'), '');
   writeFileSync(join(stub, 'has.txt'), has.join('\n') + '\n');
   writeFileSync(join(stub, 'fail.txt'), fail.join('\n') + '\n');
   writeFileSync(join(stub, 'calls.txt'), '');
   writeFileSync(join(stub, 'envfile.out'), '');
+  writeFileSync(join(stub, 'build-config.out'), '');
   // The stub directory goes first on PATH; $0 of the wrapper is that directory.
   const r = spawnSync(
     'bash',
     [
       '-c',
-      'PATH="$0:$PATH"; exec bash "$@"',
+      'PATH="$0:$PATH"; export CLOUDSDK_AUTH_ACCESS_TOKEN="$1"; shift; exec bash "$@"',
       stub,
+      credentials.token ?? '',
       join(repo, 'infra', 'gcp', script),
       'ums-test-project',
       'europe-west3',
@@ -112,6 +129,7 @@ function run(script: string, has: string[], fail: string[] = []): Run {
     calls,
     deploy: calls.find((c) => c.startsWith('run deploy ')),
     envFile: readFileSync(join(stub, 'envfile.out'), 'utf8'),
+    buildConfig: readFileSync(join(stub, 'build-config.out'), 'utf8'),
   };
 }
 
@@ -119,6 +137,71 @@ const secretsOf = (deploy: string | undefined): string[] =>
   (/--set-secrets=(\S+)/.exec(deploy ?? '')?.[1] ?? '').split(',').filter(Boolean);
 
 describe('INFRA-A deploy.sh against a stub gcloud', () => {
+  it('D-099 builds with the restricted builder and Cloud Logging before deploying as the runtime', () => {
+    const r = run(
+      'deploy.sh',
+      REQUIRED,
+      [],
+      { account: false, token: 'synthetic-token-for-test' },
+      { imageExists: false },
+    );
+    expect(r.status, r.out).toBe(0);
+    expect(r.buildConfig).toContain(
+      'serviceAccount: projects/ums-test-project/serviceAccounts/ums-builder@ums-test-project.iam.gserviceaccount.com',
+    );
+    expect(r.buildConfig).toContain('options:\n  logging: CLOUD_LOGGING_ONLY');
+    const build = r.calls.find((c) => c.startsWith('builds submit '));
+    expect(build).toContain('--suppress-logs');
+    expect(build).not.toContain('--async');
+    expect(r.calls.indexOf(build!)).toBeLessThan(r.calls.indexOf(r.deploy!));
+    expect(r.deploy).toContain(
+      '--service-account=ums-runtime@ums-test-project.iam.gserviceaccount.com',
+    );
+    expect(r.envFile).toContain("UMS_PAYPAL_CONNECT: 'off'");
+    expect(r.buildConfig + r.out + r.calls.join('\n')).not.toContain('synthetic-token-for-test');
+  });
+
+  it('D-099 a failed build stops before deploying or reading a service URL', () => {
+    const r = run('deploy.sh', REQUIRED, [], {}, { imageExists: false, fails: true });
+    expect(r.status).toBe(1);
+    expect(r.calls.filter((c) => c.startsWith('builds submit '))).toHaveLength(1);
+    expect(r.calls.some((c) => c.startsWith('run '))).toBe(false);
+  });
+
+  it('D-099 an existing tagged image is reused without submitting a build', () => {
+    const r = run('deploy.sh', REQUIRED);
+    expect(r.status, r.out).toBe(0);
+    expect(r.calls.some((c) => c.startsWith('builds submit '))).toBe(false);
+    expect(r.deploy).toBeDefined();
+  });
+
+  it('D-099 accepts token-only credentials without exposing the token', () => {
+    const token = 'synthetic-token-for-test';
+    const r = run('deploy.sh', REQUIRED, [], { account: false, token });
+    expect(r.status, r.out).toBe(0);
+    expect(r.deploy).toBeDefined();
+    expect(r.out).not.toContain(token);
+    expect(r.calls.join('\n')).not.toContain(token);
+  });
+
+  it.each([{}, { token: '' }])('refuses absent credentials: %j', (credentials) => {
+    const r = run('deploy.sh', REQUIRED, [], { ...credentials, account: false });
+    expect(r.status).toBe(1);
+    expect(r.deploy).toBeUndefined();
+    expect(r.calls.every((c) => c.startsWith('auth list '))).toBe(true);
+  });
+
+  it('a token does not bypass a failed required-secret lookup', () => {
+    const r = run('deploy.sh', REQUIRED, ['DATABASE_URL'], {
+      account: false,
+      token: 'synthetic-token-for-test',
+    });
+    expect(r.status).toBe(1);
+    expect(r.calls.some((c) => c.startsWith('secrets versions list DATABASE_URL '))).toBe(true);
+    expect(r.deploy).toBeUndefined();
+    expect(r.out).not.toContain('synthetic-token-for-test');
+  });
+
   it('no optional secret has a value: the deploy still runs and maps only the eleven required', () => {
     const r = run('deploy.sh', REQUIRED);
     expect(r.status, r.out).toBe(0);

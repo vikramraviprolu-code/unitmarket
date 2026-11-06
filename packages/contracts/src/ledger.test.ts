@@ -11,7 +11,7 @@ const input = {
 };
 describe('ledger', () => {
   it('LedgerEntryInput and LedgerEntry', () => {
-    expect(LedgerKindSchema.options).toHaveLength(6);
+    expect(LedgerKindSchema.options).toHaveLength(11); // POB-M1 added fee, payable, fee_reversal, payable_reversal, payout_adjustment
     expect(LedgerEntryInputSchema.safeParse(input).success).toBe(true);
     expect(LedgerEntryInputSchema.safeParse({ ...input, kind: 'tip' }).success).toBe(false);
     expect(

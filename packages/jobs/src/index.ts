@@ -6,3 +6,5 @@ export { health } from './health';
 export type { CallBudget, CallBudgetSnapshot } from './budget';
 export { runDeliveryPass, RETRY_DELAYS_MS, MAX_ATTEMPTS, LEASE_MS } from './deliver';
 export type { DeliverDeps, DeliverCounts } from './deliver';
+export { createImportWorker } from './imports';
+export type { ImportRunner, ImportWorker } from './imports';

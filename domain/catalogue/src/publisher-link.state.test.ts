@@ -13,6 +13,7 @@ import {
 } from './paypal-link';
 import { offersWorld } from './write-support';
 import type { OffersWorld } from './write-support';
+import type { LinkDeps } from './paypal-link';
 import type { Actor } from '@umsbx/contracts';
 
 const HASH = 'scrypt:16384:8:1:00112233445566778899aabbccddeeff:' + 'a'.repeat(64);
@@ -294,5 +295,95 @@ describe('acceptTerms', () => {
         error: { code: 'invalid_input' },
       });
     expect(await ownAgreement(w.db, p.actor)).toBeNull();
+  });
+});
+
+// POB-G (gap 3): a verified PayPal link makes the publisher buyable in dry run. The buy path (approval, place)
+// needs publishers.paypal_merchant_id and payee_verified_at; the boot seed only reaches publishers that exist at boot.
+describe('the verified link makes the publisher buyable (dry run only)', () => {
+  const payee = async (id: string) =>
+    (
+      await q<{ paypal_merchant_id: string | null; payee_verified_at: unknown; synthetic: string }>(
+        `SELECT paypal_merchant_id, payee_verified_at, 'DRYRUN' || upper(left(md5(slug), 7)) AS synthetic
+           FROM publishers WHERE id = $1`,
+        [id],
+      )
+    )[0]!;
+  const dry = () => ({ ...w.deps(), environment: 'dryrun' as const });
+  const sbx = () => ({ ...w.deps(), environment: 'sandbox' as const });
+  const verify = (deps: LinkDeps, id: string, email = 'seller@example.com') =>
+    decidePaypalLink(deps, w.operator, {
+      publisher_id: id,
+      email_retyped: email,
+      reason: 'Confirmed by phone',
+    });
+
+  it('dry run: verifying sets payee_verified_at and the synthetic payee, in the same step as the link', async () => {
+    const p = await withAccount();
+    await requestPaypalLink(dry(), p.actor, { email: MAIL });
+    const before = await payee(p.id);
+    expect(before.paypal_merchant_id).toBeNull();
+    expect(before.payee_verified_at).toBeNull();
+    // a wrong retype changes nothing
+    await verify(dry(), p.id, 'wrong@example.com');
+    expect((await payee(p.id)).payee_verified_at).toBeNull();
+    w.clock.advance(1000);
+    expect(await verify(dry(), p.id)).toEqual({ ok: true, value: { state: 'verified' } });
+    const after = await payee(p.id);
+    expect(after.paypal_merchant_id).toBe(after.synthetic);
+    expect(new Date(after.payee_verified_at as string).toISOString()).toBe(
+      w.clock.now().toISOString(),
+    );
+  });
+
+  it('dry run: a merchant id the publisher already has is kept; only the verification is set', async () => {
+    const p = await withAccount();
+    await w.db.query(`UPDATE publishers SET paypal_merchant_id = 'KEPT123' WHERE id = $1`, [p.id]);
+    await requestPaypalLink(dry(), p.actor, { email: MAIL });
+    await verify(dry(), p.id);
+    const after = await payee(p.id);
+    expect(after.paypal_merchant_id).toBe('KEPT123');
+    expect(after.payee_verified_at).not.toBeNull();
+  });
+
+  it('sandbox: no merchant id is invented and the payee is not marked verified (the existing checks stay)', async () => {
+    const p = await withAccount();
+    await requestPaypalLink(sbx(), p.actor, { email: MAIL });
+    expect(await verify(sbx(), p.id)).toEqual({ ok: true, value: { state: 'verified' } });
+    const after = await payee(p.id);
+    expect(after.paypal_merchant_id).toBeNull();
+    expect(after.payee_verified_at).toBeNull();
+    expect((await ownPaypalLink(w.db, p.actor))!.state).toBe('verified');
+  });
+
+  it('dry run: a changed address clears the verification again; the next check sets it', async () => {
+    const p = await withAccount();
+    await requestPaypalLink(dry(), p.actor, { email: MAIL });
+    await verify(dry(), p.id);
+    expect((await payee(p.id)).payee_verified_at).not.toBeNull();
+    // the same address again is refused and changes nothing
+    await requestPaypalLink(dry(), p.actor, { email: MAIL });
+    expect((await payee(p.id)).payee_verified_at).not.toBeNull();
+    await requestPaypalLink(dry(), p.actor, { email: 'other@example.com' });
+    const cleared = await payee(p.id);
+    expect(cleared.payee_verified_at).toBeNull();
+    expect(cleared.paypal_merchant_id).toBe(cleared.synthetic); // the label stays, it is not an account
+    w.clock.advance(1000);
+    await verify(dry(), p.id, 'other@example.com');
+    expect((await payee(p.id)).payee_verified_at).not.toBeNull();
+  });
+
+  it('sandbox: a changed address does not touch the payee columns', async () => {
+    const p = await withAccount();
+    await w.db.query(
+      `UPDATE publishers SET paypal_merchant_id = 'SBXOWN01', payee_verified_at = $2 WHERE id = $1`,
+      [p.id, w.clock.now().toISOString()],
+    );
+    await requestPaypalLink(sbx(), p.actor, { email: MAIL });
+    await verify(sbx(), p.id);
+    await requestPaypalLink(sbx(), p.actor, { email: 'other@example.com' });
+    const after = await payee(p.id);
+    expect(after.paypal_merchant_id).toBe('SBXOWN01');
+    expect(after.payee_verified_at).not.toBeNull();
   });
 });
