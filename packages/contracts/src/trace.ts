@@ -260,6 +260,15 @@ export const TRACKED_TABLES: readonly TrackedTable[] = [
     'pub:publisher_id',
     ['id', 'publisher_id', 'decision', 'operator_id', 'reason', 'created_at', 'updated_at'],
   ),
+  // TR-LINK (migration 0031): the address a publisher is paid to. Changed in place; the address is only ever a sha256,
+  // the state and the operator check are copied.
+  t(
+    'publisher_paypal_links',
+    ['state', 'verified_by', 'verified_at'],
+    ['paypal_email'],
+    'updated_at',
+    'pub:publisher_id',
+  ),
   t(
     'publishers',
     ['status', 'payee_verified_at', 'payee_shared'],

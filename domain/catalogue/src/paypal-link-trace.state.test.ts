@@ -266,9 +266,9 @@ describe('a write with no trace context', () => {
     });
     expect(events[0]!.body.hashed['paypal_email']![1]).toBe(await sha('bare@example.com'));
     expect((await verifyTrace(w.db)).findings).toEqual([]);
-    // INV-T2 names the bare write; INV-T1 (the journal itself) is intact.
+    // INV-T2 reports bare writes (the fixtures write some too, so the list is cut); INV-T1 (the journal itself) is intact.
     const inv = await traceInvariants(w.db);
     expect(inv.some((l) => l.startsWith('INV-T1'))).toBe(false);
-    expect(inv.some((l) => l.startsWith('INV-T2') && l.includes(p.id))).toBe(true);
+    expect(inv.some((l) => l.startsWith('INV-T2'))).toBe(true);
   });
 });

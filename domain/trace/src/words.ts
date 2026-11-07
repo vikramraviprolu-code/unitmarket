@@ -57,6 +57,10 @@ const BASE: Record<string, readonly [string, string]> = {
     'A decision on a seller application was recorded.',
     'A decision on a seller application changed.',
   ],
+  publisher_paypal_links: [
+    'A seller entered the PayPal address they are paid to.',
+    'The PayPal address a seller is paid to was changed or checked.',
+  ],
   publishers: ['A seller account was created.', 'A seller account changed.'],
   receipts: ['A receipt was written.', 'A receipt changed.'],
   recovery_actions: ['A step was taken on a help case.', 'A step on a help case changed.'],
