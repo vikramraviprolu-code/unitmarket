@@ -3,7 +3,7 @@
 // operator with the second factor marks it checked after typing it again in full (verified). A change by the
 // publisher returns it to requested. The whole address is held in publisher_paypal_links and shown to its owner
 // only; the operator list and every audit row carry the masked form (first letter and domain).
-import { err, ok } from '@umsbx/contracts';
+import { err, isSyntheticPayee, ok } from '@umsbx/contracts';
 import type { Actor, CoreDeps, Database, Id, Result } from '@umsbx/contracts';
 
 // POB-G: `environment` is optional. Only 'dryrun' touches the payee columns of the publisher (see decidePaypalLink);
@@ -30,6 +30,11 @@ export interface PaypalLinkView {
   state: PaypalLinkState;
   verified_at: string | null;
   updated_at: string;
+  /**
+   * POB-DEMOLINK: present (true) only for a verified link that is the dry run seed's synthetic demo address, so a screen
+   * never says an operator checked it. Absent for every other link.
+   */
+  synthetic?: true;
 }
 
 const fail = (code: LinkErrorCode): Result<never, LinkError> => err({ code });
@@ -72,10 +77,11 @@ export async function ownPaypalLink(db: Database, actor: Actor): Promise<PaypalL
   const r = await db.query<{
     paypal_email: string;
     state: PaypalLinkState;
+    verified_by: string | null;
     verified_at: unknown;
     updated_at: unknown;
   }>(
-    'SELECT paypal_email, state, verified_at, updated_at FROM publisher_paypal_links WHERE publisher_id = $1',
+    'SELECT paypal_email, state, verified_by, verified_at, updated_at FROM publisher_paypal_links WHERE publisher_id = $1',
     [actor.publisher_id],
   );
   const row = r.rows[0];
@@ -86,6 +92,9 @@ export async function ownPaypalLink(db: Database, actor: Actor): Promise<PaypalL
         state: row.state,
         verified_at: row.verified_at == null ? null : iso(row.verified_at),
         updated_at: iso(row.updated_at),
+        ...(row.state === 'verified' && isSyntheticPayee(row.paypal_email, row.verified_by)
+          ? { synthetic: true as const }
+          : {}),
       };
 }
 

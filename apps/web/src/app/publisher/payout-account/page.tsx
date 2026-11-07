@@ -106,7 +106,11 @@ export default async function PayoutAccount() {
               <p data-testid="paypal-link-current">
                 {account.link === null
                   ? LINK_NONE
-                  : linkLine(account.link.email, account.link.state)}
+                  : linkLine(
+                      account.link.email,
+                      account.link.state,
+                      account.link.synthetic === true,
+                    )}
               </p>
               <PaypalLinkForm />
             </>

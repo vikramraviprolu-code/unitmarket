@@ -96,6 +96,17 @@ describe('alert catalogue (AL.2)', () => {
     expect(refused.cause).not.toBe(f.cause);
     expect(refused.cause).not.toBe(big.cause);
     expect(refused.fix).toEqual({ route: '/ops/money', anchor: 'ops-payouts' });
+    // POB-DEMOLINK: a synthetic demo address is never a sandbox destination; its own cause, no dashes (D-051)
+    for (const r of [
+      'payout_refused_pay_1_synthetic_payee',
+      'payout_refused_unt_1_synthetic_payee',
+    ]) {
+      const syn = describeAlert('payout_failed', r, {})!;
+      expect(syn.cause).toMatch(/synthetic/i);
+      expect(syn.cause).not.toBe(refused.cause);
+      expect(syn.cause).not.toMatch(/[-\u2010-\u2015\u2212]/);
+      expect(syn.fix).toEqual({ route: '/ops/money', anchor: 'ops-payouts' });
+    }
     expect(describeAlert('payout_adjustment', 'made_up_reason', {})).toBeNull();
     expect(describeAlert('payout_failed', 'made_up_reason', {})).toBeNull();
   });

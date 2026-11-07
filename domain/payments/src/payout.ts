@@ -17,9 +17,10 @@
 // Payee (POB-G, decision A3 of the journey spec): the publisher's own PayPal Business address, the one an operator verified
 // (publisher_paypal_links, state `verified`). It is read when the payout is created and stored on the payout, and read again
 // at send: no verified link is `no_payee`, a link that now holds another address is `payee_changed`, and the payout is
-// refused in both. The old stub column (publishers.paypal_merchant_id) is not a payee any more; it still serves the buy path.
+// refused in both. POB-DEMOLINK: outside the dry run (the `sandbox` environment, and any label added later) a synthetic payee (the dry run demo link, see isSyntheticPayee) is
+// refused too, at creation and at send. The old stub column (publishers.paypal_merchant_id) is not a payee any more; it still serves the buy path.
 // A publisher with `payee_shared` (the shared owner account) or who is not active is refused, at creation and again at send.
-import { PAYOUT_MAX_MINOR, PAYOUT_RETRY_AFTER_MS } from '@umsbx/contracts';
+import { PAYOUT_MAX_MINOR, PAYOUT_RETRY_AFTER_MS, isSyntheticPayee } from '@umsbx/contracts';
 import type {
   CoreDeps,
   Id,
@@ -189,6 +190,8 @@ interface DueUnit {
   net_minor: number;
   ends_at: string;
   payee_merchant_id: string;
+  /** verified_by of the link, to tell the dry run seed's synthetic link from an operator's check. */
+  payee_verified_by: string | null;
 }
 
 /**
@@ -207,10 +210,11 @@ async function dueUnits(db: SqlExecutor, d: PayoutDeps, only: Id[] | null): Prom
     net_minor: string | number;
     ends_at: string;
     payee_merchant_id: string;
+    payee_verified_by: string | null;
   }>(
     `SELECT u.id AS unit_id, u.order_id, u.publisher_id, o.currency, pay.net AS net_minor,
             to_char(win.max_end AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ends_at,
-            l.paypal_email AS payee_merchant_id
+            l.paypal_email AS payee_merchant_id, l.verified_by AS payee_verified_by
        FROM order_units u
        JOIN orders o ON o.id = u.order_id
        JOIN publishers p ON p.id = u.publisher_id
@@ -247,6 +251,7 @@ async function dueUnits(db: SqlExecutor, d: PayoutDeps, only: Id[] | null): Prom
     net_minor: Number(x.net_minor),
     ends_at: x.ends_at,
     payee_merchant_id: x.payee_merchant_id,
+    payee_verified_by: x.payee_verified_by,
   }));
 }
 
@@ -333,10 +338,26 @@ async function makePayouts(
   tx: SqlExecutor,
   d: PayoutDeps,
   g: { publisher_id: Id; currency: string },
-  units: DueUnit[],
+  all: DueUnit[],
   max: number,
 ): Promise<{ created: number; netted: number }> {
+  let units = all;
   const out = { created: 0, netted: 0 };
+  // POB-DEMOLINK: a synthetic payee (the dry run demo link) is never a destination outside the dry run. The unit is
+  // skipped, not paid, and an operator is told once for each unit (the alert insert ignores a repeat).
+  const usable: DueUnit[] = [];
+  for (const u of units) {
+    if (d.environment !== 'dryrun' && isSyntheticPayee(u.payee_merchant_id, u.payee_verified_by)) {
+      await raiseAlert(tx, d, {
+        kind: 'payout_failed',
+        order_id: u.order_id,
+        unit_id: u.unit_id,
+        reason: `payout_refused_${u.unit_id}_synthetic_payee`,
+        detail: { why: 'synthetic_payee' },
+      });
+    } else usable.push(u);
+  }
+  units = usable;
   if (units.length === 0) return out;
   const at = d.clock.now().toISOString();
   const adjustments = await openAdjustments(tx, d, g.publisher_id, g.currency);
@@ -496,23 +517,31 @@ async function prepare(d: PayoutDeps, id: Id): Promise<Prepared | 'refused' | 'g
       )
     ).rows[0];
     // Locked for share, so an address change that is being verified or replaced right now finishes first (or waits for us).
-    const link_email =
-      (
-        await tx.query<{ paypal_email: string }>(
-          `SELECT paypal_email FROM publisher_paypal_links WHERE publisher_id = $1 AND state = 'verified' FOR SHARE`,
-          [p.publisher_id],
-        )
-      ).rows[0]?.paypal_email ?? null;
+    const link = (
+      await tx.query<{ paypal_email: string; verified_by: string | null }>(
+        `SELECT paypal_email, verified_by FROM publisher_paypal_links WHERE publisher_id = $1 AND state = 'verified' FOR SHARE`,
+        [p.publisher_id],
+      )
+    ).rows[0];
+    const link_email = link?.paypal_email ?? null;
+    // POB-DEMOLINK: outside the dry run neither the stored payee nor the verified link may be a synthetic demo
+    // address. Checked ahead of no_payee and payee_changed, so the reason names the real problem.
+    const synthetic =
+      p.environment !== 'dryrun' &&
+      (isSyntheticPayee(p.payee_merchant_id, null) ||
+        (link !== undefined && isSyntheticPayee(link.paypal_email, link.verified_by)));
     const why =
       pub === undefined || pub.status !== 'active'
         ? 'inactive'
         : pub.payee_shared
           ? 'shared'
-          : link_email === null
-            ? 'no_payee'
-            : link_email !== p.payee_merchant_id
-              ? 'payee_changed'
-              : null;
+          : synthetic
+            ? 'synthetic_payee'
+            : link_email === null
+              ? 'no_payee'
+              : link_email !== p.payee_merchant_id
+                ? 'payee_changed'
+                : null;
     if (why !== null) {
       // Review M1: the payout stays where it is and an operator is told, once for each payout, reason and state (due or sending).
       const first = (
@@ -536,7 +565,11 @@ async function prepare(d: PayoutDeps, id: Id): Promise<Prepared | 'refused' | 'g
       // while it stays `due` its units are held (live items), so the new address could never be paid. Cancel it here, in
       // this transaction: the units are free and a later pass pays them to the verified address, once one exists. A payout
       // in `sending` is never cancelled (the provider may already hold it). `inactive` and `shared` stay an operator decision.
-      if ((why === 'payee_changed' || why === 'no_payee') && p.state === 'due')
+      // `synthetic_payee` (sandbox environment only) is cancelled the same way: that address will never be sendable.
+      if (
+        (why === 'payee_changed' || why === 'no_payee' || why === 'synthetic_payee') &&
+        p.state === 'due'
+      )
         await cancelPayoutTx(tx, d, id, why);
       return 'refused';
     }

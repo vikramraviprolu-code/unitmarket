@@ -245,9 +245,11 @@ const ENTRIES: Record<CatalogueKind, Entry> = {
         ? 'One sale is larger than the largest single payout, so it cannot be paid out as it is.'
         : reason.startsWith('payout_refused_') && reason.endsWith('_sending')
           ? 'A payout that was already handed to the provider could not be sent again: the publisher cannot be paid right now. The provider may already hold it, so do not assume it was not paid. It stays in sending, refunds booked on it wait, and it is sent again with the same key when the publisher can be paid. Check the payout with the provider.'
-          : reason.startsWith('payout_refused_')
-            ? 'A payout was not sent: the publisher cannot be paid right now. If they are not active or use the shared account it waits and is sent when that is put right. If their PayPal address changed or is no longer verified, the payout is cancelled and the sale is paid out again to the verified address once there is one.'
-            : 'The provider refused a payout. Its sales are held for 24 hours and then paid again.',
+          : reason.startsWith('payout_refused_') && reason.endsWith('_synthetic_payee')
+            ? 'A payout was not made: the publisher has only a synthetic demo address on file, which is never a real destination in the sandbox. Nothing was sent. The sale is paid out once an operator verifies a real PayPal address for the publisher.'
+            : reason.startsWith('payout_refused_')
+              ? 'A payout was not sent: the publisher cannot be paid right now. If they are not active or use the shared account it waits and is sent when that is put right. If their PayPal address changed or is no longer verified, the payout is cancelled and the sale is paid out again to the verified address once there is one.'
+              : 'The provider refused a payout. Its sales are held for 24 hours and then paid again.',
     fix: MONEY_PAYOUTS,
     runbook: (reason) =>
       reason.startsWith('payout_refused_') && reason.endsWith('_sending')
