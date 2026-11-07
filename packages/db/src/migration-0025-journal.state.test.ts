@@ -54,10 +54,12 @@ describe('0025 journal seed convention', () => {
       'trace_tracked_reseed_0025',
       'trace_tracked_reseed_0026',
       'trace_tracked_reseed_0027',
+      'trace_tracked_reseed_0031',
       'trace_tracked_seed',
       'trace_tracked_seed_0025',
       'trace_tracked_seed_0026',
       'trace_tracked_seed_0027',
+      'trace_tracked_seed_0031',
     ]);
   });
 
