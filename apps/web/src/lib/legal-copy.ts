@@ -224,7 +224,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     {
       heading: 'Not exclusive',
       paragraphs: [
-        'These terms are not exclusive. A publisher may sell the same articles anywhere else. In this demo either side may stop at any time, and there are no fees.',
+        'These terms are not exclusive. A publisher may sell the same articles anywhere else. In this demo either side may stop at any time at no charge. The only fee is the platform fee described under Commission.',
       ],
     },
     {
