@@ -11,7 +11,6 @@ import type { LinkDeps } from './paypal-link';
 import type { Actor, TraceContext } from '@umsbx/contracts';
 
 const HASH = 'scrypt:16384:8:1:00112233445566778899aabbccddeeff:' + 'a'.repeat(64);
-const HEX64 = /^[a-f0-9]{64}$/;
 let w: OffersWorld;
 let current: TraceContext | undefined;
 let deps: LinkDeps;
