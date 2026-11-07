@@ -4,7 +4,7 @@
 // never typed here: it comes from the stored environment. Short plain sentences.
 
 /** The contact address for a lost password. The same address the legal pages give. */
-export const CONTACT_ADDRESS = 'contact@unitmarket.example';
+export const CONTACT_ADDRESS = 'unitmarket@raviprolu.com';
 /** The version of the Terms and the Privacy notice a new account accepts (stored on the consent rows). */
 export const ACCOUNT_CONSENT_VERSION = 'terms-v1';
 
