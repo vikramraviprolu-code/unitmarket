@@ -139,9 +139,9 @@ an article you own, and the four draft legal pages linked from the footer.
 - Fictional: the publishers, the articles and the buyers. Sandbox accounts only.
 - Today both publishers are paid into one sandbox test account; multi-merchant payout not demonstrated. **TO FINALISE:** replace
   this line only if the Quayside test order has been proven (decision items 28 and 30).
-- No commission in this demo; planned 20 percent, not implemented.
-- Publishers are fictional. UnitMarket never holds a publisher's money and uses no payout service; the design pays each publisher
-  directly through PayPal, which is not demonstrated with a second account. Payee checks are done by an operator, not by PayPal
+- On offers published through the web import, UnitMarket adds a platform fee of 10 percent of the publisher price to the price shown; the publisher does not pay it. Seeded demo offers carry no fee. The fee is recorded in the ledger. Every sale in the demo is paid into one sandbox test account, so PayPal splits no money.
+- Publishers are fictional. By design the buyer pays UnitMarket's collection account and UnitMarket pays the publisher after the
+  access window ends with no refund open; that payout step is built and tested in dry run only and is not demonstrated against PayPal. Payee checks are done by an operator, not by PayPal
   onboarding.
 - Refunds are decided by an operator. PayPal keeps its original fee on a refund. No tax is calculated and no tax invoice is issued
   in this demo.
