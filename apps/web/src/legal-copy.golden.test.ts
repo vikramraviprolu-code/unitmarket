@@ -188,6 +188,9 @@ describe('legal copy rules', () => {
       'A platform fee of 10 percent of the publisher price is added to the price shown. The publisher does not pay it.',
     );
     expect(t).not.toMatch(/20 percent|not implemented/i);
+    // The terms state a platform fee, so they must not also say there are no fees (QA finding of 2026-11-07).
+    expect(t).not.toMatch(/there are no fees/i);
+    expect(t).toContain('The only fee is the platform fee described under Commission.');
     expect(t).toMatch(/no payout/i);
     expect(t).toMatch(/statement/i);
   });
