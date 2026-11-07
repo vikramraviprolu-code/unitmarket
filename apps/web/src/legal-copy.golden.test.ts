@@ -178,13 +178,15 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/test money/i);
   });
 
-  it('publisher terms: fictional, payee marked checked at load, no commission', () => {
+  it('publisher terms: fictional, payee marked checked at load, platform fee line', () => {
     const t = flat('publisher-terms');
     expect(t).toMatch(/fictional/i);
     expect(t).toMatch(/marked as checked/i);
     expect(t).toMatch(/demo data is loaded or by an operator check/i);
     expect(t).toMatch(/statement page/i);
-    expect(t).toMatch(/no commission in this demo/i);
+    expect(t).toContain(
+      'A platform fee of 10 percent of the publisher price is added to the price shown. The publisher does not pay it.',
+    );
     expect(t).not.toMatch(/20 percent|not implemented/i);
     expect(t).toMatch(/no payout/i);
     expect(t).toMatch(/statement/i);
