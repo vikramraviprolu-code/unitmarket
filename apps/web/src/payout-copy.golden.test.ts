@@ -102,7 +102,7 @@ describe('publisher words', () => {
       owed: 'Owed to you',
       paid: 'Paid out to you',
       adjustments: 'Open adjustments (refunded after payout)',
-      next: 'Next payout',
+      next: 'Owed, not yet paid out',
     });
     expect(copy.MONEY_SOURCE).toEqual({
       fee: 'Source: ledger fee rows minus fee reversal rows.',
@@ -110,7 +110,7 @@ describe('publisher words', () => {
       paid: 'Source: payouts that were sent or paid out.',
       adjustments:
         'Source: the publisher share of refunds booked after payout, not yet taken off a payout.',
-      next: 'Source: what is owed and not yet in a payout, less the open adjustments, never below zero.',
+      next: 'Source: what is owed and not yet in a payout that went out, less the open adjustments, never below zero. It includes sales still inside their access window.',
     });
   });
   it('shows the tiles of a block in order, and the adjustments only when there are some', () => {
@@ -125,7 +125,7 @@ describe('publisher words', () => {
       ['fee', 'UnitMarket fee on top (paid by the customer)', '$0.40'],
       ['owed', 'Owed to you', '$3.60'],
       ['paid', 'Paid out to you', '$0.00'],
-      ['next', 'Next payout', '$3.60'],
+      ['next', 'Owed, not yet paid out', '$3.60'],
     ]);
     const adj = { ...base, adjustment_minor: 90, paid_out_minor: 360, net_minor: 0 };
     expect(copy.moneyTiles(adj, 'USD').map((t) => t.key)).toEqual([
