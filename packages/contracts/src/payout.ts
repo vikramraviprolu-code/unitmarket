@@ -54,3 +54,17 @@ export type PayoutSendResult =
 export interface PayoutPort {
   send(req: PayoutSendRequest): Promise<PayoutSendResult>;
 }
+
+/**
+ * POB-DEMOLINK: the marker the dry run boot seed writes into `publisher_paypal_links.verified_by` for the synthetic demo
+ * link. Real operator ids are `opr_` plus lower case letters, digits and underscores, so a colon can never be one.
+ */
+export const SYNTHETIC_LINK_VERIFIER = 'seed:synthetic';
+
+/**
+ * POB-DEMOLINK: a payee that is a dry run stand in and never a real destination: an address on the reserved `.invalid`
+ * top level domain (RFC 2606), or a link carrying the seed marker. Payouts in the sandbox environment refuse it.
+ */
+export function isSyntheticPayee(email: string, verified_by: string | null): boolean {
+  return verified_by === SYNTHETIC_LINK_VERIFIER || email.trim().toLowerCase().endsWith('.invalid');
+}

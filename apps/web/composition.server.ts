@@ -50,7 +50,14 @@ import type {
   SwitchReader,
   Transport,
 } from '@umsbx/contracts';
-import { API_GROUPS, EXPOSURE_REASON_CODES, err, isApiGroup, ok } from '@umsbx/contracts';
+import {
+  API_GROUPS,
+  EXPOSURE_REASON_CODES,
+  SYNTHETIC_LINK_VERIFIER,
+  err,
+  isApiGroup,
+  ok,
+} from '@umsbx/contracts';
 import type { ApiGroup } from '@umsbx/contracts';
 import {
   BOOT_REFUSAL_EXIT_CODE,
@@ -107,6 +114,7 @@ import {
 import type { CaseResult } from '@umsbx/model';
 import {
   SEED_DATA,
+  maskEmail,
   SEED_SUPPLEMENT_COMPOSITE,
   SEED_SUPPLEMENT_DE,
   NEW_OFFER_TERMS,
@@ -499,6 +507,11 @@ export interface AppOptions {
      * NODE_ENV=test it always runs; in tests it is off unless `de_corridor: true`, so older counts hold.
      */
     de_corridor?: boolean;
+    /**
+     * POB-DEMOLINK: the synthetic verified PayPal link of each demo publisher (dry run only). Outside NODE_ENV=test it
+     * always runs in dry run; in tests it is off unless `demo_links: true`, so tests that insert their own link hold.
+     */
+    demo_links?: boolean;
   };
   /**
    * AI-A (tests): a ModelWire standing in for the Claude egress. Used only when UMS_AI_ADAPTER=claude and a
@@ -532,6 +545,12 @@ export interface AppOptions {
 // ---------------------------------------------------------------------------------------------
 /** The one publisher of MVP-B (ASM-03): its payee is the owner's own sandbox account (BU-7). */
 const MVPB_PUBLISHER_SLUG = 'harbour-ledger';
+// POB-DEMOLINK: the fictional publishers the boot seed creates (base block, composite and German supplements).
+const DEMO_PUBLISHER_SLUGS: readonly string[] = [
+  ...SEED_DATA.publishers.map((p) => p.slug),
+  ...SEED_SUPPLEMENT_COMPOSITE.publishers.map((p) => p.slug),
+  ...SEED_SUPPLEMENT_DE.publishers.map((p) => p.slug),
+];
 
 // PUB-A1: one sign-in persona per publisher; the slug each maps to is in lib/publisher-copy.ts.
 export const PERSONAS = [
@@ -1800,6 +1819,42 @@ export async function seedSandboxPayees(
     });
 }
 
+// ---------------------------------------------------------------------------------------------
+// POB-DEMOLINK: dry run only. The payout pays the publisher's verified PayPal link and refuses (`no_payee`) when there is
+// none, so a dry run demo publisher gets a clearly synthetic one: `demo-<slug>@payee.invalid` (the reserved .invalid
+// domain, RFC 2606, cannot be delivered to), verified_by the seed marker (never an operator id), verified_at the seed time.
+// An existing row of any state is never touched (ON CONFLICT DO NOTHING), so a second boot adds nothing and a real
+// address survives. Any environment but dry run writes nothing. Payouts refuse such a link in the sandbox environment.
+// ---------------------------------------------------------------------------------------------
+export async function seedDemoPaypalLinks(
+  d: { db: Database; clock: Clock; audit: AuditSink },
+  environment: EnvironmentLabel,
+  slugs: readonly string[],
+): Promise<number> {
+  if (environment !== 'dryrun' || slugs.length === 0) return 0;
+  const now = d.clock.now().toISOString();
+  return d.db.transaction(async (tx) => {
+    const made = await tx.query<{ publisher_id: string; paypal_email: string }>(
+      `INSERT INTO publisher_paypal_links (publisher_id, paypal_email, state, verified_by, verified_at, created_at, updated_at)
+       SELECT id, 'demo-' || slug || '@payee.invalid', 'verified', $2, $1, $1, $1
+         FROM publishers WHERE slug = ANY($3::text[])
+       ON CONFLICT (publisher_id) DO NOTHING
+       RETURNING publisher_id, paypal_email`,
+      [now, SYNTHETIC_LINK_VERIFIER, [...slugs]],
+    );
+    // Audit only a write that happened (two racing boots must not both record it). The masked address only.
+    for (const r of made.rows)
+      await d.audit.record(tx, {
+        actor: { kind: 'system' },
+        action: 'seed.paypal_link_synthetic',
+        target: r.publisher_id,
+        reason: 'POB-DEMOLINK: synthetic dry run payee for a demo publisher',
+        detail: { masked: maskEmail(r.paypal_email) },
+      });
+    return made.rows.length;
+  });
+}
+
 /** Publishers that share one payee account through the explicit flag, from stored data (D-041). */
 async function sharedPayee(db: Database): Promise<OpsSnapshot['shared_payee']> {
   const r = await db.query<{ paypal_merchant_id: string; n: string | number }>(
@@ -2032,6 +2087,13 @@ function buildApp(config: Config, opts: AppOptions): App {
         [now],
       );
     }
+    // POB-DEMOLINK: dry run only (the function checks the environment too). The demo publishers are the ones the
+    // seed blocks create; a publisher that applied or imported through the product is not one.
+    if (
+      config.mode === 'offline' &&
+      (config.node_env !== 'test' || opts.test_seed?.demo_links === true)
+    )
+      await seedDemoPaypalLinks({ db: d, clock, audit }, environment, [...DEMO_PUBLISHER_SLUGS]);
     if (config.mode === 'sandbox' && config.own_merchant_id !== null) {
       // BU-7 (D-028): the one MVP-B publisher is paid into the owner's own sandbox account. The id
       // comes from the owner's environment at setup time; none is committed. Only a publisher that has

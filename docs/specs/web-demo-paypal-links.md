@@ -15,7 +15,7 @@ Goal: with `environment = 'dryrun'` the boot seed inserts, for each demo publish
 
 Inputs: `docs/specs/` pob specs, `domain/payments/src/payout.ts`, `domain/catalogue/src/paypal-link.ts`, `apps/web/composition.server.ts` seed, `domain/catalogue/src/seed-data.ts` (publisher slugs). Env vars: none new.
 
-Outputs: `packages/contracts/src/payout.ts`, `apps/web/composition.server.ts` (`seedDemoPaypalLinks`, `test_seed.demo_links`), `domain/payments/src/payout.ts`, `domain/alerts/src/catalogue.ts`, tests: `apps/web/src/demo-links.state.test.ts`, `domain/payments/src/payout.synthetic.state.test.ts`, additions to `packages/contracts/src/payout.test.ts` and `domain/alerts/src/catalogue.golden.test.ts`.
+Outputs: `packages/contracts/src/payout.ts`, `apps/web/composition.server.ts` (`seedDemoPaypalLinks`, `test_seed.demo_links`), `domain/payments/src/payout.ts`, `domain/alerts/src/catalogue.ts`, tests: `apps/web/src/demo-links.state.test.ts`, `domain/payments/src/payout.synthetic.state.test.ts`, additions to `packages/contracts/src/payout.test.ts`, the export list in `packages/contracts/src/index.test.ts` and `domain/alerts/src/catalogue.golden.test.ts`.
 
 Acceptance tests:
 
