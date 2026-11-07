@@ -28,7 +28,13 @@ const q = async <T>(sql: string, p: unknown[] = []): Promise<T[]> =>
   (await w.db.query<T>(sql, p)).rows;
 let n = 0;
 /** A new active publisher with a claimed account. */
-async function withAccount(): Promise<{ id: string; actor: Actor; username: string }> {
+async function withAccount(): Promise<{
+  id: string;
+  actor: Actor;
+  username: string;
+  /** A lower case address no other test publisher uses: one verified address belongs to one publisher (POB-LINKU). */
+  email: string;
+}> {
   n += 1;
   const id = `pub_link${String(n)}`;
   const username = `link.owner.${String(n)}`;
@@ -44,9 +50,16 @@ async function withAccount(): Promise<{ id: string; actor: Actor; username: stri
      VALUES ($1, $2, $3, 0, NULL, $4, $4, $4)`,
     [id, username, HASH, at],
   );
-  return { id, actor: { kind: 'publisher', publisher_id: id }, username };
+  return {
+    id,
+    actor: { kind: 'publisher', publisher_id: id },
+    username,
+    email: `seller${String(n)}@example.com`,
+  };
 }
 const MAIL = 'Seller@Example.com';
+/** The same address typed with a capital first letter. */
+const shout = (e: string): string => e.replace(/^./, (c) => c.toUpperCase());
 
 describe('the email', () => {
   it('is trimmed and lower cased, one address, plain shape only', () => {
@@ -126,19 +139,19 @@ describe('requestPaypalLink and ownPaypalLink', () => {
 
   it('a change returns a verified address to requested; the same address again changes nothing', async () => {
     const p = await withAccount();
-    await requestPaypalLink(w.deps(), p.actor, { email: MAIL });
+    await requestPaypalLink(w.deps(), p.actor, { email: shout(p.email) });
     // asking again with the same address while it waits is a no-op
-    expect(await requestPaypalLink(w.deps(), p.actor, { email: 'seller@example.com' })).toEqual({
+    expect(await requestPaypalLink(w.deps(), p.actor, { email: p.email })).toEqual({
       ok: true,
       value: { state: 'requested' },
     });
     const v = await decidePaypalLink(w.deps(), w.operator, {
       publisher_id: p.id,
-      email_retyped: 'seller@example.com',
+      email_retyped: p.email,
       reason: 'Confirmed by phone',
     });
     expect(v).toEqual({ ok: true, value: { state: 'verified' } });
-    expect(await requestPaypalLink(w.deps(), p.actor, { email: MAIL })).toEqual({
+    expect(await requestPaypalLink(w.deps(), p.actor, { email: shout(p.email) })).toEqual({
       ok: false,
       error: { code: 'same_as_current' },
     });
@@ -165,7 +178,7 @@ describe('requestPaypalLink and ownPaypalLink', () => {
 describe('decidePaypalLink', () => {
   it('verifies only when the operator types the whole address again', async () => {
     const p = await withAccount();
-    await requestPaypalLink(w.deps(), p.actor, { email: MAIL });
+    await requestPaypalLink(w.deps(), p.actor, { email: shout(p.email) });
     const base = { publisher_id: p.id, reason: 'Confirmed by phone' };
     for (const email_retyped of [
       'seller@example.co',
@@ -185,7 +198,7 @@ describe('decidePaypalLink', () => {
     expect(
       await decidePaypalLink(w.deps(), w.operator, {
         ...base,
-        email_retyped: ' SELLER@example.com ',
+        email_retyped: ` ${p.email.toUpperCase()} `,
       }),
     ).toEqual({ ok: true, value: { state: 'verified' } });
     const own = (await ownPaypalLink(w.db, p.actor))!;
@@ -205,12 +218,12 @@ describe('decidePaypalLink', () => {
     );
     expect(audits).toHaveLength(1);
     expect(audits[0]!.reason).toBe('Confirmed by phone');
-    expect(JSON.stringify(audits)).not.toContain('seller@example.com');
+    expect(JSON.stringify(audits)).not.toContain(p.email);
     // verified once
     expect(
       await decidePaypalLink(w.deps(), w.operator, {
         ...base,
-        email_retyped: 'seller@example.com',
+        email_retyped: p.email,
       }),
     ).toEqual({ ok: false, error: { code: 'already_verified' } });
   });
@@ -311,24 +324,24 @@ describe('the verified link makes the publisher buyable (dry run only)', () => {
     )[0]!;
   const dry = () => ({ ...w.deps(), environment: 'dryrun' as const });
   const sbx = () => ({ ...w.deps(), environment: 'sandbox' as const });
-  const verify = (deps: LinkDeps, id: string, email = 'seller@example.com') =>
+  const verify = (deps: LinkDeps, p: { id: string; email: string }, email = p.email) =>
     decidePaypalLink(deps, w.operator, {
-      publisher_id: id,
+      publisher_id: p.id,
       email_retyped: email,
       reason: 'Confirmed by phone',
     });
 
   it('dry run: verifying sets payee_verified_at and the synthetic payee, in the same step as the link', async () => {
     const p = await withAccount();
-    await requestPaypalLink(dry(), p.actor, { email: MAIL });
+    await requestPaypalLink(dry(), p.actor, { email: p.email });
     const before = await payee(p.id);
     expect(before.paypal_merchant_id).toBeNull();
     expect(before.payee_verified_at).toBeNull();
     // a wrong retype changes nothing
-    await verify(dry(), p.id, 'wrong@example.com');
+    await verify(dry(), p, 'wrong@example.com');
     expect((await payee(p.id)).payee_verified_at).toBeNull();
     w.clock.advance(1000);
-    expect(await verify(dry(), p.id)).toEqual({ ok: true, value: { state: 'verified' } });
+    expect(await verify(dry(), p)).toEqual({ ok: true, value: { state: 'verified' } });
     const after = await payee(p.id);
     expect(after.paypal_merchant_id).toBe(after.synthetic);
     expect(new Date(after.payee_verified_at as string).toISOString()).toBe(
@@ -339,8 +352,8 @@ describe('the verified link makes the publisher buyable (dry run only)', () => {
   it('dry run: a merchant id the publisher already has is kept; only the verification is set', async () => {
     const p = await withAccount();
     await w.db.query(`UPDATE publishers SET paypal_merchant_id = 'KEPT123' WHERE id = $1`, [p.id]);
-    await requestPaypalLink(dry(), p.actor, { email: MAIL });
-    await verify(dry(), p.id);
+    await requestPaypalLink(dry(), p.actor, { email: p.email });
+    await verify(dry(), p);
     const after = await payee(p.id);
     expect(after.paypal_merchant_id).toBe('KEPT123');
     expect(after.payee_verified_at).not.toBeNull();
@@ -348,8 +361,8 @@ describe('the verified link makes the publisher buyable (dry run only)', () => {
 
   it('sandbox: no merchant id is invented and the payee is not marked verified (the existing checks stay)', async () => {
     const p = await withAccount();
-    await requestPaypalLink(sbx(), p.actor, { email: MAIL });
-    expect(await verify(sbx(), p.id)).toEqual({ ok: true, value: { state: 'verified' } });
+    await requestPaypalLink(sbx(), p.actor, { email: p.email });
+    expect(await verify(sbx(), p)).toEqual({ ok: true, value: { state: 'verified' } });
     const after = await payee(p.id);
     expect(after.paypal_merchant_id).toBeNull();
     expect(after.payee_verified_at).toBeNull();
@@ -358,18 +371,18 @@ describe('the verified link makes the publisher buyable (dry run only)', () => {
 
   it('dry run: a changed address clears the verification again; the next check sets it', async () => {
     const p = await withAccount();
-    await requestPaypalLink(dry(), p.actor, { email: MAIL });
-    await verify(dry(), p.id);
+    await requestPaypalLink(dry(), p.actor, { email: p.email });
+    await verify(dry(), p);
     expect((await payee(p.id)).payee_verified_at).not.toBeNull();
     // the same address again is refused and changes nothing
-    await requestPaypalLink(dry(), p.actor, { email: MAIL });
+    await requestPaypalLink(dry(), p.actor, { email: p.email });
     expect((await payee(p.id)).payee_verified_at).not.toBeNull();
     await requestPaypalLink(dry(), p.actor, { email: 'other@example.com' });
     const cleared = await payee(p.id);
     expect(cleared.payee_verified_at).toBeNull();
     expect(cleared.paypal_merchant_id).toBe(cleared.synthetic); // the label stays, it is not an account
     w.clock.advance(1000);
-    await verify(dry(), p.id, 'other@example.com');
+    await verify(dry(), p, 'other@example.com');
     expect((await payee(p.id)).payee_verified_at).not.toBeNull();
   });
 
@@ -379,11 +392,173 @@ describe('the verified link makes the publisher buyable (dry run only)', () => {
       `UPDATE publishers SET paypal_merchant_id = 'SBXOWN01', payee_verified_at = $2 WHERE id = $1`,
       [p.id, w.clock.now().toISOString()],
     );
-    await requestPaypalLink(sbx(), p.actor, { email: MAIL });
-    await verify(sbx(), p.id);
+    await requestPaypalLink(sbx(), p.actor, { email: p.email });
+    await verify(sbx(), p);
     await requestPaypalLink(sbx(), p.actor, { email: 'other@example.com' });
     const after = await payee(p.id);
     expect(after.paypal_merchant_id).toBe('SBXOWN01');
     expect(after.payee_verified_at).not.toBeNull();
+  });
+});
+
+// POB-LINKU: one verified address belongs to one publisher. A request proves nothing, so several publishers may
+// ask for the same address; the refusal is the operator's verification, and the database repeats it.
+describe('one verified address belongs to one publisher', () => {
+  const verify = (p: { id: string }, email: string) =>
+    decidePaypalLink(w.deps(), w.operator, {
+      publisher_id: p.id,
+      email_retyped: email,
+      reason: 'Confirmed by phone',
+    });
+  const state = async (p: { id: string }) =>
+    (
+      await q<{ state: string; verified_by: unknown; verified_at: unknown }>(
+        'SELECT state, verified_by, verified_at FROM publisher_paypal_links WHERE publisher_id = $1',
+        [p.id],
+      )
+    )[0]!;
+  const verifiedAudits = async (p: { id: string }) =>
+    await q(
+      `SELECT 1 FROM audit_log WHERE target = $1 AND action = 'publisher.paypal_link_verified'`,
+      [p.id],
+    );
+  const SHARED_ERR = { ok: false, error: { code: 'email_in_use' } };
+
+  it('allows several requested links with one address, spelled in any case or with spaces', async () => {
+    const a = await withAccount();
+    const b = await withAccount();
+    const c = await withAccount();
+    const shared = `shared.request.${String(n)}@example.com`;
+    for (const [p, typed] of [
+      [a, shared],
+      [b, ` ${shared.toUpperCase()} `],
+      [c, shout(shared)],
+    ] as const)
+      expect(await requestPaypalLink(w.deps(), p.actor, { email: typed })).toEqual({
+        ok: true,
+        value: { state: 'requested' },
+      });
+    for (const p of [a, b, c])
+      expect(await ownPaypalLink(w.db, p.actor)).toMatchObject({
+        email: shared,
+        state: 'requested',
+      });
+  });
+
+  it('allows two different addresses to be verified for two publishers', async () => {
+    const a = await withAccount();
+    const b = await withAccount();
+    await requestPaypalLink(w.deps(), a.actor, { email: a.email });
+    await requestPaypalLink(w.deps(), b.actor, { email: b.email });
+    expect(await verify(a, a.email)).toEqual({ ok: true, value: { state: 'verified' } });
+    expect(await verify(b, b.email)).toEqual({ ok: true, value: { state: 'verified' } });
+  });
+
+  it('refuses the second verification of an address, tells the publisher nothing and changes nothing', async () => {
+    const a = await withAccount();
+    const b = await withAccount();
+    const mail = `taken.${String(n)}@example.com`;
+    await requestPaypalLink(w.deps(), a.actor, { email: mail });
+    expect(await verify(a, mail)).toEqual({ ok: true, value: { state: 'verified' } });
+    // no existence leak: B's request answers exactly as any other request does
+    expect(await requestPaypalLink(w.deps(), b.actor, { email: mail })).toEqual({
+      ok: true,
+      value: { state: 'requested' },
+    });
+    expect(await ownPaypalLink(w.db, b.actor)).toMatchObject({ email: mail, state: 'requested' });
+    const before = await state(b);
+    const audits = await q('SELECT 1 FROM audit_log');
+    w.clock.advance(1000);
+    expect(await verify(b, mail)).toEqual(SHARED_ERR);
+    expect(await state(b)).toEqual(before);
+    expect(before).toEqual({ state: 'requested', verified_by: null, verified_at: null });
+    expect(await verifiedAudits(b)).toEqual([]);
+    expect(await q('SELECT 1 FROM audit_log')).toHaveLength(audits.length);
+    // A is untouched
+    expect((await state(a)).state).toBe('verified');
+  });
+
+  it('treats case and whitespace variants as the same address', async () => {
+    const a = await withAccount();
+    const b = await withAccount();
+    const mail = `variant.${String(n)}@example.com`;
+    await requestPaypalLink(w.deps(), a.actor, { email: mail });
+    await verify(a, mail);
+    await requestPaypalLink(w.deps(), b.actor, { email: `  ${mail.toUpperCase()}\t` });
+    expect(await verify(b, ` ${shout(mail)} `)).toEqual(SHARED_ERR);
+    expect((await state(b)).state).toBe('requested');
+  });
+
+  it('in dry run a refused verification leaves the publisher unbuyable', async () => {
+    const a = await withAccount();
+    const b = await withAccount();
+    const mail = `dry.${String(n)}@example.com`;
+    const dry = { ...w.deps(), environment: 'dryrun' as const };
+    await requestPaypalLink(dry, a.actor, { email: mail });
+    await decidePaypalLink(dry, w.operator, {
+      publisher_id: a.id,
+      email_retyped: mail,
+      reason: 'Confirmed by phone',
+    });
+    await requestPaypalLink(dry, b.actor, { email: mail });
+    expect(
+      await decidePaypalLink(dry, w.operator, {
+        publisher_id: b.id,
+        email_retyped: mail,
+        reason: 'Confirmed by phone',
+      }),
+    ).toEqual(SHARED_ERR);
+    expect(
+      (
+        await q<{ paypal_merchant_id: string | null; payee_verified_at: unknown }>(
+          'SELECT paypal_merchant_id, payee_verified_at FROM publishers WHERE id = $1',
+          [b.id],
+        )
+      )[0],
+    ).toEqual({ paypal_merchant_id: null, payee_verified_at: null });
+  });
+
+  it('lets the same publisher change the address and verify it again, and frees the old address', async () => {
+    const a = await withAccount();
+    const b = await withAccount();
+    const x = `own.x.${String(n)}@example.com`;
+    const y = `own.y.${String(n)}@example.com`;
+    await requestPaypalLink(w.deps(), a.actor, { email: x });
+    expect(await verify(a, x)).toEqual({ ok: true, value: { state: 'verified' } });
+    // A moves to Y: X is free for B, and B can be verified on it
+    await requestPaypalLink(w.deps(), a.actor, { email: y });
+    await requestPaypalLink(w.deps(), b.actor, { email: x });
+    expect(await verify(b, x)).toEqual({ ok: true, value: { state: 'verified' } });
+    expect(await verify(a, y)).toEqual({ ok: true, value: { state: 'verified' } });
+    // A asks for X again: it may ask, but the operator cannot verify it while B holds it
+    await requestPaypalLink(w.deps(), a.actor, { email: x });
+    expect(await verify(a, x)).toEqual(SHARED_ERR);
+    // B moves away, then A may be verified on X
+    await requestPaypalLink(w.deps(), b.actor, { email: b.email });
+    expect(await verify(a, x)).toEqual({ ok: true, value: { state: 'verified' } });
+  });
+
+  it('is enforced by the database: a second verified row for one address fails with 23505', async () => {
+    const a = await withAccount();
+    const b = await withAccount();
+    const mail = `index.${String(n)}@example.com`;
+    await requestPaypalLink(w.deps(), a.actor, { email: mail });
+    await verify(a, mail);
+    await requestPaypalLink(w.deps(), b.actor, { email: mail });
+    const at = w.clock.now().toISOString();
+    const forceVerified = (email: string) =>
+      w.db.query(
+        `UPDATE publisher_paypal_links
+            SET paypal_email = $2, state = 'verified', verified_by = 'opr_sql', verified_at = $3
+          WHERE publisher_id = $1`,
+        [b.id, email, at],
+      );
+    for (const spelled of [mail, mail.toUpperCase(), ` ${mail} `])
+      await expect(forceVerified(spelled), spelled).rejects.toMatchObject({ code: '23505' });
+    expect((await state(b)).state).toBe('requested');
+    // a requested row with the same address is fine for the database too
+    expect(
+      await q('SELECT 1 FROM publisher_paypal_links WHERE paypal_email = $1', [mail]),
+    ).toHaveLength(2);
   });
 });

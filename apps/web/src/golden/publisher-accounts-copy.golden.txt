@@ -101,6 +101,7 @@ access error rate_limited: Too many changes this hour. Please try again later.
 access error unknown: The change could not be saved. Please try again.
 link decision error email_mismatch: The address you typed is not the address that was sent. Nothing changed.
 link decision error already_verified: This address was already checked.
+link decision error email_in_use: This address is already checked for another publisher. Nothing changed.
 link decision error not_found: That publisher has no address waiting.
 link decision error mfa_required: Checking an address needs a sign in with your authenticator code.
 link decision error invalid_input: Please type the full address again and give a reason of 3 to 200 characters.

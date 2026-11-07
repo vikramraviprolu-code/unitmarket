@@ -520,6 +520,40 @@ describe('the PayPal link', () => {
     ).toMatchObject({ email: 'other@example.com', state: 'requested' });
   });
 
+  it('POB-LINKU: the second publisher to ask for a verified address is told so only at the operator check (409 email_in_use)', async () => {
+    const first = await account();
+    const second = await account();
+    const mail = 'shared.link@example.com';
+    for (const p of [first, second]) {
+      const asked = await got(
+        await post(r.link.POST, '/api/publisher/paypal-link', { email: mail }, sess(p)),
+      );
+      // the publisher side answers the same for both: nothing says the address is taken
+      expect(asked.status).toBe(200);
+      expect(asked.json).toEqual({ state: 'requested' });
+    }
+    const decide = async (p: { id: string }) =>
+      got(
+        await post(
+          r.linkDecision.POST,
+          '/api/ops/publishers/paypal-link-decisions',
+          { publisher_id: p.id, email_retyped: mail, reason: 'Confirmed by phone' },
+          sess(op),
+        ),
+      );
+    expect((await decide(first)).status).toBe(200);
+    const refused = await decide(second);
+    expect(refused.status).toBe(409);
+    expect(errorOf(refused)).toEqual({
+      code: 'email_in_use',
+      message: 'This address is already checked for another publisher. Nothing changed.',
+    });
+    expect(
+      (await app.engine.publisherAccounts.view({ kind: 'publisher', publisher_id: second.id }))!
+        .link,
+    ).toMatchObject({ email: mail, state: 'requested' });
+  });
+
   it('a publisher, a buyer and an operator without the second factor cannot verify; bad emails are refused', async () => {
     const p = await account();
     await post(r.link.POST, '/api/publisher/paypal-link', { email: 'seller@example.com' }, sess(p));
