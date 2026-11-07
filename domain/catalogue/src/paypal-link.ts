@@ -20,7 +20,8 @@ export type LinkErrorCode =
   | 'invalid_input'
   | 'not_found'
   | 'email_mismatch'
-  | 'already_verified';
+  | 'already_verified'
+  | 'email_in_use';
 export interface LinkError {
   code: LinkErrorCode;
 }
@@ -46,6 +47,12 @@ class Refused extends Error {
     this.code = code;
   }
 }
+// Only this index: the dry run payee update in the same transaction has a unique key of its own (merchant id).
+const isVerifiedEmailViolation = (e: unknown): boolean =>
+  typeof e === 'object' &&
+  e !== null &&
+  (e as { code?: unknown }).code === '23505' &&
+  (e as { constraint?: unknown }).constraint === 'publisher_paypal_links_verified_email_key';
 const iso = (v: unknown): string => new Date(v as string | number | Date).toISOString();
 // Control and format characters (zero width, bidirectional marks, the byte order mark) are never part of an address.
 const CONTROL = /[\p{Cc}\p{Cf}]/u;
@@ -166,8 +173,11 @@ export async function requestPaypalLink(
 
 /**
  * An operator with the second factor marks the address as checked, after typing it again in full. A different
- * retyped address changes nothing. One decision per address: a checked address is `already_verified` until the
- * publisher changes it.
+ * retyped address changes nothing. One decision per link: a checked link is `already_verified` until the
+ * publisher changes it. One verified address belongs to one publisher (POB-LINKU): while another publisher's
+ * link holds the same address as verified the answer is `email_in_use`, for the operator only (the publisher is
+ * never told). The partial unique index `publisher_paypal_links_verified_email_key` is the last line: of two
+ * operators verifying one address at once, the second waits on the index and gets 23505, which is the same answer.
  */
 export async function decidePaypalLink(
   deps: LinkDeps,
@@ -195,6 +205,13 @@ export async function decidePaypalLink(
       if (row === undefined) throw new Refused('not_found');
       if (row.state === 'verified') throw new Refused('already_verified');
       if (retyped === null || retyped !== row.paypal_email) throw new Refused('email_mismatch');
+      const held = await tx.query(
+        `SELECT 1 FROM publisher_paypal_links
+          WHERE state = 'verified' AND publisher_id <> $1 AND lower(btrim(paypal_email)) = $2
+          LIMIT 1`,
+        [input.publisher_id, row.paypal_email],
+      );
+      if (held.rows.length > 0) throw new Refused('email_in_use');
       const at = deps.clock.now().toISOString();
       await tx.query(
         `UPDATE publisher_paypal_links
@@ -225,6 +242,7 @@ export async function decidePaypalLink(
     });
   } catch (e) {
     if (e instanceof Refused) return fail(e.code);
+    if (isVerifiedEmailViolation(e)) return fail('email_in_use');
     throw e;
   }
 }

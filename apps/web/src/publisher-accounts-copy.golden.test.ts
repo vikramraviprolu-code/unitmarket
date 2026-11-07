@@ -150,6 +150,7 @@ function lines(): string[] {
   for (const c of [
     'email_mismatch',
     'already_verified',
+    'email_in_use',
     'not_found',
     'mfa_required',
     'invalid_input',

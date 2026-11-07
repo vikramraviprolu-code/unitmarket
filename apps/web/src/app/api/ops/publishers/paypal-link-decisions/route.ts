@@ -37,6 +37,7 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
       return { status: 404, code, message };
     case 'email_mismatch':
     case 'already_verified':
+    case 'email_in_use':
       return { status: 409, code, message };
     case 'invalid_input':
       return { status: 422, code, message };
