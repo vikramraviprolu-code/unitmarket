@@ -2,6 +2,7 @@
 // `seed:synthetic` in verified_by) is never a destination in the sandbox environment. Refused at creation (the unit is
 // skipped and an operator is told once) and again at send (the port is not called). In dry run it is paid like any other.
 // Real PGlite, a scripted payout port. Addresses are fictional.
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runPayoutPass } from './index';
 import { paid } from './ops/support';
@@ -127,6 +128,47 @@ describe('send in the sandbox environment', () => {
     expect(port.calls).toHaveLength(1); // only the first, throwing, attempt
     expect((await payoutRows(w))[0]!.state).toBe('sending');
     expect(await refusalReasons()).toEqual([`payout_refused_${p.id}_synthetic_payee`]);
+  });
+});
+
+describe('send: a stored payee that is synthetic (review of POB-DEMOLINK)', () => {
+  /** A due sandbox payout made to a real address, then its stored payee set to a synthetic one (guard off for the update only). */
+  async function dueWithStoredPayee(stored: string): Promise<{ id: string }> {
+    await sale('sandbox');
+    await pass(null, sandbox());
+    const p = (await payoutRows(w))[0]!;
+    expect(p).toMatchObject({ state: 'due', environment: 'sandbox' });
+    await w.rows('ALTER TABLE payouts DISABLE TRIGGER USER');
+    await w.rows('UPDATE payouts SET payee_merchant_id = $2 WHERE id = $1', [p.id, stored]);
+    await w.rows('ALTER TABLE payouts ENABLE TRIGGER USER');
+    return p;
+  }
+
+  it('the stored payee and the verified link are the same synthetic address: refused as synthetic_payee, never payee_changed, port not called', async () => {
+    const p = await dueWithStoredPayee(SYNTHETIC);
+    await setLink(SYNTHETIC, 'seed:synthetic');
+    const port = spyPort(w);
+    expect(await pass(port, sandbox())).toMatchObject({ sent: 0, refused: 1 });
+    expect(port.calls).toHaveLength(0);
+    expect(await refusalReasons()).toContain(`payout_refused_${p.id}_synthetic_payee`);
+    expect((await refusalReasons()).some((r) => r.endsWith('_payee_changed'))).toBe(false);
+    expect((await payoutRows(w))[0]!.state).toBe('cancelled');
+  });
+
+  it('the stored payee is synthetic but the link now holds a real address: still synthetic_payee (the stored payee is checked on its own)', async () => {
+    const p = await dueWithStoredPayee(SYNTHETIC);
+    await linkPayee(w, 'pub_1', PAYEE_EMAIL.pub_1!);
+    const port = spyPort(w);
+    expect(await pass(port, sandbox())).toMatchObject({ sent: 0, refused: 1 });
+    expect(port.calls).toHaveLength(0);
+    expect(await refusalReasons()).toContain(`payout_refused_${p.id}_synthetic_payee`);
+    expect((await refusalReasons()).some((r) => r.endsWith('_payee_changed'))).toBe(false);
+  });
+
+  it('the guard is "not dry run", so any other environment label fails closed (the check is by label, not by name)', async () => {
+    const src = readFileSync(new URL('./payout.ts', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/environment === 'sandbox'/);
+    expect(src.match(/environment !== 'dryrun'/g)).toHaveLength(2);
   });
 });
 

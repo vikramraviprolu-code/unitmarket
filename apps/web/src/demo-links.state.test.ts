@@ -116,6 +116,30 @@ describe('dry run boot', () => {
   });
 });
 
+describe('how the ops access list reads a seeded link (labels come from data)', () => {
+  it('Rheinwerft Kurier (not a sign in persona, so it is listed) shows a demo address, and a real check still shows as checked', async () => {
+    const app = await bootPackApp({}, { test_seed: SEED });
+    try {
+      const op: Actor = { kind: 'operator', operator_id: 'opr_vikram', mfa: true };
+      const rowOf = async () => {
+        const list = await app.engine.opsPublisherAccess.list(op);
+        if (!list.ok) throw new Error('list refused');
+        return list.value.rows.find((r) => r.slug === 'rheinwerft-kurier')!;
+      };
+      expect((await rowOf()).link).toMatchObject({ state: 'verified', synthetic: true });
+      await app.db.query(
+        `UPDATE publisher_paypal_links SET paypal_email = 'real@example.com', verified_by = 'opr_vikram'
+          WHERE publisher_id = (SELECT id FROM publishers WHERE slug = 'rheinwerft-kurier')`,
+      );
+      const real = (await rowOf()).link!;
+      expect(real.state).toBe('verified');
+      expect(real.synthetic ?? false).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe('sandbox mode boot', () => {
   it('creates no link, even when the test asks for the step, and still sets the shared payees', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'demolink-sbx-'));

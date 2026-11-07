@@ -55,6 +55,7 @@ function lines(): string[] {
     'LINK_SENT',
     'LINK_STATE_REQUESTED',
     'LINK_STATE_VERIFIED',
+    'LINK_STATE_SYNTHETIC',
     'ACCESS_HEADING',
     'ACCESS_LEDE',
     'ACCESS_EMPTY',
@@ -86,6 +87,7 @@ function lines(): string[] {
   );
   push('link line requested', copy.linkLine('seller@example.com', 'requested'));
   push('link line verified', copy.linkLine('seller@example.com', 'verified'));
+  push('link line synthetic', copy.linkLine('demo-harbour-ledger@payee.invalid', 'verified', true));
   push('access account none', copy.accessAccountText(null));
   push('access account claimed', copy.accessAccountText('new.owner'));
   for (const s of ['none', 'live', 'expired', 'used'] as const)
@@ -100,6 +102,14 @@ function lines(): string[] {
   push(
     'access link requested',
     copy.accessLinkText({ state: 'requested', masked_email: 's***@example.com' }),
+  );
+  push(
+    'access link verified',
+    copy.accessLinkText({ state: 'verified', masked_email: 's***@example.com' }),
+  );
+  push(
+    'access link synthetic',
+    copy.accessLinkText({ state: 'verified', masked_email: 'd***@payee.invalid', synthetic: true }),
   );
   push('access reason label', copy.accessReasonLabel('Web Pub 1'));
   push('invite expires', copy.inviteExpiresText('2026-11-12T10:00:00.000Z'));
@@ -179,6 +189,25 @@ describe('publisher accounts copy', () => {
     expect(text).not.toMatch(/<i>|<em>|\*[a-z]/i);
     const src = readFileSync(new URL('./lib/publisher-accounts-copy.ts', import.meta.url), 'utf8');
     expect(src).not.toMatch(/Sandbox|Dry run|dryrun/);
+  });
+
+  it('POB-DEMOLINK: a real operator check reads "Checked by an operator.", a synthetic demo address never does', () => {
+    expect(copy.linkLine('seller@example.com', 'verified')).toContain('Checked by an operator.');
+    expect(copy.linkLine('seller@example.com', 'verified', false)).toContain(
+      'Checked by an operator.',
+    );
+    const synthetic = copy.linkLine('demo-x@payee.invalid', 'verified', true);
+    expect(synthetic).not.toContain('Checked by an operator');
+    expect(synthetic).toContain('Demo address. Not a real PayPal account.');
+    const real = { state: 'verified', masked_email: 's***@example.com' } as const;
+    expect(copy.accessLinkText(real)).toContain('Checked by an operator.');
+    const demo = copy.accessLinkText({ ...real, synthetic: true });
+    expect(demo).not.toContain('Checked by an operator');
+    expect(demo).toContain('Demo address. Not a real PayPal account.');
+    // a link still waiting for a check says so, whatever the address
+    expect(copy.linkLine('x@payee.invalid', 'requested', true)).toContain(
+      'Waiting for an operator',
+    );
   });
 
   it('pins the sentence for a publisher with no claimed account', () => {
