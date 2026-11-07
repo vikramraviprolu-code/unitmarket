@@ -101,10 +101,19 @@ export const LINK_SUBMIT = 'Send for checking';
 export const LINK_SENT = 'Sent. Nothing is used until an operator has checked it with you.';
 export const LINK_STATE_REQUESTED = 'Waiting for an operator to check it.';
 export const LINK_STATE_VERIFIED = 'Checked by an operator.';
-export const linkStateText = (state: 'requested' | 'verified'): string =>
-  state === 'verified' ? LINK_STATE_VERIFIED : LINK_STATE_REQUESTED;
-export const linkLine = (email: string, state: 'requested' | 'verified'): string =>
-  `${email}. ${linkStateText(state)}`;
+/** POB-DEMOLINK: the dry run seed's synthetic address. Chosen from the stored link, never typed by environment. */
+export const LINK_STATE_SYNTHETIC = 'Demo address. Not a real PayPal account.';
+export const linkStateText = (state: 'requested' | 'verified', synthetic = false): string =>
+  state === 'verified'
+    ? synthetic
+      ? LINK_STATE_SYNTHETIC
+      : LINK_STATE_VERIFIED
+    : LINK_STATE_REQUESTED;
+export const linkLine = (
+  email: string,
+  state: 'requested' | 'verified',
+  synthetic = false,
+): string => `${email}. ${linkStateText(state, synthetic)}`;
 
 export function linkErrorText(code: string): string {
   switch (code) {
@@ -154,11 +163,11 @@ export const accessTermsText = (a: { version: string; method: string } | null): 
       ? `Terms: accepted by the publisher (version ${a.version}).`
       : `Terms: demo record (version ${a.version}).`;
 export const accessLinkText = (
-  l: { state: 'requested' | 'verified'; masked_email: string } | null,
+  l: { state: 'requested' | 'verified'; masked_email: string; synthetic?: boolean } | null,
 ): string =>
   l === null
     ? 'PayPal address: none.'
-    : `PayPal address: ${l.masked_email}. ${linkStateText(l.state)}`;
+    : `PayPal address: ${l.masked_email}. ${linkStateText(l.state, l.synthetic === true)}`;
 export const ACCESS_ISSUE_BUTTON = 'Issue an invite code';
 export const ACCESS_REPLACE_BUTTON = 'Replace the invite code';
 export const ACCESS_RESET_BUTTON = 'Reset sign in';

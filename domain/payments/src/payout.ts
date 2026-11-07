@@ -17,7 +17,7 @@
 // Payee (POB-G, decision A3 of the journey spec): the publisher's own PayPal Business address, the one an operator verified
 // (publisher_paypal_links, state `verified`). It is read when the payout is created and stored on the payout, and read again
 // at send: no verified link is `no_payee`, a link that now holds another address is `payee_changed`, and the payout is
-// refused in both. POB-DEMOLINK: in the `sandbox` environment a synthetic payee (the dry run demo link, see isSyntheticPayee) is
+// refused in both. POB-DEMOLINK: outside the dry run (the `sandbox` environment, and any label added later) a synthetic payee (the dry run demo link, see isSyntheticPayee) is
 // refused too, at creation and at send. The old stub column (publishers.paypal_merchant_id) is not a payee any more; it still serves the buy path.
 // A publisher with `payee_shared` (the shared owner account) or who is not active is refused, at creation and again at send.
 import { PAYOUT_MAX_MINOR, PAYOUT_RETRY_AFTER_MS, isSyntheticPayee } from '@umsbx/contracts';
@@ -340,11 +340,11 @@ async function makePayouts(
 ): Promise<{ created: number; netted: number }> {
   let units = all;
   const out = { created: 0, netted: 0 };
-  // POB-DEMOLINK: a synthetic payee (the dry run demo link) is never a destination in the sandbox environment. The unit is
+  // POB-DEMOLINK: a synthetic payee (the dry run demo link) is never a destination outside the dry run. The unit is
   // skipped, not paid, and an operator is told once for each unit (the alert insert ignores a repeat).
   const usable: DueUnit[] = [];
   for (const u of units) {
-    if (d.environment === 'sandbox' && isSyntheticPayee(u.payee_merchant_id, u.payee_verified_by)) {
+    if (d.environment !== 'dryrun' && isSyntheticPayee(u.payee_merchant_id, u.payee_verified_by)) {
       await raiseAlert(tx, d, {
         kind: 'payout_failed',
         order_id: u.order_id,
@@ -521,10 +521,10 @@ async function prepare(d: PayoutDeps, id: Id): Promise<Prepared | 'refused' | 'g
       )
     ).rows[0];
     const link_email = link?.paypal_email ?? null;
-    // POB-DEMOLINK: in the sandbox environment neither the stored payee nor the verified link may be a synthetic demo
+    // POB-DEMOLINK: outside the dry run neither the stored payee nor the verified link may be a synthetic demo
     // address. Checked ahead of no_payee and payee_changed, so the reason names the real problem.
     const synthetic =
-      p.environment === 'sandbox' &&
+      p.environment !== 'dryrun' &&
       (isSyntheticPayee(p.payee_merchant_id, null) ||
         (link !== undefined && isSyntheticPayee(link.paypal_email, link.verified_by)));
     const why =

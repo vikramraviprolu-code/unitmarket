@@ -2093,7 +2093,16 @@ function buildApp(config: Config, opts: AppOptions): App {
       config.mode === 'offline' &&
       (config.node_env !== 'test' || opts.test_seed?.demo_links === true)
     )
-      await seedDemoPaypalLinks({ db: d, clock, audit }, environment, [...DEMO_PUBLISHER_SLUGS]);
+      // A convenience for the demo, like the demo prices: a thrown database error must never stop the app from starting.
+      try {
+        await seedDemoPaypalLinks({ db: d, clock, audit }, environment, [...DEMO_PUBLISHER_SLUGS]);
+      } catch (e) {
+        log.log({
+          msg: 'demo_links.failed',
+          level: 'warn',
+          fields: { err_name: e instanceof Error ? e.name : 'unknown' },
+        });
+      }
     if (config.mode === 'sandbox' && config.own_merchant_id !== null) {
       // BU-7 (D-028): the one MVP-B publisher is paid into the owner's own sandbox account. The id
       // comes from the owner's environment at setup time; none is committed. Only a publisher that has

@@ -29,4 +29,10 @@ Do not: touch other packages, add a link state or a migration, mark anything ver
 
 Evidence for the PR: red run of commit 1, green run of commit 2, the file list.
 
+Review notes (Opus review, 2026-11-07):
+
+- Labels: a verified link that `isSyntheticPayee` flags reads "Demo address. Not a real PayPal account." on the publisher page and the ops access line, never "Checked by an operator."; the flag is derived from data in `ownPaypalLink` and `listPublisherAccess`. Payout guards are `environment !== 'dryrun'` (fail closed). The seed call is wrapped like `applyDemoPrices` (`demo_links.failed` warning, boot continues).
+- Note, offline with Postgres: the seed runs for `UMS_MODE=offline` on any database, so an offline app pointed at a shared Postgres would also get the synthetic links; they are `.invalid`, refused by sandbox payouts, and never overwrite an existing row.
+- Note, account claim: a demo publisher that later claims an account and requests an address now has a link row, so in dry run that request clears `payee_verified_at` until an operator verifies it (the existing rule for a changed address); before this change a first request left it alone.
+
 Branch: `feat/web-demo-paypal-links` Commit: `feat(web): synthetic dry run payee links for demo publishers (POB-DEMOLINK)`
