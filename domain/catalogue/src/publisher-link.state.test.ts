@@ -14,7 +14,7 @@ import {
 import { offersWorld } from './write-support';
 import type { OffersWorld } from './write-support';
 import type { LinkDeps } from './paypal-link';
-import type { Actor } from '@umsbx/contracts';
+import type { Actor, Database } from '@umsbx/contracts';
 
 const HASH = 'scrypt:16384:8:1:00112233445566778899aabbccddeeff:' + 'a'.repeat(64);
 let w: OffersWorld;
@@ -536,6 +536,43 @@ describe('one verified address belongs to one publisher', () => {
     // B moves away, then A may be verified on X
     await requestPaypalLink(w.deps(), b.actor, { email: b.email });
     expect(await verify(a, x)).toEqual({ ok: true, value: { state: 'verified' } });
+  });
+
+  it('pins the pre-check: the refusal comes before any write, so the index never has to raise 23505', async () => {
+    const a = await withAccount();
+    const b = await withAccount();
+    const mail = `precheck.${String(n)}@example.com`;
+    await requestPaypalLink(w.deps(), a.actor, { email: mail });
+    await verify(a, mail);
+    await requestPaypalLink(w.deps(), b.actor, { email: mail });
+    const raised: unknown[] = [];
+    const db: Database = {
+      dialect: w.db.dialect,
+      query: (sql, params) => w.db.query(sql, params),
+      exec: (sql) => w.db.exec(sql),
+      transaction: (fn) =>
+        w.db.transaction((tx) =>
+          fn({
+            exec: (sql) => tx.exec(sql),
+            query: async (sql, params) => {
+              try {
+                return await tx.query(sql, params);
+              } catch (e) {
+                raised.push(e);
+                throw e;
+              }
+            },
+          }),
+        ),
+    };
+    expect(
+      await decidePaypalLink({ ...w.deps(), db }, w.operator, {
+        publisher_id: b.id,
+        email_retyped: mail,
+        reason: 'Confirmed by phone',
+      }),
+    ).toEqual(SHARED_ERR);
+    expect(raised).toEqual([]);
   });
 
   it('is enforced by the database: a second verified row for one address fails with 23505', async () => {

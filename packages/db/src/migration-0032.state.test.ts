@@ -71,6 +71,17 @@ describe('migration 0032: applied once, forward only', () => {
     expect(sql).not.toMatch(/\bDEFAULT\b/i);
   });
 
+  it('takes a SHARE lock on the table before the guard counts, so no verify slips in between guard and index', () => {
+    const sql = readFileSync(
+      new URL(`../migrations/common/${FILE}.sql`, import.meta.url),
+      'utf8',
+    ).replace(/--.*$/gm, '');
+    const lock = sql.search(/LOCK TABLE publisher_paypal_links IN SHARE MODE;/);
+    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(lock).toBeLessThan(sql.indexOf('DO $guard$'));
+    expect(sql.indexOf('DO $guard$')).toBeLessThan(sql.indexOf('CREATE UNIQUE INDEX'));
+  });
+
   it('applies on a database with data and no duplicate, changes no row, and then holds the rule', async () => {
     const { d, cleanup } = await before0032();
     try {

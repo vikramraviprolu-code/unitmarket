@@ -22,9 +22,11 @@ const operator: Actor = { kind: 'operator', operator_id: 'opr_race', mfa: true }
 describe.skipIf(!PG_ON)('POB-LINKU one verified address, racing operators, real Postgres', () => {
   let server: TestPostgres;
   let db: SqlDriver;
+  let databaseUrl = '';
   beforeAll(async () => {
     server = await startTestPostgres();
     const created = await server.createDatabase('linku_race');
+    databaseUrl = created.url;
     db = await openDatabase({ kind: 'postgres', url: created.url, pool_max: 6 });
     await migrate(db, { now: () => new Date(T) });
   }, 120_000);
@@ -95,6 +97,70 @@ describe.skipIf(!PG_ON)('POB-LINKU one verified address, racing operators, real 
     expect(both).toBe(ROUNDS);
     // one audit row per success, none for the refused attempts
     expect(audits.filter((x) => x === 'publisher.paypal_link_verified')).toHaveLength(ROUNDS);
+  }, 120_000);
+
+  it('a verify that waits on the index while the other commits gets email_in_use and changes nothing (deterministic)', async () => {
+    for (let i = 0; i < 3; i += 1) {
+      const email = `hold.${String(i)}@example.com`;
+      const a = await requested(2000 + i * 2, email);
+      const b = await requested(2000 + i * 2 + 1, email);
+      const other = await openDatabase({ kind: 'postgres', url: databaseUrl, pool_max: 2 });
+      try {
+        let commitA!: () => void;
+        const gate = new Promise<void>((r) => {
+          commitA = r;
+        });
+        let aHolds!: () => void;
+        const held = new Promise<void>((r) => {
+          aHolds = r;
+        });
+        // A's session verifies the row and stays open; the unique index entry for the address is now taken.
+        const aTx = other.transaction(async (tx) => {
+          await tx.query(
+            `UPDATE publisher_paypal_links
+                SET state = 'verified', verified_by = 'opr_sql', verified_at = $2 WHERE publisher_id = $1`,
+            [a, T],
+          );
+          aHolds();
+          await gate;
+        });
+        await held;
+        // B passes the pre-check (A is not committed, so invisible), then blocks on the index entry.
+        const auditBefore = audits.length;
+        const bDecision = decidePaypalLink(deps(), operator, {
+          publisher_id: b,
+          email_retyped: email,
+          reason: 'Confirmed by phone',
+        });
+        let waited = false;
+        for (let k = 0; k < 100 && !waited; k += 1) {
+          waited =
+            (
+              await db.query(
+                `SELECT 1 FROM pg_stat_activity
+                  WHERE datname = current_database() AND wait_event_type = 'Lock' AND state = 'active'`,
+              )
+            ).rows.length > 0;
+          if (!waited) await new Promise((r) => setTimeout(r, 50));
+        }
+        expect(waited, 'B must be waiting on the index while A is uncommitted').toBe(true);
+        commitA();
+        await aTx;
+        expect(await bDecision).toEqual({ ok: false, error: { code: 'email_in_use' } });
+        expect(
+          (
+            await db.query(
+              'SELECT state, verified_by, verified_at FROM publisher_paypal_links WHERE publisher_id = $1',
+              [b],
+            )
+          ).rows,
+        ).toEqual([{ state: 'requested', verified_by: null, verified_at: null }]);
+        expect(audits).toHaveLength(auditBefore);
+        expect(await verifiedFor(email)).toBe(1);
+      } finally {
+        await other.close().catch(() => undefined);
+      }
+    }
   }, 120_000);
 
   it('plain SQL: two sessions verifying two rows with one address, exactly one wins with 23505 for the other', async () => {
