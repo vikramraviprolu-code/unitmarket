@@ -33,6 +33,24 @@ After migration 0031 every insert or update of a `publisher_paypal_links` row wr
 - `corepack pnpm exec vitest run packages/db/src/trace-capture.state.test.ts packages/db/src/trace-backfill.state.test.ts packages/db/src/trace-restore.state.test.ts packages/db/src/trace-pii.adversarial.test.ts packages/db/src/trace-perf.state.test.ts packages/db/src/trace-verify.state.test.ts packages/db/src/migration-0027.state.test.ts`: unchanged tests still pass.
 - `corepack pnpm lint`, `typecheck`, `format:check`, `check:isolation`, `check:no-live-host`, `check:routes`, `check:secrets-names`: exit 0.
 
+## Owner decision: the boot window of 0031
+
+While 0031 is applied but the old application revision still serves traffic (the boot window of a deploy, or if migration 0032 refuses in the same boot), the old revision's operator Activity screen and the unfiltered `/api/ops/activity` throw `words: unmapped event type` (`wordsKeyOf` in `domain/trace/src/words.ts`, called from `activityPage`) as soon as a link event exists. The backfill writes one per link at once. Writes and the order, unit, buyer, seller and evidence views are unaffected. Same class as 0026 and 0027. Options:
+
+- (a) A non-throwing fallback in a release before 0031. It conflicts with the deliberate fail-loudly design and needs two deploys.
+- (b) Deploy 0031 alone, not in the same boot as 0032.
+- (c) Accept the short window and record it in the decision log.
+
+The coordinator recommends (c) for the single planned deploy: the window is minutes, only the operator Activity page is affected, and the 0032 pre-check returned 0 duplicates.
+
+## Notes (low)
+
+- The address hash is permanent personal data in an append-only journal that `scripts/lib/privacy.mjs` cannot pseudonymise. Decision-log note for the owner.
+- A DELETE of a link row is not journaled and `trace_verify` does not detect it. This holds for every tracked table; no app path deletes link rows.
+- `trace_backfill()` adds an `imported` event for any tracked row that lacks events (for example after importing a dump taken before a table was tracked), so 0031 is not strictly this table only. It is idempotent.
+- Restoring a dump taken before 0031 leaves link rows with no event, and `trace_verify` reports drift. `SELECT trace_backfill();` repairs it.
+- The backfill holds the trigger's SHARE ROW EXCLUSIVE lock on `publisher_paypal_links` and the `pub:<id>` head row locks until commit. Small at the current scale.
+
 ## Do not
 
 Add `payouts` or `payout_items` to the journal; change `paypal-link.ts` or any contract other than the list; edit an existing test beyond listing the new table; add a dependency; apply the migration to any hosted database; call PayPal; touch secrets.
