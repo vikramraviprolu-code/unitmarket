@@ -68,7 +68,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/publisher-terms | heading: Publishers here are fictional
 /legal/publisher-terms | text: Every publisher in this demo is fictional. Their names, articles and prices are made up for the demo and have no connection to any real publisher.
 /legal/publisher-terms | heading: Not exclusive
-/legal/publisher-terms | text: These terms are not exclusive. A publisher may sell the same articles anywhere else. In this demo either side may stop at any time, and there are no fees.
+/legal/publisher-terms | text: These terms are not exclusive. A publisher may sell the same articles anywhere else. In this demo either side may stop at any time at no charge. The only fee is the platform fee described under Commission.
 /legal/publisher-terms | heading: Your rights and our licence
 /legal/publisher-terms | text: When a publisher makes an offer for an article, it confirms that it owns the article or may license it. The publisher confirms this again with a rights checkbox on every revision of an offer, and UnitMarket stores that confirmation with the revision.
 /legal/publisher-terms | text: The publisher gives UnitMarket a licence to sell access to single articles. The licence is not exclusive and it covers this demo.
