@@ -8,16 +8,22 @@
 -- refusal happens when an operator verifies (domain/catalogue paypal-link.ts, error email_in_use); this index is
 -- the last line, and it also settles two operators verifying at the same moment.
 --
--- Safe on a database that already holds duplicates. The DO block below runs first and counts the verified
--- addresses held by more than one publisher. If there are any it raises an exception that names the two counts
--- (never an address), so the deploy fails closed before anything is created. The migration runner applies each
--- file in one transaction and records it only on success, so a refusal leaves no index, no schema_migrations
--- row and nothing half done. The owner clears the duplicates (one of each group goes back to `requested` after a
--- decision about who owns the account) and runs the migration again. The read only pre-check, which returns
--- counts and no address, is in docs/specs/catalogue-paypal-link-unique.md.
+-- Safe on a database that already holds duplicates. The file first takes a SHARE lock on the table (reads go on,
+-- writes wait), so no verify from a running revision can commit between the guard and the index build. Then the
+-- DO block counts the verified addresses held by more than one publisher. If there are any it raises an exception
+-- that names the two counts (never an address), so the deploy fails closed before anything is created. The
+-- migration runner applies each file in its own transaction and records it only on success, so a refusal of
+-- THIS file leaves no index, no schema_migrations row and nothing half done. That is true for this file only:
+-- another migration applied in the same boot (0031 from the audit trace lane) is its own transaction and stays
+-- committed while traffic stays on the old revision, so 0031 must be safe for the old code. The owner clears the
+-- duplicates (one of each group goes back to `requested` after a decision about who owns the account) and runs
+-- the migration again. The read only pre-check, which returns counts and no address, is in
+-- docs/specs/catalogue-paypal-link-unique.md.
 --
 -- Ordering: independent of 0031 (trace tracking, another lane). This file touches only publisher_paypal_links,
 -- and the runner applies every unapplied file in name order, so the two may merge in either order.
+LOCK TABLE publisher_paypal_links IN SHARE MODE;
+
 DO $guard$
 DECLARE
   shared_addresses bigint;

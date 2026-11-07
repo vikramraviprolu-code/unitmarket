@@ -10,7 +10,7 @@ What the docs say (searched docs/specs, docs/business-rules, docs/design, docs/d
 Inputs: `domain/catalogue/src/paypal-link.ts` (`decidePaypalLink`, `normalizePaypalEmail`), migration 0028, the existing `publisher-link.state.test.ts`.
 Outputs:
 
-- `packages/db/migrations/common/0032_paypal_link_verified_unique.sql`: a DO block counts existing verified duplicates and raises an exception naming the counts (never an address) before any change; then `CREATE UNIQUE INDEX publisher_paypal_links_verified_email_key ON publisher_paypal_links (lower(btrim(paypal_email))) WHERE state = 'verified'`. One transaction per file, so a refusal leaves nothing half done. Ordering: lane A prepares 0031 (trace tracking) in parallel. 0032 touches only this table and does not depend on 0031; the runner applies every unapplied file in order, so either merge order works.
+- `packages/db/migrations/common/0032_paypal_link_verified_unique.sql`: `LOCK TABLE publisher_paypal_links IN SHARE MODE` first (no verify from a running revision can commit between guard and index), then a DO block counts existing verified duplicates and raises an exception naming the counts (never an address) before any change; then `CREATE UNIQUE INDEX publisher_paypal_links_verified_email_key ON publisher_paypal_links (lower(btrim(paypal_email))) WHERE state = 'verified'`. One transaction per file, so a refusal of this file leaves nothing half done (this file only: see the deploy notes). Ordering: lane A prepares 0031 (trace tracking) in parallel. 0032 touches only this table and does not depend on 0031; the runner applies every unapplied file in order, so either merge order works.
 - `decidePaypalLink`: after the retype matches, inside the transaction, look for another publisher's verified link with the same address and return `email_in_use`; a 23505 from the index (a concurrent verify) maps to the same code. A refusal throws inside the transaction: nothing changes and no audit row is written, as for every other refusal.
 - `LinkErrorCode` gains `email_in_use`; the ops route answers 409; `linkDecisionErrorText` gets an operator sentence (D-051: no dashes, no italics); the copy golden file gains its line.
 - Existing tests that verified one shared address for many publishers now use one address each (`seller<N>@example.com`). They contradicted the new rule; their assertions are otherwise unchanged.
@@ -23,5 +23,13 @@ Outputs:
   Do not: touch other packages or migration 0031; add dependencies; change contracts; reveal to a publisher that an address is taken; apply the migration to any hosted database.
   Owner pre-check before deploy (read only, counts only, run at your own terminal; both numbers must be 0, otherwise the migration refuses and the deploy stops with nothing changed):
   `SELECT count(*) AS shared_addresses, coalesce(sum(n), 0) AS rows_involved FROM (SELECT count(*) AS n FROM publisher_paypal_links WHERE state = 'verified' GROUP BY lower(btrim(paypal_email)) HAVING count(*) > 1) d;`
+  Deploy notes and follow-ups (review of PR 65):
+
+- Each migration file is its own transaction. If 0031 (audit trace lane) applies in the same boot and 0032 then refuses, 0031 stays committed while traffic stays on the old revision. So 0031 must be safe for the old code.
+- After 0032 is applied and before traffic moves to the new revision, the old code has no `email_in_use` mapping: a duplicate verify in that window answers 500 and writes nothing.
+- Follow-up for the owner, no code here: if an operator wrongly verifies publisher M on victim V's address, V cannot be verified, and no ops tool shows who holds an address or un-verifies it. An operator recovery tool (find the holder, return the link to `requested`) is needed before launch.
+- The dry-run synthetic seed (lane POB-DEMOLINK) must give distinct addresses per publisher, which it does (`demo-<slug>@payee.invalid`).
+- The check in `decidePaypalLink` is deliberate defence in depth: the index plus the 23505 mapping already give the answer. A state test pins it (a spy shows no failed write is needed), and a race test on real Postgres holds one session open on the index entry to prove the 23505 mapping deterministically.
+
   Evidence for the PR: command output of the above, red run of commit 1, green run of commit 2.
   Branch: feat/catalogue-paypal-link-unique Commit: type(catalogue): what (POB-LINKU)
