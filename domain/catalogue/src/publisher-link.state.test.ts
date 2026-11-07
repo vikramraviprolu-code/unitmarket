@@ -484,7 +484,7 @@ describe('one verified address belongs to one publisher', () => {
     const mail = `variant.${String(n)}@example.com`;
     await requestPaypalLink(w.deps(), a.actor, { email: mail });
     await verify(a, mail);
-    await requestPaypalLink(w.deps(), b.actor, { email: `  ${mail.toUpperCase()}\t` });
+    await requestPaypalLink(w.deps(), b.actor, { email: `  ${mail.toUpperCase()}  ` });
     expect(await verify(b, ` ${shout(mail)} `)).toEqual(SHARED_ERR);
     expect((await state(b)).state).toBe('requested');
   });

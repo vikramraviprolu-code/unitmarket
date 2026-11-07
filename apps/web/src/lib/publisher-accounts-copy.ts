@@ -213,6 +213,8 @@ export function linkDecisionErrorText(code: string): string {
       return 'The address you typed is not the address that was sent. Nothing changed.';
     case 'already_verified':
       return 'This address was already checked.';
+    case 'email_in_use':
+      return 'This address is already checked for another publisher. Nothing changed.';
     case 'not_found':
       return 'That publisher has no address waiting.';
     case 'mfa_required':
