@@ -122,7 +122,7 @@ operator screen shows that knock-on effect before the agreement is saved.
   An operator can still refund outside the window with a reason (an override is logged), because a human decision
   must stay possible.
 - **Fees** (`domain/ledger`): the fee line uses the snapshot rate. This needs the BR-FEE-1 CHECK replaced by a check
-  that the fee equals the snapshot rate applied to the price (D-096 confirms D-089).
+  that the fee equals the snapshot rate applied to the price (D-096 confirms D-089). [Status 2026-11-07: the zero-fee CHECK is gone for the fee itself; POB-M1 stores the rate per offer in `offer_price_parts`, so the snapshot-rate check is still a future design.]
 - **Payout** (D-089 lanes): due at the later of access end and refund window end, plus the snapshot delay. This
   computes and records a due date only. No payout is sent to PayPal from this repository (no Payouts API, D-004);
   payouts and the micro-ledger stay simulation-only (owner decision, 4 Nov).
@@ -176,7 +176,7 @@ screen that explains any sale's terms. Agreements, categories and fees follow.
 - **Hash change.** Adding the terms digest to the approval hash changes every approval fixture and golden file. Plan
   one lane for it; do not mix with other work.
 - **Fee CHECK.** BR-FEE-1 is a deliberate safety constraint today. Removing it is a money change and needs D-089 to be
-  confirmed and the fee lane reviewed as L.
+  confirmed and the fee lane reviewed as L. [Status 2026-11-07: done in POB-M1; the legacy zero columns remain.]
 - **Legal text.** The legal copy states fixed terms ("No commission", 5 days). It must read from the snapshot or say
   "your terms are shown at checkout"; counsel before a real launch.
 - **Agreements are contracts.** The tool records what was agreed; it does not make the terms lawful. Counsel before
