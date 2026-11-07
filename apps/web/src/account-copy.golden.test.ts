@@ -157,7 +157,7 @@ describe('account copy (golden)', () => {
     expect(copy.BUYER_NO_EMAIL).toContain('We do not ask for an email address');
     expect(copy.SIGNUP_LEDE).toContain('No email is asked for or sent.');
     expect(copy.BUYER_LOST).toContain('The operator resets it by hand.');
-    expect(copy.BUYER_LOST).toContain('contact@unitmarket.example');
+    expect(copy.BUYER_LOST).toContain('unitmarket@raviprolu.com');
     expect(copy.SELLER_HOW).toContain('This demo sends no email');
     expect(copy.HELP_PASSWORD_LEDE).toContain('no email');
   });

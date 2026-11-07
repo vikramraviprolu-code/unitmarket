@@ -85,7 +85,7 @@ describe('legal copy rules', () => {
       );
       expect(t).not.toMatch(/\b(Ltd|Inc|LLC|GmbH|Corp|PLC)\b\.?/);
       // The owner (Sakthi) supplied one team contact address on 30 Oct 2026 (assumption 39). It is the only address allowed.
-      expect(t.replace('contact@unitmarket.example', '')).not.toMatch(/@|https?:|www\./i);
+      expect(t.replace('unitmarket@raviprolu.com', '')).not.toMatch(/@|https?:|www\./i);
     }
   });
 
@@ -131,7 +131,7 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/operator/i);
     expect(t).toMatch(/no advertising/i);
     expect(t).toMatch(/third-party fonts/i);
-    expect(t).toContain('You can reach the team at contact@unitmarket.example.');
+    expect(t).toContain('You can reach the team at unitmarket@raviprolu.com.');
   });
 
   it('privacy: applications to publish say what is stored, that the note is permanent and that no account is made', () => {
@@ -162,7 +162,7 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/do not ask for or keep an email address/i);
     expect(t).toMatch(/account and your sign in are removed/i);
     expect(t).toMatch(/operator sets a new one/i);
-    expect(t).toContain('contact@unitmarket.example');
+    expect(t).toContain('unitmarket@raviprolu.com');
     // the account copy and the legal page give the same contact address
     expect(t).toContain(CONTACT_ADDRESS);
   });
@@ -178,13 +178,15 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/test money/i);
   });
 
-  it('publisher terms: fictional, payee marked checked at load, no commission', () => {
+  it('publisher terms: fictional, payee marked checked at load, platform fee line', () => {
     const t = flat('publisher-terms');
     expect(t).toMatch(/fictional/i);
     expect(t).toMatch(/marked as checked/i);
     expect(t).toMatch(/demo data is loaded or by an operator check/i);
     expect(t).toMatch(/statement page/i);
-    expect(t).toMatch(/no commission in this demo/i);
+    expect(t).toContain(
+      'A platform fee of 10 percent of the publisher price is added to the price shown. The publisher does not pay it.',
+    );
     expect(t).not.toMatch(/20 percent|not implemented/i);
     expect(t).toMatch(/no payout/i);
     expect(t).toMatch(/statement/i);
@@ -209,7 +211,7 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/keep the access they paid for/i);
     expect(t).toMatch(/already approved can still complete/i);
     expect(t).toMatch(/No tax is calculated and no tax invoice is issued in this demo/);
-    expect(t).toContain('You can reach the team at contact@unitmarket.example.');
+    expect(t).toContain('You can reach the team at unitmarket@raviprolu.com.');
     expect(t).toMatch(/No governing law/i);
   });
 });

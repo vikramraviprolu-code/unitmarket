@@ -149,7 +149,7 @@ export const PRIVACY_DOC: LegalDoc = {
     },
     {
       heading: 'Contact',
-      paragraphs: ['You can reach the team at contact@unitmarket.example.'],
+      paragraphs: ['You can reach the team at unitmarket@raviprolu.com.'],
     },
   ],
 };
@@ -274,7 +274,9 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     },
     {
       heading: 'Commission',
-      paragraphs: ['No commission in this demo.'],
+      paragraphs: [
+        'A platform fee of 10 percent of the publisher price is added to the price shown. The publisher does not pay it.',
+      ],
     },
     {
       heading: 'Tax',
@@ -291,7 +293,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     },
     {
       heading: 'Contact',
-      paragraphs: ['You can reach the team at contact@unitmarket.example.'],
+      paragraphs: ['You can reach the team at unitmarket@raviprolu.com.'],
     },
     {
       heading: 'Governing law',
