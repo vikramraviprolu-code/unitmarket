@@ -71,6 +71,31 @@ describe('the email', () => {
   });
 });
 
+describe('POB-DEMOLINK: the synthetic demo link is flagged from data', () => {
+  const put = async (id: string, email: string, by: string): Promise<void> => {
+    const at = w.clock.now().toISOString();
+    await w.db.query(
+      `INSERT INTO publisher_paypal_links (publisher_id, paypal_email, state, verified_by, verified_at, created_at, updated_at)
+       VALUES ($1, $2, 'verified', $3, $4, $4, $4)
+       ON CONFLICT (publisher_id) DO UPDATE SET paypal_email = EXCLUDED.paypal_email, verified_by = EXCLUDED.verified_by,
+         state = 'verified', verified_at = $4, updated_at = $4`,
+      [id, email, by, at],
+    );
+  };
+  it('ownPaypalLink: the seed marker or a .invalid address is synthetic, an operator check of a real address is not', async () => {
+    const p = await withAccount();
+    await put(p.id, 'demo-link-pub@payee.invalid', 'seed:synthetic');
+    expect(await ownPaypalLink(w.db, p.actor)).toMatchObject({
+      state: 'verified',
+      synthetic: true,
+    });
+    await put(p.id, 'seller@example.com', 'opr_vikram');
+    const real = (await ownPaypalLink(w.db, p.actor))!;
+    expect(real.state).toBe('verified');
+    expect(real.synthetic ?? false).toBe(false);
+  });
+});
+
 describe('requestPaypalLink and ownPaypalLink', () => {
   it('stores the address as requested, shows it to its owner only, audits it masked', async () => {
     const p = await withAccount();

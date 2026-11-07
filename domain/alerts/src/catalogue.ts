@@ -242,9 +242,11 @@ const ENTRIES: Record<CatalogueKind, Entry> = {
     cause: (reason) =>
       reason.startsWith('unit_too_large_')
         ? 'One sale is larger than the largest single payout, so it cannot be paid out as it is.'
-        : reason.startsWith('payout_refused_')
-          ? 'A payout was not sent: the publisher cannot be paid right now. If they are not active or use the shared account it waits and is sent when that is put right. If their PayPal address changed or is no longer verified, the payout is cancelled and the sale is paid out again to the verified address once there is one.'
-          : 'The provider refused a payout. Its sales are held for 24 hours and then paid again.',
+        : reason.startsWith('payout_refused_') && reason.endsWith('_synthetic_payee')
+          ? 'A payout was not made: the publisher has only a synthetic demo address on file, which is never a real destination in the sandbox. Nothing was sent. The sale is paid out once an operator verifies a real PayPal address for the publisher.'
+          : reason.startsWith('payout_refused_')
+            ? 'A payout was not sent: the publisher cannot be paid right now. If they are not active or use the shared account it waits and is sent when that is put right. If their PayPal address changed or is no longer verified, the payout is cancelled and the sale is paid out again to the verified address once there is one.'
+            : 'The provider refused a payout. Its sales are held for 24 hours and then paid again.',
     fix: MONEY_PAYOUTS,
     runbook:
       'Read the failure reason on the payout, check the payee of the publisher, and let the next pass pay again after the hold.',

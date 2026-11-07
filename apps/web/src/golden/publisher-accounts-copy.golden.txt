@@ -37,6 +37,7 @@ LINK_SUBMIT: Send for checking
 LINK_SENT: Sent. Nothing is used until an operator has checked it with you.
 LINK_STATE_REQUESTED: Waiting for an operator to check it.
 LINK_STATE_VERIFIED: Checked by an operator.
+LINK_STATE_SYNTHETIC: Demo address. Not a real PayPal account.
 ACCESS_HEADING: Sign in access
 ACCESS_LEDE: Active publishers claim their own account with a one time invite code. The code is shown once, on this screen, and is stored only as a hash.
 ACCESS_EMPTY: No publishers to show.
@@ -59,6 +60,7 @@ LINKS_DONE: Marked as checked.
 terms accepted: Accepted on 5 November 2026 (version v1) by new.owner.
 link line requested: seller@example.com. Waiting for an operator to check it.
 link line verified: seller@example.com. Checked by an operator.
+link line synthetic: demo-harbour-ledger@payee.invalid. Demo address. Not a real PayPal account.
 access account none: Account: not claimed yet.
 access account claimed: Account: claimed by new.owner.
 access invite none: Invite: none.
@@ -70,6 +72,8 @@ access terms accepted: Terms: accepted by the publisher (version v1).
 access terms demo: Terms: demo record (version v1).
 access link none: PayPal address: none.
 access link requested: PayPal address: s***@example.com. Waiting for an operator to check it.
+access link verified: PayPal address: s***@example.com. Checked by an operator.
+access link synthetic: PayPal address: d***@payee.invalid. Demo address. Not a real PayPal account.
 access reason label: Web Pub 1: reason, 3 to 200 characters
 invite expires: It works once and expires after 12 November 2026.
 invite groups: ABCD-EFGH-JKMN

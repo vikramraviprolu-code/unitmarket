@@ -186,6 +186,9 @@ const EXPECTED_EXPORTS: string[] = [
   'PAYOUT_MAX_MINOR',
   'PAYOUT_RETRY_AFTER_MS',
   'PayoutStateSchema',
+  // POB-DEMOLINK (synthetic dry run payee)
+  'SYNTHETIC_LINK_VERIFIER',
+  'isSyntheticPayee',
   // BR-1 (configurable business rules)
   'RuleScopeKindSchema',
   'RULE_KEYS',

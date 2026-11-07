@@ -7,7 +7,7 @@
 // their slugs in `demo_slugs`, because this domain cannot import the web app's persona list.
 // The claim itself (scrypt, lockout) is in @umsbx/security; it hashes a code exactly as `hashInviteCode` does.
 import { createHash } from 'node:crypto';
-import { err, ok } from '@umsbx/contracts';
+import { err, isSyntheticPayee, ok } from '@umsbx/contracts';
 import type { Actor, CoreDeps, Id, Result, SqlExecutor } from '@umsbx/contracts';
 import { maskEmail } from './paypal-link';
 import type { PaypalLinkState } from './paypal-link';
@@ -238,7 +238,7 @@ export interface PublisherAccessRow {
   invite: InviteState;
   invite_expires_at: string | null;
   terms: { version: string; method: string } | null;
-  link: { state: PaypalLinkState; masked_email: string } | null;
+  link: { state: PaypalLinkState; masked_email: string; synthetic?: true } | null;
 }
 
 /**
@@ -287,7 +287,8 @@ export async function listPublisherAccess(
     publisher_id: string;
     paypal_email: string;
     state: PaypalLinkState;
-  }>('SELECT publisher_id, paypal_email, state FROM publisher_paypal_links');
+    verified_by: string | null;
+  }>('SELECT publisher_id, paypal_email, state, verified_by FROM publisher_paypal_links');
   const by = <T extends { publisher_id: string }>(rows: T[]): Map<string, T> =>
     new Map(rows.map((r) => [r.publisher_id, r]));
   const A = by(accounts.rows);
@@ -313,7 +314,17 @@ export async function listPublisherAccess(
       invite,
       invite_expires_at: i === undefined ? null : iso(i.expires_at),
       terms: t === undefined ? null : { version: t.terms_version, method: t.method },
-      link: l === undefined ? null : { state: l.state, masked_email: maskEmail(l.paypal_email) },
+      link:
+        l === undefined
+          ? null
+          : {
+              state: l.state,
+              masked_email: maskEmail(l.paypal_email),
+              // POB-DEMOLINK: the dry run seed's demo address is not an operator check
+              ...(l.state === 'verified' && isSyntheticPayee(l.paypal_email, l.verified_by)
+                ? { synthetic: true as const }
+                : {}),
+            },
     };
   });
 }
