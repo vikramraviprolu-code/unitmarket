@@ -127,7 +127,8 @@ describe('send in the sandbox environment', () => {
     expect(await pass(port, sandbox())).toMatchObject({ sent: 0, refused: 1 });
     expect(port.calls).toHaveLength(1); // only the first, throwing, attempt
     expect((await payoutRows(w))[0]!.state).toBe('sending');
-    expect(await refusalReasons()).toEqual([`payout_refused_${p.id}_synthetic_payee`]);
+    // A payout already in sending carries the `_sending` suffix (M1-L8, PR 64), so its alert has its own text.
+    expect(await refusalReasons()).toEqual([`payout_refused_${p.id}_synthetic_payee_sending`]);
   });
 });
 

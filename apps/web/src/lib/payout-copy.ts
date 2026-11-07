@@ -82,7 +82,7 @@ export const MONEY_LABEL = {
   owed: 'Owed to you',
   paid: 'Paid out to you',
   adjustments: 'Open adjustments (refunded after payout)',
-  next: 'Next payout',
+  next: 'Owed, not yet paid out',
 } as const;
 
 export const MONEY_SOURCE = {
@@ -91,7 +91,7 @@ export const MONEY_SOURCE = {
   paid: 'Source: payouts that were sent or paid out.',
   adjustments:
     'Source: the publisher share of refunds booked after payout, not yet taken off a payout.',
-  next: 'Source: what is owed and not yet in a payout, less the open adjustments, never below zero.',
+  next: 'Source: what is owed and not yet in a payout that went out, less the open adjustments, never below zero. It includes sales still inside their access window and units held by a reversal.',
 } as const;
 
 export const MONEY_NOTE = {
@@ -113,7 +113,7 @@ export interface MoneyTile {
   note?: string;
 }
 
-/** The tiles of one block: fee, owed, paid out, next payout, and the open adjustments only when there are some. */
+/** The tiles of one block: fee, owed, paid out, owed and not yet paid out (M1-L5; the key stays `next`), and the open adjustments only when there are some. */
 export function moneyTiles(m: MoneyFigures, currency: string): MoneyTile[] {
   const tiles: MoneyTile[] = [
     { key: 'fee', label: MONEY_LABEL.fee, value: formatMinor(m.fee_minor, currency) },

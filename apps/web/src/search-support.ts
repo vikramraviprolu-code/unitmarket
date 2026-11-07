@@ -159,5 +159,7 @@ SELECT 'po_${p}' || i, '${p}o' || i, 'PPB' || '${p.toUpperCase()}' || lpad(i::te
 INSERT INTO order_units (id, order_id, provider_order_ref, publisher_id, reference_id, payee_merchant_id, amount_minor, platform_fee_minor, capture_id, status, status_reason, paypal_fee_minor, refunded_minor, captured_verified_at, mismatch_reason, created_at, updated_at)
 SELECT '${p}u' || i, '${p}o' || i, 'po_${p}' || i, '${q.publisher_id}', 'reference-${p}' || i, '${q.merchant}', 500, 0, 'CAPB${p}' || i, 'captured_verified', NULL, NULL, 0, at, NULL, at, at FROM bulk_src;
 DROP TABLE bulk_src;
+-- M1-L9: the restore mode lifts insert guards; it is off again before the script ends.
+SELECT set_config('ums.trace', '', true);
 `);
 }

@@ -111,6 +111,26 @@ describe('alert catalogue (AL.2)', () => {
     expect(describeAlert('payout_failed', 'made_up_reason', {})).toBeNull();
   });
 
+  it('M1-L8: a payout already handed to the provider is not described as not sent', () => {
+    const due = describeAlert('payout_failed', 'payout_refused_pay_1_inactive', {})!;
+    const sending = describeAlert('payout_failed', 'payout_refused_pay_1_inactive_sending', {})!;
+    expect(due.cause).toContain('was not sent');
+    expect(sending.cause).not.toBe(due.cause);
+    expect(sending.cause).not.toContain('was not sent');
+    expect(sending.cause).toContain('provider may already hold');
+    expect(sending.cause).toContain('stays in sending');
+    expect(sending.fix).toEqual({ route: '/ops/money', anchor: 'ops-payouts' });
+    expect(sending.severity).toBe('high');
+    // the runbook of a sending payout does not promise a hold that does not exist (a sending payout has none)
+    expect(due.runbook).toContain('after the hold');
+    expect(sending.runbook).not.toContain('after the hold');
+    expect(sending.runbook).toContain('no hold');
+    expect(sending.runbook).toContain('Check with the provider');
+    expect(sending.runbook).not.toMatch(/[-\u2013\u2014*_]/);
+    // D-051: no dash, no italics marker
+    expect(sending.cause).not.toMatch(/[-\u2013\u2014*_]/);
+  });
+
   it('a fake kind or a fake reason prefix is not mapped', () => {
     expect(describeAlert('made_up_kind', 'x', {})).toBeNull();
     expect(describeAlert('refund_unresolved', 'made_up_reason_rfr_1', {})).toBeNull();
