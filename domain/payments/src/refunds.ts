@@ -1084,13 +1084,20 @@ async function bookEntry(
   }
   if (!added.ok) return { result: 'replay', full: false }; // booked before: a replay changes nothing
   // POB-M1: the refund reverses the fee and the publisher share in proportion (the parts sum to the refund). A rule of the
-  // ledger that refuses the parts is reported and does not stop the refund from being booked or the payout from reacting.
+  // ledger that refuses the parts, or a split that cannot be computed (M1-L2: splitRefund throws RangeError when the parts do
+  // not fit the refund; the database keeps parts equal to the unit amount, so this is a guard, not a path), is reported and
+  // does not stop the refund from being booked.
+  // M1-L1, known and accepted: when the parts are refused the ledger gets no (or only part of the) reversal rows. If the split
+  // was computed its payable part is still passed to onRefundBooked, so a payout that is due is cancelled and made again from
+  // the ledger net, which lacks the reversal: the publisher is overpaid by that payable part. If no split exists nothing is
+  // passed (payable 0) and the due payout is left as it is: the same overpay. In both cases the alert below is the only guard
+  // (refund_unresolved, reason ledger_rule_split_<refund id>) and an operator must correct it. Pinned by payout.lows.state.test.ts.
   let payable_minor = 0;
   const parts = await getUnitParts(tx, unit.id);
   if (parts !== null) {
-    const split = splitRefund(parts, refunded, amount.minor);
-    payable_minor = split.payable_minor;
     try {
+      const split = splitRefund(parts, refunded, amount.minor);
+      payable_minor = split.payable_minor;
       await bookRefundParts(tx, d, {
         unit_id: unit.id,
         capture_id: unit.capture_id,
@@ -1099,7 +1106,7 @@ async function bookEntry(
         split,
       });
     } catch (e) {
-      if (!(e instanceof LedgerRuleError)) throw e;
+      if (!(e instanceof LedgerRuleError || e instanceof RangeError)) throw e;
       await raiseOpsAlert(tx, d, {
         kind: 'refund_unresolved',
         order_id: unit.order_id,

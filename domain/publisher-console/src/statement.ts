@@ -38,7 +38,11 @@ export interface BlockMoney {
   paid_out_minor: number;
   /** Open adjustments: the publisher share of refunds booked after payout, not yet netted off a payout. */
   adjustment_minor: number;
-  /** Next payout: what is owed and not in a payout that went out, less the open adjustments, never below 0. */
+  /**
+   * Owed and not yet paid out (M1-L5; the field keeps its name and the CSV row `total_next_payout` is a column contract): what is
+   * owed and not in a payout that went out, less the open adjustments, never below 0. It includes sales still inside their access
+   * window and units held by a reversal, so it is NOT the amount of the next payout.
+   */
   net_minor: number;
 }
 
@@ -223,6 +227,7 @@ async function moneyFor(db: SqlExecutor, publisher_id: string): Promise<Map<stri
   );
   // Open adjustments, review B1: only those whose source payout went out (sent or confirmed) or has no source row. One whose
   // payout failed or was cancelled is void (its unit is paid again from the reduced ledger net); one still sending waits.
+  // M1-L10: an adjustment with no source row counts, as in payout.ts openAdjustments (kept on purpose, the fail-safe direction).
   const adjusted = await db.query<{ currency: string; environment: string; n: string | number }>(
     `SELECT l.currency, l.environment, coalesce(sum(l.amount_minor), 0) AS n
        FROM ledger_entries l JOIN order_units u ON u.id = l.unit_id

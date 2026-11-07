@@ -258,8 +258,11 @@ interface OpenAdjustment {
 /**
  * Payout adjustments of a publisher and currency not yet used up by a live settlement, oldest first. An adjustment whose
  * source payout failed, was cancelled or is still sending is left out (review B1): the unit of a failed payout is paid
- * again from a ledger net that already has the reversal, and one still sending is not settled yet. An adjustment with
- * no source row (booked before the link existed) counts.
+ * again from a ledger net that already has the reversal, and one still sending is not settled yet.
+ * M1-L10, kept on purpose: an adjustment with NO source row counts as open. onRefundBooked writes the source in the same
+ * transaction as the adjustment, so such a row can only come from a hand edit or a foreign restore; netting it is the fail-safe
+ * direction (the platform's claim on the publisher is not forgotten). Dropping the fallback would leave it unnetted, silently.
+ * Pinned by payout.lows.state.test.ts. The statement (publisher-console statement.ts) uses the same rule.
  */
 async function openAdjustments(
   tx: SqlExecutor,
@@ -511,7 +514,7 @@ async function prepare(d: PayoutDeps, id: Id): Promise<Prepared | 'refused' | 'g
               ? 'payee_changed'
               : null;
     if (why !== null) {
-      // Review M1: the payout stays where it is and an operator is told, once for each payout and reason.
+      // Review M1: the payout stays where it is and an operator is told, once for each payout, reason and state (due or sending).
       const first = (
         await tx.query<{ order_unit_id: string; order_id: string }>(
           `SELECT i.order_unit_id, u.order_id FROM payout_items i JOIN order_units u ON u.id = i.order_unit_id
@@ -524,8 +527,9 @@ async function prepare(d: PayoutDeps, id: Id): Promise<Prepared | 'refused' | 'g
           kind: 'payout_failed',
           order_id: first.order_id,
           unit_id: first.order_unit_id,
-          reason: `payout_refused_${id}_${why}`,
-          detail: { payout_id: id, why },
+          // M1-L8: a payout already in `sending` may be held by the provider; its alert has its own reason and text.
+          reason: `payout_refused_${id}_${why}${p.state === 'sending' ? '_sending' : ''}`,
+          detail: { payout_id: id, why, payout_state: p.state },
         });
       }
       // POB-G review: a payout made to an address that is no longer the publisher's verified one will never be sent, and
@@ -556,7 +560,8 @@ async function prepare(d: PayoutDeps, id: Id): Promise<Prepared | 'refused' | 'g
   });
 }
 
-// Step three: apply the provider's answer to a payout that is still `sending`.
+// Step three: apply the provider's answer to a payout that is still `sending`. The counts move only after the transaction has
+// committed, so a failed commit is never counted as a send.
 async function settle(
   d: PayoutDeps,
   id: Id,
@@ -567,11 +572,23 @@ async function settle(
     counts.blocked += 1;
     return;
   }
-  await d.db.transaction(async (tx) => {
+  // M1-L4: an accepted answer with no provider reference cannot be stored (the table needs one). The provider may hold the
+  // payout, so it is NOT failed (that would pay it again after the hold): it stays `sending`, is counted as errored, and the
+  // next pass sends it again with the same key, which a provider that remembers the key answers with a reference.
+  if (result.kind === 'accepted' && result.provider_ref.trim() === '') {
+    counts.errored += 1;
+    d.log.log({
+      msg: 'payout.accepted_without_reference',
+      level: 'error',
+      fields: { payout_id: id },
+    });
+    return;
+  }
+  const outcome = await d.db.transaction(async (tx): Promise<'sent' | 'failed' | 'skipped'> => {
     const p = (
       await tx.query<{ state: string }>('SELECT state FROM payouts WHERE id = $1 FOR UPDATE', [id])
     ).rows[0];
-    if (p === undefined || p.state !== 'sending') return;
+    if (p === undefined || p.state !== 'sending') return 'skipped';
     const at = d.clock.now().toISOString();
     if (result.kind === 'accepted') {
       await tx.query(
@@ -585,8 +602,7 @@ async function settle(
         reason: null,
         detail: { state: result.status },
       });
-      counts.sent += 1;
-      return;
+      return 'sent';
     }
     const reason = (result.reason.trim() === '' ? 'rejected' : result.reason).slice(0, 200);
     await tx.query(
@@ -616,8 +632,10 @@ async function settle(
       reason,
       detail: {},
     });
-    counts.failed += 1;
+    return 'failed';
   });
+  if (outcome === 'sent') counts.sent += 1;
+  else if (outcome === 'failed') counts.failed += 1;
 }
 
 /**
@@ -653,7 +671,18 @@ export async function sendPayouts(
       });
       continue;
     }
-    await settle(d, row.id, result, counts);
+    try {
+      await settle(d, row.id, result, counts);
+    } catch (e) {
+      // M1-L4: an answer that cannot be applied (the transaction rolled back whole) leaves this payout in `sending`, to be
+      // sent again with the same key, and must not stop the payouts after it.
+      counts.errored += 1;
+      d.log.log({
+        msg: 'payout.settle_failed',
+        level: 'error',
+        fields: { payout_id: row.id, error: e instanceof Error ? e.name : 'unknown' },
+      });
+    }
   }
   return counts;
 }
