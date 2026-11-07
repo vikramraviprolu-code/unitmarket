@@ -125,7 +125,9 @@ describe('M1-L2: a split that cannot be computed does not stop the refund from b
       )[0],
     ).toEqual({ refunded_minor: 100, status: 'partially_refunded' });
     expect(await alertReasons('refund_unresolved')).toEqual([`ledger_rule_split_${FIRST_REFUND}`]);
-    // no payable part is known, so the payout is not told (same exposure as M1-L1, and the alert is the guard)
+    // no payable part is known, so the payout is not told. For a due payout that overpays like M1-L1; for a payout already
+    // sent it is worse than M1-L1: L1 would book a payout_adjustment (the payable part is passed), here none is booked, so the
+    // claim on the publisher is lost and only the alert is left.
     expect((await payoutRows(w)).map((p) => p.state)).toEqual(['due']);
   });
 });
@@ -152,7 +154,9 @@ describe('M1-L4: an answer that cannot be applied does not stop the rest of the 
       await pastWindow(w);
       const inner = spyPort(w);
       const port = answering(inner, { kind: 'accepted', provider_ref: ref, status: 'sent' });
-      const counts = await pass(port); // before the fix the CHECK on provider_ref threw out of the pass
+      // Before the fix: "" broke the provider_ref CHECK (length 1 to 200) and the throw aborted the pass; "   " passed that
+      // CHECK (spaces count), so the old code stored the blank reference and marked the payout sent.
+      const counts = await pass(port);
       expect(counts).toMatchObject({ created: 2, sent: 1, errored: 1, failed: 0 });
       const rows = await payoutRows(w);
       expect(rows.map((p) => [p.publisher_id, p.state])).toEqual(
@@ -168,6 +172,41 @@ describe('M1-L4: an answer that cannot be applied does not stop the rest of the 
       expect(new Set(inner.calls.map((c) => c.idempotency_key)).size).toBe(2);
     },
   );
+});
+
+describe('M1-L4: a settle that throws does not stop the payouts after it (the try/catch in sendPayouts)', () => {
+  it('an answer the database refuses rolls back whole: that payout stays sending, the later ones are sent, and only committed work is counted', async () => {
+    w = await makePayoutWorld();
+    await paid(w, { offers: ['ofr_1', 'ofr_3'] }); // two publishers, two payouts
+    await pastWindow(w);
+    const inner = spyPort(w);
+    await pass(null); // both payouts are created due; no send yet
+    const order = await w.rows<{ id: string; publisher_id: string }>(
+      'SELECT id, publisher_id FROM payouts ORDER BY created_at, id',
+    );
+    expect(order).toHaveLength(2);
+    const [first, second] = order as [(typeof order)[number], (typeof order)[number]];
+    // the payout the pass reaches FIRST gets an answer whose status the payouts table refuses (state CHECK): the
+    // transaction of settle throws after its first statement ran
+    const bad = {
+      kind: 'accepted',
+      provider_ref: 'REF-BAD',
+      status: 'bogus',
+    } as unknown as PayoutSendResult;
+    const port: PayoutPort = {
+      send: (req) => (req.payout_id === first.id ? Promise.resolve(bad) : inner.send(req)),
+    };
+    const counts = await pass(port); // must resolve
+    expect(counts).toMatchObject({ created: 0, sent: 1, errored: 1, failed: 0 });
+    const rows = Object.fromEntries((await payoutRows(w)).map((p) => [p.id, p]));
+    expect(rows[first.id]).toMatchObject({ state: 'sending', provider_ref: null });
+    expect(rows[second.id]).toMatchObject({ state: 'sent' });
+    // nothing of the rolled back transaction is left (no sent audit, no half update)
+    expect(inner.calls.map((c) => c.payout_id)).toEqual([second.id]);
+    // a good answer later finishes the same payout with the same key
+    expect(await pass(inner)).toMatchObject({ sent: 1, errored: 0 });
+    expect((await payoutRows(w)).map((p) => p.state)).toEqual(['sent', 'sent']);
+  });
 });
 
 describe('M1-L8: a payout already handed to the provider that is refused again', () => {

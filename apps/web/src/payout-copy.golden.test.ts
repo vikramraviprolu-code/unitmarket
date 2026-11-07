@@ -110,7 +110,7 @@ describe('publisher words', () => {
       paid: 'Source: payouts that were sent or paid out.',
       adjustments:
         'Source: the publisher share of refunds booked after payout, not yet taken off a payout.',
-      next: 'Source: what is owed and not yet in a payout that went out, less the open adjustments, never below zero. It includes sales still inside their access window.',
+      next: 'Source: what is owed and not yet in a payout that went out, less the open adjustments, never below zero. It includes sales still inside their access window and units held by a reversal.',
     });
   });
   it('shows the tiles of a block in order, and the adjustments only when there are some', () => {
