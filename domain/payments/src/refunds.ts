@@ -1090,8 +1090,11 @@ async function bookEntry(
   // M1-L1, known and accepted: when the parts are refused the ledger gets no (or only part of the) reversal rows. If the split
   // was computed its payable part is still passed to onRefundBooked, so a payout that is due is cancelled and made again from
   // the ledger net, which lacks the reversal: the publisher is overpaid by that payable part. If no split exists nothing is
-  // passed (payable 0) and the due payout is left as it is: the same overpay. In both cases the alert below is the only guard
-  // (refund_unresolved, reason ledger_rule_split_<refund id>) and an operator must correct it. Pinned by payout.lows.state.test.ts.
+  // passed (payable 0) and the due payout is left as it is: the same overpay. For a payout that has already gone out the two
+  // differ: with a split, onRefundBooked books a payout_adjustment (the claim on the publisher is kept); with no split (the
+  // RangeError case, M1-L2) none is booked, so that claim is lost and only the alert is left. In both cases the alert below is
+  // the only guard (refund_unresolved, reason ledger_rule_split_<refund id>) and an operator must correct it. Pinned by
+  // payout.lows.state.test.ts.
   let payable_minor = 0;
   const parts = await getUnitParts(tx, unit.id);
   if (parts !== null) {

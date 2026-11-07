@@ -574,7 +574,14 @@ async function settle(
   }
   // M1-L4: an accepted answer with no provider reference cannot be stored (the table needs one). The provider may hold the
   // payout, so it is NOT failed (that would pay it again after the hold): it stays `sending`, is counted as errored, and the
-  // next pass sends it again with the same key, which a provider that remembers the key answers with a reference.
+  // next pass sends it again with the same key.
+  // PRECONDITION FOR ANY REAL PAYOUT PORT (unproven today; only the dry run and the test spies exist): a resend with the same
+  // key must be answered with the SAME accepted answer, reference included. If a port ever maps a duplicate key to `rejected`,
+  // settle marks the payout `failed`, expireFailedPayouts cancels it after 24 hours (PAYOUT_RETRY_AFTER_MS) and its units are
+  // paid again under a new key: a real double payout. The port must therefore report a duplicate key as the original answer
+  // or as an error that throws (the payout then stays `sending`), never as a rejection. Still missing: an alert (planned reason
+  // `payout_noref_<id>`) for a payout that keeps coming back without a reference; today there is only the error count and a log
+  // line. See docs/owner/M1-LOWS.md, M1-L4.
   if (result.kind === 'accepted' && result.provider_ref.trim() === '') {
     counts.errored += 1;
     d.log.log({

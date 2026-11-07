@@ -56,7 +56,8 @@ interface Entry {
   prefixes: readonly string[] | null;
   cause: (reason: string, detail: Detail) => string;
   fix: Fix;
-  runbook: string;
+  /** A fixed text, or one chosen by the reason (a payout that is already sending has no hold, M1-L8). */
+  runbook: string | ((reason: string) => string);
   money: MoneyRule | null;
 }
 
@@ -248,8 +249,10 @@ const ENTRIES: Record<CatalogueKind, Entry> = {
             ? 'A payout was not sent: the publisher cannot be paid right now. If they are not active or use the shared account it waits and is sent when that is put right. If their PayPal address changed or is no longer verified, the payout is cancelled and the sale is paid out again to the verified address once there is one.'
             : 'The provider refused a payout. Its sales are held for 24 hours and then paid again.',
     fix: MONEY_PAYOUTS,
-    runbook:
-      'Read the failure reason on the payout, check the payee of the publisher, and let the next pass pay again after the hold.',
+    runbook: (reason) =>
+      reason.startsWith('payout_refused_') && reason.endsWith('_sending')
+        ? 'Check with the provider whether it already holds this payout. A payout in sending has no hold and is never paid again under a new key. Put the publisher right (active, not the shared account, a verified address) so the next pass can finish it with the same key.'
+        : 'Read the failure reason on the payout, check the payee of the publisher, and let the next pass pay again after the hold.',
     money: 'unit_amount',
   },
 };
@@ -267,7 +270,7 @@ export function describeAlert(
     title: e.title,
     cause: e.cause(reason, detail),
     fix: e.fix,
-    runbook: e.runbook,
+    runbook: typeof e.runbook === 'function' ? e.runbook(reason) : e.runbook,
     money_at_risk: e.money,
   };
 }
