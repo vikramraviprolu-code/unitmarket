@@ -40,8 +40,12 @@ export const PAYEE_DIRECT_SENTENCE =
 /** A statement with no sales says so; it never says "Paid by PayPal" about nothing. */
 export const NOTHING_SOLD_SENTENCE = 'Nothing sold yet.';
 
-/** Fixed: the demo takes no commission (no platform fee row exists); 20 percent is planned only. */
-export const COMMISSION_LINE = 'No commission in this demo.';
+/**
+ * Fixed, owner-approved wording of 2026-11-07: the platform fee (POB-M1, D-089) is added on top of the price shown and
+ * the publisher does not pay it. The rate is written here; it does not follow a later change of the fee setting.
+ */
+export const COMMISSION_LINE =
+  'A platform fee of 10 percent of the publisher price is added to the price shown. The publisher does not pay it.';
 
 /**
  * POB-M1 (D-089): shown instead of COMMISSION_LINE once a statement holds a sale with a fee. The fee is added on top of the

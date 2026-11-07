@@ -53,13 +53,15 @@ describe('defect 6: copy items', () => {
     );
     expect(CANCEL_BODY).toContain('at the payment step.');
   });
-  it('the commission line makes no promise of a plan', () => {
+  it('the fee line states the fee and makes no promise of a plan', () => {
     expect(read('../../../domain/publisher-console/src/settlement.ts')).toContain(
-      "export const COMMISSION_LINE = 'No commission in this demo.';",
+      "export const COMMISSION_LINE =\n  'A platform fee of 10 percent of the publisher price is added to the price shown. The publisher does not pay it.';",
     );
     const flat = JSON.stringify(PUBLISHER_TERMS_DOC);
     expect(flat).not.toMatch(/20 percent|not implemented/i);
-    expect(flat).toContain('No commission in this demo.');
+    expect(flat).toContain(
+      'A platform fee of 10 percent of the publisher price is added to the price shown. The publisher does not pay it.',
+    );
   });
   it('the frozen help topic does not claim a case was opened before any order is named', () => {
     const src = read('./app/help/[case]/page.tsx');

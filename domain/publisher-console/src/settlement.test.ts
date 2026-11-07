@@ -143,6 +143,8 @@ describe('payeeSettlement (SETTLE-A: the account as it is now, for S1, S6 and S7
 
 describe('commission line', () => {
   it('is the fixed sentence', () => {
-    expect(COMMISSION_LINE).toBe('No commission in this demo.');
+    expect(COMMISSION_LINE).toBe(
+      'A platform fee of 10 percent of the publisher price is added to the price shown. The publisher does not pay it.',
+    );
   });
 });
