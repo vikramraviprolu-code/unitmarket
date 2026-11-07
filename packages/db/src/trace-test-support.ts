@@ -984,6 +984,32 @@ export const STEPS: Step[] = [
     },
     insertHashed: ['reason'],
   },
+  {
+    // TR-LINK (migration 0031): the address a publisher is paid to. The address is only ever a sha256 in the journal.
+    table: 'publisher_paypal_links',
+    id: 'pub_1',
+    chain: 'pub:pub_1',
+    subject: { publisher_id: 'pub_1' },
+    insert: (db) =>
+      ins(db, 'publisher_paypal_links', {
+        publisher_id: 'pub_1',
+        paypal_email: 'CANARY-LINK-ADDRESS@example.test',
+        state: 'requested',
+        verified_by: null,
+        verified_at: null,
+      }),
+    insertCols: { state: 'requested', verified_by: null, verified_at: null },
+    insertHashed: ['paypal_email'],
+    update: {
+      sql: `UPDATE publisher_paypal_links SET state = 'verified', verified_by = 'opr_test', verified_at = '${T2}', updated_at = '${T2}' WHERE publisher_id = 'pub_1'`,
+      col: 'state',
+      before: 'requested',
+      after: 'verified',
+    },
+    untracked: {
+      sql: `UPDATE publisher_paypal_links SET created_at = '${T3}' WHERE publisher_id = 'pub_1'`,
+    },
+  },
 ];
 
 /** Every canary string the world writes into a free-text or jsonb detail column. */
@@ -1004,6 +1030,7 @@ export const CANARIES = [
   'CANARY-PAYEE-NOTE',
   'CANARY-APPLICANT-REASON',
   'CANARY-RULE-REASON',
+  'CANARY-LINK-ADDRESS',
 ] as const;
 
 /** Runs every insert of the world in order, under one context. Returns the database the app would see. */

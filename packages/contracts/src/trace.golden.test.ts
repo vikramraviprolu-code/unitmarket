@@ -72,7 +72,7 @@ describe('TR0.1 enums', () => {
 });
 
 describe('TR0.1 the golden allow-list', () => {
-  it('names the 30 tracked tables (27 of the spec, alert_events of INT-AL, rule_settings of BR-2 and api_exposure of INT-CTL), once each, in name order', () => {
+  it('names the 31 tracked tables (27 of the spec, alert_events of INT-AL, rule_settings of BR-2, api_exposure of INT-CTL and publisher_paypal_links of TR-LINK), once each, in name order', () => {
     expect(TRACKED_TABLES.map((t) => t.table)).toEqual([
       'access_events',
       'access_windows',
@@ -96,6 +96,7 @@ describe('TR0.1 the golden allow-list', () => {
       'provider_calls',
       'provider_orders',
       'publisher_applicant_decisions',
+      'publisher_paypal_links',
       'publishers',
       'receipts',
       'recovery_actions',
@@ -156,6 +157,15 @@ describe('TR0.1 the golden allow-list', () => {
       hashed: ['reason', 'detail'],
       chain: 'plat',
     });
+    // TR-LINK (migration 0031): the publisher's PayPal address is only ever a hash; the state and the operator check are copied.
+    expect(by['publisher_paypal_links']).toEqual({
+      table: 'publisher_paypal_links',
+      copied: ['state', 'verified_by', 'verified_at'],
+      hashed: ['paypal_email'],
+      digest: [],
+      time: 'updated_at',
+      chain: 'pub:publisher_id',
+    });
     expect(by['ledger_entries']!.hashed).toEqual([]);
     expect(by['links']!.copied).not.toContain('token_hash');
   });
@@ -183,6 +193,7 @@ describe('TR0.1 the golden allow-list', () => {
       'paypal_merchant_id',
       'payee_merchant_id',
       'option',
+      'paypal_email',
     ];
     for (const t of TRACKED_TABLES) {
       for (const c of t.copied) {
