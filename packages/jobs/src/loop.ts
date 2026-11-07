@@ -356,7 +356,10 @@ export function startLoop(
           recordPass(d, d.clock.now().toISOString());
           // With the allowance spent, overdue polling work must not wake the loop every 100 ms: the
           // pass only does money work, which is looked for at the slow rhythm.
-          const next = paused || budgetUnknown || spent ? null : await nextDueAt(d.db, d.config);
+          const next =
+            paused || budgetUnknown || spent
+              ? null
+              : await nextDueAt(d.db, d.config, d.clock.now().toISOString());
           if (next !== null) {
             const wait = Date.parse(next) - d.clock.now().getTime();
             // BU-9: a pass that did nothing and still finds work overdue cannot settle it; do not

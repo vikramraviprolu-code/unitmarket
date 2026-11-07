@@ -183,6 +183,9 @@ export async function nextDueAt(
   config: Pick<DomainConfig, 'abandoned_checkout_ms'> &
     Partial<Pick<DomainConfig, 'reread_paid_every_ms' | 'pack_approval_window_ms'>> &
     Partial<Pick<DomainConfig, 'reconcile_backoff_ms'>> = { abandoned_checkout_ms: 86_400_000 },
+  // The caller's clock. With it, an order whose 7 day watch already ended owes no more reads, so it
+  // no longer yields a past time that wakes the job loop every 100 ms (UNI-75).
+  now?: IsoUtc,
 ): Promise<IsoUtc | null> {
   const found = await db.query<Record<string, unknown>>(
     `SELECT
@@ -193,7 +196,9 @@ export async function nextDueAt(
        (SELECT min(p.first_approved_at) FROM provider_orders p JOIN orders o ON o.id = p.order_id
          WHERE o.status = 'awaiting_buyer' AND p.route = 'per_publisher') AS pack_at,
        (SELECT min(w.next_at) FROM (${paidWatch(rereadMs(config))}) w
-         WHERE w.next_at < w.verified_at + interval '7 days') AS reread_at`,
+         WHERE w.next_at < w.verified_at + interval '7 days'
+           AND ($1::timestamptz IS NULL OR $1::timestamptz < w.verified_at + interval '7 days')) AS reread_at`,
+    [now ?? null],
   );
   const row = found.rows[0] ?? {};
   const times: string[] = [];
