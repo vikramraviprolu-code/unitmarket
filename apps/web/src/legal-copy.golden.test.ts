@@ -85,7 +85,7 @@ describe('legal copy rules', () => {
       );
       expect(t).not.toMatch(/\b(Ltd|Inc|LLC|GmbH|Corp|PLC)\b\.?/);
       // The owner (Sakthi) supplied one team contact address on 30 Oct 2026 (assumption 39). It is the only address allowed.
-      expect(t.replace('contact@unitmarket.example', '')).not.toMatch(/@|https?:|www\./i);
+      expect(t.replace('unitmarket@raviprolu.com', '')).not.toMatch(/@|https?:|www\./i);
     }
   });
 
@@ -131,7 +131,7 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/operator/i);
     expect(t).toMatch(/no advertising/i);
     expect(t).toMatch(/third-party fonts/i);
-    expect(t).toContain('You can reach the team at contact@unitmarket.example.');
+    expect(t).toContain('You can reach the team at unitmarket@raviprolu.com.');
   });
 
   it('privacy: applications to publish say what is stored, that the note is permanent and that no account is made', () => {
@@ -162,7 +162,7 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/do not ask for or keep an email address/i);
     expect(t).toMatch(/account and your sign in are removed/i);
     expect(t).toMatch(/operator sets a new one/i);
-    expect(t).toContain('contact@unitmarket.example');
+    expect(t).toContain('unitmarket@raviprolu.com');
     // the account copy and the legal page give the same contact address
     expect(t).toContain(CONTACT_ADDRESS);
   });
@@ -211,7 +211,7 @@ describe('legal copy rules', () => {
     expect(t).toMatch(/keep the access they paid for/i);
     expect(t).toMatch(/already approved can still complete/i);
     expect(t).toMatch(/No tax is calculated and no tax invoice is issued in this demo/);
-    expect(t).toContain('You can reach the team at contact@unitmarket.example.');
+    expect(t).toContain('You can reach the team at unitmarket@raviprolu.com.');
     expect(t).toMatch(/No governing law/i);
   });
 });

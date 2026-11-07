@@ -1,4 +1,4 @@
-contact: contact@unitmarket.example | consent version terms-v1
+contact: unitmarket@raviprolu.com | consent version terms-v1
 doors title: Choose your door
 doors lede: UnitMarket has three kinds of visitor. Pick the one that sounds like you.
 door buyer: Buyer | I want to read | Find one article, see the price, pay once and read it for five days. | You need: a username and a password. No email.
@@ -19,7 +19,7 @@ buyer need item: A username, 3 to 30 characters: letters, digits, dot, dash or u
 buyer need item: A password of 12 or more characters. A phrase of four words is a good one. You can paste it.
 buyer need item: Your country, as two capital letters, for example GB or US.
 buyer no email: We do not ask for an email address and we send you no email.
-buyer lost: If you lose your password | The operator resets it by hand. Write to contact@unitmarket.example and give your username.
+buyer lost: If you lose your password | The operator resets it by hand. Write to unitmarket@raviprolu.com and give your username.
 buyer buttons: Create account | Sign in
 signup: Create your account | It takes one minute. No email is asked for or sent.
 signup fields: Display name | Username | Country (two capital letters, for example GB) | Password | Repeat password
@@ -94,7 +94,7 @@ account error other: The password could not be changed. Please try again.
 account error weak_password: The password is too short. Use at least 12 characters.
 account all: Sign out everywhere | This signs you out on every device, including this one. | Sign out on all devices | Signing out | We could not sign you out. Please try again.
 help password: Lost your password? | This demo has no email, so there is no reset link.
-help password step: Write to contact@unitmarket.example from any address. Give your username. Never send your password.
+help password step: Write to unitmarket@raviprolu.com from any address. Give your username. Never send your password.
 help password step: The operator checks the request and sets a temporary password at the terminal.
 help password step: The operator sends the temporary password back to you.
 help password step: Sign in with it, then change it on the Account page.
