@@ -13,16 +13,16 @@ Checked against `main` at `16ad163` (5 Nov 2026).
 | Scan of the current tree                | 0 leaks                                                                                                                                                    | `gitleaks dir . --redact -c .gitleaks.toml`                                                                                                                     |
 | Scan with the allow list removed        | **19 findings**, all covered by the allow list in `.gitleaks.toml` (eight exact fake values and five reviewed commits) and the repo's `.gitleaksignore`    | Run once with `.gitleaks.toml` moved aside, then restored. Each fake value is documented in the file header                                                     |
 | Licence file                            | `LICENSE` exists at the root and is the unmodified Apache License 2.0 text; `package.json` says `Apache-2.0`; `THIRD-PARTY-NOTICES.md` exists              | `head LICENSE`, `grep license package.json`                                                                                                                     |
-| Private Build Bible links               | **No link or URL.** 27 mentions in 7 files before this checklist, all prose (list in section 3; this file adds its own)                                    | `git grep -nI -i bible`                                                                                                                                         |
+| Private planning document links         | **No link or URL.** Mentions reworded to "planning document" in UNI-83; `git grep -nI -i bible` finds only this row                                        | `git grep -nI -i bible`                                                                                                                                         |
 | Local file paths                        | 12 mentions of `/mnt/project-files` in 8 files. A public reader cannot open them (list in section 3)                                                       | `git grep -nI '/mnt/project-files'`                                                                                                                             |
-| Real contact address in the product     | `unitmarket@raviprolu.com` appears in 2 copy sources, 2 golden text files, 2 golden tests, 1 e2e spec and 2 docs (list in section 3)                | `git grep -nI '@googlemail.com'`                                                                                                                                |
+| Real contact address in the product     | Personal address replaced by the placeholder `contact@unitmarket.example` in UNI-83; swap for a real mailbox before submission                             | `git grep -nI '@googlemail.com'` finds only this row                                                                                                            |
 
 The scan is clean today. It does not replace a second scan right before the flip (step 4), because every merge since adds history.
 
 ## 2. Steps, in order
 
-1. **Decide the contact address (OWNER).** The privacy notice, the publisher terms and the account help text print `unitmarket@raviprolu.com`. Once public, the address is public. Either accept that, or change it to a team mailbox. Changing it means editing 2 copy sources, 2 golden text files, 2 golden tests and 1 e2e spec, so it is a code lane, not part of this one. Recommendation: use a team mailbox, and do it before E2E so the golden files change once.
-2. **Decide the Bible mentions (OWNER).** Section 3 lists them. None is a link. Recommendation: leave the historical docs as they are, because they say the Bible is private and rewriting them rewrites the record. Move `docs/owner/BIBLE-UPDATE-PACK-2026-10-31.md` out of the public tree only if you do not want to publish owner pastes.
+1. **Contact address (DONE, UNI-83).** The placeholder `contact@unitmarket.example` is in place. Replace it with a real team mailbox if one exists (D-106).
+2. **Planning document mentions (DONE, UNI-83).** Reworded; the owner paste pack is now `docs/owner/PLANNING-UPDATE-PACK-2026-10-31.md`.
 3. **Decide the stale branches (OWNER).** The repository has 172 branches on the remote, and a public repository shows all of them. The scan covered all of them and is clean. `claude/br-slice-specs` is the one already known to need deleting (the automation gets a 403 deleting it). Recommendation: delete merged `feat/*` and `docs/*` branches after the flip is decided, or keep them as history; both are safe.
 4. **Re-run the scan on the commit you will publish (any session).** Same commands as section 1. The result must say `no leaks found`. If it reports one, rotate the credential within the hour and record it in `docs/decision-log.md` (rule 4 of `CLAUDE.md`).
 5. **Confirm the video footage is intended to be public.** `video/assets/footage/*.mp4` (three files, 8.9 MB) are committed. They contain dry-run footage only. The rendered cut is kept outside the repository.
@@ -35,13 +35,13 @@ The scan is clean today. It does not replace a second scan right before the flip
 
 ## 3. Lists behind the checks
 
-### Bible mentions (no URL in any of them)
+### planning document mentions (no URL in any of them)
 
 - `docs/briefing/mvp-status-2026-10-23.md`: lines 17, 37, 205
 - `docs/business-rules/business-rules-reference.md`: lines 33, 102, 262
 - `docs/decision-log.md`: lines 52, 74 (append only; do not edit)
 - `docs/design/publisher-questions-recommendations-2026-10-31.md`: line 252
-- `docs/owner/BIBLE-UPDATE-PACK-2026-10-31.md`: lines 1, 3, 4, 6, 14, 46, 63, 83, 109, 128, 171
+- `docs/owner/PLANNING-UPDATE-PACK-2026-10-31.md`: lines 1, 3, 4, 6, 14, 46, 63, 83, 109, 128, 171
 - `docs/proposals/publisher-side-proposal-2026-10-30.md`: lines 10, 21, 329
 - `docs/proposals/whole-product-gap-review-2026-10-30.md`: lines 5, 23, 121, 149
 

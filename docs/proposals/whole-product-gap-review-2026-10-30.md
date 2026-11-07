@@ -2,7 +2,7 @@
 
 Status: REVIEW ONLY. Nothing is built from this. Written by an Opus read-only reviewer; saved by the coordinator. The reviewer
 read SBX `main` at `b83c5a8` and the original requirement documents in the simulation repository (reference only). It did not
-run the app or the tests, made no PayPal call and opened no env file. The Build Bible was not available, so the "20 agreed
+run the app or the tests, made no PayPal call and opened no env file. The planning document was not available, so the "20 agreed
 requirements" cited in `docs/briefing/mvp-status-2026-10-23.md` section 8 and `docs/design/mvp-plan.md` could not be checked.
 
 ## Headline: four gaps that matter more than WordPress and the publisher console
@@ -20,7 +20,7 @@ open source licence, and have a working demo. SBX today fails or risks each:
 
 ## 1. How the publisher side dropped out (date order)
 
-- 19 Oct, Bible Rev 11: PAY-01 puts publisher onboarding UI out; PAY-11 puts the seller dashboard and admin out; PAY-07 still
+- 19 Oct, planning document Rev 11: PAY-01 puts publisher onboarding UI out; PAY-11 puts the seller dashboard and admin out; PAY-07 still
   required one purchase unit per publisher with its payee.
 - 19 to 20 Oct, simulation: seller screens S1 to S7 were built anyway (merged as #34, #37, #44, #49, each "requirement id
   pending"), so the register had no row to carry them forward. Simulation `docs/DEFERRED.md` kept only "WordPress as the
@@ -118,7 +118,7 @@ is. SBX has only the money-path dependency freeze (Mon 2 Nov, `mvp-plan.md:9`); 
 ## 4. Fine to leave out (with reason)
 
 Payouts API (D-004); real platform fees via Partner Referrals (needs partner enablement); real publisher onboarding or KYC (out
-in the Bible; operator-set `payee_verified_at` is honest if labelled); article upload (needs the security controls of
+in the planning document; operator-set `payee_verified_at` is honest if labelled); article upload (needs the security controls of
 architecture item 16); buyer sign-up (D-040); e-mail; Disputes API; DRM; UK and India corridors (D-002, D-030); Supabase (Cloud SQL
 works, D-049); WordPress plugin and feed import (the plan's own cut rule, `mvp-plan.md:227`); standing mandates, demand pricing,
 PDF passport.
@@ -146,7 +146,7 @@ AI decision whichever way it goes.
 
 ## 6. What the reviewer could not verify
 
-The Build Bible and its 20 agreed requirements; the current rules text (D-045: not yet verified by us; confirm on the
+The planning document and its 20 agreed requirements; the current rules text (D-045: not yet verified by us; confirm on the
 hackathon page whether "with an AI tool" can be met by a scripted model, the licence and public-repo requirement, and the demo
 running to 15 Dec); GitHub visibility of this repository; the current hosted app state; whether PayPal's fee exceeded the 0.40
 sale in the real sittings; overlap with in-flight work; whether the simulation's seller screens were meant as reference; any

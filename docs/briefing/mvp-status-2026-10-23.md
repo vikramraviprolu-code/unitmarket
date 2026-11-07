@@ -14,7 +14,7 @@ Status date: 23 Oct 2026. Prepared by the coordinating assistant at the owner's 
 
 | Date (2026)  | Milestone                                                                                                                                                                                    |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 18 Oct       | Build Bible becomes the single planning document                                                                                                                                             |
+| 18 Oct       | planning document becomes the single planning document                                                                                                                                       |
 | 19 Oct       | Simulation track starts: scaffold, import rules, payment port, contracts                                                                                                                     |
 | 20 Oct       | Simulation complete: web app, scenario matrix, adversarial suite, mutation checks, 90-day history, browser journeys                                                                          |
 | 21 Oct       | Sandbox repository created, separate from the simulation (D-001). Design baseline, corridors order, dependency list, no-connection rule decided                                              |
@@ -34,7 +34,7 @@ Status date: 23 Oct 2026. Prepared by the coordinating assistant at the owner's 
 
 ## 4. Simulation track (finished, kept for regression)
 
-Source: the Build Bible's "Simulation: architecture, design, development" tab and the simulation repository at `main` 300ff02.
+Source: the planning document's "Simulation: architecture, design, development" tab and the simulation repository at `main` 300ff02.
 
 | Measure           | Result                                                                                                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -202,7 +202,7 @@ Risks stated plainly:
 - Repository facts (commits, files, lines, test files, decisions, assumptions, migrations): measured from `main` on 23 Oct.
 - Test totals: the gate report `docs/evidence/mvp-a-gate-2026-10-22-final.md` and the builders' final reports.
 - Mutation scores: the builders' reports, not re-run by the coordinator.
-- Simulation figures: the Build Bible simulation tab and `docs/specs/sim/loop3-results.md` in the simulation repository.
+- Simulation figures: the planning document simulation tab and `docs/specs/sim/loop3-results.md` in the simulation repository.
 - Real sandbox contact: `docs/evidence/spike-part-r-2026-10-23.md` and decision D-034.
 - The repository holds 274 test files while the full run reports about 244. The difference is suites that run separately or opt in, such as the `next start` proof. This split was not individually verified.
 - No credential, token, account id or email appears in this report.
