@@ -16,6 +16,7 @@ const REFUSED_BEFORE_MONEY = new Set([
   'not_captured',
   'over_refund',
   'refund_in_flight',
+  'refund_window_closed',
   'unit_frozen',
   'refund_failed',
   'refund_rejected',

@@ -27,6 +27,7 @@ import type {
 } from '@umsbx/contracts';
 import type { HttpResult } from '@umsbx/security';
 import { NOT_PAID_YET } from '../lib/buyer-copy';
+import type { RefundWindowView } from '../lib/buyer-copy';
 import { formatMinor } from '../lib/format';
 
 // ---------------------------------------------------------------------------------------------
@@ -39,6 +40,7 @@ export type RefusalCode =
   | 'over_refund'
   | 'refund_in_flight'
   | 'unit_frozen'
+  | 'refund_window_closed'
   | 'refund_failed'
   | 'refund_rejected'
   | 'refunds_paused_midway';
@@ -77,6 +79,13 @@ export const REFUSALS: Record<RefusalCode, Refusal> = {
     code: 'refund_in_flight',
     message:
       'A refund request is already open for this payment. Wait for it to finish, or withdraw it, then try again. Nothing new was requested.',
+  },
+  // BR-4: the sale's refund window has closed. The operator can still refund with a reason, which is audited.
+  refund_window_closed: {
+    http: 409,
+    code: 'refund_window_closed',
+    message:
+      "This sale's refund period has ended. Nothing was refunded. To refund it anyway, give a reason (3 to 200 characters) and send again. The reason is kept in the audit log.",
   },
   unit_frozen: {
     http: 409,
@@ -173,6 +182,7 @@ export interface RefundWiring {
     amount: Money | null;
     reason: string;
     actor: Actor;
+    override_reason?: string;
   }): Promise<Result<{ refund_request_id: Id }, { code: string }>>;
   executeRefund(i: {
     refund_request_id: Id;
@@ -194,6 +204,8 @@ export interface RefundFacade {
     unit_id: Id;
     amount_minor: number | null;
     reason: string;
+    /** BR-4: the operator's reason for refunding after the window closed. Used only then, and audited. */
+    override_reason?: string;
   }): Promise<Result<RefundDone, RefundFailure>>;
   /** Withdraws a request that is still `requested`. Works while refunds are paused. */
   cancel(i: {
@@ -285,7 +297,7 @@ export function createRefundFacade(w: RefundWiring): RefundFacade {
   };
 
   return {
-    async request({ actor, unit_id, amount_minor, reason }) {
+    async request({ actor, unit_id, amount_minor, reason, override_reason }) {
       const finish = async (
         code: RefusalCode | 'not_operator',
         refund_request_id: string | null = null,
@@ -310,6 +322,7 @@ export function createRefundFacade(w: RefundWiring): RefundFacade {
         amount: amount_minor === null ? null : { currency: unit.currency, minor: amount_minor },
         reason,
         actor,
+        ...(override_reason !== undefined ? { override_reason } : {}),
       });
       if (!requested.ok) {
         const code = requested.error.code;
@@ -458,6 +471,8 @@ export interface RefundUnitView {
   /** What a new request may ask for: paid, less booked, less held. */
   remaining_minor: number;
   frozen: boolean;
+  /** BR-4: the refund deadline of the sale's frozen terms. After it the form asks for an override reason. */
+  refund_window: RefundWindowView;
   open_requests: {
     refund_request_id: Id;
     amount_minor: number;
@@ -474,7 +489,14 @@ export interface RefundOverview {
 
 const OPEN_STATES = ['requested', 'sent', 'unknown', 'pending', 'unresolved'];
 
-export async function loadRefundOverview(db: Database, enabled: boolean): Promise<RefundOverview> {
+/** BR-4: the refund window of each unit, by unit id. The composition binds it to the rules package. */
+export type RefundWindowsOf = (unit_ids: string[]) => Promise<Map<string, RefundWindowView>>;
+
+export async function loadRefundOverview(
+  db: Database,
+  enabled: boolean,
+  windowsOf: RefundWindowsOf,
+): Promise<RefundOverview> {
   const units = await db.query<{
     unit_id: string;
     order_ref: string;
@@ -498,6 +520,7 @@ export async function loadRefundOverview(db: Database, enabled: boolean): Promis
   const ids = units.rows.map((r) => r.unit_id);
   const titles = new Map<string, string[]>();
   const open = new Map<string, RefundUnitView['open_requests']>();
+  const windows = ids.length > 0 ? await windowsOf(ids) : new Map<string, RefundWindowView>();
   if (ids.length > 0) {
     const t = await db.query<{ unit_id: string; title: string }>(
       `SELECT e.unit_id, a.title FROM entitlements e JOIN articles a ON a.id = e.article_id
@@ -542,6 +565,7 @@ export async function loadRefundOverview(db: Database, enabled: boolean): Promis
         reserved_minor: reserved,
         remaining_minor: Math.max(0, amount - refunded - reserved),
         frozen: r.mismatch === true,
+        refund_window: windows.get(r.unit_id) ?? { state: 'unknown' },
         open_requests: open.get(r.unit_id) ?? [],
       };
     }),

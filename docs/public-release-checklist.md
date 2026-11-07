@@ -21,7 +21,7 @@ The scan is clean today. It does not replace a second scan right before the flip
 
 ## 2. Steps, in order
 
-1. **Contact address (DONE, UNI-83).** The placeholder `contact@unitmarket.example` is in place. Replace it with a real team mailbox if one exists (D-104).
+1. **Contact address (DONE, UNI-83).** The placeholder `contact@unitmarket.example` is in place. Replace it with a real team mailbox if one exists (D-106).
 2. **Planning document mentions (DONE, UNI-83).** Reworded; the owner paste pack is now `docs/owner/PLANNING-UPDATE-PACK-2026-10-31.md`.
 3. **Decide the stale branches (OWNER).** The repository has 172 branches on the remote, and a public repository shows all of them. The scan covered all of them and is clean. `claude/br-slice-specs` is the one already known to need deleting (the automation gets a 403 deleting it). Recommendation: delete merged `feat/*` and `docs/*` branches after the flip is decided, or keep them as history; both are safe.
 4. **Re-run the scan on the commit you will publish (any session).** Same commands as section 1. The result must say `no leaks found`. If it reports one, rotate the credential within the hour and record it in `docs/decision-log.md` (rule 4 of `CLAUDE.md`).

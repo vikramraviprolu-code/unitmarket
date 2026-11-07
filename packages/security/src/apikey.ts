@@ -301,6 +301,55 @@ export async function revokeKey(
   });
 }
 
+/** INT-OPS-C (C3, C4): why an operator revoked a key. A closed list, never free text; it lands in the audit action. */
+export const OPERATOR_REVOKE_REASONS = ['abuse', 'owner_request', 'compromised', 'other'] as const;
+export type OperatorRevokeReason = (typeof OPERATOR_REVOKE_REASONS)[number];
+const REASON_SET: ReadonlySet<string> = new Set(OPERATOR_REVOKE_REASONS);
+
+export type OperatorRevokeKeyError =
+  'not_found' | 'not_operator' | 'mfa_required' | 'invalid_reason';
+
+/**
+ * INT-OPS-C: an operator revokes any owner's key. It mirrors revokeKey without the owner filter, for an operator
+ * whose session showed the second factor (strictly `mfa === true`). The reason code is written in clear in the
+ * audit action (`api_key.revoked.<code>`); audit_log.reason stays empty. Revoking again keeps the first time and
+ * writes no second audit row. The answer is the key view: never a hash or a secret.
+ */
+export async function revokeKeyAsOperator(
+  deps: ApiKeyDeps,
+  operator: Actor,
+  key_id: string,
+  reason_code: OperatorRevokeReason,
+): Promise<Result<ApiKeyView, OperatorRevokeKeyError>> {
+  if (operator.kind !== 'operator') return err('not_operator');
+  if (operator.mfa !== true) return err('mfa_required');
+  if (!REASON_SET.has(reason_code)) return err('invalid_reason');
+  return deps.db.transaction(
+    async (tx: SqlExecutor): Promise<Result<ApiKeyView, OperatorRevokeKeyError>> => {
+      const found = await tx.query<KeyRow>(
+        `SELECT id, owner_kind, owner_id, key_kind, agent_buyer_id, scopes, secret_hash, created_at, revoked_at, last_used_at
+           FROM api_keys WHERE id = $1 FOR UPDATE`,
+        [key_id],
+      );
+      const row = found.rows[0];
+      if (row === undefined) return err('not_found');
+      if (row.revoked_at !== null) return ok(toView(row));
+      const at = deps.clock.now().toISOString();
+      await tx.query('UPDATE api_keys SET revoked_at = $2 WHERE id = $1', [row.id, at]);
+      if (deps.audit !== undefined) {
+        await deps.audit.record(tx, {
+          actor: operator,
+          action: `api_key.revoked.${reason_code}`,
+          target: row.id,
+          reason: null,
+          detail: { key_kind: row.key_kind, owner_kind: row.owner_kind },
+        });
+      }
+      return ok(toView({ ...row, revoked_at: at }));
+    },
+  );
+}
+
 /** The owner's own keys, oldest first. Never a hash or a secret. */
 export async function listKeys(deps: Pick<ApiKeyDeps, 'db'>, owner: Actor): Promise<ApiKeyView[]> {
   const parts = ownerParts(owner);

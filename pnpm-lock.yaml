@@ -403,6 +403,9 @@ importers:
       '@umsbx/receipts':
         specifier: workspace:*
         version: link:../receipts
+      '@umsbx/rules':
+        specifier: workspace:*
+        version: link:../rules
     devDependencies:
       '@umsbx/db':
         specifier: workspace:*
@@ -466,6 +469,9 @@ importers:
       '@umsbx/entitlements':
         specifier: workspace:*
         version: link:../entitlements
+      '@umsbx/rules':
+        specifier: workspace:*
+        version: link:../rules
     devDependencies:
       '@umsbx/db':
         specifier: workspace:*

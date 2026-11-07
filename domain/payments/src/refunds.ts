@@ -25,6 +25,7 @@ import {
   splitRefund,
 } from '@umsbx/ledger';
 import { issueReceiptIfChanged } from '@umsbx/receipts';
+import { judgedAt, refundWindowOpen, unitRefundWindows } from '@umsbx/rules';
 import { onRefundBooked } from './payout';
 import {
   IdSchema,
@@ -209,11 +210,56 @@ async function frozenForUnit(
 }
 
 // ---------------------------------------------------------------------------------------------
+// The refund window (BR-4)
+
+const OVERRIDE_MIN = 3;
+const OVERRIDE_MAX = 200;
+
+interface WindowFacts {
+  /** True when the sale's terms are unreadable (never "no deadline"): closed whatever the clock says. */
+  unreadable: boolean;
+  /** The ISO time the window closes; null for a version 1 sale, and for an unreadable one. */
+  deadline: string | null;
+  /** The time the window is judged at: the buyer's open refund case when there is one, else now. */
+  judged_at: string;
+}
+
+/**
+ * Reads the deadline of one unit from the terms frozen in its approval snapshot (BR-3). The window is
+ * judged at the creation time of the buyer's unsettled refund case for the unit when one exists (so a
+ * buyer who asked in time is honoured however late the operator acts), else at the clock.
+ */
+async function windowFacts(tx: SqlExecutor, unit: UnitFacts, now: string): Promise<WindowFacts> {
+  const own = (await unitRefundWindows(tx, { unit_id: unit.id }))[0];
+  if (own === undefined || own.unreadable) {
+    return { unreadable: true, deadline: null, judged_at: now };
+  }
+  return { unreadable: false, deadline: own.deadline, judged_at: judgedAt(own, now) };
+}
+
+/** An override reason is a string of 3 to 200 characters once trimmed; anything else is no override. */
+function overrideOf(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return t.length >= OVERRIDE_MIN && t.length <= OVERRIDE_MAX ? t : null;
+}
+
+// ---------------------------------------------------------------------------------------------
 // requestRefund
 
 export async function requestRefund(
   d: PaymentsDeps,
-  i: { unit_id: Id; amount: Money | null; reason: string; actor: Actor },
+  i: {
+    unit_id: Id;
+    amount: Money | null;
+    reason: string;
+    actor: Actor;
+    /**
+     * BR-4: why the operator refunds after the refund window closed (3 to 200 characters). Needed only then;
+     * it is kept in the audit row refund_outside_window, and the journal holds its sha256.
+     */
+    override_reason?: string;
+  },
 ): Promise<
   Result<
     { refund_request_id: Id },
@@ -225,7 +271,8 @@ export async function requestRefund(
         | 'not_operator'
         | 'mfa_required'
         | 'refund_in_flight'
-        | 'unit_frozen';
+        | 'unit_frozen'
+        | 'refund_window_closed';
     }
   >
 > {
@@ -285,6 +332,11 @@ export async function requestRefund(
       return err({ code: 'over_refund' as const });
     }
     const at = d.clock.now().toISOString();
+    // BR-4: after every guard above, before anything is stored. Closed needs an operator's stated reason.
+    const win = await windowFacts(tx, unit, at);
+    const closed = win.unreadable || !refundWindowOpen(win.deadline, win.judged_at);
+    const override = overrideOf(i.override_reason);
+    if (closed && override === null) return err({ code: 'refund_window_closed' as const });
     const id = d.ids.next('rfr');
     await tx.query(
       `INSERT INTO refund_requests (id, unit_id, capture_id, amount_minor, currency, reason, requested_by, state, refund_id, created_at, updated_at)
@@ -307,6 +359,16 @@ export async function requestRefund(
       reason: i.reason,
       detail: { unit_id: unit.id, amount_minor: minor, currency: unit.currency },
     });
+    if (closed) {
+      // The reason is in this audit row as text; the journal keeps only its sha256 (audit_log's hashed columns).
+      await d.audit.record(tx, {
+        actor,
+        action: 'refund_outside_window',
+        target: id,
+        reason: override,
+        detail: { unit_id: unit.id, deadline: win.deadline, judged_at: win.judged_at },
+      });
+    }
     return ok({ refund_request_id: id });
   });
 }

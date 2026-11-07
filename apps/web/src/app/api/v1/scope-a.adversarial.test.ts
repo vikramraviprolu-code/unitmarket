@@ -53,6 +53,10 @@ const MFA_ROUTES: Record<string, () => Promise<Record<string, Handler>>> = {
     import('../ops/api-exposure/[group]/off/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/agent-buy': () =>
     import('../ops/agent-buy/route') as unknown as Promise<Record<string, Handler>>,
+  '/api/ops/api-keys/[id]/revoke': () =>
+    import('../ops/api-keys/[id]/revoke/route') as unknown as Promise<Record<string, Handler>>,
+  '/api/ops/mandates/[id]/revoke': () =>
+    import('../ops/mandates/[id]/revoke/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/rules': () =>
     import('../ops/rules/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/fee': () => import('../ops/fee/route') as unknown as Promise<Record<string, Handler>>,

@@ -377,3 +377,78 @@ export async function alertKinds(w: OpsWorld, order_id: Id): Promise<string[]> {
     ])
   ).map((r) => r.kind);
 }
+
+// ---------- BR-4: a recording audit sink and the clock facts a refund deadline reads ----------
+/** The dependency bundle with an audit sink that writes `audit_log` rows, as the composition's sink does. */
+export function withAudit(w: OpsWorld): OpsWorld['deps'] {
+  return {
+    ...w.deps,
+    audit: {
+      async record(tx, e) {
+        const actorId =
+          e.actor.kind === 'operator'
+            ? e.actor.operator_id
+            : e.actor.kind === 'buyer'
+              ? e.actor.buyer_id
+              : e.actor.kind === 'publisher'
+                ? e.actor.publisher_id
+                : null;
+        await tx.query(
+          `INSERT INTO audit_log (id, actor_kind, actor_id, action, target, reason, detail, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $8)`,
+          [
+            w.deps.ids.next('aud'),
+            e.actor.kind,
+            actorId,
+            e.action,
+            e.target,
+            e.reason,
+            JSON.stringify(e.detail),
+            w.deps.clock.now().toISOString(),
+          ],
+        );
+      },
+    },
+  };
+}
+/** Puts the unit's access start and verified capture time at fixed instants (null access start = not started). */
+export async function setClockFacts(
+  w: OpsWorld,
+  order_id: Id,
+  f: { access_started_at: string | null; captured_verified_at: string },
+): Promise<void> {
+  await w.db.query('UPDATE order_units SET captured_verified_at = $2 WHERE order_id = $1', [
+    order_id,
+    f.captured_verified_at,
+  ]);
+  await w.db.query(
+    `UPDATE access_windows SET started_at = $2 WHERE entitlement_id IN
+       (SELECT e.id FROM entitlements e JOIN order_units u ON u.id = e.unit_id WHERE u.order_id = $1)`,
+    [order_id, f.access_started_at],
+  );
+}
+/** Rewrites the stored approval snapshot of an order (the guard trigger is lifted for the statement only). */
+export async function rewriteSnapshot(
+  w: OpsWorld,
+  order_id: Id,
+  change: (snapshot: Record<string, unknown>) => Record<string, unknown>,
+): Promise<void> {
+  const row = (
+    await w.rows<{ approval_id: string; snapshot: unknown }>(
+      'SELECT o.approval_id, a.snapshot FROM orders o JOIN approvals a ON a.id = o.approval_id WHERE o.id = $1',
+      [order_id],
+    )
+  )[0]!;
+  const parsed = (
+    typeof row.snapshot === 'string' ? JSON.parse(row.snapshot) : row.snapshot
+  ) as Record<string, unknown>;
+  await w.db.exec('ALTER TABLE approvals DISABLE TRIGGER approvals_guard');
+  try {
+    await w.db.query('UPDATE approvals SET snapshot = $2::jsonb WHERE id = $1', [
+      row.approval_id,
+      JSON.stringify(change(parsed)),
+    ]);
+  } finally {
+    await w.db.exec('ALTER TABLE approvals ENABLE TRIGGER approvals_guard');
+  }
+}

@@ -33,6 +33,9 @@ async function refund(deps: typeof w.deps, unit_id: string, minor: number | null
     amount: minor === null ? null : { currency: 'USD', minor },
     reason: 'goodwill',
     actor: OPERATOR,
+    // BR-4: a payout waits for the access window, which is at least the refund window, so a refund here is
+    // after the sale's refund deadline and needs an operator's stated reason. Inside the window it is ignored.
+    override_reason: 'refund after the payout (test)',
   });
   if (!r.ok) throw new Error(`refused: ${r.error.code}`);
   await executeRefund(deps, { refund_request_id: r.value.refund_request_id });

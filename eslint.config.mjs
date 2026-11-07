@@ -1415,8 +1415,14 @@ const WEB_FORBIDDEN = pkg([
 // is in NAMED_EXEMPTIONS below.
 const OUTBOUND_FILE = 'apps/web/src/server/outbound.server.ts';
 const OUTBOUND_FORBIDDEN = pkg([...DOMAIN, 'db', 'paypal', 'runtime', 'jobs', 'model']);
+// BR-4: a composition module beside composition.server.ts holds one lane's wiring (the refund deadline), so the
+// big file takes only an import and one line per use. It has the same rights as composition and no more.
+const COMPOSITION_FILES = [
+  'apps/web/composition.server.ts',
+  'apps/web/composition.refund-window.ts',
+];
 const webEntries = [
-  entry(['apps/web/composition.server.ts'], {
+  entry(COMPOSITION_FILES, {
     extra: [pat(pkg(['testkit']), 'testkit is for tests only.')],
   }),
   entry([OUTBOUND_FILE], {
@@ -1443,11 +1449,9 @@ const webEntries = [
         'BU-2: the unseal module is imported by apps/web/composition.server.ts only.',
       ),
     ],
-    ignores: ['apps/web/composition.server.ts', OUTBOUND_FILE],
+    ignores: [...COMPOSITION_FILES, OUTBOUND_FILE],
   }).map((e, i) =>
-    i === 0
-      ? { ...e, ignores: [...e.ignores, 'apps/web/composition.server.ts', OUTBOUND_FILE] }
-      : e,
+    i === 0 ? { ...e, ignores: [...e.ignores, ...COMPOSITION_FILES, OUTBOUND_FILE] } : e,
   ),
 ];
 

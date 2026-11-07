@@ -310,3 +310,54 @@ describe('INT-BUY pages: labelled landmarks, inputs and tables', () => {
     expect(code('ui/buyer/SpendMeter.tsx')).toMatch(/role="meter"|role="progressbar"|<meter\b/);
   });
 });
+
+// INT-OPS-C: the buyer, seller, Agents and API and ledger pages and their parts. Each page has one level one
+// heading, every nav, section and form a name, every input and select a label, every table a caption and column
+// headers with a scope, and the strip says its counts in words.
+describe('INT-OPS-C pages: named landmarks, labelled inputs and captioned tables', () => {
+  const FILES = [
+    'app/ops/buyers/[id]/page.tsx',
+    'app/ops/sellers/[id]/page.tsx',
+    'app/ops/agents/page.tsx',
+    'app/ops/money/ledger/page.tsx',
+    'ui/ops/EntitySummary.tsx',
+    'ui/ops/CapTable.tsx',
+    'ui/ops/MoneyFlow.tsx',
+  ];
+  const named = (tag: string, src: string): string[] =>
+    [...src.matchAll(new RegExp(`<${tag}\\b[^>]*>`, 'g'))].map((m) => m[0]);
+  it.each(FILES)('%s: nav, section and form elements have a name', (f) => {
+    const src = code(f);
+    for (const tag of ['nav', 'section', 'form'])
+      for (const el of named(tag, src))
+        expect(el, `${f} ${el}`).toMatch(/aria-label=|aria-labelledby=|role="search"/);
+  });
+  it.each(FILES)('%s: each input and select is labelled', (f) => {
+    const src = code(f);
+    for (const el of ['input', 'select', 'textarea'].flatMap((t) => named(t, src))) {
+      if (/type="hidden"/.test(el)) continue;
+      const id = /\bid=(?:"([^"]+)"|\{([^}]+)\})/.exec(el);
+      const labelled =
+        /aria-label=|aria-labelledby=/.test(el) ||
+        (id !== null &&
+          new RegExp(
+            `htmlFor=(?:"${id[1] ?? ''}"|\\{${(id[2] ?? '').replace(/[$()`]/g, '\\$&')}\\})`,
+          ).test(src));
+      expect(labelled, `${f}: ${el}`).toBe(true);
+    }
+  });
+  it.each(FILES)('%s: every table has a caption or a name and scoped column headers', (f) => {
+    const src = code(f);
+    if (!/<table\b/.test(src)) return;
+    expect(src, f).toMatch(/<caption|<table[^>]*aria-label=/);
+    expect(src, f).toMatch(/<th scope="col"/);
+  });
+  it.each(FILES.filter((f) => f.startsWith('app/')))('%s has one page header', (f) => {
+    expect(code(f)).toMatch(/<PageHeader\b[^>]*title=/);
+    expect(code(f).match(/<PageHeader\b/g) ?? []).toHaveLength(1);
+  });
+  it('the revoke form says its result in a status region, and the strip names its list', () => {
+    expect(code('ui/ops/CapTable.tsx')).toMatch(/role="status"|aria-live=/);
+    expect(code('ui/ops/MoneyFlow.tsx')).toMatch(/<ol[^>]*aria-label=/);
+  });
+});

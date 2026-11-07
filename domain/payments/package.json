@@ -16,7 +16,8 @@
     "@umsbx/delivery": "workspace:*",
     "@umsbx/entitlements": "workspace:*",
     "@umsbx/ledger": "workspace:*",
-    "@umsbx/receipts": "workspace:*"
+    "@umsbx/receipts": "workspace:*",
+    "@umsbx/rules": "workspace:*"
   },
   "devDependencies": {
     "@umsbx/db": "workspace:*",

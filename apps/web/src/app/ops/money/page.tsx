@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { currentActor } from '../../../server/session';
-import { readOpsMoney } from '../../../composition/ops-money';
+import { readMoneyTotals, readOpsMoney } from '../../../composition/ops-money';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { formatMinor } from '../../../lib/format';
 import { Chip, PageHeader, Section, StatTile } from '../../../ui/publisher/kit';
@@ -19,6 +19,7 @@ import {
 import { SectionNav } from '../../../ui/SectionNav';
 import { OPS_REPORTING_HEADING, OPS_REPORTING_LEDE } from '../../../lib/ops-reporting-view';
 import { OPS_MONEY_SECTIONS } from '../../../lib/ops-copy';
+import { ratesText } from '../../../lib/ops-money-view';
 import {
   FEE_HEADING,
   FEE_HISTORY_HEADING,
@@ -48,6 +49,8 @@ export default async function OpsMoney() {
   const read = await readOpsMoney(actor);
   if (read === null) redirect('/signin?next=/ops/money');
   const { snap, refundKeys, reporting, payouts, fee, feeKey } = read;
+  // INT-OPS-C / OPS-C.4: totals per environment, currency and kind, the reconciler and today's rates.
+  const kinds = await readMoneyTotals(actor);
   const invariants = invariantsSummary(snap.invariants);
   const statusTiles = orderTiles(snap.orders);
   const stateTiles = operationTiles(snap.operations);
@@ -129,6 +132,60 @@ export default async function OpsMoney() {
       <Section title={OPS_REPORTING_HEADING} id="ops-totals">
         <p className="oh-lede">{OPS_REPORTING_LEDE}</p>
         <ReportingTotals view={reporting} />
+      </Section>
+
+      <Section title="Totals by kind" id="ops-kind-totals">
+        <p className="oh-lede">
+          Every ledger line, added up per environment, currency and kind. Each total opens its
+          lines.
+        </p>
+        {kinds === null || kinds.totals.length === 0 ? (
+          <p className="oh-empty">No ledger lines yet.</p>
+        ) : (
+          <TableScroll label="Totals by kind">
+            <table className="pk-table" aria-label="Totals by kind">
+              <thead>
+                <tr>
+                  <th scope="col">Environment</th>
+                  <th scope="col">Kind</th>
+                  <th scope="col">Lines</th>
+                  <th scope="col">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kinds.totals.map((t) => (
+                  <tr key={`${t.environment}-${t.currency}-${t.kind}`}>
+                    <td data-label="Environment">
+                      <EnvLabel environment={t.environment} />
+                    </td>
+                    <td data-label="Kind">
+                      <Link href={t.href}>{t.kind_word}</Link>
+                    </td>
+                    <td className="pk-num" data-label="Lines">
+                      {t.count}
+                    </td>
+                    <td className="pk-num" data-label="Total">
+                      {formatMinor(t.total_minor, t.currency)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        )}
+        {kinds === null ? null : (
+          <dl className="pk-facts" aria-label="Reconciler and rates" data-testid="ops-reconciler">
+            <dt>Reconciler</dt>
+            <dd>
+              {kinds.reconciler.last_pass_at === null
+                ? 'No pass finished yet.'
+                : `Last pass ${kinds.reconciler.last_pass_at.slice(0, 16).replace('T', ' ')} UTC.`}{' '}
+              {kinds.reconciler.due} due.
+            </dd>
+            <dt>Exchange rates</dt>
+            <dd>{ratesText(kinds.rates)}</dd>
+          </dl>
+        )}
       </Section>
 
       <Section title="Operations by state" id="ops-states">

@@ -7,7 +7,12 @@ import { WindowMeter } from '../../../ui/WindowMeter';
 import { OpenButton } from '../OpenButton';
 import { Refresher } from '../../../ui/Refresher';
 import { optionLabel, formatDateTime } from '../../../lib/format';
-import { NOT_PAID_YET, hasReceipt, moneyStateText } from '../../../lib/buyer-copy';
+import {
+  NOT_PAID_YET,
+  hasReceipt,
+  moneyStateText,
+  refundWindowLine,
+} from '../../../lib/buyer-copy';
 import { READER_LINK_TEXT } from '../../../lib/reader-copy';
 
 export const metadata: Metadata = { title: 'Library item' };
@@ -23,6 +28,14 @@ export default async function LibraryItem({
     redirect(`/signin?next=${encodeURIComponent(`/library/${entitlement}`)}`);
   const item = await (await app()).engine.libraryItem({ entitlement_id: entitlement, actor });
   if (item === null) notFound();
+  // BR-4: the refund deadline of this sale, from its frozen terms. No line for a sale without one.
+  const refundLine = item.refunded
+    ? null
+    : refundWindowLine(
+        (await (await app()).engine.refundWindow({ actor, entitlement_id: entitlement })) ?? {
+          state: 'none',
+        },
+      );
   return (
     <>
       <p className="muted">{item.publisher}</p>
@@ -33,6 +46,7 @@ export default async function LibraryItem({
         <strong>{item.status_text}</strong>
       </p>
       {item.refund_note ? <p data-testid="library-refund-note">{item.refund_note}</p> : null}
+      {refundLine !== null ? <p data-testid="library-refund-window">{refundLine}</p> : null}
       {item.refunded ? null : (
         <WindowMeter
           state={item.window.state}

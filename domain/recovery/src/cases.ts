@@ -30,6 +30,7 @@ import type {
   WindowState,
 } from '@umsbx/contracts';
 import { issueLink } from '@umsbx/delivery';
+import { refundWindowOpen, unitRefundWindows } from '@umsbx/rules';
 import {
   ACTION_STATE,
   ALERT_CASE_KINDS,
@@ -57,7 +58,14 @@ import {
 import type { OrderTitles } from './messages';
 
 export type CaseError = {
-  code: 'not_found' | 'not_owner' | 'wrong_state' | 'not_operator' | 'duplicate_open';
+  code:
+    | 'not_found'
+    | 'not_owner'
+    | 'wrong_state'
+    | 'not_operator'
+    | 'duplicate_open'
+    // BR-4: a buyer asks for a refund after the deadline in the sale's frozen terms.
+    | 'refund_window_closed';
 };
 
 /** Lane 05b's requestRefund, bound to its deps by the composition root. Absent: no refund path. */
@@ -318,6 +326,23 @@ async function openIn(
   if (dup !== null) return err({ code: 'duplicate_open' });
   const now = d.clock.now();
   const stamp = now.toISOString();
+  // BR-4: a buyer's refund request is judged against the sale's frozen refund window. An operator or the
+  // system opening the case is not held to it (an operator's refund has its own override). A case for an
+  // order is open while any of its units is inside its window; a unit whose terms cannot be read is closed.
+  if (i.kind === 'refund_requested' && i.opened_by === 'buyer') {
+    const windows = await unitRefundWindows(
+      tx,
+      target.entitlement_id !== null
+        ? { entitlement_id: target.entitlement_id }
+        : { order_id: target.order_id },
+    );
+    if (
+      windows.length > 0 &&
+      !windows.some((w) => !w.unreadable && refundWindowOpen(w.deadline, stamp))
+    ) {
+      return err({ code: 'refund_window_closed' });
+    }
+  }
   const id = d.ids.next('cas');
   const message = openedMessage(
     i.kind,
