@@ -1,11 +1,12 @@
 // INT-UI0 / UI0.2, UI0.3: the move table (lib/shell-moves.ts) is data, and these tests read it. For each row
-// the new page's source holds the block's id, and Home's source holds the stub that links to the new place.
-// The server never sees a #fragment, so there are no redirects: an old bookmark lands on the stub on Home.
+// the new page's source holds the block's id. SCR-1: Home no longer keeps a stub for a moved block (the owner
+// asked for the "Moved to other tabs" section to be removed), so Home's source must hold none of them.
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { KEPT_URLS, SHELL_MOVES, stubFor } from './lib/shell-moves';
+import * as shellMoves from './lib/shell-moves';
+import { KEPT_URLS, SHELL_MOVES } from './lib/shell-moves';
 import { OPS_HOME_SECTIONS } from './lib/ops-copy';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -58,22 +59,20 @@ describe('each moved block', () => {
     expect(src, `${to} must carry id="${id}"`).toMatch(new RegExp(`\\sid="${id}"`));
   });
   it.each(moved.map((m) => [m.id, m.to] as const))(
-    '%s: Home has a stub that links to the new place',
-    (id, to) => {
-      expect(home).toMatch(new RegExp(`<MovedStub\\b[^>]*\\bid="${id}"[^>]*\\bto="${to}"`));
-      // The block itself is gone from Home: no <Section> or panel with that id is left.
-      expect(home).not.toMatch(new RegExp(`<Section[^>]*\\bid="${id}"`));
+    '%s: Home keeps no stub or section for it',
+    (id) => {
+      expect(home).not.toMatch(new RegExp(`\\sid="${id}"`));
+      expect(home).not.toContain(`ops-stub-${id}`);
     },
   );
-  it.each(moved.map((m) => [m.id, m.to] as const))(
-    '%s: the stub link reaches the block',
-    (id, to) => {
-      const s = stubFor(SHELL_MOVES.find((m) => m.id === id)!);
-      expect(s.href).toBe(`${to}#${id}`);
-      expect(s.text).toMatch(/^[^.]+\.$/);
-      expect(s.text).not.toMatch(/[‒-―]|--|\s-\s/);
-    },
-  );
+  it('Home has no "Moved to other tabs" section, no MovedStub and no stub list', () => {
+    expect(home).not.toContain('Moved to other tabs');
+    expect(home).not.toContain('ops-moved');
+    expect(home).not.toContain('MovedStub');
+    expect(home).not.toContain('oh-stub');
+    expect(home).not.toContain('shell-moves');
+    expect(shellMoves).not.toHaveProperty('stubFor');
+  });
 });
 
 describe('the blocks that stay', () => {
@@ -121,8 +120,8 @@ describe('the moved panels are the same components', () => {
       );
   });
   it('Home tabs list what is left on Home', () => {
-    expect(OPS_HOME_SECTIONS.map((s) => s.id)).toEqual(['ops-kill', 'ops-alerts', 'ops-moved']);
-    expect(home).toMatch(/\sid="ops-moved"/);
+    expect(OPS_HOME_SECTIONS.map((s) => s.id)).toEqual(['ops-kill', 'ops-alerts']);
+    expect(home).not.toMatch(/\sid="ops-moved"/);
   });
 });
 

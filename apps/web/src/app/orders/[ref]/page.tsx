@@ -1,24 +1,18 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
-import { readBuyerOrder, traceWords } from '../../../composition/buyer';
+import { readBuyerOrder } from '../../../composition/buyer';
 import { currentActor } from '../../../server/session';
-import {
-  buyerOrderTimeline,
-  caseCardView,
-  orderMilestones,
-  reportProblemHref,
-} from '../../../lib/buyer-order-view';
+import { caseCardView, reportProblemHref } from '../../../lib/buyer-order-view';
 import { returnNotice } from '../../../lib/buyer-should-view';
 import { app } from '../../../server/access';
 import { CaseCard } from '../../../ui/buyer/CaseCard';
-import { Timeline } from '../../../ui/Timeline';
 import { OrderStatus } from './OrderStatus';
 
 export const metadata: Metadata = { title: 'Order' };
 
-// INT-BUY / BUY.3: the order page keeps OrderStatus (the live status) and adds, below it, the steps of the order in
-// words from the journal (TR1), five milestones, the help case with its steps and due time, and Report a problem.
+// INT-BUY / BUY.3: the order page keeps OrderStatus (the live status) and adds, below it, the help case with its
+// steps and due time, and Report a problem. SCR-1: the step list and timeline block was removed.
 // The reads come through the buyer composition module and are the buyer's own: another buyer's order is a 404.
 export default async function OrderPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
@@ -27,8 +21,6 @@ export default async function OrderPage({ params }: { params: Promise<{ ref: str
   const read = await readBuyerOrder(actor.buyer_id, ref);
   if (read === null) notFound();
   const now = (await app()).security.clock.now();
-  const timeline = buyerOrderTimeline(read.timeline, read.currency, traceWords());
-  const milestones = orderMilestones(read.timeline?.entries ?? []);
   const notice = returnNotice({
     status: read.view.status,
     entitlement_id: read.entitlement_id,
@@ -49,18 +41,6 @@ export default async function OrderPage({ params }: { params: Promise<{ ref: str
         </p>
       ) : null}
       <OrderStatus initial={read.view} />
-      <section aria-labelledby="order-steps" className="home-section" data-testid="order-steps">
-        <h2 id="order-steps">What happened</h2>
-        <ol aria-label="Milestones of your order" className="home-list" data-testid="milestones">
-          {milestones.map((m) => (
-            <li key={m.id}>
-              {m.done ? 'Done: ' : 'Not yet: '}
-              {m.label}
-            </li>
-          ))}
-        </ol>
-        <Timeline view={timeline} label="Steps of your order" />
-      </section>
       {caseView !== null ? <CaseCard view={caseView} /> : null}
       <p>
         <Link

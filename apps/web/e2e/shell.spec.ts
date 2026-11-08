@@ -1,6 +1,6 @@
-// INT-UI0 e2e (offline, dry run, no purchase): the shared shell. Old anchors land on their stubs on Home and
-// the stub link reaches the block; the bottom bar shows at 390 px; "/" focuses the search slot and sends no
-// request; the breadcrumb shows on /ops/money; every operator tab sends a buyer, a seller and an anonymous
+// INT-UI0 e2e (offline, dry run, no purchase): the shared shell. Each old anchor opens its block on the
+// tab it moved to, with no "moved to" stub (SCR-1); the bottom bar shows at 390 px; "/" focuses the search
+// slot and sends no request; the breadcrumb shows on /ops/money; every operator tab sends a buyer, a seller and an anonymous
 // visitor to sign-in; a buyer or anonymous visitor is refused on seller tabs; seller tabs show no buyer
 // identity. The operator signs in once with a code from the public RFC 6238 test key, as
 // zb-section-tabs.spec.ts does. The file name sorts after refund.spec.ts and before zb-section-tabs.spec.ts and
@@ -153,17 +153,11 @@ test.describe.serial('operator shell', () => {
   });
 
   for (const [id, to] of MOVED) {
-    test(`/ops#${id} lands on its stub, and the stub link reaches the block on ${to}`, async () => {
+    test(`${to}#${id} shows the block itself, not a "moved to" stub`, async () => {
       await op.page.setViewportSize({ width: 1280, height: 800 });
-      await op.page.goto(`/ops#${id}`);
-      const stub = op.page.locator(`#${id}`);
-      await expect(stub).toBeVisible();
-      const link = stub.getByRole('link');
-      await expect(link).toHaveAttribute('href', `${to}#${id}`);
-      await link.click();
+      await op.page.goto(`${to}#${id}`);
       await expect(op.page).toHaveURL(new RegExp(`${to}#${id}$`));
       await expect(op.page.locator(`#${id}`)).toBeVisible();
-      // The block, not another stub: a stub holds one sentence and no data.
       await expect(op.page.locator(`#${id}`)).not.toContainText('moved to');
     });
   }
