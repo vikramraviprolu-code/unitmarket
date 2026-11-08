@@ -3,7 +3,7 @@
 // Pure: no server module. Every path is relative and passes lib/next-path.ts (no //, no scheme).
 
 export interface ShellMove {
-  /** Plain name of the block, for the stub sentence. */
+  /** Plain name of the block. */
   block: string;
   /** The id of the section on the old /ops page, and on the new page. */
   id: string;

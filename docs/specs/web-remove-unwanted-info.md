@@ -8,7 +8,7 @@ Goal: after this task (1) the buyer order page (`/orders/<ref>`) has no "What ha
 
 Inputs: `apps/web/src/app/orders/[ref]/page.tsx`, `app/library/page.tsx`, `app/ops/page.tsx`, `lib/buyer-order-view.ts`, `lib/shell-moves.ts`, `lib/ops-copy.ts`.
 Outputs (product): the three pages above; `lib/buyer-order-view.ts` loses `buyerOrderTimeline`, `orderMilestones`, `Milestone`, `WordsMap` (used only by the removed block); `lib/shell-moves.ts` loses `stubFor` and `Stub` (used only by the removed stubs; the move table and `KEPT_URLS` stay); `lib/ops-copy.ts` `OPS_HOME_SECTIONS` loses its `ops-moved` tab (it would link to nothing).
-Outputs (tests): `buyer-order-view.state.test.ts`, `shell-moves.state.test.ts`, `shell.adversarial.test.ts`, `ops-start.integration.test.ts`, `theme-sections.state.test.ts`, `e2e/buyer-journeys.spec.ts`. Tests of the removed helpers are deleted; tests that pinned the removed UI now assert it is absent.
+Outputs (tests): `buyer-order-view.state.test.ts`, `shell-moves.state.test.ts`, `shell.adversarial.test.ts`, `ops-start.integration.test.ts`, `theme-sections.state.test.ts`, `e2e/buyer-journeys.spec.ts`, `e2e/shell.spec.ts` (the moved-anchor loop now checks each block on its own tab and no "moved to" text, not a stub on `/ops`). Tests of the removed helpers are deleted; tests that pinned the removed UI now assert it is absent.
 
 Acceptance tests (run from the repo root; commit 1 is red against unchanged code, commit 2 is green):
 
