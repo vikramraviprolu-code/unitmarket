@@ -9,7 +9,6 @@ import { OpenButton } from './OpenButton';
 import { Refresher } from '../../ui/Refresher';
 import { optionLabel } from '../../lib/format';
 import { CoverTile } from '../../ui/CoverTile';
-import { SectionNav } from '../../ui/SectionNav';
 
 export const metadata: Metadata = { title: 'My library' };
 
@@ -34,12 +33,6 @@ export default async function Library() {
         </EmptyState>
       ) : (
         <>
-          {items.length > 1 ? (
-            <SectionNav
-              label="Jump to an item"
-              items={items.map((i) => ({ id: `library-${i.entitlement_id}`, label: i.title }))}
-            />
-          ) : null}
           <ul className="grid-2 plain-list">
             {items.map((i) => (
               <li

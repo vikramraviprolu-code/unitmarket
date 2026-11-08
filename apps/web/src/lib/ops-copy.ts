@@ -96,11 +96,10 @@ export const switchNowText = (on: boolean | null): string =>
 // ---- Section tabs ------------------------------------------------------------------------------
 // One list per operator page. Each id is the id of a section element on that page, in page order.
 
-// INT-UI0: Home keeps the kill switch and the alerts, and a stub for each block that moved (lib/shell-moves.ts).
+// INT-UI0: Home keeps the kill switch and the alerts; the other blocks moved to other tabs (lib/shell-moves.ts).
 export const OPS_HOME_SECTIONS: OpsSection[] = [
   { id: 'ops-kill', label: 'Kill switch' },
   { id: 'ops-alerts', label: 'Alerts' },
-  { id: 'ops-moved', label: 'Moved sections' },
 ];
 
 export const OPS_MONEY_SECTIONS: OpsSection[] = [

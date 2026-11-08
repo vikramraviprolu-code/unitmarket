@@ -22,7 +22,6 @@ import {
 } from '../../lib/ops-publishers-view';
 import { ActionCard, Chip, PageHeader, Section } from '../../ui/publisher/kit';
 import { OPS_HOME_KILL_STATE_LABEL, statusWord, switchChip } from '../../lib/ops-home-copy';
-import { SHELL_MOVES, stubFor } from '../../lib/shell-moves';
 import { SectionNav } from '../../ui/SectionNav';
 import { OPS_HOME_SECTIONS } from '../../lib/ops-copy';
 import { KillControls } from './KillControls';
@@ -31,24 +30,6 @@ import './pk-opshome.css';
 import '../../ui/ops/ops-a.css';
 
 export const metadata: Metadata = { title: 'Operations' };
-
-/**
- * INT-UI0: the stub Home keeps for a block that moved to another tab. The server never sees a #fragment, so
- * an old bookmark such as /ops#ops-switches lands here: one sentence and a link to the same id on the new
- * page. The table of moves is lib/shell-moves.ts.
- */
-function MovedStub({ id, to }: { id: string; to: string }) {
-  const move = SHELL_MOVES.find((m) => m.id === id && m.to === to && m.moved);
-  if (move === undefined) throw new Error(`no move for ${id} to ${to}`);
-  const s = stubFor(move);
-  return (
-    <section id={id} className="pk-panel oh-stub" data-testid={`ops-stub-${id}`}>
-      <p>
-        {s.text} <Link href={s.href}>{s.link}</Link>
-      </p>
-    </section>
-  );
-}
 
 export default async function Ops() {
   const actor = await currentActor();
@@ -176,35 +157,6 @@ export default async function Ops() {
             </ul>
           </div>
         )}
-      </Section>
-
-      <Section title="Moved to other tabs" id="ops-moved">
-        <ul className="oh-stubs">
-          <li>
-            <MovedStub id="ops-switches" to="/ops/controls" />
-          </li>
-          <li>
-            <MovedStub id="ops-gate-section" to="/ops/controls" />
-          </li>
-          <li>
-            <MovedStub id="ops-refunds" to="/ops/money" />
-          </li>
-          <li>
-            <MovedStub id="ops-orders" to="/ops/money" />
-          </li>
-          <li>
-            <MovedStub id="ops-totals" to="/ops/money" />
-          </li>
-          <li>
-            <MovedStub id="ops-states" to="/ops/money" />
-          </li>
-          <li>
-            <MovedStub id="ops-invariants" to="/ops/money" />
-          </li>
-          <li>
-            <MovedStub id="ops-shared-payee" to="/ops/sellers" />
-          </li>
-        </ul>
       </Section>
     </>
   );

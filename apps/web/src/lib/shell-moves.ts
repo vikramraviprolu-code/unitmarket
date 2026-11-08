@@ -1,7 +1,5 @@
-// INT-UI0 / UI0.2, UI0.3: where each block of the old /ops page went, as data. The server never sees a
-// #fragment, so no redirect can carry an old anchor: /ops is Operator Home, and for each block that moved
-// Home keeps a stub section with the old id, one sentence and a link to the new place. An old bookmark
-// lands on the stub. The kill switch and the alerts stay on Home. Tests read this table.
+// INT-UI0 / UI0.2, UI0.3: where each block of the old /ops page went, as data. The kill switch and the alerts
+// stay on Home. SCR-1: Home no longer keeps a stub for a moved block. Tests read this table.
 // Pure: no server module. Every path is relative and passes lib/next-path.ts (no //, no scheme).
 
 export interface ShellMove {
@@ -56,21 +54,3 @@ export const KEPT_URLS: readonly KeptUrl[] = [
   { url: '/discover', under: 'buyer tabs' },
   { url: '/buyer', under: 'buyer tabs' },
 ];
-
-export interface Stub {
-  /** One sentence. */
-  text: string;
-  /** The link text. */
-  link: string;
-  /** Path plus the same id on the new page. */
-  href: string;
-}
-
-/** The words and the link of the stub Home keeps for a moved block. */
-export function stubFor(m: ShellMove): Stub {
-  return {
-    text: `${m.block} moved to ${m.tab}.`,
-    link: `Open ${m.block.toLowerCase()} in ${m.tab}`,
-    href: `${m.to}#${m.id}`,
-  };
-}
