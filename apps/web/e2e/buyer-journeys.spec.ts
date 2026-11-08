@@ -42,15 +42,17 @@ test.describe('buyer journeys B1 to B6', () => {
     await page.context().close();
   });
 
-  test('B1: find and pay, then the order page says Open now and a step list', async () => {
+  test('B1: find and pay, then the order page says Open now and has no step list', async () => {
     const testInfo = test.info();
     await payWithScenario(page, {
       offer: 'tide-tables',
       scenario: 'happy',
     });
     orderUrl = page.url();
-    await expect(page.getByTestId('milestones')).toContainText('Done: Approved');
-    await expect(page.getByTestId('milestones')).toContainText('Done: Paid');
+    // SCR-1: the order page no longer lists steps; it says Open now (or the live status) and offers Report a problem.
+    await expect(page.getByTestId('order-steps')).toHaveCount(0);
+    await expect(page.getByText('What happened')).toHaveCount(0);
+    await expect(page.getByTestId('report-problem')).toBeVisible();
     await expectDryRun(page);
     await shot(page, 'order', testInfo);
   });

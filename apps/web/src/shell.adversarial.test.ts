@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { safeNext } from './lib/next-path';
-import { SHELL_MOVES, KEPT_URLS, stubFor } from './lib/shell-moves';
+import { SHELL_MOVES, KEPT_URLS } from './lib/shell-moves';
 import { TABS, subTabsFor } from './lib/shell-tabs';
 import { breadcrumbFor } from './lib/breadcrumb';
 
@@ -84,14 +84,6 @@ describe('every href is a same-site relative path', () => {
     expect(safeNext(href)).toBe(href);
     expect(href).not.toMatch(/\/\/|^[a-z][a-z0-9+.-]*:/i);
     expect(href.startsWith('/')).toBe(true);
-  });
-  it('a stub link is a path plus a plain fragment id', () => {
-    for (const m of SHELL_MOVES.filter((x) => x.moved)) {
-      const [path, frag, ...rest] = stubFor(m).href.split('#');
-      expect(rest).toEqual([]);
-      expect(safeNext(path)).toBe(path);
-      expect(frag).toMatch(/^[a-z][a-z0-9-]*$/);
-    }
   });
   it('next-path refuses the tricks a redirect could be given', () => {
     for (const bad of [

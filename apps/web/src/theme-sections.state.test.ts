@@ -87,7 +87,6 @@ const PAGES: Spec[] = [
     file: 'app/publisher/offers/[id]/page.tsx',
     ids: ['offer-buyer', 'offer-what', 'offer-licence-section', 'offer-history-section'],
   },
-  { file: 'app/library/page.tsx', dynamic: 'library-' },
 ];
 
 describe('SectionNav on the long pages, ids matching their sections', () => {
@@ -109,6 +108,16 @@ describe('SectionNav on the long pages, ids matching their sections', () => {
       expect(src).toContain('id: `' + p.dynamic);
       expect(src).toContain('id={`' + p.dynamic);
     }
+  });
+
+  // SCR-1: the owner asked for the "Jump to an item" chip row on My library to be removed (it only repeated the card
+  // titles). The cards keep their anchor ids.
+  it('My library has no "Jump to an item" navigation and no SectionNav, and its cards keep their ids', () => {
+    const src = noComments(read('app/library/page.tsx'));
+    expect(src).not.toContain('Jump to an item');
+    expect(src).not.toContain('SectionNav');
+    expect(src).toContain('id={`library-${i.entitlement_id}`}');
+    expect(src).toContain('data-testid="library-item"');
   });
 
   it('the page keeps its sections as children of <main>: SectionNav is rendered by the page, not the layout', () => {

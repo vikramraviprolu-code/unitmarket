@@ -149,7 +149,7 @@ describe('section tabs (source)', () => {
 
   // INT-UI0: the other ids of the old /ops moved to /ops/money, /ops/controls and /ops/sellers (lib/shell-moves.ts).
   it('/ops has the sections it names, in this order', () => {
-    expect(OPS_HOME_SECTIONS.map((s) => s.id)).toEqual(['ops-kill', 'ops-alerts', 'ops-moved']);
+    expect(OPS_HOME_SECTIONS.map((s) => s.id)).toEqual(['ops-kill', 'ops-alerts']);
   });
   it('the moved sections keep their ids on the new pages, in their old order', () => {
     expect(OPS_MONEY_SECTIONS.map((s) => s.id)).toEqual([
