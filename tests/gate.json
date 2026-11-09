@@ -1,0 +1,51 @@
+{
+  "$comment": "T3 gate pack (docs/TESTING.md, docs/specs/test-tiers.md). Data for scripts/test-tier.mjs. Globs are repo-relative; ** crosses folders, * does not cross /, {a,b} alternates. Every kind of test file (unit, state, contract, integration, adversarial, golden) matches by name. A glob that matches nothing fails scripts/test-tier.test.ts, so this list cannot rot quietly.",
+  "version": 1,
+  "shards": 4,
+  "vitest": {
+    "include": [
+      "packages/safety/**/*.test.{ts,tsx}",
+      "packages/db/**/*.test.{ts,tsx}",
+      "domain/payments/**/*.test.{ts,tsx}",
+      "domain/approval/**/*.test.{ts,tsx}",
+      "domain/ledger/**/*.test.{ts,tsx}",
+      "domain/entitlements/**/*.test.{ts,tsx}",
+      "domain/offer-entry/**/*.test.{ts,tsx}",
+      "domain/discovery/**/*.test.{ts,tsx}",
+      "domain/mandates/**/*.test.{ts,tsx}",
+      "domain/catalogue/**/{corridors,create,import,fee,payee}*.test.{ts,tsx}",
+      "**/*refund*.test.{ts,tsx}",
+      "**/*payout*.test.{ts,tsx}",
+      "apps/web/src/*{purchase,approval,payments,composite,order-cancel,order-status,pending-awaiting,payee,payouts}*.test.{ts,tsx}",
+      "apps/web/src/pob-journey.state.test.ts",
+      "apps/web/src/ops-switches.adversarial.test.ts",
+      "tests/int/**/*.test.{ts,tsx}",
+      "tests/mvp-a/**/*.test.{ts,tsx}",
+      "tests/mvp-b/**/*.test.{ts,tsx}",
+      "tests/mvp-c/**/*.test.{ts,tsx}"
+    ],
+    "exclude": ["tests/mvp-a/app-a20-a22-perf.integration.test.ts"]
+  },
+  "e2e": {
+    "project": "offline",
+    "specs": [
+      "apps/web/e2e/accounts.spec.ts",
+      "apps/web/e2e/passcodes.spec.ts",
+      "apps/web/e2e/operator-mfa.spec.ts",
+      "apps/web/e2e/buyer-journeys.spec.ts",
+      "apps/web/e2e/journeys.spec.ts",
+      "apps/web/e2e/zcomposite.spec.ts",
+      "apps/web/e2e/purchase-reader-statement.spec.ts",
+      "apps/web/e2e/refund.spec.ts",
+      "apps/web/e2e/ze-publisher-offers.spec.ts",
+      "apps/web/e2e/zd-ops-publishers.spec.ts",
+      "apps/web/e2e/publisher-pages.spec.ts",
+      "apps/web/e2e/seller-journeys.spec.ts",
+      "apps/web/e2e/ops-journeys.spec.ts",
+      "apps/web/e2e/ops-order.spec.ts",
+      "apps/web/e2e/zc-ops-entities.spec.ts",
+      "apps/web/e2e/zf-ops-rules.spec.ts",
+      "apps/web/e2e/zz-ops-stop.spec.ts"
+    ]
+  }
+}
