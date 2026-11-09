@@ -101,7 +101,8 @@ describe('the migration backfills what was already there', () => {
   it('the total is the number of tracked rows: no table is skipped, none is counted twice', async () => {
     const tracked = Object.values(rowsBefore).reduce((n, ids) => n + ids.length, 0);
     // INT-CTL: api_exposure is created by a later migration and seeded with one row per group; each is backfilled too.
-    expect(await countEvents(db)).toBe(tracked + API_GROUPS.length);
+    // WEB-IMPORT-SW: 0035 seeds one more switch (web_import_enabled) and backfills it too.
+    expect(await countEvents(db)).toBe(tracked + API_GROUPS.length + 1);
     expect(tracked).toBeGreaterThan(30);
   });
 

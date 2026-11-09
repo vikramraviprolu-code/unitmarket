@@ -274,10 +274,12 @@ describe('answers for the review findings', () => {
     expect((await w.post('begin', harbour(w), { source_url: SOURCE_URL })).status).toBe(409);
   });
 
-  it('the paypal_outbound switch is the may-fetch check: off, begin answers 409 paused and nothing is fetched', async () => {
+  it('the web_import_enabled switch is the may-fetch check (WEB-IMPORT-SW): off, begin answers 409 paused and nothing is fetched', async () => {
     const w = await boot();
     await verifyShopOverHttp(w);
-    await w.app.db.query(`UPDATE safety_switches SET "on" = false WHERE name = 'paypal_outbound'`);
+    await w.app.db.query(
+      `UPDATE safety_switches SET "on" = false WHERE name = 'web_import_enabled'`,
+    );
     const r = await w.post('begin', harbour(w), { source_url: SOURCE_URL });
     expect(r.status).toBe(409);
     expect((await json<{ error: { code: string } }>(r)).error.code).toBe('paused');
@@ -292,7 +294,9 @@ describe('answers for the review findings', () => {
   it('a switch turned off while a batch is queued ends its run as interrupted (paused), with nothing fetched', async () => {
     const w = await boot();
     const id = await begun(w);
-    await w.app.db.query(`UPDATE safety_switches SET "on" = false WHERE name = 'paypal_outbound'`);
+    await w.app.db.query(
+      `UPDATE safety_switches SET "on" = false WHERE name = 'web_import_enabled'`,
+    );
     w.web.calls.length = 0;
     await w.app.engine.webImport.runPending();
     expect(w.web.calls).toHaveLength(0);

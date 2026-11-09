@@ -22,7 +22,7 @@ export const OPS_HOME_INVARIANTS_HOLD = 'All hold';
 export const OPS_HOME_INVARIANT_OK = 'Holds';
 export const OPS_HOME_INVARIANT_FAILED = 'Failing';
 
-/** The six safety switches, in the order the page lists them, with a readable label and one line. */
+/** The safety switches that have words here, in the order the page lists them, with a readable label and one line. */
 const SWITCH_WORDS: Record<string, { label: string; hint: string }> = {
   paypal_outbound: {
     label: 'Outbound PayPal calls',
@@ -47,6 +47,10 @@ const SWITCH_WORDS: Record<string, { label: string; hint: string }> = {
   webhook_enabled: {
     label: 'PayPal notices',
     hint: 'Off answers incoming PayPal notices with a request to retry.',
+  },
+  web_import_enabled: {
+    label: 'Website import',
+    hint: 'Off pauses Check my site and the import of a seller site. It does not touch PayPal.',
   },
 };
 

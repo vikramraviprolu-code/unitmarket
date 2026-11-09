@@ -1,5 +1,5 @@
 // POB-I1 (D-089, review finding): the one door through which the web import reaches the fetcher. The
-// may-fetch check (the paypal_outbound switch and maintenance) is asked before EVERY fetch, never once per
+// may-fetch check (the web_import_enabled switch and maintenance) is asked before EVERY fetch, never once per
 // run. A check that says no is `paused`; a check that throws is `check_failed`; a fetcher that throws is a
 // refusal with the fixed word `network`. Nothing from an error or a site is kept.
 import type { ImportDeps, ImportFetchOutcome } from './import-types';

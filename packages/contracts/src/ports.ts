@@ -233,6 +233,9 @@ export const SwitchNameSchema = z.enum([
   'webhook_enabled',
   // API-B: off until a buyer-side operator turns it on (MFA); nothing an agent does buys while it is off.
   'agent_buy_enabled',
+  // WEB-IMPORT-SW: the web import (domain proof, feed fetch) reads a seller's site, never PayPal. Off at seed;
+  // a missing row reads off.
+  'web_import_enabled',
 ]);
 export type SwitchName = z.infer<typeof SwitchNameSchema>;
 export interface SwitchReader {

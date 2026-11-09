@@ -72,6 +72,15 @@ describe('migration 0035: the web_import_enabled switch', () => {
     });
   });
 
+  it('the seed row lands in the journal as a backfill event only, so a fresh database still counts as empty for an import', async () => {
+    const d = await fresh();
+    await migrate(d, clock);
+    const ev = await d.query<{ channel: string }>(
+      `SELECT channel FROM trace_events WHERE source_table = 'safety_switches' AND source_id = 'web_import_enabled'`,
+    );
+    expect(ev.rows).toEqual([{ channel: 'backfill' }]);
+  });
+
   it('the name list is widened by one and stays closed: another name and a delete are still refused', async () => {
     const d = await fresh();
     await migrate(d, clock);
