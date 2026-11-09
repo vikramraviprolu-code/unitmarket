@@ -6,7 +6,7 @@ Status: DRAFT 5, updated on 9 Nov 2026 against `main` at commit `172e5c7a`. The 
 How to read this file:
 
 - Each claim is followed by where it can be checked, in square brackets.
-- Wording rules: no italics, no dashes, only PayPal and Claude named as third party tools, no personal data, no credentials.
+- Wording rules: no italics, no dashes, third party names only where they say what the project is built on, no personal data, no credentials.
 - Real, fixture and simulated are said plainly. Simulation and fixture results prove the modelled cases only, not PayPal
   compatibility in general.
 
@@ -14,7 +14,7 @@ How to read this file:
 
 Name: UnitMarket Sandbox (the PayPal sandbox track of UnitMarket).
 
-Tagline (under 60 characters): Buy just the article you need, pay each publisher.
+Tagline (under 60 characters): Buy just the article you need. Pay only for it.
 
 ## Inspiration
 
@@ -52,7 +52,7 @@ What is AI and what is code:
 - The hosted demo runs the scripted model; the Claude adapter is merged, tested against a scripted stand in, and switched off there.
   The adapter is off by default. When a person sets `UMS_AI_ADAPTER=claude` and a key, Claude reads the buyer's need and proposes
   the pack, with read only tools, no PayPal data, a hard spend cap, a stop switch and a fall back to the scripted model. It has one
-  fixed outbound address, reachable only from the transport package. No real AI call has ever been made.
+  fixed outbound address, reachable only from the transport package. The hosted demo makes no AI call.
   [`packages/model`, decision D-067, specs AI-A and AI-H]
 - An operator evals page shows the evaluation cases, a verdict for each and a keyword baseline, run against the scripted model and
   recorded results. [`/ops` evals page, spec AI-B]
@@ -96,7 +96,7 @@ account): "Both publishers are paid into one sandbox test account; multi-merchan
   Reaching the PayPal sandbox needs five locks to be open: sandbox mode, the connect flag, an active approval row inserted by a
   human at a terminal, the kill switch, and credentials with a clean self check. [`README.md` safety design; architecture section 7]
 - A PostgreSQL 16 database (PGlite in memory or on disk offline, Cloud SQL when hosted), with append only audit and ledger tables.
-- Hosting on Google Cloud: Cloud Run with one instance, Cloud SQL, Secret Manager and Cloud Build, deployed only by a human with a
+- Hosting on Google Cloud: Cloud Run with one instance, Cloud SQL, Secret Manager and Cloud Build, deployed by the owner with a
   script. [`infra/gcp/`]
 - Six test suites (unit, state, contract, integration, adversarial, golden) and Playwright browser journeys that run offline.
 - Built with AI help during the submission period: coding sessions with Claude produced and reviewed much of the code under a
@@ -121,14 +121,13 @@ account): "Both publishers are paid into one sandbox test account; multi-merchan
 - Fail closed everywhere: no live mode exists in the code, boot refuses any value naming live or production, and the repository
   holds no credentials. [`pnpm check:no-live-host`, `pnpm check:secrets-names`]
 - A complete operator side: safety gate, Stop button, refunds behind an authenticator code, invariants that must hold.
-- Every claim in this text has a file or a check behind it.
 - A publisher area: invite, claim, sign in, terms, a PayPal address that an operator verifies (a verified PayPal address can belong to one
   publisher only, enforced by the database, migration 0032), web import with a domain proof, offers that a publisher revises or withdraws within a price cap, a
   sales page and a statement. An operator page shows each publisher's exposure and can suspend a publisher. One automated test walks
   the whole publisher journey in dry run, from apply to refund. [specs PUB-A1 to PUB-D, POB-P1, POB-M1, POB-I1,
   `docs/specs/publisher-onboarding-journey.md`, `apps/web/src/pob-journey.state.test.ts`]
 - Releases are verified in full before deploy: static checks, six test suites, a production build, 200 browser journeys and a check of
-  the append only transaction journal, on the tree that is deployed. [`docs/decision-log.md` D-109, D-111]
+  the append only transaction journal, on the tree that is deployed. [`docs/decision-log.md` D-109, D-111, D-112]
 - Two switchable skins with the Appearance control and a small motion set, an in app reader with a time left meter, sign out and
   navigation per role, and four draft legal pages. [specs SKIN-A, SKIN-B, READER-A, LEGAL-A]
 
@@ -161,4 +160,4 @@ Run, Cloud SQL, Secret Manager and Cloud Build. Claude (Anthropic) is named unde
 - Video: public YouTube link, under 3 minutes (decision item 66).
 - Testing instructions: paste `docs/submission/testing-instructions.md`, with the credential placeholders replaced in the Devpost
   form only.
-- Licence: Apache-2.0. The `LICENSE` file, the README and the notices file are on `main`.
+- Licence: Apache-2.0. The `LICENSE` file, the README and `THIRD-PARTY-NOTICES.md` are on `main`.
