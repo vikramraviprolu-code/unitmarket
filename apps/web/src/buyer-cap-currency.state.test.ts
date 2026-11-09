@@ -48,7 +48,7 @@ describe('the seller create form', () => {
     const form = strip(read('./app/publisher/offers/new/CreateForm.tsx'));
     expect(form).toContain('data-testid="create-currency"');
     expect(form).toMatch(/currencies\.length > 1/);
-    expect(form).toMatch(/currency:/);
+    expect(form).toMatch(/\{ currency \}/);
     expect(form).not.toMatch(/publisher_id|style=/);
   });
 });

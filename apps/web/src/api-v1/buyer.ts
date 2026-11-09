@@ -28,7 +28,12 @@ import {
 } from '../../composition.server';
 import type { LibraryFacts } from '../../composition.server';
 import type { App, OfferPage } from '../../composition.server';
-import { MIXED_CURRENCY_TEXT, TOO_MANY_PUBLISHERS_TEXT } from '../lib/composite-copy';
+import {
+  CORRIDOR_UNSUPPORTED_TEXT,
+  MIXED_CURRENCY_TEXT,
+  PUBLISHER_UNVERIFIED_TEXT,
+  TOO_MANY_PUBLISHERS_TEXT,
+} from '../lib/composite-copy';
 import { CANCEL_ANSWER } from '../lib/order-actions';
 import {
   BAD_CURSOR,
@@ -219,6 +224,8 @@ const APPROVAL_TEXT: Record<string, string> = {
   consent_missing: 'Please accept the terms to continue.',
   unknown_selection: 'We could not find that selection.',
   mixed_currency: MIXED_CURRENCY_TEXT,
+  corridor_unsupported: CORRIDOR_UNSUPPORTED_TEXT,
+  publisher_unverified: PUBLISHER_UNVERIFIED_TEXT,
   too_many_publishers: TOO_MANY_PUBLISHERS_TEXT,
 };
 

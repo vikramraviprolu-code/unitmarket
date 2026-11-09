@@ -50,19 +50,18 @@ export default async function NewOffer() {
         <CreateForm
           articles={view.articles.map((a) => ({ id: a.article_id, title: a.title }))}
           capMinor={view.offer_max_minor}
-          hint={priceHint(
-            formatMinor(1, view.currency),
-            formatMinor(view.offer_max_minor, view.currency),
-          )}
-          prefix={view.currency}
+          currencies={view.currencies.map((code) => ({
+            code,
+            hint: priceHint(formatMinor(1, code), formatMinor(view.offer_max_minor, code)),
+            rows: OPTIONS.map((option) => ({
+              option,
+              offeredLabel: offeredLabel(option),
+              priceLabel: priceLabel(option, code),
+              optionName: optionLabel(option),
+            })),
+          }))}
           attestLabel={ATTEST_LABEL}
           terms={CREATE_TERMS_NOTE(view.terms_version)}
-          rows={OPTIONS.map((option) => ({
-            option,
-            offeredLabel: offeredLabel(option),
-            priceLabel: priceLabel(option, view.currency ?? ''),
-            optionName: optionLabel(option),
-          }))}
         />
       )}
     </>

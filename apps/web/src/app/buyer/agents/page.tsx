@@ -4,6 +4,7 @@ import { app } from '../../../server/access';
 import { currentActor } from '../../../server/session';
 import { listCaps, readAgentKeys } from '../../../composition/buyer';
 import { agentsModel } from '../../../lib/buyer-agents-view';
+import { DISPLAY_CURRENCIES } from '../../../lib/buyer-price';
 import { CapCard } from '../../../ui/buyer/CapCard';
 import { CapForm } from '../../../ui/buyer/CapForm';
 import { EnvLabel } from '../../../ui/EnvLabel';
@@ -39,7 +40,7 @@ export default async function BuyerAgents() {
       </Section>
       {model.newCapKeys.length > 0 ? (
         <Section title="New cap" id="new-cap">
-          <CapForm keys={model.newCapKeys} currency="USD" nonce={nonce} />
+          <CapForm keys={model.newCapKeys} currencies={DISPLAY_CURRENCIES} nonce={nonce} />
         </Section>
       ) : null}
     </>
