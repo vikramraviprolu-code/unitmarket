@@ -2,7 +2,7 @@
 
 Task: add a root `NOTICE` file for the Apache License 2.0 release of the repository.
 Package: repository root, `docs/`. Owner: coordinator. Reviewer: Opus, then Sakthi merges.
-Decision: the owner chose Apache-2.0 on behalf of the whole team, 9 Nov 2026 (recorded in the decision log with the currency rule, D-113). `docs/specs/repo-compliance.md` L2 said NOTICE was not needed; it is added now because the repository is released under Apache-2.0 with one vendored file that is not covered by it.
+Decision: the owner chose Apache-2.0 on behalf of the whole team, 9 Nov 2026 (to be recorded as a new decision-log row, with the currency rule, by a follow-up decision-log PR after the D-112 PR merges). `docs/specs/repo-compliance.md` L2 said NOTICE was not needed; it is added now because the repository is released under Apache-2.0 with one vendored file that is not covered by it.
 Goal: the repository carries the notices Apache 2.0 asks for and the trademark and third party statements a public reader expects.
 Inputs: `LICENSE`, `THIRD-PARTY-NOTICES.md`, `video/vendor/NOTICE`.
 Outputs: `NOTICE`, this spec. No code, no dependency, no change to `LICENSE`.
