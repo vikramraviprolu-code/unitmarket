@@ -125,10 +125,15 @@ jobs:
           node-version-file: .nvmrc
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
+      # The gate pack holds the real-Postgres suites (packages/db, tests/mvp-c-pg). Without the binaries they
+      # skip and count green, so the shard checks that initdb is there first. Same step as the postgres job.
+      - run: echo "UMS_TEST_PG_BIN=$(ls -d /usr/lib/postgresql/*/bin | sort -V | tail -1)" >> "$GITHUB_ENV"
+      - run: test -x "$UMS_TEST_PG_BIN/initdb"
       - run: node scripts/test-tier.mjs --tier gate --group tests --shard ${{ matrix.shard }}/4
 
-  # T3 gate: the key browser specs on the dry run (offline, localhost only), then trace:verify on the
-  # journal they wrote. Build, specs and verify run in order inside the script.
+  # T3 gate: build with canary values and scan the bundle for secrets (check:bundle), then the key browser
+  # specs on the dry run (offline, localhost only), then trace:verify on the journal they wrote. The four
+  # steps run in order inside the script.
   gate-e2e:
     if: github.event_name == 'workflow_dispatch' && inputs.tier == 'gate'
     runs-on: ubuntu-latest

@@ -51,12 +51,19 @@ const NOT_TESTS = [
   /^scripts\/next-start-proof\.integration\.test\.ts$/,
 ];
 
-// A change that import-graph selection cannot see: these tests run in T1 as well.
+// A change that import-graph selection cannot see: these tests run in T1 as well. `gate` adds the
+// advice to run the gate.
 const TRIGGERS = [
   {
     why: 'a database migration',
     match: /^packages\/db\/migrations\//,
-    tests: ['packages/db/src/migration-*.test.ts'],
+    tests: ['packages/db/src/migration-*.test.ts', 'packages/db/src/schema.state.test.ts'],
+    gate: true,
+  },
+  {
+    why: 'a recorded fixture',
+    match: /^fixtures\//,
+    tests: ['packages/paypal/**/*.test.{ts,tsx}', 'packages/testkit/**/*.test.{ts,tsx}'],
   },
   {
     why: 'the gate pack data',
@@ -64,6 +71,30 @@ const TRIGGERS = [
     tests: ['scripts/test-tier.test.ts'],
   },
 ];
+
+// Hosting files: the two hosting guards run too (they are not in the fast set).
+const HOSTING_RE = /^(render\.yaml|infra\/)/;
+const HOSTING_GUARDS = [
+  ['hosting', 'check:hosting'],
+  ['hosting-gcp', 'check:hosting-gcp'],
+];
+// Workspaces where a break is a money or safety break: say so, and in T2 also run every test that
+// imports the changed files (apps/web and the integrated suites among them).
+const CRITICAL_WS = new Set([
+  'packages/safety',
+  'packages/transport',
+  'packages/config',
+  'packages/security',
+  'packages/paypal',
+  'packages/db',
+  'domain/payments',
+  'domain/approval',
+  'domain/ledger',
+  'domain/entitlements',
+]);
+// A workspace's own package.json or tsconfig: its typecheck must run although no code changed.
+const WS_CONFIG_RE =
+  /^((?:apps|domain|packages|tests|tools)\/[^/]+|scripts)\/(?:tsconfig[^/]*\.json|package\.json)$/;
 
 // Public test values, the same ones apps/web/playwright.config.ts gives the app. Not credentials.
 const SYNTHETIC_ENV = {
@@ -85,6 +116,7 @@ const GUARDS = [
 const GATE_EXTRA_GUARDS = [
   ['business-rules', 'check:business-rules'],
   ['provenance', 'check:provenance'],
+  ...HOSTING_GUARDS,
 ];
 
 /** The workspace directory a file belongs to, or null (docs, root files, CI). */
@@ -277,7 +309,13 @@ export function buildPlan({
       'an e2e spec changed: T1 and T2 do not run browser specs; run `corepack pnpm --filter @umsbx/web test:e2e <file>` or the gate',
     );
   }
-  for (const tr of triggered) notes.push(`${tr.why} changed: its tests run in every tier`);
+  for (const tr of triggered) {
+    notes.push(`${tr.why} changed: its tests run in every tier${tr.gate ? '; run the gate' : ''}`);
+  }
+  const critical = workspaces.filter((w) => CRITICAL_WS.has(w));
+  if (critical.length > 0 && !triggered.some((tr) => tr.gate)) {
+    notes.push(`${critical.join(', ')} is in the safety or money layer: run the gate`);
+  }
 
   const steps = [];
   const add = (id, g, label, cmd, extra = {}) => steps.push({ id, group: g, label, cmd, ...extra });
@@ -306,9 +344,16 @@ export function buildPlan({
       ...gate.e2e.specs.map((s) => s.replace(/^apps\/web\//, '')),
     ];
     const dbEnv = { UMS_DB: 'pglite-disk', UMS_PGLITE_DIR: TMP };
-    add('e2e:build', 'e2e', 'build the web app', run('--filter', '@umsbx/web', 'build'), {
-      chain: true,
-    });
+    // The build gets canary values for every server-side name, and the scan right after it proves none
+    // reached a client or server chunk (A-25). The app Playwright starts does not get the canaries.
+    add(
+      'e2e:build',
+      'e2e',
+      'build the web app with canary values',
+      run('--filter', '@umsbx/web', 'build'),
+      { chain: true, canaryEnv: true },
+    );
+    add('e2e:bundle', 'e2e', 'scan the build for secrets', run('check:bundle'), { chain: true });
     add(
       'e2e:run',
       'e2e',
@@ -365,7 +410,10 @@ export function buildPlan({
     if (globalChange) {
       add('typecheck', 'static', 'typecheck, whole repo', run('typecheck'));
     } else {
-      const wsCode = [...new Set(codeAll.map(workspaceOf).filter(Boolean))].sort();
+      const wsConfig = files.filter((f) => WS_CONFIG_RE.test(f)).map(workspaceOf);
+      const wsCode = [
+        ...new Set([...codeAll.map(workspaceOf), ...wsConfig].filter(Boolean)),
+      ].sort();
       const pkgs = wsCode.filter((w) => w !== 'scripts');
       if (pkgs.length > 0) {
         add(
@@ -384,7 +432,7 @@ export function buildPlan({
         );
       }
     }
-    guards(GUARDS);
+    guards(files.some((f) => HOSTING_RE.test(f)) ? [...GUARDS, ...HOSTING_GUARDS] : GUARDS);
 
     if (t === 't1') {
       const related = [...new Set([...present.filter((f) => RELATED_RE.test(f)), ...triggerTests])];
@@ -414,6 +462,16 @@ export function buildPlan({
           {
             files: picked,
           },
+        );
+      }
+      const related = present.filter((f) => RELATED_RE.test(f));
+      if (critical.length > 0 && related.length > 0) {
+        add(
+          'vitest:dependents',
+          'tests',
+          'tests that import the changed files (apps/web and the integrated suites included)',
+          vitestCmd(['related', '--run'], related, sh),
+          { files: related },
         );
       }
     }
@@ -446,7 +504,8 @@ export function renderPlan(plan) {
   for (const n of plan.notes) out.push(`note: ${n}`);
   out.push('steps:');
   plan.steps.forEach((s, i) => {
-    const env = s.env ? ` [env ${Object.keys(s.env).join(',')}]` : '';
+    const names = [...Object.keys(s.env ?? {}), ...(s.canaryEnv ? ['canary values'] : [])];
+    const env = names.length > 0 ? ` [env ${names.join(',')}]` : '';
     out.push(`  ${i + 1}. [${s.group}] ${s.id}: ${s.label}${env}`);
     out.push(`       ${shown(s.cmd)}`);
     if (s.files) {
@@ -489,6 +548,14 @@ export function runPlan(plan, { failFast = false, root = ROOT } = {}) {
         continue;
       }
       const vars = Object.entries(s.env ?? {}).map(([k, v]) => `${k}=${v === TMP ? tmp : v}`);
+      if (s.canaryEnv) {
+        // NAME=value lines for the build, from the bundle guard itself.
+        const c = spawnSync(process.execPath, ['scripts/check-bundle-secrets.mjs', '--print-env'], {
+          cwd: root,
+          encoding: 'utf8',
+        });
+        vars.push(...c.stdout.split('\n').filter((l) => /^[A-Z_]+=/.test(l)));
+      }
       const [prog, ...args] = vars.length ? ['env', ...vars, ...s.cmd] : s.cmd;
       process.stdout.write(`\n== ${s.id}: ${s.label}\n`);
       const t0 = nowNs();
