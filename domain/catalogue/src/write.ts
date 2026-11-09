@@ -509,23 +509,52 @@ export async function listOfferableArticles(
 }
 
 /**
- * The currency a new offer of the signed-in publisher would carry: the enabled corridor of the publisher's
- * country. Null when there is none, and for any actor that is not a publisher.
+ * The currencies a publisher of `country` may sell in: those of an enabled corridor whose payee countries include
+ * the country. Ordered USD, EUR, GBP, then any other code by name, so the first is a deterministic default and no
+ * answer depends on a corridor id (OFFER-CUR).
  */
-export async function offerCurrencyFor(db: Database, actor: Actor): Promise<string | null> {
-  if (actor.kind !== 'publisher') return null;
+export async function coveredCurrencies(db: SqlExecutor, country: string): Promise<string[]> {
   const { rows } = await db.query<{ currency: string }>(
-    `SELECT c.currency FROM corridors c JOIN publishers p ON p.country = ANY (c.payee_countries)
-      WHERE p.id = $1 AND c.enabled ORDER BY c.id LIMIT 1`,
+    `SELECT currency FROM corridors WHERE enabled AND $1 = ANY (payee_countries)
+      GROUP BY currency
+      ORDER BY CASE currency WHEN 'USD' THEN 0 WHEN 'EUR' THEN 1 WHEN 'GBP' THEN 2 ELSE 3 END, currency`,
+    [country],
+  );
+  return rows.map((r) => r.currency);
+}
+
+/**
+ * The currencies the signed-in publisher may choose for a new offer, default first (USD, then EUR, then GBP).
+ * Empty when no enabled corridor covers the publisher's country; null for any actor that is not a publisher.
+ */
+export async function offerCurrenciesFor(db: Database, actor: Actor): Promise<string[] | null> {
+  if (actor.kind !== 'publisher') return null;
+  const { rows } = await db.query<{ country: string }>(
+    'SELECT country FROM publishers WHERE id = $1',
     [actor.publisher_id],
   );
-  return rows[0]?.currency ?? null;
+  const country = rows[0]?.country;
+  return country === undefined ? [] : coveredCurrencies(db, country);
+}
+
+/**
+ * The currency a new offer of the signed-in publisher carries when the caller names none: the first of
+ * offerCurrenciesFor. Null when there is none, and for any actor that is not a publisher.
+ */
+export async function offerCurrencyFor(db: Database, actor: Actor): Promise<string | null> {
+  const all = await offerCurrenciesFor(db, actor);
+  return all?.[0] ?? null;
 }
 
 export interface CreateInput {
   article_id: Id;
   options: PriceInput[];
   attestation: boolean;
+  /**
+   * OFFER-CUR: the currency the seller chose. It must be one an enabled corridor covers for the publisher's country
+   * (else no_corridor). Absent: the default of offerCurrenciesFor (USD, then EUR, then GBP).
+   */
+  currency?: string;
 }
 
 /**
@@ -533,7 +562,7 @@ export interface CreateInput {
  * actor's (another publisher's article and a guessed id both give not_found) and have no current offer on
  * sale or in draft (already_offered). Each price is an integer from 1 to the cap; the options are a non empty
  * subset of keep_retrieve and online_read; the attestation must be true. The currency is the one of the
- * enabled corridor of the publisher's country; terms, licence, affordability and validity are fixed here and
+ * enabled corridor of the publisher's country, chosen by the seller (default USD, then EUR, then GBP); terms, licence, affordability and validity are fixed here and
  * cannot be given by the caller. Writes offer version 1 (status authorised), one authorisation row with the
  * attestation text version and one audit row, all in one transaction, with the article row locked so two
  * creates for one article take turns and the article freeze of migration 0012 sees the new offer.
@@ -552,7 +581,17 @@ export async function createOffer(
     return fail('not_found');
   try {
     return await deps.db.transaction(async (tx: SqlExecutor) =>
-      ok(await createOfferInTx(deps, tx, actor, article_id, options.value)),
+      ok(
+        await createOfferInTx(
+          deps,
+          tx,
+          actor,
+          article_id,
+          options.value,
+          undefined,
+          input.currency,
+        ),
+      ),
     );
   } catch (e) {
     if (e instanceof Refused) return fail(e.code);
@@ -577,6 +616,11 @@ export async function createOfferInTx(
    * `parts.buyer_minor` and its parts are recorded in this transaction, after the offer row. Absent: no parts row, as before.
    */
   parts?: FeeParts,
+  /**
+   * OFFER-CUR: the currency to sell in. Checked against an enabled corridor that covers the publisher's country
+   * (else no_corridor). Absent: the first of coveredCurrencies (USD, then EUR, then GBP), never by corridor id.
+   */
+  currency?: string,
 ): Promise<{ offer_id: Id; version: string }> {
   const pub = await tx.query<{ slug: string; status: string; country: string }>(
     'SELECT slug, status, country FROM publishers WHERE id = $1',
@@ -596,12 +640,12 @@ export async function createOfferInTx(
     [article_id],
   );
   if (live.rows.length > 0) throw new Refused('already_offered');
-  const corridor = await tx.query<{ currency: string }>(
-    'SELECT currency FROM corridors WHERE enabled AND $1 = ANY (payee_countries) ORDER BY id LIMIT 1',
-    [p.country],
-  );
-  const currency = corridor.rows[0]?.currency;
-  if (currency === undefined) throw new Refused('no_corridor');
+  const covered = await coveredCurrencies(tx, p.country);
+  // A named currency must be one of the covered ones (enabled AND currency AND payee country); a value that is
+  // not a string, or has no such corridor, is no_corridor. Not named: the deterministic default.
+  const chosen = currency === undefined ? covered[0] : covered.find((c) => c === currency);
+  if (chosen === undefined) throw new Refused('no_corridor');
+  const offerCurrency: string = chosen;
   for (const o of options) {
     const pol = await tx.query(
       'SELECT 1 AS x FROM access_policies WHERE id = $1 AND version = $2 AND option = $1',
@@ -636,7 +680,7 @@ export async function createOfferInTx(
         offer_id,
         actor.publisher_id,
         article_id,
-        currency,
+        offerCurrency,
         JSON.stringify(built),
         JSON.stringify({ renegotiation_allowed: false, floor_minor: null }),
         NEW_OFFER_TERMS,
@@ -672,7 +716,7 @@ export async function createOfferInTx(
     detail: {
       to_version: '1',
       article_id,
-      currency,
+      currency: offerCurrency,
       new_prices: pricesText(built),
     },
   });

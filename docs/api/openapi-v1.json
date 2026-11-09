@@ -3855,6 +3855,14 @@
                   "attestation": {
                     "type": "boolean",
                     "const": true
+                  },
+                  "currency": {
+                    "type": "string",
+                    "enum": [
+                      "USD",
+                      "EUR",
+                      "GBP"
+                    ]
                   }
                 },
                 "required": [

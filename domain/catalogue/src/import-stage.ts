@@ -25,6 +25,7 @@ import { extractSource } from './extract-structured';
 import type { Candidate } from './extract-structured';
 import { fetchChecked, sha256Hex, sha256Text } from './import-fetch';
 import { UNREADABLE_FEE_POLICY, buyerPriceOf, resolveImportFee } from './import-fee';
+import { coveredCurrencies } from './write';
 import type { ImportDeps, ImportError, ImportErrorCode } from './import-types';
 
 export const BATCH_DEADLINE_MS = 120_000;
@@ -276,11 +277,8 @@ async function runBatch(deps: ImportDeps, b: Claimed): Promise<void> {
   const p = pub.rows[0];
   if (p === undefined || p.status !== 'active')
     return end({ state: 'failed', note: 'publisher_not_active' });
-  const cur = await deps.db.query<{ currency: string }>(
-    'SELECT currency FROM corridors WHERE enabled AND $1 = ANY (payee_countries) ORDER BY id LIMIT 1',
-    [p.country],
-  );
-  const currency = cur.rows[0]?.currency;
+  // OFFER-CUR: the deterministic default (USD, then EUR, then GBP); per batch currency is a later lane.
+  const currency = (await coveredCurrencies(deps.db, p.country))[0];
   if (currency === undefined) return end({ state: 'failed', note: 'no_corridor' });
   const ctx: Ctx = { deps, b, slug: p.slug, currency, started: deps.clock.now().getTime() };
 

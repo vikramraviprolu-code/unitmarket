@@ -32,6 +32,7 @@ export {
   getOwnOffer,
   listOfferableArticles,
   listOwnOffers,
+  offerCurrenciesFor,
   offerCurrencyFor,
   reviseOffer,
   withdrawOffer,
