@@ -1,0 +1,15 @@
+UnitMarket Sandbox
+Copyright 2026 The UnitMarket authors
+
+This product is licensed under the Apache License, Version 2.0. See the file LICENSE.
+
+Third party components and their licences are listed in THIRD-PARTY-NOTICES.md. The one
+vendored file that is not covered by the Apache License, the GSAP animation library used
+only to render the demo video, is described in video/vendor/NOTICE.
+
+PayPal is a trademark of PayPal, Inc. Claude is a trademark of Anthropic, PBC. They are named
+only to say what this project works with. This project is not affiliated with, endorsed by or
+sponsored by PayPal or Anthropic. The Apache License gives no right to use anyone's names or
+logos, including UnitMarket's.
+
+The publishers, articles and the town used in the demo are fictional.
