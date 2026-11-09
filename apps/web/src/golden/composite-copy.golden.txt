@@ -3,6 +3,7 @@ discover, select button: Buy selected together
 discover, mixed currency: These items are priced in different currencies, so they cannot be bought together. Choose items in one currency.
 discover, too many publishers: A pack can include items from two publishers at most. Choose items from fewer publishers.
 approve, corridor unsupported: Items from publishers in India are paid separately. Buy them in a separate order.
+approve, corridor unsupported, one item: This item cannot be paid for right now. Please try again later.
 approve, publisher unverified: This publisher cannot be paid through UnitMarket yet, so this item cannot be bought right now. Please try again later.
 step page, heading: Step 2 of 2: approve your payment to Quayside Gazette (fictional) at PayPal
 step page, button: Approve payment 2 of 2 at PayPal

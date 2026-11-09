@@ -9,10 +9,10 @@ import type { Actor } from '@umsbx/contracts';
 import { bootPackApp, buyer, proposalFor, HARBOUR_TIDE } from './composite-support';
 import { call, signIn } from './support';
 import type { Session } from './support';
-import { createQuote } from './api-v1/buyer';
+import { createApproval as createApprovalV1, createQuote } from './api-v1/buyer';
 import { createOffer as createOfferV1 } from './api-v1/seller';
 import { installWideCorridors } from './wide-corridors-support';
-import { CORRIDOR_UNSUPPORTED_TEXT } from './lib/composite-copy';
+import { CORRIDOR_UNSUPPORTED_SINGLE_TEXT, CORRIDOR_UNSUPPORTED_TEXT } from './lib/composite-copy';
 import type { App } from '../composition.server';
 
 vi.mock('server-only', () => ({}));
@@ -235,6 +235,21 @@ describe('today: only USD covers the US and India (nothing changes)', () => {
     );
     expect(await count('SELECT count(*) AS c FROM approvals')).toBe(before);
   });
+
+  it('the same two-item basket through the v1 door gives the India words too', async () => {
+    const inOffer = await made('delhi-desk');
+    const p = await proposalFor(app, A, [HARBOUR_TIDE, ['delhi-desk', inOffer.code]]);
+    const ctx = { actor: A, principal: { kind: 'api_client' } as never };
+    const r = await createApprovalV1(app, ctx, {
+      proposal_id: p.proposal_id,
+      offer_ids: p.offer_ids,
+      consent: { terms: true, identity_share: false },
+    });
+    expect(r.status).toBe(422);
+    const e = r as { code?: string; message?: string };
+    expect(e.code).toBe('corridor_unsupported');
+    expect(e.message).toBe(CORRIDOR_UNSUPPORTED_TEXT);
+  });
 });
 
 describe('with the rows of migration 0034 (simulated)', () => {
@@ -279,6 +294,44 @@ describe('with the rows of migration 0034 (simulated)', () => {
     const res = await postCreate('delhi-desk', 'GBP');
     expect(res.status).toBe(422);
     expect(await codeOf(res)).toBe('no_corridor');
+  });
+
+  it('one item whose corridor goes off after the quote gets the neutral words, not the India words, on both doors', async () => {
+    const o = await made('paris-desk', 'EUR');
+    const quoteId = async (): Promise<string> => {
+      const q = await app.engine.quote({
+        offer: { publisher_slug: 'paris-desk', offer_code: o.code },
+        actor: A,
+        source: 'direct',
+        option: 'online_read',
+      });
+      if (!q.ok || q.value.kind !== 'quote') throw new Error('no quote');
+      return q.value.quote_id;
+    };
+    const viaRoute = await quoteId();
+    const viaV1 = await quoteId();
+    await app.db.query("UPDATE corridors SET enabled = false WHERE currency = 'EUR'");
+    const consent = { terms: true, identity_share: false };
+    const res = await call(approvalsRoute.POST as Handler, {
+      url: '/api/approvals',
+      method: 'POST',
+      session: SA,
+      body: { quote_id: viaRoute, consent },
+    });
+    expect(res.status).toBe(422);
+    const b = (await res.json()) as { error: { code: string; message: string } };
+    expect(b.error.code).toBe('corridor_unsupported');
+    expect(b.error.message).toBe(CORRIDOR_UNSUPPORTED_SINGLE_TEXT);
+    expect(b.error.message).not.toContain('India');
+    const ctx = { actor: A, principal: { kind: 'api_client' } as never };
+    const r = await createApprovalV1(app, ctx, { quote_id: viaV1, consent });
+    expect(r.status).toBe(422);
+    const e = r as { code?: string; message?: string };
+    expect(e.code).toBe('corridor_unsupported');
+    expect(e.message).toBe(CORRIDOR_UNSUPPORTED_SINGLE_TEXT);
+    expect(CORRIDOR_UNSUPPORTED_SINGLE_TEXT).toBe(
+      'This item cannot be paid for right now. Please try again later.',
+    );
   });
 
   it('an FR publisher GBP offer is bought by a US buyer in GBP from quote to statement', async () => {
