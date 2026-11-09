@@ -197,6 +197,82 @@ describe('plan: full', () => {
   });
 });
 
+const ALL2 = [
+  'apps/web/src/y.state.test.ts',
+  'domain/catalogue/src/fee.ts',
+  'domain/catalogue/src/fee.test.ts',
+  'packages/db/migrations/common/0033_x.sql',
+  'packages/db/src/migration-0030.state.test.ts',
+  'packages/db/src/schema.state.test.ts',
+  'packages/paypal/src/map-order.test.ts',
+  'packages/testkit/src/index.test.ts',
+  'packages/transport/src/wire.ts',
+  'packages/transport/src/wire.test.ts',
+  'scripts/test-tier.test.ts',
+  'tests/mvp-a/z.integration.test.ts',
+];
+const here2 = { exists: () => true, allFiles: ALL2 };
+
+describe('plan: hosting files, fixtures, migrations and safety workspaces', () => {
+  it('render.yaml and infra/** also run the two hosting guards', () => {
+    for (const f of ['render.yaml', 'infra/gcp/cloud.sh']) {
+      const p = buildPlan({ tier: 't1', changed: [f], ...here2 });
+      expect(ids(p)).toEqual(expect.arrayContaining(['guard:hosting', 'guard:hosting-gcp']));
+      expect(step(p, 'guard:hosting')?.cmd).toEqual(['corepack', 'pnpm', 'check:hosting']);
+    }
+    // Other changes do not pay for them.
+    const q = buildPlan({ tier: 't1', changed: ['docs/TESTING.md'], ...here2 });
+    expect(ids(q)).not.toContain('guard:hosting');
+  });
+  it('fixtures/** trigger the paypal and testkit tests', () => {
+    const p = buildPlan({ tier: 't1', changed: ['fixtures/paypal/order.json'], ...here2 });
+    const v = step(p, 'vitest')?.cmd ?? [];
+    expect(v).toContain('packages/paypal/src/map-order.test.ts');
+    expect(v).toContain('packages/testkit/src/index.test.ts');
+    expect(v).not.toContain('apps/web/src/y.state.test.ts');
+  });
+  it('any migration also runs the schema test and says to run the gate', () => {
+    const p = buildPlan({
+      tier: 't1',
+      changed: ['packages/db/migrations/common/0033_x.sql'],
+      ...here2,
+    });
+    const v = step(p, 'vitest')?.cmd ?? [];
+    expect(v).toContain('packages/db/src/schema.state.test.ts');
+    expect(v).toContain('packages/db/src/migration-0030.state.test.ts');
+    expect(p.notes.join(' ')).toMatch(/run the gate/);
+  });
+  it('a safety-layer change says to run the gate and t2 adds the tests that import it', () => {
+    const changed = ['packages/transport/src/wire.ts'];
+    const t1 = buildPlan({ tier: 't1', changed, ...here2 });
+    expect(t1.notes.join(' ')).toMatch(/run the gate/);
+    const t2 = buildPlan({ tier: 't2', changed, ...here2 });
+    expect(ids(t2)).toEqual(expect.arrayContaining(['vitest', 'vitest:dependents']));
+    expect(step(t2, 'vitest:dependents')?.cmd).toEqual(
+      expect.arrayContaining(['related', '--run', 'packages/transport/src/wire.ts']),
+    );
+    // A workspace outside that list does not.
+    const c = buildPlan({ tier: 't2', changed: ['domain/catalogue/src/fee.ts'], ...here2 });
+    expect(ids(c)).not.toContain('vitest:dependents');
+    expect(c.notes.join(' ')).not.toMatch(/run the gate/);
+  });
+  it('a workspace package.json or tsconfig.json change runs that workspace typecheck', () => {
+    const p = buildPlan({
+      tier: 't1',
+      changed: ['domain/catalogue/package.json', 'packages/transport/tsconfig.json'],
+      ...here2,
+    });
+    expect(step(p, 'typecheck')?.cmd).toEqual(
+      expect.arrayContaining(['--filter', './domain/catalogue', './packages/transport']),
+    );
+    expect(ids(p)).not.toContain('lint');
+    const s = buildPlan({ tier: 't1', changed: ['scripts/tsconfig.json'], ...here2 });
+    expect(step(s, 'typecheck')?.cmd).toEqual(
+      expect.arrayContaining(['tsc', '-p', 'scripts/tsconfig.json']),
+    );
+  });
+});
+
 describe('tests/gate.json against the real repository', () => {
   const gate = loadGate(REPO_ROOT);
   const files = repoFiles(REPO_ROOT);
@@ -227,6 +303,37 @@ describe('tests/gate.json against the real repository', () => {
         dir,
       ).toBe(true);
     }
+    // The safety layer (review of PR 79): a gate without these would pass with a broken transport.
+    for (const dir of [
+      'packages/transport/',
+      'packages/config/',
+      'packages/security/',
+      'packages/paypal/',
+      'packages/jobs/',
+      'domain/trace/',
+      'domain/receipts/',
+      'tests/mvp-d/',
+      'tests/mvp-c-pg/',
+      'scripts/safety-cli',
+      'scripts/safety-resume',
+      'scripts/safety-launch',
+      'scripts/check-no-live-host.test',
+      'scripts/trace-verify.state.test',
+      'scripts/backup',
+      'scripts/restore',
+    ]) {
+      expect(
+        t.some((f: string) => f.startsWith(dir)),
+        dir,
+      ).toBe(true);
+    }
+    // packages/db: schema and migrations, not only a few files.
+    expect(t).toContain('packages/db/src/schema.state.test.ts');
+    expect(t.some((f: string) => /packages\/db\/src\/migration-/.test(f))).toBe(true);
+    // All of packages/paypal, not only its refund and payout tests.
+    expect(
+      t.some((f: string) => f.startsWith('packages/paypal/') && !/refund|payout/.test(f)),
+    ).toBe(true);
     expect(t).toContain('apps/web/src/pob-journey.state.test.ts');
     expect(t.some((f: string) => /refund/.test(f))).toBe(true);
     expect(t.some((f: string) => /payout/.test(f))).toBe(true);
@@ -242,7 +349,10 @@ describe('tests/gate.json against the real repository', () => {
     const groups = new Set(p.steps.map((s: { group: string }) => s.group));
     expect([...groups].sort()).toEqual(['e2e', 'static', 'tests']);
     const order = ids(p);
-    expect(order.indexOf('e2e:build')).toBeLessThan(order.indexOf('e2e:run'));
+    expect(order.indexOf('e2e:build')).toBeLessThan(order.indexOf('e2e:bundle'));
+    expect(order.indexOf('e2e:bundle')).toBeLessThan(order.indexOf('e2e:run'));
+    // The client-bundle secret scan is part of the gate, right after the build that feeds it.
+    expect(step(p, 'e2e:bundle')?.cmd.join(' ')).toContain('check:bundle');
     expect(order.indexOf('e2e:run')).toBeLessThan(order.indexOf('e2e:trace-verify'));
     expect(step(p, 'e2e:trace-verify')?.cmd.join(' ')).toContain('trace:verify');
     const run = step(p, 'e2e:run')?.cmd ?? [];
@@ -316,11 +426,26 @@ describe('wiring', () => {
     expect(y).toMatch(/options:\s*\n\s+- gate\s*\n\s+- full/);
     expect(y).toContain('permissions:\n  contents: read\n');
     expect(y).not.toMatch(/\$\{\{\s*secrets\./);
+    // The gate's test shards run the real-Postgres suites too (they skip without the binaries).
+    const shards = y.slice(y.indexOf('gate-tests:'), y.indexOf('gate-e2e:'));
+    expect(shards).toContain('UMS_TEST_PG_BIN');
+    expect(shards).toContain('initdb');
     expect(y).not.toMatch(/\bdeploy\b\s*:/);
   });
   it('docs/TESTING.md names the three scripts and the go/no-go rule', () => {
     const d = root('docs/TESTING.md');
     for (const s of ['test:t1', 'test:t2', 'test:gate', 'pnpm test']) expect(d).toContain(s);
     expect(d).toMatch(/no deploy/i);
+    // No bullet may let a red test pass because only the full run saw it.
+    expect(d).not.toMatch(/does not stop a deploy/i);
+    expect(d).toMatch(/whatever the tier/i);
+    for (const w of ['safety', 'money', 'transport', 'config', 'security']) expect(d).toContain(w);
+    expect(d).toContain('UMS_TEST_PG_BIN');
+    expect(d).toMatch(/skip/i);
+  });
+  it('the spec says what --plan lists and how a shard is passed', () => {
+    const d = root('docs/specs/test-tiers.md');
+    expect(d).toContain('--shard=1/4');
+    expect(d).not.toMatch(/lists one quarter/);
   });
 });

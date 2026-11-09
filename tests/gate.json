@@ -6,6 +6,11 @@
     "include": [
       "packages/safety/**/*.test.{ts,tsx}",
       "packages/db/**/*.test.{ts,tsx}",
+      "packages/transport/**/*.test.{ts,tsx}",
+      "packages/config/**/*.test.{ts,tsx}",
+      "packages/security/**/*.test.{ts,tsx}",
+      "packages/paypal/**/*.test.{ts,tsx}",
+      "packages/jobs/**/*.test.{ts,tsx}",
       "domain/payments/**/*.test.{ts,tsx}",
       "domain/approval/**/*.test.{ts,tsx}",
       "domain/ledger/**/*.test.{ts,tsx}",
@@ -13,6 +18,8 @@
       "domain/offer-entry/**/*.test.{ts,tsx}",
       "domain/discovery/**/*.test.{ts,tsx}",
       "domain/mandates/**/*.test.{ts,tsx}",
+      "domain/trace/**/*.test.{ts,tsx}",
+      "domain/receipts/**/*.test.{ts,tsx}",
       "domain/catalogue/**/{corridors,create,import,fee,payee}*.test.{ts,tsx}",
       "**/*refund*.test.{ts,tsx}",
       "**/*payout*.test.{ts,tsx}",
@@ -22,7 +29,13 @@
       "tests/int/**/*.test.{ts,tsx}",
       "tests/mvp-a/**/*.test.{ts,tsx}",
       "tests/mvp-b/**/*.test.{ts,tsx}",
-      "tests/mvp-c/**/*.test.{ts,tsx}"
+      "tests/mvp-c/**/*.test.{ts,tsx}",
+      "tests/mvp-d/**/*.test.{ts,tsx}",
+      "tests/mvp-c-pg/**/*.test.{ts,tsx}",
+      "scripts/safety-*.test.ts",
+      "scripts/check-no-live-host.test.ts",
+      "scripts/trace-verify.state.test.ts",
+      "scripts/{backup,restore}*.test.ts"
     ],
     "exclude": ["tests/mvp-a/app-a20-a22-perf.integration.test.ts"]
   },
