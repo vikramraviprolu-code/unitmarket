@@ -93,6 +93,9 @@ export const OFFER_OPTIONS = [
 ];
 
 export async function seedCatalogue(db: SqlExecutor): Promise<void> {
+  // Since 0034 (WW-COR) de-eur is on for every country but India; this fixture's eu-eur row serves payee US, and the
+  // guard refuses two enabled EUR rows that overlap, so the fixture first switches de-eur off (the pre-0034 world).
+  await db.query("UPDATE corridors SET enabled = false WHERE id = 'de-eur'");
   await ins(db, 'corridors', {
     id: 'eu-eur',
     currency: 'EUR',

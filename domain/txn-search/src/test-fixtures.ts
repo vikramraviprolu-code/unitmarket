@@ -59,6 +59,12 @@ export async function seedArticle(
 }
 
 export async function seedCorridor(db: SqlExecutor, id: string, currency: string): Promise<void> {
+  // Since 0034 (WW-COR) an enabled row of this currency may already serve payee US (de-eur, gb-gbp); the guard
+  // refuses two overlapping enabled rows of one currency, so a fixture row for US first switches those off.
+  await db.query(
+    "UPDATE corridors SET enabled = false WHERE currency = $1 AND enabled AND 'US' = ANY (payee_countries)",
+    [currency],
+  );
   await db.query(
     `INSERT INTO corridors (id, currency, minor_units, buyer_countries, payee_countries, domestic_supported, min_charge_minor, enabled, created_at, updated_at)
      VALUES ($1, $2, 2, ARRAY['US'], ARRAY['US'], true, 0, true, $3, $3)`,

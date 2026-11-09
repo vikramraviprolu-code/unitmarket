@@ -1,7 +1,9 @@
 // MC2-L2 (docs/specs/mc2-l2-de-eur-corridor.md, D-084 item 6): the German euro corridor and one fictional
 // German publisher, applied as a supplement block so it reaches a database that already holds the old seed.
-// The corridor ships disabled. Dry data only: nothing here touches PayPal.
+// Since 0034 (WW-COR) the corridor row comes from the migration, wide and on; the seed block mirrors it.
+// Dry data only: nothing here touches PayPal.
 import { afterAll, describe, expect, it } from 'vitest';
+import { WORLDWIDE_PAYEE_COUNTRIES } from '@umsbx/contracts';
 import {
   getCorridor,
   listAuthorisedOffers,
@@ -49,17 +51,17 @@ const snapshot = async (d: Db) => ({
 });
 
 describe('SEED_SUPPLEMENT_DE: the data', () => {
-  it('holds the disabled de-eur corridor, one fictional German publisher and three EUR offers', () => {
+  it('holds the worldwide de-eur corridor (on, every country but India), one fictional German publisher and three EUR offers', () => {
     expect(SEED_SUPPLEMENT_DE.corridors).toEqual([
       {
         id: 'de-eur',
         currency: 'EUR',
         minor_units: 2,
         buyer_countries: ['*'],
-        payee_countries: ['DE'],
+        payee_countries: [...WORLDWIDE_PAYEE_COUNTRIES],
         domestic_supported: true,
         min_charge_minor: null,
-        enabled: false,
+        enabled: true,
       },
     ]);
     expect(SEED_SUPPLEMENT_DE.publishers).toHaveLength(1);
@@ -105,7 +107,7 @@ describe('SEED_SUPPLEMENT_DE: the data', () => {
 });
 
 describe('after the seed (acceptance 1)', () => {
-  it('de-eur exists and is switched off; the German publisher and its EUR offers are authorised and current', async () => {
+  it('de-eur exists and is switched on (0034); the German publisher and its EUR offers are authorised and current', async () => {
     const d = await fresh();
     await base(d);
     expect(await de(d)).toEqual({ publishers: 1, articles: 3, offers: 3 });
@@ -114,10 +116,10 @@ describe('after the seed (acceptance 1)', () => {
       id: 'de-eur',
       currency: 'EUR',
       minor_units: 2,
-      payee_countries: ['DE'],
+      payee_countries: [...WORLDWIDE_PAYEE_COUNTRIES].sort(),
       buyer_countries: ['*'],
       domestic_supported: true,
-      enabled: false,
+      enabled: true,
     });
     const pub = await d.query<{ id: string; slug: string; country: string; status: string }>(
       `SELECT id, slug, country, status FROM publishers WHERE country = 'DE'`,
@@ -152,12 +154,13 @@ describe('after the seed (acceptance 1)', () => {
       [pub.rows[0]!.id],
     );
     expect(auth.rows[0]!.n).toBe(3);
-    // Listing follows the corridor switch: nothing while off, the three offers once an operator turns it on.
-    expect(await listAuthorisedOffers(d, { corridor_id: 'de-eur', limit: 50 })).toEqual([]);
-    await d.query(`UPDATE corridors SET enabled = true WHERE id = 'de-eur'`);
+    // Listing follows the corridor switch: the three offers while on (the 0034 default), nothing once an operator turns it off.
     const listed = await listAuthorisedOffers(d, { corridor_id: 'de-eur', limit: 50 });
     expect(listed).toHaveLength(3);
     expect(listed.every((v) => v.offer.currency === 'EUR')).toBe(true);
+    await d.query(`UPDATE corridors SET enabled = false WHERE id = 'de-eur'`);
+    expect(await listAuthorisedOffers(d, { corridor_id: 'de-eur', limit: 50 })).toEqual([]);
+    await d.query(`UPDATE corridors SET enabled = true WHERE id = 'de-eur'`);
     // The other corridors are not affected: still USD only for us-usd.
     const us = await listAuthorisedOffers(d, { corridor_id: 'us-usd', limit: 50 });
     expect(us.every((v) => v.offer.currency === 'USD')).toBe(true);
@@ -196,7 +199,10 @@ describe('idempotent, also over the previous seed (acceptance 3)', () => {
     );
     const old = await snapshot(d);
     expect(old.corridors.map((c) => (c as { id: string }).id)).toEqual([
+      'de-eur',
       'gb-gbp',
+      'in-eur',
+      'in-gbp',
       'in-usd',
       'us-usd',
     ]);
@@ -206,7 +212,8 @@ describe('idempotent, also over the previous seed (acceptance 3)', () => {
     for (const k of ['corridors', 'publishers', 'articles', 'offers', 'blobs', 'auths'] as const) {
       for (const row of old[k]) expect(now[k]).toContainEqual(row);
     }
-    expect(now.corridors).toHaveLength(old.corridors.length + 1);
+    // The corridor row is the migration's (0034), so the supplement adds no corridor.
+    expect(now.corridors).toHaveLength(old.corridors.length);
     expect(now.publishers).toHaveLength(old.publishers.length + 1);
     expect(now.articles).toHaveLength(old.articles.length + 3);
     expect(now.offers).toHaveLength(old.offers.length + 3);

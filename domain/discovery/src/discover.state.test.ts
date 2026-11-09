@@ -400,6 +400,8 @@ describe('discover: buyer country is not a gate', () => {
   it('a DE buyer is offered every enabled corridor: USD offers, and GBP offers once gb-gbp is on', async () => {
     const local = await seededDb();
     try {
+      // gb-gbp is on at boot since 0034 (WW-COR); switch it off first to see the USD-only list.
+      await local.db.query(`UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'`);
       const usdOnly = await candidateIds(local, 'DE', NO_CEILING);
       expect(usdOnly).toContain('ofr_harbour-ledger_c1');
       expect(usdOnly.some((id) => id.startsWith('ofr_northfield-quarterly_'))).toBe(false);

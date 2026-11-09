@@ -44,6 +44,9 @@ export async function makeWorld(seed = 'led'): Promise<World> {
     min_charge_minor: null,
     enabled: true,
   }).catch(() => undefined);
+  // Since 0034 (WW-COR) de-eur is on for every country but India; this fixture's eu-eur row serves payee US, and the
+  // guard refuses two enabled EUR rows that overlap, so the fixture first switches de-eur off (the pre-0034 world).
+  await db.query("UPDATE corridors SET enabled = false WHERE id = 'de-eur'");
   await insert('corridors', {
     id: 'eu-eur',
     currency: 'EUR',

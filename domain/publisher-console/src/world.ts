@@ -50,6 +50,9 @@ export async function makeWorld(): Promise<World> {
       cols.map((c) => r[c]),
     );
   };
+  // Since 0034 (WW-COR) de-eur is on for every country but India; this fixture's eu-eur row serves payee US, and the
+  // guard refuses two enabled EUR rows that overlap, so the fixture first switches de-eur off (the pre-0034 world).
+  await db.query("UPDATE corridors SET enabled = false WHERE id = 'de-eur'");
   await insert('corridors', {
     id: 'eu-eur',
     currency: 'EUR',
@@ -60,16 +63,10 @@ export async function makeWorld(): Promise<World> {
     min_charge_minor: null,
     enabled: true,
   });
-  await insert('corridors', {
-    id: 'gb-gbp',
-    currency: 'GBP',
-    minor_units: 2,
-    buyer_countries: ['US'],
-    payee_countries: ['US'],
-    domestic_supported: true,
-    min_charge_minor: null,
-    enabled: true,
-  });
+  // gb-gbp exists since 0034 (wide, on); this world wants the narrow fixture row (GBP for payee US, as before).
+  await db.query(
+    "UPDATE corridors SET buyer_countries = ARRAY['US'], payee_countries = ARRAY['US'] WHERE id = 'gb-gbp'",
+  );
   for (const [id, slug, name, merchant] of [
     ['pub_1', 'p1', 'Pub One', 'MERCHANT0001A'],
     ['pub_2', 'p2', 'Pub Two', 'MERCHANT0002B'],
