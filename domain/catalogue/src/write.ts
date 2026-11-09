@@ -582,7 +582,15 @@ export async function createOffer(
   try {
     return await deps.db.transaction(async (tx: SqlExecutor) =>
       ok(
-        await createOfferInTx(deps, tx, actor, article_id, options.value, undefined, input.currency),
+        await createOfferInTx(
+          deps,
+          tx,
+          actor,
+          article_id,
+          options.value,
+          undefined,
+          input.currency,
+        ),
       ),
     );
   } catch (e) {

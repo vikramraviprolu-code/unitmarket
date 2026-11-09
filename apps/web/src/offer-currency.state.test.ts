@@ -2,9 +2,9 @@
 // real routes and engine over the dry-run order model. Today's rows come first (nothing changes); the rows of the
 // coming migration 0034 are simulated by inserting wide corridors. Dry run: this proves the modelled path, not
 // PayPal compatibility. No PayPal, no socket, synthetic ids.
+import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSession } from '@umsbx/security';
-import { listAuthorisedOffers } from '@umsbx/catalogue';
 import type { Actor } from '@umsbx/contracts';
 import { bootPackApp, buyer, proposalFor, HARBOUR_TIDE } from './composite-support';
 import { call, signIn } from './support';
@@ -48,16 +48,26 @@ async function addArticle(slug: string): Promise<string> {
   seq += 1;
   const id = `art_oc_${String(seq)}`;
   const owner = pubs[slug]!.actor;
+  // The bytes the unit delivers: a stored blob whose hash matches the article, so the buy can complete.
+  const bytes = Buffer.from(`Synthetic fictional article ${String(seq)}.`, 'utf8');
+  const sha = createHash('sha256').update(bytes).digest('hex');
+  const contentKey = `oc/${String(seq)}`;
+  await app.db.query(
+    `INSERT INTO content_blobs (content_key, sha256, mime, bytes, data, created_at, updated_at)
+     VALUES ($1,$2,'text/plain',$3,$4,$5,$5)`,
+    [contentKey, sha, bytes.length, bytes, AT],
+  );
   await app.db.query(
     `INSERT INTO articles (id, publisher_id, title, abstract, language, topics, published_at, sha256, content_key, bytes, mime, created_at, updated_at)
-     VALUES ($1,$2,$3,'An abstract.','en',ARRAY['t'],$4,$5,$6,1,'text/plain',$4,$4)`,
+     VALUES ($1,$2,$3,'An abstract.','en',ARRAY['t'],$4,$5,$6,$7,'text/plain',$4,$4)`,
     [
       id,
       owner.kind === 'publisher' ? owner.publisher_id : '',
       `OC ${String(seq)}`,
       AT,
-      'c'.repeat(64),
-      `oc/${String(seq)}`,
+      sha,
+      contentKey,
+      bytes.length,
     ],
   );
   return id;
@@ -93,6 +103,22 @@ const count = async (sql: string, p: unknown[] = []): Promise<number> =>
   Number((await app.db.query<{ c: string | number }>(sql, p)).rows[0]!.c);
 const codeOf = async (res: Response): Promise<string> =>
   ((await res.clone().json()) as { error: { code: string } }).error.code;
+
+/** The discovery candidate rule of listAuthorisedOffers, read straight from the rows: enabled corridor, its currency and its payee countries. */
+async function candidateIds(corridorId: string): Promise<string[]> {
+  const r = await app.db.query<{ id: string }>(
+    `SELECT o.id FROM offers o
+       JOIN publishers p ON p.id = o.publisher_id
+       JOIN corridors c ON c.id = $1 AND c.enabled
+      WHERE o.status = 'authorised' AND o.superseded_by IS NULL AND p.status = 'active'
+        AND o.currency = c.currency AND p.country = ANY (c.payee_countries)
+        AND EXISTS (SELECT 1 FROM publisher_authorisations pa WHERE pa.offer_id = o.id AND pa.offer_version = o.version)
+        AND NOT EXISTS (SELECT 1 FROM offers n WHERE n.id = o.id AND (n.created_at, n.version) > (o.created_at, o.version))
+      ORDER BY o.id`,
+    [corridorId],
+  );
+  return r.rows.map((x) => x.id);
+}
 
 /** The buyer's whole payment of one offer through the engine; returns the order id. */
 async function pay(actor: Actor, slug: string, code: string): Promise<string> {
@@ -243,7 +269,9 @@ describe('with the rows of migration 0034 (simulated)', () => {
       currency: 'EUR',
     });
     expect(r.status).toBe(201);
-    expect(await currencyOfOffer((r.body as { offer_id: string }).offer_id)).toBe('EUR');
+    expect(
+      await currencyOfOffer(((r as { body?: unknown }).body as { offer_id: string }).offer_id),
+    ).toBe('EUR');
   });
 
   it('a chosen currency with no enabled corridor for the country is refused', async () => {
@@ -345,19 +373,17 @@ describe('with the rows of migration 0034 (simulated)', () => {
     // the agent / v1 path is the same engine call
     const ctx = { actor: inBuyer, principal: { kind: 'api_client' } as never };
     const viaV1 = await createQuote(app, ctx, { publisher: 'delhi-desk', offer: o.code });
-    expect((viaV1.body as { reason?: string }).reason).toBe('corridor_unsupported');
+    expect(((viaV1 as { body?: unknown }).body as { reason?: string }).reason).toBe(
+      'corridor_unsupported',
+    );
     expect(await count('SELECT count(*) AS c FROM quotes')).toBe(before);
     const ok = await app.engine.quote({ offer, actor: A, source: 'direct' });
     if (!ok.ok || ok.value.kind !== 'quote') throw new Error('expected a quote');
     expect(ok.value.price.currency).toBe('EUR');
     expect(ok.value.corridor_id).toBe('in-eur');
     // discovery lists it through the India corridor only
-    const inEur = (await listAuthorisedOffers(app.db, { corridor_id: 'in-eur', limit: 100 })).map(
-      (v) => v.offer.id,
-    );
-    const deEur = (await listAuthorisedOffers(app.db, { corridor_id: 'de-eur', limit: 100 })).map(
-      (v) => v.offer.id,
-    );
+    const inEur = await candidateIds('in-eur');
+    const deEur = await candidateIds('de-eur');
     expect(inEur).toContain(o.id);
     expect(deEur).not.toContain(o.id);
   });
@@ -379,11 +405,7 @@ describe('with the rows of migration 0034 (simulated)', () => {
     const candidates = async (): Promise<string[]> => {
       const ids: string[] = [];
       for (const c of ['us-usd', 'gb-gbp', 'de-eur', 'in-usd', 'in-eur', 'in-gbp'])
-        ids.push(
-          ...(await listAuthorisedOffers(app.db, { corridor_id: c, limit: 500 })).map(
-            (v) => v.offer.id,
-          ),
-        );
+        ids.push(...(await candidateIds(c)));
       return ids;
     };
     expect((await app.engine.listOffers()).map((x) => x.offer_id)).toContain(o.id);
