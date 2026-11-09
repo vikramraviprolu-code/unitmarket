@@ -103,6 +103,10 @@ describe('addApplicant', () => {
       { country: 'gb' },
       { country: 'GBR' },
       { country: '' },
+      // Two capital letters, but not ISO 3166-1 alpha-2 country codes (WW-COR C4).
+      { country: 'UK' },
+      { country: 'EU' },
+      { country: 'ZZ' },
       { reason: 'no' },
       { reason: 'r'.repeat(201) },
       { reason: '   ' },

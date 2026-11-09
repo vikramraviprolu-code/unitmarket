@@ -178,6 +178,10 @@ describe('submitApplication', () => {
       { country: 'gb' },
       { country: 'GBR' },
       { country: 'G1' },
+      // Two capital letters, but not ISO 3166-1 alpha-2 country codes (WW-COR C4).
+      { country: 'UK' },
+      { country: 'EU' },
+      { country: 'ZZ' },
       { country: '' },
       { note: 'no' },
       { note: 'n'.repeat(201) },
