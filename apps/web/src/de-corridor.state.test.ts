@@ -64,7 +64,7 @@ describe('boot seeding of the German corridor (MC2-L2)', () => {
         offers: await count(old, 'SELECT count(*) AS c FROM offers'),
         corridors: await count(old, 'SELECT count(*) AS c FROM corridors'),
       };
-      expect(oldCounts.corridors).toBe(2);
+      expect(oldCounts.corridors).toBe(3); // us-usd, gb-gbp and in-usd (migration 0033, COR-IN)
       await old.close();
       const again = await bootPackApp(env, { test_seed: { de_corridor: true } });
       expect(await deRows(again)).toEqual({
@@ -77,7 +77,7 @@ describe('boot seeding of the German corridor (MC2-L2)', () => {
         oldCounts.publishers + 1,
       );
       expect(await count(again, 'SELECT count(*) AS c FROM offers')).toBe(oldCounts.offers + 3);
-      expect(await count(again, 'SELECT count(*) AS c FROM corridors')).toBe(3);
+      expect(await count(again, 'SELECT count(*) AS c FROM corridors')).toBe(4);
       await again.close();
       const third = await bootPackApp(env, { test_seed: { de_corridor: true } });
       expect((await deRows(third)).offers).toBe(3);

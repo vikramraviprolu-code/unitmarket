@@ -14,11 +14,11 @@ afterAll(async () => {
 });
 
 describe('corridorFor with in-usd', () => {
-  it.each([
+  it.each<[string | null, string]>([
     ['US', 'a US buyer'],
     ['GB', 'a GB buyer'],
     [null, 'a buyer whose country is not known'],
-  ] as const)('USD, payee IN, %s (%s) is in-usd', async (buyer_country) => {
+  ])('USD, payee IN, %s (%s) is in-usd', async (buyer_country) => {
     const c = await corridorFor(db, { currency: 'USD', payee_country: 'IN', buyer_country });
     expect(c).toEqual({
       id: 'in-usd',
