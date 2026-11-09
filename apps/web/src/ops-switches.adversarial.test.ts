@@ -15,6 +15,7 @@ const SWITCHES = [
   'checkout_enabled',
   'refunds_enabled',
   'unlock_enabled',
+  'web_import_enabled',
   'webhook_enabled',
 ] as const;
 const TURNABLE = [
@@ -22,6 +23,7 @@ const TURNABLE = [
   'checkout_enabled',
   'refunds_enabled',
   'unlock_enabled',
+  'web_import_enabled',
   'webhook_enabled',
 ];
 
@@ -119,7 +121,7 @@ describe('off', () => {
     await setOn('ai_enabled', true);
   });
 
-  it('works for each of the seven switches and can only ever turn them off', async () => {
+  it('works for each of the eight switches and can only ever turn them off', async () => {
     for (const name of SWITCHES) {
       await setOn(name, true);
       const res = await send('off', noMfa, name);
@@ -211,7 +213,7 @@ describe('on', () => {
     expect((await state('webhook_enabled')).on).toBe(false);
   });
 
-  it('with the code and a reason code turns the five other switches on', async () => {
+  it('with the code and a reason code turns the six other switches on', async () => {
     for (const name of TURNABLE) {
       await setOn(name, false);
       const res = await send('on', op, name, { reason_code: 'maintenance' });

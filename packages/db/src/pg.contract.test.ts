@@ -182,7 +182,7 @@ describe.each(targets)('Database port contract on $name', (t) => {
       const sw = await db.query<{ name: string; on: boolean }>(
         'SELECT name, "on" FROM safety_switches ORDER BY name',
       );
-      expect(sw.rows).toHaveLength(7); // API-B added agent_buy_enabled (migration 0021)
+      expect(sw.rows).toHaveLength(8); // API-B added agent_buy_enabled (0021), WEB-IMPORT-SW web_import_enabled (0035)
       expect(sw.rows.find((r) => r.name === 'paypal_outbound')!.on).toBe(false);
     });
 

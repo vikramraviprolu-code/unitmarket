@@ -388,6 +388,8 @@ describe('status and the ai_enabled reader (review 4 M11)', () => {
     await gate().check(create);
     const s = await readSafetyStatus(db, clock.now(), REF);
     expect(s.switches.map((x) => x.name)).toContain('paypal_outbound');
+    // WEB-IMPORT-SW: pnpm safety:status prints these rows, so the web import switch is listed, off at seed
+    expect(s.switches.find((x) => x.name === 'web_import_enabled')?.on).toBe(false);
     expect(s.switches.find((x) => x.name === 'paypal_outbound')?.on).toBe(true);
     expect(s.budget).toMatchObject({
       approval_ref: REF,

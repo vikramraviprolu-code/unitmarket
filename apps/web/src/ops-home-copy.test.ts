@@ -63,6 +63,8 @@ describe('switch chips', () => {
   });
   it('gives each known switch a readable label and keeps an unknown name as it is', () => {
     expect(switchView('webhook_enabled', true).label).toBe('PayPal notices');
+    expect(switchView('web_import_enabled', false).label).toBe('Website import');
+    expect(switchView('web_import_enabled', false).chip).toEqual({ tone: 'warn', text: 'Off' });
     expect(switchView('some_new_switch', false)).toMatchObject({
       name: 'some_new_switch',
       label: 'some_new_switch',

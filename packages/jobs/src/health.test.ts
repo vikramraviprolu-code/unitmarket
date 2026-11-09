@@ -12,6 +12,7 @@ const NAMES: SwitchName[] = [
   'ai_enabled',
   'webhook_enabled',
   'agent_buy_enabled',
+  'web_import_enabled',
 ];
 function deps(query: ReturnType<typeof vi.fn>, off: SwitchName[] = []): CoreDeps {
   return {

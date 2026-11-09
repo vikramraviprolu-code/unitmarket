@@ -247,6 +247,7 @@ describe('migrations', () => {
       'paypal_outbound',
       'refunds_enabled',
       'unlock_enabled',
+      'web_import_enabled',
       'webhook_enabled',
     ]);
     expect(sw.rows.find((r) => r.name === 'paypal_outbound')!.on).toBe(false);

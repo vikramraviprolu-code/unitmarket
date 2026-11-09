@@ -232,7 +232,7 @@ describe('discovery and the ai_enabled switch', () => {
 });
 
 describe('operator view', () => {
-  it('ops snapshot lists the seven switches and the environment label', async () => {
+  it('ops snapshot lists the eight switches and the environment label', async () => {
     const snap = await app.engine.opsSnapshot({
       kind: 'operator',
       operator_id: 'opr_demo',
@@ -246,6 +246,7 @@ describe('operator view', () => {
       'paypal_outbound',
       'refunds_enabled',
       'unlock_enabled',
+      'web_import_enabled',
       'webhook_enabled',
     ]);
     expect(snap!.environment).toBe('dryrun');

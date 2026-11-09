@@ -133,7 +133,7 @@ describe('the agent_buy_enabled switch', () => {
     );
     expect(r.rows).toEqual([{ on: false }]);
   });
-  it('the other six switches keep their seed values', async () => {
+  it('the other switches keep their seed values (0035 adds web_import_enabled, off)', async () => {
     const r = await db.query<{ name: string; on: boolean }>(
       'SELECT name, "on" FROM safety_switches ORDER BY name',
     );
@@ -144,6 +144,7 @@ describe('the agent_buy_enabled switch', () => {
       paypal_outbound: false,
       refunds_enabled: true,
       unlock_enabled: true,
+      web_import_enabled: false,
       webhook_enabled: true,
     });
   });
