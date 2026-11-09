@@ -1,12 +1,14 @@
-// Demo prices (PUB-B, D-065 item 37): PayPal's fixed fee can exceed a 0.40 sale, so every USD offer on sale
-// is priced from 1.00 to 2.50 USD in the demo. This is NOT a seed edit: it is one audited offer revision
-// per offer, recorded against the system (not the publisher, who made no change), so the history shows what the price was and when it moved.
+// Demo prices (PUB-B, D-065 item 37; WW-COR C10): PayPal's fixed fee can exceed a 0.40 sale, so every offer on sale
+// is priced from 1.00 to 2.50 in the demo, in each of the three currencies (USD, EUR, GBP). This is NOT a seed edit:
+// it is one audited offer revision per offer, recorded against the system (not the publisher, who made no change),
+// so the history shows what the price was and when it moved.
 //
 // Rules, all idempotent:
 //   - only the offers of the seed (SEED_DATA and the composite supplement, by id) that are authorised,
-//     current, USD and have never been revised (a single version row) and carry an option price below 100 or above 250 minor units are touched;
-//   - each price is clamped into 100 to 250 (40 becomes 100, 300 and 450 become 250, 90 becomes 100);
-//     120, 125, 150 and 200 stay and so do GBP offers, withdrawn offers and drafts;
+//     current, in USD, EUR or GBP and have never been revised (a single version row) and carry an option price
+//     below 100 or above 250 minor units are touched;
+//   - each price is clamped into 100 to 250 (40 becomes 100, 300 and 450 become 250, 90 becomes 100, GBP 90 too);
+//     120, 125, 150 and 200 stay and so do withdrawn offers and drafts;
 //   - an offer a publisher has already revised is never touched again, so a later boot cannot undo a
 //     price the publisher chose. A second run revises nothing.
 // On a database that already holds the seed (the hosted one) the first boot after the deploy writes the
@@ -56,7 +58,7 @@ export async function applyDemoPrices(deps: OfferWriteDeps): Promise<DemoRevisio
   const { rows } = await deps.db.query<Candidate>(
     `SELECT o.id, o.version, o.publisher_id, o.options
        FROM offers o
-      WHERE o.id = ANY ($1) AND o.currency = 'USD' AND o.status = 'authorised' AND o.superseded_by IS NULL
+      WHERE o.id = ANY ($1) AND o.currency IN ('USD', 'EUR', 'GBP') AND o.status = 'authorised' AND o.superseded_by IS NULL
         AND (SELECT count(*) FROM offers x WHERE x.id = o.id) = 1
         AND EXISTS (SELECT 1 FROM publisher_authorisations pa
                      WHERE pa.offer_id = o.id AND pa.offer_version = o.version)

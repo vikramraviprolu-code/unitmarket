@@ -8,6 +8,7 @@ export * from './transport';
 export * from './paypal';
 // F3 (domain).
 export * from './corridor';
+export * from './countries';
 export * from './catalogue';
 export * from './quote';
 export * from './approval';
