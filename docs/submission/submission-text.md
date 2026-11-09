@@ -35,7 +35,7 @@ refund form and checks that must hold.
 
 Publishers have their own side. A publisher is invited, claims an account, accepts the publisher terms and links its own PayPal
 address, which an operator verifies. A publisher can import articles from a web link it proves it controls, review them, and
-publish offers. UnitMarket adds a platform fee of 10 percent of the publisher price on top, so the publisher does not pay it. The
+publish offers. On offers published through the web import, UnitMarket adds a platform fee of 10 percent of the publisher price on top, so the publisher does not pay it. The
 publisher sees its sales and a statement. Payouts to publishers are built and tested in dry run only. [`docs/specs/pob-p1-publisher-accounts.md`,
 `docs/specs/pob-m1-fee-and-payout.md`, `docs/specs/pob-i1-web-import.md`, `apps/web/src/pob-journey.state.test.ts`]
 
@@ -64,7 +64,7 @@ What is AI and what is code:
 | PayPal sandbox orders, approval, capture | Real, observed. A pack of two items was paid as two separate sandbox payments on 29 Oct 2026. [`docs/evidence/mvp-d-real-sitting-2026-10-29.md`]                                                                                                                                                                                |
 | Hosted purchases on Google Cloud         | Real sandbox purchases and a refund path were observed on 27 and 28 Oct 2026 [`docs/evidence/mvp-c-hosted-2026-10-28.md`]. On 7 Nov 2026 the owner ran a third sitting on the hosted app under D-108: one sandbox purchase of one article for 1.00 USD was paid and its receipt written. [`docs/decision-log.md` D-108, D-111]  |
 | Dry run                                  | Real code on a pretend PayPal (recorded or synthetic fixtures), labelled "Dry run" from the stored environment. Covered by the six offline test suites and browser journeys.                                                                                                                                                    |
-| Publishers and articles                  | Fictional. Harbour Ledger Review and Quayside Gazette are demo imprints with demo articles. [`domain/catalogue/src/seed-data.ts`]                                                                                                                                                                                               |
+| Publishers and articles                  | The seeded publishers and articles are fictional: Harbour Ledger Review and Quayside Gazette are demo imprints with demo articles. One real publisher was onboarded on the hosted app on 9 Nov 2026; its sales are also paid into the owner's sandbox account. [`domain/catalogue/src/seed-data.ts`]                            |
 | Money accounts                           | Sandbox accounts only. No real money moves.                                                                                                                                                                                                                                                                                     |
 | Payee checks                             | Done by an operator by hand, not by PayPal onboarding.                                                                                                                                                                                                                                                                          |
 | Commission                               | On offers published through the web import, UnitMarket adds a platform fee of 10 percent of the publisher price to the price shown; the publisher does not pay it. Seeded demo offers carry no fee. The fee is recorded in the ledger. Every sale in the demo is paid into one sandbox test account, so PayPal splits no money. |
@@ -73,7 +73,7 @@ What is AI and what is code:
 | Tax                                      | No tax is calculated and no tax invoice is issued in this demo.                                                                                                                                                                                                                                                                 |
 | Legal pages                              | Four drafts for owner approval, including plain English publisher terms. Not legal advice. [`/legal/publisher-terms`, spec LEGAL-B]                                                                                                                                                                                             |
 
-Said plainly, whichever settlement line is used: "Publishers are fictional. In this sandbox demo both selling publishers are paid
+Said plainly, whichever settlement line is used: "The seeded publishers are fictional, and one real publisher was onboarded on 9 Nov 2026. In this sandbox demo every selling publisher is paid
 into one sandbox test account that the team controls; multi-merchant payout is not demonstrated. By design the buyer pays
 UnitMarket's collection account and UnitMarket pays the publisher after the access window ends with no refund open; that payout step is
 built and tested in dry run only, and no payout runs against PayPal. On offers published through the web import, UnitMarket adds a
