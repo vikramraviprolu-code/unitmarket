@@ -195,7 +195,11 @@ describe('idempotent, also over the previous seed (acceptance 3)', () => {
       [T0],
     );
     const old = await snapshot(d);
-    expect(old.corridors.map((c) => (c as { id: string }).id)).toEqual(['gb-gbp', 'us-usd']);
+    expect(old.corridors.map((c) => (c as { id: string }).id)).toEqual([
+      'gb-gbp',
+      'in-usd',
+      'us-usd',
+    ]);
     expect(await de(d, 'boot-after-deploy')).toEqual({ publishers: 1, articles: 3, offers: 3 });
     const now = await snapshot(d);
     // Nothing of the old seed moved or disappeared: every old row is still there, unchanged.

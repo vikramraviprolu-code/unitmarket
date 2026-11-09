@@ -251,9 +251,13 @@ describe('migrations', () => {
     ]);
     expect(sw.rows.find((r) => r.name === 'paypal_outbound')!.on).toBe(false);
     const c = await db.query<{ id: string; currency: string; enabled: boolean }>(
-      'SELECT id, currency, enabled FROM corridors',
+      'SELECT id, currency, enabled FROM corridors ORDER BY id',
     );
-    expect(c.rows).toEqual([{ id: 'us-usd', currency: 'USD', enabled: true }]);
+    // 0033 (COR-IN) adds in-usd: the India payee corridor in USD, switched on.
+    expect(c.rows).toEqual([
+      { id: 'in-usd', currency: 'USD', enabled: true },
+      { id: 'us-usd', currency: 'USD', enabled: true },
+    ]);
     const p = await db.query<{ id: string; option: string; version: string; window_ms: number }>(
       'SELECT id, option, version, window_ms FROM access_policies ORDER BY id',
     );
