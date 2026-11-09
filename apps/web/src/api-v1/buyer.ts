@@ -30,6 +30,7 @@ import type { LibraryFacts } from '../../composition.server';
 import type { App, OfferPage } from '../../composition.server';
 import {
   CORRIDOR_UNSUPPORTED_TEXT,
+  corridorUnsupportedText,
   MIXED_CURRENCY_TEXT,
   PUBLISHER_UNVERIFIED_TEXT,
   TOO_MANY_PUBLISHERS_TEXT,
@@ -254,7 +255,10 @@ export async function createApproval(
     return {
       status: APPROVAL_STATUS[r.error.code] ?? 422,
       code: r.error.code,
-      message: APPROVAL_TEXT[r.error.code] ?? 'We could not prepare that approval.',
+      message:
+        r.error.code === 'corridor_unsupported'
+          ? corridorUnsupportedText(selection.kind === 'proposal' ? selection.offer_ids.length : 1)
+          : (APPROVAL_TEXT[r.error.code] ?? 'We could not prepare that approval.'),
     };
   const g = r.value;
   return {

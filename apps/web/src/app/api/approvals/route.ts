@@ -5,6 +5,7 @@ import { app, securityDeps } from '../../../server/access';
 import { TERMS_INVALID_TEXT } from '../../../lib/buyer-copy';
 import {
   CORRIDOR_UNSUPPORTED_TEXT,
+  corridorUnsupportedText,
   MIXED_CURRENCY_TEXT,
   PUBLISHER_UNVERIFIED_TEXT,
   TOO_MANY_PUBLISHERS_TEXT,
@@ -74,7 +75,10 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
     return {
       status: STATUS[r.error.code] ?? 422,
       code: r.error.code,
-      message: TEXT[r.error.code] ?? 'We could not prepare that approval.',
+      message:
+        r.error.code === 'corridor_unsupported'
+          ? corridorUnsupportedText(selection.kind === 'proposal' ? selection.offer_ids.length : 1)
+          : (TEXT[r.error.code] ?? 'We could not prepare that approval.'),
     };
   const g = r.value;
   return {
