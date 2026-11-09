@@ -91,6 +91,9 @@ const CRITICAL_WS = new Set([
   'domain/approval',
   'domain/ledger',
   'domain/entitlements',
+  'domain/trace',
+  'domain/receipts',
+  'packages/jobs',
 ]);
 // A workspace's own package.json or tsconfig: its typecheck must run although no code changed.
 const WS_CONFIG_RE =
@@ -526,6 +529,31 @@ export function renderPlan(plan) {
   return out.join('\n');
 }
 
+/**
+ * The NAME=value canary lines the build step needs, from `check-bundle-secrets.mjs --print-env`.
+ * Throws when that command fails or prints nothing usable.
+ * @param {string} [root]
+ * @param {(cmd: string, args: string[], o: object) => { status: number | null, stdout?: unknown }} [spawn]
+ */
+export function canaryEnvLines(root = ROOT, spawn = spawnSync) {
+  const c = spawn(process.execPath, ['scripts/check-bundle-secrets.mjs', '--print-env'], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  const lines =
+    c.status === 0
+      ? String(c.stdout ?? '')
+          .split('\n')
+          .filter((l) => /^[A-Z_]+=/.test(l))
+      : [];
+  if (lines.length === 0) {
+    throw new Error(
+      'no canary values from check-bundle-secrets.mjs --print-env; the bundle scan would test nothing',
+    );
+  }
+  return lines;
+}
+
 // Scripts may not read the clock in code (S6), so a step is timed with the system `date`.
 const nowNs = () => {
   const r = spawnSync('date', ['+%s%N'], { encoding: 'utf8' });
@@ -549,12 +577,17 @@ export function runPlan(plan, { failFast = false, root = ROOT } = {}) {
       }
       const vars = Object.entries(s.env ?? {}).map(([k, v]) => `${k}=${v === TMP ? tmp : v}`);
       if (s.canaryEnv) {
-        // NAME=value lines for the build, from the bundle guard itself.
-        const c = spawnSync(process.execPath, ['scripts/check-bundle-secrets.mjs', '--print-env'], {
-          cwd: root,
-          encoding: 'utf8',
-        });
-        vars.push(...c.stdout.split('\n').filter((l) => /^[A-Z_]+=/.test(l)));
+        // NAME=value lines for the build, from the bundle guard itself. No lines means no canaries:
+        // the scan would then pass on nothing, so the step fails instead.
+        try {
+          vars.push(...canaryEnvLines(root));
+        } catch (e) {
+          process.stderr.write(`test-tier: ${e instanceof Error ? e.message : String(e)}\n`);
+          results.push({ id: s.id, status: 'FAILED', time: '-' });
+          broken = new Set([...broken, s.group]);
+          if (failFast) break;
+          continue;
+        }
       }
       const [prog, ...args] = vars.length ? ['env', ...vars, ...s.cmd] : s.cmd;
       process.stdout.write(`\n== ${s.id}: ${s.label}\n`);

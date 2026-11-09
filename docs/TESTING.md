@@ -22,8 +22,8 @@ would run without running it, for example `corepack pnpm test:t1 --plan`. Add `-
 - `render.yaml` or `infra/**` changed: T1 and T2 add the two hosting guards (`check:hosting`, `check:hosting-gcp`).
 - A recorded fixture (`fixtures/**`) changed: T1 and T2 add the `packages/paypal` and `packages/testkit` tests.
 - A workspace `package.json` or `tsconfig.json` changed: its typecheck runs even though no code changed.
-- A change in `packages/safety`, `transport`, `config`, `security`, `paypal`, `db` or in `domain/payments`, `approval`, `ledger` or
-  `entitlements`: the plan prints "run the gate", and T2 adds one more step (`vitest:dependents`) that runs every test importing the
+- A change in `packages/safety`, `transport`, `config`, `security`, `paypal`, `db`, `jobs` or in `domain/payments`, `approval`, `ledger`,
+  `entitlements`, `trace` or `receipts`: the plan prints "run the gate", and T2 adds one more step (`vitest:dependents`) that runs every test importing the
   changed files, `apps/web` and the `tests/mvp-*` suites included.
 - A root file changed (`package.json`, lockfile, `eslint.config.mjs`, `vitest.config.ts`, `tsconfig.base.json`): the plan says so; run T3.
 - Before any deploy, and before a reviewer merges a change that touches money, safety, approvals, the ledger, entitlements, refunds,

@@ -290,7 +290,8 @@ describe('review nits', () => {
   it('only the build gets canary values, never the app the browser specs start', () => {
     const p = buildPlan({ tier: 'gate', changed: [], allFiles: [], gate: loadGate(REPO_ROOT) });
     const flag = (id: string) =>
-      (p.steps.find((s: { id: string }) => s.id === id) as any)?.canaryEnv;
+      (p.steps.find((s: { id: string }) => s.id === id) as { canaryEnv?: boolean } | undefined)
+        ?.canaryEnv;
     expect(flag('e2e:build')).toBe(true);
     expect(flag('e2e:run')).toBeFalsy();
     expect(flag('e2e:bundle')).toBeFalsy();
