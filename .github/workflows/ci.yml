@@ -18,9 +18,22 @@
 # Take the dereferenced (^{}) SHA when present, replace `@v4` with `@<sha> # v4`, and re-run CI.
 name: ci
 
+# TEST-TIERS: a manual run picks a tier (docs/TESTING.md). `gate` runs the integrated critical pack from
+# tests/gate.json in parallel jobs (test shards plus the browser specs and trace:verify) beside the
+# jobs below that always run (lint-type, checks, postgres, gitleaks, which are the gate's static part).
+# `full` keeps today's six shards, mutation and bundle. A pull request runs the same jobs as before
+# (full); only a manual run can choose the gate. The gate adds one download: the Playwright browser.
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      tier:
+        description: 'Test tier for a manual run: gate (critical pack, minutes) or full (every suite)'
+        type: choice
+        options:
+          - gate
+          - full
+        default: gate
 
 permissions:
   contents: read
@@ -48,6 +61,7 @@ jobs:
   # shards reached 25 of 30 minutes once the journal (TR0) landed, so there are six. Add shards; do not
   # raise the timeout.
   tests:
+    if: github.event_name != 'workflow_dispatch' || inputs.tier == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -92,6 +106,45 @@ jobs:
       # SUP-2: zero high or critical in production dependencies, or a dated waiver in the gate report.
       - run: pnpm audit --prod
 
+  # T3 gate (manual run, tier gate): the critical vitest pack of tests/gate.json in four shards. The shard
+  # count here must equal "shards" in tests/gate.json.
+  gate-tests:
+    if: github.event_name == 'workflow_dispatch' && inputs.tier == 'gate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/test-tier.mjs --tier gate --group tests --shard ${{ matrix.shard }}/4
+
+  # T3 gate: the key browser specs on the dry run (offline, localhost only), then trace:verify on the
+  # journal they wrote. Build, specs and verify run in order inside the script.
+  gate-e2e:
+    if: github.event_name == 'workflow_dispatch' && inputs.tier == 'gate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @umsbx/web exec playwright install --with-deps chromium
+      - run: node scripts/test-tier.mjs --tier gate --group e2e
+
   # Real-Postgres suites (PG-2: races, locks, sessions, boot) skip without UMS_TEST_PG_BIN. The runner
   # image ships PostgreSQL; each suite starts its own throwaway cluster from these binaries on a local
   # socket. No network, no secret, no PayPal.
@@ -129,7 +182,7 @@ jobs:
       - run: '"$(go env GOPATH)/bin/gitleaks" git --no-banner --redact --exit-code 1 .'
 
   mutation:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.tier == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -144,7 +197,7 @@ jobs:
       - run: pnpm mutation
 
   bundle:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.tier == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

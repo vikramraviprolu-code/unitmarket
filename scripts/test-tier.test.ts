@@ -315,7 +315,7 @@ describe('wiring', () => {
     expect(y).toMatch(/default: gate/);
     expect(y).toMatch(/options:\s*\n\s+- gate\s*\n\s+- full/);
     expect(y).toContain('permissions:\n  contents: read\n');
-    expect(y).not.toMatch(/secrets\./);
+    expect(y).not.toMatch(/\$\{\{\s*secrets\./);
     expect(y).not.toMatch(/\bdeploy\b\s*:/);
   });
   it('docs/TESTING.md names the three scripts and the go/no-go rule', () => {
