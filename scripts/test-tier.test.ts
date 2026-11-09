@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildPlan,
+  canaryEnvLines,
   globToRegExp,
   kindOfTest,
   loadGate,
@@ -270,6 +271,43 @@ describe('plan: hosting files, fixtures, migrations and safety workspaces', () =
     expect(step(s, 'typecheck')?.cmd).toEqual(
       expect.arrayContaining(['tsc', '-p', 'scripts/tsconfig.json']),
     );
+  });
+});
+
+describe('review nits', () => {
+  it('jobs, trace and receipts are in the safety or money layer', () => {
+    for (const f of [
+      'packages/jobs/src/loop.ts',
+      'domain/trace/src/seal.ts',
+      'domain/receipts/src/index.ts',
+    ]) {
+      const t1 = buildPlan({ tier: 't1', changed: [f], exists: () => true, allFiles: [] });
+      expect(t1.notes.join(' '), f).toMatch(/run the gate/);
+      const t2 = buildPlan({ tier: 't2', changed: [f], exists: () => true, allFiles: [] });
+      expect(ids(t2), f).toContain('vitest:dependents');
+    }
+  });
+  it('only the build gets canary values, never the app the browser specs start', () => {
+    const p = buildPlan({ tier: 'gate', changed: [], allFiles: [], gate: loadGate(REPO_ROOT) });
+    const flag = (id: string) =>
+      (p.steps.find((s: { id: string }) => s.id === id) as any)?.canaryEnv;
+    expect(flag('e2e:build')).toBe(true);
+    expect(flag('e2e:run')).toBeFalsy();
+    expect(flag('e2e:bundle')).toBeFalsy();
+    expect(flag('e2e:trace-verify')).toBeFalsy();
+  });
+  it('canaryEnvLines refuses a failed or empty answer, so the scan cannot pass on nothing', () => {
+    const fake = (status: number | null, stdout: string) => () => ({ status, stdout });
+    expect(() => canaryEnvLines('.', fake(1, 'A_B=1\n'))).toThrow(/canary/);
+    expect(() => canaryEnvLines('.', fake(null, 'A_B=1\n'))).toThrow(/canary/);
+    expect(() => canaryEnvLines('.', fake(0, ''))).toThrow(/canary/);
+    expect(() => canaryEnvLines('.', fake(0, 'not a line\n'))).toThrow(/canary/);
+    expect(canaryEnvLines('.', fake(0, 'A_B=1\nC_D=2\n'))).toEqual(['A_B=1', 'C_D=2']);
+  });
+  it('the real bundle guard prints canary lines for the server-side names', () => {
+    const lines = canaryEnvLines(REPO_ROOT);
+    expect(lines.length).toBeGreaterThanOrEqual(5);
+    expect(lines.some((l: string) => l.startsWith('UMS_SESSION_SECRET='))).toBe(true);
   });
 });
 
