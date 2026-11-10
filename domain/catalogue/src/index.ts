@@ -174,6 +174,8 @@ export {
 } from './import-stage';
 export type { BatchView, EditInput, ItemView } from './import-stage';
 export { publishBatch } from './import-publish';
+export { quickImport, setPriceForAll } from './import-quick';
+export type { QuickStep } from './import-quick';
 export type { PublishSummary } from './import-publish';
 export type {
   ImportDeps,

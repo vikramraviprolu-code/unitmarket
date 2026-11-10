@@ -175,9 +175,9 @@ describe('a sitemap', () => {
     expect(r).toEqual({ candidates: [], links: [], skipped: 0, reason: 'sitemap_index' });
   });
 
-  it('more than 100 locations is refused whole, like a feed', () => {
+  it('more than 1000 locations is refused whole, like a feed', () => {
     const locs = Array.from(
-      { length: 101 },
+      { length: 1001 },
       (_, i) => `<url><loc>https://${HOST}/a/${i}</loc></url>`,
     );
     const r = run(`<urlset>${locs.join('')}</urlset>`, 'application/xml');
@@ -256,8 +256,8 @@ describe('RSS, Atom and JSON feed', () => {
     expect(run('{"items":', 'application/json').reason).toBe('bad_document');
   });
 
-  it('more than 100 entries is refused whole', () => {
-    const items = Array.from({ length: 101 }, (_, i) => ({
+  it('more than 1000 entries is refused whole', () => {
+    const items = Array.from({ length: 1001 }, (_, i) => ({
       id: String(i),
       title: `T${i}`,
       content_text: 'text',
@@ -399,8 +399,8 @@ describe('limits and linear time', () => {
     },
   );
 
-  it('more than 100 products in a graph is refused whole', () => {
-    const graph = Array.from({ length: 101 }, (_, i) => ({
+  it('more than 1000 products in a graph is refused whole', () => {
+    const graph = Array.from({ length: 1001 }, (_, i) => ({
       '@type': 'Product',
       '@id': `https://${HOST}/p/${i}`,
       name: `P${i}`,
