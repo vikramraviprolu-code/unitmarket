@@ -47,7 +47,9 @@ describe('startFromOffer and publisher status', () => {
 
   it('does not affect another publisher: its offer is judged by its own rules, not by the suspension', async () => {
     const q = await quote('northfield-quarterly', 'village-bus');
-    expect(q).toMatchObject({ kind: 'no_match', reason: 'corridor_unsupported' });
+    // Northfield's own rules now pass (gb-gbp is on after 0034), so it quotes: the suspension of another
+    // publisher does not touch it.
+    expect(q.kind).toBe('quote');
   });
 
   it('a withdrawn offer of a suspended publisher still says withdrawn (the older rule first)', async () => {

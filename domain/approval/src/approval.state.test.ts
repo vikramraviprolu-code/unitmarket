@@ -475,7 +475,7 @@ describe('requestApproval refusals', () => {
     expect(code(r)).toBe('not_owner');
   });
 
-  it('a buyer from DE gets an approval for a USD offer in us-usd (buyer_countries is [US])', async () => {
+  it('a buyer from DE gets an approval for a USD offer in us-usd (buyer_countries is [*] since 0034)', async () => {
     h = await makeHarness();
     await addGermanBuyer(h.db);
     expect(
@@ -484,7 +484,7 @@ describe('requestApproval refusals', () => {
           `SELECT buyer_countries AS b FROM corridors WHERE id = 'us-usd'`,
         )
       ).rows[0]!.b,
-    ).toEqual(['US']);
+    ).toEqual(['*']);
     await addQuote(h.db, { id: 'quo_de', offer_id: 'ofr_1', buyer_id: 'buy_DE' });
     const g = value(
       await requestApproval(h.deps, {

@@ -170,10 +170,15 @@ describe('no-match reasons and decision order', () => {
       kind: 'no_match',
       reason: 'not_authorised',
     });
-    expect(noMatch(await run('allotment-diary', {}, 'northfield-quarterly'))).toEqual({
-      kind: 'no_match',
-      reason: 'corridor_unsupported',
-    });
+    await db.query("UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'");
+    try {
+      expect(noMatch(await run('allotment-diary', {}, 'northfield-quarterly'))).toEqual({
+        kind: 'no_match',
+        reason: 'corridor_unsupported',
+      });
+    } finally {
+      await db.query("UPDATE corridors SET enabled = true WHERE id = 'gb-gbp'");
+    }
     const actor = await buyer();
     const o = await getOffer(db, by('knot-notebook'));
     await giveEntitlement(db, {
@@ -267,9 +272,14 @@ describe('no-match reasons and decision order', () => {
       'not_authorised',
     );
     // disabled corridor beats above_ceiling
-    expect(
-      noMatch(await run('allotment-diary', { ceiling_minor: 1 }, 'northfield-quarterly')).reason,
-    ).toBe('corridor_unsupported');
+    await db.query("UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'");
+    try {
+      expect(
+        noMatch(await run('allotment-diary', { ceiling_minor: 1 }, 'northfield-quarterly')).reason,
+      ).toBe('corridor_unsupported');
+    } finally {
+      await db.query("UPDATE corridors SET enabled = true WHERE id = 'gb-gbp'");
+    }
   });
 
   it('India to India corridor refused as corridor_unsupported', async () => {
@@ -284,7 +294,7 @@ describe('no-match reasons and decision order', () => {
 
   // MC2-L1 (D-084 3): replaces "a buyer from outside every corridor of the publisher is
   // corridor_unsupported". The buyer's country is data, not a gate; the corridor follows the offer.
-  it('a buyer from DE is quoted a USD offer in us-usd (buyer_countries is [US])', async () => {
+  it('a buyer from DE is quoted a USD offer in us-usd (buyer_countries is [*] since 0034)', async () => {
     const actor = await buyer('DE');
     const r = await startFromOffer(deps, { offer: by('tide-tables'), actor, source: 'direct' });
     const q = quote(r.ok ? r.value : noMatchErr());
@@ -293,10 +303,10 @@ describe('no-match reasons and decision order', () => {
     const row = await db.query<{ buyer_countries: string[] }>(
       `SELECT buyer_countries FROM corridors WHERE id = 'us-usd'`,
     );
-    expect(row.rows[0]!.buyer_countries).toEqual(['US']);
+    expect(row.rows[0]!.buyer_countries).toEqual(['*']);
   });
 
-  it('a buyer from DE is quoted a GBP offer once gb-gbp is enabled, and refused while it is off', async () => {
+  it('a buyer from DE is quoted a GBP offer while gb-gbp is enabled, and refused once it is off', async () => {
     const actor = await buyer('DE');
     const go = () =>
       startFromOffer(deps, {
@@ -304,16 +314,16 @@ describe('no-match reasons and decision order', () => {
         actor,
         source: 'direct',
       });
-    const off = await go();
-    expect(off.ok && off.value).toEqual({ kind: 'no_match', reason: 'corridor_unsupported' });
-    await db.query(`UPDATE corridors SET enabled = true WHERE id = 'gb-gbp'`);
+    const on = await go();
+    const q = quote(on.ok ? on.value : noMatchErr());
+    expect(q.corridor_id).toBe('gb-gbp');
+    expect(q.price.currency).toBe('GBP');
+    await db.query(`UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'`);
     try {
-      const on = await go();
-      const q = quote(on.ok ? on.value : noMatchErr());
-      expect(q.corridor_id).toBe('gb-gbp');
-      expect(q.price.currency).toBe('GBP');
+      const off = await go();
+      expect(off.ok && off.value).toEqual({ kind: 'no_match', reason: 'corridor_unsupported' });
     } finally {
-      await db.query(`UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'`);
+      await db.query(`UPDATE corridors SET enabled = true WHERE id = 'gb-gbp'`);
     }
   });
 
@@ -321,6 +331,8 @@ describe('no-match reasons and decision order', () => {
     await db.query(
       `UPDATE offers SET currency = 'EUR' WHERE id = 'ofr_harbour-ledger_harbour-fees'`,
     );
+    // de-eur now covers every payee country; switch it off so no enabled EUR corridor covers a US payee.
+    await db.query(`UPDATE corridors SET enabled = false WHERE id = 'de-eur'`);
     try {
       const actor = await buyer('DE');
       const r = await startFromOffer(deps, {
@@ -330,6 +342,7 @@ describe('no-match reasons and decision order', () => {
       });
       expect(r.ok && r.value).toEqual({ kind: 'no_match', reason: 'corridor_unsupported' });
     } finally {
+      await db.query(`UPDATE corridors SET enabled = true WHERE id = 'de-eur'`);
       await db.query(
         `UPDATE offers SET currency = 'USD' WHERE id = 'ofr_harbour-ledger_harbour-fees'`,
       );
