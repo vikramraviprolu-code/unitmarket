@@ -43,6 +43,8 @@ export interface ReadingInput {
   title: string;
   publisher: string;
   days_left: number | null;
+  /** When the window ends (ISO UTC), or null. The countdown is worded from this, like the library. */
+  ends_at: string | null;
 }
 
 export interface HomeItem {
@@ -73,6 +75,25 @@ export function endsIn(expires_at: string, now: Date): string {
   return `Ends in ${String(hours)} ${hours === 1 ? 'hour' : 'hours'}.`;
 }
 
+const HOUR_MS = 3_600_000;
+const plural = (n: number, word: string): string => `${String(n)} ${word}${n === 1 ? '' : 's'}`;
+
+/**
+ * "4 days 3 hours left." The same rule as the library status line (domain/library): whole hours, floored,
+ * never rounded up; a zero part is dropped; under one hour it says so. The clock is the view's `now`.
+ */
+export function timeLeftNote(ends_at: string, now: Date): string {
+  const hours = Math.floor(Math.max(0, new Date(ends_at).getTime() - now.getTime()) / HOUR_MS);
+  if (hours < 1) return 'Less than 1 hour left.';
+  const days = Math.floor(hours / 24);
+  const rest = hours % 24;
+  const parts = [
+    ...(days > 0 ? [plural(days, 'day')] : []),
+    ...(rest > 0 ? [plural(rest, 'hour')] : []),
+  ];
+  return `${parts.join(' ')} left.`;
+}
+
 export function homeModel(i: {
   pending: readonly PendingApprovalInput[];
   reading: readonly ReadingInput[];
@@ -91,9 +112,11 @@ export function homeModel(i: {
     href: `/library/${encodeURIComponent(r.entitlement_id)}`,
     text: `${r.title}, ${r.publisher}`,
     note:
-      r.days_left === null
-        ? null
-        : `${String(r.days_left)} ${r.days_left === 1 ? 'day' : 'days'} left.`,
+      r.ends_at !== null
+        ? timeLeftNote(r.ends_at, i.now)
+        : r.days_left === null
+          ? null
+          : `${String(r.days_left)} ${r.days_left === 1 ? 'day' : 'days'} left.`,
   }));
   const spend: HomeItem[] = i.caps
     .filter((c) => capState(c, i.now) === 'open')

@@ -52,6 +52,7 @@ export default async function LibraryItem({
           state={item.window.state}
           daysLeft={item.window.days_left}
           endsAt={item.window.ends_at}
+          startedAt={item.window.started_at}
           option={item.option}
         />
       )}

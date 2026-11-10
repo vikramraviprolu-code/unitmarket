@@ -221,7 +221,8 @@ import {
 } from '@umsbx/fx';
 import type { ConvertResult, FetchedRates, FxCurrency, FxRates, RefreshResult } from '@umsbx/fx';
 import { requestApproval } from '@umsbx/approval';
-import { activeRows, addRuleSetting, listRuleHistory } from '@umsbx/rules';
+import { activeRows, addRuleSetting, listRuleHistory, resolveTerms } from '@umsbx/rules';
+import { DEFAULT_ACCESS_DAYS } from './src/lib/format';
 import type {
   RuleHistoryFilter,
   RuleSettingInput,
@@ -766,7 +767,12 @@ export interface ReaderMeta {
   publisher: string;
   option: string;
   environment: EnvironmentLabel;
-  window: { state: string; ends_at: string | null; days_left: number | null };
+  window: {
+    state: string;
+    started_at: string | null;
+    ends_at: string | null;
+    days_left: number | null;
+  };
 }
 export type ReaderViewResult =
   | ({ ok: true; kind: 'text'; paragraphs: string[] } & ReaderMeta)
@@ -1286,6 +1292,12 @@ export interface Engine {
   rules: {
     activeRows(ctx: RulesContext, at: string): Promise<RuleSettingRow[]>;
   };
+  /**
+   * JR-1: the access window in force on the platform now, in days: the platform rows resolved with the link to
+   * the refund window (`access.window` is never below `refund.request_window`). Pages print this so the words
+   * and the setting cannot drift. Never throws: on any error or an unusable result it is DEFAULT_ACCESS_DAYS.
+   */
+  platformAccessDays(): Promise<number>;
   /**
    * POB-M1 (D-089): one payout pass now (create what is due, send it). The same rule as the job loop: with the
    * paypal_outbound switch off no port is given, so payouts are created and none is sent. Rejects with MaintenanceError in
@@ -3063,6 +3075,21 @@ function buildApp(config: Config, opts: AppOptions): App {
       activeRows: (ctx, at) => activeRows(db, ctx, at),
     },
 
+    async platformAccessDays() {
+      try {
+        const now = clock.now().toISOString();
+        const ctx: RulesContext = { seller_id: '', buyer_id: '', category: null };
+        const resolved = resolveTerms(ctx, await activeRows(db, ctx, now), now);
+        if (!resolved.ok) return DEFAULT_ACCESS_DAYS;
+        const days = resolved.value.values['access.window'];
+        return typeof days === 'number' && Number.isInteger(days) && days >= 1
+          ? days
+          : DEFAULT_ACCESS_DAYS;
+      } catch {
+        return DEFAULT_ACCESS_DAYS;
+      }
+    },
+
     async runPayouts() {
       if (maintenance) throw new MaintenanceError();
       await open();
@@ -3569,6 +3596,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         environment: item.environment,
         window: {
           state: item.window.state,
+          started_at: item.window.started_at,
           ends_at: item.window.ends_at,
           days_left: item.window.days_left,
         },

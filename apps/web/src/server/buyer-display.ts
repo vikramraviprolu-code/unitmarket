@@ -54,23 +54,32 @@ export async function refreshRatesOnce(
  * The display for one request. Call it once per request that renders a price.
  * `currencies` names the seller currencies the page will show: when none of them differs from the buyer's
  * display currency nothing is fetched or read. `refresh: false` is for a request that already refreshed.
+ * A null actor (signed out) gets USD from the stored rate only and never refreshes it.
  */
 export async function buyerDisplay(
   engine: DisplayEngine,
   actor: Actor | null,
   opts: { currencies?: readonly string[]; refresh?: boolean; deadline_ms?: number } = {},
 ): Promise<BuyerDisplay> {
-  if (actor === null || actor.kind !== 'buyer') return NOTHING;
+  // JR-1: a signed-out visitor is led in USD from the stored rate. No refresh for anonymous traffic: it
+  // must never cause an outbound call. Publishers and operators keep the seller currency alone.
+  const anonymous = actor === null;
+  if (actor !== null && actor.kind !== 'buyer') return NOTHING;
   try {
-    const settings = await engine.displayCurrency.get(actor);
-    if (settings === null) return NOTHING;
-    const target = effectiveDisplayCurrency(settings.country, settings.chosen);
+    let target: DisplayCurrency | null;
+    if (actor === null) {
+      target = 'USD';
+    } else {
+      const settings = await engine.displayCurrency.get(actor);
+      if (settings === null) return NOTHING;
+      target = effectiveDisplayCurrency(settings.country, settings.chosen);
+    }
     if (target === null) return NOTHING;
     const wanted = opts.currencies;
     if (wanted !== undefined && !wanted.some((c) => c !== target && isDisplayCurrency(c))) {
       return { target, view: plain };
     }
-    if (opts.refresh !== false) await refreshRatesOnce(engine, opts.deadline_ms);
+    if (!anonymous && opts.refresh !== false) await refreshRatesOnce(engine, opts.deadline_ms);
     const rates = await Promise.resolve()
       .then(() => engine.fx.getRates())
       .catch(() => null);

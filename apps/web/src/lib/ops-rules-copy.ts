@@ -47,6 +47,15 @@ export const COL_BUYERS = 'Buyer overrides';
 export const COL_LAST = 'Last change';
 
 export const SOURCE_DEFAULT_NOTE = 'Platform default';
+/**
+ * JR-1: the access window the engine really sells can be higher than the row above it, because it is never below
+ * the refund window. When it differs, one extra line says so; otherwise nothing.
+ */
+export const inForceLine = (inForce: number, shown: number): string | null =>
+  inForce === shown
+    ? null
+    : `In force now: ${daysText(inForce)} (raised to match the refund window)`;
+
 export const NO_CHANGE_YET = 'No change yet. The platform default applies.';
 
 /** The last change of a rule: when, who (only when the viewer has the authenticator code) and why. */

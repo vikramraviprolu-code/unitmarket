@@ -30,7 +30,9 @@ test.describe('legal pages (LEGAL-A)', () => {
       expect(res?.status()).toBe(200);
       await expect(page.getByRole('heading', { level: 1, name: doc.title })).toBeVisible();
       const banner = page.getByTestId('legal-banner');
-      await expect(banner).toContainText('Draft for owner approval. This is not legal advice.');
+      await expect(banner).toContainText(
+        'Final terms for this sandbox demo. This is not legal advice.',
+      );
       await expect(banner).toContainText('This is a test build. No real money moves.');
       // The page is real text, not an empty shell.
       expect(

@@ -172,6 +172,7 @@ export async function readBuyerHome(buyer_id: string): Promise<BuyerHomeRead> {
       title: e.title,
       publisher: e.publisher,
       days_left: e.window.days_left,
+      ends_at: e.window.ends_at,
     }));
   return { pending, reading, caps, recent: recent.lines };
 }

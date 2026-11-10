@@ -15,10 +15,15 @@ const read = (rel: string): string => readFileSync(new URL(rel, import.meta.url)
 const strip = (s: string): string => s.replace(/\/\/.*$/gm, '');
 
 const ROUTES = [
-  { slug: 'terms', href: '/legal/terms', constant: 'TERMS_DOC' },
+  { slug: 'terms', href: '/legal/terms', constant: 'TERMS_DOC', live: 'termsDoc(days)' },
   { slug: 'privacy', href: '/legal/privacy', constant: 'PRIVACY_DOC' },
   { slug: 'refunds', href: '/legal/refunds', constant: 'REFUNDS_DOC' },
-  { slug: 'publisher-terms', href: '/legal/publisher-terms', constant: 'PUBLISHER_TERMS_DOC' },
+  {
+    slug: 'publisher-terms',
+    href: '/legal/publisher-terms',
+    constant: 'PUBLISHER_TERMS_DOC',
+    live: 'publisherTermsDoc(days)',
+  },
 ] as const;
 
 describe('the four legal routes (LEGAL-A)', () => {
@@ -28,17 +33,27 @@ describe('the four legal routes (LEGAL-A)', () => {
       const code = strip(src);
       expect(code).toMatch(/export default (async )?function/);
       expect(code).toContain('<LegalPage');
-      expect(code).toMatch(new RegExp(`doc=\\{${r.constant}\\}`));
+      // JR-1: the two pages that name the access window read it live (engine.platformAccessDays); the
+      // others render their constant.
+      const live = 'live' in r ? r.live : null;
+      if (live === null) expect(code).toMatch(new RegExp(`doc=\\{${r.constant}\\}`));
+      else {
+        expect(code).toContain(`doc={${live}}`);
+        expect(code).toContain('platformAccessDays()');
+      }
       expect(code).toMatch(/from\s+'[./]+\/ui\/LegalPage'/);
       expect(code).toMatch(/from\s+'[./]+\/lib\/legal-copy'/);
       expect(code).toContain('export const metadata');
-      // static: no client code, no data access, no cookies
+      // no client code, no cookies, no redirects; only the live pages may touch the server, and only
+      // through server/access
       expect(code).not.toMatch(/'use client'/);
       expect(code).not.toMatch(/useState|useEffect|fetch\(|cookies|headers|redirect|notFound/);
       for (const m of code.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
-        expect(m[1], m[0]).not.toMatch(
-          /server|composition|@umsbx\/(db|payments|paypal)|access|session/,
-        );
+        const allowed = live !== null && /\/server\/access$/.test(m[1]!);
+        if (!allowed)
+          expect(m[1], m[0]).not.toMatch(
+            /server|composition|@umsbx\/(db|payments|paypal)|access|session/,
+          );
       }
     });
 
@@ -78,7 +93,7 @@ describe('LegalPage renders the banner, the sandbox line and every section', () 
   });
 
   it('puts the banner and the sandbox line in the copy module', () => {
-    expect(LEGAL_BANNER).toBe('Draft for owner approval. This is not legal advice.');
+    expect(LEGAL_BANNER).toBe('Final terms for this sandbox demo. This is not legal advice.');
     expect(LEGAL_SANDBOX_LINE).toMatch(/test build/);
     expect(LEGAL_SANDBOX_LINE).toMatch(/no real money moves/i);
   });

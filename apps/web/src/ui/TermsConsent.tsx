@@ -10,12 +10,15 @@ export function TermsConsent({
   checked,
   onChange,
   rights,
+  days,
 }: {
   id: string;
   label: string;
   checked: boolean;
   onChange: (next: boolean) => void;
   rights?: Rights | readonly Rights[];
+  /** JR-1: the access window in force now; without it the registry default. */
+  days?: number;
 }) {
   const termsId = `${id}-text`;
   return (
@@ -23,7 +26,7 @@ export function TermsConsent({
       <details className="terms-more" open>
         <summary>{TERMS_SUMMARY}</summary>
         <ul id={termsId}>
-          {termsPoints(rights).map((t) => (
+          {termsPoints(rights, days).map((t) => (
             <li key={t}>{t}</li>
           ))}
         </ul>

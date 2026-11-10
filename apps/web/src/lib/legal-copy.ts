@@ -4,8 +4,9 @@
 // characters and no italics (owner style rule). Dates are fixed strings, never computed.
 
 import { CONTACT_ADDRESS } from './account-copy';
+import { DEFAULT_ACCESS_DAYS } from './format';
 
-export const LEGAL_BANNER = 'Draft for owner approval. This is not legal advice.';
+export const LEGAL_BANNER = 'Final terms for this sandbox demo. This is not legal advice.';
 export const LEGAL_SANDBOX_LINE =
   "This is a test build. No real money moves. Payments use PayPal's sandbox with test money, or, in a dry run, nothing contacts PayPal at all.";
 
@@ -24,13 +25,14 @@ export interface LegalDoc {
   readonly sections: readonly LegalSection[];
 }
 
-const UPDATED = 'Drafted 30 October 2026';
+const UPDATED = 'Updated 10 November 2026';
 
 // AGREE-1: the version of the publisher terms the seeded acceptance record names. One source: bump it when
 // the publisher terms change and every record that names an older version shows as changed, not re-accepted.
 export const PUBLISHER_TERMS_VERSION = 'v1';
 
-export const TERMS_DOC: LegalDoc = {
+/** The days are the access window in force (engine.platformAccessDays); the default is the registry's. */
+export const termsDoc = (days: number = DEFAULT_ACCESS_DAYS): LegalDoc => ({
   slug: 'terms',
   href: '/legal/terms',
   title: 'Terms of purchase',
@@ -41,7 +43,7 @@ export const TERMS_DOC: LegalDoc = {
     {
       heading: 'About these terms',
       paragraphs: [
-        'These terms say what you agree to when you buy a unit on UnitMarket. They are a draft written for the owners of this demo to read and approve. They are not legal advice, and they may change before the demo is submitted.',
+        "These terms say what you agree to when you buy a unit on UnitMarket. They are the final terms for this sandbox demo. They are not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.",
       ],
     },
     {
@@ -59,7 +61,7 @@ export const TERMS_DOC: LegalDoc = {
     {
       heading: 'How long you have access',
       paragraphs: [
-        'Access lasts five days from verified payment and ready delivery. The five days start once your payment is verified and the content is ready to deliver, whichever happens later. If we detect a delivery failure on our side, the lost time is credited back once delivery works again.',
+        `Access lasts ${days} days from verified payment and ready delivery. The ${days} days start once your payment is verified and the content is ready to deliver, whichever happens later. If we detect a delivery failure on our side, the lost time is credited back once delivery works again.`,
         'Access to a unit ends early if a full refund is made for that unit. The refund policy explains how refunds work.',
       ],
     },
@@ -82,7 +84,8 @@ export const TERMS_DOC: LegalDoc = {
       ],
     },
   ],
-};
+});
+export const TERMS_DOC: LegalDoc = termsDoc();
 
 export const PRIVACY_DOC: LegalDoc = {
   slug: 'privacy',
@@ -95,7 +98,7 @@ export const PRIVACY_DOC: LegalDoc = {
     {
       heading: 'About this notice',
       paragraphs: [
-        'This notice says what data this demo processes and why. It is a draft written for the owners to read and approve. It is not legal advice, and it may change before the demo is submitted.',
+        "This notice says what data this demo processes and why. It is the final notice for this sandbox demo. It is not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.",
       ],
     },
     {
@@ -165,7 +168,7 @@ export const REFUNDS_DOC: LegalDoc = {
     {
       heading: 'About this policy',
       paragraphs: [
-        'This policy says how refunds work in this demo. It is a draft written for the owners to read and approve. It is not legal advice, and it may change before the demo is submitted.',
+        "This policy says how refunds work in this demo. It is the final policy for this sandbox demo. It is not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.",
       ],
     },
     {
@@ -201,7 +204,8 @@ export const REFUNDS_DOC: LegalDoc = {
   ],
 };
 
-export const PUBLISHER_TERMS_DOC: LegalDoc = {
+/** The days are the access window in force (engine.platformAccessDays); the default is the registry's. */
+export const publisherTermsDoc = (days: number = DEFAULT_ACCESS_DAYS): LegalDoc => ({
   slug: 'publisher-terms',
   href: '/legal/publisher-terms',
   title: 'Publisher terms and sandbox disclaimer',
@@ -212,7 +216,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     {
       heading: 'About these terms',
       paragraphs: [
-        'These terms say what publishers can expect in this demo. They are a draft written for the owners to read and approve. They are not legal advice, and they may change before the demo is submitted. They describe only what the demo does today.',
+        "These terms say what publishers can expect in this demo. They are the final terms for this sandbox demo. They are not legal advice. No real money moves: payments use PayPal's sandbox or a dry run. They describe only what the demo does today.",
       ],
     },
     {
@@ -237,7 +241,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     {
       heading: 'What buyers get',
       paragraphs: [
-        'A buyer gets personal use access to the article for the window shown on the offer, which is five days from verified payment and ready delivery. A buyer may not copy it for others, resell it or share the access. A copy a buyer has already downloaded cannot be recalled.',
+        `A buyer gets personal use access to the article for the window shown on the offer, which is ${days} days from verified payment and ready delivery. A buyer may not copy it for others, resell it or share the access. A copy a buyer has already downloaded cannot be recalled.`,
       ],
     },
     {
@@ -309,14 +313,16 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
       ],
     },
   ],
-};
+});
+export const PUBLISHER_TERMS_DOC: LegalDoc = publisherTermsDoc();
 
-export const LEGAL_DOCS: readonly LegalDoc[] = [
-  TERMS_DOC,
+export const legalDocs = (days: number = DEFAULT_ACCESS_DAYS): readonly LegalDoc[] => [
+  termsDoc(days),
   PRIVACY_DOC,
   REFUNDS_DOC,
-  PUBLISHER_TERMS_DOC,
+  publisherTermsDoc(days),
 ];
+export const LEGAL_DOCS: readonly LegalDoc[] = legalDocs();
 
 // Footer link labels, keyed by slug (the hrefs are written out in app/layout.tsx).
 export const LEGAL_NAV: Readonly<Record<LegalDoc['slug'], string>> = {

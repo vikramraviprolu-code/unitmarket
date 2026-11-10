@@ -53,6 +53,7 @@ export function FitCard({
   display,
   ceilingLine,
   option,
+  days,
   onChoose,
 }: {
   card: FitCardData;
@@ -64,6 +65,8 @@ export function FitCard({
   /** MC2-L5: the ceiling and the converted price the agent compared, worded by the server, when it converted. */
   ceilingLine?: string;
   option: AccessOption;
+  /** JR-1: the access window in force now; without it the registry default. */
+  days?: number;
   onChoose: () => void;
 }) {
   const shown = display ?? priceView(price, null);
@@ -85,7 +88,7 @@ export function FitCard({
           </p>
           {shown.binding !== null ? <p className="muted binding-line">{shown.binding}</p> : null}
           {ceilingLine !== undefined ? <p className="muted ceiling-line">{ceilingLine}</p> : null}
-          <p className="muted access-days">{accessDaysLine(option)}</p>
+          <p className="muted access-days">{accessDaysLine(option, days)}</p>
         </header>
         {assessed.length > 0 ? (
           <ul className="fit-rows">

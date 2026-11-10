@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { CONTACT_ADDRESS } from './lib/account-copy';
+import { DEFAULT_ACCESS_DAYS } from './lib/format';
 import {
   LEGAL_BANNER,
   LEGAL_DOCS,
@@ -52,7 +53,7 @@ describe('legal copy rules', () => {
       expect(d.banner, d.href).toBe(LEGAL_BANNER);
       expect(d.sandbox, d.href).toBe(LEGAL_SANDBOX_LINE);
     }
-    expect(LEGAL_BANNER).toBe('Draft for owner approval. This is not legal advice.');
+    expect(LEGAL_BANNER).toBe('Final terms for this sandbox demo. This is not legal advice.');
   });
 
   it('has no italics markup', () => {
@@ -89,24 +90,25 @@ describe('legal copy rules', () => {
     }
   });
 
-  it('says plainly: not legal advice, test build, test money, draft for owner approval', () => {
+  it('says plainly: not legal advice, test build, test money, final for the sandbox demo', () => {
     const joined = allText().join('\n');
     expect(joined).toMatch(/not legal advice/i);
     expect(joined).toMatch(/test build/i);
     expect(joined).toMatch(/dry run/i);
     expect(joined).toMatch(/test money/i);
-    expect(joined).toMatch(/draft/i);
+    expect(joined).toMatch(/final terms for this sandbox demo/i);
+    expect(joined).not.toMatch(/\bdraft/i);
   });
 
   it('keeps the dates as fixed strings, not computed', () => {
-    for (const d of LEGAL_DOCS) expect(d.updated).toMatch(/^Drafted \d{1,2} [A-Z][a-z]+ \d{4}$/);
+    for (const d of LEGAL_DOCS) expect(d.updated).toMatch(/^Updated \d{1,2} [A-Z][a-z]+ \d{4}$/);
   });
 
-  it('terms: unit, personal use, five days, 15 minutes, one PayPal payment per publisher', () => {
+  it('terms: unit, personal use, access days, 15 minutes, one PayPal payment per publisher', () => {
     const t = flat('terms');
     expect(t).toMatch(/personal use/i);
     expect(t).toMatch(/redistribut/i);
-    expect(t).toMatch(/five days/i);
+    expect(t).toContain(`${DEFAULT_ACCESS_DAYS} days`);
     expect(t).toMatch(/verified payment/i);
     expect(t).toMatch(/15 minutes/);
     expect(t).toMatch(/one PayPal payment for each publisher/i);
