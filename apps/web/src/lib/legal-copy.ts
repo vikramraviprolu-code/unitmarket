@@ -6,7 +6,7 @@
 import { CONTACT_ADDRESS } from './account-copy';
 import { DEFAULT_ACCESS_DAYS } from './format';
 
-export const LEGAL_BANNER = 'Draft for owner approval. This is not legal advice.';
+export const LEGAL_BANNER = 'Final terms for this sandbox demo. This is not legal advice.';
 export const LEGAL_SANDBOX_LINE =
   "This is a test build. No real money moves. Payments use PayPal's sandbox with test money, or, in a dry run, nothing contacts PayPal at all.";
 
@@ -25,7 +25,7 @@ export interface LegalDoc {
   readonly sections: readonly LegalSection[];
 }
 
-const UPDATED = 'Drafted 30 October 2026';
+const UPDATED = 'Updated 10 November 2026';
 
 // AGREE-1: the version of the publisher terms the seeded acceptance record names. One source: bump it when
 // the publisher terms change and every record that names an older version shows as changed, not re-accepted.

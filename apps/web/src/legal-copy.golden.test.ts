@@ -90,17 +90,18 @@ describe('legal copy rules', () => {
     }
   });
 
-  it('says plainly: not legal advice, test build, test money, draft for owner approval', () => {
+  it('says plainly: not legal advice, test build, test money, final for the sandbox demo', () => {
     const joined = allText().join('\n');
     expect(joined).toMatch(/not legal advice/i);
     expect(joined).toMatch(/test build/i);
     expect(joined).toMatch(/dry run/i);
     expect(joined).toMatch(/test money/i);
-    expect(joined).toMatch(/draft/i);
+    expect(joined).toMatch(/final terms for this sandbox demo/i);
+    expect(joined).not.toMatch(/\bdraft/i);
   });
 
   it('keeps the dates as fixed strings, not computed', () => {
-    for (const d of LEGAL_DOCS) expect(d.updated).toMatch(/^Drafted \d{1,2} [A-Z][a-z]+ \d{4}$/);
+    for (const d of LEGAL_DOCS) expect(d.updated).toMatch(/^Updated \d{1,2} [A-Z][a-z]+ \d{4}$/);
   });
 
   it('terms: unit, personal use, access days, 15 minutes, one PayPal payment per publisher', () => {

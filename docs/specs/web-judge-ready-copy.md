@@ -15,6 +15,7 @@ Inputs: `packages/contracts` RULES_REGISTRY (read only), `apps/web/src/lib/*`, `
 `apps/web/src/server/buyer-display.ts`, `apps/web/src/composition/buyer.ts`, the order page, the CSS files below.
 
 Outputs (only these files, plus their tests and golden files):
+
 - `apps/web/src/app/page.tsx` (hero line from DEFAULT_ACCESS_DAYS; anonymous USD lead)
 - `apps/web/src/lib/legal-copy.ts` (days from DEFAULT_ACCESS_DAYS; final, sandbox-only intro on all four docs)
 - `apps/web/src/lib/buyer-copy.ts`, `apps/web/src/lib/account-copy.ts` (days from DEFAULT_ACCESS_DAYS)
@@ -25,6 +26,7 @@ Outputs (only these files, plus their tests and golden files):
 - `apps/web/src/ui/shell/shell.css` (phone bar labels wrap to two lines, no ellipsis)
 
 Acceptance tests:
+
 1. `grep -rniE "five days|5 days of access" apps/web/src --include=*.ts --include=*.tsx | grep -v test` prints nothing.
 2. `grep -rn "may change before the demo" apps/web/src | grep -v test` prints nothing.
 3. `corepack pnpm vitest run apps/web/src/legal-copy.golden.test.ts apps/web/src/buyer-home-view` and the new tests pass;
@@ -37,3 +39,13 @@ Do not: touch other packages; change contracts, rules, migrations or stored data
 claim the search is AI.
 Evidence for the PR: red run, green run, full suite summary, grep outputs 1 and 2.
 Branch: claude/project-thread-7zaf37 Commit: fix(web): judge-ready copy and layout (JR-1)
+
+## Amendments (owner, 10 Nov 2026)
+
+- 17:28Z: pages read the live setting, not a constant. `Engine.platformAccessDays()` in `apps/web/composition.server.ts`
+  resolves the platform rules (`activeRows` + `resolveTerms`) and falls back to `DEFAULT_ACCESS_DAYS` on any error. The
+  pages and components that print the window pass it into the copy. `/ops/rules` shows the in-force value when the
+  link to the refund window raises it.
+- 17:36Z: `apps/web/src/copy-settings-drift.test.ts` fails if a number in the copy differs from its source (access
+  window, price hold, invite code, skin cookie, PayPal sitting, switch delay, fee range, agent cap).
+- Legal banner and date line read as final ("Final terms for this sandbox demo", "Updated 10 November 2026").
