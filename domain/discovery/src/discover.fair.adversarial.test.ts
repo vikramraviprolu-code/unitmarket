@@ -222,15 +222,18 @@ describe('metacharacters and oversize input', () => {
   });
 
   it('a 2,000-character need gives at most 12 words and one model call', async () => {
-    const db = await world(['p1', 'p2']);
+    const db = await world(['p1', 'p2', 'p3', 'p4']);
     const letters = 'abcdefghijklmnopqrstuvwxyz'.split('').map((c) => c.repeat(3));
     await addOffers(db, { pub: 'p1', prefix: 'p1', n: 1, title: 'aaa' });
     await addOffers(db, { pub: 'p2', prefix: 'p2', n: 1, title: 'zzz' });
+    await addOffers(db, { pub: 'p3', prefix: 'p3', n: 1, title: 'mmm' });
+    await addOffers(db, { pub: 'p4', prefix: 'p4', n: 1, title: 'lll' });
     let need = '';
     while (need.length < 2000) need += `${letters.join(' ')} `;
     const { ids, calls } = await candidates(db, { need: need.slice(0, 2000), terms: [] });
     expect(calls).toBe(1);
-    expect(ids).toEqual(['ofr_p1_0001']);
+    // The 12th word (lll) is used, the 13th (mmm) and the 26th (zzz) are not.
+    expect(ids).toEqual(['ofr_p1_0001', 'ofr_p4_0001']);
   });
 });
 

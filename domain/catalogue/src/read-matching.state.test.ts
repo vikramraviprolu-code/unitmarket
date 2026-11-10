@@ -331,3 +331,23 @@ describe('words', () => {
     expect(await ids(['Straße'])).toEqual(['ofr_wi_0001']);
   });
 });
+
+describe('word dedupe and the hard limit', () => {
+  it('counts a word once even when it is given twice in different case', async () => {
+    const rows = await listAuthorisedOffersMatching(db, {
+      corridor_id: 'us-usd',
+      words: ['scoreword', 'SCOREWORD', 'scoreword'],
+      per_publisher: 1,
+      limit: 1,
+    });
+    expect(rows.map((r) => r.score)).toEqual([2]);
+  });
+
+  it('caps limit at 500 even when more match', async () => {
+    for (let k = 0; k < 11; k++) {
+      await addPublisher(db, `h${k}`);
+      await addOffers(db, { pub: `h${k}`, prefix: `h${k}x`, n: 50, title: 'Hugeword {i}' });
+    }
+    expect((await ids(['hugeword'], { per_publisher: 50, limit: 9999 })).length).toBe(500);
+  }, 60_000);
+});

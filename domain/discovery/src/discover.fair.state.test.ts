@@ -238,6 +238,18 @@ describe('the five items are spread over publishers', () => {
   });
 });
 
+describe('the spread keeps exactly 3 per publisher', () => {
+  it('5 picks from P1 then one each from P2..P5 keep 3 P1, P2 and P3', async () => {
+    const m = pickingModel((ids) => [
+      ...firstOf(ids, 'p1', 5),
+      ...['p2', 'p3', 'p4', 'p5'].flatMap((p) => firstOf(ids, p, 1)),
+    ]);
+    const r = await run(db, m.model, NEED);
+    if (r.kind !== 'proposal') throw new Error('expected proposal');
+    expect(r.items.map((i) => i.publisher).sort()).toEqual(['P1', 'P1', 'P1', 'P2', 'P3']);
+  });
+});
+
 describe('a one-publisher world', () => {
   it('5 picks of one publisher still give 5 items', async () => {
     const solo = await seededDb(emptyCatalogue());
