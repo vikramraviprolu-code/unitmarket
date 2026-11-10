@@ -14,6 +14,7 @@ import {
   vouchDomain,
 } from './domain-proof';
 import { runNextBatch, startVerifiedImport } from './import-stage';
+import type { ImportFetcherPort } from './import-types';
 import {
   SHOP,
   SHOP_HOST,
@@ -409,6 +410,25 @@ describe('C. removing an address', () => {
     expect(await auditRows(w.db, 'domain.removed')).toEqual([
       expect.objectContaining({ actor_kind: 'operator', reason: 'Site is gone' }),
     ]);
+  });
+
+  it('an address removed during the proof fetch at import start never gets a batch', async () => {
+    const w = await fresh();
+    await verified(w);
+    let removed = false;
+    const racing: ImportFetcherPort = {
+      fetch: async (url, o) => {
+        if (!removed) {
+          removed = true;
+          expect((await removeDomain(w.idep(), w.harbour, { host: SHOP_HOST })).ok).toBe(true);
+        }
+        return w.web.fetch(url, o);
+      },
+    };
+    expect(
+      await startVerifiedImport(w.idep({ fetcher: racing }), w.harbour, { source_url: SOURCE_URL }),
+    ).toEqual({ ok: false, error: { code: 'domain_not_verified' } });
+    expect(await countOf(w.db, 'SELECT count(*) AS c FROM import_batches')).toBe(0);
   });
 
   it('removal is refused while an import from that address is queued or running', async () => {
