@@ -5,7 +5,7 @@
 # if a secret name or value shows up in this file.
 #
 # Offline mode: the app uses its recorded and synthetic data, keeps everything in memory and has no
-# PayPal account, no PayPal secret and no database. UMS_PAYPAL_CONNECT is off, as in service.yaml, and
+# PayPal account, no PayPal secret and no database. UMS_PAYPAL_CONNECT is off (service.yaml has on), and
 # the guard refuses any other value. NEXT_PUBLIC_UMS_ENV_LABEL is left out on purpose: the screens show
 # Dry run from the stored environment, not from a string set here.
 NODE_ENV: 'production'

@@ -1,5 +1,5 @@
 import type { Database, SwitchName, SwitchReader } from '@umsbx/contracts';
-import { reservedToday } from './budget';
+import { MATCHES_REF, reservedToday } from './budget';
 
 /**
  * RLR-3: every AI call site asks this before it runs the model. A missing row or a failed read
@@ -51,20 +51,23 @@ export async function readSafetyStatus(
   let budget: SafetyStatus['budget'] = null;
   if (approval_ref !== null && approval_ref !== '') {
     const a = await db.query<{
+      approval_ref: string;
       operations: string[];
       max_amount_minor: number | string;
       max_calls_per_day: number;
       valid_until: Date | string;
     }>(
-      `SELECT operations, max_amount_minor, max_calls_per_day, valid_until
-         FROM outbound_approvals WHERE approval_ref = $1 AND valid_until > $2`,
+      `SELECT approval_ref, operations, max_amount_minor, max_calls_per_day, valid_until
+         FROM outbound_approvals WHERE ${MATCHES_REF} AND valid_until > $2
+        ORDER BY valid_until DESC, approval_ref DESC LIMIT 1`,
       [approval_ref, now.toISOString()],
     );
     const row = a.rows[0];
     if (row !== undefined) {
-      const used = await reservedToday(db, approval_ref, now);
+      // OPS-SW: the row found may be a console sitting under the configured reference.
+      const used = await reservedToday(db, row.approval_ref, now);
       budget = {
-        approval_ref,
+        approval_ref: row.approval_ref,
         operations: row.operations,
         max_amount_minor: Number(row.max_amount_minor),
         max_calls_per_day: row.max_calls_per_day,

@@ -21,7 +21,17 @@ export const OPS_START_LEDE =
 export const OPS_START_NEEDS_CODE = 'Sign in with your authenticator code to start PayPal.';
 export const OPS_START_ALREADY_ON = 'PayPal calls are already on, so there is nothing to start.';
 export const OPS_START_NO_APPROVAL =
-  'There is no active approval, so PayPal cannot be started from here. The owner adds one at their own terminal.';
+  'There is no active approval, so PayPal cannot be started yet. Open a PayPal sitting first.';
+// OPS-SW (D-120): opening a sitting from Controls, with the D-094 ceiling fixed in code.
+export const OPS_SITTING_HEADING = 'Open a PayPal sitting';
+export const OPS_SITTING_LEDE =
+  'Allows PayPal sandbox calls for up to four hours: checkout operations only, at most $5.00 per order and 40 calls. Then press Start PayPal.';
+export const OPS_SITTING_REASON_LABEL = 'Why are you opening it?';
+export const OPS_SITTING_BUTTON = 'Open sitting';
+export const OPS_SITTING_ERROR_TITLE = 'The sitting was not opened';
+export function sittingDoneText(r: { valid_until: string; max_calls: number }): string {
+  return `Sitting open until ${r.valid_until.slice(11, 16)} UTC, ${r.max_calls} calls. Start PayPal is now below.`;
+}
 export const OPS_CONNECT_FLAG_OFF =
   'The connection flag is off. No PayPal call goes out until the owners turn it on in Cloud Run.';
 export const OPS_START_DONE = 'PayPal calls are on (in force within 5 seconds).';
@@ -63,7 +73,7 @@ export function startRefusalText(code: string): string {
     case 'operator_required':
       return 'This account cannot start PayPal. Only an operator who signed in with the authenticator code can.';
     case 'no_active_approval':
-      return 'There is no active approval for this app, or it has ended. The owner adds a new one at their own terminal.';
+      return 'There is no active approval for this app, or it has ended. Open a new PayPal sitting on Controls.';
     case 'scope_mismatch':
       return 'The active approval is for a different scope than this app serves, so PayPal was not started.';
     case 'budget_used_up':

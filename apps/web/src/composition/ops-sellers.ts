@@ -30,6 +30,8 @@ export interface OpsPublishersRead {
   agreements: Listed<Awaited<ReturnType<Engine['opsAgreements']['list']>>>['agreements'];
   /** POB-P1: who can sign in. Needs the second factor, so it is empty for an operator without the code. */
   access: Listed<Awaited<ReturnType<Engine['opsPublisherAccess']['list']>>>['rows'];
+  /** DOMAIN-PROOF-2: the web addresses of every publisher (no code), for the vouch and remove buttons. */
+  domains: Listed<Awaited<ReturnType<Engine['opsDomains']['list']>>>['domains'];
   /** True when the session has the authenticator code, so the page can switch its buttons on. */
   mfa: boolean;
 }
@@ -41,7 +43,8 @@ export async function readOpsPublishers(actor: Actor): Promise<OpsPublishersRead
   const pubs = await e.opsPublishers.list(actor);
   const apps = await e.opsApplicants.list(actor);
   const agr = await e.opsAgreements.list(actor);
-  if (!pubs.ok || !apps.ok || !agr.ok) return null;
+  const doms = await e.opsDomains.list(actor);
+  if (!pubs.ok || !apps.ok || !agr.ok || !doms.ok) return null;
   // The access list needs the second factor; without the code the queue is still read and the rows stay empty.
   let access: OpsPublishersRead['access'] = [];
   if (actor.mfa === true) {
@@ -56,6 +59,7 @@ export async function readOpsPublishers(actor: Actor): Promise<OpsPublishersRead
     applicants: apps.value.applicants,
     agreements: agr.value.agreements,
     access,
+    domains: doms.value.domains,
     mfa: actor.mfa === true,
   };
 }

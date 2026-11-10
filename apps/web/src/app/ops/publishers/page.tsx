@@ -27,6 +27,12 @@ import {
   PUBLISHERS_EMPTY,
   PUBLISHERS_HEADING,
   PUBLISHERS_LEDE,
+  OPS_ADDRESS_PENDING,
+  OPS_ADDRESS_PROVED,
+  OPS_ADDRESS_VOUCHED,
+  OPS_DOMAINS_EMPTY,
+  OPS_DOMAINS_HEADING,
+  OPS_VOUCH_HINT,
   REACTIVATE_HINT,
   SUSPEND_HINT,
   countAmountText,
@@ -84,6 +90,7 @@ import {
 import { StatusForm } from './StatusForm';
 import { AddApplicantForm, DecideApplicantForm } from './ApplicantForms';
 import { AccessForm, VerifyLinkForm } from './AccessForms';
+import { DomainForms } from './DomainForms';
 
 export const metadata: Metadata = { title: 'Publishers' };
 
@@ -332,6 +339,42 @@ export default async function OpsPublishers() {
                   <dd>{offersText(p.offers_live)}</dd>
                 </dl>
                 <PublisherTermsLine agreement={agreement} />
+                <h3 className="pk-sub">{OPS_DOMAINS_HEADING}</h3>
+                {(() => {
+                  const own = read.domains.filter((d) => d.publisher_id === p.publisher_id);
+                  return own.length === 0 ? (
+                    <p className="muted" data-testid="domains-empty">
+                      {OPS_DOMAINS_EMPTY}
+                    </p>
+                  ) : (
+                    <>
+                      <p className="muted">{OPS_VOUCH_HINT}</p>
+                      {own.map((d) => (
+                        <div key={d.id} className="pk-money" data-testid="domain-row">
+                          <p>
+                            <span className="mono">{d.host}</span>{' '}
+                            <Chip tone={d.state === 'verified' ? 'good' : 'warn'}>
+                              {d.state === 'pending'
+                                ? OPS_ADDRESS_PENDING
+                                : d.verified_by === 'operator'
+                                  ? OPS_ADDRESS_VOUCHED
+                                  : OPS_ADDRESS_PROVED}
+                            </Chip>
+                          </p>
+                          {d.vouch_reason !== null ? (
+                            <p className="muted">{reasonGivenText(d.vouch_reason)}</p>
+                          ) : null}
+                          <DomainForms
+                            domainId={d.id}
+                            host={d.host}
+                            pending={d.state === 'pending'}
+                            hasCode={mfa}
+                          />
+                        </div>
+                      ))}
+                    </>
+                  );
+                })()}
                 <h3 className="pk-sub">{LABEL_MONEY}</h3>
                 {p.by_currency.length === 0 ? (
                   <p className="muted">{NO_PAYMENTS}</p>

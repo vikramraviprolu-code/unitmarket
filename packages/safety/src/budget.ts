@@ -15,9 +15,16 @@ export function utcMidnight(now: Date): string {
   ).toISOString();
 }
 
-// The active approval row for a ref: valid_until strictly after now.
+// OPS-SW: a sitting opened from Operations Controls is stored under `<configured ref>~<UTC stamp>`, so the
+// configured reference (UMS_OUTBOUND_APPROVAL_REF) never has to change between sittings. `left()` and not
+// LIKE, so an underscore or a percent sign in the reference is matched literally.
+export const SITTING_SEP = '~';
+export const MATCHES_REF = `(approval_ref = $1 OR left(approval_ref, length($1) + 1) = $1 || '${SITTING_SEP}')`;
+
+// The active approval row for a ref (the ref itself or one of its console sittings): valid_until
+// strictly after now. If more than one is active, the one that runs longest wins.
 export async function findActiveApproval(
-  db: Database,
+  db: SqlExecutor,
   ref: string,
   now: Date,
 ): Promise<ApprovalRow | null> {
@@ -29,7 +36,8 @@ export async function findActiveApproval(
     max_calls_per_day: number;
   }>(
     `SELECT approval_ref, scope, operations, max_amount_minor, max_calls_per_day
-       FROM outbound_approvals WHERE approval_ref = $1 AND valid_until > $2`,
+       FROM outbound_approvals WHERE ${MATCHES_REF} AND valid_until > $2
+      ORDER BY valid_until DESC, approval_ref DESC LIMIT 1`,
     [ref, now.toISOString()],
   );
   const row = r.rows[0];

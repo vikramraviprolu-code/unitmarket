@@ -12,6 +12,7 @@ import {
 import { StartButton } from './StartButton';
 import type { StartResult } from './StartButton';
 import { StopButton } from './StopButton';
+import { OpenSittingButton } from './OpenSittingButton';
 
 // The Start and Stop controls of the Kill switch block (WEB-OPS-START). Stop always renders (it is
 // idempotent and needs no code); Start is the form, or one sentence that says why it does not apply.
@@ -75,6 +76,11 @@ export function KillControls({
           </p>
         </div>
       )}
+      {view.start === 'no_approval' ? (
+        <div className="pk-panel oh-start">
+          <OpenSittingButton onOpened={() => router.refresh()} />
+        </div>
+      ) : null}
       <div className="pk-panel oh-stop" data-testid="ops-stop-form">
         <StopButton key={startGen} onStopped={onStopped} />
       </div>

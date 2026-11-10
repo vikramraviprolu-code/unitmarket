@@ -39,7 +39,7 @@ Simulation and fixture results prove the modelled cases only, not PayPal compati
 
 ## What works today
 
-Everything in this table is merged on `main`. The live build at the time of writing is tag `gcp-pub-16`, `main` at commit `3b079523` (Cloud Run revision `unitmarket-sandbox-00043-d6n`, deployed on 10 Nov 2026, `docs/decision-log.md` D-117).
+Everything in this table is merged on `main`. The live build at the time of writing is tag `gcp-pub-17`, `main` at commit `ea7bd701` (Cloud Run revision `unitmarket-sandbox-00044-pgs`, deployed on 10 Nov 2026, `docs/decision-log.md` D-119). `gcp-pub-17` adds to the web import one permanent proof code per publisher for all of its sites, operator vouching for an address (second factor and a reason, audited) and removal of an address (D-116).
 
 | Area                                   | State                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -141,7 +141,7 @@ corepack pnpm trace:verify         # checks the journal hash chain of the app's 
 corepack pnpm run ci               # every offline check, several minutes
 ```
 
-On the earlier commit `172e5c7a` the full offline run passed 5,275 unit, 4,047 state, 379 contract, 687 integration, 2,377 adversarial and 592 golden tests, plus 200 browser journeys and the trace check (verified on 9 Nov 2026). For `gcp-pub-16` only a lighter check was run before merge: 210 test files and 3,245 tests passed on a tree identical to the deployed commit `3b079523` (main combined with PRs 81 and 82), with typecheck, lint, fixtures, isolation, no-live-host, secrets-names and openapi checks passing; the full six suites and the browser gate were not run (D-117). Browser journeys and the trace check run offline on the dry run.
+On the earlier commit `172e5c7a` the full offline run passed 5,275 unit, 4,047 state, 379 contract, 687 integration, 2,377 adversarial and 592 golden tests, plus 200 browser journeys and the trace check (verified on 9 Nov 2026). For `gcp-pub-16` only a lighter check was run before merge: 210 test files and 3,245 tests passed on a tree identical to the deployed commit `3b079523` (main combined with PRs 81 and 82), with typecheck, lint, fixtures, isolation, no-live-host, secrets-names and openapi checks passing; the full six suites and the browser gate were not run (D-117). `gcp-pub-17` added one lane checked with its own 354 tests and the static checks (D-119). Browser journeys and the trace check run offline on the dry run.
 
 ## PayPal
 

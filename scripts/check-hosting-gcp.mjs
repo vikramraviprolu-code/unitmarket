@@ -245,7 +245,11 @@ function main() {
   for (const f of Object.keys(files)) {
     for (const l of lines[f]) {
       for (const m of l.raw.matchAll(/\bUMS_PAYPAL_CONNECT\s*[:=]\s*["']?([A-Za-z0-9_-]*)/g)) {
-        if (m[1] !== 'off')
+        // OPS-SW (D-120): service.yaml, and only that file, may carry 'on'. The approval row (opened from
+        // Operations Controls with the authenticator code, D-094 ceiling fixed in code) and the Start switch
+        // stay the per-sitting keys; every script, the offline service and cloud:down still set only off.
+        const allowOn = f === 'service.yaml' && /^UMS_PAYPAL_CONNECT: (?:'on'|"on")$/.test(l.raw);
+        if (m[1] !== 'off' && !allowOn)
           fail(
             'paypal-connect',
             `${f}:${l.no} sets UMS_PAYPAL_CONNECT to something other than off`,
@@ -259,10 +263,18 @@ function main() {
           );
     }
   }
-  // Each yaml must carry the connection flag, set to off (a missing line must not pass).
-  for (const y of YAMLS)
-    if (files[y] && !/^UMS_PAYPAL_CONNECT: (?:'off'|"off")$/m.test(files[y]))
-      fail('paypal-connect', `${y}: UMS_PAYPAL_CONNECT with the value off is missing`);
+  // Each yaml must carry the connection flag (a missing line must not pass): off, or on in service.yaml only.
+  for (const y of YAMLS) {
+    const want =
+      y === 'service.yaml'
+        ? /^UMS_PAYPAL_CONNECT: (?:'off'|"off"|'on'|"on")$/m
+        : /^UMS_PAYPAL_CONNECT: (?:'off'|"off")$/m;
+    if (files[y] && !want.test(files[y]))
+      fail(
+        'paypal-connect',
+        `${y}: UMS_PAYPAL_CONNECT with the value off${y === 'service.yaml' ? ' or on' : ''} is missing`,
+      );
+  }
 
   // ---- instance flags: counted over the code lines of the whole kit -------------------------------
   const code = [];
