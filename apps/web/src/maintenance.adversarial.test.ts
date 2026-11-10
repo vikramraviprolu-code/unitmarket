@@ -116,6 +116,7 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/ops/fee/route.ts': () => import('./app/api/ops/fee/route'),
   'api/ops/rules/export/route.ts': () => import('./app/api/ops/rules/export/route'),
   'api/ops/start/route.ts': () => import('./app/api/ops/start/route'),
+  'api/ops/sitting/route.ts': () => import('./app/api/ops/sitting/route'),
   'api/ops/stop/route.ts': () => import('./app/api/ops/stop/route'),
   'api/ops/activity/route.ts': () => import('./app/api/ops/activity/route'),
   'api/assist/query/route.ts': () => import('./app/api/assist/query/route'),

@@ -17,3 +17,5 @@ export type { SafetyStatus } from './status';
 export { reservedToday } from './budget';
 export type { SetSwitchError } from './switches';
 export { MAX_APPROVAL_VALIDITY_MS } from './cli-approve';
+export { SITTING_CEILING, openSitting } from './sitting';
+export type { SittingError } from './sitting';

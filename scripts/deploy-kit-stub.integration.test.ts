@@ -157,7 +157,7 @@ describe('INFRA-A deploy.sh against a stub gcloud', () => {
     expect(r.deploy).toContain(
       '--service-account=ums-runtime@ums-test-project.iam.gserviceaccount.com',
     );
-    expect(r.envFile).toContain("UMS_PAYPAL_CONNECT: 'off'");
+    expect(r.envFile).toContain("UMS_PAYPAL_CONNECT: 'on'");
     expect(r.buildConfig + r.out + r.calls.join('\n')).not.toContain('synthetic-token-for-test');
   });
 
@@ -252,11 +252,12 @@ describe('INFRA-A deploy.sh against a stub gcloud', () => {
     expect(secretsOf(r.deploy).join(',')).not.toContain('UMS_OFFER_MAX_MINOR');
   });
 
-  it('the connection ends off: the env file passed to the deploy sets it off, with every optional secret on', () => {
+  // OPS-SW (D-120): the connection comes from service.yaml, which carries on; no env flag can change it.
+  it('the connection comes only from the env file (on, D-120), with every optional secret on', () => {
     const r = run('deploy.sh', [...REQUIRED, ...OPTIONAL]);
     expect(r.status, r.out).toBe(0);
-    expect(r.envFile).toContain("UMS_PAYPAL_CONNECT: 'off'");
-    expect(r.envFile).not.toMatch(/UMS_PAYPAL_CONNECT: '(?!off')/);
+    expect(r.envFile).toContain("UMS_PAYPAL_CONNECT: 'on'");
+    expect(r.envFile).not.toMatch(/UMS_PAYPAL_CONNECT: '(?!on')/);
     expect(r.deploy).not.toMatch(/--(?:set|update)-env-vars/);
     expect(r.deploy).toContain('--min-instances=1');
     expect(r.deploy).toContain('--max-instances=1');

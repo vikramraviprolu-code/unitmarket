@@ -53,6 +53,9 @@ const MFA_ROUTES: Record<string, () => Promise<Record<string, Handler>>> = {
     import('../ops/api-exposure/[group]/off/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/agent-buy': () =>
     import('../ops/agent-buy/route') as unknown as Promise<Record<string, Handler>>,
+  // OPS-SW (D-120): opening a PayPal sitting writes an approval row; no key of any scope reaches it.
+  '/api/ops/sitting': () =>
+    import('../ops/sitting/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/api-keys/[id]/revoke': () =>
     import('../ops/api-keys/[id]/revoke/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/mandates/[id]/revoke': () =>
@@ -652,6 +655,7 @@ describe('seller isolation', () => {
 const STOP_START_BODY: Record<string, string> = {
   '/api/ops/stop': '{"reason":"hostile stop"}',
   '/api/ops/start': '{"reason":"hostile start","confirm_scope":"x"}',
+  '/api/ops/sitting': '{"reason":"hostile sitting"}',
 };
 // Every route file whose declared rule is auth 'operator' with a method that is not GET (read from the file
 // text, so a new operator POST that is not in the tables above fails the inventory test below).

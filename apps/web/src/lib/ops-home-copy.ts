@@ -52,6 +52,10 @@ const SWITCH_WORDS: Record<string, { label: string; hint: string }> = {
     label: 'Website import',
     hint: 'Off pauses Check my site and the import of a seller site. It does not touch PayPal.',
   },
+  agent_buy_enabled: {
+    label: 'Agent buying',
+    hint: 'Off refuses every buy_unit call from an agent. Both directions need your authenticator code.',
+  },
 };
 
 export interface SwitchView {
