@@ -76,8 +76,8 @@ corridor in offer id order (`listAuthorisedOffers`, `ORDER BY o.id, o.version`),
 - `corepack pnpm vitest run domain/discovery domain/catalogue`: every existing test still passes unchanged.
 - `corepack pnpm test` (all six suites, which covers `apps/web` callers of discover such as `web.state.test.ts`,
   `buyer-display*.test.ts`, `scope-a.adversarial.test.ts`): green.
-- `node scripts/mutation-checks.mjs --require-targets --timeout 400 --targets domain/discovery/src/discover.ts,domain/catalogue/src/read.ts --test-cmd "corepack pnpm vitest run domain/discovery domain/catalogue/src/read-matching.state.test.ts"`:
-  at least 80 percent killed.
+- `node scripts/mutation-checks.mjs --require-targets --timeout 400 --targets domain/discovery/src/discover.ts,domain/catalogue/src/read.ts --test-cmd "corepack pnpm vitest run domain/discovery/src/discover.state.test.ts domain/discovery/src/discover.adversarial.test.ts domain/discovery/src/discover.ceiling-fx.state.test.ts domain/discovery/src/discover.fair.state.test.ts domain/discovery/src/discover.fair.adversarial.test.ts domain/catalogue/src/read-matching.state.test.ts"`:
+  at least 80 percent killed. Amended after the gate (10 Nov 2026): the whole-folder test command takes about 6 minutes per mutant, so the command names the six discover and read-matching test files instead.
 - `corepack pnpm typecheck`, `corepack pnpm lint`, `corepack pnpm check:isolation`, `corepack pnpm
   check:no-live-host`, `corepack pnpm check:secrets-names`: exit 0.
 
