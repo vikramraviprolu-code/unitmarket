@@ -120,7 +120,7 @@ export async function publishBatch(
       continue;
     }
     try {
-      const done = await publishOne(deps, actor, row.id as string, parts);
+      const done = await publishOne(deps, actor, row.id as string, parts, currency);
       if (done) summary.published += 1;
     } catch {
       summary.failed += 1;
@@ -144,6 +144,7 @@ async function publishOne(
   actor: Extract<Actor, { kind: 'publisher' }>,
   item_id: string,
   parts: FeeParts,
+  currency: string,
 ): Promise<boolean> {
   return deps.db.transaction(async (tx) => {
     const cur = await tx.query<Row>(
@@ -190,6 +191,7 @@ async function publishOne(
         { option: 'online_read', price_minor: parts.buyer_minor },
       ],
       parts,
+      currency,
     );
     await tx.query(
       `UPDATE import_items SET state = 'published', article_id = $2, offer_id = $3, updated_at = $4 WHERE id = $1`,

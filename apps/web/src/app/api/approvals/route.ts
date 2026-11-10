@@ -3,7 +3,13 @@ import { withRoute } from '@umsbx/security';
 import type { RouteMeta } from '@umsbx/security';
 import { app, securityDeps } from '../../../server/access';
 import { TERMS_INVALID_TEXT } from '../../../lib/buyer-copy';
-import { MIXED_CURRENCY_TEXT, TOO_MANY_PUBLISHERS_TEXT } from '../../../lib/composite-copy';
+import {
+  CORRIDOR_UNSUPPORTED_TEXT,
+  corridorUnsupportedText,
+  MIXED_CURRENCY_TEXT,
+  PUBLISHER_UNVERIFIED_TEXT,
+  TOO_MANY_PUBLISHERS_TEXT,
+} from '../../../lib/composite-copy';
 
 export const routeMeta: RouteMeta = {
   path: '/api/approvals',
@@ -44,6 +50,8 @@ const TEXT: Record<string, string> = {
   consent_missing: 'Please accept the terms to continue.',
   unknown_selection: 'We could not find that selection.',
   mixed_currency: MIXED_CURRENCY_TEXT,
+  corridor_unsupported: CORRIDOR_UNSUPPORTED_TEXT,
+  publisher_unverified: PUBLISHER_UNVERIFIED_TEXT,
   too_many_publishers: TOO_MANY_PUBLISHERS_TEXT,
   terms_invalid: TERMS_INVALID_TEXT,
 };
@@ -67,7 +75,10 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
     return {
       status: STATUS[r.error.code] ?? 422,
       code: r.error.code,
-      message: TEXT[r.error.code] ?? 'We could not prepare that approval.',
+      message:
+        r.error.code === 'corridor_unsupported'
+          ? corridorUnsupportedText(selection.kind === 'proposal' ? selection.offer_ids.length : 1)
+          : (TEXT[r.error.code] ?? 'We could not prepare that approval.'),
     };
   const g = r.value;
   return {

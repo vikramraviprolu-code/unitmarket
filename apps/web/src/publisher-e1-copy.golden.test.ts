@@ -37,6 +37,7 @@ function lines(): string[] {
   out.push(`create lede: ${copy.CREATE_LEDE}`);
   out.push(`create none: ${copy.CREATE_NONE_TITLE} | ${copy.CREATE_NONE_BODY}`);
   out.push(`create labels: ${copy.CREATE_ARTICLE_LABEL} | ${copy.CREATE_LABEL}`);
+  out.push(`create currency: ${copy.CREATE_CURRENCY_LABEL} | ${copy.CREATE_CURRENCY_HELP}`);
   out.push(`create terms: ${copy.CREATE_TERMS_NOTE('terms-1')}`);
   out.push(`created: ${copy.createdText('1')}`);
   for (const code of [

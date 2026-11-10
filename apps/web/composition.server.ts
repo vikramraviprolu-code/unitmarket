@@ -126,7 +126,7 @@ import {
   listOfferableArticles,
   listOpenRequests,
   listOwnOffers,
-  offerCurrencyFor,
+  offerCurrenciesFor,
   payeeView,
   requestPayeeChange,
   reviseOffer,
@@ -1480,7 +1480,10 @@ export interface Engine {
       environment: EnvironmentLabel;
       offer_max_minor: number;
       terms_version: string;
+      /** The default currency of a new offer (the first of `currencies`); null when none is covered. */
       currency: string | null;
+      /** OFFER-CUR: every currency the publisher may choose, default first (USD, EUR, GBP). */
+      currencies: string[];
     } | null>;
     /** PUB-E1: version 1 of an offer for an own article that has none on sale. */
     create(i: {
@@ -1488,6 +1491,8 @@ export interface Engine {
       article_id: string;
       options: PriceInput[];
       attestation: boolean;
+      /** OFFER-CUR: the seller's choice; absent means the default (USD, then EUR, then GBP). */
+      currency?: string | undefined;
     }): Promise<Result<{ offer_id: Id; version: string }, OfferWriteError>>;
     revise(i: {
       actor: Actor;
@@ -2923,23 +2928,29 @@ function buildApp(config: Config, opts: AppOptions): App {
     },
 
     async listOffers() {
-      const rows = await db.query<{ slug: string; id: string }>(
-        `SELECT p.slug, o.id FROM offers o JOIN publishers p ON p.id = o.publisher_id
+      const rows = await db.query<{ slug: string; id: string; country: string }>(
+        `SELECT p.slug, o.id, p.country FROM offers o JOIN publishers p ON p.id = o.publisher_id
           WHERE o.status = 'authorised' AND o.superseded_by IS NULL AND p.status = 'active'
           ORDER BY o.id`,
       );
-      // MC-GBP: an offer is listed when its currency has an enabled corridor (with the seed that is USD only).
-      const enabled = new Set(
-        (
-          await db.query<{ currency: string }>(
-            'SELECT DISTINCT currency FROM corridors WHERE enabled',
-          )
-        ).rows.map((c) => c.currency),
-      );
+      // OFFER-CUR (the rule of listAuthorisedOffers): an offer is listed when an enabled corridor has its currency
+      // AND covers the publisher's country, so an India EUR offer is not listed while only a non India EUR corridor
+      // is on.
+      const corridors = (
+        await db.query<{ currency: string; payee_countries: string[] }>(
+          'SELECT currency, payee_countries FROM corridors WHERE enabled',
+        )
+      ).rows;
       const out: OfferPage[] = [];
       for (const r of rows.rows) {
         const v = await getOffer(db, { offer_id: r.id });
-        if (v !== null && enabled.has(v.offer.currency)) out.push(await offerPageOf(v));
+        if (
+          v !== null &&
+          corridors.some(
+            (c) => c.currency === v.offer.currency && c.payee_countries.includes(r.country),
+          )
+        )
+          out.push(await offerPageOf(v));
       }
       return out;
     },
@@ -3923,21 +3934,23 @@ function buildApp(config: Config, opts: AppOptions): App {
       },
       async offerable(actor) {
         const articles = await listOfferableArticles(db, actor);
-        return articles === null
-          ? null
-          : {
-              articles,
-              environment,
-              offer_max_minor: config.offer_max_minor,
-              terms_version: NEW_OFFER_TERMS,
-              currency: await offerCurrencyFor(db, actor),
-            };
+        if (articles === null) return null;
+        const currencies = (await offerCurrenciesFor(db, actor)) ?? [];
+        return {
+          articles,
+          environment,
+          offer_max_minor: config.offer_max_minor,
+          terms_version: NEW_OFFER_TERMS,
+          currency: currencies[0] ?? null,
+          currencies,
+        };
       },
       async create(i) {
         const r = await createOffer(offerDeps, i.actor, {
           article_id: i.article_id,
           options: i.options,
           attestation: i.attestation,
+          ...(i.currency !== undefined ? { currency: i.currency } : {}),
         });
         return r.ok
           ? { ok: true, value: { offer_id: r.value.offer_id, version: r.value.version } }

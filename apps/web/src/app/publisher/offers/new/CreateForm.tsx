@@ -6,6 +6,8 @@ import { postJson } from '../../../../lib/client-api';
 import { parsePriceMinor, offerErrorText } from '../../../../lib/offer-copy';
 import {
   CREATE_ARTICLE_LABEL,
+  CREATE_CURRENCY_HELP,
+  CREATE_CURRENCY_LABEL,
   CREATE_LABEL,
   createErrorText,
   createdText,
@@ -33,6 +35,13 @@ interface Row {
   optionName: string;
 }
 
+interface CurrencyChoice {
+  /** The three letter code; the first choice is the default. */
+  code: string;
+  hint: string;
+  rows: Row[];
+}
+
 interface Problems {
   price: string | null;
   options: string | null;
@@ -47,26 +56,28 @@ const NONE: Problems = { price: null, options: null, attest: null, form: null, b
 // and the tick. Nothing else leaves the browser: the publisher, the money unit, the terms and the licence are
 // not editable and not sent. The route and the domain check everything again; this form spares a round trip.
 // PUB-UI-FORMS: the fields sit in four sections, and each problem is shown beside its own field.
+// OFFER-CUR: with more than one currency covered the seller picks one (a select) and the body carries it; with one
+// currency there is no select and the body is what it was, so the server default applies.
 export function CreateForm({
   articles,
   capMinor,
-  hint,
-  prefix,
+  currencies,
   attestLabel,
-  rows,
   terms,
 }: {
   articles: { id: string; title: string }[];
   capMinor: number;
-  hint: string;
-  /** The three letter code shown in front of each price. */
-  prefix: string;
+  /** Every currency the publisher may choose, default first, with the words that depend on it. */
+  currencies: CurrencyChoice[];
   attestLabel: string;
-  rows: Row[];
   /** The sentence about the terms version, the access window and the licence. */
   terms: string;
 }) {
   const router = useRouter();
+  const [currency, setCurrency] = useState(currencies[0]?.code ?? '');
+  const choice = currencies.find((c) => c.code === currency) ?? currencies[0];
+  const rows = choice?.rows ?? [];
+  const hint = choice?.hint ?? '';
   const [article, setArticle] = useState(articles[0]?.id ?? '');
   const [offered, setOffered] = useState<Record<string, boolean>>(
     Object.fromEntries(rows.map((r) => [r.option, true])),
@@ -112,7 +123,12 @@ export function CreateForm({
     setBusy(true);
     const res = await postJson<{ offer_id: string; version: string }>(
       '/api/publisher/offers/create',
-      { article_id: article, options: got.options, attestation: attest },
+      {
+        article_id: article,
+        options: got.options,
+        attestation: attest,
+        ...(currencies.length > 1 ? { currency } : {}),
+      },
     );
     setBusy(false);
     if (!res.ok) {
@@ -152,13 +168,31 @@ export function CreateForm({
       </Section>
       <Section title={SECTION_PRICES} id="create-prices">
         <div className="pk-panel">
+          {currencies.length > 1 ? (
+            <Field id="create-currency" label={CREATE_CURRENCY_LABEL} help={CREATE_CURRENCY_HELP}>
+              {(a) => (
+                <select
+                  {...a}
+                  data-testid="create-currency"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                >
+                  {currencies.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.code}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Field>
+          ) : null}
           <OptionRows
             rows={rows}
             offered={offered}
             prices={prices}
             onOffered={(option, on) => setOffered({ ...offered, [option]: on })}
             onPrice={(option, text) => setPrices({ ...prices, [option]: text })}
-            prefix={prefix}
+            prefix={currency}
             rangeHelp={priceHelp(hint)}
             help={optionHelp}
             bad={problems.bad}
