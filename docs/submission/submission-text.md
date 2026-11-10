@@ -35,7 +35,7 @@ refund form and checks that must hold.
 
 Publishers have their own side. A publisher is invited, claims an account, accepts the publisher terms and links its own PayPal
 address, which an operator verifies. A publisher can import articles from a web link it proves it controls, review them, and
-publish offers, choosing USD, EUR or GBP for each offer (default USD; publishers whose payee country is India sell to buyers outside India). Euro and pound purchases run in dry run only; real sandbox purchases in those currencies are not demonstrated, and UnitMarket converts no money. [`docs/decision-log.md` D-113, D-117] On offers published through the web import, UnitMarket adds a platform fee of 10 percent of the publisher price on top, so the publisher does not pay it. The
+publish offers. For an offer it creates itself, a publisher chooses USD, EUR or GBP (default USD); imported items are priced in USD for now. Publishers whose payee country is India sell to buyers outside India. Euro and pound purchases run in dry run only; real sandbox purchases in those currencies are not demonstrated, and UnitMarket converts no money. [`docs/decision-log.md` D-113, D-117] On offers published through the web import, UnitMarket adds a platform fee of 10 percent of the publisher price on top, so the publisher does not pay it. The
 publisher sees its sales and a statement. Payouts to publishers are built and tested in dry run only. [`docs/specs/pob-p1-publisher-accounts.md`,
 `docs/specs/pob-m1-fee-and-payout.md`, `docs/specs/pob-i1-web-import.md`, `apps/web/src/pob-journey.state.test.ts`]
 
@@ -112,7 +112,7 @@ account): "Both seeded publishers are paid into one sandbox test account; multi-
   secrets pasted into a chat that were rotated within the hour. [`docs/decision-log.md` D-059, D-061, D-063]
 - Honest settlement. Paying a second, separate merchant needs a second sandbox account and a payee check by hand. We say which
   parts are demonstrated and which are not. [`docs/proposals/publisher-side-proposal-2026-10-30.md` section 4]
-- Fees. PayPal's fixed fee can exceed a very small sale, so the demo prices are set in the range 1.00 to 2.50 USD (decision item
+- Fees. PayPal's fixed fee can exceed a very small sale, so the demo prices are set in the range 1.00 to 2.50 in each currency (USD, EUR, GBP) (decision item
   37), applied as audited offer revisions. [spec PUB-B]
 
 ## Accomplishments that we are proud of
@@ -126,7 +126,7 @@ account): "Both seeded publishers are paid into one sandbox test account; multi-
   sales page and a statement. An operator page shows each publisher's exposure and can suspend a publisher. One automated test walks
   the whole publisher journey in dry run, from apply to refund. [specs PUB-A1 to PUB-D, POB-P1, POB-M1, POB-I1,
   `docs/specs/publisher-onboarding-journey.md`, `apps/web/src/pob-journey.state.test.ts`]
-- Releases up to `gcp-pub-15` were verified in full before deploy: static checks, six test suites, a production build, 200 browser journeys and a check of
+- `gcp-pub-13` and `gcp-pub-15` were verified in full before deploy: static checks, six test suites, a production build, 200 browser journeys and a check of
   the append only transaction journal. `gcp-pub-16` had a lighter check (210 test files, 3,245 tests and the static checks passed; the full six suites and the browser gate were not run). [`docs/decision-log.md` D-109, D-111, D-112, D-117]
 - Two switchable skins with the Appearance control and a small motion set, an in app reader with a time left meter, sign out and
   navigation per role, and four draft legal pages. [specs SKIN-A, SKIN-B, READER-A, LEGAL-A]
