@@ -58,8 +58,9 @@ async function counts(w: ImportWebWorld): Promise<number[]> {
 describe('no publisher sees or uses another publisher code', () => {
   it("B's answers never hold A's code; A's code on a page does not prove B", async () => {
     const w = await boot();
-    const a = (await json<{ token: string }>(await w.post('domains', w.pub[A], { host: SHOP_HOST })))
-      .token;
+    const a = (
+      await json<{ token: string }>(await w.post('domains', w.pub[A], { host: SHOP_HOST }))
+    ).token;
     const bRes = await w.post('domains', w.pub[B], { host: SHOP_HOST });
     const bText = await bRes.text();
     expect(bText).not.toContain(a);
@@ -138,6 +139,8 @@ describe('the lane touches no money, approval or PayPal state', () => {
       new URL('../../../domain/catalogue/src/domain-proof.ts', import.meta.url),
       'utf8',
     );
-    expect(src).not.toMatch(/from '(@umsbx\/(payments|approval|ledger|entitlements|paypal|safety|transport))/);
+    expect(src).not.toMatch(
+      /from '(@umsbx\/(payments|approval|ledger|entitlements|paypal|safety|transport))/,
+    );
   });
 });

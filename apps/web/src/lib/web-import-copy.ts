@@ -198,8 +198,7 @@ const ERRORS: Record<string, string> = {
     'We could not reach that address. Check that it is public and answers over https, then try again.',
   proof_lost:
     'We could not find your code on that address any more, so nothing was imported. Check the tag or the file, then try again.',
-  site_unreachable:
-    'We could not reach your site at that address. Check that it is online.',
+  site_unreachable: 'We could not reach your site at that address. Check that it is online.',
   not_operator: 'Only an operator can do that.',
   mfa_required: 'Enter your authenticator code to do that.',
   unchanged: 'That address is already verified.',

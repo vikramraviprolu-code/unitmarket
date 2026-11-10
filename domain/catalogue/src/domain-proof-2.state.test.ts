@@ -223,11 +223,15 @@ describe('B. the operator vouch', () => {
       verified_by: 'operator',
     });
     expect(JSON.stringify(await listDomains(w.db, w.harbour))).not.toContain('Checked');
-    expect(await vouchDomain(w.idep(), w.operator, { domain_id: id, reason: 'Again please' })).toEqual({
+    expect(
+      await vouchDomain(w.idep(), w.operator, { domain_id: id, reason: 'Again please' }),
+    ).toEqual({
       ok: false,
       error: { code: 'unchanged' },
     });
-    expect(await vouchDomain(w.idep(), w.operator, { domain_id: 'pdm_nope', reason: 'Not there' })).toEqual({
+    expect(
+      await vouchDomain(w.idep(), w.operator, { domain_id: 'pdm_nope', reason: 'Not there' }),
+    ).toEqual({
       ok: false,
       error: { code: 'not_found' },
     });
@@ -236,9 +240,9 @@ describe('B. the operator vouch', () => {
   it('import start for a vouched row does not fetch the code, and the run still fetches the items', async () => {
     const w = await fresh();
     const id = await pending(w);
-    expect((await vouchDomain(w.idep(), w.operator, { domain_id: id, reason: 'Vouched by call' })).ok).toBe(
-      true,
-    );
+    expect(
+      (await vouchDomain(w.idep(), w.operator, { domain_id: id, reason: 'Vouched by call' })).ok,
+    ).toBe(true);
     // no code anywhere on the site
     w.web.pages[`${SHOP}/`] = { body: '<html><head></head><body>nothing</body></html>' };
     w.web.calls.length = 0;
@@ -277,7 +281,9 @@ describe('B. the operator vouch', () => {
     page(w, SHOP_HOST, code);
     await checkDomain(w.idep(), w.harbour, { host: SHOP_HOST });
     const other = (await rowOf(w, SHOP_HOST, w.pubId['quayside-gazette']))!['id'] as string;
-    expect(await vouchDomain(w.idep(), w.operator, { domain_id: other, reason: 'Trying it on' })).toEqual({
+    expect(
+      await vouchDomain(w.idep(), w.operator, { domain_id: other, reason: 'Trying it on' }),
+    ).toEqual({
       ok: false,
       error: { code: 'host_taken' },
     });

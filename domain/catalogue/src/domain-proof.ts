@@ -417,10 +417,14 @@ export async function vouchDomain(
   if (!REASON.test(reason)) return fail('invalid_input');
   try {
     return await deps.db.transaction(async (tx) => {
-      const found = await tx.query<{ id: string; host: string; state: string; publisher_id: string }>(
-        `SELECT id, host, state, publisher_id FROM publisher_domains WHERE id = $1 FOR UPDATE`,
-        [input.domain_id],
-      );
+      const found = await tx.query<{
+        id: string;
+        host: string;
+        state: string;
+        publisher_id: string;
+      }>(`SELECT id, host, state, publisher_id FROM publisher_domains WHERE id = $1 FOR UPDATE`, [
+        input.domain_id,
+      ]);
       const row = found.rows[0];
       if (row === undefined || row.state === 'removed') return fail('not_found');
       if (row.state === 'verified') return fail('unchanged');
@@ -485,10 +489,10 @@ export async function removeDomain(
     );
     if (active.rows.length > 0) return fail('import_active');
     const at = deps.clock.now().toISOString();
-    await tx.query(`UPDATE publisher_domains SET state = 'removed', updated_at = $2 WHERE id = $1`, [
-      row.id,
-      at,
-    ]);
+    await tx.query(
+      `UPDATE publisher_domains SET state = 'removed', updated_at = $2 WHERE id = $1`,
+      [row.id, at],
+    );
     await deps.audit.record(tx, {
       actor,
       action: 'domain.removed',

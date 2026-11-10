@@ -42,7 +42,8 @@ export default async function PublisherImport() {
     engine.batches(actor),
     engine.proofCode(actor),
   ]);
-  if (domains === null || batches === null || proof === null) redirect('/signin?next=/publisher/import');
+  if (domains === null || batches === null || proof === null)
+    redirect('/signin?next=/publisher/import');
   return (
     <>
       <PageHeader

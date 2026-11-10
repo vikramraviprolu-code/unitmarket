@@ -4011,7 +4011,9 @@ function buildApp(config: Config, opts: AppOptions): App {
     opsDomains: {
       async list(actor) {
         const domains = await importListDomainsForOperator(db, actor);
-        return domains === null ? { ok: false, error: { code: 'not_operator' } } : { ok: true, value: { domains } };
+        return domains === null
+          ? { ok: false, error: { code: 'not_operator' } }
+          : { ok: true, value: { domains } };
       },
       vouch: ({ actor, domain_id, reason }) =>
         importVouchDomain(importDeps, actor, { domain_id, reason }),
