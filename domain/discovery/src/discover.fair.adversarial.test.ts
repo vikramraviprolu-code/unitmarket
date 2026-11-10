@@ -316,6 +316,37 @@ describe('code-side caps across currencies', () => {
   });
 });
 
+describe('AI-5: model picks outside the candidates', () => {
+  it('drops null, text, a non-string id, an unknown id and a duplicate, and nothing throws', async () => {
+    const db = await world(['p1']);
+    await addOffers(db, { pub: 'p1', prefix: 'p1', n: 3, title: 'Pickword {i}' });
+    const model: ModelPort = {
+      model_id: 'junk-picks',
+      async complete() {
+        return {
+          kind: 'ok' as const,
+          output: {
+            picks: [
+              null,
+              'ofr_p1_0001',
+              { offer_id: 5 },
+              { offer_id: 'ofr_not_a_candidate', reason: 'x' },
+              { offer_id: 'ofr_p1_0002', reason: 'ok' },
+              { offer_id: 'ofr_p1_0002', reason: 'again' },
+            ],
+            tool_calls: [],
+          },
+          input_tokens: 1,
+          output_tokens: 1,
+        };
+      },
+    };
+    const r = await run(db, model, { need: 'pickword', terms: ['pickword'] });
+    if (r.kind !== 'proposal') throw new Error('expected proposal');
+    expect(r.items).toHaveLength(1);
+  });
+});
+
 describe('whole words and case', () => {
   it('"art" does not match "start"', async () => {
     const db = await world(['p2', 'p3']);
