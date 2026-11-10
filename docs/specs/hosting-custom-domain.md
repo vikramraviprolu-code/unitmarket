@@ -20,6 +20,7 @@ Requirements (tests first):
 4. `cloud doctor`: origin equal to the service address: ok (unchanged); a non-`run.app` origin: ok line naming the custom domain and the service address; a different `run.app` origin: the existing `origin mismatch` warning.
 5. Test support: the fake service address is the real `run.app` address, not the value read from `service.yaml`; a scenario may set the origin in its copy of `service.yaml`. Edited test (spec change 4): `reports an origin mismatch ...` now sets a `run.app` origin, because the real kit no longer holds one.
 6. README and submission text name `https://unitmarket.live` as the hosted demo address.
+7. `service.yaml` and the checker hold `UMS_TRUSTED_PROXIES: '2'` (load balancer plus Cloud Run front end), measured by the owner curl test on 10 Nov 2026 (depth 1: c=429; depth 2: all eight lines as expected). `service-offline.yaml` and `render.yaml` keep `'1'`. Edited test (spec change): the render parity test no longer compares `UMS_TRUSTED_PROXIES`.
 
 Acceptance (run, paste output):
 

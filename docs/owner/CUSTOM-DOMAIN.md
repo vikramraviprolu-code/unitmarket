@@ -93,10 +93,20 @@ fails here, because the app still expects the `run.app` origin. That is correct 
 
 ## Step 5: the proxy depth check through the load balancer
 
-The load balancer adds itself to `X-Forwarded-For`, so `UMS_TRUSTED_PROXIES` (today `'1'` in `service.yaml`, pinned
-by the checker) may need to become `'2'`. Do Step G of `MVPC-OWNER-STEPS-GCP.md` with `HOST=unitmarket.live`, but send `-H "Origin: https://unitmarket-sandbox-626887286871.europe-west3.run.app"` instead of `-H "Origin: https://$HOST"`: until Step 7 the app still expects the `run.app` origin, so an `unitmarket.live` Origin header answers `403`. Run (a) and (b) from your Mac and (c) from Cloud Shell, which is a second network. If
-the count is not 1, do not go on: tell Claude the count, and a reviewed change sets it in `service.yaml` and in the
-checker before Step 7. A wrong count is worse than 0: rate limits and logs would use the wrong address.
+The load balancer adds itself to `X-Forwarded-For`, so `UMS_TRUSTED_PROXIES` is `'2'` in `service.yaml` (pinned by
+the checker). Before Step 7 the running revision still has `'1'` from the earlier deploy; set `'2'` on it first:
+
+```
+gcloud run services update "$SERVICE" --region="$REGION" --project="$PROJECT_ID" --update-env-vars=UMS_TRUSTED_PROXIES=2
+```
+
+Then do Step G of `MVPC-OWNER-STEPS-GCP.md` with `HOST=unitmarket.live`, but send `-H "Origin: https://unitmarket-sandbox-626887286871.europe-west3.run.app"` instead of `-H "Origin: https://$HOST"`: until Step 7 the app still expects the `run.app` origin, so an `unitmarket.live` Origin header answers `403`. Run (a) and (b) from your Mac and (c) from Cloud Shell, which is a second network. Expected: a1 to a5 `401`, a6 `429`, b `429`, c `401`.
+
+Measured on 10 Nov 2026: with `'1'`, c gave `429` (every visitor shared the load balancer's address); with `'2'`,
+all eight lines matched. If a later test gives anything else, do not go on: a wrong count is worse than 0, because
+rate limits and logs would use the wrong address. While `'2'` runs, sign-ins sent to the `run.app` address carry
+one `X-Forwarded-For` entry and fall back to the socket address or the shared bucket; after Step 7 they are refused
+by the origin check anyway.
 
 ## Step 6: the PayPal sandbox webhook URL (PayPal developer dashboard, 5 min)
 

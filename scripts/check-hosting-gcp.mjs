@@ -95,7 +95,9 @@ const FIXED = {
   NEXT_TELEMETRY_DISABLED: '1',
   UMS_MODE: 'sandbox',
   UMS_OUTBOUND_SCOPE: 'mvp_c_refunds',
-  UMS_TRUSTED_PROXIES: '1',
+  // DOM-1: the load balancer and Cloud Run's front end each append to X-Forwarded-For (measured
+  // 10 Nov 2026 through https://unitmarket.live). service-offline.yaml keeps 1 (run.app only).
+  UMS_TRUSTED_PROXIES: '2',
   NEXT_PUBLIC_UMS_ENV_LABEL: 'Sandbox',
 };
 // Fixed values service-offline.yaml must carry exactly. UMS_PAYPAL_CONNECT, UMS_DB and UMS_PUBLIC_ORIGIN
