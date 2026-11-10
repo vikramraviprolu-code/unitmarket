@@ -23,8 +23,12 @@ describe('CAT-2.6 words', () => {
     expect(copy.demandLine('sunset', '50+', 0)).toBe(
       'sunset: 50+ buyers asked; 0 of your offers match',
     );
-    expect(copy.collectionLine('harbour', 1000)).toBe('From the harbour collection (1000 photos)');
-    expect(copy.collectionLine('other', 1)).toBe('From the other collection (1 photo)');
+    expect(copy.collectionLine('harbour', 1000, true)).toBe(
+      'From the harbour collection (1000 photos)',
+    );
+    expect(copy.collectionLine('other', 1, true)).toBe('From the other collection (1 photo)');
+    expect(copy.collectionLine('local', 12, false)).toBe('From the local collection (12 items)');
+    expect(copy.collectionLine('local', 1, false)).toBe('From the local collection (1 item)');
     expect(copy.copiesHiddenLine(9)).toBe('9 copies hidden');
     expect(copy.copiesHiddenLine(1)).toBe('1 copy hidden');
   });
@@ -36,7 +40,8 @@ describe('CAT-2.6 words', () => {
       copy.DEMAND_CARD_HEADING,
       copy.DEMAND_CARD_EMPTY,
       copy.DEMAND_CARD_NOTE,
-      copy.collectionLine('x', 2),
+      copy.collectionLine('x', 2, true),
+      copy.collectionLine('x', 2, false),
       copy.copiesHiddenLine(2),
     ].join('\n');
     expect(all).not.toMatch(/[‒-―]|\*|_/);

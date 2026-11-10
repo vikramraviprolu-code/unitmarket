@@ -17,8 +17,11 @@ export type DemandBandText = '5-9' | '10-49' | '50+';
 export const demandLine = (term: string, band: DemandBandText, matching: number): string =>
   `${term}: ${band} buyers asked; ${matching} of your offers match`;
 
-export const collectionLine = (name: string, size: number): string =>
-  `From the ${name} collection (${size} ${size === 1 ? 'photo' : 'photos'})`;
+// Photos only when the cover of the collection is an image; otherwise items.
+export const collectionLine = (name: string, size: number, images: boolean): string => {
+  const noun = images ? 'photo' : 'item';
+  return `From the ${name} collection (${size} ${size === 1 ? noun : `${noun}s`})`;
+};
 
 export const copiesHiddenLine = (n: number): string => `${n} ${n === 1 ? 'copy' : 'copies'} hidden`;
 

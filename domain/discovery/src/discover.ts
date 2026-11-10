@@ -59,7 +59,7 @@ export type DiscoveryResult =
         publisher: string;
         ceiling_check?: CeilingCheck;
         /** CAT-2.3: the named collection the offer belongs to and the number of the publisher's offers in it. */
-        collection?: { name: string; size: number };
+        collection?: { name: string; size: number; images: boolean };
         /** CAT-2.2: other current authorised copies of the same file that were collapsed into this one. Only when above 0. */
         duplicates_hidden?: number;
       }[];
@@ -355,9 +355,15 @@ export async function discover(
   }
   if (quoted.length === 0) return noMatch(reasons, rateMissing);
 
-  const collectionOf = (id: string): { collection?: { name: string; size: number } } => {
+  // CAT-2.6 amendment: the screen says photos only when the cover of the collection is an image.
+  const mimeOf = new Map(facts.rows.map((r) => [r.offer_id, r.mime]));
+  const collectionOf = (
+    id: string,
+  ): { collection?: { name: string; size: number; images: boolean } } => {
     const c = collections.get(id);
-    return c === undefined ? {} : { collection: { name: c.name, size: c.size } };
+    if (c === undefined) return {};
+    const images = (mimeOf.get(c.cover_offer_id) ?? '').startsWith('image/');
+    return { collection: { name: c.name, size: c.size, images } };
   };
   const now = d.clock.now();
   const ranked = rankFit(

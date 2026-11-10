@@ -19,7 +19,7 @@ export function PopularRequests({
         {view.heading}
       </h2>
       <p className="hint">{view.hint}</p>
-      <ul className="popular-chips">
+      <ul className="popular-chips actions plain-list">
         {view.chips.map((c) => (
           <li key={c.term}>
             <button type="button" className="btn popular-chip" onClick={() => onPick(c.fill)}>

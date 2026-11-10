@@ -33,7 +33,7 @@ type Item = {
   /** MC2-L5: present when the agent compared the ceiling on the converted price (worded by the server). */
   ceiling_line?: string;
   /** CAT-2: the named collection of the offer and its size at the publisher. */
-  collection?: { name: string; size: number };
+  collection?: { name: string; size: number; images: boolean };
   /** CAT-2: copies of the same file collapsed into this item. */
   duplicates_hidden?: number;
 };
@@ -283,7 +283,11 @@ export function DiscoverForm({
                   {it.collection !== undefined || it.duplicates_hidden !== undefined ? (
                     <p className="muted collection-line" data-testid="collection-line">
                       {it.collection !== undefined
-                        ? collectionLine(it.collection.name, it.collection.size)
+                        ? collectionLine(
+                            it.collection.name,
+                            it.collection.size,
+                            it.collection.images,
+                          )
                         : null}
                       {it.collection !== undefined && it.duplicates_hidden !== undefined
                         ? ' · '

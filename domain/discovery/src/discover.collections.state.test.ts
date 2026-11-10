@@ -213,7 +213,8 @@ describe('the size of a collection counts every offer of the publisher', () => {
       const items = proposal(await run(w.db, m.model, { need: 'harbour', terms: ['harbour'] }));
       expect(candidateIdsOf(m.requests).length).toBeLessThanOrEqual(10);
       expect(items).toHaveLength(5);
-      for (const i of items) expect(i.collection).toEqual({ name: 'harbour', size: 1000 });
+      for (const i of items)
+        expect(i.collection).toEqual({ name: 'harbour', size: 1000, images: false });
     } finally {
       await w.db.close();
     }
@@ -255,9 +256,50 @@ describe('every item carries its collection', () => {
       expect(items).toHaveLength(4);
       for (const i of items) {
         expect(i.collection).toBeDefined();
-        if (idOf(i).startsWith('ofr_p1a')) expect(i.collection).toEqual({ name: 'sea', size: 6 });
-        else expect(i.collection).toEqual({ name: 'other', size: 3 });
+        if (idOf(i).startsWith('ofr_p1a'))
+          expect(i.collection).toEqual({ name: 'sea', size: 6, images: false });
+        else expect(i.collection).toEqual({ name: 'other', size: 3, images: false });
       }
+    } finally {
+      await w.db.close();
+    }
+  });
+});
+
+describe('photos or items', () => {
+  it('says images: true when the cover of the collection is an image, false otherwise', async () => {
+    const w = await seededDb(emptyCatalogue());
+    try {
+      await addPublisher(w.db, 'p1');
+      await addPublisher(w.db, 'p2');
+      await addOffers(w.db, {
+        pub: 'p1',
+        prefix: 'p1',
+        n: 3,
+        title: 'Gull photo {i}',
+        topics: ['gulls'],
+        mime: 'image/jpeg',
+      });
+      await addOffers(w.db, {
+        pub: 'p2',
+        prefix: 'p2',
+        n: 3,
+        title: 'Gull notes {i}',
+        topics: ['gulls'],
+        mime: 'application/pdf',
+      });
+      const m = pickingModel((ids) => [
+        ...ids.filter((i) => i.startsWith('ofr_p1')).slice(0, 1),
+        ...ids.filter((i) => i.startsWith('ofr_p2')).slice(0, 1),
+      ]);
+      const items = proposal(await run(w.db, m.model, { need: 'gull', terms: ['gull'] }));
+      expect(items).toHaveLength(2);
+      for (const i of items)
+        expect(i.collection).toEqual({
+          name: 'gulls',
+          size: 3,
+          images: idOf(i).startsWith('ofr_p1'),
+        });
     } finally {
       await w.db.close();
     }
