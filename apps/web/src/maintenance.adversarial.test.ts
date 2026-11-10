@@ -142,6 +142,11 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/ops/publishers/access/route.ts': () => import('./app/api/ops/publishers/access/route'),
   'api/ops/publishers/paypal-link-decisions/route.ts': () =>
     import('./app/api/ops/publishers/paypal-link-decisions/route'),
+  // DOMAIN-PROOF-2 (D-116): an operator vouches for or removes a publisher's web address.
+  'api/ops/publishers/domains/remove/route.ts': () =>
+    import('./app/api/ops/publishers/domains/remove/route'),
+  'api/ops/publishers/domains/vouch/route.ts': () =>
+    import('./app/api/ops/publishers/domains/vouch/route'),
   'api/publisher-accounts/claim/route.ts': () => import('./app/api/publisher-accounts/claim/route'),
   'api/publisher/paypal-link/route.ts': () => import('./app/api/publisher/paypal-link/route'),
   'api/publisher/terms/accept/route.ts': () => import('./app/api/publisher/terms/accept/route'),
@@ -157,6 +162,8 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/publisher/import/domains/check/route.ts': () =>
     import('./app/api/publisher/import/domains/check/route'),
   'api/publisher/import/domains/route.ts': () => import('./app/api/publisher/import/domains/route'),
+  'api/publisher/import/domains/remove/route.ts': () =>
+    import('./app/api/publisher/import/domains/remove/route'),
   'api/publisher/import/items/route.ts': () => import('./app/api/publisher/import/items/route'),
   'api/publisher/import/publish/route.ts': () => import('./app/api/publisher/import/publish/route'),
   'api/publisher/import/status/route.ts': () => import('./app/api/publisher/import/status/route'),

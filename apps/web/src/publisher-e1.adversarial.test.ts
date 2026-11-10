@@ -141,7 +141,8 @@ describe('create route', () => {
     const base = { article_id: id, options: both(100, 100), attestation: true };
     for (const extra of [
       { publisher_id: w.pubId['quayside-gazette'] },
-      { currency: 'EUR' },
+      // OFFER-CUR made `currency` (USD, EUR or GBP) a field the seller may send; any other value is refused.
+      { currency: 'JPY' },
       { status: 'draft' },
       { terms_version: 'x' },
       { rights: { scope: 'personal_use' } },

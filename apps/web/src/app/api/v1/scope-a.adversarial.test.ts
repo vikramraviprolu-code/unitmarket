@@ -79,6 +79,11 @@ const MFA_ROUTES: Record<string, () => Promise<Record<string, Handler>>> = {
     import('../ops/publishers/paypal-link-decisions/route') as unknown as Promise<
       Record<string, Handler>
     >,
+  // DOMAIN-PROOF-2 (D-116): vouch and remove need an operator session with the second factor.
+  '/api/ops/publishers/domains/vouch': () =>
+    import('../ops/publishers/domains/vouch/route') as unknown as Promise<Record<string, Handler>>,
+  '/api/ops/publishers/domains/remove': () =>
+    import('../ops/publishers/domains/remove/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/alerts/[id]/acknowledge': () =>
     import('../ops/alerts/[id]/acknowledge/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/alerts/[id]/resolve': () =>
