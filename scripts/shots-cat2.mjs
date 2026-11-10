@@ -105,6 +105,7 @@ const TERM = 'tide tables';
 // The page cross-fades between routes: wait for it to settle, and pick the dark look (the skin "Deep Harbour").
 async function settle(page, scheme) {
   if (scheme === 'dark') await page.getByLabel('Deep Harbour').check();
+  await page.evaluate('window.scrollTo(0, 0)');
   await page.waitForLoadState('networkidle');
   await new Promise((r) => setTimeout(r, 2000));
 }

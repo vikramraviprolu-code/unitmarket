@@ -42,7 +42,8 @@ export async function demandTerms(
 ): Promise<DemandTerm[]> {
   const limit = Math.max(0, Math.min(50, Math.trunc(i.limit) || 0));
   if (limit === 0) return [];
-  const end = i.day.getTime();
+  // The window is closed at 00:00 UTC whatever the caller passes, so a rolling `now` cannot open a difference attack.
+  const end = Math.floor(i.day.getTime() / DAY_MS) * DAY_MS;
   const from = new Date(end - WINDOW_DAYS * DAY_MS).toISOString();
   const fresh = new Date(end - FRESH_BUYER_DAYS * DAY_MS).toISOString();
   const to = new Date(end).toISOString();

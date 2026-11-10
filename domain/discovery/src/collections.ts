@@ -64,8 +64,11 @@ export function collectionsOf(
     const { name } = g[0]!;
     const pub = g[0]!.row.publisher_id;
     const counts = topicCounts.get(pub);
+    // `other` holds the topic-less offers and any offer whose own topic is literally "other".
     const size =
-      name === OTHER ? (counts?.get('') ?? noTopicRows.get(pub) ?? 0) : (counts?.get(name) ?? 0);
+      name === OTHER
+        ? (counts?.get('') ?? noTopicRows.get(pub) ?? 0) + (counts?.get(OTHER) ?? 0)
+        : (counts?.get(name) ?? 0);
     for (const n of g) out.set(n.row.offer_id, { name, size, cover_offer_id: cover });
   }
   return out;

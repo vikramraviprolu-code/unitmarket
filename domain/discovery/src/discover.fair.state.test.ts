@@ -238,7 +238,7 @@ describe('the five items are spread over publishers', () => {
   });
 });
 
-describe('the spread keeps exactly 3 per publisher', () => {
+describe('at most 3 per publisher and 2 per collection', () => {
   it('5 picks from P1 then one each from P2..P5 keep 2 P1 (the CAT-2 collection cap), P2, P3 and P4', async () => {
     const m = pickingModel((ids) => [
       ...firstOf(ids, 'p1', 5),

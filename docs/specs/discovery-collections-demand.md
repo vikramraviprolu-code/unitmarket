@@ -86,6 +86,7 @@ branch). No migration: every column exists. No new dependency. No model call. No
 - Changed:
   - `domain/discovery/src/discover.ts`, `domain/discovery/src/index.ts`;
   - `domain/catalogue/src/read.ts`, `domain/catalogue/src/read-matching.state.test.ts` (new cases only, none edited);
+  - `domain/discovery/src/discover.fair.state.test.ts` (one expectation changed, designer decision in item 3);
   - `packages/contracts/src/v1.ts`, `docs/api/openapi-v1.json`;
   - `apps/web/composition.server.ts` (`demand.forBuyers`, `demand.forPublisher`, the per-day cache);
   - `apps/web/src/app/discover/page.tsx`, `DiscoverForm.tsx`, `apps/web/src/app/publisher/page.tsx`;
@@ -132,4 +133,4 @@ branch). No migration: every column exists. No new dependency. No model call. No
 
 Add a migration or table; change or remove an existing contract field; call the model; show an exact count, a
 term below 5 buyers, a single-publisher term, a buyer id or raw request text; touch PayPal, payments, approval,
-transport or safety; edit an existing test.
+transport or safety; edit an existing test, except the one CAT-1 expectation that item 3 supersedes.

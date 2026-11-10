@@ -344,3 +344,15 @@ describe('demand: more edges', () => {
     ]);
   });
 });
+
+describe('demand: the day is floored in the domain', () => {
+  it('gives the same answer for 13:00 UTC as for 00:00 UTC of that day', async () => {
+    // A brief at 06:00 on the day itself is inside a rolling window and outside the closed one.
+    const bs = await addBuyers(db, 5, at(-20));
+    for (const b of bs.slice(0, 4)) await addBrief(db, b, ['harbour'], at(-2));
+    await addBrief(db, bs[4]!, ['harbour'], at(0, 6 * 3_600_000));
+    const noon = new Date(DAY.getTime() + 13 * 3_600_000);
+    expect(await terms(10, noon)).toEqual(await terms(10, DAY));
+    expect(await terms(10, noon)).toEqual([]);
+  });
+});

@@ -193,3 +193,19 @@ describe('a topic with no stored count loses to one with a count', () => {
     expect(got.get('ofr_1')).toEqual({ name: 'b', size: 1, cover_offer_id: 'ofr_1' });
   });
 });
+
+describe('an offer whose own topic is literally other', () => {
+  it('sizes the other collection by its own count, apart from the topic-less group', () => {
+    const got = collectionsOf([row('ofr_1', ['Other'])], counts({ p1: { other: 7 } }));
+    expect(got.get('ofr_1')).toEqual({ name: 'other', size: 7, cover_offer_id: 'ofr_1' });
+  });
+
+  it('adds the topic-less offers to the same named group', () => {
+    const got = collectionsOf(
+      [row('ofr_1', ['other']), row('ofr_2', [])],
+      counts({ p1: { other: 7, '': 3 } }),
+    );
+    expect(got.get('ofr_1')!.size).toBe(10);
+    expect(got.get('ofr_2')!.size).toBe(10);
+  });
+});
