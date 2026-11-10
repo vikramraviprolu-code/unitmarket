@@ -94,7 +94,7 @@ fails here, because the app still expects the `run.app` origin. That is correct 
 ## Step 5: the proxy depth check through the load balancer
 
 The load balancer adds itself to `X-Forwarded-For`, so `UMS_TRUSTED_PROXIES` (today `'1'` in `service.yaml`, pinned
-by the checker) may need to become `'2'`. Do Step G of `MVPC-OWNER-STEPS-GCP.md` with `HOST=unitmarket.live`. If
+by the checker) may need to become `'2'`. Do Step G of `MVPC-OWNER-STEPS-GCP.md` with `HOST=unitmarket.live`, but send `-H "Origin: https://unitmarket-sandbox-626887286871.europe-west3.run.app"` instead of `-H "Origin: https://$HOST"`: until Step 7 the app still expects the `run.app` origin, so an `unitmarket.live` Origin header answers `403`. Run (a) and (b) from your Mac and (c) from Cloud Shell, which is a second network. If
 the count is not 1, do not go on: tell Claude the count, and a reviewed change sets it in `service.yaml` and in the
 checker before Step 7. A wrong count is worse than 0: rate limits and logs would use the wrong address.
 
