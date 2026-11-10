@@ -103,7 +103,13 @@ async function begin(
 export async function setPriceForAll(
   deps: Pick<ImportDeps, 'db' | 'clock' | 'audit' | 'offer_max_minor'>,
   actor: Actor,
-  input: { batch_id: string; price_minor: number; replace_existing?: boolean },
+  input: {
+    batch_id: string;
+    price_minor: number;
+    replace_existing?: boolean;
+    /** POB-Q2: every batch of this publisher from the same address (the chunks of one import). */
+    all_from_source?: boolean;
+  },
 ): Promise<Result<{ priced: number }, ImportError>> {
   if (actor.kind !== 'publisher') return fail('not_publisher');
   const { batch_id, price_minor } = input;
@@ -118,20 +124,30 @@ export async function setPriceForAll(
     return fail('not_found');
   const replace = input.replace_existing === true;
   return deps.db.transaction(async (tx): Promise<Result<{ priced: number }, ImportError>> => {
-    const b = await tx.query<{ state: string }>(
-      'SELECT state FROM import_batches WHERE id = $1 AND publisher_id = $2 FOR UPDATE',
+    const b = await tx.query<{ state: string; source_url: string }>(
+      'SELECT state, source_url FROM import_batches WHERE id = $1 AND publisher_id = $2 FOR UPDATE',
       [batch_id, actor.publisher_id],
     );
     const row = b.rows[0];
     if (row === undefined) return fail('not_found');
     if (row.state === 'queued' || row.state === 'running') return fail('batch_not_ready');
+    let ids = [batch_id];
+    if (input.all_from_source === true) {
+      const same = await tx.query<{ id: string; state: string }>(
+        'SELECT id, state FROM import_batches WHERE publisher_id = $1 AND source_url = $2 ORDER BY id FOR UPDATE',
+        [actor.publisher_id, row.source_url],
+      );
+      if (same.rows.some((x) => x.state === 'queued' || x.state === 'running'))
+        return fail('batch_not_ready');
+      ids = same.rows.map((x) => x.id);
+    }
     const at = deps.clock.now().toISOString();
     const upd = await tx.query<{ id: string }>(
       `UPDATE import_items SET price_minor = $3, updated_at = $4
-        WHERE batch_id = $1 AND publisher_id = $2 AND state = 'staged'
+        WHERE batch_id = ANY ($1) AND publisher_id = $2 AND state = 'staged'
           AND ($5 OR price_minor IS NULL)
         RETURNING id`,
-      [batch_id, actor.publisher_id, price_minor, at, replace],
+      [ids, actor.publisher_id, price_minor, at, replace],
     );
     const priced = upd.rows.length;
     await deps.audit.record(tx, {
@@ -139,7 +155,13 @@ export async function setPriceForAll(
       action: 'import.price_all',
       target: batch_id,
       reason: null,
-      detail: { batch_id, price_minor, priced, replace_existing: replace },
+      detail: {
+        batch_id,
+        price_minor,
+        priced,
+        replace_existing: replace,
+        batches: ids.length,
+      },
     });
     return ok({ priced });
   });

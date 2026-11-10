@@ -145,7 +145,9 @@ export function batchNoteText(note: string): string {
     case 'sitemap_index':
       return 'That address is a list of sitemaps. Use the address of one sitemap.';
     case 'too_many_items':
-      return 'The source holds more than 100 items. Point us to a smaller list.';
+      return 'The source holds more than 1000 items. Point us to a smaller list.';
+    case 'continues':
+      return 'This part is done. The next 100 items are being read in the next part.';
     case 'publisher_not_active':
       return 'Your publisher account is not active, so the import stopped.';
     case 'no_corridor':
@@ -266,4 +268,11 @@ export const PRICE_ALL_REPLACE = 'Also replace the prices already set';
 export const PRICE_ALL_BUTTON = 'Apply to all';
 export function pricedText(n: number): string {
   return n === 1 ? '1 item priced.' : `${n} items priced.`;
+}
+
+// POB-Q2: one address read in parts of 100.
+export function partsText(parts: number, busy: boolean): string {
+  return busy
+    ? `This address is read in parts of 100. ${parts} parts so far; more are being read. One price and Publish cover every part.`
+    : `This address was read in ${parts} parts of 100. One price and Publish cover every part.`;
 }

@@ -39,9 +39,25 @@ import per publisher, the `web_import_enabled` switch. No migration. No new depe
 - `corepack pnpm vitest run domain/catalogue apps/web/src/web-import.state.test.ts apps/web/src/pob-journey.state.test.ts`: all pass.
 - `corepack pnpm typecheck`, `corepack pnpm lint`, `corepack pnpm check:routes`, `corepack pnpm check:openapi`: exit 0.
 
+## POB-Q2: chunks of 100 from one address (owner decision, 10 Nov 2026: auto-continue in chunks of 100)
+
+- One address may list up to `MAX_SOURCE_ITEMS` = 1000 items (the extractor and feed caps move from 100 to 1000).
+  Over 1000 the batch still stages nothing (`too_many_items`).
+- A source of 100 items or fewer runs exactly as before (known items counted as existing).
+- A larger source runs in chunk mode: items this publisher already has are skipped and never fetched again; at most
+  `MAX_BATCH_ITEMS` = 100 new items are staged; when more remain, the batch ends `done` with the note `continues` and,
+  in the same transaction, queues the next batch for the same address (audit `import.continued`). A batch stopped
+  by the 120 second deadline queues the next batch too. The chain only goes on when the batch wrote at least one
+  item, so it cannot loop. In chunk mode the "changed" count is not computed for items already known.
+- The review returns `source_batches` (every batch of the same address) and `source_busy`. One price for all takes
+  `all_from_source` (refused with `batch_not_ready` while a part is still at work); Publish publishes every part, one
+  part per call.
+- Tests changed because they contradict the owner's decision: the "more than 100 is refused" tests of the extractor,
+  the feed parser and the batch now use 1001 items.
+- Acceptance: `corepack pnpm vitest run domain/catalogue/src/import-chunks.state.test.ts`: 7 passed.
+
 ## Not in this lane (named so nobody thinks it is done)
 
-- More than 100 items per address. A source listing more than 100 items still stages nothing (`too_many_items`);
-  the owner's choice between chunked auto-continue and a higher cap is pending.
 - Pictures over 2 MB, or on a CDN host. Unchanged.
+- Storage: 1000 pictures of up to 2 MB each is up to 2 GB in the content table. A bucket is the later design.
 - Account steps before the import (invite code, claim, terms, PayPal link). Unchanged.

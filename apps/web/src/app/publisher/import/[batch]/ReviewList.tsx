@@ -32,6 +32,7 @@ import {
   importErrorText,
   itemReasonText,
   itemStateText,
+  partsText,
   pricedText,
   progressText,
   publishedText,
@@ -61,6 +62,9 @@ interface Item {
 interface View {
   batch: Batch;
   items: Item[];
+  /** POB-Q2: every batch from the same address (the chunks of one import), and whether one is still at work. */
+  source_batches: string[];
+  source_busy: boolean;
 }
 
 // POB-I1: the progress of a running batch (polled every 2 seconds until it ends) and the review list. A row
@@ -80,10 +84,18 @@ export function ReviewList({ initial, offerMaxMinor }: { initial: View; offerMax
     const res = await getJson<View>(
       `/api/publisher/import/status?batch=${encodeURIComponent(initial.batch.id)}`,
     );
-    if (res.ok) setView({ batch: res.data.batch, items: res.data.items });
+    if (res.ok)
+      setView({
+        batch: res.data.batch,
+        items: res.data.items,
+        source_batches: res.data.source_batches,
+        source_busy: res.data.source_busy,
+      });
   }, [initial.batch.id]);
 
-  const running = view.batch.state === 'queued' || view.batch.state === 'running';
+  const running =
+    view.batch.state === 'queued' || view.batch.state === 'running' || view.source_busy;
+  const parts = view.source_batches.length;
   useEffect(() => {
     if (!running) return;
     const t = setInterval(() => void reload(), 2000);
@@ -129,6 +141,7 @@ export function ReviewList({ initial, offerMaxMinor }: { initial: View; offerMax
       batch_id: view.batch.id,
       price_minor: minor,
       ...(replaceAll ? { replace_existing: true } : {}),
+      ...(parts > 1 ? { all_from_source: true } : {}),
     });
     setBusy(false);
     if (!res.ok) {
@@ -144,16 +157,24 @@ export function ReviewList({ initial, offerMaxMinor }: { initial: View; offerMax
     setProblem(null);
     setDone(null);
     setBusy(true);
-    const res = await postJson<{ published: number }>('/api/publisher/import/publish', {
-      batch_id: view.batch.id,
-      attestation: attest,
-    });
-    setBusy(false);
-    if (!res.ok) {
-      setProblem(res.status === 401 ? 'Please sign in again.' : importErrorText(res.code));
-      return;
+    // POB-Q2: one press publishes the shown items of every part of this address, one part at a time.
+    const ids = parts > 1 ? view.source_batches : [view.batch.id];
+    let published = 0;
+    for (const id of ids) {
+      const res = await postJson<{ published: number }>('/api/publisher/import/publish', {
+        batch_id: id,
+        attestation: attest,
+      });
+      if (!res.ok) {
+        setBusy(false);
+        setProblem(res.status === 401 ? 'Please sign in again.' : importErrorText(res.code));
+        await reload();
+        return;
+      }
+      published += res.data.published;
     }
-    setDone(`${PUBLISHED_DONE} ${publishedText(res.data.published)}`);
+    setBusy(false);
+    setDone(`${PUBLISHED_DONE} ${publishedText(published)}`);
     await reload();
   }
 
@@ -168,6 +189,11 @@ export function ReviewList({ initial, offerMaxMinor }: { initial: View; offerMax
           {progressText(b.done, b.total, b.refused)}
         </p>
         {b.note ? <p className="pk-help">{batchNoteText(b.note)}</p> : null}
+        {parts > 1 ? (
+          <p className="pk-help" data-testid="import-parts">
+            {partsText(parts, view.source_busy)}
+          </p>
+        ) : null}
       </Section>
       <Section title={PRICE_ALL_HEADING} id="import-price-all">
         <div className="pk-panel">

@@ -5,7 +5,8 @@ import { app, securityDeps } from '../../../../../server/access';
 import { importErrorText, importStatusOf } from '../../../../../lib/web-import-copy';
 
 // POB-Q1: one price for every staged item of a finished batch that has none (or every staged item, when
-// replace_existing is set). One transaction, one audit row. Publishing stays its own step.
+// replace_existing is set), or of every batch from the same address (all_from_source, POB-Q2). One transaction,
+// one audit row. Publishing stays its own step.
 export const routeMeta: RouteMeta = {
   path: '/api/publisher/import/price-all',
   method: 'POST',
@@ -22,6 +23,7 @@ const Input = z
     batch_id: z.string().min(1).max(200),
     price_minor: z.number(),
     replace_existing: z.boolean().optional(),
+    all_from_source: z.boolean().optional(),
   })
   .strict();
 
@@ -38,6 +40,7 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
     batch_id: input.batch_id,
     price_minor: input.price_minor,
     ...(input.replace_existing === undefined ? {} : { replace_existing: input.replace_existing }),
+    ...(input.all_from_source === undefined ? {} : { all_from_source: input.all_from_source }),
   });
   if (!r.ok) return refused(r.error.code);
   return { status: 200, body: r.value };

@@ -115,7 +115,10 @@ describe('chunks of 100 from one address', () => {
     expect((await itemRows(w.db, second)).length).toBe(100);
     const cont = await auditRows(w.db, 'import.continued');
     expect(cont).toHaveLength(2);
-    expect(cont[0]!.detail).toMatchObject({ from: first, staged: 100 });
+    // audit rows written in the same clock tick have no fixed order: compare as a set
+    expect(cont.map((a) => a.detail)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ from: first, staged: 100 })]),
+    );
   });
 
   it('exactly 1000 items are accepted; 1001 stage nothing (too_many_items)', async () => {

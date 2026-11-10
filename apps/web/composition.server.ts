@@ -1406,6 +1406,9 @@ export interface Engine {
     review(i: { actor: Actor; batch_id: string }): Promise<{
       batch: ImportBatchView;
       items: ImportItemView[];
+      /** POB-Q2: every batch from the same address, oldest first, and whether one is still at work. */
+      source_batches: string[];
+      source_busy: boolean;
       environment: EnvironmentLabel;
       offer_max_minor: number;
     } | null>;
@@ -1431,6 +1434,7 @@ export interface Engine {
       batch_id: string;
       price_minor: number;
       replace_existing?: boolean;
+      all_from_source?: boolean;
     }): Promise<Result<{ priced: number }, ImportError>>;
     publish(i: {
       actor: Actor;

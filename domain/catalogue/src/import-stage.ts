@@ -29,7 +29,10 @@ import { coveredCurrencies } from './write';
 import type { ImportDeps, ImportError, ImportErrorCode } from './import-types';
 
 export const BATCH_DEADLINE_MS = 120_000;
+/** POB-Q2: the most NEW items one batch stages; more go to the next batch of the same address. */
 export const MAX_BATCH_ITEMS = 100;
+/** POB-Q2: the most items one address may list; over it the batch stages nothing (too_many_items). */
+export const MAX_SOURCE_ITEMS = 1000;
 export const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 type Row = Record<string, unknown>;
@@ -290,23 +293,126 @@ async function runBatch(deps: ImportDeps, b: Claimed): Promise<void> {
   const ex = extractSource(src.body, src.content_type, b.source_host);
   if (ex.candidates.length === 0 && ex.links.length === 0)
     return end({ state: 'done', note: ex.reason ?? 'no_structured_data' });
-  const total = ex.candidates.length + ex.links.length;
-  if (total > MAX_BATCH_ITEMS) return end({ state: 'done', note: 'too_many_items' });
+  const listed = ex.candidates.length + ex.links.length;
+  if (listed > MAX_SOURCE_ITEMS) return end({ state: 'done', note: 'too_many_items' });
+
+  // A source of up to MAX_BATCH_ITEMS entries runs as it always did: known items are counted as existing.
+  if (listed <= MAX_BATCH_ITEMS) {
+    if (!(await setTotal(deps, b.id, listed))) return;
+    for (const c of ex.candidates) {
+      const stop = await handleCandidate(ctx, c);
+      if (stop !== null) return end(stop);
+    }
+    for (const link of ex.links) {
+      const stop = await handleLink(ctx, link);
+      if (stop !== null) return end(stop);
+    }
+    return end({ state: 'done', note: null });
+  }
+
+  // POB-Q2, chunk mode: items this publisher already has are skipped (never fetched again); at most
+  // MAX_BATCH_ITEMS new ones are staged here, and the next batch of the same address takes the rest.
+  type Entry = { key: string; run: () => Promise<Stop | null> };
+  const entries: Entry[] = [
+    ...ex.candidates.map((c) => ({ key: c.source_key, run: () => handleCandidate(ctx, c) })),
+    ...ex.links.map((l) => ({ key: l, run: () => handleLink(ctx, l) })),
+  ];
+  const have = await deps.db.query<{ source_key: string }>(
+    'SELECT source_key FROM import_items WHERE publisher_id = $1 AND source_key = ANY ($2)',
+    [b.publisher_id, entries.map((e) => e.key)],
+  );
+  const seen = new Set(have.rows.map((r) => r.source_key));
+  const fresh: Entry[] = [];
+  for (const e of entries) {
+    if (seen.has(e.key)) continue;
+    seen.add(e.key);
+    fresh.push(e);
+  }
+  const chunk = fresh.slice(0, MAX_BATCH_ITEMS);
+  const more = fresh.length > chunk.length;
+  if (!(await setTotal(deps, b.id, chunk.length))) return;
+  // Progress is what this batch wrote, not what it looked at: a batch that wrote no item never queues another
+  // (a link whose page names an item under another key would otherwise be read again and again).
+  const wrote = async (): Promise<number> =>
+    Number(
+      (
+        await deps.db.query<{ c: string | number }>(
+          'SELECT count(*) AS c FROM import_items WHERE batch_id = $1',
+          [b.id],
+        )
+      ).rows[0]?.c ?? 0,
+    );
+  for (const e of chunk) {
+    const stop = await e.run();
+    if (stop !== null) {
+      // A deadline after progress hands the rest to a next batch; anything else ends the chain.
+      const n = stop.note === 'deadline' ? await wrote() : 0;
+      return n > 0 ? endAndContinue(deps, b, stop, n) : end(stop);
+    }
+  }
+  const n = more ? await wrote() : 0;
+  if (n > 0) return endAndContinue(deps, b, { state: 'done', note: 'continues' }, n);
+  return end({ state: 'done', note: null });
+}
+
+async function setTotal(deps: ImportDeps, id: string, total: number): Promise<boolean> {
   const set = await deps.db.query(
     `UPDATE import_batches SET total = $2, updated_at = $3 WHERE id = $1 AND state = 'running' RETURNING id`,
-    [b.id, total, deps.clock.now().toISOString()],
+    [id, total, deps.clock.now().toISOString()],
   );
-  if (set.rows.length === 0) return;
+  return set.rows.length > 0;
+}
 
-  for (const c of ex.candidates) {
-    const stop = await handleCandidate(ctx, c);
-    if (stop !== null) return end(stop);
-  }
-  for (const link of ex.links) {
-    const stop = await handleLink(ctx, link);
-    if (stop !== null) return end(stop);
-  }
-  return end({ state: 'done', note: null });
+/**
+ * POB-Q2: ends this batch and, in the same transaction, queues the next batch of the same address (the one
+ * active import per publisher holds: this one is no longer running when the next is written). A batch that
+ * recovery has already ended queues nothing.
+ */
+async function endAndContinue(
+  deps: ImportDeps,
+  b: Claimed,
+  s: Stop,
+  staged: number,
+): Promise<void> {
+  const next = `imb_${deps.ids.nonce()}`;
+  await deps.db.transaction(async (tx) => {
+    const at = deps.clock.now().toISOString();
+    const r = await tx.query<Row>(
+      `UPDATE import_batches SET state = $2, note = $3, finished_at = $4, updated_at = $4
+        WHERE id = $1 AND state = 'running' RETURNING total, done, refused, existing, changed`,
+      [b.id, s.state, s.note, at],
+    );
+    const row = r.rows[0];
+    if (row === undefined) return;
+    await deps.audit.record(tx, {
+      actor: { kind: 'system' },
+      action: 'import.finished',
+      target: b.id,
+      reason: null,
+      detail: {
+        state: s.state,
+        note: s.note,
+        total: Number(row.total),
+        done: Number(row.done),
+        refused: Number(row.refused),
+        existing: Number(row.existing),
+        changed: Number(row.changed),
+      },
+    });
+    await tx.query(
+      `INSERT INTO import_batches (id, publisher_id, source_host, source_url, state, note, total, done, refused, existing, changed,
+                                   attested_at, attestation_version, created_by, created_at, started_at, finished_at, updated_at)
+       VALUES ($1,$2,$3,$4,'queued',NULL,0,0,0,0,0,NULL,NULL,$2,$5,NULL,NULL,$5)`,
+      [next, b.publisher_id, b.source_host, b.source_url, at],
+    );
+    await deps.audit.record(tx, {
+      actor: { kind: 'system' },
+      action: 'import.continued',
+      target: next,
+      reason: null,
+      detail: { from: b.id, staged, host: b.source_host },
+    });
+  });
 }
 
 // ---- one item
@@ -678,7 +784,13 @@ export async function getBatch(
   deps: Pick<ImportDeps, 'db' | 'fee' | 'loadFee'>,
   actor: Actor,
   batch_id: string,
-): Promise<{ batch: BatchView; items: ItemView[] } | null> {
+): Promise<{
+  batch: BatchView;
+  items: ItemView[];
+  source_batches: string[];
+  /** POB-Q2: a batch of the same address is still queued or running (more items are coming). */
+  source_busy: boolean;
+} | null> {
   if (actor.kind !== 'publisher' || !IdSchema.safeParse(batch_id).success) return null;
   const b = await deps.db.query<Row>(
     `SELECT ${BATCH_COLS} FROM import_batches WHERE id = $1 AND publisher_id = $2`,
@@ -690,8 +802,18 @@ export async function getBatch(
     `SELECT ${ITEM_COLS} FROM import_items WHERE batch_id = $1 AND publisher_id = $2 ORDER BY created_at, source_key, id`,
     [batch_id, actor.publisher_id],
   );
+  // POB-Q2: every batch of this publisher from the same address, oldest first (the chunks of one import).
+  const same = await deps.db.query<{ id: string; state: string }>(
+    'SELECT id, state FROM import_batches WHERE publisher_id = $1 AND source_url = $2 ORDER BY created_at, id',
+    [actor.publisher_id, row.source_url],
+  );
   const fee = (await resolveImportFee(deps)) ?? UNREADABLE_FEE_POLICY;
-  return { batch: toBatch(row), items: items.rows.map((r) => toItem(r, fee)) };
+  return {
+    batch: toBatch(row),
+    items: items.rows.map((r) => toItem(r, fee)),
+    source_batches: same.rows.map((r) => r.id),
+    source_busy: same.rows.some((r) => r.state === 'queued' || r.state === 'running'),
+  };
 }
 
 export interface EditInput {
