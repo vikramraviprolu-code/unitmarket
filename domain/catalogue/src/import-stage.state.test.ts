@@ -91,15 +91,15 @@ describe('requestDomain', () => {
     expect(audit[0]!.detail).toMatchObject({ host: SHOP_HOST });
   });
 
-  it('asking again for a pending host gives a new token and the old one stops working', async () => {
+  it('asking again for a pending host gives the same permanent code (DOMAIN-PROOF-2: edited, the spec replaces per-address tokens)', async () => {
     const w = await fresh();
     const a = await requestDomain(w.idep(), w.harbour, { host: SHOP_HOST });
     const b = await requestDomain(w.idep(), w.harbour, { host: SHOP_HOST });
     expect(a.ok && b.ok).toBe(true);
     if (!a.ok || !b.ok) return;
-    expect(b.value.token).not.toBe(a.value.token);
+    expect(b.value.token).toBe(a.value.token);
     expect(await countOf(w.db, 'SELECT count(*) AS c FROM publisher_domains')).toBe(1);
-    w.web.pages[`${SHOP}/`] = { body: homeWithToken(a.value.token!) };
+    w.web.pages[`${SHOP}/`] = { body: '<html><head></head><body>none</body></html>' };
     const old = await checkDomain(w.idep(), w.harbour, { host: SHOP_HOST });
     expect(old).toEqual({ ok: false, error: { code: 'proof_missing' } });
     w.web.pages[`${SHOP}/`] = { body: homeWithToken(b.value.token!) };
@@ -176,6 +176,7 @@ describe('requestDomain', () => {
       {
         host: SHOP_HOST,
         state: 'verified',
+        verified_by: 'proof',
         requested_at: expect.any(String),
         verified_at: expect.any(String),
       },
@@ -407,14 +408,14 @@ describe('startVerifiedImport (begin)', () => {
     expect(w.web.calls.some((c) => c.url === SOURCE_URL)).toBe(false);
   });
 
-  it('PROOF_LOST: a verified host that now resolves to a private address is refused the same way', async () => {
+  it('PROOF_LOST: a verified host that now resolves to a private address is refused (site_unreachable since DOMAIN-PROOF-2)', async () => {
     const w = await fresh();
     await verifyShop(w);
     w.web.pages[`${SHOP}/`] = { refuse: 'private_address' };
     w.web.pages[WELL_KNOWN_URL] = { refuse: 'private_address' };
     expect(await startVerifiedImport(w.idep(), w.harbour, { source_url: SOURCE_URL })).toEqual({
       ok: false,
-      error: { code: 'proof_lost' },
+      error: { code: 'site_unreachable', detail: 'private_address' },
     });
     expect(await countOf(w.db, 'SELECT count(*) AS c FROM import_batches')).toBe(0);
     const a = await auditRows(w.db, 'import.proof_failed');

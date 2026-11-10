@@ -19,9 +19,7 @@ export const routeMeta: RouteMeta = {
   risk: 'high',
 };
 
-const Input = z
-  .object({ source_url: z.string().min(1).max(2048), new_code: z.boolean().optional() })
-  .strict();
+const Input = z.object({ source_url: z.string().min(1).max(2048) }).strict();
 
 /** An error value of the engine as the answer of the route: a fixed code and a plain sentence. */
 function refused(code: string): Extract<HttpResult<never>, { code: string }> {
@@ -34,7 +32,6 @@ export const POST = withRoute(routeMeta, Input, async ({ actor, input }) => {
   ).engine.webImport.quick({
     actor,
     source_url: input.source_url,
-    ...(input.new_code === undefined ? {} : { new_code: input.new_code }),
   });
   if (!r.ok) return refused(r.error.code);
   return { status: 200, body: r.value };

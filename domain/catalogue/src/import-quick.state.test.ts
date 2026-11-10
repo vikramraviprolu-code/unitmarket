@@ -73,7 +73,10 @@ describe('quickImport: one address, no second paste', () => {
     const first = await quickImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
     if (!first.ok || first.value.step !== 'prove') throw new Error('expected prove');
     const again = await quickImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
-    expect(again).toEqual({ ok: true, value: { step: 'waiting', host: SHOP_HOST } });
+    expect(again).toMatchObject({
+      ok: true,
+      value: { step: 'waiting', host: SHOP_HOST, token: first.value.token },
+    });
     // The uploaded file from the first answer now proves the site.
     w.web.pages[WELL_KNOWN_URL] = { content_type: 'text/plain', body: first.value.file_body };
     const third = await quickImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
@@ -108,18 +111,15 @@ describe('quickImport: one address, no second paste', () => {
     expect(r.ok && r.value.step).toBe('started');
   });
 
-  it('new_code gives a fresh code for a pending site (the old one stops working)', async () => {
+  it('after a reload, waiting carries the same permanent code and file again (DOMAIN-PROOF-2)', async () => {
     const w = await fresh();
     const a = await quickImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
-    const b = await quickImport(w.idep(), w.harbour, { source_url: SOURCE_URL, new_code: true });
-    if (!a.ok || a.value.step !== 'prove' || !b.ok || b.value.step !== 'prove')
-      throw new Error('expected prove twice');
-    expect(b.value.token).not.toBe(a.value.token);
-    w.web.pages[WELL_KNOWN_URL] = { content_type: 'text/plain', body: a.value.file_body };
-    expect(await quickImport(w.idep(), w.harbour, { source_url: SOURCE_URL })).toEqual({
-      ok: true,
-      value: { step: 'waiting', host: SHOP_HOST },
-    });
+    const b = await quickImport(w.idep(), w.harbour, { source_url: SOURCE_URL });
+    if (!a.ok || a.value.step !== 'prove' || !b.ok || b.value.step !== 'waiting')
+      throw new Error('expected prove, then waiting');
+    expect(b.value.token).toBe(a.value.token);
+    expect(b.value.file_body).toBe(a.value.file_body);
+    expect(b.value.meta_tag).toBe(a.value.meta_tag);
   });
 
   it.each(['http://shop.pub-one.invalid/catalogue', 'https://localhost/x', '', 'shop'])(

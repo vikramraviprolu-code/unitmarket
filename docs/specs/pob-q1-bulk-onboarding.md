@@ -13,10 +13,10 @@ address again and presses Start; then every picture without a price is typed one
 1. **One address.** `quickImport` takes the gallery address. For a new site it answers `prove` with the code, a
    ready-made proof file (`/.well-known/unitmarket-verify.txt`, body `<code>\n`) and the meta tag, and fetches
    nothing. The page downloads the file from memory and then asks again every 5 seconds (12 a minute, the route's
-   rate limit; it stops after 10 minutes). While the proof is not up the answer is `waiting` and the code is not
-   replaced. When the proof is up, the same call verifies the domain and begins the import (`started`, with the
-   batch id), and the page opens the review list. A site already proved starts at once. `new_code` replaces the
-   code of a pending site.
+   rate limit; it stops after 10 minutes). While the proof is not up the answer is `waiting`, carrying the same code and
+   file again (after DOMAIN-PROOF-2 the code is permanent per publisher, so a reloaded page can offer it again). When the proof is up, the same call verifies the domain and begins the import (`started`, with the
+   batch id), and the page opens the review list. A site already proved starts at once; a removed address is
+   asked for again.
 2. **One price for all.** `setPriceForAll` sets one price on every staged item of a finished batch that has no
    price (or every staged item with `replace_existing`), in one transaction with one audit row
    (`import.price_all`). Hidden, refused and published items are never touched. Publishing stays its own step.

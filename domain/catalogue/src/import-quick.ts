@@ -2,8 +2,9 @@
 //
 //   quickImport     The page sends the gallery address. A new site gets a proof code and a ready-made proof
 //                   file (step 'prove'); nothing is fetched. The page then sends the same address every few
-//                   seconds: while the proof is not up the answer is 'waiting' (no new code, so the uploaded
-//                   file stays valid); once it is up the domain is verified and the import is begun in the same
+//                   seconds: while the proof is not up the answer is 'waiting', with the same code and file
+//                   again (DOMAIN-PROOF-2 made the code permanent per publisher, so a reloaded page can offer
+//                   the file again and an uploaded file stays valid); once it is up the domain is verified and the import is begun in the same
 //                   call ('started'). A site already proved starts at once. It only composes requestDomain,
 //                   checkDomain and startVerifiedImport, so every guard of those (one owner per host, the two
 //                   fixed proof paths, the proof fetched again at begin, one active import) still holds.
@@ -16,35 +17,45 @@ import {
   PROOF_META_NAME,
   WELL_KNOWN_PATH,
   checkDomain,
+  getProofCode,
   parseWebAddress,
   requestDomain,
 } from './domain-proof';
 import { startVerifiedImport } from './import-stage';
 import type { ImportDeps, ImportError, ImportErrorCode } from './import-types';
 
+/** What the publisher puts on the site: the permanent code, as a file or as a tag. */
+export interface QuickProof {
+  host: string;
+  token: string;
+  /** Where the file goes on the site, and what it holds. */
+  file_path: string;
+  file_body: string;
+  /** The other way: this tag in the head of the front page. */
+  meta_tag: string;
+}
+
 export type QuickStep =
-  | {
-      step: 'prove';
-      host: string;
-      /** Shown once; only its hash is stored. */
-      token: string;
-      /** Where the file goes on the site, and what it holds. */
-      file_path: string;
-      file_body: string;
-      /** The other way: this tag in the head of the front page. */
-      meta_tag: string;
-    }
-  | { step: 'waiting'; host: string; detail?: string }
+  | ({ step: 'prove' } & QuickProof)
+  | ({ step: 'waiting'; detail?: string } & QuickProof)
   | { step: 'started'; host: string; batch_id: string };
+
+const proofOf = (host: string, token: string): QuickProof => ({
+  host,
+  token,
+  file_path: WELL_KNOWN_PATH,
+  file_body: `${token}\n`,
+  meta_tag: `<meta name="${PROOF_META_NAME}" content="${token}">`,
+});
 
 const fail = (code: ImportErrorCode, detail?: string): Result<never, ImportError> =>
   err(detail === undefined ? { code } : { code, detail });
 
-/** See the file comment. `new_code` replaces the code of a pending site (the old one stops working). */
+/** See the file comment. */
 export async function quickImport(
   deps: ImportDeps,
   actor: Actor,
-  input: { source_url: string; new_code?: boolean },
+  input: { source_url: string },
 ): Promise<Result<QuickStep, ImportError>> {
   if (actor.kind !== 'publisher') return fail('not_publisher');
   const addr = parseWebAddress(input.source_url);
@@ -57,32 +68,28 @@ export async function quickImport(
   );
   const state = own.rows[0]?.state;
 
-  if (state === undefined || (state === 'pending' && input.new_code === true)) {
+  // A new address, or one the publisher removed: ask for it (requestDomain writes the pending row).
+  if (state !== 'pending' && state !== 'verified') {
     const asked = await requestDomain(deps, actor, { host });
     if (!asked.ok) return asked;
     if (asked.value.token === null) return begin(deps, actor, host, addr.url);
-    const token = asked.value.token;
-    return ok({
-      step: 'prove',
-      host,
-      token,
-      file_path: WELL_KNOWN_PATH,
-      file_body: `${token}\n`,
-      meta_tag: `<meta name="${PROOF_META_NAME}" content="${token}">`,
-    });
+    return ok({ step: 'prove', ...proofOf(host, asked.value.token) });
   }
 
   if (state === 'pending') {
     const checked = await checkDomain(deps, actor, { host });
     if (!checked.ok) {
-      if (checked.error.code === 'proof_missing') return ok({ step: 'waiting', host });
-      if (checked.error.code === 'proof_refused')
-        return ok({
-          step: 'waiting',
-          host,
-          ...(checked.error.detail === undefined ? {} : { detail: checked.error.detail }),
-        });
-      return checked;
+      const code = checked.error.code;
+      if (code !== 'proof_missing' && code !== 'proof_refused') return checked;
+      const token = await getProofCode(deps, actor);
+      if (token === null) return fail('not_publisher');
+      return ok({
+        step: 'waiting',
+        ...proofOf(host, token),
+        ...(code === 'proof_refused' && checked.error.detail !== undefined
+          ? { detail: checked.error.detail }
+          : {}),
+      });
     }
   }
   return begin(deps, actor, host, addr.url);

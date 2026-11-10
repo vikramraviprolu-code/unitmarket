@@ -12,13 +12,13 @@ export const IMPORT_SAFE_NOTE =
 
 export const DOMAIN_HEADING = 'Step 1. Prove the address is yours';
 export const DOMAIN_LEDE =
-  'Enter the address of your site. We give you a code once. Put it on your site, then ask us to check.';
+  'Enter the address of your site. Put your code on that site, then ask us to check. The code is the same for every address you add.';
 export const DOMAIN_HOST_LABEL = 'Your website (for example shop.example.com)';
 export const DOMAIN_ADD_BUTTON = 'Get my code';
 export const DOMAIN_CHECK_BUTTON = 'Check my site';
 export const DOMAIN_TOKEN_HEADING = 'Your code';
 export const DOMAIN_TOKEN_NOTE =
-  'We show this code once. Keep it until the check passes. If you lose it, ask for a new one.';
+  'This is your permanent code. It is also shown at the top of this page, so you can read it again at any time.';
 export const DOMAIN_HOW_HEADING = 'Two ways to show the code';
 export const DOMAIN_HOW_META =
   'Add one meta tag to the head of your front page, with the name unitmarket-verify and your code as the content.';
@@ -28,6 +28,13 @@ export const DOMAIN_LIST_HEADING = 'Your addresses';
 export const DOMAIN_EMPTY = 'No address yet.';
 export const DOMAIN_VERIFIED = 'Proved';
 export const DOMAIN_PENDING = 'Waiting for the code';
+export const CODE_HEADING = 'Your code';
+export const CODE_INSTRUCTION = 'Put this code once on each of your sites';
+export const CODE_NOTE =
+  'The code stays the same. If your address changes, put the same code on the new address, then ask us to check.';
+export const DOMAIN_VERIFIED_BY_US = 'Verified by UnitMarket';
+export const DOMAIN_REMOVE_BUTTON = 'Remove this address';
+export const DOMAIN_REMOVED = 'The address was removed. Offers already on sale stay on sale.';
 export const DOMAIN_CHECKED_OK = 'Your site passed the check.';
 
 export const BEGIN_HEADING = 'Step 2. Read my items';
@@ -193,6 +200,10 @@ const ERRORS: Record<string, string> = {
     'We could not reach that address. Check that it is public and answers over https, then try again.',
   proof_lost:
     'We could not find your code on that address any more, so nothing was imported. Check the tag or the file, then try again.',
+  site_unreachable: 'We could not reach your site at that address. Check that it is online.',
+  not_operator: 'Only an operator can do that.',
+  mfa_required: 'Enter your authenticator code to do that.',
+  unchanged: 'That address is already verified.',
   import_off: 'Web import is switched off here.',
   paused: 'Imports are paused for now. Try again later.',
   import_active: 'You already have an import in progress. Wait for it to finish.',
@@ -220,12 +231,16 @@ export function importStatusOf(code: string): ImportStatus {
     case 'not_publisher':
     case 'publisher_not_active':
     case 'domain_not_verified':
+    case 'not_operator':
+    case 'mfa_required':
       return 403;
     case 'not_found':
       return 404;
     case 'host_taken':
     case 'proof_lost':
+    case 'site_unreachable':
     case 'import_active':
+    case 'unchanged':
     case 'paused':
     case 'batch_not_ready':
     case 'not_editable':
@@ -256,7 +271,6 @@ export const QUICK_WAITING =
   'Checking your site every 5 seconds. Leave this page open; the import starts by itself.';
 export const QUICK_GAVE_UP =
   'We stopped checking after 10 minutes. Press Start again when the file is on your site.';
-export const QUICK_NEW_CODE = 'Get a new file';
 export const QUICK_STARTED = 'Your site is proved. The import has started.';
 export const QUICK_MANUAL = 'Do it step by step instead';
 

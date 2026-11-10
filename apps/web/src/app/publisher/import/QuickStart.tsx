@@ -12,7 +12,6 @@ import {
   QUICK_HEADING,
   QUICK_LEDE,
   QUICK_META_OR,
-  QUICK_NEW_CODE,
   QUICK_PROVE_HEADING,
   QUICK_STARTED,
   QUICK_URL_LABEL,
@@ -32,7 +31,15 @@ type QuickStep =
       file_body: string;
       meta_tag: string;
     }
-  | { step: 'waiting'; host: string; detail?: string }
+  | {
+      step: 'waiting';
+      host: string;
+      token: string;
+      file_path: string;
+      file_body: string;
+      meta_tag: string;
+      detail?: string;
+    }
   | { step: 'started'; host: string; batch_id: string };
 
 /** Every 5 seconds, at most 120 times (10 minutes); the route allows 12 calls a minute. */
@@ -53,33 +60,31 @@ export function QuickStart() {
   const [problem, setProblem] = useState<string | null>(null);
   const polls = useRef(0);
 
-  const send = useCallback(
-    async (newCode: boolean): Promise<void> => {
-      const res = await postJson<QuickStep>('/api/publisher/import/quick', {
-        source_url: url.trim(),
-        ...(newCode ? { new_code: true } : {}),
-      });
-      if (!res.ok) {
-        setPolling(false);
-        setProblem(res.status === 401 ? 'Please sign in again.' : importErrorText(res.code));
-        return;
-      }
-      const d = res.data;
-      if (d.step === 'prove') {
-        setProof(d);
-        polls.current = 0;
-        setGaveUp(false);
-        setPolling(true);
-      } else if (d.step === 'waiting') {
-        setPolling(true);
-      } else {
-        setPolling(false);
-        setNote(QUICK_STARTED);
-        router.push(`/publisher/import/${encodeURIComponent(d.batch_id)}`);
-      }
-    },
-    [url, router],
-  );
+  const send = useCallback(async (): Promise<void> => {
+    const res = await postJson<QuickStep>('/api/publisher/import/quick', {
+      source_url: url.trim(),
+    });
+    if (!res.ok) {
+      setPolling(false);
+      setProblem(res.status === 401 ? 'Please sign in again.' : importErrorText(res.code));
+      return;
+    }
+    const d = res.data;
+    if (d.step === 'prove') {
+      setProof(d);
+      polls.current = 0;
+      setGaveUp(false);
+      setPolling(true);
+    } else if (d.step === 'waiting') {
+      // The code is permanent: a reloaded page offers the same file again.
+      setProof({ ...d, step: 'prove' });
+      setPolling(true);
+    } else {
+      setPolling(false);
+      setNote(QUICK_STARTED);
+      router.push(`/publisher/import/${encodeURIComponent(d.batch_id)}`);
+    }
+  }, [url, router]);
 
   useEffect(() => {
     if (!polling) return;
@@ -90,19 +95,19 @@ export function QuickStart() {
         setGaveUp(true);
         return;
       }
-      void send(false);
+      void send();
     }, POLL_MS);
     return () => clearInterval(t);
   }, [polling, send]);
 
-  async function start(e: { preventDefault(): void }, newCode = false) {
+  async function start(e: { preventDefault(): void }) {
     e.preventDefault();
     setBusy(true);
     setProblem(null);
     setNote(null);
     setGaveUp(false);
     polls.current = 0;
-    await send(newCode);
+    await send();
     setBusy(false);
   }
 
@@ -170,16 +175,6 @@ export function QuickStart() {
                 {QUICK_COPY}
               </button>
             </p>
-            <div className="pk-actions">
-              <button
-                type="button"
-                className="btn"
-                disabled={busy}
-                onClick={(e) => void start(e, true)}
-              >
-                {QUICK_NEW_CODE}
-              </button>
-            </div>
           </div>
         ) : null}
         <div aria-live="polite" data-testid="import-quick-status">
