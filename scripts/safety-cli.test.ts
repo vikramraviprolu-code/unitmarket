@@ -42,6 +42,8 @@ describe('safety CLI entry points', () => {
     expect(r.status, r.out).toBe(0);
     expect(r.out).toContain('switch paypal_outbound=off');
     expect(r.out).toContain('switch ai_enabled=on');
+    // WEB-IMPORT-SW: the web import switch is listed, off until an operator turns it on
+    expect(r.out).toContain('switch web_import_enabled=off');
     expect(r.out).not.toContain(S1);
   });
   it('stop and approve refuse without a terminal', () => {

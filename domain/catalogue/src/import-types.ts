@@ -25,7 +25,7 @@ export type ImportDeps = Pick<CoreDeps, 'db' | 'clock' | 'ids' | 'audit'> & {
   /** Null while the feature is off: every call that would fetch answers import_off. */
   fetcher: ImportFetcherPort | null;
   /**
-   * Asked before EVERY fetch (the paypal_outbound switch and maintenance). False ends the run as interrupted,
+   * Asked before EVERY fetch (the web_import_enabled switch and maintenance, never paypal_outbound). False ends the run as interrupted,
    * a throw ends it as failed.
    */
   mayFetch: () => Promise<boolean>;

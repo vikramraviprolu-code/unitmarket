@@ -17,7 +17,7 @@ describe('ports schemas', () => {
     expect(IdPrefixSchema.safeParse('ord').success).toBe(true);
     expect(IdPrefixSchema.safeParse('xyz').success).toBe(false);
   });
-  it('SwitchName has the seven switches (agent_buy_enabled from API-B)', () => {
+  it('SwitchName has the eight switches (agent_buy_enabled from API-B, web_import_enabled from WEB-IMPORT-SW)', () => {
     expect([...SwitchNameSchema.options].sort()).toEqual([
       'agent_buy_enabled',
       'ai_enabled',
@@ -25,6 +25,7 @@ describe('ports schemas', () => {
       'paypal_outbound',
       'refunds_enabled',
       'unlock_enabled',
+      'web_import_enabled',
       'webhook_enabled',
     ]);
   });

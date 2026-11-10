@@ -5685,7 +5685,8 @@
                           "unlock_enabled",
                           "ai_enabled",
                           "webhook_enabled",
-                          "agent_buy_enabled"
+                          "agent_buy_enabled",
+                          "web_import_enabled"
                         ]
                       },
                       "additionalProperties": {
@@ -5698,7 +5699,8 @@
                         "unlock_enabled",
                         "ai_enabled",
                         "webhook_enabled",
-                        "agent_buy_enabled"
+                        "agent_buy_enabled",
+                        "web_import_enabled"
                       ]
                     },
                     "kill_switch": {

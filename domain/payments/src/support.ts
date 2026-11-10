@@ -436,6 +436,7 @@ export async function makeWorld(opts: WorldOptions = {}): Promise<World> {
     ai_enabled: true,
     webhook_enabled: true,
     agent_buy_enabled: true,
+    web_import_enabled: true,
   };
   const log = { log: () => undefined, child: () => log };
   const deps: PaymentsDeps = {

@@ -825,6 +825,7 @@ const SWITCHES: SwitchName[] = [
   'ai_enabled',
   'webhook_enabled',
   'agent_buy_enabled',
+  'web_import_enabled',
 ];
 
 const DAY_MS = 86_400_000;
@@ -1164,7 +1165,7 @@ export interface Engine {
     reason: string;
   }): Promise<Result<void, 'operator_required' | 'mfa_required' | 'reason_required'>>;
   /**
-   * INT-CTL (CTL.3): an operator changes one of the seven safety switches. The reason is a code from the closed list
+   * INT-CTL (CTL.3): an operator changes one of the eight safety switches. The reason is a code from the closed list
    * and is stored as the switch's reason. Turning on needs the second factor and refuses the two switches that keep
    * their own controls (paypal_outbound: Start; agent_buy_enabled: agent buy).
    */
@@ -2091,6 +2092,15 @@ function buildApp(config: Config, opts: AppOptions): App {
           WHERE name = 'paypal_outbound' AND changed_by = 'seed'`,
         [now],
       );
+      // WEB-IMPORT-SW: the same for the web import switch, so a dry run (and every offline test) can import. Only the
+      // untouched migration row is changed. Sandbox mode never takes this path: the owner turns the switch on from
+      // the Controls tab after a deploy.
+      await d.query(
+        `UPDATE safety_switches SET "on" = true, changed_by = 'seed:dryrun', changed_at = $1,
+                reason = 'seed: dry run imports with no PayPal call', updated_at = $1
+          WHERE name = 'web_import_enabled' AND changed_by = 'seed'`,
+        [now],
+      );
     }
     // POB-DEMOLINK: dry run only (the function checks the environment too). The demo publishers are the ones the
     // seed blocks create; a publisher that applied or imported through the product is not one.
@@ -2376,7 +2386,8 @@ function buildApp(config: Config, opts: AppOptions): App {
   // POB-I1: the web import. The fetcher is the guarded transport fetcher outside tests (one fixed rule: the
   // caller names the one host of each call, the publisher's verified domain) and the test double in tests; in
   // tests without a double, and in maintenance, the import is off. The may-fetch check is asked before EVERY
-  // fetch: the paypal_outbound switch (one stop ends every outbound call) and maintenance.
+  // fetch: the web_import_enabled switch and maintenance (WEB-IMPORT-SW). The import reads a seller's site, never
+  // PayPal, so paypal_outbound is not read here. A missing or unreadable switch row reads off (fail closed).
   const importDeps: ImportDeps = {
     db,
     clock,
@@ -2386,7 +2397,7 @@ function buildApp(config: Config, opts: AppOptions): App {
     fetcher:
       opts.test_import_fetcher ??
       (config.node_env !== 'test' && !maintenance ? createFeedFetcher() : null),
-    mayFetch: async () => !maintenance && (await switches.isOn('paypal_outbound')),
+    mayFetch: async () => !maintenance && (await switches.isOn('web_import_enabled')),
     // POB-G (D-096): the fee in force. A test may inject a fixed policy (AppOptions.import_fee). Otherwise the setting is
     // read each time (review, edit, publish), so a changed rate shows at the next call with no restart. When the setting
     // cannot be read the loader throws: the review shows no buyer price and publish answers fee_unavailable (fail closed).

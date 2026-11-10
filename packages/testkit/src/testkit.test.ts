@@ -19,7 +19,7 @@ describe('testDb', () => {
       'SELECT count(*)::int AS n FROM schema_migrations',
     );
     expect(migrations.rows[0]?.n).toBeGreaterThanOrEqual(6);
-    // seeded: corridor, access policies and the seven switches (paypal_outbound off)
+    // seeded: corridor, access policies and the eight switches (paypal_outbound off)
     const corridor = await a.query('SELECT id FROM corridors WHERE id = $1', ['us-usd']);
     expect(corridor.rows).toHaveLength(1);
     const policies = await a.query('SELECT id FROM access_policies');
@@ -27,7 +27,7 @@ describe('testDb', () => {
     const sw = await a.query<{ name: string; on: boolean }>(
       'SELECT name, "on" FROM safety_switches ORDER BY name',
     );
-    expect(sw.rows).toHaveLength(7); // API-B added agent_buy_enabled
+    expect(sw.rows).toHaveLength(8); // API-B added agent_buy_enabled, WEB-IMPORT-SW web_import_enabled
     expect(sw.rows.find((r) => r.name === 'paypal_outbound')?.on).toBe(false);
     // isolated: a write in one database is invisible in the other
     await seedTestCatalogue(a);

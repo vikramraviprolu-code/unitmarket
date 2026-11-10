@@ -52,7 +52,7 @@ Evidence for the PR: outputs, red run, the refusal table, one staged batch from 
   closes ends the scan; linear time on hostile input. Cover with adversarial cases.
 - `startVerifiedImport` re-fetches the two proof paths on every begin. If the token no longer holds or the host is refused (private address), it returns `proof_lost`
   (route: 409, plain copy), audits `import.proof_failed`, writes no batch and fetches no item. The start route is named `begin`.
-- `mayFetch` is asked before every fetch (the `paypal_outbound` switch and maintenance); a false or throwing check ends the run as failed or interrupted.
+- `mayFetch` is asked before every fetch (the `web_import_enabled` switch and maintenance, WEB-IMPORT-SW; it no longer reads `paypal_outbound`); a false or throwing check ends the run as failed or interrupted.
 - `BATCH_DEADLINE_MS` is 120 seconds; the run stops with note `deadline`. `finishBatch` and progress saves write only `WHERE state = 'running'`, so a batch ended by recovery
   is not overwritten and gets no second audit row.
 - Migration: length CHECKs on `language`, `topics` (at most 8, each at most 40), `image_ref` and `content_ref`; a trigger `import_items_owner` checks the item's publisher equals

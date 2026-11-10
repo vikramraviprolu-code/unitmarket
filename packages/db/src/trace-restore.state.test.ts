@@ -49,11 +49,11 @@ const backfillOf = async (d: Db) =>
   ).rows;
 
 describe('export, import, verify', () => {
-  it('starts from a freshly migrated database: it already holds the 21 backfill events of the seeded switches and API groups', async () => {
+  it('starts from a freshly migrated database: it already holds the 22 backfill events of the seeded switches and API groups', async () => {
     const d = await freshDb();
     try {
       const rows = await backfillOf(d);
-      expect(rows).toHaveLength(21);
+      expect(rows).toHaveLength(22);
       expect(rows.every((r) => r.chain_key === 'plat')).toBe(true);
     } finally {
       await d.close();
@@ -83,7 +83,7 @@ describe('export, import, verify', () => {
       );
       expect(dup.rows).toEqual([]);
       expect(await backfillOf(target)).toEqual(await backfillOf(source));
-      expect(await backfillOf(target)).toHaveLength(21);
+      expect(await backfillOf(target)).toHaveLength(22);
     } finally {
       await target.close();
     }
@@ -120,7 +120,7 @@ describe('export, import, verify', () => {
     try {
       const before = await countEvents(target);
       await importSql(target, sql);
-      expect(before).toBe(21);
+      expect(before).toBe(22);
       expect(await countEvents(target)).toBe(await countEvents(source));
     } finally {
       await target.close();
@@ -255,7 +255,7 @@ describe('what a restore refuses and what it reports', () => {
       } finally {
         await d.exec(`SELECT set_config('ums.trace', '', false)`);
       }
-      expect(await countEvents(d)).toBe(21);
+      expect(await countEvents(d)).toBe(22);
     } finally {
       await d.close();
     }

@@ -32,7 +32,7 @@ The golden asserts no line or copy string contains `UMS_PAYPAL_CONNECT=on`, `--u
 - `POST /api/ops/switches/[name]/off` is `fail_safe_without_mfa: true`, like `/api/ops/stop`. Its handler calls `setSwitch(name, false, …)` with a literal `false`; no code path in it can turn a switch on.
 - `POST /api/ops/switches/[name]/on` needs MFA.
 - Both take a reason code from the CTL.6 list (F13); the code is stored as the `setSwitch` reason, which refuses an empty reason (`switches.ts:93`).
-- `on` refuses `paypal_outbound` and `agent_buy_enabled` with 409 `use_existing_control`. Those keep the existing Start and agent-buy paths and their locks. The other five switches (`ai_enabled`, `checkout_enabled`, `refunds_enabled`, `unlock_enabled`, `webhook_enabled`) can be turned on. An unknown `[name]` gives 404.
+- `on` refuses `paypal_outbound` and `agent_buy_enabled` with 409 `use_existing_control`. Those keep the existing Start and agent-buy paths and their locks. The other six switches (`ai_enabled`, `checkout_enabled`, `refunds_enabled`, `unlock_enabled`, `webhook_enabled`, and `web_import_enabled` from WEB-IMPORT-SW) can be turned on. An unknown `[name]` gives 404.
 
 **CTL.4, registry.**
 
