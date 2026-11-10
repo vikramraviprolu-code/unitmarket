@@ -148,7 +148,12 @@ SERVICE_URL="$(gcloud run services describe "$SERVICE" --region="$REGION" --proj
 echo
 echo "deployed $SERVICE from tag $TAG at commit $COMMIT"
 echo "service URL: $SERVICE_URL"
-if ! grep -qxF "UMS_PUBLIC_ORIGIN: '${SERVICE_URL}'" "${HERE}/service.yaml"; then
+ORIGIN="$(grep '^UMS_PUBLIC_ORIGIN:' "${HERE}/service.yaml" | cut -d"'" -f2)"
+if [ "$ORIGIN" = "$SERVICE_URL" ]; then
+  :
+elif [[ "$ORIGIN" != *.run.app ]]; then
+  echo "custom domain: UMS_PUBLIC_ORIGIN is ${ORIGIN}; browser sign-in works only there, and the load balancer must route it to this service."
+else
   echo "NOTE: UMS_PUBLIC_ORIGIN in service.yaml is not this URL. Browser sign-in is refused until a reviewed"
   echo "change sets it to the URL above and you deploy the new tag."
 fi

@@ -18,11 +18,11 @@ import { REPO_ROOT } from './test-helpers';
 
 export const VERBS = ['doctor', 'status', 'up', 'down', 'restart', 'deploy', 'logs'] as const;
 export const PROJECT = 'unitmarket-sbx-vr1';
-/** The origin service.yaml holds, so a default scenario has no origin mismatch. */
-export const WEB_URL =
-  /^UMS_PUBLIC_ORIGIN: '([^']+)'$/m.exec(
-    readFileSync(join(REPO_ROOT, 'infra', 'gcp', 'service.yaml'), 'utf8'),
-  )?.[1] ?? 'https://unitmarket-sandbox-abc123-ey.a.run.app';
+/**
+ * The address Cloud Run gives the service (status.url). DOM-1: service.yaml now holds the custom
+ * domain, so this is the real run.app address, not the value read from service.yaml.
+ */
+export const WEB_URL = 'https://unitmarket-sandbox-626887286871.europe-west3.run.app';
 export const REVISION = 'unitmarket-sandbox-00031-x7k';
 export const REQUIRED_SECRETS = [
   'DATABASE_URL',
@@ -145,6 +145,8 @@ export interface Scenario {
   probeBody?: string;
   /** Environment for the kit run. */
   env?: Record<string, string>;
+  /** DOM-1: the UMS_PUBLIC_ORIGIN line of the kit's copy of service.yaml; default: the real file. */
+  origin?: string;
 }
 
 export interface Kit {
@@ -309,6 +311,16 @@ export function makeKit(s: Scenario = {}): Kit {
   mkdirSync(join(repo, 'infra'), { recursive: true });
   mkdirSync(state, { recursive: true });
   cpSync(join(REPO_ROOT, 'infra', 'gcp'), gcp, { recursive: true });
+  if (s.origin !== undefined) {
+    const yaml = join(gcp, 'service.yaml');
+    w(
+      yaml,
+      readFileSync(yaml, 'utf8').replace(
+        /^UMS_PUBLIC_ORIGIN: '[^']*'$/m,
+        `UMS_PUBLIC_ORIGIN: '${s.origin}'`,
+      ),
+    );
+  }
 
   const realGit = spawnSync('bash', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
   w(join(stub, 'gcloud'), FAKE_GCLOUD);
