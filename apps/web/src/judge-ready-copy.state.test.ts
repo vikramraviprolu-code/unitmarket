@@ -41,8 +41,8 @@ describe('JR-1 the days come from the registry, never from copy', () => {
 
   it('the home hero says the registry days', () => {
     const src = code('app/page.tsx');
-    expect(src).toContain('DEFAULT_ACCESS_DAYS');
-    expect(src).toMatch(/\$\{DEFAULT_ACCESS_DAYS\} days of access/);
+    expect(src).toContain('platformAccessDays()');
+    expect(src).toMatch(/\$\{days\} days of access/);
   });
 
   it('the terms, the term points and the buyer door say the registry days', () => {
@@ -69,7 +69,9 @@ describe('JR-1 the legal pages are final for the sandbox demo', () => {
       expect(intro, d.slug).toMatch(/No real money moves/);
     }
     const pub = LEGAL_DOCS.find((d) => d.slug === 'publisher-terms')!;
-    expect(pub.sections[0]!.paragraphs[0]).toContain('They describe only what the demo does today.');
+    expect(pub.sections[0]!.paragraphs[0]).toContain(
+      'They describe only what the demo does today.',
+    );
   });
 
   it('no "may change before the demo" text in non-test source', () => {
@@ -149,10 +151,7 @@ describe('JR-1 the library meter scales to the window', () => {
     expect(src).toContain('data-testid="window-meter"');
   });
   it('the two library callers that have started_at pass startedAt (the reader view has none)', () => {
-    for (const f of [
-      'app/library/page.tsx',
-      'app/library/[entitlement]/page.tsx',
-    ])
+    for (const f of ['app/library/page.tsx', 'app/library/[entitlement]/page.tsx'])
       expect(code(f), f).toMatch(/startedAt=\{[a-z]+\.window\.started_at\}/);
   });
 });

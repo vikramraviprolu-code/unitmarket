@@ -79,6 +79,7 @@ export default async function Discover({
         signedIn={actor?.kind === 'buyer'}
         browse={browse}
         rights={rights}
+        days={await a.engine.platformAccessDays()}
         initialNeed={initialNeed}
       >
         <h1>Find articles for my need</h1>

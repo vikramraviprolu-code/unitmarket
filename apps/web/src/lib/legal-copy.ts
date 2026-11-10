@@ -31,7 +31,8 @@ const UPDATED = 'Drafted 30 October 2026';
 // the publisher terms change and every record that names an older version shows as changed, not re-accepted.
 export const PUBLISHER_TERMS_VERSION = 'v1';
 
-export const TERMS_DOC: LegalDoc = {
+/** The days are the access window in force (engine.platformAccessDays); the default is the registry's. */
+export const termsDoc = (days: number = DEFAULT_ACCESS_DAYS): LegalDoc => ({
   slug: 'terms',
   href: '/legal/terms',
   title: 'Terms of purchase',
@@ -60,7 +61,7 @@ export const TERMS_DOC: LegalDoc = {
     {
       heading: 'How long you have access',
       paragraphs: [
-        `Access lasts ${DEFAULT_ACCESS_DAYS} days from verified payment and ready delivery. The ${DEFAULT_ACCESS_DAYS} days start once your payment is verified and the content is ready to deliver, whichever happens later. If we detect a delivery failure on our side, the lost time is credited back once delivery works again.`,
+        `Access lasts ${days} days from verified payment and ready delivery. The ${days} days start once your payment is verified and the content is ready to deliver, whichever happens later. If we detect a delivery failure on our side, the lost time is credited back once delivery works again.`,
         'Access to a unit ends early if a full refund is made for that unit. The refund policy explains how refunds work.',
       ],
     },
@@ -83,7 +84,8 @@ export const TERMS_DOC: LegalDoc = {
       ],
     },
   ],
-};
+});
+export const TERMS_DOC: LegalDoc = termsDoc();
 
 export const PRIVACY_DOC: LegalDoc = {
   slug: 'privacy',
@@ -202,7 +204,8 @@ export const REFUNDS_DOC: LegalDoc = {
   ],
 };
 
-export const PUBLISHER_TERMS_DOC: LegalDoc = {
+/** The days are the access window in force (engine.platformAccessDays); the default is the registry's. */
+export const publisherTermsDoc = (days: number = DEFAULT_ACCESS_DAYS): LegalDoc => ({
   slug: 'publisher-terms',
   href: '/legal/publisher-terms',
   title: 'Publisher terms and sandbox disclaimer',
@@ -238,7 +241,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     {
       heading: 'What buyers get',
       paragraphs: [
-        `A buyer gets personal use access to the article for the window shown on the offer, which is ${DEFAULT_ACCESS_DAYS} days from verified payment and ready delivery. A buyer may not copy it for others, resell it or share the access. A copy a buyer has already downloaded cannot be recalled.`,
+        `A buyer gets personal use access to the article for the window shown on the offer, which is ${days} days from verified payment and ready delivery. A buyer may not copy it for others, resell it or share the access. A copy a buyer has already downloaded cannot be recalled.`,
       ],
     },
     {
@@ -310,14 +313,16 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
       ],
     },
   ],
-};
+});
+export const PUBLISHER_TERMS_DOC: LegalDoc = publisherTermsDoc();
 
-export const LEGAL_DOCS: readonly LegalDoc[] = [
-  TERMS_DOC,
+export const legalDocs = (days: number = DEFAULT_ACCESS_DAYS): readonly LegalDoc[] => [
+  termsDoc(days),
   PRIVACY_DOC,
   REFUNDS_DOC,
-  PUBLISHER_TERMS_DOC,
+  publisherTermsDoc(days),
 ];
+export const LEGAL_DOCS: readonly LegalDoc[] = legalDocs();
 
 // Footer link labels, keyed by slug (the hrefs are written out in app/layout.tsx).
 export const LEGAL_NAV: Readonly<Record<LegalDoc['slug'], string>> = {

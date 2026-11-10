@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import type { OfferPage } from '../../../../lib/view-types';
-import { OPTION_HELP, OPTION_LABEL, formatMinor } from '../../../../lib/format';
+import { DEFAULT_ACCESS_DAYS, OPTION_LABEL, formatMinor, optionHelp } from '../../../../lib/format';
 import { priceView } from '../../../../lib/buyer-price';
 import type { PriceView } from '../../../../lib/buyer-price';
 import { postJson, remember } from '../../../../lib/client-api';
@@ -38,11 +38,14 @@ export function OfferFlow({
   offer,
   signedIn,
   prices = {},
+  days = DEFAULT_ACCESS_DAYS,
 }: {
   offer: OfferPage;
   signedIn: boolean;
   /** MC2-L5: the option prices as the buyer is shown them, by option; absent means the seller's amount. */
   prices?: Record<string, PriceView>;
+  /** JR-1: the access window in force now (engine.platformAccessDays), read once by the server page. */
+  days?: number;
 }) {
   const [option, setOption] = useState(offer.options[0]?.option ?? 'online_read');
   const [ceiling, setCeiling] = useState('');
@@ -159,7 +162,7 @@ export function OfferFlow({
                   </>
                 ) : null}
                 <br />
-                <span className="muted">{OPTION_HELP[o.option]}</span>
+                <span className="muted">{optionHelp(o.option, days)}</span>
               </span>
             </label>
           ))}
@@ -230,13 +233,14 @@ export function OfferFlow({
                 {result.display.binding}
               </p>
             ) : null}
-            <p className="muted">{OPTION_HELP[result.option]}</p>
+            <p className="muted">{optionHelp(result.option, days)}</p>
             <TermsConsent
               id="offer-terms"
               label="I accept the terms of this purchase."
               checked={terms}
               onChange={setTerms}
               rights={offer.rights}
+              days={days}
             />
             <label className="check">
               <input

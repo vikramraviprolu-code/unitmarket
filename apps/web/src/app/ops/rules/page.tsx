@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { currentActor } from '../../../server/session';
+import { app } from '../../../server/access';
 import { readRulesIndex } from '../../../composition/ops-rules';
 import { EnvLabel } from '../../../ui/EnvLabel';
 import { Chip, PageHeader, Section } from '../../../ui/publisher/kit';
@@ -23,6 +24,7 @@ import {
   SCOPE_LABEL,
   SOURCE_DEFAULT_NOTE,
   daysText,
+  inForceLine,
   lastChangeText,
   rangeText,
 } from '../../../lib/ops-rules-copy';
@@ -42,6 +44,7 @@ export default async function OpsRules() {
   if (actor?.kind !== 'operator') redirect('/signin?next=/ops/rules');
   const read = await readRulesIndex(actor);
   if (read === null) redirect('/signin?next=/ops/rules');
+  const inForce = await (await app()).engine.platformAccessDays();
   return (
     <>
       <PageHeader
@@ -81,6 +84,11 @@ export default async function OpsRules() {
                   {daysText(r.platform_value)}{' '}
                   {r.platform_source === 'default' ? (
                     <Chip tone="neutral">{SOURCE_DEFAULT_NOTE}</Chip>
+                  ) : null}
+                  {r.key === 'access.window' && inForceLine(inForce, r.platform_value) !== null ? (
+                    <div className="muted" data-testid="access-in-force">
+                      {inForceLine(inForce, r.platform_value)}
+                    </div>
                   ) : null}
                 </td>
                 <td data-label={COL_RANGE}>{rangeText(r.min, r.max)}</td>

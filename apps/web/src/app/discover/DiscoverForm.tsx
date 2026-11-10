@@ -41,12 +41,15 @@ export function DiscoverForm({
   signedIn,
   browse,
   rights,
+  days,
   initialNeed,
   children,
 }: {
   signedIn: boolean;
   browse: BrowseEntry[];
   rights: Rights[];
+  /** JR-1: the access window in force now (engine.platformAccessDays). */
+  days?: number;
   initialNeed: string;
   children: ReactNode;
 }) {
@@ -248,6 +251,7 @@ export function DiscoverForm({
                 if (v) setPackError(null);
               }}
               rights={rights}
+              {...(days !== undefined ? { days } : {})}
             />
             <div className="grid-2">
               {result.items.map((it) => (
@@ -268,6 +272,7 @@ export function DiscoverForm({
                     {...(it.display !== undefined ? { display: it.display } : {})}
                     {...(it.ceiling_line !== undefined ? { ceilingLine: it.ceiling_line } : {})}
                     option={it.quote.option}
+                    {...(days !== undefined ? { days } : {})}
                     onChoose={() => void choose(it, result.proposal_id)}
                   />
                 </div>

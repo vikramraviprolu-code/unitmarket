@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import {
-  DOORS,
   DOORS_LEDE,
   DOORS_TITLE,
   JUDGES_LEAD,
   JUDGES_LINK,
   SIGNED_IN_HERE,
+  doors,
 } from '../lib/account-copy';
 import type { Door } from '../lib/account-copy';
 import '../app/auth.css';
@@ -55,7 +55,7 @@ function Glyph({ id }: { id: Door['id'] }) {
   );
 }
 
-export function RoleDoors({ actorKind }: { actorKind: Kind }) {
+export function RoleDoors({ actorKind, days }: { actorKind: Kind; days?: number }) {
   return (
     <section className="role-doors" aria-labelledby="doors-title" data-testid="role-doors">
       <div className="role-doors-head">
@@ -63,7 +63,7 @@ export function RoleDoors({ actorKind }: { actorKind: Kind }) {
         <p>{DOORS_LEDE}</p>
       </div>
       <ul className="role-door-list">
-        {DOORS.map((d) => {
+        {doors(days).map((d) => {
           const here = actorKind === OWN[d.id];
           return (
             <li key={d.id} className={`role-door role-door-${d.id}`} data-testid={`door-${d.id}`}>

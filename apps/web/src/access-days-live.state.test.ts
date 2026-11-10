@@ -17,8 +17,7 @@ vi.setConfig({ testTimeout: 180_000, hookTimeout: 180_000 });
 
 const OP = { kind: 'operator', operator_id: 'opr_vikram', mfa: true } as const;
 const SRC = fileURLToPath(new URL('.', import.meta.url));
-const code = (rel: string): string =>
-  readFileSync(join(SRC, rel), 'utf8').replace(/\/\/.*$/gm, '');
+const code = (rel: string): string => readFileSync(join(SRC, rel), 'utf8').replace(/\/\/.*$/gm, '');
 
 let w: RefundWorld;
 beforeAll(async () => {
@@ -65,7 +64,11 @@ describe('the copy prints the days it is given', () => {
     expect(nine).toContain('Access lasts 9 days from verified payment');
     expect(nine).toContain('which is 9 days from verified payment');
     expect(nine).not.toMatch(/\b7 days from verified payment/);
-    expect(termsDoc(9).sections.flatMap((s) => s.paragraphs).join(' ')).toContain('The 9 days start');
+    expect(
+      termsDoc(9)
+        .sections.flatMap((s) => s.paragraphs)
+        .join(' '),
+    ).toContain('The 9 days start');
     expect(publisherTermsDoc(9).slug).toBe('publisher-terms');
     expect(termsDoc(DEFAULT_ACCESS_DAYS).sections.length).toBe(termsDoc(9).sections.length);
   });
@@ -93,5 +96,14 @@ describe('the pages read the live window once per request', () => {
     expect(src).toMatch(/platformAccessDays/);
     expect(src).toMatch(/resolveTerms\(/);
     expect(src).toMatch(/access\.window/);
+  });
+});
+
+describe('Operations rules page: the in-force line', () => {
+  it('says so only when the window in force differs from the row shown', async () => {
+    const { inForceLine } = await import('./lib/ops-rules-copy');
+    expect(inForceLine(7, 7)).toBeNull();
+    expect(inForceLine(7, 5)).toBe('In force now: 7 days (raised to match the refund window)');
+    expect(code('app/ops/rules/page.tsx')).toContain('platformAccessDays()');
   });
 });

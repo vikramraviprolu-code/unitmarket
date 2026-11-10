@@ -1,6 +1,6 @@
 import { app } from '../server/access';
 import { currentActor } from '../server/session';
-import { DEFAULT_ACCESS_DAYS, optionLabel } from '../lib/format';
+import { optionLabel } from '../lib/format';
 import { buyerDisplay } from '../server/buyer-display';
 import { Hero } from '../ui/Hero';
 import { OfferTile } from '../ui/OfferTile';
@@ -11,6 +11,8 @@ export default async function Home() {
   const a = await app();
   const offers = await a.engine.listOffers();
   const actor = await currentActor();
+  // JR-1: the access window in force now, read once, so the words and the setting cannot drift.
+  const days = await a.engine.platformAccessDays();
   // MC2-L5: a signed-in buyer sees each price in their own currency (about, with the rate date) beside the
   // binding seller amount; everyone else sees the seller's currency.
   const display = await buyerDisplay(a.engine, actor, {
@@ -25,7 +27,7 @@ export default async function Home() {
       <Hero>
         <h1>Buy just the article you need</h1>
         <p className="lede">
-          {`Pay once for one article, with a clear price and ${DEFAULT_ACCESS_DAYS} days of access. No subscription.`}
+          {`Pay once for one article, with a clear price and ${days} days of access. No subscription.`}
         </p>
         <form action="/discover" method="get">
           <label htmlFor="home-need">What do you need?</label>
@@ -37,7 +39,7 @@ export default async function Home() {
           </div>
         </form>
       </Hero>
-      <RoleDoors actorKind={kind} />
+      <RoleDoors actorKind={kind} days={days} />
       {offers.length > 0 ? (
         <section aria-labelledby="shelf">
           <h2 id="shelf" className="shelf-title">

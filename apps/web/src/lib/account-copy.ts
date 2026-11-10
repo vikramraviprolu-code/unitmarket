@@ -28,12 +28,13 @@ export interface Door {
   home_href: string;
 }
 
-export const DOORS: readonly Door[] = [
+/** The doors; the buyer door names the access window in force (engine.platformAccessDays). */
+export const doors = (days: number = DEFAULT_ACCESS_DAYS): readonly Door[] => [
   {
     id: 'buyer',
     label: 'Buyer',
     tag: 'I want to read',
-    line: `Find one article, see the price, pay once and read it for ${DEFAULT_ACCESS_DAYS} days.`,
+    line: `Find one article, see the price, pay once and read it for ${days} days.`,
     need: 'You need: a username and a password. No email.',
     button: 'Go to the buyer page',
     href: '/buyer',
@@ -63,6 +64,7 @@ export const DOORS: readonly Door[] = [
     home_href: '/ops',
   },
 ];
+export const DOORS: readonly Door[] = doors();
 
 export const SIGNED_IN_HERE = 'You are signed in here.';
 export const JUDGES_LEAD = 'Judges and testers sign in with a test persona.';

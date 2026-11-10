@@ -33,6 +33,7 @@ export default async function OfferPageRoute({
         offer={o}
         signedIn={actor?.kind === 'buyer'}
         prices={optionPrices(o, display.view)}
+        days={await a.engine.platformAccessDays()}
       />
     </>
   );
