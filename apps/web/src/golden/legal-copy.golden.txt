@@ -6,13 +6,13 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/terms | title: Terms of purchase
 /legal/terms | updated: Drafted 30 October 2026
 /legal/terms | heading: About these terms
-/legal/terms | text: These terms say what you agree to when you buy a unit on UnitMarket. They are a draft written for the owners of this demo to read and approve. They are not legal advice, and they may change before the demo is submitted.
+/legal/terms | text: These terms say what you agree to when you buy a unit on UnitMarket. They are the final terms for this sandbox demo. They are not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.
 /legal/terms | heading: What a unit is
 /legal/terms | text: A unit is one article, or one part of a publisher's content, that you buy on its own instead of paying for a whole subscription. Before you pay, the offer shows what the unit is, what it costs and what access it gives.
 /legal/terms | heading: Personal use only
 /legal/terms | text: A unit is for your personal use only. You may not copy it for others, resell it, post it in public or share your access with another person. Redistribution of any kind is not allowed. Publishers keep their rights in their content.
 /legal/terms | heading: How long you have access
-/legal/terms | text: Access lasts five days from verified payment and ready delivery. The five days start once your payment is verified and the content is ready to deliver, whichever happens later. If we detect a delivery failure on our side, the lost time is credited back once delivery works again.
+/legal/terms | text: Access lasts 7 days from verified payment and ready delivery. The 7 days start once your payment is verified and the content is ready to deliver, whichever happens later. If we detect a delivery failure on our side, the lost time is credited back once delivery works again.
 /legal/terms | text: Access to a unit ends early if a full refund is made for that unit. The refund policy explains how refunds work.
 /legal/terms | heading: Price and terms are held for 15 minutes
 /legal/terms | text: Once you start to buy, the price and the terms you were shown are held for 15 minutes. Nothing is charged until you approve the payment at PayPal. If you leave without paying, your unpaid order stays open until you cancel it or it expires, and you can continue to payment or cancel it from the order page. When the held price has gone, ask for a price again; the price or terms may be different the next time.
@@ -23,7 +23,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/privacy | title: Privacy notice
 /legal/privacy | updated: Drafted 30 October 2026
 /legal/privacy | heading: About this notice
-/legal/privacy | text: This notice says what data this demo processes and why. It is a draft written for the owners to read and approve. It is not legal advice, and it may change before the demo is submitted.
+/legal/privacy | text: This notice says what data this demo processes and why. It is the final notice for this sandbox demo. It is not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.
 /legal/privacy | heading: What we process
 /legal/privacy | text: A session cookie, which keeps you signed in as the test persona you chose.
 /legal/privacy | text: An appearance cookie named um_skin. It holds only the name of the skin you chose, and nothing about you. It is set only when you choose a skin, and it lasts 180 days.
@@ -50,7 +50,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/refunds | title: Refund policy
 /legal/refunds | updated: Drafted 30 October 2026
 /legal/refunds | heading: About this policy
-/legal/refunds | text: This policy says how refunds work in this demo. It is a draft written for the owners to read and approve. It is not legal advice, and it may change before the demo is submitted.
+/legal/refunds | text: This policy says how refunds work in this demo. It is the final policy for this sandbox demo. It is not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.
 /legal/refunds | heading: Who decides
 /legal/refunds | text: Refunds are decided by an operator, for each unit. Nothing is refunded automatically, and there is no button for buyers to refund themselves. There is no refund request form yet. If an item did not open, choose "Problem with this item?" on its page in your library. An operator reads help cases about an order and decides whether a refund is right.
 /legal/refunds | heading: A full refund
@@ -64,7 +64,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/publisher-terms | title: Publisher terms and sandbox disclaimer
 /legal/publisher-terms | updated: Drafted 30 October 2026
 /legal/publisher-terms | heading: About these terms
-/legal/publisher-terms | text: These terms say what publishers can expect in this demo. They are a draft written for the owners to read and approve. They are not legal advice, and they may change before the demo is submitted. They describe only what the demo does today.
+/legal/publisher-terms | text: These terms say what publishers can expect in this demo. They are the final terms for this sandbox demo. They are not legal advice. No real money moves: payments use PayPal's sandbox or a dry run. They describe only what the demo does today.
 /legal/publisher-terms | heading: Publishers here are fictional
 /legal/publisher-terms | text: Every publisher in this demo is fictional. Their names, articles and prices are made up for the demo and have no connection to any real publisher.
 /legal/publisher-terms | heading: Not exclusive
@@ -73,7 +73,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/publisher-terms | text: When a publisher makes an offer for an article, it confirms that it owns the article or may license it. The publisher confirms this again with a rights checkbox on every revision of an offer, and UnitMarket stores that confirmation with the revision.
 /legal/publisher-terms | text: The publisher gives UnitMarket a licence to sell access to single articles. The licence is not exclusive and it covers this demo.
 /legal/publisher-terms | heading: What buyers get
-/legal/publisher-terms | text: A buyer gets personal use access to the article for the window shown on the offer, which is five days from verified payment and ready delivery. A buyer may not copy it for others, resell it or share the access. A copy a buyer has already downloaded cannot be recalled.
+/legal/publisher-terms | text: A buyer gets personal use access to the article for the window shown on the offer, which is 7 days from verified payment and ready delivery. A buyer may not copy it for others, resell it or share the access. A copy a buyer has already downloaded cannot be recalled.
 /legal/publisher-terms | heading: Takedown and corrections
 /legal/publisher-terms | text: A publisher can withdraw an article at any time. Withdrawing stops new sales at once. If an operator decides that buyers must be repaid, for example after a takedown request, the operator refunds buyers in full, one unit at a time, and a full refund ends that buyer's access.
 /legal/publisher-terms | text: Once an offer is authorised, the content of the article does not change. A correction is published as a new article with a new offer. Buyers who already paid keep the version they bought for their window.

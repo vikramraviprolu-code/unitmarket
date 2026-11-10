@@ -65,15 +65,48 @@ describe('buyerDisplay on the real engine (rates: 1 EUR = 1.2 USD = 0.8 GBP, dat
     expect(w.fetchCalls()).toBe(before);
   });
 
-  it('a signed-out visitor, a publisher and no actor all see the seller currency only', async () => {
+  it('a publisher and an operator see the seller currency only', async () => {
     for (const actor of [
-      null,
       { kind: 'publisher', publisher_id: 'pub_x' },
       { kind: 'operator', operator_id: 'opr_demo', mfa: false },
-    ] as (Actor | null)[]) {
+    ] as Actor[]) {
       const d = await buyerDisplay(w.app.engine, actor, { currencies: ['USD'] });
       expect(d.target).toBeNull();
       expect(d.view(USD(40)).binding).toBeNull();
+    }
+  });
+
+  it('JR-1: a signed-out visitor gets USD from the stored rate, with the seller amount binding', async () => {
+    const d = await buyerDisplay(w.app.engine, null, { currencies: ['EUR'] });
+    expect(d.target).toBe('USD');
+    expect(d.view(EUR(100))).toEqual({
+      seller: '€1.00',
+      lead: 'about $1.20',
+      binding: `Binding: €1.00 (rate of ${longDate(w.today)})`,
+    });
+    expect(d.view(USD(40))).toEqual({ seller: '$0.40', lead: '$0.40', binding: null });
+  });
+
+  it('JR-1: a signed-out visitor never triggers a rate refresh, even when asked to', async () => {
+    const spy = vi.spyOn(w.app.engine.fx, 'refreshIfStale');
+    const before = w.fetchCalls();
+    try {
+      await buyerDisplay(w.app.engine, null, { currencies: ['EUR'] });
+      await buyerDisplay(w.app.engine, null, { currencies: ['EUR'], refresh: true });
+      expect(spy).not.toHaveBeenCalled();
+      expect(w.fetchCalls()).toBe(before);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('JR-1: a signed-out visitor falls back to the seller currency when the rate read fails', async () => {
+    const spy = vi.spyOn(w.app.engine.fx, 'getRates').mockRejectedValue(new Error('down'));
+    try {
+      const d = await buyerDisplay(w.app.engine, null, { currencies: ['EUR'] });
+      expect(d.view(EUR(100))).toEqual({ seller: '€1.00', lead: '€1.00', binding: null });
+    } finally {
+      spy.mockRestore();
     }
   });
 

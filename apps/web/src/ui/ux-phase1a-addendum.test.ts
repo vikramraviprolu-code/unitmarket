@@ -2,6 +2,7 @@
 // pure helpers in lib/buyer-copy.ts and the .tsx wiring is read as text, as in ux-phase1a.test.ts.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_ACCESS_DAYS } from '../lib/format';
 import type { OfferPage } from '../lib/view-types';
 import {
   BROWSE_EMPTY,
@@ -77,7 +78,7 @@ describe('item 50: the full terms before the tick', () => {
     const base = termsPoints().join(' ').toLowerCase();
     expect(base).toContain('personal use only');
     expect(base).toContain('no redistribution');
-    expect(base).toContain('five days of access');
+    expect(base).toContain(`${DEFAULT_ACCESS_DAYS} days of access`);
     expect(base).toContain('15 minutes');
     const ai = (s: 'agent_allowed' | 'review' | 'not_allowed') =>
       termsPoints({ scope: 'personal_use', ai_scope: s, redistribution: false });

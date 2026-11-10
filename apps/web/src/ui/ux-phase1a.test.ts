@@ -3,6 +3,7 @@
 // tests call, and the .tsx wiring and the stylesheet are read as text.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_ACCESS_DAYS } from '../lib/format';
 import type { FitDimension } from '@umsbx/contracts';
 import {
   TERMS_POINTS,
@@ -61,7 +62,7 @@ describe('U3 terms where they are accepted', () => {
     const text = TERMS_POINTS.join(' ').toLowerCase();
     expect(text).toContain('personal use only');
     expect(text).toContain('no redistribution');
-    expect(text).toContain('five days of access');
+    expect(text).toContain(`${DEFAULT_ACCESS_DAYS} days of access`);
     expect(text).toContain('when payment is confirmed');
     expect(text).toContain('price');
     expect(text).toContain('15 minutes');

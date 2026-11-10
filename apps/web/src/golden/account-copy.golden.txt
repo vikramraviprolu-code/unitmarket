@@ -1,7 +1,7 @@
 contact: unitmarket@raviprolu.com | consent version terms-v1
 doors title: Choose your door
 doors lede: UnitMarket has three kinds of visitor. Pick the one that sounds like you.
-door buyer: Buyer | I want to read | Find one article, see the price, pay once and read it for five days. | You need: a username and a password. No email.
+door buyer: Buyer | I want to read | Find one article, see the price, pay once and read it for 7 days. | You need: a username and a password. No email.
 door buyer button: Go to the buyer page -> /buyer
 door buyer signed in: Go to your library -> /library
 door seller: Seller | I want to publish | Sell single articles to readers who want just one. The owners review every application. | You need: a publisher name, a country and a public website or profile.
