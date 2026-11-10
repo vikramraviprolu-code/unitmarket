@@ -3,6 +3,8 @@
 // the golden test pins them. Wording rules: D-051, no italics, no dashes, no emoji. The environment word is
 // never typed here: it comes from the stored environment. Short plain sentences.
 
+import { DEFAULT_ACCESS_DAYS } from './format';
+
 /** The contact address for a lost password. The same address the legal pages give. */
 export const CONTACT_ADDRESS = 'unitmarket@raviprolu.com';
 /** The version of the Terms and the Privacy notice a new account accepts (stored on the consent rows). */
@@ -31,7 +33,7 @@ export const DOORS: readonly Door[] = [
     id: 'buyer',
     label: 'Buyer',
     tag: 'I want to read',
-    line: 'Find one article, see the price, pay once and read it for five days.',
+    line: `Find one article, see the price, pay once and read it for ${DEFAULT_ACCESS_DAYS} days.`,
     need: 'You need: a username and a password. No email.',
     button: 'Go to the buyer page',
     href: '/buyer',

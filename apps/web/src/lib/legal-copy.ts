@@ -4,6 +4,7 @@
 // characters and no italics (owner style rule). Dates are fixed strings, never computed.
 
 import { CONTACT_ADDRESS } from './account-copy';
+import { DEFAULT_ACCESS_DAYS } from './format';
 
 export const LEGAL_BANNER = 'Draft for owner approval. This is not legal advice.';
 export const LEGAL_SANDBOX_LINE =
@@ -41,7 +42,7 @@ export const TERMS_DOC: LegalDoc = {
     {
       heading: 'About these terms',
       paragraphs: [
-        'These terms say what you agree to when you buy a unit on UnitMarket. They are a draft written for the owners of this demo to read and approve. They are not legal advice, and they may change before the demo is submitted.',
+        "These terms say what you agree to when you buy a unit on UnitMarket. They are the final terms for this sandbox demo. They are not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.",
       ],
     },
     {
@@ -59,7 +60,7 @@ export const TERMS_DOC: LegalDoc = {
     {
       heading: 'How long you have access',
       paragraphs: [
-        'Access lasts five days from verified payment and ready delivery. The five days start once your payment is verified and the content is ready to deliver, whichever happens later. If we detect a delivery failure on our side, the lost time is credited back once delivery works again.',
+        `Access lasts ${DEFAULT_ACCESS_DAYS} days from verified payment and ready delivery. The ${DEFAULT_ACCESS_DAYS} days start once your payment is verified and the content is ready to deliver, whichever happens later. If we detect a delivery failure on our side, the lost time is credited back once delivery works again.`,
         'Access to a unit ends early if a full refund is made for that unit. The refund policy explains how refunds work.',
       ],
     },
@@ -95,7 +96,7 @@ export const PRIVACY_DOC: LegalDoc = {
     {
       heading: 'About this notice',
       paragraphs: [
-        'This notice says what data this demo processes and why. It is a draft written for the owners to read and approve. It is not legal advice, and it may change before the demo is submitted.',
+        "This notice says what data this demo processes and why. It is the final notice for this sandbox demo. It is not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.",
       ],
     },
     {
@@ -165,7 +166,7 @@ export const REFUNDS_DOC: LegalDoc = {
     {
       heading: 'About this policy',
       paragraphs: [
-        'This policy says how refunds work in this demo. It is a draft written for the owners to read and approve. It is not legal advice, and it may change before the demo is submitted.',
+        "This policy says how refunds work in this demo. It is the final policy for this sandbox demo. It is not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.",
       ],
     },
     {
@@ -212,7 +213,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     {
       heading: 'About these terms',
       paragraphs: [
-        'These terms say what publishers can expect in this demo. They are a draft written for the owners to read and approve. They are not legal advice, and they may change before the demo is submitted. They describe only what the demo does today.',
+        "These terms say what publishers can expect in this demo. They are the final terms for this sandbox demo. They are not legal advice. No real money moves: payments use PayPal's sandbox or a dry run. They describe only what the demo does today.",
       ],
     },
     {
@@ -237,7 +238,7 @@ export const PUBLISHER_TERMS_DOC: LegalDoc = {
     {
       heading: 'What buyers get',
       paragraphs: [
-        'A buyer gets personal use access to the article for the window shown on the offer, which is five days from verified payment and ready delivery. A buyer may not copy it for others, resell it or share the access. A copy a buyer has already downloaded cannot be recalled.',
+        `A buyer gets personal use access to the article for the window shown on the offer, which is ${DEFAULT_ACCESS_DAYS} days from verified payment and ready delivery. A buyer may not copy it for others, resell it or share the access. A copy a buyer has already downloaded cannot be recalled.`,
       ],
     },
     {

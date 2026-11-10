@@ -1,6 +1,6 @@
 import { app } from '../server/access';
 import { currentActor } from '../server/session';
-import { optionLabel } from '../lib/format';
+import { DEFAULT_ACCESS_DAYS, optionLabel } from '../lib/format';
 import { buyerDisplay } from '../server/buyer-display';
 import { Hero } from '../ui/Hero';
 import { OfferTile } from '../ui/OfferTile';
@@ -25,7 +25,7 @@ export default async function Home() {
       <Hero>
         <h1>Buy just the article you need</h1>
         <p className="lede">
-          Pay once for one article, with a clear price and five days of access. No subscription.
+          {`Pay once for one article, with a clear price and ${DEFAULT_ACCESS_DAYS} days of access. No subscription.`}
         </p>
         <form action="/discover" method="get">
           <label htmlFor="home-need">What do you need?</label>

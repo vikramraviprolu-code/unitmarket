@@ -148,11 +148,10 @@ describe('JR-1 the library meter scales to the window', () => {
     expect(src).toContain('days used');
     expect(src).toContain('data-testid="window-meter"');
   });
-  it('the three library callers pass startedAt', () => {
+  it('the two library callers that have started_at pass startedAt (the reader view has none)', () => {
     for (const f of [
       'app/library/page.tsx',
       'app/library/[entitlement]/page.tsx',
-      'app/library/[entitlement]/read/page.tsx',
     ])
       expect(code(f), f).toMatch(/startedAt=\{[a-z]+\.window\.started_at\}/);
   });
@@ -173,7 +172,7 @@ describe('JR-1 the operator order summary keeps a two-column grid', () => {
 describe('JR-1 the phone tab bar wraps its labels', () => {
   const css = read('ui/shell/shell.css');
   const rule = (() => {
-    const at = css.indexOf('.shell-phonebar a {');
+    const at = css.lastIndexOf('.shell-phonebar a {');
     return css.slice(at, css.indexOf('}', at));
   })();
   it('no ellipsis, no clipping, labels wrap, 44px target stays', () => {

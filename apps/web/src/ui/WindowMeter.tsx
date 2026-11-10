@@ -1,13 +1,11 @@
 import { formatDateTime } from '../lib/format';
-import { windowUntilLine } from '../lib/buyer-copy';
-
-const TOTAL_DAYS = 5;
+import { meterFill, meterTotalDays, windowUntilLine } from '../lib/buyer-copy';
 
 // The fill is a class, not a style attribute (the CSP forbids inline style): .meter-fill-1 to .meter-fill-5
-// are 20 to 100 percent. Whole days only; no class means an empty bar.
-const fillClass = (used: number): string => {
-  const days = Math.round(used);
-  return days > 0 ? `meter-fill-${Math.min(TOTAL_DAYS, days)}` : '';
+// are 20 to 100 percent of the window's own length (lib/buyer-copy.ts meterFill). No class means an empty bar.
+const fillClass = (used: number, total: number): string => {
+  const step = meterFill(used, total);
+  return step > 0 ? `meter-fill-${step}` : '';
 };
 
 // Shows the access window as words first and a bar second (not colour alone, WCAG 1.4.1). The time left
@@ -16,20 +14,23 @@ export function WindowMeter({
   state,
   daysLeft,
   endsAt,
+  startedAt,
   option,
 }: {
   state: string;
   daysLeft: number | null;
   endsAt: string | null;
+  startedAt?: string | null;
   option?: string;
 }) {
   if (state === 'running' && daysLeft !== null) {
-    const used = Math.min(TOTAL_DAYS, Math.max(0, TOTAL_DAYS - daysLeft));
+    const total = meterTotalDays(startedAt, endsAt);
+    const used = Math.min(total, Math.max(0, total - daysLeft));
     return (
       <div className="meter" data-testid="window-meter">
         {endsAt ? <p className="muted">{windowUntilLine(option, formatDateTime(endsAt))}</p> : null}
-        <div className="meter-bar" role="img" aria-label={`${used} of ${TOTAL_DAYS} days used`}>
-          <span className={fillClass(used)} />
+        <div className="meter-bar" role="img" aria-label={`${used} of ${total} days used`}>
+          <span className={fillClass(used, total)} />
         </div>
       </div>
     );

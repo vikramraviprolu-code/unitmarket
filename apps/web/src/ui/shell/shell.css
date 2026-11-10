@@ -164,13 +164,16 @@
     min-width: 0;
   }
   .shell-phonebar a {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     min-height: 44px;
-    padding: 0 4px;
-    overflow: hidden;
+    padding: 2px 4px;
     text-align: center;
-    text-overflow: ellipsis;
-    font-size: 0.85rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.15;
+    font-size: 0.8rem;
   }
   /* Room for the bar, so the end of the page and the footer are not hidden behind it. */
   body:has(.shell-phonebar) .site-footer {

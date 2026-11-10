@@ -12,7 +12,7 @@ import { LINE_TEXT } from './composite-copy';
 export const TERMS_SUMMARY = 'What the terms say';
 export const TERMS_POINTS = [
   'Personal use only. No redistribution.',
-  'Five days of access, starting when payment is confirmed.',
+  `${DEFAULT_ACCESS_DAYS} days of access, starting when payment is confirmed.`,
   'Once you start to buy, the price and these terms are held for 15 minutes.',
 ] as const;
 
@@ -251,3 +251,25 @@ export const CAP_CONFIRM_NOTE =
   'The cap limits what your agent can spend. You can end it at any moment.';
 export const CAP_NO_KEYS =
   'You have no agent key yet. Make one under API keys, then come back to give it a cap.';
+
+// The library meter's length is the window's own length: ends_at minus started_at in whole days (rounded),
+// else the platform default. The bar has five fill steps (CSS classes, no inline style), so used over total
+// is mapped onto 0 to 5; any time used shows at least one step, and a full window shows all five.
+const METER_STEPS = 5;
+const DAY_MS = 86_400_000;
+
+export function meterTotalDays(
+  startedAt: string | null | undefined,
+  endsAt: string | null | undefined,
+): number {
+  if (startedAt && endsAt) {
+    const ms = new Date(endsAt).getTime() - new Date(startedAt).getTime();
+    if (Number.isFinite(ms) && ms > 0) return Math.max(1, Math.round(ms / DAY_MS));
+  }
+  return DEFAULT_ACCESS_DAYS;
+}
+
+export function meterFill(used: number, total: number): number {
+  if (!(used > 0) || !(total > 0)) return 0;
+  return Math.min(METER_STEPS, Math.max(1, Math.round((used / total) * METER_STEPS)));
+}

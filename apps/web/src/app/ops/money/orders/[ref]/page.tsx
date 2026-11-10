@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { notFound, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -59,10 +60,10 @@ export default async function OpsOrder({ params }: { params: Promise<{ ref: stri
             </>
           ) : null}
           {view.provider_ids.map((p) => (
-            <div key={p.label}>
+            <Fragment key={p.label}>
               <dt>{p.label}</dt>
               <dd className="mono">{p.value}</dd>
-            </div>
+            </Fragment>
           ))}
         </dl>
       </Section>
