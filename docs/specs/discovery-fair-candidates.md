@@ -12,14 +12,14 @@ corridor in offer id order (`listAuthorisedOffers`, `ORDER BY o.id, o.version`),
 1,000-photo import (POB-Q1/Q2) can fill all 50 and push every other publisher out of view. When done:
 
 1. **CAT-1.1 Match first, fairly, in SQL.** New `listAuthorisedOffersMatching(db, { corridor_id, words,
-   per_publisher, limit })` in `domain/catalogue/src/read.ts`, answering `{ view: OfferView; score: number }[]`.
+per_publisher, limit })` in `domain/catalogue/src/read.ts`, answering `{ view: OfferView; score: number }[]`.
    - A CTE applies every guard of `listAuthorisedOffers` first: enabled corridor, `authorised`, not superseded, the
      newer-version `NOT EXISTS`, active publisher, payee country, authorisation row. It also keeps only score > 0.
      Only then does `ROW_NUMBER() OVER (PARTITION BY o.publisher_id ORDER BY score DESC, o.id)` cap rows at
      `per_publisher`. The outer query is `ORDER BY score DESC, o.id LIMIT limit`. Excluded rows never use a slot.
    - **Whole words, like `searchOffers`.** A word hits a text when the case-insensitive regex `'\m' || w || '\M'`
      matches it, so "art" does not match "start". The topics are checked with `EXISTS (SELECT 1 FROM
-     unnest(a.topics) t WHERE t ~* ...)`. The score comes from a `LATERAL (SELECT SUM(...) FROM unnest($n::text[]) w)`
+unnest(a.topics) t WHERE t ~* ...)`. The score comes from a `LATERAL (SELECT SUM(...) FROM unnest($n::text[]) w)`
      subquery: 2 for a title or topic hit, 1 for an abstract-only hit, each word counted once.
    - Words reach SQL only as one bound `text[]` parameter, never interpolated. Each word passes the guard
      `^[\p{L}\p{N}]{3,40}$` (letters and digits, which carry no regex metacharacters). Any other word is dropped
@@ -38,6 +38,7 @@ corridor in offer id order (`listAuthorisedOffers`, `ORDER BY o.id, o.version`),
    id, then capped at 10 per publisher, then cut to 50. When the union is empty (a vague brief), it falls back to
    today's `listAuthorisedOffers` path exactly. Existing tests keep passing, and vague briefs keep today's
    candidates.
+
 3. **CAT-1.3 Spread the answer, never shrink it.** After the AI-5 filter (candidate ids only, no duplicates), the
    picks are walked in the model's order. The first 3 per publisher are kept, and the rest are held back. Free slots
    up to 5 are then filled with the held-back picks, in the model's order. One publisher with 5 picks still gives 5
@@ -79,7 +80,7 @@ corridor in offer id order (`listAuthorisedOffers`, `ORDER BY o.id, o.version`),
 - `node scripts/mutation-checks.mjs --require-targets --timeout 400 --targets domain/discovery/src/discover.ts,domain/catalogue/src/read.ts --test-cmd "corepack pnpm vitest run domain/discovery/src/discover.state.test.ts domain/discovery/src/discover.adversarial.test.ts domain/discovery/src/discover.ceiling-fx.state.test.ts domain/discovery/src/discover.fair.state.test.ts domain/discovery/src/discover.fair.adversarial.test.ts domain/catalogue/src/read-matching.state.test.ts"`:
   at least 80 percent killed. Amended after the gate (10 Nov 2026): the whole-folder test command takes about 6 minutes per mutant, so the command names the six discover and read-matching test files instead.
 - `corepack pnpm typecheck`, `corepack pnpm lint`, `corepack pnpm check:isolation`, `corepack pnpm
-  check:no-live-host`, `corepack pnpm check:secrets-names`: exit 0.
+check:no-live-host`, `corepack pnpm check:secrets-names`: exit 0.
 
 ## Do not
 
