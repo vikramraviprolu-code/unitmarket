@@ -7,7 +7,7 @@ import type { SwitchLine } from '../../lib/switches-view';
 import { Chip } from '../publisher/kit';
 
 // INT-CTL / CTL.3: the safety switches with a toggle each. Off is open to any operator session; on needs the
-// authenticator code, and the server says so when the session has none. Two switches show no "on" button.
+// authenticator code, and the server says so when the session has none. PayPal outbound shows no "on" button.
 const REASON_WORDS: Record<string, string> = {
   incident: 'Incident',
   partner_request: 'Partner request',
@@ -23,7 +23,12 @@ export function SwitchList({ lines, keys }: { lines: SwitchLine[]; keys: string[
   async function toggle(line: SwitchLine, key: string) {
     if (line.toggle === null) return;
     setBusy(line.name);
-    const r = await postJson(line.toggle.path, { reason_code: reason }, { 'idempotency-key': key });
+    // Agent buying has its own route, which takes a yes or no and the reason in words (OPS-SW).
+    const body =
+      line.toggle.body === 'agent_buy'
+        ? { on: line.toggle.action === 'on', reason: REASON_WORDS[reason] ?? reason }
+        : { reason_code: reason };
+    const r = await postJson(line.toggle.path, body, { 'idempotency-key': key });
     setBusy(null);
     if (r.ok) {
       setMessage(`${line.label} is now ${line.toggle.action}.`);
