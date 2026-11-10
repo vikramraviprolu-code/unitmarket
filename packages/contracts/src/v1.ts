@@ -428,6 +428,8 @@ export const SellerOfferCreateRequestSchema = z
     article_id: z.string().min(1).max(200),
     options: z.array(OfferPriceSchema).min(1).max(2),
     attestation: z.literal(true),
+    /** OFFER-CUR: the currency of the new offer. Absent: USD, then EUR, then GBP, whichever the country is covered in. */
+    currency: z.enum(['USD', 'EUR', 'GBP']).optional(),
   })
   .strict();
 export const SellerOfferReviseRequestSchema = z

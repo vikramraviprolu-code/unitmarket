@@ -9,20 +9,23 @@ import './buyer.css';
 
 // INT-BUY / BUY.1: New cap. The buyer fills money, count or both, and a day; Review shows the confirm sentence;
 // the Confirm button sets terms_accepted and creates the cap (POST /api/buyer/mandates). Nothing is created before
-// the confirm. The Idempotency-Key is the server's nonce plus a hash of the body, so a repeat of the same request
+// the confirm. OFFER-CUR: the buyer picks the currency of the cap (USD, EUR or GBP) beside the money field; the cap
+// is for offers in that currency. The Idempotency-Key is the server's nonce plus a hash of the body, so a repeat of the same request
 // replays and a changed request is a new one.
 export function CapForm({
   keys,
-  currency,
+  currencies,
   nonce,
 }: {
   keys: { id: string; label: string }[];
-  currency: string;
+  /** The currencies a cap may be in; the first is the starting choice. */
+  currencies: readonly string[];
   nonce: string;
 }) {
   const router = useRouter();
   const uid = useId();
   const [key, setKey] = useState(keys[0]?.id ?? '');
+  const [currency, setCurrency] = useState(currencies[0] ?? 'USD');
   const [money, setMoney] = useState('');
   const [count, setCount] = useState('');
   const [day, setDay] = useState('');
@@ -80,6 +83,21 @@ export function CapForm({
           {keys.map((k) => (
             <option key={k.id} value={k.id}>
               {k.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label htmlFor={`${uid}-currency`}>
+        Currency
+        <select
+          id={`${uid}-currency`}
+          data-testid="cap-currency"
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value)}
+        >
+          {currencies.map((c) => (
+            <option key={c} value={c}>
+              {c}
             </option>
           ))}
         </select>

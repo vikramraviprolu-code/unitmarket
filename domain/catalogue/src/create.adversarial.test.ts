@@ -59,13 +59,15 @@ describe('createOffer isolation', () => {
     expect(await totals()).toEqual(before);
   });
 
-  it('extra input fields change nothing (currency, publisher, status, terms, rights)', async () => {
+  // OFFER-CUR: a top level `currency` is now a real input (the seller's choice, checked against the corridors; see
+  // offer-currency.state.test.ts). It contradicted this test's old premise, so it is no longer in the extra fields; a currency
+  // inside an option is still ignored.
+  it('extra input fields change nothing (option currency, publisher, status, terms, rights)', async () => {
     const article = await addArticle(w.db, w.pubId['harbour-ledger'], 'h-mass');
     const r = await createOffer(w.deps(), w.harbour, {
       article_id: article,
       options: both.map((o) => ({ ...o, policy_id: 'evil', currency: 'EUR' })),
       attestation: true,
-      currency: 'EUR',
       publisher_id: w.pubId['quayside-gazette'],
       status: 'draft',
       terms_version: 'terms-evil',

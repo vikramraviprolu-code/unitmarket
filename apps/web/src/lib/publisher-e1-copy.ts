@@ -77,6 +77,9 @@ export const CREATE_LEDE =
 export const CREATE_NONE_TITLE = 'No article to offer';
 export const CREATE_NONE_BODY = 'Every article of yours already has an offer on sale.';
 export const CREATE_ARTICLE_LABEL = 'Article';
+export const CREATE_CURRENCY_LABEL = 'Currency';
+export const CREATE_CURRENCY_HELP =
+  'Buyers pay in the currency you choose. UnitMarket does not convert between currencies.';
 export const CREATE_BACK = 'Back to your offers';
 export const CREATE_LABEL = 'Put this article on sale';
 export const CREATE_TERMS_NOTE = (terms: string): string =>

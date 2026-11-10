@@ -12,6 +12,19 @@ export const packNotice = (payments: number): string =>
 export const BUY_SELECTED = 'Buy selected together';
 export const MIXED_CURRENCY_TEXT =
   'These items are priced in different currencies, so they cannot be bought together. Choose items in one currency.';
+// OFFER-CUR (C8): the words for two approval refusals that used to fall to the generic line. A basket that mixes an
+// India publisher's item with another publisher's is refused, not split (the corridors differ).
+export const CORRIDOR_UNSUPPORTED_TEXT =
+  'Items from publishers in India are paid separately. Buy them in a separate order.';
+// approval.ts returns corridor_unsupported in four places; only the mixed basket is about India, so a single item
+// (a corridor turned off after the quote, a payee country not covered, a total below the minimum) gets neutral words.
+export const CORRIDOR_UNSUPPORTED_SINGLE_TEXT =
+  'This item cannot be paid for right now. Please try again later.';
+/** The India words only for a basket of more than one item; the neutral words for one item. */
+export const corridorUnsupportedText = (items: number): string =>
+  items > 1 ? CORRIDOR_UNSUPPORTED_TEXT : CORRIDOR_UNSUPPORTED_SINGLE_TEXT;
+export const PUBLISHER_UNVERIFIED_TEXT =
+  'This publisher cannot be paid through UnitMarket yet, so this item cannot be bought right now. Please try again later.';
 export const TOO_MANY_PUBLISHERS_TEXT =
   'A pack can include items from two publishers at most. Choose items from fewer publishers.';
 
