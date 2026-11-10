@@ -150,8 +150,12 @@ describe('JR-1 the library meter scales to the window', () => {
     expect(src).toContain('days used');
     expect(src).toContain('data-testid="window-meter"');
   });
-  it('the two library callers that have started_at pass startedAt (the reader view has none)', () => {
-    for (const f of ['app/library/page.tsx', 'app/library/[entitlement]/page.tsx'])
+  it('every library caller passes startedAt, the reader page too', () => {
+    for (const f of [
+      'app/library/page.tsx',
+      'app/library/[entitlement]/page.tsx',
+      'app/library/[entitlement]/read/page.tsx',
+    ])
       expect(code(f), f).toMatch(/startedAt=\{[a-z]+\.window\.started_at\}/);
   });
 });
