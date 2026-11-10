@@ -93,7 +93,7 @@ describe('LegalPage renders the banner, the sandbox line and every section', () 
   });
 
   it('puts the banner and the sandbox line in the copy module', () => {
-    expect(LEGAL_BANNER).toBe('Draft for owner approval. This is not legal advice.');
+    expect(LEGAL_BANNER).toBe('Final terms for this sandbox demo. This is not legal advice.');
     expect(LEGAL_SANDBOX_LINE).toMatch(/test build/);
     expect(LEGAL_SANDBOX_LINE).toMatch(/no real money moves/i);
   });

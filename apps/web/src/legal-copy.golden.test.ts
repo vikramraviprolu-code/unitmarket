@@ -53,7 +53,7 @@ describe('legal copy rules', () => {
       expect(d.banner, d.href).toBe(LEGAL_BANNER);
       expect(d.sandbox, d.href).toBe(LEGAL_SANDBOX_LINE);
     }
-    expect(LEGAL_BANNER).toBe('Draft for owner approval. This is not legal advice.');
+    expect(LEGAL_BANNER).toBe('Final terms for this sandbox demo. This is not legal advice.');
   });
 
   it('has no italics markup', () => {

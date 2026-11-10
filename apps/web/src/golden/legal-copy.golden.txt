@@ -1,10 +1,10 @@
 # LEGAL-A golden: the words of the four draft legal pages, the footer labels and the sign-in notice. Hand reviewed.
 # Drafted for the owners to approve; not legal advice. Fixed dates, no dash characters, no italics.
 # LEGAL-B: the publisher terms page rewritten (docs/specs/legal-b-publisher-terms.md); other pages unchanged.
-banner: Draft for owner approval. This is not legal advice.
+banner: Final terms for this sandbox demo. This is not legal advice.
 sandbox line: This is a test build. No real money moves. Payments use PayPal's sandbox with test money, or, in a dry run, nothing contacts PayPal at all.
 /legal/terms | title: Terms of purchase
-/legal/terms | updated: Drafted 30 October 2026
+/legal/terms | updated: Updated 10 November 2026
 /legal/terms | heading: About these terms
 /legal/terms | text: These terms say what you agree to when you buy a unit on UnitMarket. They are the final terms for this sandbox demo. They are not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.
 /legal/terms | heading: What a unit is
@@ -21,7 +21,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/terms | heading: Test money only
 /legal/terms | text: This is a test build. No real money moves. Payments use PayPal's sandbox with test money, or, in a dry run, nothing contacts PayPal at all. Nothing you buy here has real value.
 /legal/privacy | title: Privacy notice
-/legal/privacy | updated: Drafted 30 October 2026
+/legal/privacy | updated: Updated 10 November 2026
 /legal/privacy | heading: About this notice
 /legal/privacy | text: This notice says what data this demo processes and why. It is the final notice for this sandbox demo. It is not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.
 /legal/privacy | heading: What we process
@@ -48,7 +48,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/privacy | heading: Contact
 /legal/privacy | text: You can reach the team at unitmarket@raviprolu.com.
 /legal/refunds | title: Refund policy
-/legal/refunds | updated: Drafted 30 October 2026
+/legal/refunds | updated: Updated 10 November 2026
 /legal/refunds | heading: About this policy
 /legal/refunds | text: This policy says how refunds work in this demo. It is the final policy for this sandbox demo. It is not legal advice. No real money moves: payments use PayPal's sandbox or a dry run.
 /legal/refunds | heading: Who decides
@@ -62,7 +62,7 @@ sandbox line: This is a test build. No real money moves. Payments use PayPal's s
 /legal/refunds | heading: Test money only
 /legal/refunds | text: This is a test build. A refund returns test money to a test account, or, in a dry run, nothing is sent to PayPal. No real money moves.
 /legal/publisher-terms | title: Publisher terms and sandbox disclaimer
-/legal/publisher-terms | updated: Drafted 30 October 2026
+/legal/publisher-terms | updated: Updated 10 November 2026
 /legal/publisher-terms | heading: About these terms
 /legal/publisher-terms | text: These terms say what publishers can expect in this demo. They are the final terms for this sandbox demo. They are not legal advice. No real money moves: payments use PayPal's sandbox or a dry run. They describe only what the demo does today.
 /legal/publisher-terms | heading: Publishers here are fictional
