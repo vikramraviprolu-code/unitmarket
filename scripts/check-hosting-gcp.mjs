@@ -95,7 +95,9 @@ const FIXED = {
   NEXT_TELEMETRY_DISABLED: '1',
   UMS_MODE: 'sandbox',
   UMS_OUTBOUND_SCOPE: 'mvp_c_refunds',
-  UMS_TRUSTED_PROXIES: '1',
+  // DOM-1: the load balancer and Cloud Run's front end each append to X-Forwarded-For (measured
+  // 10 Nov 2026 through https://unitmarket.live). service-offline.yaml keeps 1 (run.app only).
+  UMS_TRUSTED_PROXIES: '2',
   NEXT_PUBLIC_UMS_ENV_LABEL: 'Sandbox',
 };
 // Fixed values service-offline.yaml must carry exactly. UMS_PAYPAL_CONNECT, UMS_DB and UMS_PUBLIC_ORIGIN
@@ -110,6 +112,8 @@ const FIXED_OFFLINE = {
 };
 const PLACEHOLDER_ORIGIN = 'https://pending.invalid';
 const RUN_APP_ORIGIN = /^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.run\.app$/;
+// DOM-1: the one custom domain the sandbox service may use (service.yaml only, never the offline one).
+const CUSTOM_ORIGIN = 'https://unitmarket.live';
 const CMD = 'CMD ["corepack", "pnpm", "--filter", "@umsbx/web", "start"]';
 
 const FORBIDDEN_NAMES = [
@@ -202,7 +206,10 @@ function main() {
         if (re.test(l.raw))
           fail('forbidden-name', `${f}:${l.no} names a variable the kit must not set`);
       if (PAYPAL_HOST.test(l.raw)) fail('paypal-host', `${f}:${l.no} names a PayPal host`);
-      if (LIVE_WORD.test(l.raw)) fail('live-value', `${f}:${l.no} contains the word live`);
+      // DOM-1: the custom domain ends in .live; only service.yaml may name it, and only as the whole
+      // origin https://unitmarket.live. Any other "live" on the same line is still refused.
+      const liveText = f === 'service.yaml' ? l.raw.split(CUSTOM_ORIGIN).join('') : l.raw;
+      if (LIVE_WORD.test(liveText)) fail('live-value', `${f}:${l.no} contains the word live`);
       if (/production/i.test(l.raw) && !/NODE_ENV/.test(l.raw))
         fail('live-value', `${f}:${l.no} names production`);
       if (/\ballUsers\b|\ballAuthenticatedUsers\b/.test(l.raw))
@@ -793,11 +800,14 @@ function main() {
         if (
           key === 'UMS_PUBLIC_ORIGIN' &&
           value !== PLACEHOLDER_ORIGIN &&
-          !RUN_APP_ORIGIN.test(value)
+          !RUN_APP_ORIGIN.test(value) &&
+          (offline || value !== CUSTOM_ORIGIN)
         )
           fail(
             'origin',
-            'UMS_PUBLIC_ORIGIN must be the placeholder or an https run.app origin with no path',
+            offline
+              ? 'UMS_PUBLIC_ORIGIN must be the placeholder or an https run.app origin with no path'
+              : `UMS_PUBLIC_ORIGIN must be the placeholder, an https run.app origin with no path, or ${CUSTOM_ORIGIN}`,
           );
         const wantDb = offline ? 'pglite-memory' : 'postgres';
         if (key === 'UMS_DB' && value !== wantDb) fail('db-kind', `${y}: UMS_DB must be ${wantDb}`);

@@ -156,7 +156,7 @@ Run, Cloud SQL, Secret Manager and Cloud Build. Claude (Anthropic) is named unde
 ## Links to fill in at submission
 
 - Repository: public GitHub URL (Representative, after the secret scan; decision items 9 and 64).
-- Hosted demo URL: `https://unitmarket-sandbox-626887286871.europe-west3.run.app` (Cloud Run, tag `gcp-pub-17`). Browser sign-in works only on this address.
+- Hosted demo URL: `https://unitmarket.live` (Cloud Run behind a Google load balancer, first tag that carries DOM-1). Browser sign-in works only on this address.
 - Video: public YouTube link, under 3 minutes (decision item 66).
 - Testing instructions: paste `docs/submission/testing-instructions.md`, with the credential placeholders replaced in the Devpost
   form only.

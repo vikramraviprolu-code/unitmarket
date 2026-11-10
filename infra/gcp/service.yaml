@@ -14,10 +14,11 @@ UMS_MODE: 'sandbox'
 UMS_PAYPAL_CONNECT: 'on'
 UMS_OUTBOUND_SCOPE: 'mvp_c_refunds'
 UMS_DB: 'postgres'
-# One proxy in front (Cloud Run's front end). UNVERIFIED until the curl test of Step 3 in the owner
-# steps passes; a wrong count is worse than 0.
-UMS_TRUSTED_PROXIES: '1'
+# Two proxies append to X-Forwarded-For: the load balancer and Cloud Run's front end (DOM-1). Measured
+# by the owner curl test through the custom domain on 10 Nov 2026; a wrong count is worse than 0.
+UMS_TRUSTED_PROXIES: '2'
 NEXT_PUBLIC_UMS_ENV_LABEL: 'Sandbox'
-# Not a secret. The placeholder below is replaced, through a reviewed change, with the service URL
-# (https://<service>-<project number>.<region>.run.app, no trailing slash) before the first real use.
-UMS_PUBLIC_ORIGIN: 'https://unitmarket-sandbox-626887286871.europe-west3.run.app'
+# Not a secret. The one address browsers use: the custom domain (DOM-1), no trailing slash. A load
+# balancer routes it to the service (docs/owner/CUSTOM-DOMAIN.md). Deploy this only after
+# https://unitmarket.live/signin answers; before DOM-1 it was the Cloud Run service URL.
+UMS_PUBLIC_ORIGIN: 'https://unitmarket.live'

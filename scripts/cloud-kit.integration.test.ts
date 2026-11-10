@@ -109,10 +109,30 @@ describe('item 2: cloud doctor', () => {
   });
 
   it('reports an origin mismatch between service.yaml and the service address', () => {
-    const k = makeKit({ web: { url: 'https://elsewhere-xyz-ey.a.run.app' } });
+    // DOM-1: the real service.yaml now holds the custom domain, so this case sets a run.app origin.
+    const k = makeKit({
+      origin: 'https://unitmarket-sandbox-626887286871.europe-west3.run.app',
+      web: { url: 'https://elsewhere-xyz-ey.a.run.app' },
+    });
     const r = k.run(['doctor']);
     expect(r.status, r.out).toBe(0);
     expect(r.out).toMatch(/WARN.*origin mismatch/);
+  });
+
+  it('DOM-1: a custom domain origin is reported with the service address, not as a mismatch', () => {
+    const k = makeKit({ origin: 'https://unitmarket.live' });
+    const r = k.run(['doctor']);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain(`ok   custom domain https://unitmarket.live routes to ${WEB_URL}`);
+    expect(r.out).not.toMatch(/origin mismatch/);
+  });
+
+  it('DOM-1: the real service.yaml origin is https://unitmarket.live and the fake service address is run.app', () => {
+    expect(WEB_URL).toMatch(/^https:\/\/[a-z0-9-]+\.europe-west3\.run\.app$/);
+    const k = makeKit();
+    const r = k.run(['doctor']);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain('custom domain https://unitmarket.live');
   });
 
   it('a missing secret name is reported by name and refuses (2)', () => {
