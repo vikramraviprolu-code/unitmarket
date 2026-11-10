@@ -352,6 +352,34 @@ describe('word dedupe and the hard limit', () => {
   }, 60_000);
 });
 
+describe('topics are whole words too, and a disabled corridor answers nothing', () => {
+  it('the word art does not match the topics startup or artwork', async () => {
+    await addPublisher(db, 't1');
+    await addOffers(db, {
+      pub: 't1',
+      prefix: 'tp',
+      n: 1,
+      title: 'Other',
+      abstract: 'x',
+      topics: ['startup', 'artwork'],
+    });
+    expect(await ids(['art'])).not.toContain('ofr_tp_0001');
+  });
+
+  it('answers [] for a disabled corridor, and again finds the offer once it is re-enabled', async () => {
+    await addPublisher(db, 't2');
+    await addOffers(db, { pub: 't2', prefix: 'td', n: 1, title: 'Disabledword', currency: 'EUR' });
+    expect(await ids(['disabledword'], { corridor_id: 'de-eur' })).toEqual(['ofr_td_0001']);
+    await db.query(`UPDATE corridors SET enabled = false WHERE id = 'de-eur'`);
+    try {
+      expect(await ids(['disabledword'], { corridor_id: 'de-eur' })).toEqual([]);
+    } finally {
+      await db.query(`UPDATE corridors SET enabled = true WHERE id = 'de-eur'`);
+    }
+    expect(await ids(['disabledword'], { corridor_id: 'de-eur' })).toEqual(['ofr_td_0001']);
+  });
+});
+
 // CAT-2.2: exact copies (same publisher, same sha256) take one slot, before the per-publisher cap, and the
 // row says how many other current authorised copies the publisher has.
 async function addCopies(
