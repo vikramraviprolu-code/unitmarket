@@ -240,7 +240,7 @@ describe('slots', () => {
     const db = await world(['p1', 'p2', 'p3']);
     // The database refuses overlapping corridors of one currency; switch that guard off to prove the code
     // still counts an offer once if two corridors ever reached it.
-    await db.query('ALTER TABLE corridors DISABLE TRIGGER USER');
+    await db.query('ALTER TABLE corridors DISABLE TRIGGER corridors_payee_disjoint');
     await db.query(
       `INSERT INTO corridors (id, currency, minor_units, buyer_countries, payee_countries, domestic_supported, min_charge_minor, enabled, created_at, updated_at)
        VALUES ('xx-usd', 'USD', 2, ARRAY['US'], ARRAY['US'], true, NULL, true, $1, $1)`,
@@ -278,6 +278,41 @@ describe('slots', () => {
     const { ids } = await candidates(db, { need: 'slotword', terms: ['slotword'] });
     expect(ids).toHaveLength(10);
     expect(ids.every((i) => i.startsWith('ofr_p2f_'))).toBe(true);
+  });
+});
+
+describe('code-side caps across currencies', () => {
+  it('a publisher selling in USD and EUR still keeps at most 10 candidates', async () => {
+    const db = await world(['p1', 'p2']);
+    await addOffers(db, { pub: 'p1', prefix: 'p1u', n: 10, title: 'Multiword {i}' });
+    await addOffers(db, {
+      pub: 'p1',
+      prefix: 'p1e',
+      n: 10,
+      title: 'Multiword {i}',
+      currency: 'EUR',
+    });
+    await addOffers(db, { pub: 'p2', prefix: 'p2', n: 2, title: 'Multiword {i}' });
+    const { ids } = await candidates(db, { need: 'multiword', terms: ['multiword'] });
+    expect(count(ids, 'p1')).toBe(10);
+    expect(count(ids, 'p2')).toBe(2);
+  });
+
+  it('the union is cut to 50 candidates', async () => {
+    const pubs = Array.from({ length: 8 }, (_, k) => `p${k + 1}`);
+    const db = await world(pubs);
+    for (const [k, pub] of pubs.entries()) {
+      await addOffers(db, {
+        pub,
+        prefix: pub,
+        n: 10,
+        title: 'Cutword {i}',
+        currency: k % 2 === 0 ? 'USD' : 'EUR',
+      });
+    }
+    const { ids } = await candidates(db, { need: 'cutword', terms: ['cutword'] });
+    expect(ids).toHaveLength(50);
+    expect(new Set(ids).size).toBe(50);
   });
 });
 
