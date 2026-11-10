@@ -268,6 +268,8 @@ describe('migration 0017', () => {
               'publisher_paypal_links',
               // INT-CTL (migration 0026): the seeded API exposure rows.
               'api_exposure',
+              // DOMAIN-PROOF-2 (migration 0037): one verification code per publisher.
+              'publisher_proof_codes',
             ].includes(t),
         ),
       ).toEqual(['fx_rates']);

@@ -46,12 +46,16 @@ describe('README (D2, D3)', () => {
   });
 
   it('claims a lane as merged only while its route exists, and does not claim lanes that are not merged', () => {
-    // Buyer cancel of an unpaid order (ORDER-A) is merged: its row says Merged and its route exists on main.
+    // Buyer cancel of an unpaid order (ORDER-A) is merged: its row is in the "What works today" table, which says
+    // every row in it is merged on main, and its route exists on main.
     const cancelRow = readme
       .split('\n')
       .find((line) => /Buyer cancel of an unpaid order/.test(line));
     expect(cancelRow, 'the cancel row is listed').toBeDefined();
-    expect(cancelRow).toMatch(/Merged/i);
+    const works = readme.split(/^## /m).find((s) => s.startsWith('What works today'));
+    expect(works, 'the What works today section exists').toBeDefined();
+    expect(works).toMatch(/Everything in this table is merged on `main`/);
+    expect(works).toContain(cancelRow);
     expect(
       existsSync(fileURLToPath(new URL('./app/api/orders/[ref]/cancel/route.ts', import.meta.url))),
       'README says the cancel lane is merged but its route is missing',

@@ -150,6 +150,10 @@ describe('migration 0030', () => {
         'token_hash',
         'updated_at',
         'verified_at',
+        // fresh() migrates to head: 0037 (DOMAIN-PROOF-2) adds who verified an address and an operator's vouch.
+        'verified_by',
+        'vouch_reason',
+        'vouched_by',
       ].sort(),
     );
     expect(await cols('import_batches')).toEqual(

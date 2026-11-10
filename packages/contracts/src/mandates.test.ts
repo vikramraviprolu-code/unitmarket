@@ -110,7 +110,8 @@ describe('MandateViewSchema and BudgetStatusSchema', () => {
 describe('additive changes elsewhere in the contracts', () => {
   it('agent_buy_enabled is a switch name', () => {
     expect(SwitchNameSchema.options).toContain('agent_buy_enabled');
-    expect(SwitchNameSchema.options).toHaveLength(7);
+    // WEB-IMPORT-SW added web_import_enabled, the eighth switch.
+    expect(SwitchNameSchema.options).toHaveLength(8);
   });
   it('mandates and reservations have id prefixes', () => {
     expect(IdPrefixSchema.options).toEqual(expect.arrayContaining(['man', 'rsv']));
