@@ -1,7 +1,7 @@
 # Devpost submission text: draft for the owners (DOCS-B, finalised against main)
 
-Status: DRAFT 5, updated on 9 Nov 2026 against `main` at commit `172e5c7a`. The live build is tag `gcp-pub-15` (commit `172e5c7a`,
-`docs/decision-log.md` D-112). The owners approve every word (decision items 68 and 69, D-065). The submission closes Thu 12 Nov 2026, 12:00 PT (21:00 CET) and cannot be changed after that.
+Status: DRAFT 6, updated on 10 Nov 2026 against `main` at commit `3b079523`. The live build is tag `gcp-pub-16` (commit `3b079523`,
+`docs/decision-log.md` D-117). The owners approve every word (decision items 68 and 69, D-065). The submission closes Thu 12 Nov 2026, 12:00 PT (21:00 CET) and cannot be changed after that.
 
 How to read this file:
 
@@ -35,7 +35,7 @@ refund form and checks that must hold.
 
 Publishers have their own side. A publisher is invited, claims an account, accepts the publisher terms and links its own PayPal
 address, which an operator verifies. A publisher can import articles from a web link it proves it controls, review them, and
-publish offers. On offers published through the web import, UnitMarket adds a platform fee of 10 percent of the publisher price on top, so the publisher does not pay it. The
+publish offers, choosing USD, EUR or GBP for each offer (default USD; publishers whose payee country is India sell to buyers outside India). Euro and pound purchases run in dry run only; real sandbox purchases in those currencies are not demonstrated, and UnitMarket converts no money. [`docs/decision-log.md` D-113, D-117] On offers published through the web import, UnitMarket adds a platform fee of 10 percent of the publisher price on top, so the publisher does not pay it. The
 publisher sees its sales and a statement. Payouts to publishers are built and tested in dry run only. [`docs/specs/pob-p1-publisher-accounts.md`,
 `docs/specs/pob-m1-fee-and-payout.md`, `docs/specs/pob-i1-web-import.md`, `apps/web/src/pob-journey.state.test.ts`]
 
@@ -122,12 +122,12 @@ account): "Both seeded publishers are paid into one sandbox test account; multi-
   holds no credentials. [`pnpm check:no-live-host`, `pnpm check:secrets-names`]
 - A complete operator side: safety gate, Stop button, refunds behind an authenticator code, invariants that must hold.
 - A publisher area: invite, claim, sign in, terms, a PayPal address that an operator verifies (a verified PayPal address can belong to one
-  publisher only, enforced by the database, migration 0032), web import with a domain proof, offers that a publisher revises or withdraws within a price cap, a
+  publisher only, enforced by the database, migration 0032), web import with a domain proof (its own switch, D-115), offers that a publisher revises or withdraws within a price cap, a
   sales page and a statement. An operator page shows each publisher's exposure and can suspend a publisher. One automated test walks
   the whole publisher journey in dry run, from apply to refund. [specs PUB-A1 to PUB-D, POB-P1, POB-M1, POB-I1,
   `docs/specs/publisher-onboarding-journey.md`, `apps/web/src/pob-journey.state.test.ts`]
-- Releases are verified in full before deploy: static checks, six test suites, a production build, 200 browser journeys and a check of
-  the append only transaction journal, on the tree that is deployed. [`docs/decision-log.md` D-109, D-111, D-112]
+- Releases up to `gcp-pub-15` were verified in full before deploy: static checks, six test suites, a production build, 200 browser journeys and a check of
+  the append only transaction journal. `gcp-pub-16` had a lighter check (210 test files, 3,245 tests and the static checks passed; the full six suites and the browser gate were not run). [`docs/decision-log.md` D-109, D-111, D-112, D-117]
 - Two switchable skins with the Appearance control and a small motion set, an in app reader with a time left meter, sign out and
   navigation per role, and four draft legal pages. [specs SKIN-A, SKIN-B, READER-A, LEGAL-A]
 
@@ -156,7 +156,7 @@ Run, Cloud SQL, Secret Manager and Cloud Build. Claude (Anthropic) is named unde
 ## Links to fill in at submission
 
 - Repository: public GitHub URL (Representative, after the secret scan; decision items 9 and 64).
-- Hosted demo URL: `https://unitmarket-sandbox-626887286871.europe-west3.run.app` (Cloud Run, tag `gcp-pub-15`). Browser sign-in works only on this address.
+- Hosted demo URL: `https://unitmarket-sandbox-626887286871.europe-west3.run.app` (Cloud Run, tag `gcp-pub-16`). Browser sign-in works only on this address.
 - Video: public YouTube link, under 3 minutes (decision item 66).
 - Testing instructions: paste `docs/submission/testing-instructions.md`, with the credential placeholders replaced in the Devpost
   form only.
