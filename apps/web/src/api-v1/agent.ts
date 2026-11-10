@@ -220,6 +220,9 @@ const propose = def({
           price_minor: i.quote.price.minor,
           currency: i.quote.price.currency,
           ai_scope: aiScopeOf(o),
+          // CAT-2: passed through unchanged, present only when the discovery gave them.
+          ...(i.collection !== undefined ? { collection: i.collection } : {}),
+          ...(i.duplicates_hidden !== undefined ? { duplicates_hidden: i.duplicates_hidden } : {}),
         },
       ];
     });

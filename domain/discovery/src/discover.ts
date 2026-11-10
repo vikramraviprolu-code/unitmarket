@@ -17,6 +17,7 @@ import type {
 import { listAuthorisedOffers, listAuthorisedOffersMatching, needWords } from '@umsbx/catalogue';
 import type { OfferView } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
+import { collectionFacts, collectionsOf } from './collections';
 // CHANGE-REQUEST-S1: see brief.ts.
 
 import { COMPOSE_SYSTEM, sanitiseModelOutput } from '@umsbx/model';
@@ -27,6 +28,8 @@ const MAX_CANDIDATES = 50;
 // CAT-1: no publisher fills more than this many of the candidates, or more than PER_PUBLISHER_ITEMS of the items.
 const PER_PUBLISHER_CANDIDATES = 10;
 const PER_PUBLISHER_ITEMS = 3;
+// CAT-2.3: and no collection fills more than this many of the items in the first pass.
+const PER_COLLECTION_ITEMS = 2;
 const MAX_WORDS = 12;
 const MAX_WORD_CHARS = 40;
 
@@ -55,6 +58,10 @@ export type DiscoveryResult =
         title: string;
         publisher: string;
         ceiling_check?: CeilingCheck;
+        /** CAT-2.3: the named collection the offer belongs to and the number of the publisher's offers in it. */
+        collection?: { name: string; size: number };
+        /** CAT-2.2: other current authorised copies of the same file that were collapsed into this one. Only when above 0. */
+        duplicates_hidden?: number;
       }[];
     }
   | {
@@ -128,11 +135,11 @@ async function candidatesFor(
   d: AgentDeps,
   brief: Brief,
   convert: ConvertFn | undefined,
-): Promise<{ views: OfferView[]; no_rate: boolean }> {
+): Promise<{ views: OfferView[]; no_rate: boolean; dups: Map<string, number> }> {
   const buyer = await d.db.query<{ country: string }>('SELECT country FROM buyers WHERE id = $1', [
     brief.buyer_id,
   ]);
-  if (!buyer.rows[0]) return { views: [], no_rate: false };
+  if (!buyer.rows[0]) return { views: [], no_rate: false, dups: new Map() };
   const corridors = await d.db.query<{ id: string; currency: string }>(
     'SELECT id, currency FROM corridors WHERE enabled ORDER BY id',
   );
@@ -155,7 +162,7 @@ async function candidatesFor(
 
   const byOfferId = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
   const words = briefWords(brief);
-  const matched = new Map<string, { view: OfferView; score: number }>();
+  const matched = new Map<string, { view: OfferView; score: number; duplicates_hidden: number }>();
   if (words.length > 0) {
     for (const corridor_id of usable) {
       const rows = await listAuthorisedOffersMatching(d.db, {
@@ -179,7 +186,12 @@ async function candidatesFor(
       })
       .slice(0, MAX_CANDIDATES)
       .map((r) => r.view);
-    return { views, no_rate: noRate };
+    const dups = new Map(
+      [...matched.values()]
+        .filter((r) => r.duplicates_hidden > 0)
+        .map((r) => [r.view.offer.id, r.duplicates_hidden] as const),
+    );
+    return { views, no_rate: noRate, dups };
   }
 
   // Nothing matched: the first authorised offers by id, exactly as before.
@@ -191,23 +203,27 @@ async function candidatesFor(
   const views = [...byId.values()]
     .sort((a, b) => byOfferId(a.offer.id, b.offer.id))
     .slice(0, MAX_CANDIDATES);
-  return { views, no_rate: noRate };
+  return { views, no_rate: noRate, dups: new Map() };
 }
 
-// CAT-1.3: walk the picks in the model's order and keep the first 3 per publisher; held-back picks fill any
-// free slot up to MAX_ITEMS, in the model's order. A single publisher with five picks still gives five items.
-function spreadPicks<T extends { offer_id: string }>(
+// CAT-1.3 and CAT-2.3: walk the picks in the model's order. The first pass keeps a pick only when its publisher
+// has fewer than 3 kept AND its collection has fewer than 2 kept; held-back picks then fill the free slots up to
+// MAX_ITEMS, in the model's order. So the answer never shrinks: five picks of one collection still give five items.
+export function spreadPicks<T extends { offer_id: string }>(
   picks: T[],
-  publisherOf: (offerId: string) => string,
+  infoOf: (offerId: string) => { publisher: string; collection: string },
 ): T[] {
-  const taken = new Map<string, number>();
+  const byPublisher = new Map<string, number>();
+  const byCollection = new Map<string, number>();
   const kept: T[] = [];
   const held: T[] = [];
   for (const p of picks) {
-    const pub = publisherOf(p.offer_id);
-    const n = taken.get(pub) ?? 0;
-    if (n < PER_PUBLISHER_ITEMS) {
-      taken.set(pub, n + 1);
+    const { publisher, collection } = infoOf(p.offer_id);
+    const n = byPublisher.get(publisher) ?? 0;
+    const c = byCollection.get(collection) ?? 0;
+    if (n < PER_PUBLISHER_ITEMS && c < PER_COLLECTION_ITEMS) {
+      byPublisher.set(publisher, n + 1);
+      byCollection.set(collection, c + 1);
       kept.push(p);
     } else held.push(p);
   }
@@ -228,11 +244,22 @@ export async function discover(
   }
 
   const convert = safeConvert(i.convert);
-  const { views, no_rate } = await candidatesFor(d, brief, convert);
+  const { views, no_rate, dups } = await candidatesFor(d, brief, convert);
   let rateMissing = no_rate;
   if (views.length === 0) return noMatch([], rateMissing);
   const byOffer = new Map(views.map((v) => [v.offer.id, v]));
   const candidateIds = new Set(byOffer.keys());
+  // CAT-2.1: the collection of every candidate, from counts over all of its publisher's offers.
+  const facts = await collectionFacts(
+    d.db,
+    [...new Set(views.map((v) => v.publisher.id))],
+    [...candidateIds],
+  );
+  const collections = collectionsOf(facts.rows, facts.topicCounts);
+  const collectionKey = (id: string): string => {
+    const c = collections.get(id);
+    return `${byOffer.get(id)!.publisher.id}\u0000${c?.name ?? 'other'}`;
+  };
 
   // The listing text goes to the model as data, clipped to the contract limits. No price, no payee,
   // no buyer field is part of the input (AI-1, PRIV-2).
@@ -272,7 +299,10 @@ export async function discover(
     });
     cleaned = {
       ...raw,
-      picks: spreadPicks(picks, (id) => byOffer.get(id)!.publisher.id),
+      picks: spreadPicks(picks, (id) => ({
+        publisher: byOffer.get(id)!.publisher.id,
+        collection: collectionKey(id),
+      })),
     };
   }
   const safe = sanitiseModelOutput(cleaned, candidateIds);
@@ -325,6 +355,10 @@ export async function discover(
   }
   if (quoted.length === 0) return noMatch(reasons, rateMissing);
 
+  const collectionOf = (id: string): { collection?: { name: string; size: number } } => {
+    const c = collections.get(id);
+    return c === undefined ? {} : { collection: { name: c.name, size: c.size } };
+  };
   const now = d.clock.now();
   const ranked = rankFit(
     quoted.map(({ quote, view, check }) => {
@@ -358,6 +392,10 @@ export async function discover(
     title: r.view.article.title,
     publisher: r.view.publisher.display_name,
     ...(r.check !== null ? { ceiling_check: r.check } : {}),
+    ...collectionOf(r.view.offer.id),
+    ...((dups.get(r.view.offer.id) ?? 0) > 0
+      ? { duplicates_hidden: dups.get(r.view.offer.id)! }
+      : {}),
   }));
 
   const proposal_id = d.ids.next('prp');

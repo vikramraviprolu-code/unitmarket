@@ -9,6 +9,7 @@ import { EnvLabel } from '../../ui/EnvLabel';
 import { SectionNav } from '../../ui/SectionNav';
 import { Chip, Section, StatTile } from '../../ui/publisher/kit';
 import { HomeCard } from './HomeCard';
+import { DemandCard } from './DemandCard';
 import { TermsAccept } from './TermsAccept';
 import {
   APPLIED_NOTICE,
@@ -90,6 +91,8 @@ export default async function PublisherHome() {
   const setup = await readSellerSetup(actor);
   const sel = await readSellerHome(actor);
   const hv = sel === null ? null : homeView(sel);
+  // CAT-2.6: what buyers ask for, with how many of this publisher's offers match. A failed read shows the empty card.
+  const demand = (await a.engine.demand.forPublisher(actor).catch(() => null)) ?? [];
   const status = statusChip(home.status);
   const payee = payeeChip(home.payee);
   const terms = termsChip(agreement);
@@ -218,6 +221,7 @@ export default async function PublisherHome() {
           </section>
         </>
       )}
+      <DemandCard rows={demand} />
       <Section title={ACCOUNT_HEADING} id="account">
         <div className="pk-panel">
           <dl className="pk-facts">

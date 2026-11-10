@@ -130,13 +130,15 @@ export async function listAuthorisedOffers(
 // when the whole word matches case-insensitively (like searchOffers: "art" does not match "start"). The words
 // reach SQL as one bound text[] and each is only letters and digits, so no regex metacharacter gets through.
 // Case folding is guaranteed for ASCII only (PGlite and Postgres decide the rest by locale).
+// CAT-2.2: exact copies (same publisher, same sha256) collapse to the smallest offer id inside the guarded CTE,
+// before ROW_NUMBER, so ten copies of a photo use one slot; duplicates_hidden counts the publisher's other copies.
 const WORD_PATTERN = /^[\p{L}\p{N}]{3,40}$/u;
 const MAX_WORDS = 12;
 
 export async function listAuthorisedOffersMatching(
   db: SqlExecutor,
   i: { corridor_id: CorridorId; words: readonly string[]; per_publisher: number; limit: number },
-): Promise<{ view: OfferView; score: number }[]> {
+): Promise<{ view: OfferView; score: number; duplicates_hidden: number }[]> {
   const seen = new Set<string>();
   const words: string[] = [];
   for (const w of i.words) {
@@ -154,7 +156,16 @@ export async function listAuthorisedOffersMatching(
   const limit = Math.max(1, Math.min(500, Math.trunc(i.limit) || 1));
   const { rows } = await db.query<Row>(
     `WITH matched AS (
-       SELECT o.id AS m_id, o.version AS m_version, o.publisher_id AS m_publisher, s.score AS m_score
+       SELECT DISTINCT ON (o.publisher_id, a.sha256)
+              o.id AS m_id, o.version AS m_version, o.publisher_id AS m_publisher, s.score AS m_score,
+              (SELECT count(*) FROM offers d
+                 JOIN articles da ON da.id = d.article_id
+                 JOIN publishers dp ON dp.id = d.publisher_id
+                WHERE d.publisher_id = o.publisher_id AND da.sha256 = a.sha256 AND d.id <> o.id
+                  AND d.status = 'authorised' AND d.superseded_by IS NULL AND dp.status = 'active'
+                  AND EXISTS (SELECT 1 FROM publisher_authorisations pa WHERE pa.offer_id = d.id AND pa.offer_version = d.version)
+                  AND NOT EXISTS (SELECT 1 FROM offers n WHERE n.id = d.id AND (n.created_at, n.version) > (d.created_at, d.version))
+              )::int AS m_dups
          FROM offers o
          JOIN articles a ON a.id = o.article_id
          JOIN publishers p ON p.id = o.publisher_id
@@ -171,12 +182,13 @@ export async function listAuthorisedOffersMatching(
           AND EXISTS (SELECT 1 FROM publisher_authorisations pa WHERE pa.offer_id = o.id AND pa.offer_version = o.version)
           AND NOT EXISTS (SELECT 1 FROM offers n WHERE n.id = o.id AND (n.created_at, n.version) > (o.created_at, o.version))
           AND s.score > 0
+        ORDER BY o.publisher_id, a.sha256, o.id
      ), capped AS (
-       SELECT m_id, m_version, m_score,
+       SELECT m_id, m_version, m_score, m_dups,
               ROW_NUMBER() OVER (PARTITION BY m_publisher ORDER BY m_score DESC, m_id) AS rn
          FROM matched
      )
-     SELECT v.*, c.m_score AS score
+     SELECT v.*, c.m_score AS score, c.m_dups AS dups
        FROM (${SELECT}) v
        JOIN capped c ON c.m_id = v.o_id AND c.m_version = v.o_version
       WHERE c.rn <= $4
@@ -184,5 +196,9 @@ export async function listAuthorisedOffersMatching(
       LIMIT $5`,
     [corridor.currency, corridor.payee_countries, words, perPublisher, limit],
   );
-  return rows.map((r) => ({ view: toView(r), score: Number(r.score) }));
+  return rows.map((r) => ({
+    view: toView(r),
+    score: Number(r.score),
+    duplicates_hidden: Number(r.dups),
+  }));
 }

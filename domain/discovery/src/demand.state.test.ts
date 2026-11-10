@@ -33,7 +33,7 @@ async function addOffer(
   const sha = `${n}${'a'.repeat(60)}`;
   await db.query(
     `INSERT INTO articles (id, publisher_id, title, abstract, language, topics, published_at, sha256, content_key, bytes, mime, created_at, updated_at)
-     VALUES ($1, $2, 'Title ' || $1, 'Abstract', 'en', $3::text[], $4::timestamptz, $5, 'key_' || $1, 10, 'text/plain', $4::timestamptz, $4::timestamptz)`,
+     VALUES ($1::text, $2, 'Title ' || $1::text, 'Abstract', 'en', $3::text[], $4::timestamptz, $5, 'key_' || $1::text, 10, 'text/plain', $4::timestamptz, $4::timestamptz)`,
     [`art_d${n}`, pub, topics, TS, sha],
   );
   await db.query(
