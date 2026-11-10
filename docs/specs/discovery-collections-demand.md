@@ -34,9 +34,10 @@ branch). No migration: every column exists. No new dependency. No model call. No
    - back-fill: fill free slots up to 5 with the held-back picks, in the model's order.
 
    The CAT-1 test "one publisher with 5 picks gives 5 items" still holds unchanged.
+   Designer decision: CAT-2.3 wins over CAT-1 on the cap. The CAT-1 test "5 picks from P1 then one each from P2..P5" now expects P1, P1, P2, P3, P4, because all of P1's photos are one collection (2 kept in the first pass).
 4. **CAT-2.4 Contract (additive).** In `packages/contracts/src/v1.ts`, the strict items of `DiscoverResponseSchema`
    gain `collection: z.object({ name: z.string(), size: z.number().int().nonnegative() }).strict().optional()` and
-   `duplicates_hidden: z.number().int().positive().optional()`. Run `corepack pnpm openapi:emit` to regenerate
+   `duplicates_hidden: z.number().int().positive().optional()`. The collection object also carries `images: z.boolean()` (true when the collection cover is an image), an additive field accepted by the designer; the proposal card says photos for images and items otherwise. Run `corepack pnpm openapi:emit` to regenerate
    `docs/api/openapi-v1.json`. `apps/web/src/api-v1/buyer.ts` and `agent.ts` pass the fields through unchanged.
 5. **CAT-2.5 Buyer demand (privacy first).** `demandTerms(db, { day, limit })` in
    `domain/discovery/src/demand.ts`. The caller passes `day` as a UTC date (`clock.now()` floored to 00:00 UTC).
