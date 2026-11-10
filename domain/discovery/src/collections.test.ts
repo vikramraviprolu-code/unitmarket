@@ -186,3 +186,10 @@ describe('the cover among many ids, in any order', () => {
     expect(got.get('ofr_1')!.size).toBe(0);
   });
 });
+
+describe('a topic with no stored count loses to one with a count', () => {
+  it('chooses b (count 1) over a (missing, so 0)', () => {
+    const got = collectionsOf([row('ofr_1', ['a', 'b'])], counts({ p1: { b: 1 } }));
+    expect(got.get('ofr_1')).toEqual({ name: 'b', size: 1, cover_offer_id: 'ofr_1' });
+  });
+});

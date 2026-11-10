@@ -324,7 +324,7 @@ describe('demand: more edges', () => {
   it('reads a padded element of 1000 characters and skips one of 1001', async () => {
     await crowd(db, 5, `${' '.repeat(496)}harbour${' '.repeat(497)}`);
     expect(await terms()).toEqual([{ term: 'harbour', band: '5-9' }]);
-    await crowd(db, 5, `${' '.repeat(496)}sunset${' '.repeat(500)}`);
+    await crowd(db, 5, `${' '.repeat(496)}sunset${' '.repeat(499)}`);
     expect((await terms()).map((t) => t.term)).toEqual(['harbour']);
   });
 
