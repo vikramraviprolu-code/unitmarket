@@ -1,4 +1,4 @@
-// OPS-SW (D-118, state): POST /api/ops/sitting through the real route wrapper and the real app. An operator
+// OPS-SW (D-120, state): POST /api/ops/sitting through the real route wrapper and the real app. An operator
 // signed in with the authenticator code opens a PayPal sandbox sitting (the approval row the owner used to
 // insert at a terminal), then Start turns PayPal on under it. Nothing reaches a network: the wire is a
 // counting fake and no PayPal call is made here.

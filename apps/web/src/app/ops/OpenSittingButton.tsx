@@ -19,7 +19,7 @@ export interface SittingResult {
   max_calls: number;
 }
 
-// OPS-SW (D-118): "Open a PayPal sitting". A reason only: the limits are fixed on the server (D-094) and the
+// OPS-SW (D-120): "Open a PayPal sitting". A reason only: the limits are fixed on the server (D-094) and the
 // body carries none. The route checks the authenticator code again. After it, Start appears on refresh.
 export function OpenSittingButton({ onOpened }: { onOpened: (r: SittingResult) => void }) {
   const [reason, setReason] = useState('');

@@ -240,7 +240,7 @@ function main() {
   for (const f of Object.keys(files)) {
     for (const l of lines[f]) {
       for (const m of l.raw.matchAll(/\bUMS_PAYPAL_CONNECT\s*[:=]\s*["']?([A-Za-z0-9_-]*)/g)) {
-        // OPS-SW (D-118): service.yaml, and only that file, may carry 'on'. The approval row (opened from
+        // OPS-SW (D-120): service.yaml, and only that file, may carry 'on'. The approval row (opened from
         // Operations Controls with the authenticator code, D-094 ceiling fixed in code) and the Start switch
         // stay the per-sitting keys; every script, the offline service and cloud:down still set only off.
         const allowOn = f === 'service.yaml' && /^UMS_PAYPAL_CONNECT: (?:'on'|"on")$/.test(l.raw);

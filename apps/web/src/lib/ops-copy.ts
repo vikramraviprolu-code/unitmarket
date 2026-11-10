@@ -22,7 +22,7 @@ export const OPS_START_NEEDS_CODE = 'Sign in with your authenticator code to sta
 export const OPS_START_ALREADY_ON = 'PayPal calls are already on, so there is nothing to start.';
 export const OPS_START_NO_APPROVAL =
   'There is no active approval, so PayPal cannot be started yet. Open a PayPal sitting first.';
-// OPS-SW (D-118): opening a sitting from Controls, with the D-094 ceiling fixed in code.
+// OPS-SW (D-120): opening a sitting from Controls, with the D-094 ceiling fixed in code.
 export const OPS_SITTING_HEADING = 'Open a PayPal sitting';
 export const OPS_SITTING_LEDE =
   'Allows PayPal sandbox calls for up to four hours: checkout operations only, at most $5.00 per order and 40 calls. Then press Start PayPal.';

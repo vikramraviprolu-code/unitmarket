@@ -80,7 +80,7 @@ type Case = [name: string, file: string, find: string, replace: string, rule: st
 
 // find '' means: append `replace` as a new last line.
 const CASES: Case[] = [
-  // the connection is off or, in service.yaml only, on (OPS-SW, D-118); nothing else
+  // the connection is off or, in service.yaml only, on (OPS-SW, D-120); nothing else
   [
     'connect live in service.yaml',
     'service.yaml',
@@ -1726,7 +1726,7 @@ describe('check-hosting-gcp', () => {
     expect(r.out).not.toContain('hosting-gcp ok');
   });
 
-  it('OPS-SW (D-118): service.yaml may carry the connection on or off, and both pass', () => {
+  it('OPS-SW (D-120): service.yaml may carry the connection on or off, and both pass', () => {
     for (const v of ["'on'", "'off'"]) {
       const r = runGuard(
         GUARD,
@@ -1972,7 +1972,7 @@ describe('check-hosting-gcp', () => {
       expect(svc, k).toContain(`${k}: '${fromRender}'`);
     }
     expect(svc).toContain("UMS_DB: 'postgres'");
-    // OPS-SW (D-118): the GCP service carries the connection on; render.yaml (Render host) keeps off.
+    // OPS-SW (D-120): the GCP service carries the connection on; render.yaml (Render host) keeps off.
     expect(svc).toContain("UMS_PAYPAL_CONNECT: 'on'");
     expect(svc).not.toContain('UMS_MAINTENANCE_FLAG:');
     expect(svc).not.toContain('UMS_PGLITE_DIR');

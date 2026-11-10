@@ -4,7 +4,7 @@
 # "node scripts/check-hosting-gcp.mjs" (pnpm check:hosting-gcp) fails if a secret name or value
 # shows up in this file. The secret names are the ones in infra/gcp/set-secret.sh, plus DATABASE_URL.
 #
-# UMS_PAYPAL_CONNECT is on here (OPS-SW, D-118), so no gcloud step is needed per sitting. It lets no
+# UMS_PAYPAL_CONNECT is on here (OPS-SW, D-120), so no gcloud step is needed per sitting. It lets no
 # PayPal call out by itself: each call still needs an active approval row, opened on Operations Controls
 # by an operator with the authenticator code (D-094 ceiling fixed in code, at most four hours), and the
 # paypal_outbound switch turned on with Start. Stop, cloud:down and the approval's end each stop calls.

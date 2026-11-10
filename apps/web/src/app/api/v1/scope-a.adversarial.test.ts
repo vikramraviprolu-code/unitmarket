@@ -53,7 +53,7 @@ const MFA_ROUTES: Record<string, () => Promise<Record<string, Handler>>> = {
     import('../ops/api-exposure/[group]/off/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/agent-buy': () =>
     import('../ops/agent-buy/route') as unknown as Promise<Record<string, Handler>>,
-  // OPS-SW (D-118): opening a PayPal sitting writes an approval row; no key of any scope reaches it.
+  // OPS-SW (D-120): opening a PayPal sitting writes an approval row; no key of any scope reaches it.
   '/api/ops/sitting': () =>
     import('../ops/sitting/route') as unknown as Promise<Record<string, Handler>>,
   '/api/ops/api-keys/[id]/revoke': () =>

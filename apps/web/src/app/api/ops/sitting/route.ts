@@ -3,7 +3,7 @@ import { withRoute } from '@umsbx/security';
 import type { RouteMeta } from '@umsbx/security';
 import { app, securityDeps } from '../../../../server/access';
 
-// OPS-SW (D-118): the "Open a PayPal sitting" button. An operator session that signed in WITH the
+// OPS-SW (D-120): the "Open a PayPal sitting" button. An operator session that signed in WITH the
 // authenticator code (no `fail_safe_without_mfa`: it widens what the system may do, so the wrapper answers
 // 403 mfa_required without the code), a CSRF token and a reason. It writes one approval row with the D-094
 // ceiling fixed in code (five operations, 500 minor units per order, 40 calls, four hours) under a fresh

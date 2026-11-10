@@ -252,8 +252,8 @@ describe('INFRA-A deploy.sh against a stub gcloud', () => {
     expect(secretsOf(r.deploy).join(',')).not.toContain('UMS_OFFER_MAX_MINOR');
   });
 
-  // OPS-SW (D-118): the connection comes from service.yaml, which carries on; no env flag can change it.
-  it('the connection comes only from the env file (on, D-118), with every optional secret on', () => {
+  // OPS-SW (D-120): the connection comes from service.yaml, which carries on; no env flag can change it.
+  it('the connection comes only from the env file (on, D-120), with every optional secret on', () => {
     const r = run('deploy.sh', [...REQUIRED, ...OPTIONAL]);
     expect(r.status, r.out).toBe(0);
     expect(r.envFile).toContain("UMS_PAYPAL_CONNECT: 'on'");

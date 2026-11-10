@@ -555,8 +555,8 @@ describe('item 7: cloud deploy <tag>', () => {
     expect(k.gcloud().every(isRead)).toBe(true);
   });
 
-  // OPS-SW (D-118): service.yaml carries the connection on; the kit itself still passes no env flag.
-  it('passes no env flag: the connection value comes only from service.yaml (on, D-118)', () => {
+  // OPS-SW (D-120): service.yaml carries the connection on; the kit itself still passes no env flag.
+  it('passes no env flag: the connection value comes only from service.yaml (on, D-120)', () => {
     const k = makeKit();
     const r = k.run(['deploy', 't1']);
     expect(r.status, r.out).toBe(0);

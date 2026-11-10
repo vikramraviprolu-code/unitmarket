@@ -1,4 +1,4 @@
-# Open a PayPal sitting from Operations Controls (OPS-SW-P, D-118)
+# Open a PayPal sitting from Operations Controls (OPS-SW-P, D-120)
 
 Task: let an operator turn PayPal sandbox on from Controls without gcloud, a redeploy or a terminal.
 Package: `packages/safety`, `apps/web`, `infra/gcp` Owner: Vikram Reviewer: Sakthi
@@ -14,7 +14,7 @@ ceiling fixed in code (5 operations, 500 minor units per order, 40 calls, 4 hour
 Outputs: `packages/safety/src/{sitting.ts,budget.ts,status.ts,index.ts}`, `apps/web/composition.server.ts`,
 `apps/web/src/app/api/ops/sitting/route.ts`, `apps/web/src/app/ops/{OpenSittingButton,KillControls}.tsx`,
 `apps/web/src/lib/ops-copy.ts`, `infra/gcp/{service.yaml,deploy.sh,service-offline.yaml}` (and their
-fixtures), `scripts/check-hosting-gcp.mjs`, tests listed below, `docs/owner/CLOUD-RUNBOOK.md`, D-118.
+fixtures), `scripts/check-hosting-gcp.mjs`, tests listed below, `docs/owner/CLOUD-RUNBOOK.md`, D-120.
 
 Acceptance tests:
 

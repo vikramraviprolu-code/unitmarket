@@ -1332,7 +1332,7 @@ export interface Engine {
     >
   >;
   /**
-   * OPS-SW (D-118): "Open a PayPal sitting". An operator session that signed in WITH the authenticator code
+   * OPS-SW (D-120): "Open a PayPal sitting". An operator session that signed in WITH the authenticator code
    * writes the approval row `pnpm safety:approve` used to write at the owner's terminal, with the D-094
    * ceiling fixed in code (SITTING_CEILING) and a fresh reference under UMS_OUTBOUND_APPROVAL_REF. It does
    * not turn paypal_outbound on (Start does) and never touches the connect flag.

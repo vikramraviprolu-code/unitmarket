@@ -3,7 +3,7 @@ import type { Actor, AuditSink, Clock, Database, PayPalOperation, Result } from 
 import { SITTING_SEP, findActiveApproval } from './budget';
 
 /**
- * OPS-SW (D-118): the D-094 ceiling of one PayPal sandbox sitting, fixed in code. The console cannot
+ * OPS-SW (D-120): the D-094 ceiling of one PayPal sandbox sitting, fixed in code. The console cannot
  * widen it: the five read-and-pay operations only (no refunds, webhooks or payouts), at most 500 minor
  * units per order, at most 40 calls, at most four hours.
  */
@@ -36,7 +36,7 @@ const stamp = (d: Date): string =>
     .replace(/[-:]/g, '');
 
 /**
- * OPS-SW (D-118): "Open a PayPal sitting" on Operations Controls. Writes the approval row that
+ * OPS-SW (D-120): "Open a PayPal sitting" on Operations Controls. Writes the approval row that
  * `pnpm safety:approve` writes at the owner's terminal, for an operator who signed in WITH the
  * authenticator code, under `<base_ref>~<UTC stamp>` with SITTING_CEILING. One sitting at a time: an
  * active approval under the configured reference (console or terminal) is refused. It does not turn
