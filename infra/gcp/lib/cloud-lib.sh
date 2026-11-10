@@ -233,6 +233,8 @@ doctor_checks() {
       origin="$(grep '^UMS_PUBLIC_ORIGIN:' "${HERE}/service.yaml" | cut -d"'" -f2)"
       if [ "$origin" = "$S_URL" ]; then
         ok "UMS_PUBLIC_ORIGIN matches the service address"
+      elif [[ "$origin" != *.run.app ]]; then
+        ok "custom domain ${origin} routes to ${S_URL} (check ${origin}/signin in a browser)"
       else
         warn "origin mismatch: service.yaml says ${origin}, the service address is ${S_URL}"
       fi

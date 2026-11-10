@@ -51,7 +51,7 @@ corridor in offer id order (`listAuthorisedOffers`, `ORDER BY o.id, o.version`),
   the test file); `domain/discovery/src/support.ts` is not changed.
 - Changed: `domain/catalogue/src/read.ts`, `domain/catalogue/src/index.ts` (export),
   `domain/discovery/src/discover.ts`. The stale comment "The newest list is capped" is corrected.
-  `docs/decision-log.md`: one row (the next free D number, D-121 at writing) for CAT-1 recording match-first candidates, 10 per publisher among the 50
+  `docs/decision-log.md`: one row (the next free D number, D-122 after renumbering; D-121 went to DOM-1) for CAT-1 recording match-first candidates, 10 per publisher among the 50
   candidates, and 3 per publisher in the 5 items with back-fill.
 
 ## Acceptance tests (commit 1 holds only these tests and their fixtures, run red)

@@ -593,6 +593,7 @@ describe('what the answers say', () => {
       'no_structured_data',
       'unsupported_type',
       'too_many_items',
+      'continues',
       'private_address',
     ])
       expect(copy.batchNoteText(n), n).toMatch(/[.]$/);

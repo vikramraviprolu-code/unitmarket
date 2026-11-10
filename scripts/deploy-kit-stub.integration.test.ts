@@ -137,6 +137,15 @@ const secretsOf = (deploy: string | undefined): string[] =>
   (/--set-secrets=(\S+)/.exec(deploy ?? '')?.[1] ?? '').split(',').filter(Boolean);
 
 describe('INFRA-A deploy.sh against a stub gcloud', () => {
+  it('DOM-1 names the custom domain instead of claiming browser sign-in is refused', () => {
+    const r = run('deploy.sh', REQUIRED);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain(
+      'custom domain: UMS_PUBLIC_ORIGIN is https://unitmarket.live; browser sign-in works only there, and the load balancer must route it to this service.',
+    );
+    expect(r.out).not.toContain('is not this URL');
+  });
+
   it('D-099 builds with the restricted builder and Cloud Logging before deploying as the runtime', () => {
     const r = run(
       'deploy.sh',

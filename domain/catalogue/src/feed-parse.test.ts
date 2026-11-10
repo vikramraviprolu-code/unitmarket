@@ -272,10 +272,11 @@ describe('parseFeed: JSON', () => {
       null,
     ]);
   });
-  it('accepts exactly 100 items and refuses 101', () => {
+  it('accepts exactly 1000 items and refuses 1001', () => {
     const many = (n: number) =>
       doc(Array.from({ length: n }, (_, k) => ({ ...item, id: `i${String(k)}` })));
-    expect(items(parseFeed(many(FEED_MAX_ITEMS), JSON_CT))).toHaveLength(100);
+    expect(FEED_MAX_ITEMS).toBe(1000);
+    expect(items(parseFeed(many(FEED_MAX_ITEMS), JSON_CT))).toHaveLength(1000);
     const r = parseFeed(many(FEED_MAX_ITEMS + 1), JSON_CT);
     expect(!r.ok && r.error.code).toBe('too_many_items');
   });
@@ -429,11 +430,11 @@ describe('parseFeed: Atom and RSS', () => {
     const r = parseFeed(many, 'application/atom+xml');
     expect(!r.ok && r.error.code).toBe('bad_xml');
   });
-  it('refuses 101 entries', () => {
+  it('refuses 1001 entries', () => {
     const e = (k: number) =>
       `<entry><id>i${String(k)}</id><title>T</title><summary>S</summary><content>C</content></entry>`;
     const r = parseFeed(
-      `<feed>${Array.from({ length: 101 }, (_, k) => e(k)).join('')}</feed>`,
+      `<feed>${Array.from({ length: 1001 }, (_, k) => e(k)).join('')}</feed>`,
       'application/atom+xml',
     );
     expect(!r.ok && r.error.code).toBe('too_many_items');

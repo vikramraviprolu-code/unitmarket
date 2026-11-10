@@ -9,7 +9,7 @@
 import { err, ok } from '@umsbx/contracts';
 import type { Result } from '@umsbx/contracts';
 
-export const FEED_MAX_ITEMS = 100;
+export const FEED_MAX_ITEMS = 1000;
 export const FEED_TITLE_MAX = 200;
 export const FEED_ABSTRACT_MAX = 600;
 export const FEED_BODY_MAX = 20_000;

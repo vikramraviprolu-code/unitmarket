@@ -35,7 +35,12 @@ export default async function PublisherImportBatch({
         aside={<EnvLabel environment={view.environment} />}
       />
       <ReviewList
-        initial={{ batch: view.batch, items: view.items }}
+        initial={{
+          batch: view.batch,
+          items: view.items,
+          source_batches: view.source_batches,
+          source_busy: view.source_busy,
+        }}
         offerMaxMinor={view.offer_max_minor}
       />
     </>

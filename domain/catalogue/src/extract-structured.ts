@@ -11,7 +11,7 @@ import { scanHtml } from './html-scan';
 import { parseFeed, readXml, sanitiseFeedText } from './feed-parse';
 import type { XNode } from './feed-parse';
 
-export const EXTRACT_MAX_ITEMS = 100;
+export const EXTRACT_MAX_ITEMS = 1000;
 const MAX_DEPTH = 8;
 const KEY_MAX = 500;
 const TITLE_MAX = 200;
