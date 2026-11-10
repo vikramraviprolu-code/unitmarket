@@ -185,6 +185,14 @@ afterAll(async () => {
 });
 
 describe('today: only USD covers the US and India (nothing changes)', () => {
+  beforeEach(async () => {
+    // models today's live data: migration 0034 made the rows wide, so narrow them back here
+    await app.db.query(
+      "UPDATE corridors SET enabled = false WHERE id <> 'us-usd' AND id <> 'in-usd'",
+    );
+    await app.db.query("UPDATE corridors SET payee_countries = ARRAY['US'] WHERE id = 'us-usd'");
+  });
+
   it('the new offer page lists one currency, USD, for a US publisher', async () => {
     const v = (await app.engine.offers.offerable(pubs['harbour-ledger']!.actor))!;
     expect(v.currency).toBe('USD');

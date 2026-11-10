@@ -235,7 +235,7 @@ describe('migrations', () => {
       expect(sql, f).not.toMatch(/CREATE\s+EXTENSION/i);
     }
   });
-  it('seeds the safety switches, the us-usd corridor and the two access policies', async () => {
+  it('seeds the safety switches, the corridors and the two access policies', async () => {
     const db = await fresh();
     const sw = await db.query<{ name: string; on: boolean }>(
       'SELECT name, "on" FROM safety_switches ORDER BY name',
@@ -254,8 +254,13 @@ describe('migrations', () => {
     const c = await db.query<{ id: string; currency: string; enabled: boolean }>(
       'SELECT id, currency, enabled FROM corridors ORDER BY id',
     );
-    // 0033 (COR-IN) adds in-usd: the India payee corridor in USD, switched on.
+    // 0033 (COR-IN) adds in-usd: the India payee corridor in USD, switched on. 0034 (WW-COR) widens us-usd,
+    // gb-gbp and de-eur to every country but India (all on) and adds in-eur and in-gbp.
     expect(c.rows).toEqual([
+      { id: 'de-eur', currency: 'EUR', enabled: true },
+      { id: 'gb-gbp', currency: 'GBP', enabled: true },
+      { id: 'in-eur', currency: 'EUR', enabled: true },
+      { id: 'in-gbp', currency: 'GBP', enabled: true },
       { id: 'in-usd', currency: 'USD', enabled: true },
       { id: 'us-usd', currency: 'USD', enabled: true },
     ]);

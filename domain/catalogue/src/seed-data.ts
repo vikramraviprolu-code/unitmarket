@@ -1,6 +1,7 @@
 // SBX lane 14a seed data. Synthetic and fictional: two invented publishers and eight articles written
 // by the team for this sandbox. No real publisher brand, no real paywalled text, no URLs.
 // Prices are the publisher's (minor units). Mirrored in fixtures/catalogue/seed.json (a test keeps them equal).
+import { WORLDWIDE_PAYEE_COUNTRIES } from '@umsbx/contracts';
 const T0 = '2026-01-01T00:00:00.000Z';
 const RIGHTS = { scope: 'personal_use', ai_scope: 'review', redistribution: false } as const;
 const BOTH = (keep: number, online: number) => [
@@ -19,11 +20,11 @@ export const SEED_DATA = {
       id: 'gb-gbp',
       currency: 'GBP',
       minor_units: 2,
-      buyer_countries: ['GB'],
-      payee_countries: ['GB'],
+      buyer_countries: ['*'],
+      payee_countries: [...WORLDWIDE_PAYEE_COUNTRIES],
       domestic_supported: true,
       min_charge_minor: null,
-      enabled: false,
+      enabled: true,
     },
   ],
   publishers: [
@@ -291,11 +292,14 @@ export const SEED_SUPPLEMENT_COMPOSITE = {
 } as const;
 
 // MC2-L2 (D-084 item 6): the German euro corridor and one fictional German publisher with three EUR offers.
-// The corridor ships DISABLED; the owner switches it on by a later step. Applied on every boot after the
-// composite block by seedSupplement, so it reaches a database that already holds the older seed (the base
-// seed runs only on an empty database). Corridors are inserted with ON CONFLICT DO NOTHING, so a switch an
-// operator made is never undone. buyer_countries ['*'] is a documentation value: buyer country is data, not
-// a gate (D-084 item 3). Names and texts are fictional and written by the SBX team; no real brand, no URL.
+// WW-COR: the corridor is in the worldwide shape, enabled, payee = every ISO country except IN, the same row
+// migration 0034 writes (migrate() runs before the seed, so on every database the row already exists and
+// this one is only the mirror; a test keeps them equal). Applied on every boot after the composite block by
+// seedSupplement, so it reaches a database that already holds the older seed (the base seed runs only on an
+// empty database). Corridors are inserted with ON CONFLICT DO NOTHING, so a switch an operator made is never
+// undone and the seed can never narrow the migration's row. buyer_countries ['*'] is a documentation value:
+// buyer country is data, not a gate (D-084 item 3). Names and texts are fictional and written by the SBX team;
+// no real brand, no URL.
 export const SEED_SUPPLEMENT_DE = {
   meta: {
     source: 'synthetic',
@@ -307,10 +311,10 @@ export const SEED_SUPPLEMENT_DE = {
       currency: 'EUR',
       minor_units: 2,
       buyer_countries: ['*'],
-      payee_countries: ['DE'],
+      payee_countries: [...WORLDWIDE_PAYEE_COUNTRIES],
       domestic_supported: true,
       min_charge_minor: null,
-      enabled: false,
+      enabled: true,
     },
   ],
   publishers: [

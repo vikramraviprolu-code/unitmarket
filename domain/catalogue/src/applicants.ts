@@ -6,7 +6,7 @@
 // code (publisher-invites.ts) that the publisher claims an account with. Orders, units, access, approvals and the ledger are never touched. One audit row per change.
 // PUB-APPLY adds the one public way in: submitApplication, callable with no actor, which creates the same kind
 // of applicant row and nothing else (no account, no payee, no offer, no sign in).
-import { err, ok } from '@umsbx/contracts';
+import { err, isIsoCountry, ok } from '@umsbx/contracts';
 import type { Actor, CoreDeps, Database, Id, Result, SqlExecutor } from '@umsbx/contracts';
 import { issueInviteIn } from './publisher-invites';
 import type { IssuedInvite } from './publisher-invites';
@@ -44,7 +44,8 @@ export interface Applicant {
 }
 
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const COUNTRY_PATTERN = /^[A-Z]{2}$/;
+// The country must be an assigned ISO 3166-1 alpha-2 code (WW-COR C4): a shape check accepted UK, EU and ZZ, which
+// no corridor can serve. The list is the one constant in @umsbx/contracts.
 // Control, zero width and bidirectional control characters are never part of a name.
 const hasBadChar = (v: string): boolean => {
   for (const ch of v) {
@@ -128,7 +129,7 @@ export async function addApplicant(
     name.length > 80 ||
     hasBadChar(name) ||
     typeof input.country !== 'string' ||
-    !COUNTRY_PATTERN.test(input.country) ||
+    !isIsoCountry(input.country) ||
     reason === null
   ) {
     return fail('invalid_input');
@@ -341,7 +342,7 @@ export function checkApplicationInput(input: {
     name.includes('<') ||
     name.includes('>') ||
     typeof input.country !== 'string' ||
-    !COUNTRY_PATTERN.test(input.country) ||
+    !isIsoCountry(input.country) ||
     note.length < 3 ||
     note.length > 200 ||
     hasBadChar(note) ||

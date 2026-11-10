@@ -150,8 +150,14 @@ describe('publisherHome', () => {
       [id],
     );
     expect(stored.rows[0]!.n).toBeGreaterThan(0);
-    const home = (await app.engine.publisherHome({ kind: 'publisher', publisher_id: id }))!;
-    expect(home.offers_live).toBe(0);
+    // gb-gbp is enabled and wide since migration 0034; switch it off here to model the disabled corridor.
+    await app.db.query(`UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'`);
+    try {
+      const home = (await app.engine.publisherHome({ kind: 'publisher', publisher_id: id }))!;
+      expect(home.offers_live).toBe(0);
+    } finally {
+      await app.db.query(`UPDATE corridors SET enabled = true WHERE id = 'gb-gbp'`);
+    }
   });
 
   it('shows applied and suspended as stored, and an empty publisher with no payee', async () => {

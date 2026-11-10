@@ -125,6 +125,9 @@ beforeAll(async () => {
   });
   p1 = await publisher('publisher-harbour-ledger');
   p2 = await publisher('publisher-quayside-gazette');
+  // Since 0034 (WW-COR) de-eur is on for every country but India; this fixture's eu-eur row serves payee US, and the
+  // guard refuses two enabled EUR rows that overlap, so the fixture first switches de-eur off (the pre-0034 world).
+  await w.app.db.query("UPDATE corridors SET enabled = false WHERE id = 'de-eur'");
   await insert('corridors', {
     id: 'eu-eur-pf1',
     currency: 'EUR',

@@ -39,11 +39,14 @@ describe('corridorFor with in-usd', () => {
       ).toBe('us-usd');
   });
 
-  it('the India corridor is for USD only: EUR and GBP with payee IN find none', async () => {
-    for (const currency of ['EUR', 'GBP'] as const)
+  it('0034 (WW-COR) adds the India corridors in EUR and GBP: payee IN finds in-eur and in-gbp', async () => {
+    for (const [currency, id] of [
+      ['EUR', 'in-eur'],
+      ['GBP', 'in-gbp'],
+    ] as const)
       expect(
-        await corridorFor(db, { currency, payee_country: 'IN', buyer_country: 'US' }),
-      ).toBeNull();
+        (await corridorFor(db, { currency, payee_country: 'IN', buyer_country: 'US' }))?.id,
+      ).toBe(id);
   });
 
   it('a payee country with no corridor still finds none', async () => {

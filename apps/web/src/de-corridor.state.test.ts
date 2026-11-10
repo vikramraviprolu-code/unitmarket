@@ -48,13 +48,14 @@ describe('boot seeding of the German corridor (MC2-L2)', () => {
     const app = await bootPackApp();
     try {
       expect((await deRows(app)).publishers).toBe(0);
-      expect((await deRows(app)).corridor).toEqual([]);
+      // The corridor row itself comes from migration 0034 (WW-COR) now, on, so it is there with or without the seed step.
+      expect((await deRows(app)).corridor).toEqual([{ enabled: true, currency: 'EUR' }]);
     } finally {
       await app.close();
     }
   });
 
-  it('a disk that holds the old seed gets de-eur (off), the publisher and three offers; later boots add nothing', async () => {
+  it('a disk that holds the old seed has de-eur (on, from 0034) and gets the publisher and three offers; later boots add nothing', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mc2l2-disk-'));
     try {
       const env = { UMS_DB: 'pglite-disk', UMS_PGLITE_DIR: join(dir, 'db') };
@@ -64,11 +65,11 @@ describe('boot seeding of the German corridor (MC2-L2)', () => {
         offers: await count(old, 'SELECT count(*) AS c FROM offers'),
         corridors: await count(old, 'SELECT count(*) AS c FROM corridors'),
       };
-      expect(oldCounts.corridors).toBe(3); // us-usd, gb-gbp and in-usd (migration 0033, COR-IN)
+      expect(oldCounts.corridors).toBe(6); // us-usd, gb-gbp, de-eur, in-usd, in-eur and in-gbp (migrations 0033 and 0034)
       await old.close();
       const again = await bootPackApp(env, { test_seed: { de_corridor: true } });
       expect(await deRows(again)).toEqual({
-        corridor: [{ enabled: false, currency: 'EUR' }],
+        corridor: [{ enabled: true, currency: 'EUR' }],
         publishers: 1,
         articles: 3,
         offers: 3,
@@ -77,7 +78,7 @@ describe('boot seeding of the German corridor (MC2-L2)', () => {
         oldCounts.publishers + 1,
       );
       expect(await count(again, 'SELECT count(*) AS c FROM offers')).toBe(oldCounts.offers + 3);
-      expect(await count(again, 'SELECT count(*) AS c FROM corridors')).toBe(4);
+      expect(await count(again, 'SELECT count(*) AS c FROM corridors')).toBe(6);
       await again.close();
       const third = await bootPackApp(env, { test_seed: { de_corridor: true } });
       expect((await deRows(third)).offers).toBe(3);
@@ -175,10 +176,10 @@ describe('boot seeding of the German corridor (MC2-L2)', () => {
 
 describe('a US buyer and the German EUR offer', () => {
   // MC2-L1 removed the buyer-country gate (docs/specs/mc2-l1-buyer-country-gate.md): a US buyer may buy a German offer.
-  it('with de-eur enabled, a US buyer is quoted and can be approved the EUR offer (MC2-L1)', async () => {
+  it('with de-eur enabled (the 0034 default), a US buyer is quoted and can be approved the EUR offer (MC2-L1)', async () => {
     const app = await bootPackApp({}, { test_seed: { de_corridor: true } });
     try {
-      await app.db.query(`UPDATE corridors SET enabled = true WHERE id = 'de-eur'`);
+      // de-eur is on since 0034 (WW-COR); no switch is needed.
       const buyer = (
         await app.db.query<{ id: string }>(
           `SELECT id FROM buyers WHERE auth_subject = 'persona:buyer-a'`,

@@ -37,13 +37,13 @@ async function addGermanBuyer(db: Harness['db']): Promise<void> {
   );
 }
 
-// A GB publisher with one GBP offer, and the gb-gbp corridor (buyer_countries [GB], payee [GB]).
+// A GB publisher with one GBP offer, and the gb-gbp corridor switched on or off. Since 0034 (WW-COR) the row
+// already exists (wide, on); the test sets only its switch (it used to insert the narrow GB row, a duplicate key now).
 async function addGbpOffer(db: Harness['db'], enabled: boolean): Promise<void> {
-  await db.query(
-    `INSERT INTO corridors (id, currency, minor_units, buyer_countries, payee_countries, domestic_supported, min_charge_minor, enabled, created_at, updated_at)
-     VALUES ('gb-gbp','GBP',2,ARRAY['GB'],ARRAY['GB'],true,NULL,$1,$2,$2)`,
-    [enabled, SEEDED],
-  );
+  await db.query(`UPDATE corridors SET enabled = $1, updated_at = $2 WHERE id = 'gb-gbp'`, [
+    enabled,
+    SEEDED,
+  ]);
   await db.query(
     `INSERT INTO publishers (id, slug, display_name, country, paypal_merchant_id, payee_verified_at, created_at, updated_at)
      VALUES ('pub_gb','pgb','Publisher gb','GB','MERCHGB',$1,$1,$1)`,
@@ -475,7 +475,7 @@ describe('requestApproval refusals', () => {
     expect(code(r)).toBe('not_owner');
   });
 
-  it('a buyer from DE gets an approval for a USD offer in us-usd (buyer_countries is [US])', async () => {
+  it('a buyer from DE gets an approval for a USD offer in us-usd (buyer_countries is [*] since 0034)', async () => {
     h = await makeHarness();
     await addGermanBuyer(h.db);
     expect(
@@ -484,7 +484,7 @@ describe('requestApproval refusals', () => {
           `SELECT buyer_countries AS b FROM corridors WHERE id = 'us-usd'`,
         )
       ).rows[0]!.b,
-    ).toEqual(['US']);
+    ).toEqual(['*']);
     await addQuote(h.db, { id: 'quo_de', offer_id: 'ofr_1', buyer_id: 'buy_DE' });
     const g = value(
       await requestApproval(h.deps, {

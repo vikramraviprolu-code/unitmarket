@@ -138,17 +138,24 @@ describe('catalogue reads', () => {
     expect(
       (await corridorFor(db, { currency: 'USD', payee_country: 'US', buyer_country: null }))?.id,
     ).toBe('us-usd');
+    // 0034 (WW-COR): buyer_countries is ['*'] on us-usd, so a buyer in DE finds it too (the buyer pays in the offer's currency)
     expect(
-      await corridorFor(db, { currency: 'USD', payee_country: 'US', buyer_country: 'DE' }),
-    ).toBeNull();
-    // a corridor whose buyer_countries is ['*'] (de-eur) matches any buyer country
-    await db.query(`UPDATE corridors SET buyer_countries = ARRAY['*'] WHERE id = 'gb-gbp'`);
+      (await corridorFor(db, { currency: 'USD', payee_country: 'US', buyer_country: 'DE' }))?.id,
+    ).toBe('us-usd');
+    // 0034 (WW-COR): gb-gbp is wide, on, and its buyer_countries is ['*'], so it matches any buyer country
     expect(
       (await corridorFor(db, { currency: 'GBP', payee_country: 'GB', buyer_country: 'JP' }))?.id,
     ).toBe('gb-gbp');
     const gb = await corridorFor(db, { currency: 'GBP', payee_country: 'GB', buyer_country: null });
     expect(gb?.id).toBe('gb-gbp');
-    expect(gb?.enabled).toBe(false);
+    expect(gb?.enabled).toBe(true);
+    // a switched-off corridor is returned as it is, so a caller can tell "off" from "none"
+    await db.query(`UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'`);
+    expect(
+      (await corridorFor(db, { currency: 'GBP', payee_country: 'GB', buyer_country: null }))
+        ?.enabled,
+    ).toBe(false);
+    await db.query(`UPDATE corridors SET enabled = true WHERE id = 'gb-gbp'`);
   });
 
   it('listAuthorisedOffers lists only authorised, current offers of the corridor currency and payee country', async () => {
@@ -160,8 +167,11 @@ describe('catalogue reads', () => {
     );
     expect(codes).toHaveLength(4);
     expect(await listAuthorisedOffers(db, { corridor_id: 'us-usd', limit: 2 })).toHaveLength(2);
-    // a disabled corridor lists nothing
+    // gb-gbp is on since 0034 (WW-COR) and lists the GBP offers; a corridor switched off lists nothing
+    expect(await listAuthorisedOffers(db, { corridor_id: 'gb-gbp', limit: 50 })).toHaveLength(2);
+    await db.query(`UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'`);
     expect(await listAuthorisedOffers(db, { corridor_id: 'gb-gbp', limit: 50 })).toEqual([]);
+    await db.query(`UPDATE corridors SET enabled = true WHERE id = 'gb-gbp'`);
     expect(await listAuthorisedOffers(db, { corridor_id: 'missing', limit: 50 })).toEqual([]);
   });
 });

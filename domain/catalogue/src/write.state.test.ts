@@ -419,6 +419,8 @@ describe('listOwnOffers', () => {
   });
 });
 
+const VILLAGE = 'ofr_northfield-quarterly_village-bus';
+
 describe('applyDemoPrices (decision 37)', () => {
   let dw: OffersWorld;
   beforeAll(async () => {
@@ -430,7 +432,7 @@ describe('applyDemoPrices (decision 37)', () => {
   const priceOf = async (id: string) =>
     prices((await getOffer(dw.db, { offer_id: id }))!.offer.options);
 
-  it('clamps USD prices into 1.00 to 2.50 and leaves the rest', async () => {
+  it('clamps USD, EUR and GBP prices into 1.00 to 2.50 and leaves the rest (GBP village-bus 0.90 becomes 1.00, WW-COR C10)', async () => {
     const gbpBefore = await versionsOf(dw.db, 'ofr_northfield-quarterly_allotment-diary');
     const revised = await applyDemoPrices(dw.deps());
     expect(
@@ -442,6 +444,7 @@ describe('applyDemoPrices (decision 37)', () => {
         [FEES, { keep_retrieve: 300, online_read: 250 }, { keep_retrieve: 250, online_read: 250 }],
         [KNOT, { keep_retrieve: 450, online_read: 450 }, { keep_retrieve: 250, online_read: 250 }],
         [QUAY, { keep_retrieve: 90, online_read: 90 }, { keep_retrieve: 100, online_read: 100 }],
+        [VILLAGE, { keep_retrieve: 90, online_read: 90 }, { keep_retrieve: 100, online_read: 100 }],
         [TIDE, { keep_retrieve: 40, online_read: 40 }, { keep_retrieve: 100, online_read: 100 }],
       ].sort((a, b) => a[0]!.toString().localeCompare(b[0]!.toString())),
     );
@@ -449,14 +452,14 @@ describe('applyDemoPrices (decision 37)', () => {
     expect(await priceOf(FEES)).toEqual({ keep_retrieve: 250, online_read: 250 });
     expect(await priceOf(KNOT)).toEqual({ keep_retrieve: 250, online_read: 250 });
     expect(await priceOf(QUAY)).toEqual({ keep_retrieve: 100, online_read: 100 });
+    expect(await priceOf(VILLAGE)).toEqual({ keep_retrieve: 100, online_read: 100 });
     // 120, 125, 150 and 200 stay: untouched offers keep their single version.
     expect(await priceOf(FERRY)).toEqual({ keep_retrieve: 125, online_read: 125 });
     expect(await priceOf(HALL)).toEqual({ keep_retrieve: 150, online_read: 120 });
     expect(await versionsOf(dw.db, FERRY)).toHaveLength(1);
     expect(await versionsOf(dw.db, HALL)).toHaveLength(1);
-    // GBP, the withdrawn offer and the draft are untouched.
+    // The GBP offer already in range, the withdrawn offer and the draft are untouched.
     expect(await versionsOf(dw.db, 'ofr_northfield-quarterly_allotment-diary')).toEqual(gbpBefore);
-    expect(await versionsOf(dw.db, 'ofr_northfield-quarterly_village-bus')).toHaveLength(1);
     expect(await versionsOf(dw.db, DOCK)).toHaveLength(1);
     expect(await versionsOf(dw.db, 'ofr_harbour-ledger_draft-weather-notes')).toHaveLength(1);
   });
@@ -465,13 +468,13 @@ describe('applyDemoPrices (decision 37)', () => {
     const audit = await dw.db.query<{ reason: string; actor_kind: string; target: string }>(
       "SELECT reason, actor_kind, target FROM audit_log WHERE action = 'offer.revised' ORDER BY target",
     );
-    expect(audit.rows.map((r) => r.target)).toEqual([FEES, KNOT, QUAY, TIDE].sort());
+    expect(audit.rows.map((r) => r.target)).toEqual([FEES, KNOT, QUAY, TIDE, VILLAGE].sort());
     for (const r of audit.rows) {
       expect(r.reason).toBe('seed: demo prices (decision 37)');
       // The platform made the change, not the publisher.
       expect(r.actor_kind).toBe('system');
     }
-    for (const id of [TIDE, FEES, KNOT, QUAY]) {
+    for (const id of [TIDE, FEES, KNOT, QUAY, VILLAGE]) {
       const v = await versionsOf(dw.db, id);
       expect(v.map((x) => x.version)).toEqual(['1', '2']);
       expect(v[0]!.superseded_by).not.toBeNull();
@@ -530,7 +533,7 @@ describe('applyDemoPrices respects a publisher who already changed the offer', (
       });
       expect(r.ok).toBe(true);
       const revised = await applyDemoPrices(x.deps());
-      expect(revised.map((v) => v.offer_id).sort()).toEqual([FEES, KNOT, QUAY, TIDE].sort());
+      expect(revised.map((v) => v.offer_id).sort()).toEqual([FEES, KNOT, QUAY, TIDE, VILLAGE].sort());
       expect(prices((await getOffer(x.db, { offer_id: HALL }))!.offer.options)).toEqual({
         keep_retrieve: 900,
         online_read: 900,

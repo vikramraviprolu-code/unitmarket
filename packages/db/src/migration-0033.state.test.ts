@@ -94,12 +94,20 @@ describe('migration 0033: applied once, forward only', () => {
 });
 
 describe('migration 0033: the in-usd row', () => {
-  it('a fresh database holds exactly us-usd and in-usd, and in-usd is exactly the specified row', async () => {
+  it('a fresh database holds in-usd exactly as specified (and the rows later migrations add)', async () => {
     const d = await openDatabase({ kind: 'pglite-memory' });
     toClose.push(d);
     await migrate(d, clock);
     const all = await rows(d);
-    expect(all.map((r) => r.id)).toEqual(['in-usd', 'us-usd']);
+    // 0034 (WW-COR) adds in-eur and in-gbp and widens gb-gbp and de-eur; in-usd and us-usd stay.
+    expect(all.map((r) => r.id)).toEqual([
+      'de-eur',
+      'gb-gbp',
+      'in-eur',
+      'in-gbp',
+      'in-usd',
+      'us-usd',
+    ]);
     expect(byId(all, 'in-usd')).toEqual(IN_USD);
   });
 
@@ -138,22 +146,27 @@ describe('migration 0033: the in-usd row', () => {
     }
   });
 
-  it('us-usd is the same row after the migration as in 0001 (US, US, domestic, on)', async () => {
-    const d = await openDatabase({ kind: 'pglite-memory' });
-    toClose.push(d);
-    await migrate(d, clock);
-    expect(byId(await rows(d), 'us-usd')).toEqual({
-      id: 'us-usd',
-      currency: 'USD',
-      minor_units: 2,
-      buyer_countries: ['US'],
-      payee_countries: ['US'],
-      domestic_supported: true,
-      min_charge_minor: null,
-      enabled: true,
-      created_at: EPOCH,
-      updated_at: EPOCH,
-    });
+  it('0033 leaves us-usd as 0001 made it (US, US, domestic, on)', async () => {
+    // Up to and including 0033 only: 0034 (WW-COR) widens us-usd, which is tested in migration-0034.state.test.ts.
+    const { d, dir, cleanup } = await before0033();
+    try {
+      addFile(dir);
+      await applyMigrations(d, clock, dir);
+      expect(byId(await rows(d), 'us-usd')).toEqual({
+        id: 'us-usd',
+        currency: 'USD',
+        minor_units: 2,
+        buyer_countries: ['US'],
+        payee_countries: ['US'],
+        domestic_supported: true,
+        min_charge_minor: null,
+        enabled: true,
+        created_at: EPOCH,
+        updated_at: EPOCH,
+      });
+    } finally {
+      cleanup();
+    }
   });
 
   it('a database that already holds an in-usd row keeps it as it is (ON CONFLICT DO NOTHING)', async () => {

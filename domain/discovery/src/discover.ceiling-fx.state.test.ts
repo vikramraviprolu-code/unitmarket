@@ -42,6 +42,9 @@ const usdPerEur =
 let db: TestDb;
 beforeAll(async () => {
   ({ db } = await seededDb(extraData([zebra], [seedOffer('zf1', seedBoth(160, 160))])));
+  // Migration 0034 turns gb-gbp on worldwide. This file's convert table only knows USD and EUR, so keep the
+  // GBP corridor off here: the file tests ceiling conversion between USD and EUR, not GBP rates.
+  await db.query("UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'");
 });
 afterAll(async () => {
   await db.close();

@@ -1,5 +1,5 @@
 // MC2-L2: the German corridor supplement on real Postgres. A database that already holds the old seed
-// (the hosted one) gets de-eur, the German publisher and three offers once, also when three boots race;
+// (the hosted one) has de-eur (migration 0034), gets the German publisher and three offers once, also when three boots race;
 // nothing of the old seed moves. Runs only when UMS_TEST_PG_BIN is set.
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../apps/web/composition.server';
@@ -34,7 +34,10 @@ describe.skipIf(!PG_ON)('MC2-L2 German corridor seed on real Postgres', () => {
         corridors: await q(old, 'SELECT count(*) AS c FROM corridors'),
         ids: (await old.db.query<{ id: string }>('SELECT id FROM offers ORDER BY id')).rows,
       };
-      expect(await q(old, `SELECT count(*) AS c FROM corridors WHERE id = 'de-eur'`)).toBe(0);
+      // The row comes from migration 0034 (WW-COR), on, before any seed step.
+      expect(
+        await q(old, `SELECT count(*) AS c FROM corridors WHERE id = 'de-eur' AND enabled`),
+      ).toBe(1);
       await old.close();
       // 2. The new release boots three times at once on that database.
       const apps = [0, 1, 2].map(() =>
@@ -44,13 +47,13 @@ describe.skipIf(!PG_ON)('MC2-L2 German corridor seed on real Postgres', () => {
         await Promise.all(apps.map((a) => a.ready()));
         const a = apps[0]!;
         expect(
-          await q(a, `SELECT count(*) AS c FROM corridors WHERE id = 'de-eur' AND NOT enabled`),
+          await q(a, `SELECT count(*) AS c FROM corridors WHERE id = 'de-eur' AND enabled`),
         ).toBe(1);
         expect(await q(a, `SELECT count(*) AS c FROM publishers WHERE country = 'DE'`)).toBe(1);
         expect(await q(a, 'SELECT count(*) AS c FROM publishers')).toBe(before.publishers + 1);
         expect(await q(a, 'SELECT count(*) AS c FROM articles')).toBe(before.articles + 3);
         expect(await q(a, 'SELECT count(*) AS c FROM offers')).toBe(before.offers + 3);
-        expect(await q(a, 'SELECT count(*) AS c FROM corridors')).toBe(before.corridors + 1);
+        expect(await q(a, 'SELECT count(*) AS c FROM corridors')).toBe(before.corridors);
         expect(
           await q(
             a,

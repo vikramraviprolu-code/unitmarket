@@ -262,11 +262,18 @@ describe('discover', () => {
 
   it('a need that matches no listing gives no_match with no reasons and writes nothing', async () => {
     const quotes = await count(db, 'quotes');
-    const { result } = await proposal(
-      await buyerActor(),
-      'quantum chromodynamics lattice, under $6, English',
-    );
-    expect(result).toEqual({ kind: 'no_match', reasons: [] });
+    // With 0034 the GBP and EUR corridors are on, so GBP/EUR listings would be probed against the $6 ceiling
+    // and report rate_missing (no convert function here). Keep the old single-currency world for this test.
+    await db.query("UPDATE corridors SET enabled = false WHERE id IN ('gb-gbp','de-eur')");
+    try {
+      const { result } = await proposal(
+        await buyerActor(),
+        'quantum chromodynamics lattice, under $6, English',
+      );
+      expect(result).toEqual({ kind: 'no_match', reasons: [] });
+    } finally {
+      await db.query("UPDATE corridors SET enabled = true WHERE id IN ('gb-gbp','de-eur')");
+    }
     expect(await count(db, 'quotes')).toBe(quotes);
   });
 
@@ -400,6 +407,8 @@ describe('discover: buyer country is not a gate', () => {
   it('a DE buyer is offered every enabled corridor: USD offers, and GBP offers once gb-gbp is on', async () => {
     const local = await seededDb();
     try {
+      // gb-gbp is on at boot since 0034 (WW-COR); switch it off first to see the USD-only list.
+      await local.db.query(`UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'`);
       const usdOnly = await candidateIds(local, 'DE', NO_CEILING);
       expect(usdOnly).toContain('ofr_harbour-ledger_c1');
       expect(usdOnly.some((id) => id.startsWith('ofr_northfield-quarterly_'))).toBe(false);
@@ -437,6 +446,8 @@ describe('discover: buyer country is not a gate', () => {
   it('a disabled corridor contributes no candidate for any buyer country', async () => {
     const local = await seededDb();
     try {
+      // gb-gbp is on after 0034; disable it explicitly so the test still exercises a disabled corridor.
+      await local.db.query("UPDATE corridors SET enabled = false WHERE id = 'gb-gbp'");
       const ids = await candidateIds(local, 'GB', NO_CEILING);
       expect(ids.some((id) => id.startsWith('ofr_northfield-quarterly_'))).toBe(false);
     } finally {
