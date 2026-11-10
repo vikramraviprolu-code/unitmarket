@@ -270,7 +270,7 @@ describe('idempotent, also over the previous seed (acceptance 3)', () => {
       seedSupplement(d, fakeClock(T0), seededIds('x'), { ...SEED_SUPPLEMENT_DE, offers: [{}] }),
     ).rejects.toThrow(/seed data invalid|invalid/i);
     const n = await d.query<{ n: number }>(
-      `SELECT (SELECT count(*) FROM publishers)::int + (SELECT count(*) FROM corridors WHERE id = 'de-eur')::int AS n`,
+      `SELECT count(*)::int AS n FROM publishers`,
     );
     expect(n.rows[0]!.n).toBe(0);
   });

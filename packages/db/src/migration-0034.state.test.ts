@@ -130,8 +130,8 @@ describe('migration 0034: applied once, forward only', () => {
   });
 });
 
-describe('migration 0034: the five rows', () => {
-  it('a fresh database holds exactly the five corridors, each exactly as specified', async () => {
+describe('migration 0034: the six rows', () => {
+  it('a fresh database holds exactly the six corridors, each exactly as specified', async () => {
     const d = await openDatabase({ kind: 'pglite-memory' });
     toClose.push(d);
     await migrate(d, clock);

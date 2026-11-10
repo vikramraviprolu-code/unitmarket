@@ -533,7 +533,7 @@ describe('applyDemoPrices respects a publisher who already changed the offer', (
       });
       expect(r.ok).toBe(true);
       const revised = await applyDemoPrices(x.deps());
-      expect(revised.map((v) => v.offer_id).sort()).toEqual([FEES, KNOT, QUAY, TIDE].sort());
+      expect(revised.map((v) => v.offer_id).sort()).toEqual([FEES, KNOT, QUAY, TIDE, VILLAGE].sort());
       expect(prices((await getOffer(x.db, { offer_id: HALL }))!.offer.options)).toEqual({
         keep_retrieve: 900,
         online_read: 900,

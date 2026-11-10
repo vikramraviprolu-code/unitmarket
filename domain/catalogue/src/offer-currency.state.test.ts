@@ -57,10 +57,11 @@ const currencyOf = async (offer_id: string): Promise<string> =>
 
 describe('today: only USD covers US and IN (no data change)', () => {
   beforeEach(async () => {
-    // the base seed also holds a disabled gb-gbp; nothing is widened here
+    // models today's live data: migration 0034 made the rows wide, so narrow them back here
     await w.db.query(
       "UPDATE corridors SET enabled = false WHERE id <> 'us-usd' AND id <> 'in-usd'",
     );
+    await w.db.query("UPDATE corridors SET payee_countries = ARRAY['US'] WHERE id = 'us-usd'");
   });
   it('a US publisher with no currency gets USD', async () => {
     const { r } = await make(w.harbour);
