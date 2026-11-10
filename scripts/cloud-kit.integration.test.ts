@@ -123,7 +123,7 @@ describe('item 2: cloud doctor', () => {
     const k = makeKit({ origin: 'https://unitmarket.live' });
     const r = k.run(['doctor']);
     expect(r.status, r.out).toBe(0);
-    expect(r.out).toContain(`OK   custom domain https://unitmarket.live routes to ${WEB_URL}`);
+    expect(r.out).toContain(`ok   custom domain https://unitmarket.live routes to ${WEB_URL}`);
     expect(r.out).not.toMatch(/origin mismatch/);
   });
 

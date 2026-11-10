@@ -4,7 +4,7 @@ UnitMarket lets people and AI agents buy just the content they need, one unit at
 
 This is our entry for the PayPal AI Hackathon, "Build what's next with PayPal and AI".
 
-- Hosted demo: https://unitmarket-sandbox-626887286871.europe-west3.run.app (a **sandbox** build with test money; browser sign in works only on that address; see "The hosted demo" below).
+- Hosted demo: https://unitmarket.live (a **sandbox** build with test money; browser sign in works only on that address; see "The hosted demo" below).
 - Demo video (under 3 minutes): `[TODO after upload: public video URL]`
 - Licence: Apache-2.0 (`LICENSE`). Third-party licences: `THIRD-PARTY-NOTICES.md`.
 
@@ -71,7 +71,7 @@ Not built: real PayPal payouts, a second merchant paid into its own account, tax
 
 ## The hosted demo
 
-The hosted app at https://unitmarket-sandbox-626887286871.europe-west3.run.app runs in **Sandbox** mode: the label on every page says so and comes from stored data. It uses test money only.
+The hosted app at https://unitmarket.live runs in **Sandbox** mode: the label on every page says so and comes from stored data. It uses test money only.
 
 - Browser sign in works only on that address. Sign in at `/signin`. Judges use the judge passcode given in the submission form, which signs in Buyer A or Buyer B only.
 - The hosted app calls the PayPal sandbox only while the owner has a sitting open under the two-key approval. A deploy resets the connect flag to off. With the flag off, checkout is paused and nothing is charged (`docs/decision-log.md` D-056, D-111). For a complete purchase at any time, use the offline path below.

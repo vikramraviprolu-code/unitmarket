@@ -283,6 +283,27 @@ const CASES: Case[] = [
   ],
   ['live word in a value', 'service.yaml', "UMS_MODE: 'sandbox'", "UMS_MODE: 'live'", 'live-value'],
   [
+    'DOM-1 the word live next to the custom domain in service.yaml',
+    'service.yaml',
+    "UMS_MODE: 'sandbox'",
+    "UMS_MODE: 'sandbox'\n# go live at https://unitmarket.live",
+    'live-value',
+  ],
+  [
+    'DOM-1 the custom domain outside service.yaml',
+    'deploy.sh',
+    'set -euo pipefail',
+    'set -euo pipefail\n# https://unitmarket.live',
+    'live-value',
+  ],
+  [
+    'DOM-1 a host that only starts like the custom domain',
+    'service.yaml',
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.live'",
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.lives'",
+    'origin',
+  ],
+  [
     'production word outside NODE_ENV',
     'monitoring.sh',
     'echo "== APIs"',
