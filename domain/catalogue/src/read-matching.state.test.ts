@@ -229,7 +229,7 @@ describe('score and order', () => {
       limit: 1,
     });
     expect(row!.view.publisher.id).toBe('s1');
-    expect(row!.view.article.id).toBe('art_sc4_0001');
+    expect(row!.view.article.id).toBe('art_sc1_0001');
     expect(row!.view.offer.status).toBe('authorised');
   });
 });

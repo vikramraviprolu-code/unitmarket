@@ -14,7 +14,7 @@ import type {
   Quote,
   Result,
 } from '@umsbx/contracts';
-import { listAuthorisedOffers } from '@umsbx/catalogue';
+import { listAuthorisedOffers, listAuthorisedOffersMatching, needWords } from '@umsbx/catalogue';
 import type { OfferView } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
 // CHANGE-REQUEST-S1: see brief.ts.
@@ -24,6 +24,11 @@ import { computeFit, rankFit } from '@umsbx/fit';
 
 export const MAX_ITEMS = 5;
 const MAX_CANDIDATES = 50;
+// CAT-1: no publisher fills more than this many of the candidates, or more than PER_PUBLISHER_ITEMS of the items.
+const PER_PUBLISHER_CANDIDATES = 10;
+const PER_PUBLISHER_ITEMS = 3;
+const MAX_WORDS = 12;
+const MAX_WORD_CHARS = 40;
 
 /**
  * MC2-L5: converts minor units between currencies at the stored rate, or answers null when there is no usable
@@ -106,10 +111,19 @@ async function loadBrief(d: AgentDeps, id: Id): Promise<Brief | null> {
   });
 }
 
-// Candidates: authorised current offers in every enabled corridor. The buyer's country is data, not a gate
-// (D-084 3). With a ceiling, a corridor whose currency differs from the ceiling's counts only when the stored
-// rate can convert it (D-084 4); with no usable rate only the ceiling's own currency counts, as before. The
-// newest list is capped for the model.
+// Candidates: authorised current offers in every enabled corridor that match the brief's words, at most 10 per
+// publisher and 50 in all (CAT-1), so one publisher's bulk import cannot push the others out of view. When no
+// word matches anything (a vague brief), the first 50 authorised offers by id are used, as before. The buyer's
+// country is data, not a gate (D-084 3). With a ceiling, a corridor whose currency differs from the ceiling's
+// counts only when the stored rate can convert it (D-084 4); with no usable rate only the ceiling's own
+// currency counts, as before.
+function briefWords(brief: Brief): string[] {
+  const all = [...needWords(brief.terms.join(' ')), ...needWords(brief.need)].map((w) =>
+    w.slice(0, MAX_WORD_CHARS),
+  );
+  return [...new Set(all)].slice(0, MAX_WORDS);
+}
+
 async function candidatesFor(
   d: AgentDeps,
   brief: Brief,
@@ -122,7 +136,7 @@ async function candidatesFor(
   const corridors = await d.db.query<{ id: string; currency: string }>(
     'SELECT id, currency FROM corridors WHERE enabled ORDER BY id',
   );
-  const byId = new Map<string, OfferView>();
+  const usable: string[] = [];
   let noRate = false;
   for (const c of corridors.rows) {
     if (
@@ -136,13 +150,68 @@ async function candidatesFor(
         noRate = true;
       continue;
     }
-    const views = await listAuthorisedOffers(d.db, { corridor_id: c.id, limit: MAX_CANDIDATES });
+    usable.push(c.id);
+  }
+
+  const byOfferId = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  const words = briefWords(brief);
+  const matched = new Map<string, { view: OfferView; score: number }>();
+  if (words.length > 0) {
+    for (const corridor_id of usable) {
+      const rows = await listAuthorisedOffersMatching(d.db, {
+        corridor_id,
+        words,
+        per_publisher: PER_PUBLISHER_CANDIDATES,
+        limit: MAX_CANDIDATES,
+      });
+      for (const r of rows) matched.set(r.view.offer.id, r);
+    }
+  }
+  if (matched.size > 0) {
+    const perPublisher = new Map<string, number>();
+    const views = [...matched.values()]
+      .sort((a, b) => b.score - a.score || byOfferId(a.view.offer.id, b.view.offer.id))
+      .filter((r) => {
+        const n = perPublisher.get(r.view.publisher.id) ?? 0;
+        if (n >= PER_PUBLISHER_CANDIDATES) return false;
+        perPublisher.set(r.view.publisher.id, n + 1);
+        return true;
+      })
+      .slice(0, MAX_CANDIDATES)
+      .map((r) => r.view);
+    return { views, no_rate: noRate };
+  }
+
+  // Nothing matched: the first authorised offers by id, exactly as before.
+  const byId = new Map<string, OfferView>();
+  for (const corridor_id of usable) {
+    const views = await listAuthorisedOffers(d.db, { corridor_id, limit: MAX_CANDIDATES });
     for (const v of views) byId.set(v.offer.id, v);
   }
   const views = [...byId.values()]
-    .sort((a, b) => (a.offer.id < b.offer.id ? -1 : a.offer.id > b.offer.id ? 1 : 0))
+    .sort((a, b) => byOfferId(a.offer.id, b.offer.id))
     .slice(0, MAX_CANDIDATES);
   return { views, no_rate: noRate };
+}
+
+// CAT-1.3: walk the picks in the model's order and keep the first 3 per publisher; held-back picks fill any
+// free slot up to MAX_ITEMS, in the model's order. A single publisher with five picks still gives five items.
+function spreadPicks<T extends { offer_id: string }>(
+  picks: T[],
+  publisherOf: (offerId: string) => string,
+): T[] {
+  const taken = new Map<string, number>();
+  const kept: T[] = [];
+  const held: T[] = [];
+  for (const p of picks) {
+    const pub = publisherOf(p.offer_id);
+    const n = taken.get(pub) ?? 0;
+    if (n < PER_PUBLISHER_ITEMS) {
+      taken.set(pub, n + 1);
+      kept.push(p);
+    } else held.push(p);
+  }
+  return [...kept, ...held].slice(0, MAX_ITEMS);
 }
 
 const canConvert = (convert: ConvertFn | undefined, from: string, to: string): boolean =>
@@ -189,8 +258,8 @@ export async function discover(
   }
   if (response.kind === 'error') return noMatch();
 
-  // AI-5: an id that is not a candidate is dropped, duplicates are dropped, at most five remain,
-  // and sanitiseModelOutput strips price-like fields and re-checks the ids.
+  // AI-5: an id that is not a candidate is dropped, duplicates are dropped, the picks are spread
+  // over publishers (CAT-1.3), at most five remain, and sanitiseModelOutput strips price-like fields and re-checks the ids.
   const raw = response.output;
   let cleaned: unknown = raw;
   if (isRecord(raw) && Array.isArray(raw.picks)) {
@@ -201,7 +270,10 @@ export async function discover(
       seen.add(p.offer_id);
       return true;
     });
-    cleaned = { ...raw, picks: picks.slice(0, MAX_ITEMS) };
+    cleaned = {
+      ...raw,
+      picks: spreadPicks(picks, (id) => byOffer.get(id)!.publisher.id),
+    };
   }
   const safe = sanitiseModelOutput(cleaned, candidateIds);
   if (!safe.ok) return noMatch();

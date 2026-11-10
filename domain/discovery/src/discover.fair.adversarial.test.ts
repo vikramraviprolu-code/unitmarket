@@ -237,6 +237,9 @@ describe('metacharacters and oversize input', () => {
 describe('slots', () => {
   it('the same offer reached through two corridors counts once and uses one slot', async () => {
     const db = await world(['p1', 'p2', 'p3']);
+    // The database refuses overlapping corridors of one currency; switch that guard off to prove the code
+    // still counts an offer once if two corridors ever reached it.
+    await db.query('ALTER TABLE corridors DISABLE TRIGGER USER');
     await db.query(
       `INSERT INTO corridors (id, currency, minor_units, buyer_countries, payee_countries, domestic_supported, min_charge_minor, enabled, created_at, updated_at)
        VALUES ('xx-usd', 'USD', 2, ARRAY['US'], ARRAY['US'], true, NULL, true, $1, $1)`,
