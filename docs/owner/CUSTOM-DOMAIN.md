@@ -41,13 +41,14 @@ Write down the address it prints. It is public and not a secret.
 
 ## Step 2: DNS at your registrar (5 min, then wait)
 
-At the registrar of `unitmarket.live`, set one record:
+The domain is registered at Hostinger. In hPanel open **Domains**, choose `unitmarket.live`, then **DNS / Nameservers**,
+then **DNS records**. The domain must use Hostinger nameservers for these records to count. Set one record:
 
 | Type | Name                  | Value                   | TTL |
 | ---- | --------------------- | ----------------------- | --- |
 | A    | `@` (the bare domain) | the address from Step 1 | 300 |
 
-Remove any other A or AAAA record for `@` (for example a parking page). If the domain has a CAA record, it must
+Delete any other A or AAAA record for `@` (Hostinger adds a parking-page A record by default), and remove any redirect under **Redirects** for the domain. If the domain has a CAA record, it must
 allow `pki.goog`, or Google cannot issue the certificate. Check from your Mac: `dig +short unitmarket.live A`
 prints only the address from Step 1.
 
