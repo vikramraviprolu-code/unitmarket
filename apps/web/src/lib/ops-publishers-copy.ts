@@ -93,3 +93,16 @@ export function statusErrorText(code: string): string {
       return 'The change could not be saved. Please try again.';
   }
 }
+
+// DOMAIN-PROOF-2 (D-116): the web addresses of a publisher, on the operator page.
+export const OPS_DOMAINS_HEADING = 'Web addresses for the import';
+export const OPS_DOMAINS_EMPTY = 'No web address yet.';
+export const OPS_VOUCH_BUTTON = 'Mark as verified by operator';
+export const OPS_VOUCH_HINT =
+  'Use this only when you have checked that the publisher controls the address. You take responsibility for that check, and your name and reason are kept.';
+export const OPS_REMOVE_ADDRESS_BUTTON = 'Remove this address';
+export const OPS_ADDRESS_PENDING = 'Waiting for the code';
+export const OPS_ADDRESS_PROVED = 'Proved by the code';
+export const OPS_ADDRESS_VOUCHED = 'Verified by operator';
+export const OPS_DOMAIN_DONE_VOUCHED = 'The address is marked as verified.';
+export const OPS_DOMAIN_DONE_REMOVED = 'The address was removed.';
