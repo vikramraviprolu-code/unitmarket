@@ -85,12 +85,13 @@ import {
   createOutboundGate,
   createSwitchReader,
   findActiveApproval,
+  openSitting,
   readSafetyStatus,
   resumeOutbound,
   runStop,
   setSwitch,
 } from '@umsbx/safety';
-import type { ResumeCoreError } from '@umsbx/safety';
+import type { ResumeCoreError, SittingError } from '@umsbx/safety';
 import { createEcbFetch, createFeedFetcher, createModelHttps, guard } from '@umsbx/transport';
 import type { Wire } from '@umsbx/transport';
 import {
@@ -1328,6 +1329,24 @@ export interface Engine {
         valid_until: string;
       },
       ResumeCoreError
+    >
+  >;
+  /**
+   * OPS-SW (D-118): "Open a PayPal sitting". An operator session that signed in WITH the authenticator code
+   * writes the approval row `pnpm safety:approve` used to write at the owner's terminal, with the D-094
+   * ceiling fixed in code (SITTING_CEILING) and a fresh reference under UMS_OUTBOUND_APPROVAL_REF. It does
+   * not turn paypal_outbound on (Start does) and never touches the connect flag.
+   */
+  openSitting(i: { actor: Actor; reason: string }): Promise<
+    Result<
+      {
+        approval_ref: string;
+        scope: string;
+        valid_until: string;
+        max_amount_minor: number;
+        max_calls: number;
+      },
+      SittingError
     >
   >;
   /** The stored paypal_outbound switch, read now (no cache), or null when it cannot be read. For an operator only. */
@@ -3815,6 +3834,17 @@ function buildApp(config: Config, opts: AppOptions): App {
         return null;
       }
     },
+
+    openSitting: ({ actor, reason }) =>
+      openSitting({
+        db,
+        clock,
+        audit,
+        by: actor,
+        reason,
+        base_ref: config.outbound_approval_ref,
+        scope: config.outbound_scope,
+      }),
 
     async startOutbound({ actor, reason, confirm_scope }) {
       const r = await resumeOutbound({

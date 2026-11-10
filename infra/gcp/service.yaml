@@ -4,13 +4,14 @@
 # "node scripts/check-hosting-gcp.mjs" (pnpm check:hosting-gcp) fails if a secret name or value
 # shows up in this file. The secret names are the ones in infra/gcp/set-secret.sh, plus DATABASE_URL.
 #
-# UMS_PAYPAL_CONNECT stays off here. The owner turns the connection on only by hand, after the
-# approval row exists (docs/owner/MVPC-OWNER-STEPS-GCP.md), and a redeploy from this file puts it back
-# to off, which is the safe direction.
+# UMS_PAYPAL_CONNECT is on here (OPS-SW, D-118), so no gcloud step is needed per sitting. It lets no
+# PayPal call out by itself: each call still needs an active approval row, opened on Operations Controls
+# by an operator with the authenticator code (D-094 ceiling fixed in code, at most four hours), and the
+# paypal_outbound switch turned on with Start. Stop, cloud:down and the approval's end each stop calls.
 NODE_ENV: 'production'
 NEXT_TELEMETRY_DISABLED: '1'
 UMS_MODE: 'sandbox'
-UMS_PAYPAL_CONNECT: 'off'
+UMS_PAYPAL_CONNECT: 'on'
 UMS_OUTBOUND_SCOPE: 'mvp_c_refunds'
 UMS_DB: 'postgres'
 # One proxy in front (Cloud Run's front end). UNVERIFIED until the curl test of Step 3 in the owner

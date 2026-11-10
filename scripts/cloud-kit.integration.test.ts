@@ -555,15 +555,14 @@ describe('item 7: cloud deploy <tag>', () => {
     expect(k.gcloud().every(isRead)).toBe(true);
   });
 
-  it('leaves the connection off: it passes no env flag and prints flag: off', () => {
+  // OPS-SW (D-118): service.yaml carries the connection on; the kit itself still passes no env flag.
+  it('passes no env flag: the connection value comes only from service.yaml (on, D-118)', () => {
     const k = makeKit();
     const r = k.run(['deploy', 't1']);
     expect(r.status, r.out).toBe(0);
     expect(k.lines().join('\n')).not.toMatch(/--update-env-vars|UMS_PAYPAL_CONNECT=on/);
     expect(existsSync(join(k.stub, 'envfile.out'))).toBe(true);
-    expect(readFileSync(join(k.stub, 'envfile.out'), 'utf8')).toContain(
-      "UMS_PAYPAL_CONNECT: 'off'",
-    );
+    expect(readFileSync(join(k.stub, 'envfile.out'), 'utf8')).toContain("UMS_PAYPAL_CONNECT: 'on'");
   });
 });
 

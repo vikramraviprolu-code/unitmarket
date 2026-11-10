@@ -80,19 +80,19 @@ type Case = [name: string, file: string, find: string, replace: string, rule: st
 
 // find '' means: append `replace` as a new last line.
 const CASES: Case[] = [
-  // the connection stays off
+  // the connection is off or, in service.yaml only, on (OPS-SW, D-118); nothing else
   [
-    'connect on in service.yaml',
+    'connect live in service.yaml',
     'service.yaml',
-    "UMS_PAYPAL_CONNECT: 'off'",
     "UMS_PAYPAL_CONNECT: 'on'",
+    "UMS_PAYPAL_CONNECT: 'live'",
     'paypal-connect',
   ],
   [
-    'connect on, double quotes',
+    'connect on with a trailing comment',
     'service.yaml',
-    "UMS_PAYPAL_CONNECT: 'off'",
-    'UMS_PAYPAL_CONNECT: "on"',
+    "UMS_PAYPAL_CONNECT: 'on'",
+    'UMS_PAYPAL_CONNECT: "on" # x',
     'paypal-connect',
   ],
   [
@@ -102,7 +102,7 @@ const CASES: Case[] = [
     '  --port=8080 \\\n  --update-env-vars=UMS_PAYPAL_CONNECT=on \\\n',
     'paypal-connect',
   ],
-  ['connect missing', 'service.yaml', "UMS_PAYPAL_CONNECT: 'off'\n", '', 'paypal-connect'],
+  ['connect missing', 'service.yaml', "UMS_PAYPAL_CONNECT: 'on'\n", '', 'paypal-connect'],
   [
     'env flags bypass the file',
     'deploy.sh',
@@ -1726,6 +1726,17 @@ describe('check-hosting-gcp', () => {
     expect(r.out).not.toContain('hosting-gcp ok');
   });
 
+  it('OPS-SW (D-118): service.yaml may carry the connection on or off, and both pass', () => {
+    for (const v of ["'on'", "'off'"]) {
+      const r = runGuard(
+        GUARD,
+        mutate('service.yaml', "UMS_PAYPAL_CONNECT: 'on'", `UMS_PAYPAL_CONNECT: ${v}`),
+      );
+      expect(r.out, v).toContain('hosting-gcp ok');
+      expect(r.status, v).toBe(0);
+    }
+  });
+
   it('INFRA-A: has no duplicate case name and at least 40 cases', () => {
     const names = [...CASES, ...GCP2_CASES, ...INFRA_A_CASES].map((c) => c[0]);
     expect(new Set(names).size).toBe(names.length);
@@ -1952,7 +1963,6 @@ describe('check-hosting-gcp', () => {
       'NODE_ENV',
       'NEXT_TELEMETRY_DISABLED',
       'UMS_MODE',
-      'UMS_PAYPAL_CONNECT',
       'UMS_OUTBOUND_SCOPE',
       'UMS_TRUSTED_PROXIES',
       'NEXT_PUBLIC_UMS_ENV_LABEL',
@@ -1962,6 +1972,8 @@ describe('check-hosting-gcp', () => {
       expect(svc, k).toContain(`${k}: '${fromRender}'`);
     }
     expect(svc).toContain("UMS_DB: 'postgres'");
+    // OPS-SW (D-118): the GCP service carries the connection on; render.yaml (Render host) keeps off.
+    expect(svc).toContain("UMS_PAYPAL_CONNECT: 'on'");
     expect(svc).not.toContain('UMS_MAINTENANCE_FLAG:');
     expect(svc).not.toContain('UMS_PGLITE_DIR');
   });

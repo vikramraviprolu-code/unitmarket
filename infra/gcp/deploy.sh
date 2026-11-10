@@ -8,7 +8,7 @@
 # The service is one instance, always: min 1, max 1, CPU always allocated, because the job loop runs
 # inside the app (D-049). Ingress is public because PayPal's webhooks must reach it; the app verifies
 # every delivery itself. Secrets are mapped from Secret Manager by name. Fixed values come from
-# service.yaml. UMS_PAYPAL_CONNECT is off in that file, so a deploy always leaves the connection off.
+# service.yaml. UMS_PAYPAL_CONNECT is on in that file (D-118): calls still need a console sitting and Start.
 # The image is tagged TAG-COMMIT (the first 12 characters of the commit id), so a moved git tag builds a new
 # image and never reuses an old one.
 #

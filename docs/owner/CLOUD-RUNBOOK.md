@@ -2,7 +2,7 @@
 
 For the owner and Sakthi, from a laptop or Cloud Shell. One kit, seven commands, in `infra/gcp/cloud.sh`. Names come from `infra/gcp/stack.env` (project `unitmarket-sbx-vr1`, region `europe-west3`). Decision D-049 and the row that amends it in `docs/decision-log.md` are the rules behind it.
 
-Two things hold for every command. The kit never turns PayPal on: the flag `UMS_PAYPAL_CONNECT` is only ever set to off, and switching it on stays a separate, approved step at the owner's own terminal. And agents never run this kit for real: builder and reviewer agents use a fake `gcloud` only (D-049).
+Two things hold for every command. The kit never turns PayPal on: no command here sets the flag `UMS_PAYPAL_CONNECT` to on (since D-118 `service.yaml` carries it on, and `cloud:down` still sets it off). A PayPal call still needs a sitting opened on Operations Controls with the authenticator code and the Start switch. And agents never run this kit for real: builder and reviewer agents use a fake `gcloud` only (D-049).
 
 ## Before the first use
 
@@ -29,7 +29,7 @@ Every command takes `--dry-run`: it prints the changing calls and makes only rea
 2. Run `corepack pnpm cloud:deploy TAG --dry-run`, read the calls, then run it without `--dry-run`.
 3. It refuses a dirty tree, a HEAD that is not at the tag, and a newest backup older than 24 hours. Take a fresh backup first. Use `--accept-old-backup` only when the owner agrees.
 4. When it finishes it prints a block under `== paste back` with the tag, commit, revision, URL, health and flag. Paste that block into the thread.
-5. After a deploy the PayPal flag is still off. Nothing here switches it on.
+5. After a deploy the PayPal flag is on (from `service.yaml`, D-118), but no call goes out until an operator opens a sitting on Operations Controls and presses Start.
 
 ## If something is wrong
 
