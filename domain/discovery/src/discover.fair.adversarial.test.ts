@@ -112,8 +112,6 @@ function pickingModel(choose: (candidateIds: string[]) => string[]) {
 const candidateIdsOf = (requests: ModelRequest[]): string[] =>
   (requests[0]!.input as { candidates: { offer_id: string }[] }).candidates.map((c) => c.offer_id);
 const pubOf = (offerId: string): string => /^ofr_(p\d)/.exec(offerId)![1]!;
-const firstOf = (ids: string[], pub: string, n: number): string[] =>
-  ids.filter((i) => pubOf(i) === pub).slice(0, n);
 
 async function insertBrief(
   db: TestDb,
