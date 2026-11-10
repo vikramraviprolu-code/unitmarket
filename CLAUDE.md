@@ -12,9 +12,12 @@ nfr.md). Decisions are in `docs/decision-log.md`. Package scope: `@umsbx/*`.
    accounts, never hold credentials, never run sandbox calls. Under D-029 (option B) only the
    coordinating session may use the owner's sandbox credentials, which live in the cloud
    environment variables, and only through the sealed transport and the five locks.
-2. **Two-key outbound approval** (architecture 7): reaching the sandbox needs `UMS_PAYPAL_CONNECT=on`
-   AND an active `outbound_approvals` row inserted by the owner with `pnpm safety:approve` (TTY only,
-   refuses in CI), whose scope, amount cap and call budget cover the call. Plus the kill switches.
+2. **Two-key outbound approval** (architecture 7, D-120): reaching the sandbox needs `UMS_PAYPAL_CONNECT=on`
+   AND an active `outbound_approvals` row whose scope, amount cap and call budget cover the call. The
+   row comes from a sitting opened on Operations Controls by an operator signed in with the
+   authenticator code (`POST /api/ops/sitting`, D-094 ceiling fixed in code, one sitting at a time,
+   ref `<UMS_OUTBOUND_APPROVAL_REF>~<UTC stamp>`), or from the owner's `pnpm safety:approve` (TTY only,
+   refuses in CI). Plus Start on the `paypal_outbound` switch and the kill switches.
 3. **Live mode is fail-closed.** There is no `live` value anywhere. Boot refuses any value naming live
    or production. No live PayPal hostname in code, fixtures or config (`pnpm check:no-live-host`).
    The sandbox base URL is one constant in `packages/paypal/src/endpoints.ts`, not configurable.
