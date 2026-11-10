@@ -105,6 +105,11 @@ const EXPECTED_EXPORTS: string[] = [
   // F3 corridor, catalogue, quote
   'CorridorIdSchema',
   'CorridorSchema',
+  // WW-COR (migration 0034): the ISO 3166-1 country list and the worldwide payee countries.
+  'ISO_3166_1_ALPHA2',
+  'isIsoCountry',
+  'INDIA_COUNTRY',
+  'WORLDWIDE_PAYEE_COUNTRIES',
   'AccessOptionSchema',
   'AccessPolicySchema',
   'RightsSchema',
