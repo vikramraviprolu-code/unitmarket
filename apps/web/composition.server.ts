@@ -767,7 +767,12 @@ export interface ReaderMeta {
   publisher: string;
   option: string;
   environment: EnvironmentLabel;
-  window: { state: string; ends_at: string | null; days_left: number | null };
+  window: {
+    state: string;
+    started_at: string | null;
+    ends_at: string | null;
+    days_left: number | null;
+  };
 }
 export type ReaderViewResult =
   | ({ ok: true; kind: 'text'; paragraphs: string[] } & ReaderMeta)
@@ -3591,6 +3596,7 @@ function buildApp(config: Config, opts: AppOptions): App {
         environment: item.environment,
         window: {
           state: item.window.state,
+          started_at: item.window.started_at,
           ends_at: item.window.ends_at,
           days_left: item.window.days_left,
         },

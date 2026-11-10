@@ -75,6 +75,7 @@ export default async function Reader({ params }: { params: Promise<{ entitlement
       <WindowMeter
         state={view.window.state}
         daysLeft={view.window.days_left}
+        startedAt={view.window.started_at}
         endsAt={view.window.ends_at}
         option={view.option}
       />
