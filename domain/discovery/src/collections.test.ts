@@ -137,3 +137,52 @@ describe('the collection of one offer', () => {
     expect(collectionsOf([], counts({})).size).toBe(0);
   });
 });
+
+describe('the cover among many ids, in any order', () => {
+  const tc = counts({ p1: { harbour: 9 } });
+  const ids = ['ofr_d', 'ofr_b', 'ofr_e', 'ofr_a', 'ofr_c'];
+  const orders = [ids, [...ids].reverse(), [ids[3]!, ids[1]!, ids[4]!, ids[0]!, ids[2]!]];
+  it('is the smallest id for an image set and for a non-image set', () => {
+    for (const o of orders) {
+      const imgs = collectionsOf(
+        o.map((id) => row(id, ['harbour'], 'image/png')),
+        tc,
+      );
+      const docs = collectionsOf(
+        o.map((id) => row(id, ['harbour'], 'application/pdf')),
+        tc,
+      );
+      for (const id of ids) {
+        expect(imgs.get(id)!.cover_offer_id).toBe('ofr_a');
+        expect(docs.get(id)!.cover_offer_id).toBe('ofr_a');
+      }
+    }
+  });
+
+  it('picks the first topic by code unit among three, in any order, when counts are missing', () => {
+    for (const t of [
+      ['c', 'a', 'b'],
+      ['a', 'b', 'c'],
+      ['b', 'c', 'a'],
+    ]) {
+      expect(collectionsOf([row('ofr_1', t)], counts({})).get('ofr_1')).toEqual({
+        name: 'a',
+        size: 0,
+        cover_offer_id: 'ofr_1',
+      });
+    }
+  });
+
+  it('treats the same topic written twice as one', () => {
+    const got = collectionsOf([row('ofr_1', ['Sea', 'sea ', 'SEA'])], counts({ p1: { sea: 3 } }));
+    expect(got.get('ofr_1')).toEqual({ name: 'sea', size: 3, cover_offer_id: 'ofr_1' });
+  });
+
+  it('gives a topic with count 0 a size of 0 and an unknown publisher a size of 0', () => {
+    const got = collectionsOf(
+      [row('ofr_1', ['sea'], 'image/png', 'p9')],
+      counts({ p1: { sea: 4 } }),
+    );
+    expect(got.get('ofr_1')!.size).toBe(0);
+  });
+});

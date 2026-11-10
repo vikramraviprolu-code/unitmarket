@@ -2,6 +2,7 @@
 // the closed window [day - 30 days, day), buyers who joined in the last 7 days of the window do not count, and at
 // least two publishers have a current authorised offer with that topic. The answer is a band, never a count.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { collectionFacts } from './collections';
 import { MIN_BUYERS, demandForPublisher, demandTerms } from './demand';
 import { extraData, seededDb, type TestDb } from './support';
 
@@ -263,5 +264,83 @@ describe('demandForPublisher', () => {
       { term: 'harbour', band: '5-9', matching: 0 },
     ]);
     expect(await demandForPublisher(db, 'p1', [])).toEqual([]);
+  });
+});
+
+describe('collectionFacts', () => {
+  const newerWithdrawn = (id: string) =>
+    db.query(
+      `INSERT INTO offers (id, version, publisher_id, article_id, status, currency, options, affordability, terms_version, rights, valid_from, valid_until, superseded_by, created_at, updated_at)
+       SELECT id, '2', publisher_id, article_id, 'withdrawn', currency, options, affordability, terms_version, rights, valid_from, NULL, NULL, created_at + interval '1 day', created_at + interval '1 day'
+         FROM offers WHERE id = $1::text`,
+      [id],
+    );
+
+  it('counts every current authorised offer of the publisher once per offer and topic', async () => {
+    const dup = await addOffer(db, 'p1', ['harbour', 'Harbour ', 'sea']);
+    await addOffer(db, 'p1', []);
+    await addOffer(db, 'p1', ['  ']);
+    await addOffer(db, 'p1', ['harbour'], { authorised: false, status: 'draft' });
+    const gone = await addOffer(db, 'p1', ['harbour']);
+    await newerWithdrawn(gone);
+    const f = await collectionFacts(db, ['p1', 'p2'], [dup]);
+    expect(f.topicCounts.get('p1')!.get('harbour')).toBe(2);
+    expect(f.topicCounts.get('p1')!.get('sea')).toBe(1);
+    expect(f.topicCounts.get('p1')!.get('')).toBe(2);
+    expect(f.topicCounts.get('p2')!.get('harbour')).toBe(1);
+    expect(f.topicCounts.get('p2')!.has('')).toBe(false);
+  });
+
+  it('does not count a suspended publisher', async () => {
+    await addPublisher(db, 'p5', 'suspended');
+    await addOffer(db, 'p5', ['harbour']);
+    const f = await collectionFacts(db, ['p5'], []);
+    expect(f.topicCounts.has('p5')).toBe(false);
+  });
+
+  it('reads topics and mime of the requested offers only', async () => {
+    const id = await addOffer(db, 'p1', ['Zed']);
+    const f = await collectionFacts(db, ['p1'], [id]);
+    expect(f.rows).toEqual([
+      { offer_id: id, publisher_id: 'p1', topics: ['Zed'], mime: 'text/plain' },
+    ]);
+  });
+
+  it('answers nothing for no publishers', async () => {
+    const f = await collectionFacts(db, [], ['ofr_d0001']);
+    expect(f.rows).toEqual([]);
+    expect(f.topicCounts.size).toBe(0);
+  });
+});
+
+describe('demand: more edges', () => {
+  it('orders equal bands by term, whatever the insertion order', async () => {
+    await crowd(db, 5, 'sunset');
+    await crowd(db, 5, 'anchor');
+    await crowd(db, 5, 'harbour');
+    expect((await terms()).map((t) => t.term)).toEqual(['anchor', 'harbour', 'sunset']);
+  });
+
+  it('reads a padded element of 1000 characters and skips one of 1001', async () => {
+    await crowd(db, 5, `${' '.repeat(496)}harbour${' '.repeat(497)}`);
+    expect(await terms()).toEqual([{ term: 'harbour', band: '5-9' }]);
+    await crowd(db, 5, `${' '.repeat(496)}sunset${' '.repeat(500)}`);
+    expect((await terms()).map((t) => t.term)).toEqual(['harbour']);
+  });
+
+  it('does not count an offer whose newest version is withdrawn', async () => {
+    await addOffer(db, 'p1', ['quiet']);
+    const id = await addOffer(db, 'p2', ['quiet']);
+    await db.query(
+      `INSERT INTO offers (id, version, publisher_id, article_id, status, currency, options, affordability, terms_version, rights, valid_from, valid_until, superseded_by, created_at, updated_at)
+       SELECT id, '2', publisher_id, article_id, 'withdrawn', currency, options, affordability, terms_version, rights, valid_from, NULL, NULL, created_at + interval '1 day', created_at + interval '1 day'
+         FROM offers WHERE id = $1::text`,
+      [id],
+    );
+    await crowd(db, 5, 'quiet');
+    expect(await terms()).toEqual([]);
+    expect(await demandForPublisher(db, 'p2', [{ term: 'quiet', band: '5-9' }])).toEqual([
+      { term: 'quiet', band: '5-9', matching: 0 },
+    ]);
   });
 });

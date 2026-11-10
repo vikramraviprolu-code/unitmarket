@@ -1,7 +1,7 @@
 // CAT-1.1: listAuthorisedOffersMatching. Match first, whole words, a cap per publisher, every guard of
 // listAuthorisedOffers applied before any cap. Fixtures are inline.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { listAuthorisedOffers, listAuthorisedOffersMatching } from './index';
+import { getOffer, listAuthorisedOffers, listAuthorisedOffersMatching } from './index';
 import { testDb } from './support';
 
 type TestDb = Awaited<ReturnType<typeof testDb>>;
@@ -445,5 +445,20 @@ describe('CAT-2.2 exact copies', () => {
     const rows = await rowsFor(['scoreword']);
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) expect(r.duplicates_hidden).toBe(0);
+  });
+});
+
+describe('the plain reads', () => {
+  it('getOffer answers null for an unknown offer and the offer for a known one', async () => {
+    expect(await getOffer(db, { offer_id: 'ofr_nobody_0001' })).toBeNull();
+    expect((await getOffer(db, { offer_id: 'ofr_gok_0001' }))?.offer.id).toBe('ofr_gok_0001');
+  });
+
+  it('listAuthorisedOffers keeps limit between 1 and 500', async () => {
+    expect(await listAuthorisedOffers(db, { corridor_id: 'us-usd', limit: 0 })).toHaveLength(1);
+    expect(await listAuthorisedOffers(db, { corridor_id: 'us-usd', limit: 2 })).toHaveLength(2);
+    expect(
+      (await listAuthorisedOffers(db, { corridor_id: 'us-usd', limit: 9999 })).length,
+    ).toBeLessThanOrEqual(500);
   });
 });
