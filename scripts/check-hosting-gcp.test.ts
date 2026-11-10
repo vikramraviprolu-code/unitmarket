@@ -505,18 +505,26 @@ const CASES: Case[] = [
   ],
   // service.yaml values and names
   ['mode offline', 'service.yaml', "UMS_MODE: 'sandbox'", "UMS_MODE: 'offline'", 'fixed-value'],
+  // DOM-1: behind the load balancer the measured depth is 2 (owner curl test, 10 Nov 2026).
   [
-    'proxies 2',
+    'proxies 1',
     'service.yaml',
-    "UMS_TRUSTED_PROXIES: '1'",
     "UMS_TRUSTED_PROXIES: '2'",
+    "UMS_TRUSTED_PROXIES: '1'",
     'fixed-value',
   ],
   [
     'proxies 0',
     'service.yaml',
-    "UMS_TRUSTED_PROXIES: '1'",
+    "UMS_TRUSTED_PROXIES: '2'",
     "UMS_TRUSTED_PROXIES: '0'",
+    'fixed-value',
+  ],
+  [
+    'proxies 3',
+    'service.yaml',
+    "UMS_TRUSTED_PROXIES: '2'",
+    "UMS_TRUSTED_PROXIES: '3'",
     'fixed-value',
   ],
   [
@@ -2019,13 +2027,16 @@ describe('check-hosting-gcp', () => {
       'NEXT_TELEMETRY_DISABLED',
       'UMS_MODE',
       'UMS_OUTBOUND_SCOPE',
-      'UMS_TRUSTED_PROXIES',
       'NEXT_PUBLIC_UMS_ENV_LABEL',
     ]) {
       const fromRender = render.match(new RegExp(`key: ${k}\\n\\s+value: '([^']*)'`))?.[1];
       expect(fromRender, k).toBeDefined();
       expect(svc, k).toContain(`${k}: '${fromRender}'`);
     }
+    // DOM-1: the GCP service sits behind the load balancer and Cloud Run's front end (depth 2,
+    // measured); render.yaml (one proxy) keeps 1.
+    expect(svc).toContain("UMS_TRUSTED_PROXIES: '2'");
+    expect(render).toMatch(/key: UMS_TRUSTED_PROXIES\n\s+value: '1'/);
     expect(svc).toContain("UMS_DB: 'postgres'");
     // OPS-SW (D-120): the GCP service carries the connection on; render.yaml (Render host) keeps off.
     expect(svc).toContain("UMS_PAYPAL_CONNECT: 'on'");
