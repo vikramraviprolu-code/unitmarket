@@ -58,6 +58,9 @@ interface Stop {
  * Errors: not_publisher, publisher_not_active, invalid_address, no_corridor, domain_not_verified,
  * import_off, paused, import_active, proof_lost (page read, no code), site_unreachable (site could not be read).
  */
+/** Thrown inside the batch transaction when the address stopped being verified during the proof fetch. */
+class DomainGone extends Error {}
+
 export async function startVerifiedImport(
   deps: ImportDeps,
   actor: Actor,
@@ -127,6 +130,13 @@ export async function startVerifiedImport(
   const id = `imb_${deps.ids.nonce()}`;
   try {
     await deps.db.transaction(async (tx) => {
+      // D-116: the address may have been removed while the proof was fetched. Lock it again (removal takes
+      // FOR UPDATE on the same row, so the two serialise) and queue nothing for an address that is gone.
+      const still = await tx.query(
+        `SELECT 1 AS x FROM publisher_domains WHERE publisher_id = $1 AND host = $2 AND state = 'verified' FOR SHARE`,
+        [actor.publisher_id, addr.host],
+      );
+      if (still.rows.length === 0) throw new DomainGone();
       const at = deps.clock.now().toISOString();
       await tx.query(
         `INSERT INTO import_batches (id, publisher_id, source_host, source_url, state, note, total, done, refused, existing, changed,
@@ -143,6 +153,7 @@ export async function startVerifiedImport(
       });
     });
   } catch (e) {
+    if (e instanceof DomainGone) return fail('domain_not_verified');
     if (isUnique(e)) return fail('import_active');
     throw e;
   }

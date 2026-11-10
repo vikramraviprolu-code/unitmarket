@@ -44,7 +44,7 @@ ALTER TABLE publisher_domains ADD CONSTRAINT publisher_domains_verified_by_state
   CHECK (verified_by IS NULL OR state IN ('verified', 'removed'));
 ALTER TABLE publisher_domains ADD CONSTRAINT publisher_domains_vouch_check
   CHECK (CASE WHEN verified_by = 'operator'
-              THEN vouched_by IS NOT NULL AND char_length(vouch_reason) BETWEEN 3 AND 200
+              THEN vouched_by IS NOT NULL AND vouch_reason IS NOT NULL AND char_length(vouch_reason) BETWEEN 3 AND 200
               ELSE vouched_by IS NULL AND vouch_reason IS NULL END);
 
 -- The one verified owner index only covers state = 'verified', so a removed row frees the host without a change.
