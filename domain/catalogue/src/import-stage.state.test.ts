@@ -11,6 +11,7 @@ import { checkDomain, listDomains, requestDomain } from './domain-proof';
 import {
   BATCH_DEADLINE_MS,
   MAX_BATCH_ITEMS,
+  MAX_SOURCE_ITEMS,
   editItem,
   getBatch,
   listBatches,
@@ -736,9 +737,9 @@ describe('runNextBatch: other sources', () => {
     expect(a[0]!.detail).toMatchObject({ state: 'failed', note: 'private_address' });
   });
 
-  it('more than 100 items in the source ends the batch with too_many_items and stages nothing', async () => {
+  it('more than MAX_SOURCE_ITEMS (1000) items in the source ends the batch with too_many_items and stages nothing', async () => {
     const w = await fresh();
-    const items = Array.from({ length: MAX_BATCH_ITEMS + 1 }, (_, i) => ({
+    const items = Array.from({ length: MAX_SOURCE_ITEMS + 1 }, (_, i) => ({
       id: `i${i}`,
       title: `T${i}`,
       content_text: 'text',
