@@ -57,10 +57,16 @@ const bad = async (p: Promise<unknown>): Promise<void> => {
   await expect(p).rejects.toThrow();
 };
 const code = (c: string): string => `umv-${c.repeat(32)}`;
-const code1 = (): { publisher_id: string; code: string; created_at: string } => ({
+const code1 = (): {
+  publisher_id: string;
+  code: string;
+  created_at: string;
+  updated_at: string;
+} => ({
   publisher_id: 'pub_a',
   code: code('1'),
   created_at: T,
+  updated_at: T,
 });
 const verified = (extra: Record<string, unknown>): Record<string, unknown> => ({
   state: 'verified',
@@ -161,16 +167,19 @@ describe('migration 0037', () => {
     await publisher(d, 'pub_b');
     await domain(d, verified({ verified_by: 'proof' }));
     await bad(
-      d.query("UPDATE publisher_domains SET state = 'pending', verified_at = NULL WHERE id = 'pdm_1'"),
+      d.query(
+        "UPDATE publisher_domains SET state = 'pending', verified_at = NULL WHERE id = 'pdm_1'",
+      ),
     );
     await bad(d.query("UPDATE publisher_domains SET token_hash = $1 WHERE id = 'pdm_1'", [SHA2]));
     await bad(
       d.query("UPDATE publisher_domains SET host = 'other.pub-one.invalid' WHERE id = 'pdm_1'"),
     );
     await bad(d.query("UPDATE publisher_domains SET verified_by = 'operator' WHERE id = 'pdm_1'"));
-    await d.query("UPDATE publisher_domains SET state = 'removed', updated_at = $1 WHERE id = 'pdm_1'", [
-      T2,
-    ]);
+    await d.query(
+      "UPDATE publisher_domains SET state = 'removed', updated_at = $1 WHERE id = 'pdm_1'",
+      [T2],
+    );
     const r = await d.query<{ state: string; verified_at: unknown; token_hash: string }>(
       'SELECT state, verified_at, token_hash FROM publisher_domains WHERE id = $1',
       ['pdm_1'],
@@ -194,7 +203,9 @@ describe('migration 0037', () => {
     await bad(domain(d, theirs));
     await d.query("UPDATE publisher_domains SET state = 'removed' WHERE id = 'pdm_1'");
     await domain(d, theirs);
-    await bad(domain(d, { id: 'pdm_3', publisher_id: 'pub_a', ...verified({ verified_by: 'proof' }) }));
+    await bad(
+      domain(d, { id: 'pdm_3', publisher_id: 'pub_a', ...verified({ verified_by: 'proof' }) }),
+    );
   });
 
   it('writes nothing to a tracked table: a fresh database holds no non-backfill trace event', async () => {

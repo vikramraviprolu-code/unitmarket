@@ -9,7 +9,8 @@
 CREATE TABLE publisher_proof_codes (
   publisher_id ums_id PRIMARY KEY REFERENCES publishers (id),
   code text NOT NULL UNIQUE CHECK (code ~ '^[A-Za-z0-9_-]{16,128}$'),
-  created_at timestamptz NOT NULL
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
 );
 
 CREATE FUNCTION publisher_proof_codes_guard() RETURNS trigger LANGUAGE plpgsql AS $fn$

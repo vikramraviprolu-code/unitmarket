@@ -173,7 +173,7 @@ async function ensureCode(
 ): Promise<string> {
   const at = clock.now().toISOString();
   await q.query(
-    'INSERT INTO publisher_proof_codes (publisher_id, code, created_at) VALUES ($1, $2, $3) ON CONFLICT (publisher_id) DO NOTHING',
+    'INSERT INTO publisher_proof_codes (publisher_id, code, created_at, updated_at) VALUES ($1, $2, $3, $3) ON CONFLICT (publisher_id) DO NOTHING',
     [publisher_id, `umv-${ids.nonce()}`, at],
   );
   const r = await q.query<{ code: string }>(
