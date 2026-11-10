@@ -566,28 +566,56 @@ const CASES: Case[] = [
   [
     'origin over plain http',
     'service.yaml',
-    "UMS_PUBLIC_ORIGIN: 'https://unitmarket-sandbox-626887286871.europe-west3.run.app'",
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.live'",
     "UMS_PUBLIC_ORIGIN: 'http://localhost:3000'",
     'origin',
   ],
   [
     'origin on another host',
     'service.yaml',
-    "UMS_PUBLIC_ORIGIN: 'https://unitmarket-sandbox-626887286871.europe-west3.run.app'",
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.live'",
     "UMS_PUBLIC_ORIGIN: 'https://shop.example.test'",
     'origin',
   ],
   [
     'origin with a path',
     'service.yaml',
-    "UMS_PUBLIC_ORIGIN: 'https://unitmarket-sandbox-626887286871.europe-west3.run.app'",
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.live'",
     "UMS_PUBLIC_ORIGIN: 'https://svc-1.europe-west1.run.app/x'",
+    'origin',
+  ],
+  [
+    'DOM-1 origin on a subdomain of the custom domain',
+    'service.yaml',
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.live'",
+    "UMS_PUBLIC_ORIGIN: 'https://www.unitmarket.live'",
+    'origin',
+  ],
+  [
+    'DOM-1 custom domain with a path',
+    'service.yaml',
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.live'",
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.live/x'",
+    'origin',
+  ],
+  [
+    'DOM-1 custom domain over plain http',
+    'service.yaml',
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.live'",
+    "UMS_PUBLIC_ORIGIN: 'http://unitmarket.live'",
+    'origin',
+  ],
+  [
+    'DOM-1 offline yaml with the custom domain',
+    'service-offline.yaml',
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket-offline-626887286871.europe-west3.run.app'",
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.live'",
     'origin',
   ],
   [
     'origin missing',
     'service.yaml',
-    "UMS_PUBLIC_ORIGIN: 'https://unitmarket-sandbox-626887286871.europe-west3.run.app'\n",
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.live'\n",
     '',
     'origin',
   ],
@@ -985,6 +1013,12 @@ const ACCEPTED: [name: string, file: string, find: string, replace: string][] = 
   ['--max-instances 1 with a space', 'deploy.sh', '--max-instances=1', '--max-instances 1'],
   ['--min-instances 1 with a space', 'deploy.sh', '--min-instances=1', '--min-instances 1'],
   ['UMS_DB in double quotes', 'service.yaml', "UMS_DB: 'postgres'", 'UMS_DB: "postgres"'],
+  [
+    'DOM-1 a run.app origin is still accepted',
+    'service.yaml',
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket.live'",
+    "UMS_PUBLIC_ORIGIN: 'https://unitmarket-sandbox-626887286871.europe-west3.run.app'",
+  ],
 ];
 
 // INFRA-A: optional secrets for the sandbox service and the prepared offline service. Each case is the
