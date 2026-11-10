@@ -16,6 +16,11 @@ import {
   KIND_ARTICLE,
   KIND_IMAGE,
   NO_PRICE,
+  PRICE_ALL_BUTTON,
+  PRICE_ALL_HEADING,
+  PRICE_ALL_LABEL,
+  PRICE_ALL_LEDE,
+  PRICE_ALL_REPLACE,
   PRICE_HELP,
   PUBLISHED_DONE,
   PUBLISH_BUTTON,
@@ -27,6 +32,7 @@ import {
   importErrorText,
   itemReasonText,
   itemStateText,
+  pricedText,
   progressText,
   publishedText,
 } from '../../../../lib/web-import-copy';
@@ -67,6 +73,8 @@ export function ReviewList({ initial, offerMaxMinor }: { initial: View; offerMax
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [allPrice, setAllPrice] = useState('');
+  const [replaceAll, setReplaceAll] = useState(false);
 
   const reload = useCallback(async () => {
     const res = await getJson<View>(
@@ -108,6 +116,30 @@ export function ReviewList({ initial, offerMaxMinor }: { initial: View; offerMax
     await reload();
   }
 
+  async function priceAll() {
+    setProblem(null);
+    setDone(null);
+    const minor = parsePriceMinor(allPrice);
+    if (minor === null || minor < 1 || minor > offerMaxMinor) {
+      setProblem(importErrorText('invalid_price'));
+      return;
+    }
+    setBusy(true);
+    const res = await postJson<{ priced: number }>('/api/publisher/import/price-all', {
+      batch_id: view.batch.id,
+      price_minor: minor,
+      ...(replaceAll ? { replace_existing: true } : {}),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setProblem(res.status === 401 ? 'Please sign in again.' : importErrorText(res.code));
+      return;
+    }
+    setPrices({});
+    setDone(pricedText(res.data.priced));
+    await reload();
+  }
+
   async function publish() {
     setProblem(null);
     setDone(null);
@@ -136,6 +168,39 @@ export function ReviewList({ initial, offerMaxMinor }: { initial: View; offerMax
           {progressText(b.done, b.total, b.refused)}
         </p>
         {b.note ? <p className="pk-help">{batchNoteText(b.note)}</p> : null}
+      </Section>
+      <Section title={PRICE_ALL_HEADING} id="import-price-all">
+        <div className="pk-panel">
+          <p>{PRICE_ALL_LEDE}</p>
+          <label>
+            {PRICE_ALL_LABEL}{' '}
+            <input
+              type="text"
+              inputMode="decimal"
+              value={allPrice}
+              title={PRICE_HELP}
+              onChange={(e) => setAllPrice(e.target.value)}
+            />
+          </label>{' '}
+          <label>
+            <input
+              type="checkbox"
+              checked={replaceAll}
+              onChange={(e) => setReplaceAll(e.target.checked)}
+            />{' '}
+            {PRICE_ALL_REPLACE}
+          </label>
+          <div className="pk-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy || running || allPrice.trim() === ''}
+              onClick={() => void priceAll()}
+            >
+              {PRICE_ALL_BUTTON}
+            </button>
+          </div>
+        </div>
       </Section>
       <Section id="import-items">
         {view.items.length === 0 ? (

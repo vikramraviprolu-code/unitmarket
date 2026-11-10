@@ -235,3 +235,35 @@ export function importStatusOf(code: string): ImportStatus {
       return 422;
   }
 }
+
+// POB-Q1: one address, then one price for all.
+export const QUICK_HEADING = 'Quick start: one address';
+export const QUICK_LEDE =
+  'Paste the address of your gallery, feed or sitemap. We give you one small file to put on your site, check for it by ourselves, and start reading as soon as it is there.';
+export const QUICK_URL_LABEL =
+  'Address of your gallery (for example https://photos.example.com/gallery)';
+export const QUICK_BUTTON = 'Start';
+export const QUICK_PROVE_HEADING = 'Put this one file on your site';
+export const QUICK_DOWNLOAD = 'Download the file';
+export const QUICK_FILE_WHERE = 'Upload it so it opens at this address:';
+export const QUICK_META_OR =
+  'Or, if you cannot upload files, paste this tag inside the head of your front page:';
+export const QUICK_COPY = 'Copy the tag';
+export const QUICK_COPIED = 'Copied.';
+export const QUICK_WAITING =
+  'Checking your site every 5 seconds. Leave this page open; the import starts by itself.';
+export const QUICK_GAVE_UP =
+  'We stopped checking after 10 minutes. Press Start again when the file is on your site.';
+export const QUICK_NEW_CODE = 'Get a new file';
+export const QUICK_STARTED = 'Your site is proved. The import has started.';
+export const QUICK_MANUAL = 'Do it step by step instead';
+
+export const PRICE_ALL_HEADING = 'One price for all';
+export const PRICE_ALL_LEDE =
+  'Set one price for every item that has none yet, then publish them all at once.';
+export const PRICE_ALL_LABEL = 'Your price for each item (like 0.10)';
+export const PRICE_ALL_REPLACE = 'Also replace the prices already set';
+export const PRICE_ALL_BUTTON = 'Apply to all';
+export function pricedText(n: number): string {
+  return n === 1 ? '1 item priced.' : `${n} items priced.`;
+}

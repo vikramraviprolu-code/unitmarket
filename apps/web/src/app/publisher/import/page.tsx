@@ -18,15 +18,18 @@ import {
   IMPORT_HEADING,
   IMPORT_LEDE,
   IMPORT_SAFE_NOTE,
+  QUICK_MANUAL,
   batchStateText,
   progressText,
 } from '../../../lib/web-import-copy';
 import { ImportStart } from './ImportStart';
+import { QuickStart } from './QuickStart';
 import '../pk-forms.css';
 
 export const metadata: Metadata = { title: 'Add your catalogue' };
 
-// POB-I1 (D-089, J7): prove a web address, then start reading it. The publisher is the one in the session and
+// POB-I1 (D-089, J7): prove a web address, then start reading it. POB-Q1: the quick start does both from one
+// address; the two steps stay below for a publisher who wants them. The publisher is the one in the session and
 // nowhere else; the page reads no input. Every action goes to a route that checks it again.
 export default async function PublisherImport() {
   const actor = await currentActor();
@@ -58,10 +61,14 @@ export default async function PublisherImport() {
           </ul>
         )}
       </Section>
-      <ImportStart
-        pending={domains.domains.filter((d) => d.state === 'pending').map((d) => d.host)}
-        verified={domains.domains.filter((d) => d.state === 'verified').map((d) => d.host)}
-      />
+      <QuickStart />
+      <details>
+        <summary>{QUICK_MANUAL}</summary>
+        <ImportStart
+          pending={domains.domains.filter((d) => d.state === 'pending').map((d) => d.host)}
+          verified={domains.domains.filter((d) => d.state === 'verified').map((d) => d.host)}
+        />
+      </details>
       <Section title={BATCHES_HEADING} id="import-batches">
         {batches.batches.length === 0 ? (
           <EmptyState title={BATCHES_EMPTY}>{BATCHES_EMPTY}</EmptyState>

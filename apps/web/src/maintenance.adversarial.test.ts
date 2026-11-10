@@ -158,6 +158,9 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   'api/publisher/import/domains/route.ts': () => import('./app/api/publisher/import/domains/route'),
   'api/publisher/import/items/route.ts': () => import('./app/api/publisher/import/items/route'),
   'api/publisher/import/publish/route.ts': () => import('./app/api/publisher/import/publish/route'),
+  'api/publisher/import/quick/route.ts': () => import('./app/api/publisher/import/quick/route'),
+  'api/publisher/import/price-all/route.ts': () =>
+    import('./app/api/publisher/import/price-all/route'),
   'api/publisher/import/status/route.ts': () => import('./app/api/publisher/import/status/route'),
   'api/publisher/payee-requests/route.ts': () => import('./app/api/publisher/payee-requests/route'),
   'api/session/route.ts': () => import('./app/api/session/route'),

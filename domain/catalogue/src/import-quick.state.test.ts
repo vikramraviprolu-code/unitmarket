@@ -30,6 +30,10 @@ const fixture = (name: string): string =>
 const worlds: ImportWorld[] = [];
 const fresh = async (): Promise<ImportWorld> => {
   const w = await importWorld(shopPages(fixture));
+  // A real site has a front page; it holds no proof until the publisher adds one.
+  w.web.pages[`${SHOP}/`] = {
+    body: '<html><head><title>Shop</title></head><body>Hi</body></html>',
+  };
   worlds.push(w);
   return w;
 };
@@ -59,7 +63,9 @@ describe('quickImport: one address, no second paste', () => {
     expect(r.value.file_body).toBe(`${r.value.token}\n`);
     expect(r.value.meta_tag).toBe(`<meta name="unitmarket-verify" content="${r.value.token}">`);
     expect(w.web.calls).toEqual([]);
-    expect(await countOf(w.db, "SELECT count(*) AS c FROM publisher_domains WHERE state = 'pending'")).toBe(1);
+    expect(
+      await countOf(w.db, "SELECT count(*) AS c FROM publisher_domains WHERE state = 'pending'"),
+    ).toBe(1);
   });
 
   it('asked again before the file is up: waiting, the same code still works, no new token', async () => {
@@ -83,8 +89,12 @@ describe('quickImport: one address, no second paste', () => {
     expect(r.ok).toBe(true);
     if (!r.ok || r.value.step !== 'started') throw new Error('expected started');
     expect(r.value.batch_id).toMatch(/^imb_/);
-    expect(await countOf(w.db, "SELECT count(*) AS c FROM publisher_domains WHERE state = 'verified'")).toBe(1);
-    expect(await countOf(w.db, "SELECT count(*) AS c FROM import_batches WHERE state = 'queued'")).toBe(1);
+    expect(
+      await countOf(w.db, "SELECT count(*) AS c FROM publisher_domains WHERE state = 'verified'"),
+    ).toBe(1);
+    expect(
+      await countOf(w.db, "SELECT count(*) AS c FROM import_batches WHERE state = 'queued'"),
+    ).toBe(1);
     const acts = (await auditRows(w.db, '%')).map((a) => a.action);
     expect(acts).toEqual(
       expect.arrayContaining(['domain.requested', 'domain.verified', 'import.begun']),
@@ -126,9 +136,10 @@ describe('quickImport: one address, no second paste', () => {
 
   it('a buyer or an operator is not_publisher', async () => {
     const w = await fresh();
-    expect(
-      await quickImport(w.idep(), { kind: 'system' }, { source_url: SOURCE_URL }),
-    ).toEqual({ ok: false, error: { code: 'not_publisher' } });
+    expect(await quickImport(w.idep(), { kind: 'system' }, { source_url: SOURCE_URL })).toEqual({
+      ok: false,
+      error: { code: 'not_publisher' },
+    });
   });
 
   it('a site proved by another publisher is host_taken', async () => {
@@ -196,15 +207,22 @@ describe('setPriceForAll: one price for every unpriced photo', () => {
       ok: false,
       error: { code: 'invalid_price' },
     });
-    expect(await countOf(w.db, 'SELECT count(*) AS c FROM import_items WHERE price_minor IS NULL AND state = $1', ['staged'])).toBe(2);
+    expect(
+      await countOf(
+        w.db,
+        'SELECT count(*) AS c FROM import_items WHERE price_minor IS NULL AND state = $1',
+        ['staged'],
+      ),
+    ).toBe(2);
   });
 
   it("another publisher's batch is not_found and nothing changes", async () => {
     const w = await fresh();
     const id = await stagedShop(w);
-    expect(
-      await setPriceForAll(w.idep(), w.quayside, { batch_id: id, price_minor: 10 }),
-    ).toEqual({ ok: false, error: { code: 'not_found' } });
+    expect(await setPriceForAll(w.idep(), w.quayside, { batch_id: id, price_minor: 10 })).toEqual({
+      ok: false,
+      error: { code: 'not_found' },
+    });
     expect((await auditRows(w.db, 'import.price_all')).length).toBe(0);
   });
 

@@ -154,6 +154,8 @@ import {
   listBatches as importListBatches,
   listDomains as importListDomains,
   publishBatch as importPublishBatch,
+  quickImport as importQuick,
+  setPriceForAll as importPriceAll,
   recoverImports,
   requestDomain as importRequestDomain,
   runNextBatch as importRunNext,
@@ -172,6 +174,7 @@ import {
   resetPublisherSignIn,
 } from '@umsbx/catalogue';
 import type {
+  QuickStep as ImportQuickStep,
   BatchView as ImportBatchView,
   DomainView as ImportDomainView,
   ImportDeps,
@@ -1413,6 +1416,22 @@ export interface Engine {
       price_minor?: number;
       hidden?: boolean;
     }): Promise<Result<{ item: ImportItemView }, ImportError>>;
+    /**
+     * POB-Q1: one address. Gives the proof code and file for a new site, answers 'waiting' until the proof is
+     * up, then verifies the site and begins the import in the same call.
+     */
+    quick(i: {
+      actor: Actor;
+      source_url: string;
+      new_code?: boolean;
+    }): Promise<Result<ImportQuickStep, ImportError>>;
+    /** POB-Q1: one price for every unpriced staged item of a finished batch, in one transaction. */
+    priceAll(i: {
+      actor: Actor;
+      batch_id: string;
+      price_minor: number;
+      replace_existing?: boolean;
+    }): Promise<Result<{ priced: number }, ImportError>>;
     publish(i: {
       actor: Actor;
       batch_id: string;
@@ -3864,6 +3883,12 @@ function buildApp(config: Config, opts: AppOptions): App {
         return v === null ? null : { ...v, environment, offer_max_minor: config.offer_max_minor };
       },
       edit: ({ actor, ...i }) => importEditItem(importDeps, actor, i),
+      async quick({ actor, ...i }) {
+        const r = await importQuick(importDeps, actor, i);
+        if (r.ok && r.value.step === 'started') kickImports();
+        return r;
+      },
+      priceAll: ({ actor, ...i }) => importPriceAll(importDeps, actor, i),
       publish: ({ actor, ...i }) => importPublishBatch(importDeps, actor, i),
       async runPending() {
         let ran = 0;
