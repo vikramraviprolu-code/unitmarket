@@ -11,9 +11,13 @@ import {
   BATCHES_EMPTY,
   BATCHES_HEADING,
   BATCH_OPEN,
+  CODE_HEADING,
+  CODE_INSTRUCTION,
+  CODE_NOTE,
   DOMAIN_EMPTY,
   DOMAIN_LIST_HEADING,
   DOMAIN_PENDING,
+  DOMAIN_VERIFIED_BY_US,
   DOMAIN_VERIFIED,
   IMPORT_HEADING,
   IMPORT_LEDE,
@@ -22,6 +26,7 @@ import {
   progressText,
 } from '../../../lib/web-import-copy';
 import { ImportStart } from './ImportStart';
+import { RemoveAddress } from './RemoveAddress';
 import '../pk-forms.css';
 
 export const metadata: Metadata = { title: 'Add your catalogue' };
@@ -32,8 +37,12 @@ export default async function PublisherImport() {
   const actor = await currentActor();
   if (actor?.kind !== 'publisher') redirect('/signin?next=/publisher/import');
   const engine = (await app()).engine.webImport;
-  const [domains, batches] = await Promise.all([engine.domains(actor), engine.batches(actor)]);
-  if (domains === null || batches === null) redirect('/signin?next=/publisher/import');
+  const [domains, batches, proof] = await Promise.all([
+    engine.domains(actor),
+    engine.batches(actor),
+    engine.proofCode(actor),
+  ]);
+  if (domains === null || batches === null || proof === null) redirect('/signin?next=/publisher/import');
   return (
     <>
       <PageHeader
@@ -42,6 +51,15 @@ export default async function PublisherImport() {
         aside={<EnvLabel environment={batches.environment} />}
       />
       <p className="pk-help">{IMPORT_SAFE_NOTE}</p>
+      <Section title={CODE_HEADING} id="import-code">
+        <div className="pk-panel" data-testid="import-code">
+          <p>{CODE_INSTRUCTION}</p>
+          <p>
+            <code>{proof.code}</code>
+          </p>
+          <p className="pk-help">{CODE_NOTE}</p>
+        </div>
+      </Section>
       <Section title={DOMAIN_LIST_HEADING} id="import-domains">
         {domains.domains.length === 0 ? (
           <p>{DOMAIN_EMPTY}</p>
@@ -51,8 +69,13 @@ export default async function PublisherImport() {
               <li key={d.host}>
                 {d.host}{' '}
                 <Chip tone={d.state === 'verified' ? 'good' : 'warn'}>
-                  {d.state === 'verified' ? DOMAIN_VERIFIED : DOMAIN_PENDING}
-                </Chip>
+                  {d.state === 'verified'
+                    ? d.verified_by === 'operator'
+                      ? DOMAIN_VERIFIED_BY_US
+                      : DOMAIN_VERIFIED
+                    : DOMAIN_PENDING}
+                </Chip>{' '}
+                <RemoveAddress host={d.host} />
               </li>
             ))}
           </ul>

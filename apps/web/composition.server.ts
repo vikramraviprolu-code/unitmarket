@@ -150,6 +150,10 @@ import {
   importFeeFrom,
   checkDomain as importCheckDomain,
   editItem as importEditItem,
+  getProofCode as importGetProofCode,
+  listDomainsForOperator as importListDomainsForOperator,
+  removeDomain as importRemoveDomain,
+  vouchDomain as importVouchDomain,
   getBatch as importGetBatch,
   listBatches as importListBatches,
   listDomains as importListDomains,
@@ -174,6 +178,7 @@ import {
 import type {
   BatchView as ImportBatchView,
   DomainView as ImportDomainView,
+  OperatorDomainView as ImportOperatorDomainView,
   ImportDeps,
   ImportError,
   ImportFeePolicy,
@@ -1383,6 +1388,12 @@ export interface Engine {
    */
   webImport: {
     domains(actor: Actor): Promise<{ domains: ImportDomainView[] } | null>;
+    /** DOMAIN-PROOF-2 (D-116): the publisher's one permanent code, shown again at any time. Null for any other actor. */
+    proofCode(actor: Actor): Promise<{ code: string } | null>;
+    removeDomain(i: {
+      actor: Actor;
+      host: string;
+    }): Promise<Result<{ host: string; state: 'removed' }, ImportError>>;
     addDomain(i: {
       actor: Actor;
       host: string;
@@ -1532,6 +1543,23 @@ export interface Engine {
       status: 'suspended' | 'active';
       reason: string;
     }): Promise<Result<{ status: 'suspended' | 'active' }, StatusError>>;
+  };
+  /**
+   * DOMAIN-PROOF-2 (D-116): the operator's side of the web addresses. `list` needs an operator; `vouch` and `remove`
+   * need the second factor and a reason. The code of a publisher is never part of any answer here.
+   */
+  opsDomains: {
+    list(actor: Actor): Promise<Result<{ domains: ImportOperatorDomainView[] }, ImportError>>;
+    vouch(i: {
+      actor: Actor;
+      domain_id: string;
+      reason: string;
+    }): Promise<Result<{ host: string; state: 'verified' }, ImportError>>;
+    remove(i: {
+      actor: Actor;
+      domain_id: string;
+      reason: string;
+    }): Promise<Result<{ host: string; state: 'removed' }, ImportError>>;
   };
   /**
    * PUB-E2, operator only (second factor required). `list` shows applicants waiting or turned down; `add`
@@ -3848,6 +3876,11 @@ function buildApp(config: Config, opts: AppOptions): App {
         const d = await importListDomains(db, actor);
         return d === null ? null : { domains: d };
       },
+      async proofCode(actor) {
+        const code = await importGetProofCode(importDeps, actor);
+        return code === null ? null : { code };
+      },
+      removeDomain: ({ actor, host }) => importRemoveDomain(importDeps, actor, { host }),
       addDomain: ({ actor, host }) => importRequestDomain(importDeps, actor, { host }),
       checkDomain: ({ actor, host }) => importCheckDomain(importDeps, actor, { host }),
       async begin({ actor, source_url }) {
@@ -3973,6 +4006,17 @@ function buildApp(config: Config, opts: AppOptions): App {
         });
         return r.ok ? { ok: true, value: { offer_id: i.offer_id, version: r.value.version } } : r;
       },
+    },
+
+    opsDomains: {
+      async list(actor) {
+        const domains = await importListDomainsForOperator(db, actor);
+        return domains === null ? { ok: false, error: { code: 'not_operator' } } : { ok: true, value: { domains } };
+      },
+      vouch: ({ actor, domain_id, reason }) =>
+        importVouchDomain(importDeps, actor, { domain_id, reason }),
+      remove: ({ actor, domain_id, reason }) =>
+        importRemoveDomain(importDeps, actor, { domain_id, reason }),
     },
 
     opsPublishers: {

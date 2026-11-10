@@ -19,7 +19,7 @@
 // content type AND by their first bytes, 2 MB at most. Text is the plain text the extractor made, hashed.
 import { IdSchema, err, ok } from '@umsbx/contracts';
 import type { Actor, Result, SqlExecutor } from '@umsbx/contracts';
-import { parseWebAddress, proveDomain } from './domain-proof';
+import { acceptedHashes, parseWebAddress, proveDomain } from './domain-proof';
 import { sanitiseFeedText } from './feed-parse';
 import { extractSource } from './extract-structured';
 import type { Candidate } from './extract-structured';
@@ -56,7 +56,7 @@ interface Stop {
 /**
  * The publisher begins an import from a web address on a domain it has proved. See the file comment.
  * Errors: not_publisher, publisher_not_active, invalid_address, no_corridor, domain_not_verified,
- * import_off, paused, import_active, proof_lost.
+ * import_off, paused, import_active, proof_lost (page read, no code), site_unreachable (site could not be read).
  */
 export async function startVerifiedImport(
   deps: ImportDeps,
@@ -78,8 +78,8 @@ export async function startVerifiedImport(
     [p.country],
   );
   if (corridor.rows.length === 0) return fail('no_corridor');
-  const dom = await deps.db.query<{ token_hash: string }>(
-    `SELECT token_hash FROM publisher_domains WHERE publisher_id = $1 AND host = $2 AND state = 'verified'`,
+  const dom = await deps.db.query<{ token_hash: string; verified_by: string | null }>(
+    `SELECT token_hash, verified_by FROM publisher_domains WHERE publisher_id = $1 AND host = $2 AND state = 'verified'`,
     [actor.publisher_id, addr.host],
   );
   if (dom.rows[0] === undefined) return fail('domain_not_verified');
@@ -90,23 +90,38 @@ export async function startVerifiedImport(
   if (active.rows.length > 0) return fail('import_active');
   if (deps.fetcher === null) return fail('import_off');
 
-  // The proof is fetched again on every begin.
-  const proof = await proveDomain(deps, addr.host, dom.rows[0].token_hash);
-  if (proof.kind === 'paused') return fail('paused');
-  if (proof.kind !== 'ok') {
-    await deps.db.transaction(async (tx) => {
-      await deps.audit.record(tx, {
-        actor,
-        action: 'import.proof_failed',
-        target: null,
-        reason: null,
-        detail: {
-          host: addr.host,
-          detail: proof.kind === 'refused' ? proof.reason : 'missing',
-        },
+  if (dom.rows[0].verified_by === 'operator') {
+    // An operator vouched for this address (D-116): the code is not fetched. The switch still applies.
+    let may = false;
+    try {
+      may = await deps.mayFetch();
+    } catch {
+      may = false;
+    }
+    if (!may) return fail('paused');
+  } else {
+    // The proof is fetched again on every begin: the row's own token or the publisher's permanent code.
+    const hashes = await acceptedHashes(deps.db, actor.publisher_id, dom.rows[0].token_hash);
+    const proof = await proveDomain(deps, addr.host, hashes);
+    if (proof.kind === 'paused') return fail('paused');
+    if (proof.kind !== 'ok') {
+      await deps.db.transaction(async (tx) => {
+        await deps.audit.record(tx, {
+          actor,
+          action: 'import.proof_failed',
+          target: null,
+          reason: null,
+          detail: {
+            host: addr.host,
+            detail: proof.kind === 'refused' ? proof.reason : 'missing',
+          },
+        });
       });
-    });
-    return fail('proof_lost');
+      // D-116: a site that could not be read is not a missing code.
+      return proof.kind === 'refused' && proof.reason !== 'import_off'
+        ? fail('site_unreachable', proof.reason)
+        : fail('proof_lost');
+    }
   }
 
   const id = `imb_${deps.ids.nonce()}`;
