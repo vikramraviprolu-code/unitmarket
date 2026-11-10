@@ -1,7 +1,7 @@
 # Devpost submission text: draft for the owners (DOCS-B, finalised against main)
 
-Status: DRAFT 6, updated on 10 Nov 2026 against `main` at commit `3b079523`. The live build is tag `gcp-pub-16` (commit `3b079523`,
-`docs/decision-log.md` D-117). The owners approve every word (decision items 68 and 69, D-065). The submission closes Thu 12 Nov 2026, 12:00 PT (21:00 CET) and cannot be changed after that.
+Status: DRAFT 7, updated on 10 Nov 2026 against `main` at commit `ea7bd701`. The live build is tag `gcp-pub-17` (commit `ea7bd701`,
+`docs/decision-log.md` D-119). The owners approve every word (decision items 68 and 69, D-065). The submission closes Thu 12 Nov 2026, 12:00 PT (21:00 CET) and cannot be changed after that.
 
 How to read this file:
 
@@ -127,7 +127,7 @@ account): "Both seeded publishers are paid into one sandbox test account; multi-
   the whole publisher journey in dry run, from apply to refund. [specs PUB-A1 to PUB-D, POB-P1, POB-M1, POB-I1,
   `docs/specs/publisher-onboarding-journey.md`, `apps/web/src/pob-journey.state.test.ts`]
 - `gcp-pub-13` and `gcp-pub-15` were verified in full before deploy: static checks, six test suites, a production build, 200 browser journeys and a check of
-  the append only transaction journal. `gcp-pub-16` had a lighter check (210 test files, 3,245 tests and the static checks passed; the full six suites and the browser gate were not run). [`docs/decision-log.md` D-109, D-111, D-112, D-117]
+  the append only transaction journal. `gcp-pub-16` had a lighter check (210 test files, 3,245 tests and the static checks passed; the full six suites and the browser gate were not run); `gcp-pub-17` added one lane checked with its own 354 tests and the static checks. [`docs/decision-log.md` D-109, D-111, D-112, D-117, D-119]
 - Two switchable skins with the Appearance control and a small motion set, an in app reader with a time left meter, sign out and
   navigation per role, and four draft legal pages. [specs SKIN-A, SKIN-B, READER-A, LEGAL-A]
 
@@ -156,7 +156,7 @@ Run, Cloud SQL, Secret Manager and Cloud Build. Claude (Anthropic) is named unde
 ## Links to fill in at submission
 
 - Repository: public GitHub URL (Representative, after the secret scan; decision items 9 and 64).
-- Hosted demo URL: `https://unitmarket-sandbox-626887286871.europe-west3.run.app` (Cloud Run, tag `gcp-pub-16`). Browser sign-in works only on this address.
+- Hosted demo URL: `https://unitmarket-sandbox-626887286871.europe-west3.run.app` (Cloud Run, tag `gcp-pub-17`). Browser sign-in works only on this address.
 - Video: public YouTube link, under 3 minutes (decision item 66).
 - Testing instructions: paste `docs/submission/testing-instructions.md`, with the credential placeholders replaced in the Devpost
   form only.
