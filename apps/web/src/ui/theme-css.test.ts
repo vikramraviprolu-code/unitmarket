@@ -125,6 +125,19 @@ describe('the header switch', () => {
   });
 });
 
+describe('OPS-WRAP-1: a long fact label wraps inside its own column', () => {
+  const p = readFileSync(join(srcDir, 'app/publisher/publisher.css'), 'utf8');
+  // "Capture of unt_<26 chars>" on the operator order page has no break point; without these the label spills
+  // over the value beside it.
+  it('.pk-facts dt can shrink to its column and breaks a long id anywhere, as dd does', () => {
+    for (const sel of ['.pk-facts dt', '.pk-facts dd']) {
+      const b = body(p, sel);
+      expect(b).toMatch(/min-width:\s*0/);
+      expect(b).toMatch(/overflow-wrap:\s*anywhere/);
+    }
+  });
+});
+
 describe('the kit components carry the skin: display font, radius, shadow', () => {
   const p = readFileSync(join(srcDir, 'app/publisher/publisher.css'), 'utf8');
   it.each([
