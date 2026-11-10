@@ -35,6 +35,7 @@ branch). No migration: every column exists. No new dependency. No model call. No
 
    The CAT-1 test "one publisher with 5 picks gives 5 items" still holds unchanged.
    Designer decision: CAT-2.3 wins over CAT-1 on the cap. The CAT-1 test "5 picks from P1 then one each from P2..P5" now expects P1, P1, P2, P3, P4, because all of P1's photos are one collection (2 kept in the first pass).
+
 4. **CAT-2.4 Contract (additive).** In `packages/contracts/src/v1.ts`, the strict items of `DiscoverResponseSchema`
    gain `collection: z.object({ name: z.string(), size: z.number().int().nonnegative() }).strict().optional()` and
    `duplicates_hidden: z.number().int().positive().optional()`. The collection object also carries `images: z.boolean()` (true when the collection cover is an image), an additive field accepted by the designer; the proposal card says photos for images and items otherwise. Run `corepack pnpm openapi:emit` to regenerate
@@ -123,7 +124,7 @@ branch). No migration: every column exists. No new dependency. No model call. No
 - Static checks, exit 0: `corepack pnpm typecheck`, `lint`, `check:isolation`, `check:no-live-host`,
   `check:secrets-names`.
 - Screenshots: `cd apps/web && corepack pnpm build && cd ../..`, then from the repo root `node scripts/shots-cat2.mjs
-  /mnt/project-files/cat-smart/shots/`. The script starts `next start` for `apps/web` with `UMS_MODE=offline` and the
+/mnt/project-files/cat-smart/shots/`. The script starts `next start` for `apps/web` with `UMS_MODE=offline` and the
   offline seed, resolves `@playwright/test` from `apps/web`, seeds 5 buyers' briefs so chips show, and stops the server. This gives `/discover` (with chips and a proposal) and the publisher home,
   each in light and dark, against the offline seeded app.
 
