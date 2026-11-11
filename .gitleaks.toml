@@ -25,4 +25,4 @@ regexes = [
 # Two superseded commits flagged synthetic ids (checkout link tokens built from fake order ids
 # in fixtures, and an access_token-shaped test literal). Both were rewritten to low-entropy
 # values in later commits; the current tree scans clean. Reviewed 22 Oct 2026.
-commits = ["bc88f75651f79d4203188078a6a8abb1bd3eded2", "ce21a67440e952e3461b0eacca194fbcafa4088b", "cc9aca451460093243b69a0a41c0529451c40c19", "f36eba5a77a640c6071cc303fa463bdee65a51f6", "d4cdbad052f2e05b3a12142bcaa9e7bec77a8880"]
+commits = ["f8b733c73474036c86fd83c72d14f22565d5c783", "bda1c0e5603825c0f129402800c3397a0082c815", "f319a21a46d99042c4748f520dc101cee15c2fd9", "cfef3d7290496cd53c1e256134d44158bd3d2c60", "fbfda1d4974e6b6c2c6a90c51198a8f5c54b382e"]

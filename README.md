@@ -39,7 +39,7 @@ Simulation and fixture results prove the modelled cases only, not PayPal compati
 
 ## What works today
 
-Everything in this table is merged on `main`. The live build at the time of writing is tag `gcp-pub-17`, `main` at commit `ea7bd701` (Cloud Run revision `unitmarket-sandbox-00044-pgs`, deployed on 10 Nov 2026, `docs/decision-log.md` D-119). `gcp-pub-17` adds to the web import one permanent proof code per publisher for all of its sites, operator vouching for an address (second factor and a reason, audited) and removal of an address (D-116).
+Everything in this table is merged on `main`. This public repository is a copy of the team's private working repository: tags, Cloud Run revisions and older commit ids quoted in this README and in `docs/` refer to that working repository, and commit ids in this copy differ. The live build at the time of writing is tag `gcp-pub-17`, `main` at commit `97241cd0` (Cloud Run revision `unitmarket-sandbox-00044-pgs`, deployed on 10 Nov 2026, `docs/decision-log.md` D-119). `gcp-pub-17` adds to the web import one permanent proof code per publisher for all of its sites, operator vouching for an address (second factor and a reason, audited) and removal of an address (D-116).
 
 | Area                                   | State                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -82,6 +82,7 @@ The hosted app at https://unitmarket.live runs in **Sandbox** mode: the label on
 You need Node 22.22.0 (see `.nvmrc`) and Corepack. No account and no credential are needed. Run these in a normal terminal window.
 
 ```sh
+git clone https://github.com/vikramraviprolu-code/unitmarket.git && cd unitmarket
 corepack pnpm install --frozen-lockfile
 corepack pnpm owner:secrets
 ```

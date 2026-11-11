@@ -4,16 +4,16 @@
 # EXPECTED_SECRET in scripts/totp-enrol.test.ts is derived from two constants in the same test, the password in
 # packages/db/src/pg-url.test.ts is a visibly fake one used to test redaction, and the line in the GCP owner
 # steps is a configuration setting. Nothing here is a real secret; real secrets never enter the repository.
-a639c14d083f73cab2dc85f4f39a4a7fdc60f68a:scripts/safety-cli.postgres.integration.test.ts:generic-api-key:30
-b8b1f957c8f24e474293a45b49869ad960e827f2:packages/db/src/pg-url.test.ts:generic-api-key:8
-decafc5ec74ef2df4b8187ef87c3aea721b7017f:docs/owner/MVPC-OWNER-STEPS-GCP.md:generic-api-key:204
-dd0812e3e980721cf5df4a7bb97c63710b00dc52:apps/web/src/operator-mfa.integration.test.ts:generic-api-key:376
-dd0812e3e980721cf5df4a7bb97c63710b00dc52:apps/web/src/operator-mfa.integration.test.ts:generic-api-key:377
-dd0812e3e980721cf5df4a7bb97c63710b00dc52:apps/web/src/operator-mfa.integration.test.ts:generic-api-key:378
-dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-key:16
-dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-key:77
-dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-key:78
-dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-key:79
+1eda6075e776c2baa9a57e5fc89c6cfac3a3f7b0:scripts/safety-cli.postgres.integration.test.ts:generic-api-key:30
+91b8a85109544c731189d4c2787e750565af48fe:packages/db/src/pg-url.test.ts:generic-api-key:8
+009a14fc68c804e3ae252af5cb1930e23a87a507:docs/owner/MVPC-OWNER-STEPS-GCP.md:generic-api-key:204
+60a2651f29fcf2df3b464d4ecddd2452f91283a5:apps/web/src/operator-mfa.integration.test.ts:generic-api-key:376
+60a2651f29fcf2df3b464d4ecddd2452f91283a5:apps/web/src/operator-mfa.integration.test.ts:generic-api-key:377
+60a2651f29fcf2df3b464d4ecddd2452f91283a5:apps/web/src/operator-mfa.integration.test.ts:generic-api-key:378
+60a2651f29fcf2df3b464d4ecddd2452f91283a5:scripts/totp-enrol.test.ts:generic-api-key:16
+60a2651f29fcf2df3b464d4ecddd2452f91283a5:scripts/totp-enrol.test.ts:generic-api-key:77
+60a2651f29fcf2df3b464d4ecddd2452f91283a5:scripts/totp-enrol.test.ts:generic-api-key:78
+60a2651f29fcf2df3b464d4ecddd2452f91283a5:scripts/totp-enrol.test.ts:generic-api-key:79
 
 # Findings of the full-history scan on 2026-11-03 (D-078): test material only, read line by line at each
 # commit. Exact fingerprints, so a real secret added to these files later is still caught.
@@ -21,12 +21,12 @@ dd0812e3e980721cf5df4a7bb97c63710b00dc52:scripts/totp-enrol.test.ts:generic-api-
 #  - UMS_SESSION_SECRET, UMS_APPROVAL_SECRET and UMS_LINK_SECRET in two test files: the owner compared their
 #    SHA-256 with the hosted Secret Manager values (no match); not the real secrets.
 #  - key_hex in the WordPress signed-link test vectors: ASCII text such as "umbb-test..." and a regular byte run.
-3695c9e4fbd073f9e2c61d09f05c3fc8c5af9b5e:apps/web/src/ops-start-support.ts:generic-api-key:14
+6a725d95f85f17d73b942c48484625d205a44529:apps/web/src/ops-start-support.ts:generic-api-key:14
 5ad91a774f9e99712c782872aae87d938319690e:packages/config/src/feed-hosts.test.ts:generic-api-key:12
 5ad91a774f9e99712c782872aae87d938319690e:packages/config/src/feed-hosts.test.ts:generic-api-key:13
 5ad91a774f9e99712c782872aae87d938319690e:packages/config/src/feed-hosts.test.ts:generic-api-key:14
 17662ccfeb76b4c61f19ea9b46c30259507be2df:integrations/wordpress/test-vectors/signed-link-vectors.json:generic-api-key:18
 17662ccfeb76b4c61f19ea9b46c30259507be2df:integrations/wordpress/test-vectors/signed-link-vectors.json:generic-api-key:62
-3fe19035e2f2b50e68e3a2172e4fc8f0e3aaecf6:packages/config/src/env-file-guard.test.ts:generic-api-key:212
-3fe19035e2f2b50e68e3a2172e4fc8f0e3aaecf6:packages/config/src/env-file-guard.test.ts:generic-api-key:213
-3fe19035e2f2b50e68e3a2172e4fc8f0e3aaecf6:packages/config/src/env-file-guard.test.ts:generic-api-key:214
+a9245b93541c1ff5ace7bc79a400b267dfb57cd9:packages/config/src/env-file-guard.test.ts:generic-api-key:212
+a9245b93541c1ff5ace7bc79a400b267dfb57cd9:packages/config/src/env-file-guard.test.ts:generic-api-key:213
+a9245b93541c1ff5ace7bc79a400b267dfb57cd9:packages/config/src/env-file-guard.test.ts:generic-api-key:214
