@@ -206,6 +206,16 @@ The legal pages (terms of purchase, privacy notice, refund policy, publisher ter
 
 `CLAUDE.md` (working rules), `docs/design/` (architecture, MVP plan, non-functional requirements), `docs/decision-log.md`, `docs/READINESS.md`, `docs/evidence/` (what each sitting showed), `docs/specs/` (one spec per task, indexed in `docs/specs/README.md`), `docs/business-rules/`, `docs/api/openapi-v1.json`, `docs/demo/`, `docs/submission/`, `docs/owner/` (owner step guides), `docs/public-release-checklist.md`, `docs/PROVENANCE.md`.
 
+## Team
+
+- Vikram Raviprolu: Product Owner, Product Designer
+- Sakthi Rajasekharan: Programme Manager, Product Designer
+- Prithu Goel: Senior Engineer, Creative Design and QA
+- Rajendra Gupta: Infrastructure, Security and Governance
+- Sivakumar Ganeshan: Security and Governance, QA, Testing
+- Varalakshmi: QA, Testing
+- Waqas Maddas: Testing and Review
+
 ## Licence
 
 Apache-2.0. See `LICENSE`. Dependency licences are listed in `THIRD-PARTY-NOTICES.md`, produced by `node scripts/licenses-report.mjs`. One production dependency, `@img/sharp-libvips-*` (LGPL-3.0-or-later, a prebuilt library that the web framework's image tool loads), is recorded with a written reason in that script.
