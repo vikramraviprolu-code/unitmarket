@@ -237,6 +237,9 @@
 .pk-facts dt {
   color: var(--muted);
   font-weight: 600;
+  /* OPS-WRAP-1: a label such as "Capture of unt_<id>" has no break point; let it wrap inside its column. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .pk-facts dd {
   margin: 0;

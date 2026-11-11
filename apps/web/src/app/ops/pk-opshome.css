@@ -265,3 +265,9 @@
     display: none;
   }
 }
+/* OPS-WRAP-1: a capture's unit and amount, beside its PayPal id in the order Summary. */
+.oh-id-note {
+  color: var(--muted);
+  margin-left: 12px;
+  font-size: 0.9rem;
+}
