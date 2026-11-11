@@ -215,6 +215,8 @@ The legal pages (terms of purchase, privacy notice, refund policy, publisher ter
 - Sivakumar Ganesan: Security and Governance, QA, Testing
 - Varalakshmi: QA, Testing
 - Waqas Maddas: Testing and Review
+- Praful Thakkar: Project Coordination
+- Cody Shah: Hackathon Coordination
 
 ## Licence
 
