@@ -62,7 +62,10 @@ export default async function OpsOrder({ params }: { params: Promise<{ ref: stri
           {view.provider_ids.map((p) => (
             <Fragment key={p.label}>
               <dt>{p.label}</dt>
-              <dd className="mono">{p.value}</dd>
+              <dd>
+                <span className="mono">{p.value}</span>
+                {p.note !== null ? <span className="oh-id-note">{p.note}</span> : null}
+              </dd>
             </Fragment>
           ))}
         </dl>

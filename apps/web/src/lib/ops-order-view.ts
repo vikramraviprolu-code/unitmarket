@@ -69,8 +69,9 @@ export interface OrderPageView {
   /** The buyer's name, only with the second factor. */
   buyer: string | null;
   units: { id: string; amount_text: string; status: string; evidence: EvidenceButton }[];
-  /** PayPal order and capture ids: whole with the second factor, otherwise "…" and the last four. */
-  provider_ids: { label: string; value: string }[];
+  /** PayPal order and capture ids: whole with the second factor, otherwise "…" and the last four. A capture's
+   *  note names its unit and amount (OPS-WRAP-1: kept out of the label so the label column stays short). */
+  provider_ids: { label: string; value: string; note: string | null }[];
   /** Request id, address prefix and browser of the steps that have them. Empty without the second factor. */
   request_details: {
     seq: number;
@@ -95,12 +96,21 @@ export const evidenceFor = (unitId: string, mfa: boolean): EvidenceButton =>
 
 export function orderPageView(i: OrderPageInput): OrderPageView {
   const shown = (id: string): string => (i.mfa ? id : mask(id));
-  const ids: { label: string; value: string }[] = [];
+  const ids: { label: string; value: string; note: string | null }[] = [];
   for (const [n, p] of (i.provider_orders ?? []).entries())
-    ids.push({ label: `PayPal order ${String(n + 1)}`, value: shown(p.provider_order_id) });
+    ids.push({
+      label: `PayPal order ${String(n + 1)}`,
+      value: shown(p.provider_order_id),
+      note: null,
+    });
+  let k = 0;
   for (const u of i.units)
     if (u.capture_id !== null)
-      ids.push({ label: `Capture of ${u.id}`, value: shown(u.capture_id) });
+      ids.push({
+        label: `Capture ${String((k += 1))}`,
+        value: shown(u.capture_id),
+        note: `unit ${u.id}, ${formatMinor(u.amount_minor, i.order.currency)}`,
+      });
   const details = i.mfa
     ? i.entries
         .filter((e) => e.req_id != null || e.ip_hash != null || e.ua_family != null)
