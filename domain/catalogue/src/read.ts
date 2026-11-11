@@ -123,3 +123,66 @@ export async function listAuthorisedOffers(
   );
   return rows.map(toView);
 }
+
+// CAT-1.1: the authorised offers of a corridor that match the buyer's words, fair across publishers.
+// Every guard of listAuthorisedOffers runs first (inside the CTE), with the score > 0 filter; only then does
+// ROW_NUMBER cap each publisher at per_publisher, so an excluded row never uses a slot. A word hits a text
+// when the whole word matches case-insensitively (like searchOffers: "art" does not match "start"). The words
+// reach SQL as one bound text[] and each is only letters and digits, so no regex metacharacter gets through.
+// Case folding is guaranteed for ASCII only (PGlite and Postgres decide the rest by locale).
+const WORD_PATTERN = /^[\p{L}\p{N}]{3,40}$/u;
+const MAX_WORDS = 12;
+
+export async function listAuthorisedOffersMatching(
+  db: SqlExecutor,
+  i: { corridor_id: CorridorId; words: readonly string[]; per_publisher: number; limit: number },
+): Promise<{ view: OfferView; score: number }[]> {
+  const seen = new Set<string>();
+  const words: string[] = [];
+  for (const w of i.words) {
+    if (typeof w !== 'string' || !WORD_PATTERN.test(w)) continue;
+    const key = w.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    words.push(w);
+    if (words.length === MAX_WORDS) break;
+  }
+  if (words.length === 0) return [];
+  const corridor = await getCorridor(db, i.corridor_id);
+  if (!corridor || !corridor.enabled) return [];
+  const perPublisher = Math.max(1, Math.min(50, Math.trunc(i.per_publisher) || 1));
+  const limit = Math.max(1, Math.min(500, Math.trunc(i.limit) || 1));
+  const { rows } = await db.query<Row>(
+    `WITH matched AS (
+       SELECT o.id AS m_id, o.version AS m_version, o.publisher_id AS m_publisher, s.score AS m_score
+         FROM offers o
+         JOIN articles a ON a.id = o.article_id
+         JOIN publishers p ON p.id = o.publisher_id
+         CROSS JOIN LATERAL (
+           SELECT COALESCE(SUM(CASE
+                    WHEN a.title ~* ('\\m' || w || '\\M')
+                      OR EXISTS (SELECT 1 FROM unnest(a.topics) t WHERE t ~* ('\\m' || w || '\\M')) THEN 2
+                    WHEN a.abstract ~* ('\\m' || w || '\\M') THEN 1
+                    ELSE 0 END), 0)::int AS score
+             FROM unnest($3::text[]) AS w
+         ) s
+        WHERE o.status = 'authorised' AND o.superseded_by IS NULL AND p.status = 'active'
+          AND o.currency = $1 AND p.country = ANY ($2)
+          AND EXISTS (SELECT 1 FROM publisher_authorisations pa WHERE pa.offer_id = o.id AND pa.offer_version = o.version)
+          AND NOT EXISTS (SELECT 1 FROM offers n WHERE n.id = o.id AND (n.created_at, n.version) > (o.created_at, o.version))
+          AND s.score > 0
+     ), capped AS (
+       SELECT m_id, m_version, m_score,
+              ROW_NUMBER() OVER (PARTITION BY m_publisher ORDER BY m_score DESC, m_id) AS rn
+         FROM matched
+     )
+     SELECT v.*, c.m_score AS score
+       FROM (${SELECT}) v
+       JOIN capped c ON c.m_id = v.o_id AND c.m_version = v.o_version
+      WHERE c.rn <= $4
+      ORDER BY c.m_score DESC, v.o_id
+      LIMIT $5`,
+    [corridor.currency, corridor.payee_countries, words, perPublisher, limit],
+  );
+  return rows.map((r) => ({ view: toView(r), score: Number(r.score) }));
+}
