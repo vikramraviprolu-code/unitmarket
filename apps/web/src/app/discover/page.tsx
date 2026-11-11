@@ -73,6 +73,8 @@ export default async function Discover({
   });
   const browse = browseEntries(offers, display.view);
   const rights = offers.map((o) => o.rights);
+  // CAT-2.6: popular requests; a failed read only hides the block.
+  const popular = await a.engine.demand.forBuyers().catch(() => []);
   return (
     <>
       <DiscoverForm
@@ -81,6 +83,7 @@ export default async function Discover({
         rights={rights}
         days={await a.engine.platformAccessDays()}
         initialNeed={initialNeed}
+        popular={popular}
       >
         <h1>Find articles for my need</h1>
         <p className="lede">Describe what you need and what you can pay. You pick the article.</p>

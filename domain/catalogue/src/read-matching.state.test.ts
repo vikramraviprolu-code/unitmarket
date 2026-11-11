@@ -1,7 +1,7 @@
 // CAT-1.1: listAuthorisedOffersMatching. Match first, whole words, a cap per publisher, every guard of
 // listAuthorisedOffers applied before any cap. Fixtures are inline.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { listAuthorisedOffers, listAuthorisedOffersMatching } from './index';
+import { getOffer, listAuthorisedOffers, listAuthorisedOffersMatching } from './index';
 import { testDb } from './support';
 
 type TestDb = Awaited<ReturnType<typeof testDb>>;
@@ -377,5 +377,116 @@ describe('topics are whole words too, and a disabled corridor answers nothing', 
       await db.query(`UPDATE corridors SET enabled = true WHERE id = 'de-eur'`);
     }
     expect(await ids(['disabledword'], { corridor_id: 'de-eur' })).toEqual(['ofr_td_0001']);
+  });
+});
+
+// CAT-2.2: exact copies (same publisher, same sha256) take one slot, before the per-publisher cap, and the
+// row says how many other current authorised copies the publisher has.
+async function addCopies(
+  pub: string,
+  prefix: string,
+  n: number,
+  o: { sha?: string; title?: string; authorised?: boolean } = {},
+): Promise<void> {
+  const sha = o.sha ?? `${prefix}${'0'.repeat(64)}`.slice(0, 64);
+  await db.query(
+    `INSERT INTO articles (id, publisher_id, title, abstract, language, topics, published_at, sha256, content_key, bytes, mime, created_at, updated_at)
+     SELECT 'art_' || $2::text || '_' || lpad(i::text, 4, '0'), $1::text, replace($3::text, '{i}', i::text),
+            'Copy abstract', 'en', ARRAY['misc'], $4::timestamptz, $5::text, 'key_' || $2::text || '_' || i::text,
+            10, 'image/jpeg', $4::timestamptz, $4::timestamptz
+       FROM generate_series(1, $6::int) AS i`,
+    [pub, prefix, o.title ?? 'Copyword {i}', TS, sha, n],
+  );
+  await db.query(
+    `INSERT INTO offers (id, version, publisher_id, article_id, status, currency, options, affordability, terms_version, rights, valid_from, valid_until, superseded_by, created_at, updated_at)
+     SELECT 'ofr_' || $2::text || '_' || lpad(i::text, 4, '0'), '1', $1::text,
+            'art_' || $2::text || '_' || lpad(i::text, 4, '0'), 'authorised', 'USD', $3::jsonb, $4::jsonb,
+            'terms-1', $5::jsonb, '2026-01-01T00:00:00.000Z', NULL, NULL, $6::timestamptz, $6::timestamptz
+       FROM generate_series(1, $7::int) AS i`,
+    [pub, prefix, OPTIONS, FIXED, RIGHTS, TS, n],
+  );
+  if (o.authorised ?? true) {
+    await db.query(
+      `INSERT INTO publisher_authorisations (id, offer_id, offer_version, authorised_by, at, created_at, updated_at)
+       SELECT 'auth_' || o.id, o.id, o.version, $1::text, $3::timestamptz, $3::timestamptz, $3::timestamptz
+         FROM offers o WHERE o.id LIKE 'ofr_' || $2::text || '\\_%'`,
+      [pub, prefix, TS],
+    );
+  }
+}
+const rowsFor = (words: string[], over: { per_publisher?: number } = {}) =>
+  listAuthorisedOffersMatching(db, {
+    corridor_id: 'us-usd',
+    words,
+    per_publisher: over.per_publisher ?? 50,
+    limit: 500,
+  });
+
+describe('CAT-2.2 exact copies', () => {
+  it('10 copies of one photo take one slot and the row says duplicates_hidden: 9', async () => {
+    await addPublisher(db, 'd1');
+    await addCopies('d1', 'dca', 10, { title: 'Dupword photo {i}' });
+    const rows = await rowsFor(['dupword']);
+    expect(rows.map((r) => r.view.offer.id)).toEqual(['ofr_dca_0001']);
+    expect(rows[0]!.duplicates_hidden).toBe(9);
+  });
+
+  it('keeps the smallest offer id of the copies', async () => {
+    const rows = await rowsFor(['dupword']);
+    expect(rows[0]!.view.offer.id).toBe('ofr_dca_0001');
+  });
+
+  it('collapses before the per-publisher cap, so copies leave room for other offers', async () => {
+    await addPublisher(db, 'd2');
+    await addCopies('d2', 'dcb', 10, { title: 'Capdup photo {i}' });
+    await addCopies('d2', 'dcc', 1, { title: 'Capdup other one', sha: 'c'.repeat(64) });
+    await addCopies('d2', 'dcd', 1, { title: 'Capdup other two', sha: 'd'.repeat(64) });
+    const got = (await rowsFor(['capdup'], { per_publisher: 3 })).map((r) => r.view.offer.id);
+    expect(got).toHaveLength(3);
+    expect(got).toContain('ofr_dcb_0001');
+    expect(got).toContain('ofr_dcc_0001');
+    expect(got).toContain('ofr_dcd_0001');
+  });
+
+  it('does not collapse the same photo of two publishers', async () => {
+    await addPublisher(db, 'd3');
+    await addPublisher(db, 'd4');
+    const sha = 'e'.repeat(64);
+    await addCopies('d3', 'dce', 1, { title: 'Twopub photo', sha });
+    await addCopies('d4', 'dcf', 1, { title: 'Twopub photo', sha });
+    const rows = await rowsFor(['twopub']);
+    expect(rows.map((r) => r.view.offer.id)).toEqual(['ofr_dce_0001', 'ofr_dcf_0001']);
+    expect(rows.map((r) => r.duplicates_hidden)).toEqual([0, 0]);
+  });
+
+  it('counts only current authorised copies in duplicates_hidden', async () => {
+    await addPublisher(db, 'd5');
+    const sha = 'f'.repeat(64);
+    await addCopies('d5', 'dcg', 3, { title: 'Hiddencount photo {i}', sha });
+    await addCopies('d5', 'dch', 2, { title: 'Hiddencount raw {i}', sha, authorised: false });
+    const rows = await rowsFor(['hiddencount']);
+    expect(rows.map((r) => r.view.offer.id)).toEqual(['ofr_dcg_0001']);
+    expect(rows[0]!.duplicates_hidden).toBe(2);
+  });
+
+  it('gives 0 to an offer that has no copy', async () => {
+    const rows = await rowsFor(['scoreword']);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.duplicates_hidden).toBe(0);
+  });
+});
+
+describe('the plain reads', () => {
+  it('getOffer answers null for an unknown offer and the offer for a known one', async () => {
+    expect(await getOffer(db, { offer_id: 'ofr_nobody_0001' })).toBeNull();
+    expect((await getOffer(db, { offer_id: 'ofr_gok_0001' }))?.offer.id).toBe('ofr_gok_0001');
+  });
+
+  it('listAuthorisedOffers keeps limit between 1 and 500', async () => {
+    expect(await listAuthorisedOffers(db, { corridor_id: 'us-usd', limit: 0 })).toHaveLength(1);
+    expect(await listAuthorisedOffers(db, { corridor_id: 'us-usd', limit: 2 })).toHaveLength(2);
+    expect(
+      (await listAuthorisedOffers(db, { corridor_id: 'us-usd', limit: 9999 })).length,
+    ).toBeLessThanOrEqual(500);
   });
 });

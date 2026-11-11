@@ -213,7 +213,13 @@ import type {
   StatusError,
 } from '@umsbx/catalogue';
 import { startFromOffer } from '@umsbx/offer-entry';
-import { discover as discoverOffers, parseNeed } from '@umsbx/discovery';
+import {
+  demandForPublisher,
+  demandTerms,
+  discover as discoverOffers,
+  parseNeed,
+} from '@umsbx/discovery';
+import type { DemandTerm, PublisherDemand } from '@umsbx/discovery';
 import {
   convert as fxConvert,
   getRates as fxGetRates,
@@ -479,6 +485,51 @@ export type { RefundOverview, RefundUnitView };
 export type { AlertDetail, AlertList, NeedsYouRow, CaseDetail, CaseQueue };
 
 type Env = Record<string, string | undefined>;
+// CAT-2.5: the demand answers are cached in memory per UTC day (the window ends at 00:00 UTC, so nothing
+// changes inside a day). One cache per app.
+const DEMAND_LIMIT = 10;
+const utcDay = (now: Date): Date =>
+  new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+function createDemandCache() {
+  let day = '';
+  let buyers: Promise<DemandTerm[]> | null = null;
+  const publishers = new Map<string, Promise<PublisherDemand[]>>();
+  const roll = (d: Date): void => {
+    const key = d.toISOString();
+    if (key !== day) {
+      day = key;
+      buyers = null;
+      publishers.clear();
+    }
+  };
+  return {
+    buyers(d: Date, load: () => Promise<DemandTerm[]>): Promise<DemandTerm[]> {
+      roll(d);
+      buyers ??= load().catch((e: unknown) => {
+        buyers = null;
+        throw e;
+      });
+      return buyers;
+    },
+    publisher(
+      d: Date,
+      id: string,
+      load: () => Promise<PublisherDemand[]>,
+    ): Promise<PublisherDemand[]> {
+      roll(d);
+      let p = publishers.get(id);
+      if (p === undefined) {
+        p = load().catch((e: unknown) => {
+          publishers.delete(id);
+          throw e;
+        });
+        publishers.set(id, p);
+      }
+      return p;
+    },
+  };
+}
+
 export interface AppOptions {
   /** Switch cache lifetime; tests pass 0. */
   switch_cache_ms?: number;
@@ -1168,6 +1219,16 @@ export interface Engine {
   listOffers(): Promise<OfferPage[]>;
   quote: typeof startFromOffer extends (d: never, i: infer I) => infer R ? (i: I) => R : never;
   aiEnabled(): Promise<boolean>;
+  /**
+   * CAT-2.5: what buyers ask for. Terms asked by 5 or more buyers in the 30 days before today (UTC), shown only when
+   * offers with that topic exist at two publishers. Bands, never counts. Answered from memory for the whole UTC
+   * day, so a page render does not scan briefs. A publisher also gets how many of its own offers match; any other
+   * actor gets null. There is no publisher-buyer account link in the schema, so no linked account is left out.
+   */
+  demand: {
+    forBuyers(): Promise<DemandTerm[]>;
+    forPublisher(actor: Actor): Promise<PublisherDemand[] | null>;
+  };
   /** API-B: the agent_buy_enabled switch, read now. Off until an operator with the second factor turns it on. */
   agentBuyEnabled(): Promise<boolean>;
   /**
@@ -2683,6 +2744,7 @@ function buildApp(config: Config, opts: AppOptions): App {
       ? createEcbFetch()
       : async () => ({ ok: false, kind: 'offline' }));
 
+  const demandCache = createDemandCache();
   const engine: Engine = {
     personas: () => PERSONAS,
 
@@ -3063,6 +3125,25 @@ function buildApp(config: Config, opts: AppOptions): App {
       startFromOffer(core, i)) as Engine['quote'],
 
     aiEnabled: () => switches.isOn('ai_enabled'),
+
+    demand: {
+      async forBuyers() {
+        const day = utcDay(clock.now());
+        return demandCache.buyers(day, () => demandTerms(db, { day, limit: DEMAND_LIMIT }));
+      },
+      async forPublisher(actor) {
+        if (actor.kind !== 'publisher') return null;
+        const day = utcDay(clock.now());
+        const publisher_id = actor.publisher_id;
+        return demandCache.publisher(day, publisher_id, async () =>
+          demandForPublisher(
+            db,
+            publisher_id,
+            await demandCache.buyers(day, () => demandTerms(db, { day, limit: DEMAND_LIMIT })),
+          ),
+        );
+      },
+    },
 
     agentBuyEnabled: () => switches.isOn('agent_buy_enabled'),
 

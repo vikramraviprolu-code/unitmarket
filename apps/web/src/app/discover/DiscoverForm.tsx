@@ -19,6 +19,9 @@ import {
 import type { BrowseEntry } from '../../lib/buyer-copy';
 import type { PriceView } from '../../lib/buyer-price';
 import { TermsConsent } from '../../ui/TermsConsent';
+import { PopularRequests } from './PopularRequests';
+import { collectionLine, copiesHiddenLine } from '../../lib/demand-copy';
+import type { DemandBandText } from '../../lib/demand-copy';
 
 type Item = {
   quote: { quote_id: string; offer_id: string; option: AccessOption; price: Money };
@@ -29,6 +32,10 @@ type Item = {
   display?: PriceView;
   /** MC2-L5: present when the agent compared the ceiling on the converted price (worded by the server). */
   ceiling_line?: string;
+  /** CAT-2: the named collection of the offer and its size at the publisher. */
+  collection?: { name: string; size: number; images: boolean };
+  /** CAT-2: copies of the same file collapsed into this item. */
+  duplicates_hidden?: number;
 };
 type Result =
   | { kind: 'proposal'; proposal_id: string; items: Item[] }
@@ -43,6 +50,7 @@ export function DiscoverForm({
   rights,
   days,
   initialNeed,
+  popular,
   children,
 }: {
   signedIn: boolean;
@@ -51,6 +59,7 @@ export function DiscoverForm({
   /** JR-1: the access window in force now (engine.platformAccessDays). */
   days?: number;
   initialNeed: string;
+  popular: readonly { term: string; band: DemandBandText }[];
   children: ReactNode;
 }) {
   const [need, setNeed] = useState(initialNeed);
@@ -153,6 +162,7 @@ export function DiscoverForm({
     <>
       <Hero>
         {children}
+        <PopularRequests terms={popular} onPick={setNeed} />
         <form onSubmit={find} noValidate>
           <label htmlFor="need">What do you need?</label>
           <p className="hint" id="need-hint">
@@ -275,6 +285,23 @@ export function DiscoverForm({
                     {...(days !== undefined ? { days } : {})}
                     onChoose={() => void choose(it, result.proposal_id)}
                   />
+                  {it.collection !== undefined || it.duplicates_hidden !== undefined ? (
+                    <p className="muted collection-line" data-testid="collection-line">
+                      {it.collection !== undefined
+                        ? collectionLine(
+                            it.collection.name,
+                            it.collection.size,
+                            it.collection.images,
+                          )
+                        : null}
+                      {it.collection !== undefined && it.duplicates_hidden !== undefined
+                        ? ' · '
+                        : null}
+                      {it.duplicates_hidden !== undefined
+                        ? copiesHiddenLine(it.duplicates_hidden)
+                        : null}
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>
