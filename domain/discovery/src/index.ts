@@ -5,3 +5,7 @@ export { parseNeed, MAX_BRIEF_CHARS } from './brief';
 export type { ParseNeedError } from './brief';
 export { discover, MAX_ITEMS } from './discover';
 export type { CeilingCheck, ConvertFn, DiscoveryResult, DiscoverError } from './discover';
+export { MIN_BUYERS, demandForPublisher, demandTerms } from './demand';
+export type { DemandBand, DemandTerm, PublisherDemand } from './demand';
+export { collectionFacts, collectionsOf } from './collections';
+export type { Collection, CollectionRow, TopicCounts } from './collections';

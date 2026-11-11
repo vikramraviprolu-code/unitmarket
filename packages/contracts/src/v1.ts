@@ -250,6 +250,18 @@ export const DiscoverResponseSchema = z.discriminatedUnion('kind', [
             title: z.string(),
             publisher: z.string(),
             ceiling_check: CeilingCheckSchema.optional(),
+            // CAT-2: the named collection of the offer (with the size of it at the publisher) and, when copies
+            // of the same file were collapsed into this item, how many.
+            collection: z
+              .object({
+                name: z.string(),
+                size: z.number().int().nonnegative(),
+                // True when the cover of the collection is an image (the screen then says photos).
+                images: z.boolean(),
+              })
+              .strict()
+              .optional(),
+            duplicates_hidden: z.number().int().positive().optional(),
           })
           .strict(),
       ),
