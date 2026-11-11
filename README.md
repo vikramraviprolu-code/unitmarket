@@ -212,7 +212,7 @@ The legal pages (terms of purchase, privacy notice, refund policy, publisher ter
 - Sakthi Rajasekharan: Programme Manager, Product Designer
 - Prithu Goel: Senior Engineer, Creative Design and QA
 - Rajendra Gupta: Infrastructure, Security and Governance
-- Sivakumar Ganeshan: Security and Governance, QA, Testing
+- Sivakumar Ganesan: Security and Governance, QA, Testing
 - Varalakshmi: QA, Testing
 - Waqas Maddas: Testing and Review
 
