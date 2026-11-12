@@ -5,7 +5,7 @@ UnitMarket lets people and AI agents buy just the content they need, one unit at
 This is our entry for the PayPal AI Hackathon, "Build what's next with PayPal and AI".
 
 - Hosted demo: https://unitmarket.live (a **sandbox** build with test money; browser sign in works only on that address; see "The hosted demo" below).
-- Demo video (under 3 minutes): `[TODO after upload: public video URL]`
+- Demo video (under 3 minutes): https://youtu.be/0NuwMAxHA6E
 - Licence: Apache-2.0 (`LICENSE`). Third-party licences: `THIRD-PARTY-NOTICES.md`.
 
 Built during the submission period, which starts on 1 Oct 2026. The first commit in this repository is dated 21 Oct 2026.
@@ -74,7 +74,7 @@ Not built: real PayPal payouts, a second merchant paid into its own account, tax
 The hosted app at https://unitmarket.live runs in **Sandbox** mode: the label on every page says so and comes from stored data. It uses test money only.
 
 - Browser sign in works only on that address. Sign in at `/signin`. Judges use the judge passcode given in the submission form, which signs in Buyer A or Buyer B only.
-- The hosted app calls the PayPal sandbox only while the owner has a sitting open under the two-key approval. A deploy resets the connect flag to off. With the flag off, checkout is paused and nothing is charged (`docs/decision-log.md` D-056, D-111). For a complete purchase at any time, use the offline path below.
+- The hosted app calls the PayPal sandbox only while the owner has a sitting open under the two-key approval. The hosting file sets the connect flag on (D-120), so the second key is the sitting: with no sitting open, checkout is paused and nothing is charged (`docs/decision-log.md` D-056, D-111, D-120). For a complete purchase at any time, use the offline path below.
 - The Claude adapter is off on the hosted app, so the scripted model composes packs there.
 
 ## Try it offline in under ten minutes
@@ -142,14 +142,14 @@ corepack pnpm trace:verify         # checks the journal hash chain of the app's 
 corepack pnpm run ci               # every offline check, several minutes
 ```
 
-On the earlier commit `172e5c7a` the full offline run passed 5,275 unit, 4,047 state, 379 contract, 687 integration, 2,377 adversarial and 592 golden tests, plus 200 browser journeys and the trace check (verified on 9 Nov 2026). For `gcp-pub-16` only a lighter check was run before merge: 210 test files and 3,245 tests passed on a tree identical to the deployed commit `3b079523` (main combined with PRs 81 and 82), with typecheck, lint, fixtures, isolation, no-live-host, secrets-names and openapi checks passing; the full six suites and the browser gate were not run (D-117). `gcp-pub-17` added one lane checked with its own 354 tests and the static checks (D-119). Browser journeys and the trace check run offline on the dry run.
+On the earlier commit `172e5c7a` the full offline run passed 5,275 unit, 4,047 state, 379 contract, 687 integration, 2,377 adversarial and 592 golden tests, plus 200 browser journeys and the trace check (verified on 9 Nov 2026). For `gcp-pub-16` only a lighter check was run before merge: 210 test files and 3,245 tests passed on a tree identical to the deployed commit `3b079523` (main combined with PRs 81 and 82), with typecheck, lint, fixtures, isolation, no-live-host, secrets-names and openapi checks passing; the full six suites and the browser gate were not run (D-117). `gcp-pub-17` added one lane checked with its own 354 tests and the static checks (D-119). On 10 Nov 2026 the full run on the working repository passed 13,621 tests with 0 failed and 51 skipped (commit `34fa170` there). Browser journeys and the trace check run offline on the dry run.
 
 ## PayPal
 
 Sandbox only. There is no live mode anywhere in the code: boot refuses any value naming live or production, the sandbox address is one constant in `packages/transport/src/endpoints.ts`, and `pnpm check:no-live-host` fails the build if a live PayPal host appears.
 
 - **What the app calls.** Five sandbox operations, through one sealed transport package: get a token, create an order, get an order, capture an order, and read the capture (Orders v2). Refunds, webhook postbacks and payouts are not called in a sitting.
-- **Two keys.** Reaching the sandbox needs `UMS_PAYPAL_CONNECT=on` **and** an active approval row that the owner inserts at a terminal with `pnpm safety:approve`, which refuses in CI. The row sets a scope, an amount cap per order and a call budget.
+- **Two keys.** Reaching the sandbox needs `UMS_PAYPAL_CONNECT=on` **and** an active approval row, which comes from a sitting opened on the operator Controls page with the authenticator code (D-120), or from the owner's `pnpm safety:approve` at a terminal, which refuses in CI. The row sets a scope, an amount cap per order and a call budget.
 - **Five locks.** Sandbox mode, the connect flag, the approval row, the kill switch, and credentials present with a clean self check. All five must be open. The operator Controls page shows each one.
 - **Ceiling (D-094).** Five operations, at most $5 per order, 40 calls, $20 captured per sitting, four hours. Only the owner runs a sitting. Builder and reviewer agents never hold credentials. The sitting of 7 Nov 2026 ran under the written basis D-108.
 - **Read back.** A PayPal response is treated as a claim. The app reads each capture back before access opens.
@@ -186,7 +186,7 @@ The simulation code is in a separate repository and is not part of this submissi
 1. The default mode is offline: a dry run transport, fixtures, a scripted model and no credentials.
 2. Two-key approval and five locks before any PayPal call.
 3. Fail closed: no `live` value exists, and no live PayPal host passes the build.
-4. Secrets stay on the server. The only public variable is `NEXT_PUBLIC_UMS_ENV_LABEL`. `.env.example` holds names only. CI scans the full git history with a secret scanner. The scan on 5 Nov 2026 (every branch, 999 commits) found 0 leaks (`docs/public-release-checklist.md`). `[TODO before submission: repeat the scan on the final commit and state the result]`
+4. Secrets stay on the server. The only public variable is `NEXT_PUBLIC_UMS_ENV_LABEL`. `.env.example` holds names only. CI scans the full git history with a secret scanner. The scan on 5 Nov 2026 (every branch, 999 commits) found 0 leaks (`docs/public-release-checklist.md`). That scan ran on the team's working repository; it was not repeated on this public copy.
 5. Access to content opens only after a verified payment and a delivery that is verified possible.
 6. Strict layering enforced by lint: only the transport package opens a network connection, only `packages/config` reads the environment, and time and ids are injected so tests are deterministic.
 
@@ -200,7 +200,7 @@ The simulation code is in a separate repository and is not part of this submissi
 
 ## Legal and data
 
-The legal pages (terms of purchase, privacy notice, refund policy, publisher terms) are drafts for the owners to approve and are not legal advice. No tax is calculated and no tax invoice is issued; a receipt is a record of the sale. A privacy export and deletion script (`pnpm privacy:export`, `pnpm privacy:delete`) runs only from the owner's own terminal.
+The legal pages (terms of purchase, privacy notice, refund policy, publisher terms) are the final terms for this sandbox demo and are not legal advice. No tax is calculated and no tax invoice is issued; a receipt is a record of the sale. A privacy export and deletion script (`pnpm privacy:export`, `pnpm privacy:delete`) runs only from the owner's own terminal.
 
 ## Docs
 
